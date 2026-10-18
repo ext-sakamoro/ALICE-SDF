@@ -1,0 +1,46 @@
+{
+  "sdf_hash": 24301,
+  "config": {
+    "lod_count": 4,
+    "base_resolution": 128,
+    "resolution_factor": 0.5,
+    "triangle_reduction": 0.5,
+    "distance_multiplier": 2.0
+  },
+  "levels": [
+    {
+      "level": 0,
+      "transition_distance": 0.0,
+      "aabb_min": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "aabb_max": [
+        3.0,
+        1.0,
+        0.5
+      ],
+      "vertex_count": 6,
+      "triangle_count": 3,
+      "reduction_ratio": 1.0
+    },
+    {
+      "level": 1,
+      "transition_distance": 10.0,
+      "aabb_min": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "aabb_max": [
+        1.5,
+        0.5,
+        0.25
+      ],
+      "vertex_count": 6,
+      "triangle_count": 3,
+      "reduction_ratio": 1.0
+    }
+  ]
+}

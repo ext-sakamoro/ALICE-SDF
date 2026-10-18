@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1261 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1265 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1011 |
-| | **total** | **2281** |
+| | **total** | **2285** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1261)
+## L1 — example-only (1265)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -118,7 +118,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/heatmap.rs`: `ColorMap`, `Heatmap`, `Heatmap::inside_pixel_count`, `Heatmap::sample`, `Heatmap::surface_pixel_count`, `HeatmapConfig`, `SlicePlane`, `generate_heatmap`, `heatmap_to_rgba`
 - `src/incremental.rs`: `IncrementalError`, `InstructionSlot`, `InstructionSlot::new`, `ParamDependencyIndex`, `ParamDependencyIndex::affected_aabb`, `ParamDependencyIndex::apply`, `ParamDependencyIndex::apply_all`, `ParamDependencyIndex::bind`, `ParamDependencyIndex::binding_count`, `ParamDependencyIndex::bindings_of`, `ParamDependencyIndex::dirty_aabb`, `ParamDependencyIndex::dirty_instructions`, `ParamDependencyIndex::dirty_params`, `ParamDependencyIndex::invalidate_chunked_cache`, `ParamDependencyIndex::is_dirty`, `ParamDependencyIndex::mark_clean`, `ParamDependencyIndex::new`, `ParamDependencyIndex::param_count`, `ParamDependencyIndex::refit_bvh`, `ParamDependencyIndex::refit_bvh_partial`
 - `src/interval.rs`: `Interval::intersect`, `Interval::overlaps`
-- `src/io/abm.rs`: `load_abm_unverified`, `load_abm_with_lods_unverified`, `read_abm_header`
+- `src/io/abm.rs`: `load_abm_unverified`, `load_abm_with_lods`, `read_abm_header`, `save_abm_with_lods`
 - `src/io/asdf.rs`: `AsdfHeader::new`, `load_asdf_unverified`
 - `src/io/fbx.rs`: `FbxAnimClip`, `FbxAnimCurve`, `FbxBone`, `FbxConfig::binary`, `ImportedFbx`, `fbx_animation_to_timeline`, `import_fbx`, `import_fbx_full`
 - `src/io/gltf.rs`: `GltfConfig::aaa`, `export_gltf_json`, `export_gltf_json_with_provenance`
@@ -145,7 +145,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/hermite.rs`: `EdgeCrossing`, `EdgeCrossing::t`, `HermiteConfig`, `HermiteExtractor`, `HermiteExtractor::extract_edge_crossings`, `HermiteExtractor::extract_surface_points`, `HermiteExtractor::new`, `HermitePoint`, `HermitePoint::new`, `extract_edge_crossings`, `extract_hermite`
 - `src/mesh/lightmap.rs`: `generate_lightmap_uvs`, `generate_lightmap_uvs_fast`
 - `src/mesh/lod.rs`: `ContinuousLod`, `ContinuousLod::get_render_meshes`, `ContinuousLod::new`, `ContinuousLod::update`, `DecimationLodConfig`, `DecimationLodConfig::distance_range`, `DecimationLodConfig::fast`, `DecimationLodConfig::high_quality`, `LodChain`, `LodChain::base_triangle_count`, `LodChain::get_blend_pair`, `LodChain::get_level`, `LodChain::get_lod`, `LodChain::memory_usage`, `LodChain::select_by_error`, `LodConfig`, `LodConfig::balanced`, `LodConfig::distance_range`, `LodConfig::fast`, `LodConfig::high_quality`, `LodConfig::resolution_at_level`, `LodMesh`, `LodMesh::blend_factor`, `LodMesh::is_active`, `LodSelector`, `LodSelector::high_res`, `LodSelector::is_acceptable`, `LodSelector::screen_error`, `LodSelector::select`, `generate_lod_chain`, `generate_lod_chain_decimated`
-- `src/mesh/lod_persist.rs`: `LodChainPersist::level_count`, `LodChainPersist::mesh`, `LodChainPersist::select_lod`, `LodChainPersist::summary`, `LodChainPersist::total_memory_bytes`, `LodChainSummary`
+- `src/mesh/lod_persist.rs`: `LodChainPersist::level_count`, `LodChainPersist::mesh`, `LodChainPersist::select_lod`, `LodChainPersist::summary`, `LodChainPersist::total_memory_bytes`, `LodChainSummary`, `load_lod_chain_metadata`, `load_lod_chain_unverified`, `save_lod_chain_metadata`
 - `src/mesh/manifold.rs`: `MeshQuality`, `MeshRepair`, `MeshRepair::drop_specks`, `MeshRepair::fill_holes`, `MeshRepair::fix_normals`, `MeshRepair::merge_duplicate_vertices`, `MeshRepair::orient_faces`, `MeshRepair::remove_degenerate_triangles`, `MeshRepair::remove_duplicate_triangles`, `MeshRepair::repair_all`, `MeshValidation`, `MeshValidation::is_clean`, `compute_quality`, `validate_mesh`
 - `src/mesh/mesh_codec.rs`: `CodecError`, `decode_indices`, `decode_positions`, `encode_indices`, `encode_mesh`, `encode_positions`
 - `src/mesh/mesh_sign.rs`: `ExteriorField`, `ExteriorField::MAX_BAND_STEPS`, `ExteriorField::MAX_CELLS`, `ExteriorField::PADDING_CELLS`, `ExteriorField::build`, `ExteriorField::cell_size`, `ExteriorField::dims`, `ExteriorField::is_exterior`, `ExteriorField::signed_distance`

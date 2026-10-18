@@ -15,7 +15,7 @@
 //! | OBJ (and its MTL) | a header comment: `# alice:semantics_id=<64 hex>` |
 //! | PLY (binary and ASCII) | a header comment: `comment alice:semantics_id=<64 hex>` |
 //! | glTF (`.glb`, `.gltf`, meshopt-compressed `.glb`) | `asset.extras`: `{"alice:semantics_id": "<64 hex>"}` |
-//! | ASDF JSON (`.asdf.json`, [`crate::io::save_asdf_json`]) | the top-level field `"alice:semantics_id": "<64 hex>"` next to the tree's fields |
+//! | ASDF JSON (`.asdf.json`, [`crate::io::save_asdf_json`]) and the other JSON documents of this crate (the LOD chain sidecar `.abm.meta.json`) | the top-level field `"alice:semantics_id": "<64 hex>"` next to the document's fields |
 //! | USD (`.usda`) | the layer's `customLayerData`: `string "alice:semantics_id" = "<64 hex>"` |
 //! | STEP | the second string of `FILE_DESCRIPTION`: `'alice:semantics_id=<64 hex>'` |
 //! | IGES | two Start-section lines, `alice:semantics_id=` and the 64 hex digits (joined they read as one) |
@@ -552,6 +552,24 @@ pub enum StoredSemantics {
     Unpinned,
 }
 
+impl StoredSemantics {
+    /// The weaker of two statuses, for a value read from more than one stored part (a mesh file
+    /// and its metadata sidecar): `Unpinned` < `VerifiedPrevious` < `Current`. Of two
+    /// `VerifiedPrevious` with different identifiers, the receiver's is returned.
+    ///
+    /// The match names every variant, so a variant added later does not compile here until its
+    /// place in the order is decided.
+    #[must_use]
+    pub const fn weaker(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Unpinned, _) | (_, Self::Unpinned) => Self::Unpinned,
+            (Self::VerifiedPrevious(p), _) => Self::VerifiedPrevious(p),
+            (Self::Current, Self::VerifiedPrevious(p)) => Self::VerifiedPrevious(p),
+            (Self::Current, Self::Current) => Self::Current,
+        }
+    }
+}
+
 /// A value read from a file, with what is known about the arithmetic it was written under
 ///
 /// Returned by the explicit `*_unverified` loaders, which also read files that carry no
@@ -612,7 +630,7 @@ pub(crate) fn sdf_load_verdict(
 
 /// The identifier of a JSON document: `asset.extras["alice:semantics_id"]` of a glTF document
 /// (one with an `asset` object; `gltf` names it in errors), the top-level `"alice:semantics_id"` of
-/// an ASDF JSON document
+/// any other JSON document of this crate (ASDF JSON, the LOD chain sidecar), named `JSON` in errors
 fn json_tagged(bytes: &[u8], gltf: &'static str) -> Result<Provenance, ProvenanceError> {
     #[allow(
         clippy::disallowed_methods,
@@ -622,7 +640,7 @@ fn json_tagged(bytes: &[u8], gltf: &'static str) -> Result<Provenance, Provenanc
         .map_err(|e| ProvenanceError::Unreadable(format!("JSON: {e}")))?;
     let (format, field) = match doc.get("asset") {
         Some(asset) => (gltf, asset.get("extras").and_then(|x| x.get(KEY))),
-        None => ("ASDF JSON", doc.get(KEY)),
+        None => ("JSON", doc.get(KEY)),
     };
     match field {
         None => Err(ProvenanceError::Missing { format }),
@@ -809,6 +827,28 @@ fn zip_entry<'a>(bytes: &'a [u8], name: &str) -> Result<Option<&'a [u8]>, Proven
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn weaker_orders_unpinned_previous_current() {
+        use StoredSemantics::{Current, Unpinned, VerifiedPrevious};
+        let (a, b) = (VerifiedPrevious(id(1)), VerifiedPrevious(id(2)));
+        let cases = [
+            (Current, Current, Current),
+            (Current, a, a),
+            (a, Current, a),
+            (Current, Unpinned, Unpinned),
+            (Unpinned, Current, Unpinned),
+            (a, Unpinned, Unpinned),
+            (Unpinned, a, Unpinned),
+            (Unpinned, Unpinned, Unpinned),
+            (a, a, a),
+            (a, b, a),
+            (b, a, b),
+        ];
+        for (x, y, want) in cases {
+            assert_eq!(x.weaker(y), want, "{x:?}.weaker({y:?})");
+        }
+    }
 
     fn id(seed: u8) -> Provenance {
         let mut b = [0u8; 32];

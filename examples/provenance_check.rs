@@ -143,6 +143,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // a LOD chain: the .abm and its .abm.meta.json sidecar both carry the identifier, and the
+    // unverified loader reports the weaker of the two parts
+    use alice_sdf::mesh::lod_persist;
+    let chain = lod_persist::LodChainPersist::new(
+        vec![mesh.clone(), mesh.clone()],
+        vec![0.0, 10.0],
+        1,
+        lod_persist::LodChainConfig::default(),
+    );
+    let chain_path = dir.join("sphere_chain.abm");
+    lod_persist::save_lod_chain(&chain, &chain_path)?;
+    let (back, semantics) = lod_persist::load_lod_chain_unverified(&chain_path)?.into_parts();
+    assert_eq!(
+        (back.meshes.len(), semantics),
+        (2, StoredSemantics::Current)
+    );
+    lod_persist::save_lod_chain_metadata_with_provenance(
+        &chain,
+        &chain_path,
+        &Provenance::new([7; 32]),
+    )?;
+    match lod_persist::load_lod_chain(&chain_path) {
+        Err(e) => println!("{}: refused: {e}", chain_path.display()),
+        Ok(_) => return Err("a LOD chain whose sidecar has another identifier was read".into()),
+    }
+    lod_persist::save_lod_chain_with_provenance(&chain, &chain_path, &Provenance::sdf())?;
+    println!("{}: {semantics:?}", chain_path.display());
+    // the sidecar alone: rewriting it stamps this crate's identifier, and reading only the
+    // settings back returns them with what is known about the sidecar
+    lod_persist::save_lod_chain_metadata(&chain, &chain_path)?;
+    let meta_path = dir.join("sphere_chain.abm.meta.json");
+    let (config, meta_semantics) = lod_persist::load_lod_chain_metadata(&meta_path)?.into_parts();
+    assert_eq!(meta_semantics, StoredSemantics::Current);
+    assert_eq!(config.lod_count, chain.config.lod_count);
+    println!("{}: {meta_semantics:?}", meta_path.display());
+
     let other = dir.join("other.stl");
     io::export_stl_with_provenance(&mesh, &other, &Provenance::new([7; 32]))?;
     match provenance::check_sdf(&other) {

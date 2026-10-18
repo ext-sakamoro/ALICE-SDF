@@ -9,6 +9,7 @@
 
 use alice_sdf::io;
 use alice_sdf::io::meshopt_gltf as meshopt;
+use alice_sdf::mesh::lod_persist::{self, LodChainConfig, LodChainPersist};
 use alice_sdf::prelude::*;
 use alice_sdf::provenance::{self, Provenance, ProvenanceError, StoredSemantics};
 use std::path::{Path, PathBuf};
@@ -302,6 +303,33 @@ const WRITERS: &[(&str, &str, Write)] = &[
             match id {
                 None => io::save_abm_with_lods(&lods, &[10.0], p).unwrap(),
                 Some(id) => io::save_abm_with_lods_with_provenance(&lods, &[10.0], p, id).unwrap(),
+            }
+        },
+    ),
+    (
+        "src/mesh/lod_persist.rs::save_lod_chain",
+        "m_chain.abm",
+        |m, p, id| {
+            let chain = lod_chain(m);
+            match id {
+                None => lod_persist::save_lod_chain(&chain, p).unwrap(),
+                Some(id) => lod_persist::save_lod_chain_with_provenance(&chain, p, id).unwrap(),
+            }
+        },
+    ),
+    // the sidecar alone: written next to `<base>`, read from `<base>.meta.json` (the row's file)
+    (
+        "src/mesh/lod_persist.rs::save_lod_chain_metadata",
+        "m_meta.abm.meta.json",
+        |m, p, id| {
+            let base = p.with_file_name("m_meta.abm");
+            let chain = lod_chain(m);
+            match id {
+                None => lod_persist::save_lod_chain_metadata(&chain, &base).unwrap(),
+                Some(id) => {
+                    lod_persist::save_lod_chain_metadata_with_provenance(&chain, &base, id)
+                        .unwrap();
+                }
             }
         },
     ),
@@ -1261,4 +1289,177 @@ fn abm_headers_are_read_by_their_exact_version() {
     std::fs::write(&path, truncated).unwrap();
     assert!(io::load_abm_unverified(&path).is_err());
     std::fs::remove_file(&path).ok();
+}
+
+fn lod_chain(m: &Mesh) -> LodChainPersist {
+    LodChainPersist::new(
+        vec![m.clone(), m.clone()],
+        vec![0.0, 10.0],
+        0x5eed,
+        LodChainConfig::default(),
+    )
+}
+
+/// A LOD chain written by alice-sdf 6.1.0 (`tests/fixtures/provenance/chain_v1.abm` and its
+/// sidecar `chain_v1.abm.meta.json`, format 1, neither part has an identifier): the default
+/// loader refuses it, the unverified loader returns it marked `Unpinned` with the stored
+/// values bit for bit, and the metadata loader returns the authored config marked `Unpinned`
+#[test]
+fn a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified() {
+    let dir = temp("chain_v1");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("chain_v1.abm");
+    std::fs::copy(fixture("chain_v1.abm"), &path).unwrap();
+    std::fs::copy(
+        fixture("chain_v1.abm.meta.json"),
+        dir.join("chain_v1.abm.meta.json"),
+    )
+    .unwrap();
+
+    match lod_persist::load_lod_chain(&path) {
+        Err(io::IoError::Unpinned { format }) => assert_eq!(format, "ABM"),
+        other => panic!("expected Unpinned, got {other:?}"),
+    }
+    let (chain, semantics) = lod_persist::load_lod_chain_unverified(&path)
+        .unwrap()
+        .into_parts();
+    assert_eq!(semantics, StoredSemantics::Unpinned);
+    assert_eq!(chain.sdf_hash, 0x5eed);
+    assert_eq!(chain.meshes.len(), 2);
+    assert!(same_mesh(&chain.meshes[0].mesh, &abm_fixture_mesh(1.0)));
+    assert!(same_mesh(&chain.meshes[1].mesh, &abm_fixture_mesh(0.5)));
+    assert_eq!(
+        chain.meshes[0].aabb_max,
+        [3.0, 1.0, 0.5],
+        "the stored AABB, read back"
+    );
+    assert_eq!(chain.meshes[1].transition_distance, 10.0);
+
+    let (config, semantics) =
+        lod_persist::load_lod_chain_metadata(dir.join("chain_v1.abm.meta.json"))
+            .unwrap()
+            .into_parts();
+    assert_eq!(semantics, StoredSemantics::Unpinned);
+    assert_eq!(config.lod_count, LodChainConfig::default().lod_count);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Both parts of a chain carry the identifier: this crate's reads as `Current`, an earlier
+/// verified one as `VerifiedPrevious`, another one in either part is refused naming both, and
+/// the unverified loader reports the weaker of the two parts
+#[test]
+fn lod_chain_loaders_check_both_parts() {
+    let m = abm_fixture_mesh(1.0);
+    let chain = lod_chain(&m);
+    let path = temp("check_chain.abm");
+    let meta = path.with_file_name("check_chain.abm.meta.json");
+    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+
+    lod_persist::save_lod_chain(&chain, &path).unwrap();
+    assert_eq!(lod_persist::load_lod_chain(&path).unwrap().meshes.len(), 2);
+    assert_eq!(
+        lod_persist::load_lod_chain_unverified(&path)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::Current
+    );
+    assert_eq!(
+        lod_persist::load_lod_chain_metadata(&meta)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::Current
+    );
+
+    // the sidecar written under an earlier identifier: the chain reads as the weaker part
+    lod_persist::save_lod_chain_metadata_with_provenance(&chain, &path, &earlier).unwrap();
+    assert!(lod_persist::load_lod_chain(&path).is_ok());
+    assert_eq!(
+        lod_persist::load_lod_chain_unverified(&path)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::VerifiedPrevious(earlier)
+    );
+
+    // another identifier in the sidecar only, then in the mesh file only: refused either way
+    lod_persist::save_lod_chain(&chain, &path).unwrap();
+    lod_persist::save_lod_chain_metadata_with_provenance(&chain, &path, &caller_id()).unwrap();
+    for result in [
+        lod_persist::load_lod_chain(&path).map(|_| ()),
+        lod_persist::load_lod_chain_unverified(&path).map(|_| ()),
+        lod_persist::load_lod_chain_metadata(&meta).map(|_| ()),
+    ] {
+        match result {
+            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
+                let text = e.to_string();
+                assert!(
+                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex())
+                );
+            }
+            other => panic!("sidecar: expected SemanticsMismatch, got {other:?}"),
+        }
+    }
+    lod_persist::save_lod_chain_with_provenance(&chain, &path, &caller_id()).unwrap();
+    lod_persist::save_lod_chain_metadata(&chain, &path).unwrap();
+    assert!(matches!(
+        lod_persist::load_lod_chain(&path),
+        Err(io::IoError::SemanticsMismatch { .. })
+    ));
+
+    // the mesh file current, the sidecar without an identifier (format 1): default refuses,
+    // unverified reads it as Unpinned
+    lod_persist::save_lod_chain(&chain, &path).unwrap();
+    std::fs::copy(fixture("chain_v1.abm.meta.json"), &meta).unwrap();
+    assert!(matches!(
+        lod_persist::load_lod_chain(&path),
+        Err(io::IoError::Unpinned { .. })
+    ));
+    assert_eq!(
+        lod_persist::load_lod_chain_unverified(&path)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::Unpinned
+    );
+    std::fs::remove_file(&path).ok();
+    std::fs::remove_file(&meta).ok();
+}
+
+/// The sidecar is read by its format: format 2 without the identifier, an identifier that is not
+/// 64 hex digits and a format this crate does not know are refused, not read
+#[test]
+fn lod_metadata_is_read_by_its_exact_format() {
+    let chain = lod_chain(&abm_fixture_mesh(1.0));
+    let path = temp("format_chain.abm");
+    let meta = path.with_file_name("format_chain.abm.meta.json");
+    lod_persist::save_lod_chain(&chain, &path).unwrap();
+    let good: serde_json::Value = serde_json::from_slice(&std::fs::read(&meta).unwrap()).unwrap();
+    assert_eq!(good["format"], 2);
+    assert_eq!(good[provenance::KEY], Provenance::sdf().hex());
+
+    let mut cases = Vec::new();
+    let mut v = good.clone();
+    v.as_object_mut().unwrap().remove(provenance::KEY);
+    cases.push(("format 2 without the identifier", v));
+    let mut v = good.clone();
+    v[provenance::KEY] = serde_json::Value::from("abc");
+    cases.push(("a short identifier", v));
+    for f in [0, 3, 1000] {
+        let mut v = good.clone();
+        v["format"] = serde_json::Value::from(f);
+        cases.push(("an unknown format", v.clone()));
+        v.as_object_mut().unwrap().remove(provenance::KEY);
+        cases.push(("an unknown format without the identifier", v));
+    }
+    for (what, v) in cases {
+        std::fs::write(&meta, serde_json::to_vec(&v).unwrap()).unwrap();
+        assert!(
+            lod_persist::load_lod_chain_unverified(&path).is_err(),
+            "{what}: read"
+        );
+        assert!(
+            lod_persist::load_lod_chain_metadata(&meta).is_err(),
+            "{what}: metadata read"
+        );
+    }
+    std::fs::remove_file(&path).ok();
+    std::fs::remove_file(&meta).ok();
 }
