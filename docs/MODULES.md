@@ -55,6 +55,7 @@ this file or listed twice, or when a linked file does not exist.
 | `interval` | interval arithmetic over a box, with bounds rounded outward |  |  |
 | `autodiff` | forward-mode automatic differentiation with dual numbers; Hessian and mean curvature |  |  |
 | `tight_aabb` | the smallest box that contains the surface, from interval bounds propagated through the tree |  |  |
+| `unordered` | `UnorderedMap` / `UnorderedSet`: hash collections without iteration (lookup, insertion, removal, size, and aggregates in key order), so no result depends on hash order |  | [`unordered_collections`](../examples/unordered_collections.rs) |
 | `fidelity` | what a field's distance claim is worth: where it is a true distance and where only a bound |  |  |
 | `raycast` | sphere tracing, including relaxed and Lipschitz-adaptive stepping |  |  |
 | `neural` | small MLP trained to approximate a tree, in pure Rust |  |  |
