@@ -133,6 +133,9 @@ jobs:
               - 'scripts/scip_index.sh'
               - 'scripts/scip_reach.py'
               - 'scripts/test_scip_reach.py'
+              - 'scripts/api_boundary.toml'
+              - 'scripts/api_boundary_parsers.py'
+              - 'scripts/test_api_boundary_parsers.py'
               - 'scripts/integration-baseline.txt'
               - 'scripts/wiring_guard.py'
               - 'scripts/wiring-baseline.txt'
@@ -561,6 +564,12 @@ jobs:
         run: scripts/scip_index.sh
       - name: No new L0 item, no stale baseline entry
         run: python3 scripts/scip_reach.py --check-baseline
+      # ALICE-Law G7: a `local` boundary entry must not reach a declared parser (the same index,
+      # built above from this commit; the script refuses an index of another commit)
+      - name: No local boundary entry reaches a parser
+        run: |
+          python3 scripts/test_api_boundary_parsers.py
+          python3 scripts/api_boundary_parsers.py
       - name: docs/integration-status.md is up to date
         run: |
           python3 scripts/scip_reach.py --write docs/integration-status.md

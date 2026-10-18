@@ -56,4 +56,9 @@ for pair in fuzz:fuzz server:server mobile:mobile/uniffi-wrapper openxr:bindings
   [ -s "$out/$name.scip" ] || { echo "scip_index: $out/$name.scip is empty" >&2; exit 1; }
   written="$written $out/$name.scip"
 done
-echo "scip_index: wrote $written"
+# The commit the indexes were built from, so a reader can refuse an index of another commit
+# (scripts/api_boundary_parsers.py): `<sha> clean` or `<sha> dirty`
+state=clean
+[ -z "$(git status --porcelain)" ] || state=dirty
+printf '%s %s\n' "$(git rev-parse HEAD)" "$state" > "$out/commit"
+echo "scip_index: wrote $written" $out/commit
