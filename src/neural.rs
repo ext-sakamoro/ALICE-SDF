@@ -495,9 +495,12 @@ impl NeuralSdf {
                 Some(id)
             }
             v => {
-                return Err(IoError::UnsupportedVersion(
-                    u16::try_from(v).unwrap_or(u16::MAX),
-                ))
+                // the version field is u32: a value beyond the u16 of UnsupportedVersion is
+                // reported as it is rather than clamped
+                return Err(match u16::try_from(v) {
+                    Ok(v) => IoError::UnsupportedVersion(v),
+                    Err(_) => IoError::InvalidFormat(format!("NSDF: version {v} is not known")),
+                });
             }
         };
         let semantics = crate::provenance::sdf_load_verdict(stored, "NSDF", allow_unpinned)?;
