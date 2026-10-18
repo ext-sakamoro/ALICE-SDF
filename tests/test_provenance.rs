@@ -1687,10 +1687,15 @@ fn nsdf_headers_are_read_by_their_exact_version_and_never_as_unstamped() {
             NeuralSdf::load(&mut b.as_slice()).map(|_| ()),
             NeuralSdf::load_unverified(&mut b.as_slice()).map(|_| ()),
         ] {
-            assert!(
-                matches!(result, Err(io::IoError::UnsupportedVersion(_))),
-                "version {v}: {result:?}"
-            );
+            // a version that fits UnsupportedVersion's u16 is reported there, a larger one with
+            // its real value
+            let named = match u16::try_from(v) {
+                Ok(v16) => matches!(result, Err(io::IoError::UnsupportedVersion(x)) if x == v16),
+                Err(_) => {
+                    matches!(result, Err(io::IoError::InvalidFormat(ref why)) if *why == format!("NSDF: version {v} is not known"))
+                }
+            };
+            assert!(named, "version {v}: {result:?}");
         }
     }
     // the magic, then 0..8+31 bytes: the version or the identifier is cut short
