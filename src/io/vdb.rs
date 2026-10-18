@@ -72,6 +72,25 @@ pub fn bake_to_vdb(
     bounds: (f32, f32),
     resolution: u32,
 ) -> Result<Vec<u8>, VdbError> {
+    bake_to_vdb_with_provenance(
+        node,
+        bounds,
+        resolution,
+        &crate::provenance::Provenance::sdf(),
+    )
+}
+
+/// [`bake_to_vdb`] storing the given semantics identifier instead of this crate's
+///
+/// # Errors
+///
+/// As [`bake_to_vdb`].
+pub fn bake_to_vdb_with_provenance(
+    node: &SdfNode,
+    bounds: (f32, f32),
+    resolution: u32,
+    provenance: &crate::provenance::Provenance,
+) -> Result<Vec<u8>, VdbError> {
     if bounds.1 <= bounds.0 || resolution == 0 {
         return Err(VdbError::InvalidBounds);
     }
@@ -81,7 +100,8 @@ pub fn bake_to_vdb(
     // 暫定的に「ALICE-VDB Float Grid」自前バイナリ形式 (header + raw dense f32 array) を返す。
     // 将来 vdb-rs が write API を整備したら差し替え予定。
     let mut buf = Vec::new();
-    buf.extend_from_slice(b"ALICEVDB1"); // magic (9 bytes)
+    buf.extend_from_slice(ALICE_VDB_MAGIC_V2); // magic (9 bytes)
+    buf.extend_from_slice(&provenance.semantics_id);
     buf.extend_from_slice(&resolution.to_le_bytes());
     buf.extend_from_slice(&bounds.0.to_le_bytes());
     buf.extend_from_slice(&bounds.1.to_le_bytes());
@@ -94,24 +114,87 @@ pub fn bake_to_vdb(
 /// A dense grid read back from `bake_to_vdb`: `(values, resolution, (bounds_min, bounds_max))`.
 pub type DenseGrid = (Vec<f32>, u32, (f32, f32));
 
-/// `bake_to_vdb` で生成したバイナリから密 voxel 配列を復元
-pub fn load_dense_grid_from_vdb(bytes: &[u8]) -> Result<DenseGrid, VdbError> {
-    if bytes.len() < 9 + 4 + 4 + 4 {
-        return Err(VdbError::Io("buffer too small".into()));
+/// `bake_to_vdb` で生成したバイナリから密 voxel 配列を復元 (保存された意味の識別子を確かめる)
+///
+/// # Errors
+///
+/// [`crate::io::IoError::Unpinned`] for a version 1 grid (no identifier; read it with
+/// [`load_dense_grid_from_vdb_unverified`]), [`crate::io::IoError::SemanticsMismatch`] for an
+/// identifier that is neither this crate's nor one it still reproduces, and
+/// [`crate::io::IoError::InvalidFormat`] for bytes that are not an ALICE-VDB grid, a version this
+/// crate does not know, or a header or grid cut short.
+pub fn load_dense_grid_from_vdb(bytes: &[u8]) -> Result<DenseGrid, crate::io::IoError> {
+    load_checked(bytes, false).map(|c| c.into_parts().0)
+}
+
+/// [`load_dense_grid_from_vdb`] that also reads a version 1 grid, marking it unpinned
+///
+/// A version 1 grid (`ALICEVDB1`, alice-sdf 6.1.0 and earlier) was written before the semantics
+/// identifier; it is returned with [`crate::provenance::StoredSemantics::Unpinned`].
+///
+/// # Errors
+///
+/// As [`load_dense_grid_from_vdb`], except that a grid without an identifier is returned, not
+/// refused.
+pub fn load_dense_grid_from_vdb_unverified(
+    bytes: &[u8],
+) -> Result<crate::provenance::Checked<DenseGrid>, crate::io::IoError> {
+    load_checked(bytes, true)
+}
+
+/// Magic of the version 1 grid (no identifier)
+pub const ALICE_VDB_MAGIC_V1: &[u8; 9] = b"ALICEVDB1";
+/// Magic of the version 2 grid: the 32-byte semantics identifier follows it
+pub const ALICE_VDB_MAGIC_V2: &[u8; 9] = b"ALICEVDB2";
+
+fn load_checked(
+    bytes: &[u8],
+    allow_unpinned: bool,
+) -> Result<crate::provenance::Checked<DenseGrid>, crate::io::IoError> {
+    use crate::io::IoError;
+    if !bytes.starts_with(b"ALICEVDB") {
+        return Err(IoError::InvalidFormat("ALICE-VDB: bad magic".into()));
     }
-    if &bytes[0..9] != b"ALICEVDB1" {
-        return Err(VdbError::Io("bad magic".into()));
+    // the magic is present: a version or identifier that cannot be read is an error, never
+    // "unstamped"
+    let (stored, body) = match bytes.get(..9) {
+        Some(m) if m == ALICE_VDB_MAGIC_V1 => (None, &bytes[9..]),
+        Some(m) if m == ALICE_VDB_MAGIC_V2 => {
+            let id: [u8; 32] = bytes
+                .get(9..41)
+                .ok_or_else(|| IoError::InvalidFormat("ALICE-VDB: truncated header".into()))?
+                .try_into()
+                .unwrap();
+            (Some(id), &bytes[41..])
+        }
+        Some(m) => {
+            return Err(IoError::InvalidFormat(format!(
+                "ALICE-VDB: version {:?} is not known",
+                char::from(m[8])
+            )))
+        }
+        None => return Err(IoError::InvalidFormat("ALICE-VDB: truncated header".into())),
+    };
+    let semantics = crate::provenance::sdf_load_verdict(stored, "ALICE-VDB", allow_unpinned)?;
+    let grid = read_grid(body).map_err(|e| IoError::InvalidFormat(format!("ALICE-VDB: {e}")))?;
+    Ok(crate::provenance::Checked::new(grid, semantics))
+}
+
+/// The grid after the magic and identifier (identical in versions 1 and 2)
+fn read_grid(bytes: &[u8]) -> Result<DenseGrid, &'static str> {
+    if bytes.len() < 4 + 4 + 4 {
+        return Err("buffer too small");
     }
-    let resolution = u32::from_le_bytes(bytes[9..13].try_into().unwrap());
-    let bmin = f32::from_le_bytes(bytes[13..17].try_into().unwrap());
-    let bmax = f32::from_le_bytes(bytes[17..21].try_into().unwrap());
+    let resolution = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
+    let bmin = f32::from_le_bytes(bytes[4..8].try_into().unwrap());
+    let bmax = f32::from_le_bytes(bytes[8..12].try_into().unwrap());
     let n = resolution as usize;
-    let expected = 21 + n * n * n * 4;
+    let expected = 12 + n * n * n * 4;
     if bytes.len() < expected {
-        return Err(VdbError::Io("truncated grid data".into()));
+        return Err("truncated grid data");
     }
     let mut grid = Vec::with_capacity(n * n * n);
-    let mut off = 21;
+    let mut off = 12;
     for _ in 0..(n * n * n) {
         let v = f32::from_le_bytes(bytes[off..off + 4].try_into().unwrap());
         grid.push(v);

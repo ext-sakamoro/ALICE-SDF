@@ -1558,6 +1558,8 @@ fn lod_metadata_is_read_by_its_exact_format() {
 //   neural_v1.nsdf     fc28931eacf667c5504e035dfbcbf87e4f3c3f08e23adebdc5a764509eeda564
 //                      NeuralSdf::new(&NeuralSdfConfig { hidden_layers: 1, hidden_width: 4,
 //                      pos_encoding_freqs: 1, ..Default::default() }).save(..)
+//   grid_v1.alicevdb   66c2dae8e96828c2c8cd4c2cddd24ad54ef7bbdc345ec1d9c7273ae551e5566a
+//                      io::vdb::bake_to_vdb(&SdfNode::sphere(1.0), (-1.5, 1.5), 4)
 // ---------------------------------------------------------------------------------------------
 
 use alice_sdf::neural::{NeuralSdf, NeuralSdfConfig};
@@ -1704,6 +1706,146 @@ fn nsdf_headers_are_read_by_their_exact_version_and_never_as_unstamped() {
         for result in [
             NeuralSdf::load(&mut &b[..]).map(|_| ()),
             NeuralSdf::load_unverified(&mut &b[..]).map(|_| ()),
+        ] {
+            assert!(
+                matches!(result, Err(io::IoError::InvalidFormat(ref why)) if why.contains("truncated")),
+                "{len} bytes: {result:?}"
+            );
+        }
+    }
+}
+
+// ALICE-VDB dense grid (`io::vdb`, feature `openvdb`): grid_v1.alicevdb
+//   66c2dae8e96828c2c8cd4c2cddd24ad54ef7bbdc345ec1d9c7273ae551e5566a
+//   bake_to_vdb(&SdfNode::sphere(1.0), (-1.5, 1.5), 4) by alice-sdf 6.1.0 (`ALICEVDB1`)
+
+#[cfg(feature = "openvdb")]
+fn vdb_bytes(id: Option<&Provenance>) -> Vec<u8> {
+    use alice_sdf::io::vdb;
+    let node = SdfNode::sphere(1.0);
+    match id {
+        None => vdb::bake_to_vdb(&node, (-1.5, 1.5), 4).unwrap(),
+        Some(id) => vdb::bake_to_vdb_with_provenance(&node, (-1.5, 1.5), 4, id).unwrap(),
+    }
+}
+
+/// The ALICE-VDB grid written by alice-sdf 6.1.0 (`ALICEVDB1`, no identifier): the default loader
+/// refuses it as `Unpinned`, the unverified loader returns the same grid marked `Unpinned`
+#[cfg(feature = "openvdb")]
+#[test]
+fn alice_vdb_grid_from_6_1_0_is_refused_by_default_and_read_unverified() {
+    use alice_sdf::io::vdb;
+    let bytes = std::fs::read(fixture("grid_v1.alicevdb")).unwrap();
+    assert_eq!(
+        &bytes[..9],
+        b"ALICEVDB1",
+        "fixture is version 1, no identifier"
+    );
+    assert!(matches!(
+        provenance::from_bytes(&bytes),
+        Err(ProvenanceError::Missing {
+            format: "ALICE-VDB"
+        })
+    ));
+    match vdb::load_dense_grid_from_vdb(&bytes) {
+        Err(io::IoError::Unpinned { format }) => assert_eq!(format, "ALICE-VDB"),
+        other => panic!("expected Unpinned, got {:?}", other.map(|_| ())),
+    }
+    let checked = vdb::load_dense_grid_from_vdb_unverified(&bytes).unwrap();
+    assert_eq!(checked.semantics(), StoredSemantics::Unpinned);
+    let ((grid, res, bounds), _) = checked.into_parts();
+    let (now, now_res, now_bounds) = vdb::load_dense_grid_from_vdb(&vdb_bytes(None)).unwrap();
+    assert_eq!((res, bounds), (now_res, now_bounds));
+    assert_eq!(
+        grid.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+        now.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+        "the 6.1.0 grid reads back bit for bit"
+    );
+}
+
+/// `ALICEVDB2`: `bake_to_vdb` stores this crate's identifier, `bake_to_vdb_with_provenance` the
+/// caller's; this crate's loads as `Current`, an earlier verified one as `VerifiedPrevious`,
+/// another one is refused by both loaders naming both identifiers
+#[cfg(feature = "openvdb")]
+#[test]
+fn alice_vdb_writers_store_and_loaders_check_the_identifier() {
+    use alice_sdf::io::vdb;
+    let own = vdb_bytes(None);
+    assert_eq!(&own[..9], b"ALICEVDB2");
+    assert_eq!(provenance::from_bytes(&own).unwrap(), Provenance::sdf());
+    assert_eq!(
+        vdb::load_dense_grid_from_vdb_unverified(&own)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::Current
+    );
+
+    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let prev = vdb_bytes(Some(&earlier));
+    assert_eq!(provenance::from_bytes(&prev).unwrap(), earlier);
+    assert!(vdb::load_dense_grid_from_vdb(&prev).is_ok());
+    assert_eq!(
+        vdb::load_dense_grid_from_vdb_unverified(&prev)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::VerifiedPrevious(earlier)
+    );
+
+    let other = vdb_bytes(Some(&caller_id()));
+    assert_eq!(provenance::from_bytes(&other).unwrap(), caller_id());
+    for result in [
+        vdb::load_dense_grid_from_vdb(&other).map(|_| ()),
+        vdb::load_dense_grid_from_vdb_unverified(&other).map(|_| ()),
+    ] {
+        match result {
+            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
+                let text = e.to_string();
+                assert!(
+                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
+                    "{text}"
+                );
+            }
+            other => panic!("expected SemanticsMismatch, got {other:?}"),
+        }
+    }
+}
+
+/// An ALICE-VDB magic with a version the crate does not know, or a header cut short, is an error
+/// of the format, never a grid without an identifier
+#[cfg(feature = "openvdb")]
+#[test]
+fn alice_vdb_headers_are_read_by_their_exact_version_and_never_as_unstamped() {
+    use alice_sdf::io::vdb;
+    let own = vdb_bytes(None);
+    for v in *b"039X" {
+        let mut b = own.clone();
+        b[8] = v;
+        assert!(
+            matches!(provenance::from_bytes(&b), Err(ProvenanceError::Unreadable(ref why)) if why.contains("is not known")),
+            "provenance reads version byte {v}"
+        );
+        for result in [
+            vdb::load_dense_grid_from_vdb(&b).map(|_| ()),
+            vdb::load_dense_grid_from_vdb_unverified(&b).map(|_| ()),
+        ] {
+            assert!(
+                matches!(result, Err(io::IoError::InvalidFormat(ref why)) if why.contains("is not known")),
+                "version byte {v}: {result:?}"
+            );
+        }
+    }
+    for len in [8usize, 9, 20, 40] {
+        let b = &own[..len];
+        assert!(
+            matches!(
+                provenance::from_bytes(b),
+                Err(ProvenanceError::Unreadable(_))
+            ),
+            "provenance reads {len} bytes"
+        );
+        for result in [
+            vdb::load_dense_grid_from_vdb(b).map(|_| ()),
+            vdb::load_dense_grid_from_vdb_unverified(b).map(|_| ()),
         ] {
             assert!(
                 matches!(result, Err(io::IoError::InvalidFormat(ref why)) if why.contains("truncated")),

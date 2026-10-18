@@ -615,6 +615,14 @@ jobs:
       # tests/test_io_format_oracle.rs の dense grid (openvdb) と Nanite material (hlsl) の arm
       - name: Test (io format oracle — openvdb + hlsl arms)
         run: cargo test --features "hlsl,openvdb" --test test_io_format_oracle
+      # the ALICE-VDB grid's semantics identifier (tests/test_provenance.rs, alice_vdb_*, gated on
+      # openvdb, which the aaa step does not enable): 3 tests, fewer fails
+      - name: Test (provenance of the ALICE-VDB grid — openvdb)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features openvdb --test test_provenance alice_vdb 2>&1 | tee provenance-vdb.log
+          python3 scripts/libtest_count.py provenance-vdb.log --min 3 --what "ALICE-VDB provenance tests (openvdb)"
 
   bevy:
     name: Bevy plugin (bindings/bevy/alice-sdf-bevy)
