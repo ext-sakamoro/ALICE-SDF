@@ -1,0 +1,30 @@
+# Public fns that look like writers (by name or by a write sink) but store no durable form of
+# their own (ALICE-Law G8)
+#
+# scripts/provenance_writers.py: one line per candidate, `<file>::<fn> <reason>`. A reason
+# `delegates to <fn>` names the covered or pending writer the body calls (through a `use ... as`
+# alias is enough), and the check fails when the body stops calling it; any other reason has at
+# least five words. A line that names no candidate fails.
+
+src/cache/chunked.rs::persist_dirty delegates to save_abm
+src/python/io.rs::export_alembic delegates to export_alembic
+src/python/io.rs::export_fbx delegates to export_fbx
+src/python/io.rs::export_glb delegates to export_glb
+src/python/io.rs::export_glb_bytes delegates to export_glb_bytes
+src/python/io.rs::export_obj delegates to export_obj
+src/python/io.rs::export_ue5 delegates to export_ue5_mesh
+src/python/io.rs::export_unity delegates to export_unity_mesh
+src/python/io.rs::export_usda delegates to export_usda
+src/python/io.rs::save_abm delegates to save_abm
+src/python/io.rs::save_sdf delegates to save
+src/compiled/glsl/transpiler.rs::export_unity_shader_graph generates shader graph source text from a tree of this process; no stored value is written
+src/compiled/hlsl/transpiler.rs::export_ue5_material_function generates material function source text from a tree of this process; no stored value is written
+src/compiled/hlsl/transpiler.rs::export_unity_shader_graph generates shader graph source text from a tree of this process; no stored value is written
+src/mesh/meshopt_filter.rs::encode_filter_exp_one quantises one attribute value in memory; the bytes are written by encode_vertex_buffer
+src/mesh/meshopt_filter.rs::encode_filter_exp_u32 quantises attribute values in memory; the bytes are written by encode_vertex_buffer
+src/mesh/meshopt_filter.rs::encode_filter_oct_i16 quantises normals in memory; the bytes are written by encode_vertex_buffer
+src/mesh/meshopt_filter.rs::encode_filter_oct_one quantises one normal in memory; the bytes are written by encode_vertex_buffer
+src/mesh/meshopt_filter.rs::encode_filter_quat_i16 quantises rotations in memory; the bytes are written by encode_vertex_buffer
+src/mesh/meshopt_filter.rs::encode_filter_quat_one quantises one rotation in memory; the bytes are written by encode_vertex_buffer
+src/npr/compiled_color.rs::serialize packs the colour program into words for an in-process GPU upload, never stored
+src/soa.rs::to_vec copies the structure-of-arrays columns into an owned Vec in memory
