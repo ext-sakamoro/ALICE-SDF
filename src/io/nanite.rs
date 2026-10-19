@@ -7,10 +7,16 @@
 //! - `.nanite` — Compact binary with cluster hierarchy
 //! - `.nanite.json` — JSON manifest with cluster metadata
 //!
+//! Each format carries the semantics identifier of the arithmetic the clusters were computed
+//! under (ALICE-Law G8): the 32 bytes after the `.nanite` header (version 4), the top-level
+//! `"alice:semantics_id"` of the JSON manifest, and a `// alice:semantics_id=<64 hex>` line in
+//! the leading comment block of the HLSL material. [`crate::provenance::read`] reads it back.
+//!
 //! Author: Moroya Sakamoto
 
 use crate::io::IoError;
 use crate::mesh::nanite::NaniteMesh;
+use crate::provenance::{Provenance, KEY};
 use std::io::Write;
 use std::path::Path;
 
@@ -22,6 +28,9 @@ pub const NANITE_MAGIC: &[u8; 4] = b"NANT";
 /// A reader must check the version and reject (or convert) other versions
 /// instead of reading them as the current one:
 ///
+/// - version 4: the 32-byte semantics identifier ([`crate::SDF_SEMANTICS_ID`], or the one given
+///   to [`export_nanite_with_provenance`]) follows the 32-byte header; the rest is the layout of
+///   version 3
 /// - version 3: after the material id, every cluster carries 36 more bytes:
 ///   the LOD sphere of its group (center x / y / z, radius), the error of the
 ///   parent group (`+inf` for a root group) and the parent group's LOD sphere
@@ -42,7 +51,7 @@ pub const NANITE_MAGIC: &[u8; 4] = b"NANT";
 ///   for a parent than for its child, the parent / child ids linked clusters of
 ///   adjacent levels whose bounding spheres overlapped, and there was one group
 ///   per level (versions 1 and 2 have the same byte layout)
-pub const NANITE_VERSION: u32 = 3;
+pub const NANITE_VERSION: u32 = 4;
 
 /// Configuration for Nanite export
 #[derive(Debug, Clone)]
@@ -65,16 +74,39 @@ impl Default for NaniteExportConfig {
     }
 }
 
-/// Export NaniteMesh to binary .nanite format
+/// Export NaniteMesh to binary .nanite format (with this crate's semantics identifier)
+///
+/// # Errors
+///
+/// The I/O errors.
 pub fn export_nanite(nanite: &NaniteMesh, path: impl AsRef<Path>) -> Result<(), IoError> {
     export_nanite_with_config(nanite, path, &NaniteExportConfig::default())
 }
 
-/// Export NaniteMesh to binary .nanite format with configuration
+/// Export NaniteMesh to binary .nanite format with configuration (with this crate's semantics
+/// identifier)
+///
+/// # Errors
+///
+/// The I/O errors.
 pub fn export_nanite_with_config(
     nanite: &NaniteMesh,
     path: impl AsRef<Path>,
     config: &NaniteExportConfig,
+) -> Result<(), IoError> {
+    export_nanite_with_provenance(nanite, path, config, &Provenance::sdf())
+}
+
+/// [`export_nanite_with_config`] storing the given semantics identifier instead of this crate's
+///
+/// # Errors
+///
+/// The I/O errors.
+pub fn export_nanite_with_provenance(
+    nanite: &NaniteMesh,
+    path: impl AsRef<Path>,
+    config: &NaniteExportConfig,
+    provenance: &Provenance,
 ) -> Result<(), IoError> {
     let file = std::fs::File::create(path)?;
     let mut w = std::io::BufWriter::new(file);
@@ -104,6 +136,8 @@ pub fn export_nanite_with_config(
         | ((config.export_normals as u32) << 1)
         | ((config.quantize_positions as u32) << 2);
     w.write_all(&flags.to_le_bytes())?;
+    // the semantics identifier (version 4)
+    w.write_all(&provenance.semantics_id)?;
 
     // LOD levels
     for lod in &nanite.lod_levels {
@@ -187,14 +221,32 @@ pub fn export_nanite_with_config(
     Ok(())
 }
 
-/// Export NaniteMesh metadata to JSON manifest
+/// Export NaniteMesh metadata to JSON manifest (with this crate's semantics identifier)
+///
+/// # Errors
+///
+/// The I/O errors.
 pub fn export_nanite_json(nanite: &NaniteMesh, path: impl AsRef<Path>) -> Result<(), IoError> {
+    export_nanite_json_with_provenance(nanite, path, &Provenance::sdf())
+}
+
+/// [`export_nanite_json`] storing the given semantics identifier instead of this crate's
+///
+/// # Errors
+///
+/// The I/O errors.
+pub fn export_nanite_json_with_provenance(
+    nanite: &NaniteMesh,
+    path: impl AsRef<Path>,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
     let file = std::fs::File::create(path)?;
     let mut w = std::io::BufWriter::new(file);
 
     writeln!(w, "{{")?;
     writeln!(w, "  \"generator\": \"ALICE-SDF\",")?;
     writeln!(w, "  \"format_version\": {},", NANITE_VERSION)?;
+    writeln!(w, "  \"{KEY}\": \"{}\",", provenance.hex())?;
     writeln!(w, "  \"cluster_count\": {},", nanite.clusters.len())?;
     writeln!(w, "  \"group_count\": {},", nanite.groups.len())?;
 
@@ -288,10 +340,31 @@ pub fn export_nanite_json(nanite: &NaniteMesh, path: impl AsRef<Path>) -> Result
 /// ```bash
 /// cargo build --features hlsl
 /// ```
+///
+/// The leading comment block carries this crate's semantics identifier as
+/// `// alice:semantics_id=<64 hex>`.
+///
+/// # Errors
+///
+/// The I/O errors.
 #[cfg(feature = "hlsl")]
 pub fn export_nanite_hlsl_material(
     sdf: &crate::types::SdfNode,
     path: impl AsRef<Path>,
+) -> Result<(), IoError> {
+    export_nanite_hlsl_material_with_provenance(sdf, path, &Provenance::sdf())
+}
+
+/// [`export_nanite_hlsl_material`] storing the given semantics identifier instead of this crate's
+///
+/// # Errors
+///
+/// The I/O errors.
+#[cfg(feature = "hlsl")]
+pub fn export_nanite_hlsl_material_with_provenance(
+    sdf: &crate::types::SdfNode,
+    path: impl AsRef<Path>,
+    provenance: &Provenance,
 ) -> Result<(), IoError> {
     use crate::compiled::hlsl::{HlslShader, HlslTranspileMode};
 
@@ -299,6 +372,7 @@ pub fn export_nanite_hlsl_material(
     let mut w = std::io::BufWriter::new(file);
 
     writeln!(w, "// ALICE-SDF Nanite Material Function")?;
+    writeln!(w, "// {KEY}={}", provenance.hex())?;
     writeln!(w, "// Auto-generated procedural material for UE5 Nanite")?;
     writeln!(
         w,

@@ -25,7 +25,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 768 items (0 Linux-only): 76 handshake, 686 local, 6 pending (G8). Groups (count, decision):
+# 771 items (0 Linux-only): 76 handshake, 689 local, 6 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -84,7 +84,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  local: the Godot extension entry point, registers this build's classes
 #      6  local: Godot dispatches engine Variants to this build's own classes; no file is read
 #     16  local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded
-#     64  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
+#     60  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
+#      7  local: writes this build's own Nanite clusters, manifest or material under the identifier the caller gives (this crate's by default)
 #      1  local: reports a stored file's format, version and node count as text; the tree is not returned
 #     10  local: writes this build's own volume or STEP data; stamping is G8's
 #      7  local: encodes this build's own mesh buffers
@@ -755,7 +756,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "target::wasm32-unknown-unknown::wasm::sdf_torus_w" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
 "target::wasm32-unknown-unknown::wasm::sphere_batch_flat" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
 
-# 64 local
+# 60 local
 "fn::io::abm::save_abm" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_lods" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::alembic::export_alembic" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
@@ -782,10 +783,6 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::io::meshopt_gltf::export_glb_meshopt_bytes_skinned" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::meshopt_gltf::export_glb_meshopt_bytes_skinned_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::meshopt_gltf::export_glb_meshopt_skinned" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
-"fn::io::nanite::export_nanite" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
-"fn::io::nanite::export_nanite_hlsl_material" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
-"fn::io::nanite::export_nanite_json" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
-"fn::io::nanite::export_nanite_with_config" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::obj::export_obj" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::obj::export_obj_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::ply::export_ply" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
@@ -820,6 +817,15 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::io::vox::save_vox_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_lods_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+
+# 7 local
+"fn::io::nanite::export_nanite" = "local: writes this build's own Nanite clusters, manifest or material under the identifier the caller gives (this crate's by default)"
+"fn::io::nanite::export_nanite_hlsl_material" = "local: writes this build's own Nanite clusters, manifest or material under the identifier the caller gives (this crate's by default)"
+"fn::io::nanite::export_nanite_hlsl_material_with_provenance" = "local: writes this build's own Nanite clusters, manifest or material under the identifier the caller gives (this crate's by default)"
+"fn::io::nanite::export_nanite_json" = "local: writes this build's own Nanite clusters, manifest or material under the identifier the caller gives (this crate's by default)"
+"fn::io::nanite::export_nanite_json_with_provenance" = "local: writes this build's own Nanite clusters, manifest or material under the identifier the caller gives (this crate's by default)"
+"fn::io::nanite::export_nanite_with_config" = "local: writes this build's own Nanite clusters, manifest or material under the identifier the caller gives (this crate's by default)"
+"fn::io::nanite::export_nanite_with_provenance" = "local: writes this build's own Nanite clusters, manifest or material under the identifier the caller gives (this crate's by default)"
 
 # 1 local
 "fn::io::get_info" = "local: reports a stored file's format, version and node count as text; the tree is not returned"

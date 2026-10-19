@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1318 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1321 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1043 |
-| | **total** | **2370** |
+| | **total** | **2373** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1318)
+## L1 — example-only (1321)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -126,7 +126,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/io/iges.rs`: `IgesConfig`, `export_iges`, `export_iges_with_provenance`
 - `src/io/json.rs`: `from_json_string`, `load_asdf_json_unverified`
 - `src/io/meshopt_gltf.rs`: `export_glb_meshopt`, `export_glb_meshopt_bytes`, `export_glb_meshopt_bytes_skinned`, `export_glb_meshopt_skinned`
-- `src/io/nanite.rs`: `NANITE_MAGIC`, `NANITE_VERSION`, `NaniteExportConfig`, `export_nanite`, `export_nanite_hlsl_material`, `export_nanite_json`, `export_nanite_with_config`
+- `src/io/nanite.rs`: `NANITE_MAGIC`, `NANITE_VERSION`, `NaniteExportConfig`, `export_nanite`, `export_nanite_hlsl_material`, `export_nanite_hlsl_material_with_provenance`, `export_nanite_json`, `export_nanite_json_with_provenance`, `export_nanite_with_config`, `export_nanite_with_provenance`
 - `src/io/obj.rs`: `import_obj`, `import_obj_pinned`
 - `src/io/ply.rs`: `import_ply`, `import_ply_pinned`
 - `src/io/splat.rs`: `Splat::from_bytes`, `load_splat`, `load_splat_pinned`, `save_splat`, `save_splat_with_provenance`

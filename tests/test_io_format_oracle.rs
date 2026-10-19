@@ -578,12 +578,14 @@ fn nanite_file_size_and_header_follow_the_layout() {
         .map(|c| c.parent_ids.len() + c.child_ids.len())
         .sum();
 
-    // layout: 32-byte header, 16 bytes per LOD, per cluster 16 (ids / counts)
+    // layout: 32-byte header, the 32-byte semantics identifier (version 4), 16 bytes per LOD,
+    // per cluster 16 (ids / counts)
     // + 40 (bounds) + 8 (error, material) + 36 (version 3: group LOD sphere,
     // parent error, parent LOD sphere) + 8 (DAG counts) + 4 per DAG id, then
     // per vertex 12 + 12 (normals) + 8 (uvs), per triangle 12
     let expected = |normals: bool, uvs: bool| {
-        32 + 16 * nanite.lod_levels.len()
+        32 + 32
+            + 16 * nanite.lod_levels.len()
             + 108 * nanite.clusters.len()
             + 4 * dag
             + verts * (12 + if normals { 12 } else { 0 } + if uvs { 8 } else { 0 })
@@ -604,7 +606,7 @@ fn nanite_file_size_and_header_follow_the_layout() {
     assert_eq!(u32_at(&b, 28), 0b011);
     // walk the clusters and read the version 3 fields back
     let f32_at = |b: &[u8], o: usize| f32::from_le_bytes(b[o..o + 4].try_into().unwrap());
-    let mut o = 32 + 16 * nanite.lod_levels.len();
+    let mut o = 32 + 32 + 16 * nanite.lod_levels.len();
     let mut roots = 0;
     let mut compared = 0;
     for c in &nanite.clusters {

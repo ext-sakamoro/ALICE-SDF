@@ -766,7 +766,14 @@ const EMITTERS: [Emitter; 13] = [
     ),
     ("src/compiled/hlsl/transpiler.rs", &HLSL_SCANNED, &[]),
     ("src/texture/shader.rs", &["generate_shader"], &[]),
-    ("src/io/nanite.rs", &["export_nanite_hlsl_material"], &[]),
+    (
+        "src/io/nanite.rs",
+        &[
+            "export_nanite_hlsl_material",
+            "export_nanite_hlsl_material_with_provenance",
+        ],
+        &[],
+    ),
     (
         "src/npr/shader_glue.rs",
         &[],
@@ -1066,23 +1073,33 @@ fn texture_shaders_compute_every_float_into_a_precise_local() {
     );
 }
 
-/// The Nanite material function (`io::export_nanite_hlsl_material`) of every corpus node.
+/// The Nanite material function of every corpus node, from both writers: this crate's identifier
+/// (`io::export_nanite_hlsl_material`) and a caller's (`io::export_nanite_hlsl_material_with_provenance`)
 #[cfg(feature = "hlsl")]
 #[test]
 fn nanite_material_computes_every_float_into_a_precise_local() {
+    use alice_sdf::io::nanite::{
+        export_nanite_hlsl_material, export_nanite_hlsl_material_with_provenance,
+    };
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("precise_nanite");
     std::fs::create_dir_all(&dir).unwrap();
-    let texts: Vec<(&str, String, String)> = common::corpus::corpus()
-        .into_iter()
-        .map(|(name, node)| {
-            let path = dir.join(format!("{name}.usf"));
-            alice_sdf::io::nanite::export_nanite_hlsl_material(&node, &path).unwrap();
-            (
-                "export_nanite_hlsl_material",
-                format!("Nanite {name}"),
-                std::fs::read_to_string(&path).unwrap(),
-            )
-        })
-        .collect();
+    let caller = alice_sdf::provenance::Provenance::new([0x5a; 32]);
+    let mut texts: Vec<(&str, String, String)> = Vec::new();
+    for (name, node) in common::corpus::corpus() {
+        let path = dir.join(format!("{name}.usf"));
+        export_nanite_hlsl_material(&node, &path).unwrap();
+        texts.push((
+            "export_nanite_hlsl_material",
+            format!("Nanite {name}"),
+            std::fs::read_to_string(&path).unwrap(),
+        ));
+        let path = dir.join(format!("{name}.caller.usf"));
+        export_nanite_hlsl_material_with_provenance(&node, &path, &caller).unwrap();
+        texts.push((
+            "export_nanite_hlsl_material_with_provenance",
+            format!("Nanite {name} (caller identifier)"),
+            std::fs::read_to_string(&path).unwrap(),
+        ));
+    }
     check("Nanite HLSL", &texts, "precise");
 }

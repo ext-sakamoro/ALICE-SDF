@@ -272,6 +272,46 @@ const WRITERS: &[(&str, &str, Write)] = &[
             Some(id) => io::export_alembic_with_provenance(m, p, &c, id).unwrap(),
         }
     }),
+    ("src/io/nanite.rs::export_nanite", "m.nanite", |_, p, id| {
+        let n = nanite_mesh();
+        match id {
+            None => io::export_nanite(&n, p).unwrap(),
+            Some(id) => io::nanite::export_nanite_with_provenance(
+                &n,
+                p,
+                &io::NaniteExportConfig::default(),
+                id,
+            )
+            .unwrap(),
+        }
+    }),
+    (
+        "src/io/nanite.rs::export_nanite_with_config",
+        "m_lean.nanite",
+        |_, p, id| {
+            let n = nanite_mesh();
+            let c = io::NaniteExportConfig {
+                export_uvs: false,
+                export_normals: false,
+                quantize_positions: false,
+            };
+            match id {
+                None => io::export_nanite_with_config(&n, p, &c).unwrap(),
+                Some(id) => io::nanite::export_nanite_with_provenance(&n, p, &c, id).unwrap(),
+            }
+        },
+    ),
+    (
+        "src/io/nanite.rs::export_nanite_json",
+        "m.nanite.json",
+        |_, p, id| {
+            let n = nanite_mesh();
+            match id {
+                None => io::export_nanite_json(&n, p).unwrap(),
+                Some(id) => io::nanite::export_nanite_json_with_provenance(&n, p, id).unwrap(),
+            }
+        },
+    ),
     ("src/io/asdf.rs::save_asdf", "t.asdf", |_, p, id| {
         let tree = SdfTree::new(SdfNode::sphere(1.0));
         match id {
@@ -3397,4 +3437,137 @@ fn texture_fit_checks_the_image_identifier() {
         }
         other => panic!("another identifier was read: {other:?}"),
     }
+}
+
+/// A small Nanite cluster hierarchy of the unit sphere (two LOD levels)
+fn nanite_mesh() -> alice_sdf::mesh::NaniteMesh {
+    alice_sdf::mesh::generate_nanite_mesh(
+        &SdfNode::sphere(1.0),
+        Vec3::splat(-1.5),
+        Vec3::splat(1.5),
+        &alice_sdf::mesh::NaniteConfig {
+            lod_levels: 2,
+            base_resolution: 8,
+            ..alice_sdf::mesh::NaniteConfig::default()
+        },
+    )
+}
+
+/// `.nanite` version 4 stores the identifier in the 32 bytes after the 32-byte header; a file of
+/// versions 1-3 (no identifier) is reported missing, another version or a cut header unreadable,
+/// never read as some identifier
+#[test]
+fn nanite_binary_versions_without_the_identifier_are_missing() {
+    let path = temp("versions.nanite");
+    io::export_nanite(&nanite_mesh(), &path).unwrap();
+    let b = std::fs::read(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+    assert_eq!(&b[..4], io::nanite::NANITE_MAGIC);
+    assert_eq!(b[4..8], 4u32.to_le_bytes());
+    assert_eq!(b[32..64], alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(provenance::from_bytes(&b).unwrap(), Provenance::sdf());
+    let mut compared = 0;
+    for version in [1u32, 2, 3] {
+        // the layout of versions 1-3: the same header and body without the identifier
+        let mut old = [&b[..32], &b[64..]].concat();
+        old[4..8].copy_from_slice(&version.to_le_bytes());
+        assert!(
+            matches!(
+                provenance::from_bytes(&old),
+                Err(ProvenanceError::Missing { format: "Nanite" })
+            ),
+            "version {version}"
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, 3);
+    for version in [0u32, 5, u32::MAX] {
+        let mut other = b.clone();
+        other[4..8].copy_from_slice(&version.to_le_bytes());
+        assert!(
+            matches!(
+                provenance::from_bytes(&other),
+                Err(ProvenanceError::Unreadable(_))
+            ),
+            "version {version}"
+        );
+    }
+    for cut in [6, 40, 63] {
+        assert!(
+            matches!(
+                provenance::from_bytes(&b[..cut]),
+                Err(ProvenanceError::Unreadable(_))
+            ),
+            "cut at {cut}"
+        );
+    }
+}
+
+/// (writer name as the scanner reads it, what it writes) for the shader text writer (feature
+/// hlsl); the test below writes it, reads the identifier back and refuses malformed forms
+#[cfg(feature = "hlsl")]
+const SHADER_TEXT_WRITERS: &[(&str, &str)] = &[(
+    "src/io/nanite.rs::export_nanite_hlsl_material",
+    "Nanite HLSL material (.usf)",
+)];
+
+/// The Nanite HLSL material stores the identifier as a comment in its leading comment block
+/// (`// alice:semantics_id=<64 hex>`, the form of the shader text this crate writes); a `//`-led
+/// text without it is missing, a malformed value or two different values are unreadable
+#[cfg(feature = "hlsl")]
+#[test]
+fn nanite_hlsl_material_carries_the_identifier() {
+    use io::nanite::{export_nanite_hlsl_material, export_nanite_hlsl_material_with_provenance};
+    assert_eq!(SHADER_TEXT_WRITERS.len(), 1, "{SHADER_TEXT_WRITERS:?}");
+    let node = SdfNode::sphere(1.0);
+    let path = temp("material.usf");
+    export_nanite_hlsl_material(&node, &path).unwrap();
+    assert_eq!(provenance::read(&path).unwrap(), Provenance::sdf());
+    let text = std::fs::read_to_string(&path).unwrap();
+    let tag = format!("// {}={}", provenance::KEY, Provenance::sdf().hex());
+    let at = text
+        .lines()
+        .position(|l| l == tag)
+        .expect("the identifier line");
+    assert!(
+        text.lines().take(at).all(|l| l.starts_with("//")),
+        "the identifier is in the leading comment block"
+    );
+    export_nanite_hlsl_material_with_provenance(&node, &path, &caller_id()).unwrap();
+    assert_eq!(provenance::read(&path).unwrap(), caller_id());
+    std::fs::remove_file(&path).ok();
+
+    let without: String = text
+        .lines()
+        .filter(|l| *l != tag)
+        .flat_map(|l| [l, "\n"])
+        .collect();
+    assert!(matches!(
+        provenance::from_bytes(without.as_bytes()),
+        Err(ProvenanceError::Missing {
+            format: "shader text"
+        })
+    ));
+    // the key below the leading comment block (in the shader body) is not the identifier
+    let below = format!("{without}{tag}\n");
+    assert!(matches!(
+        provenance::from_bytes(below.as_bytes()),
+        Err(ProvenanceError::Missing {
+            format: "shader text"
+        })
+    ));
+    let not_hex = text.replace(&Provenance::sdf().hex(), &"g".repeat(64));
+    assert!(matches!(
+        provenance::from_bytes(not_hex.as_bytes()),
+        Err(ProvenanceError::Unreadable(_))
+    ));
+    let two = text.replacen(
+        &tag,
+        &format!("{tag}\n// {}={}", provenance::KEY, caller_id().hex()),
+        1,
+    );
+    assert!(matches!(
+        provenance::from_bytes(two.as_bytes()),
+        Err(ProvenanceError::Unreadable(_))
+    ));
 }

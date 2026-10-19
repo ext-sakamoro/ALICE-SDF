@@ -352,6 +352,10 @@ cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test
 step "test: min/max signed-zero Law parity (tree / SIMD / JIT / SVO)"
 cargo test --features "jit,svo" --test test_minmax_signed_zero_probe
 
+step "test: provenance of the Nanite HLSL material (ci.yml の test job と対、1 件未満で fail)"
+cargo test --features hlsl --test test_provenance nanite_hlsl_material 2>&1 | tee "${CARGO_TARGET_DIR:-target}/provenance-hlsl.log"
+python3 scripts/libtest_count.py "${CARGO_TARGET_DIR:-target}/provenance-hlsl.log" --min 1 --what "Nanite HLSL material provenance tests (hlsl)"
+
 step "test: provenance of the SVO chunk (ci.yml の test job と対、3 件未満で fail)"
 cargo test --features svo --test test_provenance svo_chunk 2>&1 | tee "${CARGO_TARGET_DIR:-target}/provenance-svo.log"
 python3 scripts/libtest_count.py "${CARGO_TARGET_DIR:-target}/provenance-svo.log" --min 3 --what "SVO chunk provenance tests (svo)"
