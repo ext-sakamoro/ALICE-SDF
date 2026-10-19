@@ -49,6 +49,7 @@ scip_reach_step() {
   python3 scripts/scip_reach.py --check-baseline
   python3 scripts/test_api_boundary_parsers.py
   python3 scripts/api_boundary_parsers.py
+  python3 scripts/provenance_writers.py --index target/scip
   python3 scripts/scip_reach.py --write docs/integration-status.md
   git diff --exit-code docs/integration-status.md \
     || { echo "docs/integration-status.md が古い: 再生成した内容を commit する" >&2; exit 1; }

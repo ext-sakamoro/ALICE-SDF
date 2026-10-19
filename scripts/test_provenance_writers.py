@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -28,19 +29,30 @@ TEST = (
 )
 
 
-def tree(src: str = SRC, test: str = TEST, pending: str = "expected-writers 2\nsrc/io/a.rs::save_b\n") -> str:
+def tree(
+    src: str = SRC,
+    test: str = TEST,
+    pending: str = "expected-writers 2\nsrc/io/a.rs::save_b\n",
+    not_writers: str | None = None,
+    extra: dict[str, str] | None = None,
+) -> str:
     root = tempfile.mkdtemp()
     os.makedirs(os.path.join(root, "src/io"))
     os.makedirs(os.path.join(root, "tests"))
     os.makedirs(os.path.join(root, "scripts"))
-    for rel, text in [("src/io/a.rs", src), (pw.TEST_FILE, test), (pw.PENDING_FILE, pending)]:
+    files = [("src/io/a.rs", src), (pw.TEST_FILE, test), (pw.PENDING_FILE, pending)]
+    if not_writers is not None:
+        files.append((pw.NOT_WRITERS_FILE, not_writers))
+    files += list((extra or {}).items())
+    for rel, text in files:
+        os.makedirs(os.path.dirname(os.path.join(root, rel)), exist_ok=True)
         with open(os.path.join(root, rel), "w", encoding="utf-8") as fh:
             fh.write(text)
     return root
 
 
-def errors(root: str) -> list[str]:
-    return pw.check(root)[0]
+def errors(root: str, reached: dict[str, set[str]] | None = None) -> list[str]:
+    return pw.check(root, reached)[0]
 
 
 class Writers(unittest.TestCase):
@@ -119,6 +131,145 @@ class Writers(unittest.TestCase):
     def test_main_returns_1_on_error_and_0_when_clean(self):
         self.assertEqual(pw.main(["x", tree()]), 0)
         self.assertEqual(pw.main(["x", tree(src="")]), 1)
+
+    def test_a_writer_name_anywhere_under_src_is_a_candidate(self):
+        # a new module outside src/io with an encoder: counted, so it must be classified
+        e = errors(tree(extra={"src/mesh/b.rs": "pub fn encode_foo(m: &Mesh) -> Vec<u8> { Vec::new() }\n"}))
+        self.assertTrue(any("src/mesh/b.rs::encode_foo: neither covered" in x for x in e), e)
+        self.assertTrue(any("3 writers found" in x for x in e), e)
+        for name in ["bake_to_grid", "serialize", "persist_all", "dump_state", "to_vec"]:
+            e = errors(tree(extra={"src/b.rs": f"pub fn {name}() {{}}\n"}))
+            self.assertTrue(any(f"src/b.rs::{name}: neither covered" in x for x in e), (name, e))
+
+    def test_a_write_sink_makes_any_name_a_candidate(self):
+        for body in [
+            "pub fn store(w: &mut impl Write) {}\n",
+            "pub fn store<W: std::io::Write>(w: W) {}\n",
+            "pub fn store(w: &mut dyn Write) {}\n",
+            "pub fn store(p: &Path) { std::fs::write(p, b\"x\").unwrap(); }\n",
+            "pub fn store(p: &Path) { let f = File::create(p); }\n",
+            "pub fn store(p: &Path) { let f = OpenOptions::new(); }\n",
+        ]:
+            e = errors(tree(extra={"src/b.rs": body}))
+            self.assertTrue(any("src/b.rs::store: neither covered" in x for x in e), (body, e))
+        # a fmt::Write into a String inside the body is no sink, and no writer name
+        e = errors(tree(extra={"src/b.rs": "pub fn hex(&self) -> String { let mut s = String::new(); write!(s, \"x\"); s }\n"}))
+        self.assertEqual(e, [])
+
+    def test_an_array_return_type_does_not_end_the_signature(self):
+        e = errors(tree(extra={"src/b.rs": "pub fn to_bytes(&self) -> [u8; 4] { [0; 4] }\n"}))
+        self.assertTrue(any("src/b.rs::to_bytes: neither covered" in x for x in e), e)
+
+    def test_a_delegating_fn_listed_as_not_a_writer_passes(self):
+        b = "pub fn export_a(p: &str) { use crate::io::export_a as io_export_a; io_export_a(p) }\n"
+        root = tree(extra={"src/py.rs": b}, not_writers="src/py.rs::export_a delegates to export_a\n")
+        self.assertEqual(errors(root), [])
+        self.assertEqual(pw.check(root)[1], 2)
+
+    def test_a_delegating_fn_that_stops_calling_its_writer_fails(self):
+        b = "pub fn export_a(p: &str) { other(p) }\n"
+        e = errors(tree(extra={"src/py.rs": b}, not_writers="src/py.rs::export_a delegates to export_a\n"))
+        self.assertTrue(any("does not call it" in x for x in e), e)
+
+    def test_a_delegation_to_no_writer_fails(self):
+        b = "pub fn export_x(p: &str) { import_a(p) }\n"
+        e = errors(tree(extra={"src/py.rs": b}, not_writers="src/py.rs::export_x delegates to import_a\n"))
+        self.assertTrue(any("which is no covered or pending writer" in x for x in e), e)
+
+    def test_a_short_reason_fails_and_a_long_one_passes(self):
+        x = {"src/b.rs": "pub fn serialize() {}\n"}
+        e = errors(tree(extra=x, not_writers="src/b.rs::serialize in memory\n"))
+        self.assertTrue(any("at least five words" in y for y in e), e)
+        self.assertEqual(errors(tree(extra=x, not_writers="src/b.rs::serialize packs words for an in-process upload\n")), [])
+
+    def test_a_not_writer_line_that_names_no_candidate_fails(self):
+        e = errors(tree(not_writers="src/io/a.rs::import_a reads a file and writes nothing at all\n"))
+        self.assertTrue(any("import_a is not a candidate" in x for x in e), e)
+
+    def test_a_not_writer_also_pending_or_listed_twice_fails(self):
+        line = "src/io/a.rs::save_b writes nothing that is stored anywhere\n"
+        e = errors(tree(not_writers=line))
+        self.assertTrue(any("save_b is also covered or pending" in x for x in e), e)
+        e = errors(tree(not_writers=line * 2))
+        self.assertTrue(any("listed twice: src/io/a.rs::save_b" in x for x in e), e)
+
+    def test_a_stored_form_return_type_makes_any_name_a_candidate(self):
+        for sig in ["pub fn pack70(&self) -> Vec<u8> { Vec::new() }",
+                    "pub fn pack70() -> [u8; 32] { [0; 32] }",
+                    "pub fn pack70(&self) -> &[u8] { &[] }",
+                    "pub fn pack70() -> Box<[u8]> { Box::new([]) }",
+                    "pub fn pack70() -> Result<Vec<u8>, E> { Ok(Vec::new()) }",
+                    "pub fn to_json_string() -> Result<String, E> { Ok(String::new()) }",
+                    "pub fn as_text(&self) -> String { String::new() }"]:
+            name = re.search(r"fn (\w+)", sig).group(1)
+            e = errors(tree(extra={"src/b.rs": sig + "\n"}))
+            self.assertTrue(any(f"src/b.rs::{name}: neither covered" in x for x in e), (sig, e))
+        # text from a fn that is not to_* / as_* is no stored form by itself
+        self.assertEqual(errors(tree(extra={"src/b.rs": "pub fn describe() -> String { String::new() }\n"})), [])
+
+    def test_a_variant_counts_its_base_whatever_the_names(self):
+        src = ("pub fn render(t: &T) -> u32 { 0 }\n"
+               "pub fn render_with_provenance(t: &T, p: &Provenance) -> u32 { 0 }\n")
+        e = errors(tree(extra={"src/b.rs": src}))
+        self.assertTrue(any("src/b.rs::render: neither covered" in x for x in e), e)
+        self.assertTrue(any("render_with_provenance: not called" in x for x in e), e)
+
+    def test_a_concrete_writer_type_or_file_options_is_a_sink(self):
+        for body in ["pub fn emit70(w: &mut std::io::BufWriter<std::fs::File>) {}\n",
+                     "pub fn emit70(f: File) {}\n",
+                     "pub fn emit70(p: &Path) { let f = std::fs::File::options().write(true).open(p); }\n",
+                     "pub fn emit70(p: &Path) { std::fs::copy(p, p); }\n"]:
+            e = errors(tree(extra={"src/b.rs": body}))
+            self.assertTrue(any("src/b.rs::emit70: neither covered" in x for x in e), (body, e))
+
+    def test_an_entry_the_call_graph_shows_writing_is_a_candidate(self):
+        # a trait-impl method has no `pub`, so the text never sees it; the index does
+        src = "pub trait Ex { fn export70(&self); }\nimpl Ex for S { fn export70(&self) { w() } }\n"
+        x = {"src/b.rs": src}
+        self.assertEqual(errors(tree(extra=x)), [])
+        e = errors(tree(extra=x), reached={"src/b.rs::export70": {"std fs/write()."}})
+        self.assertTrue(any("src/b.rs::export70: neither covered" in y for y in e), e)
+        line = "src/b.rs::export70 writes a scratch file that is removed before it returns\n"
+        self.assertEqual(errors(tree(extra=x, not_writers=line), reached={"src/b.rs::export70": set()}), [])
+        # without an index the line is checked to name a fn of the file; with one, to be a candidate
+        self.assertEqual(errors(tree(extra=x, not_writers=line)), [])
+        e = errors(tree(extra=x, not_writers=line), reached={})
+        self.assertTrue(any("export70 is not a candidate" in y for y in e), e)
+        e = errors(tree(not_writers=line))
+        self.assertTrue(any("export70 is not a candidate" in y for y in e), e)
+
+    def test_reach_hits_keeps_the_entries_that_reach_a_sink(self):
+        graph = {"a": {"b"}, "b": {"std fs/write()."}, "c": {"d"}}
+
+        def reach(start):
+            live, stack = set(start), list(start)
+            while stack:
+                for t in graph.get(stack.pop(), ()):
+                    if t not in live:
+                        live.add(t)
+                        stack.append(t)
+            return live
+
+        hits = pw.reach_hits({"src/x.rs::T::a": {"a"}, "src/x.rs::c": {"c"}}, reach, {"std fs/write()."})
+        self.assertEqual(hits, {"src/x.rs::T::a": {"std fs/write()."}})
+        self.assertEqual(pw.legacy("src/x.rs::T::a"), "src/x.rs::a")
+        self.assertRegex("std fs/impl#[File]create().", pw.SINK_SYM)
+        self.assertRegex("std fs/impl#[OpenOptions]open().", pw.SINK_SYM)
+        self.assertRegex("std io/buffered/bufwriter/impl#[`BufWriter<W>`][Write]write_all().", pw.SINK_SYM)
+        self.assertIsNone(pw.SINK_SYM.match("std fs/impl#[File]open()."))
+        self.assertIsNone(pw.SINK_SYM.match("std fs/read()."))
+
+    def test_two_impls_of_one_name_share_a_key_and_both_must_delegate(self):
+        src = ("impl A {\n    pub fn export_a(&self) { export_a(p) }\n}\n"
+               "impl B {\n    pub fn export_a(&self) { other() }\n}\n")
+        e = errors(tree(extra={"src/py.rs": src}, not_writers="src/py.rs::export_a delegates to export_a\n"))
+        self.assertTrue(any("does not call it" in x for x in e), e)
+
+    def test_a_table_in_any_test_file_covers(self):
+        extra = {"tests/test_other.rs": 'const T: &[(&str, &str)] = &[("src/io/a.rs::save_b", "b")];\n'}
+        e = errors(tree(extra=extra))
+        self.assertTrue(any("save_b is covered by a table in tests/" in x for x in e), e)
+        self.assertEqual(errors(tree(extra=extra, pending="expected-writers 2\n")), [])
 
     def test_this_repository_passes(self):
         self.assertEqual(errors(pw.ROOT), [])
