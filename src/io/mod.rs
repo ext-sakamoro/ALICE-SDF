@@ -74,9 +74,14 @@ pub use stl::{
 };
 pub use threemf::{export_3mf, export_3mf_with_provenance, export_3mf_with_stamp};
 pub use ue5_asset::{
-    export_ue5_mesh, export_ue5_mesh_binary, export_ue5_mesh_with_lods, Ue5MeshConfig,
+    export_ue5_mesh, export_ue5_mesh_binary, export_ue5_mesh_binary_with_provenance,
+    export_ue5_mesh_with_lods, export_ue5_mesh_with_lods_with_provenance,
+    export_ue5_mesh_with_provenance, Ue5MeshConfig,
 };
-pub use unity_mesh::{export_unity_mesh, export_unity_mesh_binary, UnityMeshConfig};
+pub use unity_mesh::{
+    export_unity_mesh, export_unity_mesh_binary, export_unity_mesh_binary_with_provenance,
+    export_unity_mesh_with_provenance, UnityMeshConfig,
+};
 pub use usd::{
     export_usda, export_usda_with_provenance, import_usda, import_usda_pinned, ImportedUsdMaterial,
     ImportedUsda, UsdConfig, UsdUpAxis,

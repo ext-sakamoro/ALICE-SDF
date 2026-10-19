@@ -25,6 +25,7 @@
 use crate::compiled::real::LawMinMax;
 use crate::io::IoError;
 use crate::mesh::Mesh;
+use crate::provenance::{Provenance, KEY};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -36,8 +37,8 @@ use std::path::Path;
 /// Magic bytes for UE5 binary mesh format
 const UE5_BIN_MAGIC: &[u8; 4] = b"ALUE";
 
-/// UE5 binary mesh version
-const UE5_BIN_VERSION: u16 = 1;
+/// UE5 binary mesh version (2: the 32-byte semantics identifier follows the 16-byte header)
+const UE5_BIN_VERSION: u16 = 2;
 
 /// JSON format version
 const UE5_JSON_VERSION: u32 = 1;
@@ -153,6 +154,26 @@ pub fn export_ue5_mesh(
     export_ue5_mesh_with_lods(std::slice::from_ref(mesh), &[1.0], path, config)
 }
 
+/// [`export_ue5_mesh`] storing the given semantics identifier instead of this crate's
+///
+/// # Errors
+///
+/// As [`export_ue5_mesh`].
+pub fn export_ue5_mesh_with_provenance(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    config: &Ue5MeshConfig,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
+    export_ue5_mesh_with_lods_with_provenance(
+        std::slice::from_ref(mesh),
+        &[1.0],
+        path,
+        config,
+        provenance,
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Binary export
 // ---------------------------------------------------------------------------
@@ -163,10 +184,12 @@ pub fn export_ue5_mesh(
 /// ```text
 /// Header (16 bytes):
 ///   magic: "ALUE" (4 bytes)
-///   version: u16 (little-endian)
+///   version: u16 (little-endian), 2
 ///   vertex_count: u32 (little-endian)
 ///   index_count: u32 (little-endian)
 ///   flags: u16 (little-endian)
+///
+/// Semantics identifier (32 bytes, version 2): the arithmetic the mesh was computed under
 ///
 /// Vertex data (interleaved, per vertex):
 ///   position: [f32; 3]
@@ -192,6 +215,20 @@ pub fn export_ue5_mesh_binary(
     path: impl AsRef<Path>,
     config: &Ue5MeshConfig,
 ) -> Result<(), IoError> {
+    export_ue5_mesh_binary_with_provenance(mesh, path, config, &Provenance::sdf())
+}
+
+/// [`export_ue5_mesh_binary`] storing the given semantics identifier instead of this crate's
+///
+/// # Errors
+///
+/// As [`export_ue5_mesh_binary`].
+pub fn export_ue5_mesh_binary_with_provenance(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    config: &Ue5MeshConfig,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
     let file = File::create(path)?;
     let mut w = BufWriter::new(file);
 
@@ -205,6 +242,8 @@ pub fn export_ue5_mesh_binary(
     w.write_all(&vc.to_le_bytes())?;
     w.write_all(&ic.to_le_bytes())?;
     w.write_all(&flags.to_le_bytes())?;
+    // the semantics identifier (version 2)
+    w.write_all(&provenance.semantics_id)?;
 
     // Interleaved vertex data
     for v in &mesh.vertices {
@@ -274,6 +313,27 @@ pub fn export_ue5_mesh_with_lods(
     path: impl AsRef<Path>,
     config: &Ue5MeshConfig,
 ) -> Result<(), IoError> {
+    export_ue5_mesh_with_lods_with_provenance(
+        meshes,
+        lod_screen_sizes,
+        path,
+        config,
+        &Provenance::sdf(),
+    )
+}
+
+/// [`export_ue5_mesh_with_lods`] storing the given semantics identifier instead of this crate's
+///
+/// # Errors
+///
+/// As [`export_ue5_mesh_with_lods`].
+pub fn export_ue5_mesh_with_lods_with_provenance(
+    meshes: &[Mesh],
+    lod_screen_sizes: &[f32],
+    path: impl AsRef<Path>,
+    config: &Ue5MeshConfig,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
     if meshes.is_empty() {
         return Err(IoError::InvalidFormat("No meshes provided".into()));
     }
@@ -292,7 +352,8 @@ pub fn export_ue5_mesh_with_lods(
     // Compute global bounds from LOD 0
     let (origin, extent) = compute_bounds(&meshes[0], config.scale);
 
-    write!(w, "{{\n  \"alice_sdf_static_mesh\": {{\n")?;
+    writeln!(w, "{{\n  \"{KEY}\": \"{}\",", provenance.hex())?;
+    writeln!(w, "  \"alice_sdf_static_mesh\": {{")?;
     writeln!(w, "    \"version\": {},", UE5_JSON_VERSION)?;
     writeln!(w, "    \"name\": \"{}\",", config.name)?;
 
@@ -641,7 +702,7 @@ mod tests {
         // Check magic
         assert_eq!(&data[0..4], b"ALUE");
         // Check version
-        assert_eq!(u16::from_le_bytes([data[4], data[5]]), 1);
+        assert_eq!(u16::from_le_bytes([data[4], data[5]]), 2);
         // Check vertex count
         assert_eq!(u32::from_le_bytes([data[6], data[7], data[8], data[9]]), 3);
         // Check index count
@@ -651,7 +712,7 @@ mod tests {
         );
 
         // Total size: 16 (header) + 3*64 (vertices) + 3*4 (indices)
-        let expected = 16 + 3 * 64 + 3 * 4;
+        let expected = 16 + 32 + 3 * 64 + 3 * 4;
         assert_eq!(data.len(), expected);
 
         fs::remove_file(&path).ok();
@@ -671,9 +732,9 @@ mod tests {
         let data = fs::read(&path).unwrap();
 
         // First vertex position: (1,2,3) -> UE5: (100, 300, 200)
-        let px = f32::from_le_bytes(data[16..20].try_into().unwrap());
-        let py = f32::from_le_bytes(data[20..24].try_into().unwrap());
-        let pz = f32::from_le_bytes(data[24..28].try_into().unwrap());
+        let px = f32::from_le_bytes(data[48..52].try_into().unwrap());
+        let py = f32::from_le_bytes(data[52..56].try_into().unwrap());
+        let pz = f32::from_le_bytes(data[56..60].try_into().unwrap());
 
         assert!((px - 100.0).abs() < 1e-3);
         assert!((py - 300.0).abs() < 1e-3); // z*100
@@ -696,9 +757,9 @@ mod tests {
         let data = fs::read(&path).unwrap();
 
         // First vertex normal: (0,1,0) -> UE5: (0, 0, 1)
-        let nx = f32::from_le_bytes(data[28..32].try_into().unwrap());
-        let ny = f32::from_le_bytes(data[32..36].try_into().unwrap());
-        let nz = f32::from_le_bytes(data[36..40].try_into().unwrap());
+        let nx = f32::from_le_bytes(data[60..64].try_into().unwrap());
+        let ny = f32::from_le_bytes(data[64..68].try_into().unwrap());
+        let nz = f32::from_le_bytes(data[68..72].try_into().unwrap());
 
         assert!((nx - 0.0).abs() < 1e-6);
         assert!((ny - 0.0).abs() < 1e-6); // y=1 goes to z position
@@ -720,7 +781,7 @@ mod tests {
         assert!(content.contains("\"alice_sdf_static_mesh\""));
 
         let data = fs::read(&path_bin).unwrap();
-        assert_eq!(data.len(), 16); // Header only
+        assert_eq!(data.len(), 48); // header and identifier only
 
         fs::remove_file(&path_json).ok();
         fs::remove_file(&path_bin).ok();

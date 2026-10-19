@@ -13,11 +13,6 @@ src/io/nanite.rs::export_nanite
 src/io/nanite.rs::export_nanite_hlsl_material
 src/io/nanite.rs::export_nanite_json
 src/io/nanite.rs::export_nanite_with_config
-src/io/ue5_asset.rs::export_ue5_mesh
-src/io/ue5_asset.rs::export_ue5_mesh_binary
-src/io/ue5_asset.rs::export_ue5_mesh_with_lods
-src/io/unity_mesh.rs::export_unity_mesh
-src/io/unity_mesh.rs::export_unity_mesh_binary
 src/mesh/mesh_codec.rs::encode_indices
 src/mesh/mesh_codec.rs::encode_mesh
 src/mesh/mesh_codec.rs::encode_positions
