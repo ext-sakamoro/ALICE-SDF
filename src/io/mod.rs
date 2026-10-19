@@ -41,7 +41,7 @@ pub use abm::{
     ABM_FLAG_HAS_MATERIAL_IDS, ABM_FLAG_HAS_NORMALS, ABM_FLAG_HAS_TANGENTS, ABM_FLAG_HAS_UV2,
     ABM_FLAG_HAS_UVS, ABM_HEADER_LEN, ABM_MAGIC, ABM_VERSION,
 };
-pub use alembic::{export_alembic, AlembicConfig};
+pub use alembic::{export_alembic, export_alembic_with_provenance, AlembicConfig};
 pub use asdf::{
     load_asdf, load_asdf_unverified, save_asdf, save_asdf_with_provenance, AsdfHeader,
     ASDF_HEADER_LEN, ASDF_MAGIC, ASDF_VERSION,
