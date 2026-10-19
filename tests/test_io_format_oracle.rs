@@ -468,7 +468,6 @@ fn splat_records_are_32_little_endian_bytes() {
             (a.position, a.scale, a.color, a.rotation),
             (b.position, b.scale, b.color, b.rotation)
         );
-        assert_eq!(Splat::from_bytes(&b.to_bytes()).position, b.position);
     }
     // a truncated file is rejected, not half-read (without its sidecar, so the size is what fails)
     std::fs::write(&path, &bytes[..40]).unwrap();

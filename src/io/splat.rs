@@ -71,7 +71,10 @@ impl Splat {
     }
 
     /// バイト列からデコード
-    pub fn from_bytes(bytes: &[u8; SPLAT_BYTES]) -> Self {
+    ///
+    /// One record carries no identifier, so records are read only through [`load_splat`] /
+    /// [`load_splat_pinned`], which check the file's sidecar first
+    pub(crate) fn from_bytes(bytes: &[u8; SPLAT_BYTES]) -> Self {
         let f = |i: usize| f32::from_le_bytes(bytes[i..i + 4].try_into().unwrap());
         Self {
             position: [f(0), f(4), f(8)],
