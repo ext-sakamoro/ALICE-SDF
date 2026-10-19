@@ -504,3 +504,287 @@ pub fn jit_fma<'f, B: cranelift_codegen::ir::InstBuilder<'f>>(
 ) -> cranelift_codegen::ir::Value {
     ins.fma(a_fma, b, c)
 }
+
+pub fn glam_vec2_mul_add(glam_vec2_a: glam::Vec2, b: glam::Vec2, c: glam::Vec2) -> glam::Vec2 {
+    glam_vec2_a.mul_add(b, c)
+}
+
+pub fn glam_vec3_mul_add(glam_vec3_a: glam::Vec3, b: glam::Vec3, c: glam::Vec3) -> glam::Vec3 {
+    glam_vec3_a.mul_add(b, c)
+}
+
+pub fn glam_vec3a_mul_add(glam_vec3a_a: glam::Vec3A, b: glam::Vec3A, c: glam::Vec3A) -> glam::Vec3A {
+    glam_vec3a_a.mul_add(b, c)
+}
+
+pub fn glam_vec4_mul_add(glam_vec4_a: glam::Vec4, b: glam::Vec4, c: glam::Vec4) -> glam::Vec4 {
+    glam_vec4_a.mul_add(b, c)
+}
+
+pub fn glam_dvec2_mul_add(glam_dvec2_a: glam::DVec2, b: glam::DVec2, c: glam::DVec2) -> glam::DVec2 {
+    glam_dvec2_a.mul_add(b, c)
+}
+
+pub fn glam_dvec3_mul_add(glam_dvec3_a: glam::DVec3, b: glam::DVec3, c: glam::DVec3) -> glam::DVec3 {
+    glam_dvec3_a.mul_add(b, c)
+}
+
+pub fn glam_dvec4_mul_add(glam_dvec4_a: glam::DVec4, b: glam::DVec4, c: glam::DVec4) -> glam::DVec4 {
+    glam_dvec4_a.mul_add(b, c)
+}
+
+pub fn wide_f32x8_sin(f32x8_sin_arg: wide::f32x8) -> wide::f32x8 {
+    f32x8_sin_arg.sin()
+}
+
+pub fn wide_f32x8_cos(f32x8_cos_arg: wide::f32x8) -> wide::f32x8 {
+    f32x8_cos_arg.cos()
+}
+
+pub fn wide_f32x8_tan(f32x8_tan_arg: wide::f32x8) -> wide::f32x8 {
+    f32x8_tan_arg.tan()
+}
+
+pub fn wide_f32x8_sin_cos(f32x8_sin_cos_arg: wide::f32x8) -> (wide::f32x8, wide::f32x8) {
+    f32x8_sin_cos_arg.sin_cos()
+}
+
+pub fn wide_f32x8_asin(f32x8_asin_arg: wide::f32x8) -> wide::f32x8 {
+    f32x8_asin_arg.asin()
+}
+
+pub fn wide_f32x8_acos(f32x8_acos_arg: wide::f32x8) -> wide::f32x8 {
+    f32x8_acos_arg.acos()
+}
+
+pub fn wide_f32x8_asin_acos(f32x8_asin_acos_arg: wide::f32x8) -> (wide::f32x8, wide::f32x8) {
+    f32x8_asin_acos_arg.asin_acos()
+}
+
+pub fn wide_f32x8_atan(f32x8_atan_arg: wide::f32x8) -> wide::f32x8 {
+    f32x8_atan_arg.atan()
+}
+
+pub fn wide_f32x8_atan2(f32x8_atan2_arg: wide::f32x8, y: wide::f32x8) -> wide::f32x8 {
+    f32x8_atan2_arg.atan2(y)
+}
+
+pub fn wide_f32x8_exp(f32x8_exp_arg: wide::f32x8) -> wide::f32x8 {
+    f32x8_exp_arg.exp()
+}
+
+pub fn wide_f32x8_ln(f32x8_ln_arg: wide::f32x8) -> wide::f32x8 {
+    f32x8_ln_arg.ln()
+}
+
+pub fn wide_f32x8_log2(f32x8_log2_arg: wide::f32x8) -> wide::f32x8 {
+    f32x8_log2_arg.log2()
+}
+
+pub fn wide_f32x8_log10(f32x8_log10_arg: wide::f32x8) -> wide::f32x8 {
+    f32x8_log10_arg.log10()
+}
+
+pub fn wide_f32x8_powf(f32x8_powf_arg: wide::f32x8, y: f32) -> wide::f32x8 {
+    f32x8_powf_arg.powf(y)
+}
+
+pub fn wide_f32x8_pow_f32x8(f32x8_pow_f32x8_arg: wide::f32x8, y: wide::f32x8) -> wide::f32x8 {
+    f32x8_pow_f32x8_arg.pow_f32x8(y)
+}
+
+pub fn wide_f32x4_sin(f32x4_sin_arg: wide::f32x4) -> wide::f32x4 {
+    f32x4_sin_arg.sin()
+}
+
+pub fn wide_f32x4_cos(f32x4_cos_arg: wide::f32x4) -> wide::f32x4 {
+    f32x4_cos_arg.cos()
+}
+
+pub fn wide_f32x4_tan(f32x4_tan_arg: wide::f32x4) -> wide::f32x4 {
+    f32x4_tan_arg.tan()
+}
+
+pub fn wide_f32x4_sin_cos(f32x4_sin_cos_arg: wide::f32x4) -> (wide::f32x4, wide::f32x4) {
+    f32x4_sin_cos_arg.sin_cos()
+}
+
+pub fn wide_f32x4_asin(f32x4_asin_arg: wide::f32x4) -> wide::f32x4 {
+    f32x4_asin_arg.asin()
+}
+
+pub fn wide_f32x4_acos(f32x4_acos_arg: wide::f32x4) -> wide::f32x4 {
+    f32x4_acos_arg.acos()
+}
+
+pub fn wide_f32x4_asin_acos(f32x4_asin_acos_arg: wide::f32x4) -> (wide::f32x4, wide::f32x4) {
+    f32x4_asin_acos_arg.asin_acos()
+}
+
+pub fn wide_f32x4_atan(f32x4_atan_arg: wide::f32x4) -> wide::f32x4 {
+    f32x4_atan_arg.atan()
+}
+
+pub fn wide_f32x4_atan2(f32x4_atan2_arg: wide::f32x4, y: wide::f32x4) -> wide::f32x4 {
+    f32x4_atan2_arg.atan2(y)
+}
+
+pub fn wide_f32x4_exp(f32x4_exp_arg: wide::f32x4) -> wide::f32x4 {
+    f32x4_exp_arg.exp()
+}
+
+pub fn wide_f32x4_ln(f32x4_ln_arg: wide::f32x4) -> wide::f32x4 {
+    f32x4_ln_arg.ln()
+}
+
+pub fn wide_f32x4_log2(f32x4_log2_arg: wide::f32x4) -> wide::f32x4 {
+    f32x4_log2_arg.log2()
+}
+
+pub fn wide_f32x4_log10(f32x4_log10_arg: wide::f32x4) -> wide::f32x4 {
+    f32x4_log10_arg.log10()
+}
+
+pub fn wide_f32x4_powf(f32x4_powf_arg: wide::f32x4, y: f32) -> wide::f32x4 {
+    f32x4_powf_arg.powf(y)
+}
+
+pub fn wide_f32x4_pow_f32x4(f32x4_pow_f32x4_arg: wide::f32x4, y: wide::f32x4) -> wide::f32x4 {
+    f32x4_pow_f32x4_arg.pow_f32x4(y)
+}
+
+pub fn wide_f64x4_sin(f64x4_sin_arg: wide::f64x4) -> wide::f64x4 {
+    f64x4_sin_arg.sin()
+}
+
+pub fn wide_f64x4_cos(f64x4_cos_arg: wide::f64x4) -> wide::f64x4 {
+    f64x4_cos_arg.cos()
+}
+
+pub fn wide_f64x4_tan(f64x4_tan_arg: wide::f64x4) -> wide::f64x4 {
+    f64x4_tan_arg.tan()
+}
+
+pub fn wide_f64x4_sin_cos(f64x4_sin_cos_arg: wide::f64x4) -> (wide::f64x4, wide::f64x4) {
+    f64x4_sin_cos_arg.sin_cos()
+}
+
+pub fn wide_f64x4_asin(f64x4_asin_arg: wide::f64x4) -> wide::f64x4 {
+    f64x4_asin_arg.asin()
+}
+
+pub fn wide_f64x4_acos(f64x4_acos_arg: wide::f64x4) -> wide::f64x4 {
+    f64x4_acos_arg.acos()
+}
+
+pub fn wide_f64x4_asin_acos(f64x4_asin_acos_arg: wide::f64x4) -> (wide::f64x4, wide::f64x4) {
+    f64x4_asin_acos_arg.asin_acos()
+}
+
+pub fn wide_f64x4_atan(f64x4_atan_arg: wide::f64x4) -> wide::f64x4 {
+    f64x4_atan_arg.atan()
+}
+
+pub fn wide_f64x4_atan2(f64x4_atan2_arg: wide::f64x4, y: wide::f64x4) -> wide::f64x4 {
+    f64x4_atan2_arg.atan2(y)
+}
+
+pub fn wide_f64x4_exp(f64x4_exp_arg: wide::f64x4) -> wide::f64x4 {
+    f64x4_exp_arg.exp()
+}
+
+pub fn wide_f64x4_ln(f64x4_ln_arg: wide::f64x4) -> wide::f64x4 {
+    f64x4_ln_arg.ln()
+}
+
+pub fn wide_f64x4_log2(f64x4_log2_arg: wide::f64x4) -> wide::f64x4 {
+    f64x4_log2_arg.log2()
+}
+
+pub fn wide_f64x4_log10(f64x4_log10_arg: wide::f64x4) -> wide::f64x4 {
+    f64x4_log10_arg.log10()
+}
+
+pub fn wide_f64x4_powf(f64x4_powf_arg: wide::f64x4, y: f64) -> wide::f64x4 {
+    f64x4_powf_arg.powf(y)
+}
+
+pub fn wide_f64x4_pow_f64x4(f64x4_pow_f64x4_arg: wide::f64x4, y: wide::f64x4) -> wide::f64x4 {
+    f64x4_pow_f64x4_arg.pow_f64x4(y)
+}
+
+pub fn wide_f64x2_sin(f64x2_sin_arg: wide::f64x2) -> wide::f64x2 {
+    f64x2_sin_arg.sin()
+}
+
+pub fn wide_f64x2_cos(f64x2_cos_arg: wide::f64x2) -> wide::f64x2 {
+    f64x2_cos_arg.cos()
+}
+
+pub fn wide_f64x2_tan(f64x2_tan_arg: wide::f64x2) -> wide::f64x2 {
+    f64x2_tan_arg.tan()
+}
+
+pub fn wide_f64x2_sin_cos(f64x2_sin_cos_arg: wide::f64x2) -> (wide::f64x2, wide::f64x2) {
+    f64x2_sin_cos_arg.sin_cos()
+}
+
+pub fn wide_f64x2_asin(f64x2_asin_arg: wide::f64x2) -> wide::f64x2 {
+    f64x2_asin_arg.asin()
+}
+
+pub fn wide_f64x2_acos(f64x2_acos_arg: wide::f64x2) -> wide::f64x2 {
+    f64x2_acos_arg.acos()
+}
+
+pub fn wide_f64x2_asin_acos(f64x2_asin_acos_arg: wide::f64x2) -> (wide::f64x2, wide::f64x2) {
+    f64x2_asin_acos_arg.asin_acos()
+}
+
+pub fn wide_f64x2_atan(f64x2_atan_arg: wide::f64x2) -> wide::f64x2 {
+    f64x2_atan_arg.atan()
+}
+
+pub fn wide_f64x2_atan2(f64x2_atan2_arg: wide::f64x2, y: wide::f64x2) -> wide::f64x2 {
+    f64x2_atan2_arg.atan2(y)
+}
+
+pub fn wide_f64x2_exp(f64x2_exp_arg: wide::f64x2) -> wide::f64x2 {
+    f64x2_exp_arg.exp()
+}
+
+pub fn wide_f64x2_ln(f64x2_ln_arg: wide::f64x2) -> wide::f64x2 {
+    f64x2_ln_arg.ln()
+}
+
+pub fn wide_f64x2_log2(f64x2_log2_arg: wide::f64x2) -> wide::f64x2 {
+    f64x2_log2_arg.log2()
+}
+
+pub fn wide_f64x2_log10(f64x2_log10_arg: wide::f64x2) -> wide::f64x2 {
+    f64x2_log10_arg.log10()
+}
+
+pub fn wide_f64x2_powf(f64x2_powf_arg: wide::f64x2, y: f64) -> wide::f64x2 {
+    f64x2_powf_arg.powf(y)
+}
+
+pub fn wide_f64x2_pow_f64x2(f64x2_pow_f64x2_arg: wide::f64x2, y: wide::f64x2) -> wide::f64x2 {
+    f64x2_pow_f64x2_arg.pow_f64x2(y)
+}
+
+pub fn wide_f32x8_recip(f32x8_recip_arg: wide::f32x8) -> wide::f32x8 {
+    f32x8_recip_arg.recip()
+}
+
+pub fn wide_f32x8_recip_sqrt(f32x8_recip_sqrt_arg: wide::f32x8) -> wide::f32x8 {
+    f32x8_recip_sqrt_arg.recip_sqrt()
+}
+
+pub fn wide_f32x4_recip(f32x4_recip_arg: wide::f32x4) -> wide::f32x4 {
+    f32x4_recip_arg.recip()
+}
+
+pub fn wide_f32x4_recip_sqrt(f32x4_recip_sqrt_arg: wide::f32x4) -> wide::f32x4 {
+    f32x4_recip_sqrt_arg.recip_sqrt()
+}

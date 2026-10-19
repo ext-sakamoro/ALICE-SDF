@@ -10,7 +10,8 @@ header = """\
 # also may not call f32 / f64 / f32x8 max and min; tests, examples and benches use the
 # root configuration; nor name or iterate HashMap / HashSet (ALICE-Law G13); nor read a
 # stored form with serde_json / bincode outside a reviewed site (ALICE-Law G8); nor call
-# wide's fused multiply-add methods or the JIT's fma instruction (ALICE-Law G3)
+# wide's fused multiply-add methods, transcendentals and reciprocal approximations,
+# glam's vector mul_add, or the JIT's fma instruction (ALICE-Law G3)
 """
 
 [[method]]
@@ -104,6 +105,290 @@ reason = "fuses the multiply and the add into one rounding on targets with fma (
 [[method]]
 path = "cranelift_codegen::ir::InstBuilder::fma"
 reason = "emits a fused multiply-add (one rounding) into the JIT code, while the scalar and SIMD evaluators round twice (ALICE-Law G3); emit fmul then fadd, as mul_add_2r does"
+
+[[method]]
+path = "glam::Vec2::mul_add"
+reason = "fuses the multiply and the add into one rounding (f32::mul_add, libm fmaf, _mm_fmadd_ps or vfmaq_f32 depending on the backend) while the other paths round twice (ALICE-Law G3); write a * b + c per lane"
+
+[[method]]
+path = "glam::Vec3::mul_add"
+reason = "fuses the multiply and the add into one rounding (f32::mul_add, libm fmaf, _mm_fmadd_ps or vfmaq_f32 depending on the backend) while the other paths round twice (ALICE-Law G3); write a * b + c per lane"
+
+[[method]]
+path = "glam::Vec3A::mul_add"
+reason = "fuses the multiply and the add into one rounding (f32::mul_add, libm fmaf, _mm_fmadd_ps or vfmaq_f32 depending on the backend) while the other paths round twice (ALICE-Law G3); write a * b + c per lane"
+
+[[method]]
+path = "glam::Vec4::mul_add"
+reason = "fuses the multiply and the add into one rounding (f32::mul_add, libm fmaf, _mm_fmadd_ps or vfmaq_f32 depending on the backend) while the other paths round twice (ALICE-Law G3); write a * b + c per lane"
+
+[[method]]
+path = "glam::DVec2::mul_add"
+reason = "fuses the multiply and the add into one rounding (f32::mul_add, libm fmaf, _mm_fmadd_ps or vfmaq_f32 depending on the backend) while the other paths round twice (ALICE-Law G3); write a * b + c per lane"
+
+[[method]]
+path = "glam::DVec3::mul_add"
+reason = "fuses the multiply and the add into one rounding (f32::mul_add, libm fmaf, _mm_fmadd_ps or vfmaq_f32 depending on the backend) while the other paths round twice (ALICE-Law G3); write a * b + c per lane"
+
+[[method]]
+path = "glam::DVec4::mul_add"
+reason = "fuses the multiply and the add into one rounding (f32::mul_add, libm fmaf, _mm_fmadd_ps or vfmaq_f32 depending on the backend) while the other paths round twice (ALICE-Law G3); write a * b + c per lane"
+
+[[method]]
+path = "wide::f32x8::sin"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::cos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::tan"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::sin_cos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::asin"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::acos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::asin_acos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::atan"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::atan2"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::exp"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::ln"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::log2"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::log10"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::powf"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::pow_f32x8"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::sin"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::cos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::tan"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::sin_cos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::asin"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::acos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::asin_acos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::atan"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::atan2"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::exp"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::ln"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::log2"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::log10"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::powf"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x4::pow_f32x4"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::sin"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::cos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::tan"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::sin_cos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::asin"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::acos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::asin_acos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::atan"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::atan2"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::exp"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::ln"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::log2"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::log10"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::powf"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x4::pow_f64x4"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::sin"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::cos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::tan"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::sin_cos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::asin"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::acos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::asin_acos"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::atan"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::atan2"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::exp"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::ln"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::log2"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::log10"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::powf"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f64x2::pow_f64x2"
+reason = "wide evaluates it with a polynomial of nested mul_add, fused on targets with fma and not elsewhere (ALICE-Law G3), and its result is not alice-det-math's; use alice_det_math::simd or the Real trait"
+
+[[method]]
+path = "wide::f32x8::recip"
+reason = "target-dependent approximation: rcpps / rsqrtps (about 12 bits) under the sse / avx target features, an exact division elsewhere (ALICE-Law G3); use alice_det_math"
+
+[[method]]
+path = "wide::f32x8::recip_sqrt"
+reason = "target-dependent approximation: rcpps / rsqrtps (about 12 bits) under the sse / avx target features, an exact division elsewhere (ALICE-Law G3); use alice_det_math"
+
+[[method]]
+path = "wide::f32x4::recip"
+reason = "target-dependent approximation: rcpps / rsqrtps (about 12 bits) under the sse / avx target features, an exact division elsewhere (ALICE-Law G3); use alice_det_math"
+
+[[method]]
+path = "wide::f32x4::recip_sqrt"
+reason = "target-dependent approximation: rcpps / rsqrtps (about 12 bits) under the sse / avx target features, an exact division elsewhere (ALICE-Law G3); use alice_det_math"
 
 [[method]]
 path = "glam::Vec2::min"
@@ -510,6 +795,293 @@ path = "wide::f64x2::mul_neg_sub"
 [[form]]
 text = "ins.fma(a_fma, b, c)"
 path = "cranelift_codegen::ir::InstBuilder::fma"
+
+# glam's fused vector mul_add (ALICE-Law G3), one per type
+[[form]]
+text = "glam_vec2_a.mul_add("
+path = "glam::Vec2::mul_add"
+
+[[form]]
+text = "glam_vec3_a.mul_add("
+path = "glam::Vec3::mul_add"
+
+[[form]]
+text = "glam_vec3a_a.mul_add("
+path = "glam::Vec3A::mul_add"
+
+[[form]]
+text = "glam_vec4_a.mul_add("
+path = "glam::Vec4::mul_add"
+
+[[form]]
+text = "glam_dvec2_a.mul_add("
+path = "glam::DVec2::mul_add"
+
+[[form]]
+text = "glam_dvec3_a.mul_add("
+path = "glam::DVec3::mul_add"
+
+[[form]]
+text = "glam_dvec4_a.mul_add("
+path = "glam::DVec4::mul_add"
+
+# wide's transcendentals (fused polynomials inside, ALICE-Law G3), one per type and function
+[[form]]
+text = "f32x8_sin_arg.sin("
+path = "wide::f32x8::sin"
+
+[[form]]
+text = "f32x8_cos_arg.cos("
+path = "wide::f32x8::cos"
+
+[[form]]
+text = "f32x8_tan_arg.tan("
+path = "wide::f32x8::tan"
+
+[[form]]
+text = "f32x8_sin_cos_arg.sin_cos("
+path = "wide::f32x8::sin_cos"
+
+[[form]]
+text = "f32x8_asin_arg.asin("
+path = "wide::f32x8::asin"
+
+[[form]]
+text = "f32x8_acos_arg.acos("
+path = "wide::f32x8::acos"
+
+[[form]]
+text = "f32x8_asin_acos_arg.asin_acos("
+path = "wide::f32x8::asin_acos"
+
+[[form]]
+text = "f32x8_atan_arg.atan("
+path = "wide::f32x8::atan"
+
+[[form]]
+text = "f32x8_atan2_arg.atan2("
+path = "wide::f32x8::atan2"
+
+[[form]]
+text = "f32x8_exp_arg.exp("
+path = "wide::f32x8::exp"
+
+[[form]]
+text = "f32x8_ln_arg.ln("
+path = "wide::f32x8::ln"
+
+[[form]]
+text = "f32x8_log2_arg.log2("
+path = "wide::f32x8::log2"
+
+[[form]]
+text = "f32x8_log10_arg.log10("
+path = "wide::f32x8::log10"
+
+[[form]]
+text = "f32x8_powf_arg.powf("
+path = "wide::f32x8::powf"
+
+[[form]]
+text = "f32x8_pow_f32x8_arg.pow_f32x8("
+path = "wide::f32x8::pow_f32x8"
+
+[[form]]
+text = "f32x4_sin_arg.sin("
+path = "wide::f32x4::sin"
+
+[[form]]
+text = "f32x4_cos_arg.cos("
+path = "wide::f32x4::cos"
+
+[[form]]
+text = "f32x4_tan_arg.tan("
+path = "wide::f32x4::tan"
+
+[[form]]
+text = "f32x4_sin_cos_arg.sin_cos("
+path = "wide::f32x4::sin_cos"
+
+[[form]]
+text = "f32x4_asin_arg.asin("
+path = "wide::f32x4::asin"
+
+[[form]]
+text = "f32x4_acos_arg.acos("
+path = "wide::f32x4::acos"
+
+[[form]]
+text = "f32x4_asin_acos_arg.asin_acos("
+path = "wide::f32x4::asin_acos"
+
+[[form]]
+text = "f32x4_atan_arg.atan("
+path = "wide::f32x4::atan"
+
+[[form]]
+text = "f32x4_atan2_arg.atan2("
+path = "wide::f32x4::atan2"
+
+[[form]]
+text = "f32x4_exp_arg.exp("
+path = "wide::f32x4::exp"
+
+[[form]]
+text = "f32x4_ln_arg.ln("
+path = "wide::f32x4::ln"
+
+[[form]]
+text = "f32x4_log2_arg.log2("
+path = "wide::f32x4::log2"
+
+[[form]]
+text = "f32x4_log10_arg.log10("
+path = "wide::f32x4::log10"
+
+[[form]]
+text = "f32x4_powf_arg.powf("
+path = "wide::f32x4::powf"
+
+[[form]]
+text = "f32x4_pow_f32x4_arg.pow_f32x4("
+path = "wide::f32x4::pow_f32x4"
+
+[[form]]
+text = "f64x4_sin_arg.sin("
+path = "wide::f64x4::sin"
+
+[[form]]
+text = "f64x4_cos_arg.cos("
+path = "wide::f64x4::cos"
+
+[[form]]
+text = "f64x4_tan_arg.tan("
+path = "wide::f64x4::tan"
+
+[[form]]
+text = "f64x4_sin_cos_arg.sin_cos("
+path = "wide::f64x4::sin_cos"
+
+[[form]]
+text = "f64x4_asin_arg.asin("
+path = "wide::f64x4::asin"
+
+[[form]]
+text = "f64x4_acos_arg.acos("
+path = "wide::f64x4::acos"
+
+[[form]]
+text = "f64x4_asin_acos_arg.asin_acos("
+path = "wide::f64x4::asin_acos"
+
+[[form]]
+text = "f64x4_atan_arg.atan("
+path = "wide::f64x4::atan"
+
+[[form]]
+text = "f64x4_atan2_arg.atan2("
+path = "wide::f64x4::atan2"
+
+[[form]]
+text = "f64x4_exp_arg.exp("
+path = "wide::f64x4::exp"
+
+[[form]]
+text = "f64x4_ln_arg.ln("
+path = "wide::f64x4::ln"
+
+[[form]]
+text = "f64x4_log2_arg.log2("
+path = "wide::f64x4::log2"
+
+[[form]]
+text = "f64x4_log10_arg.log10("
+path = "wide::f64x4::log10"
+
+[[form]]
+text = "f64x4_powf_arg.powf("
+path = "wide::f64x4::powf"
+
+[[form]]
+text = "f64x4_pow_f64x4_arg.pow_f64x4("
+path = "wide::f64x4::pow_f64x4"
+
+[[form]]
+text = "f64x2_sin_arg.sin("
+path = "wide::f64x2::sin"
+
+[[form]]
+text = "f64x2_cos_arg.cos("
+path = "wide::f64x2::cos"
+
+[[form]]
+text = "f64x2_tan_arg.tan("
+path = "wide::f64x2::tan"
+
+[[form]]
+text = "f64x2_sin_cos_arg.sin_cos("
+path = "wide::f64x2::sin_cos"
+
+[[form]]
+text = "f64x2_asin_arg.asin("
+path = "wide::f64x2::asin"
+
+[[form]]
+text = "f64x2_acos_arg.acos("
+path = "wide::f64x2::acos"
+
+[[form]]
+text = "f64x2_asin_acos_arg.asin_acos("
+path = "wide::f64x2::asin_acos"
+
+[[form]]
+text = "f64x2_atan_arg.atan("
+path = "wide::f64x2::atan"
+
+[[form]]
+text = "f64x2_atan2_arg.atan2("
+path = "wide::f64x2::atan2"
+
+[[form]]
+text = "f64x2_exp_arg.exp("
+path = "wide::f64x2::exp"
+
+[[form]]
+text = "f64x2_ln_arg.ln("
+path = "wide::f64x2::ln"
+
+[[form]]
+text = "f64x2_log2_arg.log2("
+path = "wide::f64x2::log2"
+
+[[form]]
+text = "f64x2_log10_arg.log10("
+path = "wide::f64x2::log10"
+
+[[form]]
+text = "f64x2_powf_arg.powf("
+path = "wide::f64x2::powf"
+
+[[form]]
+text = "f64x2_pow_f64x2_arg.pow_f64x2("
+path = "wide::f64x2::pow_f64x2"
+
+# wide's target-dependent reciprocal approximations (ALICE-Law G3)
+[[form]]
+text = "f32x8_recip_arg.recip("
+path = "wide::f32x8::recip"
+
+[[form]]
+text = "f32x8_recip_sqrt_arg.recip_sqrt("
+path = "wide::f32x8::recip_sqrt"
+
+[[form]]
+text = "f32x4_recip_arg.recip("
+path = "wide::f32x4::recip"
+
+[[form]]
+text = "f32x4_recip_sqrt_arg.recip_sqrt("
+path = "wide::f32x4::recip_sqrt"
 
 [[form]]
 text = "v.min(w)"
