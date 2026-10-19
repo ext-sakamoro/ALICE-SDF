@@ -834,7 +834,11 @@ fn cmd_texture_fit(
     )]
     let start = std::time::Instant::now();
     let result = match fit_texture(&input, &config) {
-        Ok(r) => r,
+        Ok(r) => {
+            let (r, semantics) = r.into_parts();
+            println!("  Image semantics: {semantics:?}");
+            r
+        }
         Err(e) => {
             eprintln!("Error: {}", e);
             std::process::exit(1);

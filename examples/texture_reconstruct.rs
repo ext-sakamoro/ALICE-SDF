@@ -15,8 +15,8 @@
 
 use alice_sdf::provenance::StoredSemantics;
 use alice_sdf::texture::{
-    eval_octave, fit_texture, load_texture_fit, load_texture_fit_unverified, reconstruct,
-    save_texture_fit, TextureFitConfig,
+    eval_octave, fit_texture, fit_texture_pinned, load_texture_fit, load_texture_fit_unverified,
+    reconstruct, save_texture_fit, TextureFitConfig,
 };
 
 fn main() {
@@ -38,7 +38,13 @@ fn main() {
         .save(&path)
         .unwrap();
 
-    let fit = fit_texture(&path, &TextureFitConfig::default()).expect("fit");
+    // an image from outside this crate carries no semantics identifier: it is fitted and marked
+    // Unpinned, and the pinned variant refuses it
+    let (fit, status) = fit_texture(&path, &TextureFitConfig::default())
+        .expect("fit")
+        .into_parts();
+    println!("image semantics: {status:?}");
+    assert!(fit_texture_pinned(&path, &TextureFitConfig::default()).is_err());
     std::fs::remove_file(&path).ok();
     let octaves: usize = fit.octaves.iter().map(Vec::len).sum();
     println!(

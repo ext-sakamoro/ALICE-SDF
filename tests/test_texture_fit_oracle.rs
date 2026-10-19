@@ -191,7 +191,10 @@ fn flat_image_fits_with_no_octaves_and_the_bias_alone() {
     let (w, h) = (48u32, 40u32);
     let pixels = vec![0.6f32; (w * h) as usize];
     let path = temp_png("flat.png", w, h, &pixels);
-    let r = fit_texture(&path, &TextureFitConfig::default()).unwrap();
+    let r = fit_texture(&path, &TextureFitConfig::default())
+        .unwrap()
+        .into_parts()
+        .0;
     assert_eq!(r.width, w);
     assert_eq!(r.height, h);
     assert_eq!(r.channels, 1);
@@ -238,7 +241,7 @@ fn synthesized_single_octave_is_recovered_and_metrics_are_honest() {
         max_octaves: 3,
         ..TextureFitConfig::default()
     };
-    let r = fit_texture(&path, &config).unwrap();
+    let r = fit_texture(&path, &config).unwrap().into_parts().0;
     let n = r.octaves[0].len();
     assert!(n >= 1, "no octave fitted");
 
@@ -305,7 +308,7 @@ fn more_octaves_never_raise_the_residual() {
             target_psnr_db: 100.0, // never stop early
             ..TextureFitConfig::default()
         };
-        let r = fit_texture(&path, &config).unwrap();
+        let r = fit_texture(&path, &config).unwrap().into_parts().0;
         eprintln!(
             "max_octaves {}: fitted {} nmse {:.4} psnr {:.2}",
             max_octaves,
@@ -340,8 +343,8 @@ fn fit_is_deterministic() {
         iterations_per_octave: 200,
         ..TextureFitConfig::default()
     };
-    let a = fit_texture(&path, &config).unwrap();
-    let b = fit_texture(&path, &config).unwrap();
+    let a = fit_texture(&path, &config).unwrap().into_parts().0;
+    let b = fit_texture(&path, &config).unwrap().into_parts().0;
     assert_eq!(a.psnr_db.to_bits(), b.psnr_db.to_bits());
     assert_eq!(a.octaves[0].len(), b.octaves[0].len());
     for (x, y) in a.octaves[0].iter().zip(&b.octaves[0]) {
@@ -371,8 +374,14 @@ fn padded_sample_grid_fits_as_well_as_an_aligned_one() {
         max_octaves: 1,
         ..TextureFitConfig::default()
     };
-    let padded = fit_texture(&temp_png("pad45.png", 45, 45, &make(45, 45)), &config).unwrap();
-    let aligned = fit_texture(&temp_png("pad48.png", 48, 48, &make(48, 48)), &config).unwrap();
+    let padded = fit_texture(&temp_png("pad45.png", 45, 45, &make(45, 45)), &config)
+        .unwrap()
+        .into_parts()
+        .0;
+    let aligned = fit_texture(&temp_png("pad48.png", 48, 48, &make(48, 48)), &config)
+        .unwrap()
+        .into_parts()
+        .0;
     eprintln!(
         "padded nmse {:.4} aligned nmse {:.4}",
         padded.nmse, aligned.nmse
@@ -408,7 +417,7 @@ fn generated_shaders_validate_with_naga() {
         iterations_per_octave: 100,
         ..TextureFitConfig::default()
     };
-    let r = fit_texture(&path, &config).unwrap();
+    let r = fit_texture(&path, &config).unwrap().into_parts().0;
     assert_eq!(
         r.octaves[0].len(),
         2,

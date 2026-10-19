@@ -3076,3 +3076,301 @@ fn ogawa(meta: &str) -> Vec<u8> {
     }
     b
 }
+
+// ---------------------------------------------------------------------------------------------
+// G8: the image readers and the heightmap PNG writer
+//
+// A 16 x 12 grey image, level (13 x + 7 z) mod 256, encoded by the `image` crate (0.25) as a
+// paint tool would write it (no identifier), and the heightmap writer's output for it:
+//   heightmap_plain.png    34151b0d0efbd9f7fa65ccc76299d474e00ad48ddfe2b40ecfed7916f0db8098
+//   heightmap_plain.jpg    3b8303187e7a141798d8c3a8c72b26da9795da077b87fcc00856a717afc7dbcd
+//   heightmap_stamped.png  96750b1ece756198e57729d1728d1de77667954f0393663b61eaece9efef42fa
+//                          Heightmap::from_image_bytes(plain.png, &HeightmapImageConfig::new(
+//                          40.0, 16.0, 12.0)).to_png(..) (16-bit grey, the identifier in tEXt)
+// ---------------------------------------------------------------------------------------------
+
+/// The CRC-32 of a PNG chunk (its type and data), for building malformed images in the tests
+#[cfg(feature = "image")]
+fn png_chunk_crc(kind: &[u8], data: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for &b in kind.iter().chain(data) {
+        crc ^= u32::from(b);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 {
+                (crc >> 1) ^ 0xEDB8_8320
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    !crc
+}
+
+/// `png` with a chunk of `kind` and `data` inserted after IHDR (the signature and IHDR are 33 bytes)
+#[cfg(feature = "image")]
+fn with_png_chunk(png: &[u8], kind: [u8; 4], data: &[u8]) -> Vec<u8> {
+    let mut chunk = u32::try_from(data.len()).unwrap().to_be_bytes().to_vec();
+    chunk.extend_from_slice(&kind);
+    chunk.extend_from_slice(data);
+    chunk.extend_from_slice(&png_chunk_crc(&kind, data).to_be_bytes());
+    [&png[..33], &chunk, &png[33..]].concat()
+}
+
+/// `jpeg` with a comment segment (`COM`) of `payload` inserted after the start of image
+#[cfg(feature = "image")]
+fn with_jpeg_comment(jpeg: &[u8], payload: &[u8]) -> Vec<u8> {
+    let mut seg = vec![0xFF, 0xFE];
+    seg.extend_from_slice(&u16::try_from(payload.len() + 2).unwrap().to_be_bytes());
+    seg.extend_from_slice(payload);
+    [&jpeg[..2], &seg, &jpeg[2..]].concat()
+}
+
+/// The heightmap images: `Heightmap::to_png` stores the identifier in a `tEXt` chunk before the
+/// image data (`tests/fixtures/provenance/heightmap_stamped.png` pins the bytes); the readers
+/// (`from_image_bytes` / `from_image`) read this crate's identifier as Current, a reproduced
+/// earlier one as VerifiedPrevious, refuse another (naming both), and read an image without one
+/// (a paint tool's PNG or JPEG) as Unpinned, which the `*_pinned` readers refuse; a malformed or
+/// repeated identifier, the key in a compressed text chunk, a cut chunk and a JPEG comment that is
+/// not exactly the tagged form are invalid, never read as unstamped
+/// (writer name as the scanner reads it, what it writes) for the image writer; the test below
+/// writes it, reads the identifier back and checks a mismatch
+#[cfg(all(feature = "image", feature = "terrain"))]
+const IMAGE_WRITERS: &[(&str, &str)] = &[(
+    "src/terrain/heightmap.rs::to_png",
+    "16-bit grey PNG heightmap",
+)];
+
+#[cfg(all(feature = "image", feature = "terrain"))]
+#[test]
+fn heightmap_images_carry_and_check_the_identifier() {
+    use alice_sdf::terrain::{Heightmap, HeightmapImageConfig};
+    assert_eq!(IMAGE_WRITERS.len(), 1, "{IMAGE_WRITERS:?}");
+    let cfg = HeightmapImageConfig::new(40.0, 16.0, 12.0);
+    let invalid = |bytes: &[u8]| {
+        assert!(
+            matches!(
+                Heightmap::from_image_bytes(bytes, &cfg).map(|_| ()),
+                Err(io::IoError::InvalidFormat(_))
+            ),
+            "read as valid"
+        );
+        assert!(matches!(
+            provenance::from_bytes(bytes),
+            Err(ProvenanceError::Unreadable(_))
+        ));
+    };
+
+    // a paint tool's 8-bit grey PNG and JPEG: read, marked Unpinned; the pinned readers refuse
+    let plain = std::fs::read(fixture("heightmap_plain.png")).unwrap();
+    let jpeg = std::fs::read(fixture("heightmap_plain.jpg")).unwrap();
+    for (bytes, format) in [(&plain, "PNG"), (&jpeg, "JPEG")] {
+        let (hm, status) = Heightmap::from_image_bytes(bytes, &cfg)
+            .unwrap()
+            .into_parts();
+        assert_eq!(status, StoredSemantics::Unpinned);
+        assert_eq!((hm.width, hm.depth), (16, 12));
+        assert!(matches!(
+            Heightmap::from_image_bytes_pinned(bytes, &cfg),
+            Err(io::IoError::Unpinned { format: f }) if f == format
+        ));
+        assert!(matches!(
+            provenance::from_bytes(bytes),
+            Err(ProvenanceError::Missing { format: f }) if f == format
+        ));
+    }
+    let (hm, _) = Heightmap::from_image_bytes(&plain, &cfg)
+        .unwrap()
+        .into_parts();
+
+    // this crate's writer: 16-bit grey, the identifier before the image data, pinned bytes
+    let stamped = hm.to_png(&cfg).unwrap();
+    assert_eq!(
+        stamped,
+        std::fs::read(fixture("heightmap_stamped.png")).unwrap()
+    );
+    let key_at = stamped
+        .windows(provenance::KEY.len())
+        .position(|w| w == provenance::KEY.as_bytes())
+        .unwrap();
+    let idat_at = stamped.windows(4).position(|w| w == b"IDAT").unwrap();
+    assert!(
+        key_at < idat_at,
+        "the identifier is written before the image data"
+    );
+    assert_eq!(provenance::from_bytes(&stamped).unwrap(), Provenance::sdf());
+    let (back, status) = Heightmap::from_image_bytes(&stamped, &cfg)
+        .unwrap()
+        .into_parts();
+    assert_eq!(status, StoredSemantics::Current);
+    // an 8-bit level p is stored as 257·p, read back as the same height to the 16-bit step
+    for (a, b) in back.heights.iter().zip(&hm.heights) {
+        assert!((a - b).abs() <= 40.0 / 65535.0, "{a} {b}");
+    }
+    // heights read from such a PNG are written back to the same bytes
+    assert_eq!(back.to_png(&cfg).unwrap(), stamped);
+    let path = std::env::temp_dir().join(format!("alice_sdf_e4_{}.png", std::process::id()));
+    std::fs::write(&path, &stamped).unwrap();
+    let pinned = Heightmap::from_image_pinned(&path, &cfg).unwrap();
+    assert_eq!(
+        Heightmap::from_image(&path, &cfg).unwrap().semantics(),
+        StoredSemantics::Current
+    );
+    std::fs::remove_file(&path).ok();
+    assert_eq!(pinned.heights, back.heights);
+
+    // a reproduced earlier identifier is read; another is refused, naming both
+    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let prev = hm.to_png_with_provenance(&cfg, &earlier).unwrap();
+    assert_eq!(
+        Heightmap::from_image_bytes(&prev, &cfg)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::VerifiedPrevious(earlier)
+    );
+    let foreign = hm.to_png_with_provenance(&cfg, &caller_id()).unwrap();
+    for result in [
+        Heightmap::from_image_bytes(&foreign, &cfg).map(|_| ()),
+        Heightmap::from_image_bytes_pinned(&foreign, &cfg).map(|_| ()),
+    ] {
+        match result {
+            Err(io::IoError::SemanticsMismatch {
+                format: "PNG",
+                stored,
+                expected,
+            }) => {
+                assert_eq!((stored, expected), (caller_id(), Provenance::sdf()));
+            }
+            other => panic!("another identifier was read: {other:?}"),
+        }
+    }
+
+    // malformed PNGs: a changed digit (the CRC no longer matches), a value that is not 64 hex
+    // digits, a second key chunk, the key in zTXt / iTXt (also on an unstamped image), a cut file
+    let mut flipped = stamped.clone();
+    let digit = key_at + provenance::KEY.len() + 1;
+    flipped[digit] = if flipped[digit] == b'0' { b'1' } else { b'0' };
+    invalid(&flipped);
+    let key = provenance::KEY.as_bytes();
+    let tagged = |value: &[u8]| [key, b"\0", value].concat();
+    invalid(&with_png_chunk(&plain, *b"tEXt", &tagged(b"not hex")));
+    // the keyword alone, without the NUL separator and a value
+    invalid(&with_png_chunk(&plain, *b"tEXt", key));
+    invalid(&with_png_chunk(&plain, *b"tEXt", &tagged(&[b'a'; 63])));
+    invalid(&with_png_chunk(
+        &stamped,
+        *b"tEXt",
+        &tagged(Provenance::sdf().hex().as_bytes()),
+    ));
+    invalid(&with_png_chunk(
+        &plain,
+        *b"zTXt",
+        &[key, b"\0\0", b"x"].concat(),
+    ));
+    invalid(&with_png_chunk(
+        &plain,
+        *b"iTXt",
+        &[key, b"\0\0\0\0\0", b"x"].concat(),
+    ));
+    // the key in a text chunk other than tEXt is refused even when its value would read as an
+    // identifier (only the uncompressed tEXt form is the stored one)
+    for kind in [*b"zTXt", *b"iTXt"] {
+        invalid(&with_png_chunk(
+            &plain,
+            kind,
+            &tagged(Provenance::sdf().hex().as_bytes()),
+        ));
+    }
+    invalid(&stamped[..stamped.len() - 12]); // no IEND
+    invalid(&stamped[..idat_at + 10]); // cut inside the image data
+    let mut overrun = stamped;
+    overrun[33..37].copy_from_slice(&u32::MAX.to_be_bytes());
+    invalid(&overrun);
+    // the key in another chunk's text is not the key chunk
+    let unrelated = with_png_chunk(&plain, *b"tEXt", &[b"Comment\0".as_slice(), key].concat());
+    assert_eq!(
+        Heightmap::from_image_bytes(&unrelated, &cfg)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::Unpinned
+    );
+
+    // JPEG: the comment segment before the start of scan
+    let tag = format!("{}={}", provenance::KEY, Provenance::sdf().hex());
+    let jpeg_stamped = with_jpeg_comment(&jpeg, tag.as_bytes());
+    assert_eq!(
+        Heightmap::from_image_bytes(&jpeg_stamped, &cfg)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::Current
+    );
+    let jpeg_foreign = with_jpeg_comment(
+        &jpeg,
+        format!("{}={}", provenance::KEY, caller_id().hex()).as_bytes(),
+    );
+    assert!(matches!(
+        Heightmap::from_image_bytes(&jpeg_foreign, &cfg).map(|_| ()),
+        Err(io::IoError::SemanticsMismatch { format: "JPEG", .. })
+    ));
+    invalid(&with_jpeg_comment(&jpeg_stamped, tag.as_bytes()));
+    invalid(&with_jpeg_comment(
+        &jpeg,
+        format!("{}=zz", provenance::KEY).as_bytes(),
+    ));
+    invalid(&with_jpeg_comment(&jpeg, format!("{} ", tag).as_bytes()));
+    let mut seg_overrun = with_jpeg_comment(&jpeg, b"hello");
+    seg_overrun[4..6].copy_from_slice(&u16::MAX.to_be_bytes());
+    invalid(&seg_overrun);
+    invalid(&jpeg[..20]);
+}
+
+/// The texture fit reads the identifier of its image as the heightmap readers do: an image
+/// without one is fitted and marked Unpinned (refused by `fit_texture_pinned`), this crate's PNG
+/// is Current, another identifier is refused naming both
+#[cfg(all(feature = "texture-fit", feature = "terrain"))]
+#[test]
+fn texture_fit_checks_the_image_identifier() {
+    use alice_sdf::terrain::{Heightmap, HeightmapImageConfig};
+    use alice_sdf::texture::{fit_texture, fit_texture_pinned, TextureFitConfig, TextureFitError};
+    let config = TextureFitConfig {
+        max_octaves: 1,
+        iterations_per_octave: 20,
+        ..TextureFitConfig::default()
+    };
+    let plain = fixture("heightmap_plain.png");
+    let (fit, status) = fit_texture(&plain, &config).unwrap().into_parts();
+    assert_eq!(status, StoredSemantics::Unpinned);
+    assert_eq!((fit.width, fit.height), (16, 12));
+    assert!(matches!(
+        fit_texture_pinned(&plain, &config),
+        Err(TextureFitError::Io(io::IoError::Unpinned { format: "PNG" }))
+    ));
+
+    let cfg = HeightmapImageConfig::default();
+    let hm = Heightmap::from_image_bytes(&std::fs::read(&plain).unwrap(), &cfg)
+        .unwrap()
+        .into_parts()
+        .0;
+    let dir = std::env::temp_dir();
+    let current = dir.join(format!("alice_sdf_e4_fit_{}.png", std::process::id()));
+    std::fs::write(&current, hm.to_png(&cfg).unwrap()).unwrap();
+    assert_eq!(
+        fit_texture(&current, &config).unwrap().semantics(),
+        StoredSemantics::Current
+    );
+    assert!(fit_texture_pinned(&current, &config).is_ok());
+    std::fs::write(
+        &current,
+        hm.to_png_with_provenance(&cfg, &caller_id()).unwrap(),
+    )
+    .unwrap();
+    let refused = fit_texture(&current, &config).map(|_| ());
+    std::fs::remove_file(&current).ok();
+    match refused {
+        Err(TextureFitError::Io(io::IoError::SemanticsMismatch {
+            stored, expected, ..
+        })) => {
+            assert_eq!((stored, expected), (caller_id(), Provenance::sdf()));
+        }
+        other => panic!("another identifier was read: {other:?}"),
+    }
+}

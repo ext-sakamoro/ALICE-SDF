@@ -17,7 +17,7 @@ use crate::compiled::real::law_max_f32;
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
-use crate::provenance::{mesh_import_verdict, Checked};
+use crate::provenance::{import_verdict, Checked};
 use crate::provenance::{Provenance, Stamp};
 use crate::unordered::UnorderedMap;
 use std::collections::BTreeMap;
@@ -1117,7 +1117,7 @@ pub fn import_fbx_pinned(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
 
 fn import_fbx_with(path: &Path, allow_unpinned: bool) -> Result<Checked<Mesh>, IoError> {
     let data = std::fs::read(path)?;
-    let semantics = mesh_import_verdict(&data, "FBX", allow_unpinned)?;
+    let semantics = import_verdict(&data, "FBX", allow_unpinned)?;
     parse_fbx(&data).map(|value| Checked::new(value, semantics))
 }
 
@@ -1318,7 +1318,7 @@ fn import_fbx_full_with(
     allow_unpinned: bool,
 ) -> Result<Checked<ImportedFbx>, IoError> {
     let data = std::fs::read(path)?;
-    let semantics = mesh_import_verdict(&data, "FBX", allow_unpinned)?;
+    let semantics = import_verdict(&data, "FBX", allow_unpinned)?;
     parse_fbx_full(&data).map(|value| Checked::new(value, semantics))
 }
 

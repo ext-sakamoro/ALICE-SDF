@@ -15,7 +15,10 @@
 //! - Subsampled grid stored in SoA layout for optimal SIMD loads
 //! - Residual subtraction parallelized row-wise with rayon + SIMD
 
+use super::TextureFitError;
 use crate::compiled::real::LawMinMax;
+use crate::io::IoError;
+use crate::provenance::{image_format, import_verdict, Checked};
 use rayon::prelude::*;
 use std::path::Path;
 use wide::f32x8;
@@ -92,18 +95,53 @@ impl SubsampleGrid {
     }
 }
 
-/// Fit a texture image to procedural noise octaves.
+/// Fit a texture image to procedural noise octaves, with what is known about the arithmetic the
+/// image was written under
 ///
-/// Reads an image file (PNG/JPG), converts to grayscale, and fits
-/// a sum of noise octaves to approximate it.
-pub fn fit_texture(path: &Path, config: &TextureFitConfig) -> Result<TextureFitResult, String> {
-    let img = image::open(path).map_err(|e| format!("Failed to load image: {}", e))?;
+/// Reads an image file (PNG/JPG), converts to grayscale, and fits a sum of noise octaves to
+/// approximate it. The identifier is read from the same bytes before the pixels are decoded, as
+/// [`crate::terrain::Heightmap::from_image_bytes`] reads it: an image without one is fitted and
+/// marked [`crate::provenance::StoredSemantics::Unpinned`].
+///
+/// # Errors
+///
+/// [`TextureFitError::Io`]: the file cannot be read, the image is stamped under another identifier
+/// ([`IoError::SemanticsMismatch`], naming both), the identifier is malformed or the pixels cannot
+/// be decoded ([`IoError::InvalidFormat`]); [`TextureFitError::Fit`] when the fit fails.
+pub fn fit_texture(
+    path: &Path,
+    config: &TextureFitConfig,
+) -> Result<Checked<TextureFitResult>, TextureFitError> {
+    let bytes = std::fs::read(path).map_err(IoError::from)?;
+    let semantics = import_verdict(&bytes, image_format(&bytes), true)?;
+    Ok(Checked::new(fit_image(&bytes, config)?, semantics))
+}
+
+/// As [`fit_texture`], refusing an image without a semantics identifier
+///
+/// # Errors
+///
+/// [`TextureFitError::Io`] with [`IoError::Unpinned`] for an image without an identifier, and the
+/// errors of [`fit_texture`].
+pub fn fit_texture_pinned(
+    path: &Path,
+    config: &TextureFitConfig,
+) -> Result<TextureFitResult, TextureFitError> {
+    let bytes = std::fs::read(path).map_err(IoError::from)?;
+    import_verdict(&bytes, image_format(&bytes), false)?;
+    fit_image(&bytes, config)
+}
+
+/// Fits the pixels of an image the caller has judged
+fn fit_image(bytes: &[u8], config: &TextureFitConfig) -> Result<TextureFitResult, TextureFitError> {
+    let img = image::load_from_memory(bytes)
+        .map_err(|e| IoError::InvalidFormat(format!("image: {e}")))?;
     let gray = img.to_luma32f();
     let (width, height) = gray.dimensions();
     let pixels: Vec<f32> = gray.as_raw().clone();
 
-    let (bias, octaves, psnr, nmse) =
-        fit_channel(&pixels, width as usize, height as usize, config)?;
+    let (bias, octaves, psnr, nmse) = fit_channel(&pixels, width as usize, height as usize, config)
+        .map_err(TextureFitError::Fit)?;
 
     Ok(TextureFitResult {
         width,

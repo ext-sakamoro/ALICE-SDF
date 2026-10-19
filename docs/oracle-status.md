@@ -6,22 +6,22 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 917 |
+| 🟢 Not ignored | 919 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **917** |
+| **Total** | **919** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (917)
+## 🟢 Not ignored (919)
 
 Per-file counts (the test names are in `tests/`):
 
 | File | Tests |
 |------|-------|
-| `test_provenance.rs` | 44 |
+| `test_provenance.rs` | 46 |
 | `test_terrain_destruction_oracle.rs` | 28 |
 | `test_gi_volume_oracle.rs` | 23 |
 | `test_codec_bridge_oracle.rs` | 22 |

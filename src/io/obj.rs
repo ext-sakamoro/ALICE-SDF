@@ -8,7 +8,7 @@
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
-use crate::provenance::{mesh_import_verdict, Checked};
+use crate::provenance::{import_verdict, Checked};
 use crate::provenance::{Provenance, Stamp};
 use std::io::Write;
 use std::path::Path;
@@ -295,7 +295,7 @@ pub fn import_obj_pinned(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
 
 fn import_obj_with(path: &Path, allow_unpinned: bool) -> Result<Checked<Mesh>, IoError> {
     let data = std::fs::read(path)?;
-    let semantics = mesh_import_verdict(&data, "OBJ", allow_unpinned)?;
+    let semantics = import_verdict(&data, "OBJ", allow_unpinned)?;
     parse_obj(&data).map(|value| Checked::new(value, semantics))
 }
 

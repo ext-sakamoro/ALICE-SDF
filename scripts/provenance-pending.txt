@@ -5,7 +5,7 @@
 # tests/test_provenance.rs has its round-trip entry; G8 passes when no line is left
 # `expected-writers` is the number of public writers found; change it only with a new or removed writer
 
-expected-writers 63
+expected-writers 64
 
 src/io/nanite.rs::export_nanite
 src/io/nanite.rs::export_nanite_hlsl_material

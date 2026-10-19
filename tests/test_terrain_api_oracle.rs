@@ -181,10 +181,13 @@ mod image_oracle {
     fn grey_pixels_map_linearly_to_height() {
         let (bytes, pixels) = png(7, 5);
         let cfg = HeightmapImageConfig::new(51.0, 70.0, 25.0);
-        let from_bytes = Heightmap::from_image_bytes(&bytes, &cfg).unwrap();
+        let (from_bytes, status) = Heightmap::from_image_bytes(&bytes, &cfg)
+            .unwrap()
+            .into_parts();
+        assert_eq!(status, alice_sdf::provenance::StoredSemantics::Unpinned);
         let path = std::env::temp_dir().join(format!("alice_sdf_hm_{}.png", std::process::id()));
         std::fs::write(&path, &bytes).unwrap();
-        let from_file = Heightmap::from_image(&path, &cfg).unwrap();
+        let from_file = Heightmap::from_image(&path, &cfg).unwrap().into_parts().0;
         std::fs::remove_file(&path).ok();
         for hm in [&from_bytes, &from_file] {
             assert_eq!((hm.width, hm.depth), (7, 5));
@@ -197,7 +200,10 @@ mod image_oracle {
             }
         }
         // defaults: world size in pixels, 255 maps to 100
-        let d = Heightmap::from_image_bytes(&bytes, &HeightmapImageConfig::default()).unwrap();
+        let d = Heightmap::from_image_bytes(&bytes, &HeightmapImageConfig::default())
+            .unwrap()
+            .into_parts()
+            .0;
         assert_eq!((d.world_width, d.world_depth), (7.0, 5.0));
         assert_eq!(d.get_height(0, 0), 0.0);
         assert!(Heightmap::from_image_bytes(b"not an image", &cfg).is_err());

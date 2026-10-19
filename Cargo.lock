@@ -117,6 +117,7 @@ dependencies = [
  "metal",
  "naga",
  "numpy",
+ "png",
  "pollster",
  "pyo3",
  "rayon",

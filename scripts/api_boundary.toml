@@ -17,7 +17,6 @@ parsers = [
   "naga front/glsl/impl#[Frontend]parse().",
   "wgpu api/device/impl#[Device]create_shader_module().",
   "image images/dynimage/load_from_memory().",
-  "image images/dynimage/open().",
   "alice-codec rans/impl#[`RansDecoder<'a>`]decode_n().",
   "libasp packet/impl#[AspPacket]from_bytes().",
 ]
@@ -26,7 +25,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 763 items (0 Linux-only): 70 handshake, 684 local, 9 pending (G8). Groups (count, decision):
+# 768 items (0 Linux-only): 76 handshake, 686 local, 6 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -101,7 +100,9 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  local: returns the GPU adapter's name and backend as text
 #      2  local: compiles a tree of this process to machine code
 #     19  local: names, labels or asset paths of authored settings
-#      3  pending: G8, the image is decoded from bytes made outside this call (an ALICE writer such as heatmap_to_rgba or a paint tool) and carries no identifier, so it cannot be read as Unpinned
+#      4  handshake: heightmap_images_carry_and_check_the_identifier
+#      2  handshake: texture_fit_checks_the_image_identifier
+#      2  local: writes this build's own heights to a PNG under the identifier the caller gives (this crate's by default)
 #      3  local: renders this build's own values to pixels
 #      1  local: returns the schema description text
 #      2  local: the FFI's last error message
@@ -985,10 +986,19 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::Timeline::new" = "local: names, labels or asset paths of authored settings"
 "fn::Track::new" = "local: names, labels or asset paths of authored settings"
 
-# 3 pending
-"fn::Heightmap::from_image" = "pending: G8, the image is decoded from bytes made outside this call (an ALICE writer such as heatmap_to_rgba or a paint tool) and carries no identifier, so it cannot be read as Unpinned"
-"fn::Heightmap::from_image_bytes" = "pending: G8, the image is decoded from bytes made outside this call (an ALICE writer such as heatmap_to_rgba or a paint tool) and carries no identifier, so it cannot be read as Unpinned"
-"fn::texture::fitting::fit_texture" = "pending: G8, the image is decoded from bytes made outside this call (an ALICE writer such as heatmap_to_rgba or a paint tool) and carries no identifier, so it cannot be read as Unpinned"
+# 4 handshake
+"fn::Heightmap::from_image" = "handshake: heightmap_images_carry_and_check_the_identifier"
+"fn::Heightmap::from_image_bytes" = "handshake: heightmap_images_carry_and_check_the_identifier"
+"fn::Heightmap::from_image_bytes_pinned" = "handshake: heightmap_images_carry_and_check_the_identifier"
+"fn::Heightmap::from_image_pinned" = "handshake: heightmap_images_carry_and_check_the_identifier"
+
+# 2 handshake
+"fn::texture::fitting::fit_texture" = "handshake: texture_fit_checks_the_image_identifier"
+"fn::texture::fitting::fit_texture_pinned" = "handshake: texture_fit_checks_the_image_identifier"
+
+# 2 local
+"fn::Heightmap::to_png" = "local: writes this build's own heights to a PNG under the identifier the caller gives (this crate's by default)"
+"fn::Heightmap::to_png_with_provenance" = "local: writes this build's own heights to a PNG under the identifier the caller gives (this crate's by default)"
 
 # 3 local
 "fn::heatmap::heatmap_to_rgba" = "local: renders this build's own values to pixels"
@@ -1076,7 +1086,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "js-sys" = "JavaScript bindings of the wasm module; values come from the page in the same process"
 "log" = "logging facade"
 "numpy" = "NumPy arrays passed in the same process to the Python binding"
-"pollster" = "blocks on futures of the GPU code"
+"png" = "only its encoder is used, to write this crate's own heightmap as a PNG (Heightmap::to_png); PNG input is decoded by image, which is in parser_crates"
+"pollster" ="blocks on futures of the GPU code"
 "pyo3" = "the Python binding framework; values come from the interpreter in the same process"
 "rayon" = "data parallelism over this crate's own work"
 "sha2" = "hashes bytes this crate already holds (the .splat file it read or wrote) to compare with its sidecar; it parses no input"

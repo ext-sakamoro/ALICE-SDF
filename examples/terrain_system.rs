@@ -9,6 +9,7 @@
 //! Author: Moroya Sakamoto
 
 use alice_sdf::eval::eval;
+use alice_sdf::provenance::StoredSemantics;
 use alice_sdf::terrain::caves::generate_chamber;
 use alice_sdf::terrain::{
     generate_cave_sdf, terrain_sdf, CaveConfig, ClipmapLevel, ClipmapMesh, ClipmapTerrain,
@@ -35,12 +36,37 @@ fn main() {
     img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
         .unwrap();
     let cfg = HeightmapImageConfig::new(tc.height_scale, tc.width, tc.depth);
-    let from_png = Heightmap::from_image_bytes(&png, &cfg).unwrap();
-    let path = std::env::temp_dir().join("alice_sdf_terrain_system.png");
+    // a paint tool's image carries no semantics identifier: it is read and marked Unpinned
+    let (from_png, status) = Heightmap::from_image_bytes(&png, &cfg)
+        .unwrap()
+        .into_parts();
+    assert_eq!(status, StoredSemantics::Unpinned);
+    assert!(Heightmap::from_image_bytes_pinned(&png, &cfg).is_err());
+    let path = std::env::temp_dir().join(format!(
+        "alice_sdf_terrain_system_{}.png",
+        std::process::id()
+    ));
     std::fs::write(&path, &png).unwrap();
-    let from_file = Heightmap::from_image(&path, &cfg).unwrap();
-    std::fs::remove_file(&path).ok();
+    let (from_file, _) = Heightmap::from_image(&path, &cfg).unwrap().into_parts();
     assert_eq!(from_png.get_height(31, 0), from_file.get_height(31, 0));
+    // written back as a 16-bit PNG under this crate's identifier, it is read pinned
+    let stamped = from_png.to_png(&cfg).unwrap();
+    std::fs::write(&path, &stamped).unwrap();
+    let pinned = Heightmap::from_image_pinned(&path, &cfg).unwrap();
+    std::fs::remove_file(&path).ok();
+    // the 16-bit levels hold an 8-bit level p as 257·p, so the heights agree to one 16-bit step
+    // and the heights read back write the same bytes again
+    let step = cfg.height_scale / 65535.0;
+    assert!(pinned
+        .heights
+        .iter()
+        .zip(&from_png.heights)
+        .all(|(a, b)| (a - b).abs() <= step));
+    assert_eq!(pinned.to_png(&cfg).unwrap(), stamped);
+    println!(
+        "16-bit PNG with the identifier: {} bytes, read back pinned",
+        stamped.len()
+    );
     println!(
         "png heightmap {}x{}: height at column 31 = {:.4} (closed form 248·{}/255 = {:.4})",
         from_png.width,
