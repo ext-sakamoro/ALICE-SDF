@@ -311,7 +311,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 |---|---|---|
 | G1 no-libm-direct | 適合 | every feature is linted with -D warnings: the python, godot and wasm modules had lint debt that no run compiled (use_self, missing_const_for_fn, missing docs, … |
 | G2 ieee-max-min | 適合 | 96 vector and wasm sites moved to the Law helpers (92 under the Linux feature set, 4 f32 sites in src/wasm.rs). Site classes: (a) bounds built from points … |
-| G3 no-outer-fneg-of-fma | 未確認 | unverified: the n/a rests on a scan of src/ by hand and det_math_guard.py's directory list, with no canary for the whole library and wide::f32x8::mul_add … |
+| G3 no-outer-fneg-of-fma | 未確認 | unverified until the checks in its evidence are on main and independently verified, then n/a (the library computes no fused multiply-add on any path: Rust … |
 | G4 debug-release-arch-goldens | 適合 |  |
 | G5 release-profile-test-leg | 適合 |  |
 | G6 semantics-id | 適合 | the identifier does not depend on the enabled features: the physics bridge's values cross into alice-physics, which is G7's boundary, not a pin of this crate. … |

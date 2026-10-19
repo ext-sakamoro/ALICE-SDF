@@ -9,7 +9,8 @@ header = """\
 # The library code (`cargo clippy --lib`, CLIPPY_CONF_DIR=.github/clippy-lib)
 # also may not call f32 / f64 / f32x8 max and min; tests, examples and benches use the
 # root configuration; nor name or iterate HashMap / HashSet (ALICE-Law G13); nor read a
-# stored form with serde_json / bincode outside a reviewed site (ALICE-Law G8)
+# stored form with serde_json / bincode outside a reviewed site (ALICE-Law G8); nor call
+# wide's fused multiply-add methods or the JIT's fma instruction (ALICE-Law G3)
 """
 
 [[method]]
@@ -35,6 +36,74 @@ reason = "the sign of an equal pair of zeros is unspecified and differs between 
 [[method]]
 path = "wide::f32x8::min"
 reason = "the sign of an equal pair of zeros is unspecified and differs between targets; use law_max_f32 / law_min_f32, or .law_max / .law_min / .law_clamp / .law_max_element / .law_min_element for glam vectors (or raw_* for values that are never stored)"
+
+[[method]]
+path = "wide::f32x8::mul_add"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f32x8::mul_sub"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f32x8::mul_neg_add"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f32x8::mul_neg_sub"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f32x4::mul_add"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f32x4::mul_sub"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f32x4::mul_neg_add"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f32x4::mul_neg_sub"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f64x4::mul_add"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f64x4::mul_sub"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f64x4::mul_neg_add"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f64x4::mul_neg_sub"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f64x2::mul_add"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f64x2::mul_sub"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f64x2::mul_neg_add"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "wide::f64x2::mul_neg_sub"
+reason = "fuses the multiply and the add into one rounding on targets with fma (avx+fma, aarch64) and rounds twice elsewhere, so the SIMD path differs across targets and from the scalar path (ALICE-Law G3); write a * m + c, as Real::mul_add does"
+
+[[method]]
+path = "cranelift_codegen::ir::InstBuilder::fma"
+reason = "emits a fused multiply-add (one rounding) into the JIT code, while the scalar and SIMD evaluators round twice (ALICE-Law G3); emit fmul then fadd, as mul_add_2r does"
 
 [[method]]
 path = "glam::Vec2::min"
@@ -371,6 +440,76 @@ path = "f32::sin"
 [[form]]
 text = "v.max(w)"
 path = "wide::f32x8::max"
+
+# wide's fused multiply-add forms (ALICE-Law G3), one per type and method
+[[form]]
+text = "f32x8_mul_add_a.mul_add("
+path = "wide::f32x8::mul_add"
+
+[[form]]
+text = "f32x8_mul_sub_a.mul_sub("
+path = "wide::f32x8::mul_sub"
+
+[[form]]
+text = "f32x8_mul_neg_add_a.mul_neg_add("
+path = "wide::f32x8::mul_neg_add"
+
+[[form]]
+text = "f32x8_mul_neg_sub_a.mul_neg_sub("
+path = "wide::f32x8::mul_neg_sub"
+
+[[form]]
+text = "f32x4_mul_add_a.mul_add("
+path = "wide::f32x4::mul_add"
+
+[[form]]
+text = "f32x4_mul_sub_a.mul_sub("
+path = "wide::f32x4::mul_sub"
+
+[[form]]
+text = "f32x4_mul_neg_add_a.mul_neg_add("
+path = "wide::f32x4::mul_neg_add"
+
+[[form]]
+text = "f32x4_mul_neg_sub_a.mul_neg_sub("
+path = "wide::f32x4::mul_neg_sub"
+
+[[form]]
+text = "f64x4_mul_add_a.mul_add("
+path = "wide::f64x4::mul_add"
+
+[[form]]
+text = "f64x4_mul_sub_a.mul_sub("
+path = "wide::f64x4::mul_sub"
+
+[[form]]
+text = "f64x4_mul_neg_add_a.mul_neg_add("
+path = "wide::f64x4::mul_neg_add"
+
+[[form]]
+text = "f64x4_mul_neg_sub_a.mul_neg_sub("
+path = "wide::f64x4::mul_neg_sub"
+
+[[form]]
+text = "f64x2_mul_add_a.mul_add("
+path = "wide::f64x2::mul_add"
+
+[[form]]
+text = "f64x2_mul_sub_a.mul_sub("
+path = "wide::f64x2::mul_sub"
+
+[[form]]
+text = "f64x2_mul_neg_add_a.mul_neg_add("
+path = "wide::f64x2::mul_neg_add"
+
+[[form]]
+text = "f64x2_mul_neg_sub_a.mul_neg_sub("
+path = "wide::f64x2::mul_neg_sub"
+
+# the JIT's fused multiply-add instruction (ALICE-Law G3)
+[[form]]
+text = "ins.fma(a_fma, b, c)"
+path = "cranelift_codegen::ir::InstBuilder::fma"
 
 [[form]]
 text = "v.min(w)"

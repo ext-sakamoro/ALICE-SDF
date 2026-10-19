@@ -30,6 +30,70 @@ pub fn simd_min(v: wide::f32x8, w: wide::f32x8) -> wide::f32x8 {
     v.min(w)
 }
 
+pub fn simd_f32x8_mul_add(f32x8_mul_add_a: wide::f32x8, b: wide::f32x8, c: wide::f32x8) -> wide::f32x8 {
+    f32x8_mul_add_a.mul_add(b, c)
+}
+
+pub fn simd_f32x8_mul_sub(f32x8_mul_sub_a: wide::f32x8, b: wide::f32x8, c: wide::f32x8) -> wide::f32x8 {
+    f32x8_mul_sub_a.mul_sub(b, c)
+}
+
+pub fn simd_f32x8_mul_neg_add(f32x8_mul_neg_add_a: wide::f32x8, b: wide::f32x8, c: wide::f32x8) -> wide::f32x8 {
+    f32x8_mul_neg_add_a.mul_neg_add(b, c)
+}
+
+pub fn simd_f32x8_mul_neg_sub(f32x8_mul_neg_sub_a: wide::f32x8, b: wide::f32x8, c: wide::f32x8) -> wide::f32x8 {
+    f32x8_mul_neg_sub_a.mul_neg_sub(b, c)
+}
+
+pub fn simd_f32x4_mul_add(f32x4_mul_add_a: wide::f32x4, b: wide::f32x4, c: wide::f32x4) -> wide::f32x4 {
+    f32x4_mul_add_a.mul_add(b, c)
+}
+
+pub fn simd_f32x4_mul_sub(f32x4_mul_sub_a: wide::f32x4, b: wide::f32x4, c: wide::f32x4) -> wide::f32x4 {
+    f32x4_mul_sub_a.mul_sub(b, c)
+}
+
+pub fn simd_f32x4_mul_neg_add(f32x4_mul_neg_add_a: wide::f32x4, b: wide::f32x4, c: wide::f32x4) -> wide::f32x4 {
+    f32x4_mul_neg_add_a.mul_neg_add(b, c)
+}
+
+pub fn simd_f32x4_mul_neg_sub(f32x4_mul_neg_sub_a: wide::f32x4, b: wide::f32x4, c: wide::f32x4) -> wide::f32x4 {
+    f32x4_mul_neg_sub_a.mul_neg_sub(b, c)
+}
+
+pub fn simd_f64x4_mul_add(f64x4_mul_add_a: wide::f64x4, b: wide::f64x4, c: wide::f64x4) -> wide::f64x4 {
+    f64x4_mul_add_a.mul_add(b, c)
+}
+
+pub fn simd_f64x4_mul_sub(f64x4_mul_sub_a: wide::f64x4, b: wide::f64x4, c: wide::f64x4) -> wide::f64x4 {
+    f64x4_mul_sub_a.mul_sub(b, c)
+}
+
+pub fn simd_f64x4_mul_neg_add(f64x4_mul_neg_add_a: wide::f64x4, b: wide::f64x4, c: wide::f64x4) -> wide::f64x4 {
+    f64x4_mul_neg_add_a.mul_neg_add(b, c)
+}
+
+pub fn simd_f64x4_mul_neg_sub(f64x4_mul_neg_sub_a: wide::f64x4, b: wide::f64x4, c: wide::f64x4) -> wide::f64x4 {
+    f64x4_mul_neg_sub_a.mul_neg_sub(b, c)
+}
+
+pub fn simd_f64x2_mul_add(f64x2_mul_add_a: wide::f64x2, b: wide::f64x2, c: wide::f64x2) -> wide::f64x2 {
+    f64x2_mul_add_a.mul_add(b, c)
+}
+
+pub fn simd_f64x2_mul_sub(f64x2_mul_sub_a: wide::f64x2, b: wide::f64x2, c: wide::f64x2) -> wide::f64x2 {
+    f64x2_mul_sub_a.mul_sub(b, c)
+}
+
+pub fn simd_f64x2_mul_neg_add(f64x2_mul_neg_add_a: wide::f64x2, b: wide::f64x2, c: wide::f64x2) -> wide::f64x2 {
+    f64x2_mul_neg_add_a.mul_neg_add(b, c)
+}
+
+pub fn simd_f64x2_mul_neg_sub(f64x2_mul_neg_sub_a: wide::f64x2, b: wide::f64x2, c: wide::f64x2) -> wide::f64x2 {
+    f64x2_mul_neg_sub_a.mul_neg_sub(b, c)
+}
+
 pub fn clock_instant() -> std::time::Instant {
     std::time::Instant::now()
 }
@@ -430,4 +494,13 @@ pub fn bincode_native_std_read(bsr: &mut std::io::Cursor<Vec<u8>>) -> Option<u32
 
 pub fn bincode_native_borrow(bb2: &[u8]) -> Option<usize> {
     bincode::borrow_decode_from_slice::<&str, _>(bb2, bincode::config::standard()).ok().map(|r| r.1)
+}
+
+pub fn jit_fma<'f, B: cranelift_codegen::ir::InstBuilder<'f>>(
+    ins: B,
+    a_fma: cranelift_codegen::ir::Value,
+    b: cranelift_codegen::ir::Value,
+    c: cranelift_codegen::ir::Value,
+) -> cranelift_codegen::ir::Value {
+    ins.fma(a_fma, b, c)
 }

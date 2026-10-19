@@ -299,6 +299,11 @@ jobs:
       - name: Node backend support matrix (jit + msl + glsl + hlsl + rust)
         run: cargo test --features jit,msl,rust,glsl,hlsl --test test_node_backend_matrix
 
+      # G3 on what the transpilers return: the node corpus through GLSL / WGSL / HLSL /
+      # BlinkScript / MSL in both modes, no fused multiply-add intrinsic in the text
+      - name: Shader text has no fused multiply-add (msl + glsl + hlsl + blinkscript)
+        run: cargo test --features msl,glsl,hlsl,blinkscript --test test_shader_no_fused_multiply_add
+
       # FFI は extern "C" の実 export symbol を叩いて native evaluator と bit 突合する。
       # `cargo test --lib --features ffi,…` は unit のみで、この統合 test は走らない。
       # tests/ の extern "C" 宣言と src/ffi の export を「順序付きの型列」で突合する。
@@ -492,6 +497,12 @@ jobs:
         run: python scripts/test_clippy_lib_gate.py
       - name: library clippy config is generated from clippy.toml
         run: python scripts/clippy_lib_gate.py --check
+      # G3 on the shader text: no fma( / fmaf( / mad( in a string literal of src/ (the
+      # transpilers and templates write shader source as literals clippy does not read)
+      - name: shader fused multiply-add guard oracle (検査器自身の試験)
+        run: python scripts/test_shader_fma_guard.py
+      - name: shader fused multiply-add guard (string literals of src/, 0 literals fails)
+        run: python scripts/shader_fma_guard.py
       - name: license copy oracle (検査器自身の試験)
         run: python3 scripts/license_copy_check.py --self-test
       - name: license copy (sub-package の license が root と byte 一致、比較 0 件で fail)
