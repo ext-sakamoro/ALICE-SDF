@@ -103,7 +103,7 @@ let bytes = bake_to_vdb(&node, (-2.0, 2.0), 64).unwrap();
 std::fs::write("sphere.vdb", &bytes).unwrap();
 ```
 
-[`vdb-rs`](https://crates.io/crates/vdb-rs) 0.6 (pure Rust) ベース。現状は `ALICEVDB1` コンパクト形式、`vdb-rs` の write API 整備に合わせて OpenVDB 正規バイナリへ移行予定。
+現状は独自のコンパクト形式 (`ALICEVDB2`: 32 byte の意味論識別子の後に密格子) を書き、`load_dense_grid_from_vdb` が識別子を確かめて読み戻す [`vdb-rs`](https://crates.io/crates/vdb-rs) 0.6 は feature の依存にあるがまだ呼ばれておらず、`vdb-rs` の write API 整備に合わせて OpenVDB 正規バイナリへ移行予定
 
 ### `alice-sdf-bevy` — Bevy 0.18 プラグイン
 

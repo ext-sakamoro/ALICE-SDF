@@ -103,7 +103,7 @@ let bytes = bake_to_vdb(&node, (-2.0, 2.0), 64).unwrap();
 std::fs::write("sphere.vdb", &bytes).unwrap();
 ```
 
-Backed by [`vdb-rs`](https://crates.io/crates/vdb-rs) 0.6 (pure Rust). Currently writes a compact custom container (`ALICEVDB1`); full OpenVDB binary parity is planned as `vdb-rs` exposes its write API.
+Currently writes a compact custom container (`ALICEVDB2`: the 32-byte semantics identifier, then the dense grid), read back by `load_dense_grid_from_vdb`, which checks the identifier. [`vdb-rs`](https://crates.io/crates/vdb-rs) 0.6 is a dependency of the feature but is not called yet; full OpenVDB binary output is planned once `vdb-rs` exposes its write API.
 
 ### `alice-sdf-bevy` — Bevy 0.18 plugin
 

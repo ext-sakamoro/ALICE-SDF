@@ -131,8 +131,8 @@ pub fn load_asdf(py: Python<'_>, path: &str) -> PyResult<PySdfNode> {
 /// The bytes are exactly those of [`crate::io::vdb::bake_to_vdb`]: `ALICEVDB2`, the 32-byte
 /// semantics identifier, then the grid (`u32` resolution, `f32` min, `f32` max, and
 /// `resolution^3` `f32` distances, x fastest, sampled at `min + i * (max - min) / (resolution - 1)`
-/// on each axis, both ends included). `io::vdb::load_dense_grid_from_vdb` reads them back and
-/// checks the identifier.
+/// on each axis, both ends included; for `resolution == 1` the one sample is at `min`).
+/// `io::vdb::load_dense_grid_from_vdb` reads them back and checks the identifier.
 ///
 /// Requires the `openvdb` cargo feature.
 #[cfg(feature = "openvdb")]
@@ -232,5 +232,6 @@ pub fn render_slice_2d<'py>(
 // only compiled under `--features python`, which enables pyo3's
 // `extension-module` feature — that flag deliberately unresolves the Python
 // symbols, so `cargo test --features python` cannot link a test binary.
-// The pure-logic invariants (ALICEVDB1 header layout, primitive delegation)
-// are covered by the top-level integration tests under `tests/`.
+// The pure-logic invariants (primitive delegation) are covered by the top-level
+// integration tests under `tests/`; the ALICE-VDB bytes of `bake_to_vdb` by
+// `python/tests/vdb_roundtrip.py` (CI `python-smoke`).

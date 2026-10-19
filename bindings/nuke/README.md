@@ -16,8 +16,10 @@ Foundry Nuke 15 / 16+ で ALICE-SDF を呼び出す Python モジュール。VFX
 
 ```bash
 cd /path/to/ALICE-SDF
-cargo build --release --features python
+cargo build --release --features python,openvdb
 ```
+
+`openvdb` が無い build では `alice_sdf.bake_to_vdb` が存在せず、`Export .asdf as Volume...` は `AttributeError` で止まる
 
 ### 2. Nuke 内蔵 Python の site-packages にコピー (`<VER>`, `<PYVER>` 置換)
 
@@ -55,7 +57,7 @@ alice_sdf_nuke.register_menu()
 
 ### メニュー
 
-- `ALICE-SDF > Export .asdf as Volume...` — .asdf 選択ダイアログ → ALICEVDB1 バイナリ書出
+- `ALICE-SDF > Export .asdf as Volume...` — .asdf 選択ダイアログ → ALICE-VDB (`ALICEVDB2`、32 byte の意味論識別子付き) バイナリ書出
 - `ALICE-SDF > Render .asdf slice...` — z 平面スライスを RGBA 画像化
 
 ### Python API
@@ -83,6 +85,6 @@ arr = alice_sdf_nuke.render_sdf_slice(
 
 ## 制限事項
 
-- ALICEVDB1 形式は Nuke ネイティブのボリュームノードでは直接読めない (専用 reader が必要)
+- ALICE-VDB 形式 (`ALICEVDB2`、ALICE-SDF 独自の密格子) は Nuke ネイティブのボリュームノードでは直接読めない (専用 reader が必要)
 - Deep image 連携 (DeepRead/DeepWrite) は未実装
 - Foundry Mari (テクスチャ) や Katana (ルックデブ) への連携も将来予定

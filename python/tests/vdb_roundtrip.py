@@ -4,7 +4,7 @@ binding with the `openvdb` feature.
 `alice_sdf.bake_to_vdb` returns the bytes of the Rust `io::vdb::bake_to_vdb`: `ALICEVDB2`, the
 32-byte semantics identifier, then the grid. This test reads them with an independent parser and
 checks every distance of a unit sphere against the closed form |p| - 1 at the sample positions
-`min + i * (max - min) / (res - 1)` (both ends included, x fastest). The identifier must equal the
+`min + i * (max - min) / (res - 1)` (both ends included, x fastest; one sample at `min` for res 1). The identifier must equal the
 one the binding's own JSON writer stamps. A binding built without the feature fails here, it is
 not skipped.
 
@@ -44,11 +44,11 @@ def main() -> int:
     node = sdf.sphere(1.0)
     stamp = json.loads(sdf.to_json(node))["alice:semantics_id"]
     compared = 0
-    for res, bounds in [(5, (-1.5, 1.5)), (9, (-2.0, 2.0)), (2, (-1.0, 1.0))]:
+    for res, bounds in [(5, (-1.5, 1.5)), (9, (-2.0, 2.0)), (2, (-1.0, 1.0)), (1, (-1.0, 1.0))]:
         ident, r, bmin, bmax, values = parse(sdf.bake_to_vdb(node, bounds, res))
         check(ident.hex() == stamp, f"identifier {ident.hex()} != the JSON stamp {stamp}")
         check((r, bmin, bmax) == (res, bounds[0], bounds[1]), f"grid header {(r, bmin, bmax)}")
-        step = (bounds[1] - bounds[0]) / (res - 1)
+        step = (bounds[1] - bounds[0]) / max(res - 1, 1)
         for k in range(res):
             for j in range(res):
                 for i in range(res):
@@ -64,7 +64,7 @@ def main() -> int:
             pass
         else:
             raise AssertionError(f"bake_to_vdb{bad} did not raise")
-    check(compared == 5**3 + 9**3 + 2**3, f"compared {compared} samples")
+    check(compared == 5**3 + 9**3 + 2**3 + 1, f"compared {compared} samples")
     print(f"vdb_roundtrip: ok ({compared} samples compared, identifier {stamp[:16]}...)")
     return 0
 
