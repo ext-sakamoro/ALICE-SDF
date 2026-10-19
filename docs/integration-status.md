@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1285 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1025 |
-| | **total** | **2319** |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1287 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1027 |
+| | **total** | **2323** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1285)
+## L1 — example-only (1287)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -220,6 +220,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/terrain/mod.rs`: `TerrainConfig`, `terrain_sdf`
 - `src/terrain/splatmap.rs`: `SplatLayer`, `Splatmap`, `Splatmap::add_layer`, `Splatmap::auto_splat_from_heightmap`, `Splatmap::dominant_material`, `Splatmap::get_weight`, `Splatmap::layer_count`, `Splatmap::new`, `Splatmap::normalize`, `Splatmap::set_weight`
 - `src/texture/fitting.rs`: `reconstruct`
+- `src/texture/mod.rs`: `load_texture_fit`, `load_texture_fit_unverified`
 - `src/tight_aabb.rs`: `TightAabbConfig::preset_medium`, `compute_tight_aabb`
 - `src/transforms/rotate.rs`: `transform_rotate_euler`
 - `src/transforms/scale.rs`: `transform_scale_inverse`

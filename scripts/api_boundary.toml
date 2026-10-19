@@ -69,7 +69,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #     12  local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic
 #     21  local: writes this crate's own value; stamping the stored file is G8's
 #      2  local: parses a shader language name
-#     12  local: writes this build's tree or mesh out; stamping the file is G8's
+#     11  local: writes this build's tree or mesh out; stamping the file is G8's
+#      1  local: delegates to io::vdb::bake_to_vdb, which stamps the grid it writes
 #    195  local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)
 #      7  local: writes this library's own tree or mesh to a path the caller gives
 #      5  local: writes a mesh this library generated to a path the caller gives
