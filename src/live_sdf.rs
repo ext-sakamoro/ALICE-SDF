@@ -64,13 +64,18 @@
 //!
 //! # Snapshots
 //!
-//! As a participant the shape writes (payload version 1, little endian):
-//! `version: u32`, the craters (`count: u64`, then `cx, cy, cz, r` as `f32`
+//! As a participant the shape writes (payload version 2, little endian):
+//! `version: u32`, the identifier of what this crate computes
+//! ([`crate::SDF_SEMANTICS_ID`], 32 bytes), the craters (`count: u64`, then `cx, cy, cz, r` as `f32`
 //! bits), the modifiers (`count: u64`, then per modifier `kind: u32`,
 //! `len: u64` and its own participant payload). The base node is not in the
 //! payload: a snapshot restores into a `LiveSdf` built from the same base
 //! with modifiers of the same kinds in the same order. A restore raises the
 //! generation and records the whole space as changed.
+//!
+//! `check_state` refuses a payload whose identifier [`crate::check_sdf_semantics`]
+//! does not accept (a build that computes other distances would continue the
+//! shape on other bits) and a version 1 payload, which carries no identifier.
 //!
 //! Author: Moroya Sakamoto
 
@@ -103,7 +108,9 @@ use std::fmt;
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// Payload version written by [`LiveSdf`]'s `write_state`.
-const STATE_VERSION: u32 = 1;
+///
+/// Version 2 added the semantics identifier after the version.
+const STATE_VERSION: u32 = 2;
 
 /// Number of change records kept; a consumer further behind is told
 /// [`DirtyRegion::Everywhere`].
@@ -788,6 +795,11 @@ fn decode_state(bytes: &[u8]) -> Result<DecodedState<'_>, StateError> {
     if r.u32()? != STATE_VERSION {
         return Err(StateError::InvalidValue);
     }
+    let mut id = [0u8; 32];
+    id.copy_from_slice(r.take(32)?);
+    if !crate::check_sdf_semantics(&id).is_reproducible() {
+        return Err(StateError::InvalidValue);
+    }
     let n = r.u64()?;
     let mut craters = Vec::new();
     for _ in 0..n {
@@ -841,6 +853,7 @@ impl Participant for LiveSdf {
     fn write_state(&self, out: &mut Vec<u8>) {
         let s = self.read();
         out.extend_from_slice(&STATE_VERSION.to_le_bytes());
+        out.extend_from_slice(&crate::SDF_SEMANTICS_ID);
         out.extend_from_slice(&(s.craters.len() as u64).to_le_bytes());
         for c in &s.craters {
             for v in [c.center.x, c.center.y, c.center.z, c.radius] {

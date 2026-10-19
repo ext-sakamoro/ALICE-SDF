@@ -11,7 +11,8 @@ use alice_physics::erosion::{ErosionConfig, ErosionModifier};
 use alice_physics::fracture::{FractureConfig, FractureModifier};
 use alice_physics::sdf_collider::{SdfCollider, SdfField};
 use alice_physics::sim_modifier::ModifiedSdf;
-use alice_physics::world_participant::Participant;
+use alice_physics::world_participant::{Participant, StateError};
+use alice_physics::WorldSnapshotError;
 use alice_physics::{Fix128, PhysicsConfig, PhysicsWorld, QuatFix, RigidBody, Vec3Fix};
 use alice_sdf::compiled::CompiledSdf;
 use alice_sdf::live_sdf::{
@@ -593,6 +594,153 @@ fn a_snapshot_restores_craters_and_modifiers_bit_for_bit() {
     assert!(
         bare.check_state(&payload).is_err(),
         "modifier count differs"
+    );
+}
+
+// The payload names what the writer computed. oracle: the documented layout
+// (version 2, then `alice_sdf::SDF_SEMANTICS_ID`) and the rule of
+// `alice_sdf::check_sdf_semantics` (this build's identifier or one of
+// `PREVIOUS_SDF_SEMANTICS_IDS` is accepted, anything else refused).
+
+/// A shape with a crater and a stepped modifier, and the payload it writes.
+fn stepped_payload() -> (LiveSdf, Vec<u8>) {
+    let a = LiveSdf::new(slab());
+    a.add_modifier(erosion());
+    a.subtract_sphere(CRATER_C, CRATER_R).expect("crater");
+    for _ in 0..6 {
+        a.update(1.0 / 30.0);
+    }
+    let mut payload = Vec::new();
+    a.write_state(&mut payload);
+    (a, payload)
+}
+
+fn target() -> LiveSdf {
+    let b = LiveSdf::new(slab());
+    b.add_modifier(erosion());
+    b
+}
+
+#[test]
+fn a_snapshot_payload_carries_the_semantics_identifier() {
+    let (_, payload) = stepped_payload();
+    assert_eq!(payload[..4], 2u32.to_le_bytes(), "payload version");
+    assert_eq!(payload[4..36], alice_sdf::SDF_SEMANTICS_ID);
+}
+
+#[test]
+fn a_payload_under_other_semantics_is_refused() {
+    let (_, payload) = stepped_payload();
+    let b = target();
+    let mut refused = 0;
+    for i in 4..36 {
+        let mut other = payload.clone();
+        other[i] ^= 0x01;
+        assert_eq!(
+            b.check_state(&other),
+            Err(StateError::InvalidValue),
+            "identifier byte {}",
+            i - 4
+        );
+        refused += 1;
+    }
+    assert_eq!(refused, 32);
+}
+
+#[test]
+fn a_version_1_payload_is_refused() {
+    let (_, payload) = stepped_payload();
+    let b = target();
+    // As version 1 wrote it: no identifier after the version.
+    let mut v1 = 1u32.to_le_bytes().to_vec();
+    v1.extend_from_slice(&payload[36..]);
+    assert_eq!(b.check_state(&v1), Err(StateError::InvalidValue));
+    // Version 1 with an identifier is not a layout either.
+    let mut relabelled = payload.clone();
+    relabelled[..4].copy_from_slice(&1u32.to_le_bytes());
+    assert_eq!(b.check_state(&relabelled), Err(StateError::InvalidValue));
+}
+
+#[test]
+fn a_payload_under_a_previous_identifier_restores_bit_for_bit() {
+    let (a, payload) = stepped_payload();
+    assert!(!alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS.is_empty());
+    for id in alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS {
+        let mut previous = payload.clone();
+        previous[4..36].copy_from_slice(id);
+        let mut b = target();
+        assert_eq!(b.check_state(&previous), Ok(()));
+        b.read_state(&previous);
+        let mut compared = 0;
+        for p in sample_points() {
+            assert_eq!(a.eval(p).to_bits(), b.eval(p).to_bits(), "at {p}");
+            compared += 1;
+        }
+        assert!(compared > 0);
+    }
+}
+
+/// FNV-1a 64 over everything before the trailing 8 bytes, the checksum
+/// alice-physics' world snapshot ends with.
+fn reseal(mut blob: Vec<u8>) -> Vec<u8> {
+    let n = blob.len() - 8;
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in &blob[..n] {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0000_0001_0000_01b3);
+    }
+    blob[n..].copy_from_slice(&h.to_le_bytes());
+    blob
+}
+
+#[test]
+fn a_world_restore_refuses_the_shape_under_other_semantics() {
+    let live = LiveSdf::new(slab());
+    live.add_modifier(erosion());
+    live.subtract_sphere(CRATER_C, CRATER_R).expect("crater");
+    let mut world = world_with(&live, true, 4);
+    for _ in 0..3 {
+        world.step(Fix128::from_ratio(1, 60));
+    }
+    let blob = world.snapshot_world();
+
+    let mut needle = 2u32.to_le_bytes().to_vec();
+    needle.extend_from_slice(&alice_sdf::SDF_SEMANTICS_ID);
+    let at: Vec<usize> = blob
+        .windows(needle.len())
+        .enumerate()
+        .filter(|(_, w)| *w == needle.as_slice())
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(at.len(), 1, "the shape's payload header occurs once");
+
+    let resealed = reseal(blob.clone());
+    assert_eq!(
+        resealed, blob,
+        "the checksum is recomputed the way the world writes it"
+    );
+    let other_live = LiveSdf::new(slab());
+    other_live.add_modifier(erosion());
+    let mut other = world_with(&other_live, true, 4);
+    assert_eq!(other.restore_world(&blob), Ok(()));
+
+    let mut changed = blob.clone();
+    changed[at[0] + 4] ^= 0x01;
+    let changed = reseal(changed);
+    let fresh_live = LiveSdf::new(slab());
+    fresh_live.add_modifier(erosion());
+    let mut fresh = world_with(&fresh_live, true, 4);
+    assert_eq!(
+        fresh.restore_world(&changed),
+        Err(WorldSnapshotError::ParticipantState {
+            index: 0,
+            error: StateError::InvalidValue,
+        })
+    );
+    assert_eq!(
+        fresh_live.crater_count(),
+        0,
+        "a refused restore leaves the shape"
     );
 }
 
