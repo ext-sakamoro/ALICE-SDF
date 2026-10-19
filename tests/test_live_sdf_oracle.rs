@@ -648,6 +648,15 @@ fn a_payload_under_other_semantics_is_refused() {
 }
 
 #[test]
+#[should_panic(expected = "read_state called with a payload check_state refuses")]
+fn read_state_refuses_a_payload_under_other_semantics() {
+    let (_, mut payload) = stepped_payload();
+    let mut b = target();
+    payload[4] ^= 0x01;
+    b.read_state(&payload);
+}
+
+#[test]
 fn a_version_1_payload_is_refused() {
     let (_, payload) = stepped_payload();
     let b = target();
