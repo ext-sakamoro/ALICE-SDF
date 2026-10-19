@@ -834,6 +834,10 @@ pub(crate) fn import_verdict(
     let stored = match from_bytes(bytes) {
         Ok(p) => Some(p.semantics_id),
         Err(ProvenanceError::Missing { .. }) => None,
+        // a file that holds the key, or one whose own walk this module owns (this crate's binary
+        // STL header, the PNG chunks, the JPEG markers) and failed, is never read as unstamped;
+        // for PNG and JPEG the decoder refuses the same malformed files today, the guard keeps
+        // that from depending on the decoder
         Err(e)
             if find(bytes, KEY.as_bytes()).is_some()
                 || bytes.starts_with(STL_MAGIC)
