@@ -16,6 +16,7 @@
 //! | PLY (binary and ASCII) | a header comment: `comment alice:semantics_id=<64 hex>` |
 //! | glTF (`.glb`, `.gltf`, meshopt-compressed `.glb`) | `asset.extras`: `{"alice:semantics_id": "<64 hex>"}` |
 //! | ASDF JSON (`.asdf.json`, [`crate::io::save_asdf_json`]) and the other JSON documents of this crate (the LOD chain sidecar `.abm.meta.json`) | the top-level field `"alice:semantics_id": "<64 hex>"` next to the document's fields |
+//! | Alembic (`.abc`, [`crate::io::alembic::export_alembic`]) | the archive metadata (the second data node, a JSON object): `"alice:semantics_id":"<64 hex>"` |
 //! | USD (`.usda`) | the layer's `customLayerData`: `string "alice:semantics_id" = "<64 hex>"` |
 //! | STEP | the second string of `FILE_DESCRIPTION`: `'alice:semantics_id=<64 hex>'` |
 //! | IGES | two Start-section lines, `alice:semantics_id=` and the 64 hex digits (joined they read as one) |
@@ -435,6 +436,9 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
                 "NSDF: version {v} is not known"
             ))),
         };
+    }
+    if bytes.starts_with(b"Ogawa") {
+        return read_alembic(bytes);
     }
     if bytes.starts_with(b"ALICEVDB") {
         // ALICE-VDB dense grid: `ALICEVDB2` carries the identifier after the 9-byte magic
@@ -1034,6 +1038,56 @@ fn tagged_in(bytes: &[u8], format: &'static str) -> Result<Provenance, Provenanc
         }
     }
     found.ok_or(ProvenanceError::Missing { format })
+}
+
+/// The identifier in the metadata of an Alembic archive written by
+/// [`crate::io::alembic::export_alembic`]: the magic and version (8 bytes), the root group header
+/// (tag `0xFF`, `u32` child count), the archive name data node, then the metadata data node (tag
+/// `0x00`, `u64` length, a JSON object holding `"alice:semantics_id":"<64 hex>"`)
+fn read_alembic(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
+    let cut = || ProvenanceError::Unreadable("Alembic: truncated archive".into());
+    let data_node = |at: usize| -> Result<(&[u8], usize), ProvenanceError> {
+        if *bytes.get(at).ok_or_else(cut)? != 0x00 {
+            return Err(ProvenanceError::Unreadable(
+                "Alembic: no data node where the metadata belongs".into(),
+            ));
+        }
+        let len: [u8; 8] = bytes
+            .get(at + 1..at + 9)
+            .ok_or_else(cut)?
+            .try_into()
+            .unwrap();
+        let len = usize::try_from(u64::from_le_bytes(len)).map_err(|_| cut())?;
+        let start = at + 9;
+        let end = start.checked_add(len).ok_or_else(cut)?;
+        Ok((bytes.get(start..end).ok_or_else(cut)?, end))
+    };
+    if bytes.get(8) != Some(&0xFF) {
+        return Err(ProvenanceError::Unreadable(
+            "Alembic: no root group after the header".into(),
+        ));
+    }
+    let (_, next) = data_node(13)?;
+    let (meta, _) = data_node(next)?;
+    let meta = std::str::from_utf8(meta)
+        .map_err(|_| ProvenanceError::Unreadable("Alembic: metadata is not UTF-8".into()))?;
+    let open = format!("\"{KEY}\":\"");
+    let mut values = meta.match_indices(&open).map(|(at, _)| {
+        let start = at + open.len();
+        meta.get(start..start + 64)
+            .and_then(Provenance::from_hex)
+            .filter(|_| meta[start + 64..].starts_with('"'))
+    });
+    match (values.next(), values.next()) {
+        (None, _) => Err(ProvenanceError::Missing { format: "Alembic" }),
+        (Some(Some(p)), None) => Ok(p),
+        (Some(None), _) => Err(ProvenanceError::Unreadable(format!(
+            "Alembic: {KEY} is not 64 hex digits"
+        ))),
+        (Some(Some(_)), Some(_)) => Err(ProvenanceError::Unreadable(format!(
+            "Alembic: more than one {KEY}"
+        ))),
+    }
 }
 
 /// The `alice:semantics_id` metadata of `3D/3dmodel.model` in a 3MF (zip) archive
