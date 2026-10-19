@@ -9,10 +9,6 @@ expected-writers 57
 src/codec_bridge.rs::encode_sdf_volume
 src/io/alembic.rs::export_alembic
 src/io/mod.rs::save
-src/io/nanite.rs::export_nanite
-src/io/nanite.rs::export_nanite_hlsl_material
-src/io/nanite.rs::export_nanite_json
-src/io/nanite.rs::export_nanite_with_config
 src/io/ue5_asset.rs::export_ue5_mesh
 src/io/ue5_asset.rs::export_ue5_mesh_binary
 src/io/ue5_asset.rs::export_ue5_mesh_with_lods

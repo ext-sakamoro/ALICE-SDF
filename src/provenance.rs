@@ -21,6 +21,9 @@
 //! | IGES | two Start-section lines, `alice:semantics_id=` and the 64 hex digits (joined they read as one) |
 //! | ASDF (`.asdf`, version 2) | the 32 bytes after the 16-byte header; this crate's loaders refuse another identifier and, by default, a version 1 file without one |
 //! | ABM (`.abm`, version 2) | the 32 bytes after the 32-byte header; this crate's loaders refuse another identifier and, by default, a version 1 file without one |
+//! | Nanite (`.nanite`, version 4, [`crate::io::nanite::export_nanite`]) | the 32 bytes after the 32-byte header; versions 1-3 carry none |
+//! | Nanite manifest (`.nanite.json`) | the top-level field `"alice:semantics_id": "<64 hex>"` |
+//! | shader text (the Nanite HLSL material `.usf`) | a line `// alice:semantics_id=<64 hex>` in the leading `//` comment block |
 //! | DDS 3D texture | the header's reserved dwords: tag `ALSD`, version `1`, the 32 identifier bytes |
 //! | raw volume data (no header) | a sidecar file `<path>.semantics`: `alice:semantics_id=<64 hex>` |
 //!
@@ -415,6 +418,28 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
             ))),
         };
     }
+    if bytes.starts_with(b"NANT") {
+        // Nanite: version 4 carries the identifier after the 32-byte header; versions 1-3 carry
+        // none; a version this crate does not know is refused rather than read at an offset
+        let version = bytes
+            .get(4..8)
+            .map(|v| u32::from_le_bytes([v[0], v[1], v[2], v[3]]))
+            .ok_or_else(|| ProvenanceError::Unreadable("Nanite: truncated header".into()))?;
+        return match version {
+            1..=3 => Err(ProvenanceError::Missing { format: "Nanite" }),
+            4 => {
+                let id: [u8; 32] = bytes
+                    .get(32..64)
+                    .ok_or_else(|| ProvenanceError::Unreadable("Nanite: truncated header".into()))?
+                    .try_into()
+                    .unwrap();
+                Ok(Provenance::new(id))
+            }
+            v => Err(ProvenanceError::Unreadable(format!(
+                "Nanite: version {v} is not known"
+            ))),
+        };
+    }
     if bytes.starts_with(b"NSDF") {
         // NSDF (neural weights): version 2 carries the identifier after the version
         let version = bytes
@@ -558,6 +583,18 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
         let end = find(bytes, b"end_header")
             .ok_or_else(|| ProvenanceError::Unreadable("PLY: no end_header".into()))?;
         return tagged_in(&bytes[..end], "PLY");
+    }
+    if bytes.starts_with(b"//") {
+        // shader text (the Nanite HLSL material): the identifier is one of the leading `//`
+        // comment lines
+        let mut end = 0;
+        for line in bytes.split_inclusive(|&b| b == b'\n') {
+            if !line.starts_with(b"//") {
+                break;
+            }
+            end += line.len();
+        }
+        return tagged_in(&bytes[..end], "shader text");
     }
     if bytes.starts_with(b"#") {
         // OBJ (and MTL): the identifier is one of the leading comment lines

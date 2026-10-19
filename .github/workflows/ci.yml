@@ -242,6 +242,14 @@ jobs:
         run: cargo test --features "aaa,image" --test test_gi_volume_oracle --test test_terrain_destruction_oracle --test test_svo_api_oracle --test test_volume_api_oracle --test test_terrain_api_oracle --test test_gi_api_oracle --test test_destruction_api_oracle --test test_provenance
       # the SVO chunk's semantics identifier (tests/test_provenance.rs, *svo_chunk*, gated on svo):
       # counted on their own so a feature set without svo cannot drop them to 0 unnoticed
+      # the Nanite HLSL material's semantics identifier (tests/test_provenance.rs,
+      # nanite_hlsl_material_*, gated on hlsl): counted on its own for the same reason
+      - name: Test (provenance of the Nanite HLSL material — hlsl)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features hlsl --test test_provenance nanite_hlsl_material 2>&1 | tee provenance-hlsl.log
+          python3 scripts/libtest_count.py provenance-hlsl.log --min 1 --what "Nanite HLSL material provenance tests (hlsl)"
       - name: Test (provenance of the SVO chunk — svo)
         shell: bash
         run: |

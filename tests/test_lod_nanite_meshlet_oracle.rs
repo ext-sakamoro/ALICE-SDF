@@ -1299,10 +1299,11 @@ fn nanite_should_render_is_the_complete_cut() {
     assert!(checks > 0);
 }
 
-/// Version 3 of `.nanite` adds the LOD spheres and the parent error per cluster
+/// Version 3 of `.nanite` added the LOD spheres and the parent error per cluster, version 4 the
+/// semantics identifier after the header (the cluster layout is that of version 3)
 #[test]
 fn nanite_format_version_marks_the_lod_spheres() {
-    assert_eq!(alice_sdf::io::nanite::NANITE_VERSION, 3);
+    assert_eq!(alice_sdf::io::nanite::NANITE_VERSION, 4);
 }
 
 /// Shapes with several surface sheets per region, so that a region holds far

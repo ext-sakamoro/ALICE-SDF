@@ -61,7 +61,8 @@ pub use json::{
     save_asdf_json, save_asdf_json_with_provenance, to_json_string, to_json_string_with_provenance,
 };
 pub use nanite::{
-    export_nanite, export_nanite_json, export_nanite_with_config, NaniteExportConfig,
+    export_nanite, export_nanite_json, export_nanite_json_with_provenance,
+    export_nanite_with_config, export_nanite_with_provenance, NaniteExportConfig,
 };
 pub use obj::{
     export_obj, export_obj_with_provenance, export_obj_with_stamp, import_obj, import_obj_pinned,

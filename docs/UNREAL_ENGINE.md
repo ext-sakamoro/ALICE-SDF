@@ -511,15 +511,21 @@ export_nanite(&nanite, "Content/Nanite/MyAsset.nanite")?;
 export_nanite_json(&nanite, "Content/Nanite/MyAsset.nanite.json")?;
 ```
 
+Both files carry the semantics identifier of the arithmetic the clusters were computed under:
+`.nanite` version 4 stores its 32 bytes right after the 32-byte header (the rest is the
+version 3 layout, so a reader written for version 3 skips those 32 bytes), the manifest stores
+the top-level `"alice:semantics_id"`. `alice_sdf::provenance::read` reads either back.
+
 ### Export HLSL Material Function
 
 ```rust
 use alice_sdf::io::nanite::export_nanite_hlsl_material;
 
-// Generate UE5 material function for Nanite material assignment
-let hlsl = export_nanite_hlsl_material(&nanite, "MyAssetMaterial");
-std::fs::write("MyAssetMaterial.hlsl", hlsl)?;
+// Write the UE5 material function of the SDF tree (feature `hlsl`)
+export_nanite_hlsl_material(&shape, "MyAssetMaterial.usf")?;
 ```
+
+The leading comment block of the material carries `// alice:semantics_id=<64 hex>`.
 
 ### Runtime Destruction Example
 
