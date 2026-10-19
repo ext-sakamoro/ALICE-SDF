@@ -25,7 +25,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 771 items (0 Linux-only): 76 handshake, 689 local, 6 pending (G8). Groups (count, decision):
+# 776 items (0 Linux-only): 76 handshake, 694 local, 6 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -84,7 +84,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  local: the Godot extension entry point, registers this build's classes
 #      6  local: Godot dispatches engine Variants to this build's own classes; no file is read
 #     16  local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded
-#     60  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
+#     55  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
+#     10  local: writes this build's own mesh as a UE5 or Unity asset under the identifier the caller gives (this crate's by default)
 #      7  local: writes this build's own Nanite clusters, manifest or material under the identifier the caller gives (this crate's by default)
 #      1  local: reports a stored file's format, version and node count as text; the tree is not returned
 #     10  local: writes this build's own volume or STEP data; stamping is G8's
@@ -756,7 +757,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "target::wasm32-unknown-unknown::wasm::sdf_torus_w" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
 "target::wasm32-unknown-unknown::wasm::sphere_batch_flat" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
 
-# 60 local
+# 55 local
 "fn::io::abm::save_abm" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_lods" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::alembic::export_alembic" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
@@ -802,11 +803,6 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::io::threemf::export_3mf" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::threemf::export_3mf_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::threemf::export_3mf_with_stamp" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
-"fn::io::ue5_asset::export_ue5_mesh" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
-"fn::io::ue5_asset::export_ue5_mesh_binary" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
-"fn::io::ue5_asset::export_ue5_mesh_with_lods" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
-"fn::io::unity_mesh::export_unity_mesh" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
-"fn::io::unity_mesh::export_unity_mesh_binary" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::usd::export_usda" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::usd::export_usda_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::vdb::bake_to_vdb" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
@@ -817,6 +813,18 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::io::vox::save_vox_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_lods_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+
+# 10 local
+"fn::io::ue5_asset::export_ue5_mesh" = "local: writes this build's own mesh as a UE5 or Unity asset under the identifier the caller gives (this crate's by default)"
+"fn::io::ue5_asset::export_ue5_mesh_binary" = "local: writes this build's own mesh as a UE5 or Unity asset under the identifier the caller gives (this crate's by default)"
+"fn::io::ue5_asset::export_ue5_mesh_binary_with_provenance" = "local: writes this build's own mesh as a UE5 or Unity asset under the identifier the caller gives (this crate's by default)"
+"fn::io::ue5_asset::export_ue5_mesh_with_lods" = "local: writes this build's own mesh as a UE5 or Unity asset under the identifier the caller gives (this crate's by default)"
+"fn::io::ue5_asset::export_ue5_mesh_with_lods_with_provenance" = "local: writes this build's own mesh as a UE5 or Unity asset under the identifier the caller gives (this crate's by default)"
+"fn::io::ue5_asset::export_ue5_mesh_with_provenance" = "local: writes this build's own mesh as a UE5 or Unity asset under the identifier the caller gives (this crate's by default)"
+"fn::io::unity_mesh::export_unity_mesh" = "local: writes this build's own mesh as a UE5 or Unity asset under the identifier the caller gives (this crate's by default)"
+"fn::io::unity_mesh::export_unity_mesh_binary" = "local: writes this build's own mesh as a UE5 or Unity asset under the identifier the caller gives (this crate's by default)"
+"fn::io::unity_mesh::export_unity_mesh_binary_with_provenance" = "local: writes this build's own mesh as a UE5 or Unity asset under the identifier the caller gives (this crate's by default)"
+"fn::io::unity_mesh::export_unity_mesh_with_provenance" = "local: writes this build's own mesh as a UE5 or Unity asset under the identifier the caller gives (this crate's by default)"
 
 # 7 local
 "fn::io::nanite::export_nanite" = "local: writes this build's own Nanite clusters, manifest or material under the identifier the caller gives (this crate's by default)"

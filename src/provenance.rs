@@ -25,6 +25,8 @@
 //! | Nanite (`.nanite`, version 4, [`crate::io::nanite::export_nanite`]) | the 32 bytes after the 32-byte header; versions 1-3 carry none |
 //! | Nanite manifest (`.nanite.json`) | the top-level field `"alice:semantics_id": "<64 hex>"` |
 //! | shader text (the Nanite HLSL material `.usf`) | a line `// alice:semantics_id=<64 hex>` in the leading `//` comment block |
+//! | UE5 / Unity binary mesh (`ALUE` / `ALMB`, version 2, [`crate::io::export_ue5_mesh_binary`] / [`crate::io::export_unity_mesh_binary`]) | the 32 bytes after the 16-byte header; version 1 carries none |
+//! | UE5 / Unity JSON mesh ([`crate::io::export_ue5_mesh`] / [`crate::io::export_unity_mesh`]) | the top-level field `"alice:semantics_id": "<64 hex>"` next to the mesh object |
 //! | DDS 3D texture | the header's reserved dwords: tag `ALSD`, version `1`, the 32 identifier bytes |
 //! | raw volume data (no header) | a sidecar file `<path>.semantics`: `alice:semantics_id=<64 hex>` |
 //!
@@ -446,6 +448,34 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
                 "Nanite: version {v} is not known"
             ))),
         };
+    }
+    for (magic, format) in [(b"ALUE", "UE5"), (b"ALMB", "Unity")] {
+        if bytes.starts_with(magic) {
+            // UE5 / Unity binary mesh: version 2 carries the identifier after the 16-byte header;
+            // version 1 carries none; a version this crate does not know is refused
+            let version = bytes
+                .get(4..6)
+                .map(|v| u16::from_le_bytes([v[0], v[1]]))
+                .ok_or_else(|| {
+                    ProvenanceError::Unreadable(format!("{format}: truncated header"))
+                })?;
+            return match version {
+                1 => Err(ProvenanceError::Missing { format }),
+                2 => {
+                    let id: [u8; 32] = bytes
+                        .get(16..48)
+                        .ok_or_else(|| {
+                            ProvenanceError::Unreadable(format!("{format}: truncated header"))
+                        })?
+                        .try_into()
+                        .unwrap();
+                    Ok(Provenance::new(id))
+                }
+                v => Err(ProvenanceError::Unreadable(format!(
+                    "{format}: version {v} is not known"
+                ))),
+            };
+        }
     }
     if bytes.starts_with(b"NSDF") {
         // NSDF (neural weights): version 2 carries the identifier after the version

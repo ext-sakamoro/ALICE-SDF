@@ -7,11 +7,6 @@
 
 expected-writers 64
 
-src/io/ue5_asset.rs::export_ue5_mesh
-src/io/ue5_asset.rs::export_ue5_mesh_binary
-src/io/ue5_asset.rs::export_ue5_mesh_with_lods
-src/io/unity_mesh.rs::export_unity_mesh
-src/io/unity_mesh.rs::export_unity_mesh_binary
 src/bin/main.rs::cmd_texture_fit
 examples/msl_emit.rs::main
 examples/rust_transpile.rs::main

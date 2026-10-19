@@ -188,6 +188,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(config.lod_count, chain.config.lod_count);
     println!("{}: {meta_semantics:?}", meta_path.display());
 
+    // the UE5 asset: the JSON carries the identifier as a top-level field next to the mesh, for
+    // one mesh or a LOD list; written under another identifier, the check names it
+    let ue5 = dir.join("sphere.ue5_mesh");
+    let ue5_config = io::Ue5MeshConfig::default();
+    io::export_ue5_mesh_with_lods(
+        &[mesh.clone(), mesh.clone()],
+        &[1.0, 0.5],
+        &ue5,
+        &ue5_config,
+    )?;
+    assert_eq!(provenance::check_sdf(&ue5)?, StoredSemantics::Current);
+    io::export_ue5_mesh_with_provenance(&mesh, &ue5, &ue5_config, &foreign)?;
+    assert_eq!(provenance::read(&ue5)?, foreign);
+    println!(
+        "{}: written under {}",
+        ue5.display(),
+        provenance::read(&ue5)?
+    );
+
     let other = dir.join("other.stl");
     io::export_stl_with_provenance(&mesh, &other, &Provenance::new([7; 32]))?;
     match provenance::check_sdf(&other) {

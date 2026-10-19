@@ -312,6 +312,75 @@ const WRITERS: &[(&str, &str, Write)] = &[
             }
         },
     ),
+    (
+        "src/io/ue5_asset.rs::export_ue5_mesh",
+        "m.ue5_mesh",
+        |m, p, id| {
+            let c = io::Ue5MeshConfig::default();
+            match id {
+                None => io::export_ue5_mesh(m, p, &c).unwrap(),
+                Some(id) => io::ue5_asset::export_ue5_mesh_with_provenance(m, p, &c, id).unwrap(),
+            }
+        },
+    ),
+    (
+        "src/io/ue5_asset.rs::export_ue5_mesh_binary",
+        "m.ue5_mesh_bin",
+        |m, p, id| {
+            let c = io::Ue5MeshConfig::default();
+            match id {
+                None => io::export_ue5_mesh_binary(m, p, &c).unwrap(),
+                Some(id) => {
+                    io::ue5_asset::export_ue5_mesh_binary_with_provenance(m, p, &c, id).unwrap();
+                }
+            }
+        },
+    ),
+    (
+        "src/io/ue5_asset.rs::export_ue5_mesh_with_lods",
+        "m_lods.ue5_mesh",
+        |m, p, id| {
+            let c = io::Ue5MeshConfig::default();
+            let lods = [m.clone(), m.clone()];
+            match id {
+                None => io::export_ue5_mesh_with_lods(&lods, &[1.0, 0.5], p, &c).unwrap(),
+                Some(id) => io::ue5_asset::export_ue5_mesh_with_lods_with_provenance(
+                    &lods,
+                    &[1.0, 0.5],
+                    p,
+                    &c,
+                    id,
+                )
+                .unwrap(),
+            }
+        },
+    ),
+    (
+        "src/io/unity_mesh.rs::export_unity_mesh",
+        "m.unity_mesh",
+        |m, p, id| {
+            let c = io::UnityMeshConfig::default();
+            match id {
+                None => io::export_unity_mesh(m, p, &c).unwrap(),
+                Some(id) => {
+                    io::unity_mesh::export_unity_mesh_with_provenance(m, p, &c, id).unwrap();
+                }
+            }
+        },
+    ),
+    (
+        "src/io/unity_mesh.rs::export_unity_mesh_binary",
+        "m.unity_mesh_bin",
+        |m, p, id| {
+            let c = io::UnityMeshConfig::default();
+            match id {
+                None => io::export_unity_mesh_binary(m, p, &c).unwrap(),
+                Some(id) => {
+                    io::unity_mesh::export_unity_mesh_binary_with_provenance(m, p, &c, id).unwrap();
+                }
+            }
+        },
+    ),
     ("src/io/asdf.rs::save_asdf", "t.asdf", |_, p, id| {
         let tree = SdfTree::new(SdfNode::sphere(1.0));
         match id {
@@ -3570,4 +3639,61 @@ fn nanite_hlsl_material_carries_the_identifier() {
         provenance::from_bytes(two.as_bytes()),
         Err(ProvenanceError::Unreadable(_))
     ));
+}
+
+/// The UE5 (`ALUE`) and Unity (`ALMB`) binary meshes: version 2 stores the identifier in the 32
+/// bytes after the 16-byte header; a version 1 file (no identifier) is reported missing, another
+/// version or a cut header unreadable, never read as some identifier
+#[test]
+fn engine_binary_meshes_of_version_1_are_missing() {
+    type Bin = fn(&Mesh, &Path);
+    let writers: [(&str, &[u8; 4], Bin); 2] = [
+        ("UE5", b"ALUE", |m, p| {
+            io::export_ue5_mesh_binary(m, p, &io::Ue5MeshConfig::default()).unwrap();
+        }),
+        ("Unity", b"ALMB", |m, p| {
+            io::export_unity_mesh_binary(m, p, &io::UnityMeshConfig::default()).unwrap();
+        }),
+    ];
+    let m = mesh();
+    let mut compared = 0;
+    for (format, magic, write) in writers {
+        let path = temp(&format!("versions_{format}.bin"));
+        write(&m, &path);
+        let b = std::fs::read(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        assert_eq!(&b[..4], magic);
+        assert_eq!(b[4..6], 2u16.to_le_bytes(), "{format}");
+        assert_eq!(b[16..48], alice_sdf::SDF_SEMANTICS_ID, "{format}");
+        assert_eq!(provenance::from_bytes(&b).unwrap(), Provenance::sdf());
+        // version 1: the same header and body without the identifier
+        let mut old = [&b[..16], &b[48..]].concat();
+        old[4..6].copy_from_slice(&1u16.to_le_bytes());
+        match provenance::from_bytes(&old) {
+            Err(ProvenanceError::Missing { format: f }) => assert_eq!(f, format),
+            other => panic!("{format} version 1: {other:?}"),
+        }
+        for version in [0u16, 3, u16::MAX] {
+            let mut other = b.clone();
+            other[4..6].copy_from_slice(&version.to_le_bytes());
+            assert!(
+                matches!(
+                    provenance::from_bytes(&other),
+                    Err(ProvenanceError::Unreadable(_))
+                ),
+                "{format} version {version}"
+            );
+        }
+        for cut in [5, 20, 47] {
+            assert!(
+                matches!(
+                    provenance::from_bytes(&b[..cut]),
+                    Err(ProvenanceError::Unreadable(_))
+                ),
+                "{format} cut at {cut}"
+            );
+        }
+        compared += 1;
+    }
+    assert_eq!(compared, 2);
 }
