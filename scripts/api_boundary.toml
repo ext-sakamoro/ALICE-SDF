@@ -26,7 +26,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 747 items (0 Linux-only): 56 handshake, 673 local, 18 pending (G8). Groups (count, decision):
+# 747 items (0 Linux-only): 58 handshake, 673 local, 16 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -61,7 +61,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  handshake: nsdf_writers_store_and_loaders_check_the_identifier
 #      1  handshake: an_nsdf_file_from_6_1_0_is_refused_by_default_and_read_unverified
 #      7  pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check
-#      2  pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under
+#      2  handshake: a_payload_under_other_semantics_is_refused
 #      4  local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)
 #      2  pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier
 #      1  local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)
@@ -243,9 +243,9 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::codec_bridge::decompress_sdf" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
 "fn::codec_bridge::try_decode_sdf_volume" = "pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check"
 
-# 2 pending
-"fn::<Participant for LiveSdf>::check_state" = "pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under"
-"fn::<Participant for LiveSdf>::read_state" = "pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under"
+# 2 handshake
+"fn::<Participant for LiveSdf>::check_state" = "handshake: a_payload_under_other_semantics_is_refused"
+"fn::<Participant for LiveSdf>::read_state" = "handshake: a_payload_under_other_semantics_is_refused"
 
 # 4 local
 "impl::Deserialize for Aabb" = "local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)"
