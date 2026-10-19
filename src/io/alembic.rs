@@ -9,6 +9,7 @@
 
 use crate::io::IoError;
 use crate::mesh::Mesh;
+use crate::provenance::{Provenance, KEY};
 use std::io::Write;
 use std::path::Path;
 
@@ -90,10 +91,31 @@ impl<W: Write> OgawaWriter<W> {
 }
 
 /// Export mesh to Alembic (.abc) Ogawa format
+///
+/// The archive's metadata (the second data node, a JSON object) carries this crate's semantics
+/// identifier as `"alice:semantics_id": "<64 hex>"`; [`crate::provenance::read`] reads it back.
+///
+/// # Errors
+///
+/// The I/O errors.
 pub fn export_alembic(
     mesh: &Mesh,
     path: impl AsRef<Path>,
     config: &AlembicConfig,
+) -> Result<(), IoError> {
+    export_alembic_with_provenance(mesh, path, config, &Provenance::sdf())
+}
+
+/// [`export_alembic`] storing the given semantics identifier instead of this crate's
+///
+/// # Errors
+///
+/// As [`export_alembic`].
+pub fn export_alembic_with_provenance(
+    mesh: &Mesh,
+    path: impl AsRef<Path>,
+    config: &AlembicConfig,
+    provenance: &Provenance,
 ) -> Result<(), IoError> {
     let file = std::fs::File::create(path)?;
     let buf = std::io::BufWriter::new(file);
@@ -108,8 +130,9 @@ pub fn export_alembic(
 
     // Metadata
     let meta = format!(
-        "{{\"generator\":\"ALICE-SDF\",\"fps\":{},\"frame_range\":[0,0]}}",
-        config.fps
+        "{{\"generator\":\"ALICE-SDF\",\"fps\":{},\"frame_range\":[0,0],\"{KEY}\":\"{}\"}}",
+        config.fps,
+        provenance.hex()
     );
     w.write_string(&meta)?;
 

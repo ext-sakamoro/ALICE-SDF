@@ -26,7 +26,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 747 items (0 Linux-only): 56 handshake, 673 local, 18 pending (G8). Groups (count, decision):
+# 748 items (0 Linux-only): 56 handshake, 674 local, 18 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -79,7 +79,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  local: the Godot extension entry point, registers this build's classes
 #      6  local: Godot dispatches engine Variants to this build's own classes; no file is read
 #     16  local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded
-#     61  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
+#     62  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
 #      1  local: reports a stored file's format, version and node count as text; the tree is not returned
 #     10  local: writes this build's own volume or STEP data; stamping is G8's
 #      7  local: encodes this build's own mesh buffers
@@ -728,10 +728,11 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "target::wasm32-unknown-unknown::wasm::sdf_torus_w" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
 "target::wasm32-unknown-unknown::wasm::sphere_batch_flat" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
 
-# 61 local
+# 62 local
 "fn::io::abm::save_abm" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_lods" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::alembic::export_alembic" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::alembic::export_alembic_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::asdf::save_asdf" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::asdf::save_asdf_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::json::save_asdf_json_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
