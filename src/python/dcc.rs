@@ -11,7 +11,7 @@
 //! - [`sdf_to_mesh`] — marching-cubes mesh as Python `(list, list)` pairs
 //! - [`load_asdf`] — `.asdf` / `.asdf.json` loader (thin alias over
 //!   [`crate::io::load`]) for DCC binding compatibility
-//! - [`bake_to_vdb`] — dense voxel bake returning `bytes` in `ALICEVDB1` format
+//! - [`bake_to_vdb`] — the ALICE-VDB file bytes of `io::vdb::bake_to_vdb` (`ALICEVDB2`, stamped)
 //! - [`render_slice_2d`] — 2D `(H, W, 4)` RGBA uint8 numpy slice preview
 //!
 //! Author: Moroya Sakamoto
@@ -21,7 +21,7 @@ use numpy::ndarray::Array3;
 use numpy::{IntoPyArray, PyArray3};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-#[cfg(feature = "volume")]
+#[cfg(feature = "openvdb")]
 use pyo3::types::PyBytes;
 use pyo3::types::{PyList, PyTuple};
 
@@ -126,28 +126,16 @@ pub fn load_asdf(py: Python<'_>, path: &str) -> PyResult<PySdfNode> {
     Ok(PySdfNode { inner: tree.root })
 }
 
-/// Bake an SDF to a dense voxel volume and return the raw `bytes` in the
-/// `ALICEVDB1` container format.
+/// Bake an SDF to a dense distance grid and return the bytes of an ALICE-VDB file
 ///
-/// Requires the `volume` cargo feature.
+/// The bytes are exactly those of [`crate::io::vdb::bake_to_vdb`]: `ALICEVDB2`, the 32-byte
+/// semantics identifier, then the grid (`u32` resolution, `f32` min, `f32` max, and
+/// `resolution^3` `f32` distances, x fastest, sampled at `min + i * (max - min) / (resolution - 1)`
+/// on each axis, both ends included). `io::vdb::load_dense_grid_from_vdb` reads them back and
+/// checks the identifier.
 ///
-/// # `ALICEVDB1` binary layout (all little-endian)
-///
-/// | Offset | Size | Field |
-/// |-------:|-----:|-------|
-/// |     0  |   9  | magic bytes `b"ALICEVDB1"` |
-/// |     9  |   3  | zero padding (align to 12) |
-/// |    12  |   4  | `u32` resolution (cubic: `res * res * res` samples) |
-/// |    16  |  12  | `[f32; 3]` `bounds_min` (x, y, z) |
-/// |    28  |  12  | `[f32; 3]` `bounds_max` (x, y, z) |
-/// |    40  | 4·N  | `f32` distance samples, Z-major order (`N = res^3`) |
-///
-/// The DCC binding side (Nuke `export_asdf_as_volume`) writes these bytes
-/// verbatim to disk; downstream tools reading `.alicevdb` should parse the
-/// header first and then take the `res^3 * 4` byte payload.
-///
-/// Requires the `volume` cargo feature.
-#[cfg(feature = "volume")]
+/// Requires the `openvdb` cargo feature.
+#[cfg(feature = "openvdb")]
 #[pyfunction]
 #[pyo3(signature = (node, bounds = (-2.0, 2.0), resolution = 64))]
 pub fn bake_to_vdb<'py>(
@@ -156,41 +144,12 @@ pub fn bake_to_vdb<'py>(
     bounds: (f32, f32),
     resolution: u32,
 ) -> PyResult<Bound<'py, PyBytes>> {
-    use crate::volume::{bake_volume as cpu_bake, BakeConfig};
-
-    if resolution == 0 {
-        return Err(PyValueError::new_err("resolution must be > 0"));
-    }
-    if bounds.1 <= bounds.0 {
-        return Err(PyValueError::new_err(
-            "bounds.1 (max) must be > bounds.0 (min)",
-        ));
-    }
-
-    let min = Vec3::splat(bounds.0);
-    let max = Vec3::splat(bounds.1);
-    let cfg = BakeConfig {
-        resolution: [resolution, resolution, resolution],
-        bounds_min: min,
-        bounds_max: max,
-        generate_mips: false,
-        ..Default::default()
-    };
+    use crate::io::vdb::bake_to_vdb as io_bake_to_vdb;
     let node_ref = &node.inner;
-    let volume = py.detach(|| cpu_bake(node_ref, &cfg));
-
-    let payload_bytes = volume.data.len() * 4;
-    let mut buf: Vec<u8> = Vec::with_capacity(40 + payload_bytes);
-    buf.extend_from_slice(b"ALICEVDB1");
-    buf.extend_from_slice(&[0u8; 3]);
-    buf.extend_from_slice(&resolution.to_le_bytes());
-    for c in [min.x, min.y, min.z, max.x, max.y, max.z] {
-        buf.extend_from_slice(&c.to_le_bytes());
-    }
-    for v in &volume.data {
-        buf.extend_from_slice(&v.to_le_bytes());
-    }
-    Ok(PyBytes::new(py, &buf))
+    let bytes = py
+        .detach(|| io_bake_to_vdb(node_ref, bounds, resolution))
+        .map_err(|e| PyValueError::new_err(format!("bake_to_vdb: {e}")))?;
+    Ok(PyBytes::new(py, &bytes))
 }
 
 /// Render a 2D SDF slice at fixed world `z` into an RGBA uint8 numpy image.

@@ -108,6 +108,7 @@ jobs:
             python:
               - 'python/**'
               - 'pyproject.toml'
+              - 'bindings/nuke/**'
             ci:
               - '.github/**'
             vrchat:
@@ -1171,12 +1172,20 @@ jobs:
           python -m venv .venv
           . .venv/bin/activate
           pip install --quiet maturin numpy
-          maturin develop --features python
+          # openvdb: bake_to_vdb, which vdb_roundtrip.py requires (it fails, not skips, without it)
+          maturin develop --features python,openvdb
 
       - name: Run the analytic smoke test
         run: |
           . .venv/bin/activate
           python python/tests/smoke.py
+
+      # the ALICE-VDB bytes of bake_to_vdb: an independent parser, the identifier against the JSON
+      # stamp, every distance against |p| - 1 (the script prints how many samples it compared)
+      - name: Run the ALICE-VDB round trip
+        run: |
+          . .venv/bin/activate
+          python python/tests/vdb_roundtrip.py
 
   wasm-build:
     name: WASM bindings build

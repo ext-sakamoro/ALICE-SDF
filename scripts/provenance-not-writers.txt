@@ -17,6 +17,7 @@ src/python/io.rs::export_unity delegates to export_unity_mesh
 src/python/io.rs::export_usda delegates to export_usda
 src/python/io.rs::save_abm delegates to save_abm
 src/python/io.rs::save_sdf delegates to save
+src/python/dcc.rs::bake_to_vdb delegates to bake_to_vdb
 src/compiled/glsl/transpiler.rs::export_unity_shader_graph generates shader graph source text from a tree of this process; no stored value is written
 src/compiled/hlsl/transpiler.rs::export_ue5_material_function generates material function source text from a tree of this process; no stored value is written
 src/compiled/hlsl/transpiler.rs::export_unity_shader_graph generates shader graph source text from a tree of this process; no stored value is written

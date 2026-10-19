@@ -48,10 +48,13 @@ def version() -> str:
 
 
 def export_asdf_as_volume(filepath, bounds=(-2.0, 2.0), resolution=128, out_path=None):
-    """`.asdf` を読み込み、密 voxel 配列としてバイナリ書き出し。
+    """`.asdf` を読み込み、密な距離の格子を ALICE-VDB の file として書き出す。
 
     Nuke の DeepRead や Volume ノードへ渡す中間ファイルとして利用。
-    出力形式: ALICEVDB1 (alice_sdf.io.vdb 互換)。
+    出力形式: ALICEVDB2 (意味の識別子 32 byte の後に格子: u32 解像度、f32 min、f32 max、
+    解像度^3 個の f32 距離、x が最も速く変わる、両端を含む等間隔の標本)。
+    alice_sdf の Rust の `io::vdb::load_dense_grid_from_vdb` が読み、識別子を確かめる。
+    alice_sdf を feature `openvdb` 付きで build した時だけ使える。
     """
     if not is_available():
         raise RuntimeError("alice_sdf backend not installed")

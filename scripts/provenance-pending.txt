@@ -4,7 +4,7 @@
 # tests/test_provenance.rs has its round-trip entry; G8 passes when no line is left
 # `expected-writers` is the number of public writers found; change it only with a new or removed writer
 
-expected-writers 57
+expected-writers 56
 
 src/codec_bridge.rs::encode_sdf_volume
 src/io/alembic.rs::export_alembic
@@ -25,4 +25,3 @@ src/mesh/meshopt_index_codec.rs::encode_index_buffer
 src/mesh/meshopt_index_codec.rs::try_encode_index_buffer
 src/mesh/meshopt_vertex_codec.rs::encode_vertex_buffer
 src/mesh/meshopt_vertex_codec.rs::encode_vertex_buffer_level
-src/python/dcc.rs::bake_to_vdb

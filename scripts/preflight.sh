@@ -493,15 +493,16 @@ step "wasm-build: release wasm artifact"
 cargo build --release --target wasm32-unknown-unknown --features wasm --no-default-features
 test -f target/wasm32-unknown-unknown/release/alice_sdf.wasm
 
-step "python-smoke: maturin develop --features python + python/tests/smoke.py"
+step "python-smoke: maturin develop --features python,openvdb + python/tests/smoke.py + vdb_roundtrip.py"
 if command -v maturin >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
   venv=$(mktemp -d)/venv
   python3 -m venv "$venv"
   # shellcheck disable=SC1091
   . "$venv/bin/activate"
   pip install --quiet maturin numpy
-  maturin develop --features python
+  maturin develop --features python,openvdb
   python python/tests/smoke.py
+  python python/tests/vdb_roundtrip.py
   deactivate
 else
   echo "skip: maturin / python3 not installed" >&2

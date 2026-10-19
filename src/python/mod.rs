@@ -52,7 +52,7 @@ pub fn alice_sdf(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dcc::torus, m)?)?;
     m.add_function(wrap_pyfunction!(dcc::sdf_to_mesh, m)?)?;
     m.add_function(wrap_pyfunction!(dcc::load_asdf, m)?)?;
-    #[cfg(feature = "volume")]
+    #[cfg(feature = "openvdb")]
     m.add_function(wrap_pyfunction!(dcc::bake_to_vdb, m)?)?;
     m.add_function(wrap_pyfunction!(dcc::render_slice_2d, m)?)?;
 

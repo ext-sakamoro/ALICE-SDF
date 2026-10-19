@@ -304,7 +304,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "impl::FromStr for ShaderLanguage" = "local: parses a shader language name"
 
 # 12 local
-"binding::pyo3::bake_to_vdb" = "local: writes this build's tree or mesh out; stamping the file is G8's"
+"binding::pyo3::bake_to_vdb" = "local: delegates to io::vdb::bake_to_vdb, which stamps the grid it writes"
 "binding::pyo3::export_alembic" = "local: writes this build's tree or mesh out; stamping the file is G8's"
 "binding::pyo3::export_fbx" = "local: writes this build's tree or mesh out; stamping the file is G8's"
 "binding::pyo3::export_glb" = "local: writes this build's tree or mesh out; stamping the file is G8's"
