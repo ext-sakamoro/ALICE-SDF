@@ -58,3 +58,4 @@ src/io/abm.rs::write forwards bytes to the inner writer while summing a CRC (the
 src/io/abm.rs::flush flushes the inner writer of the CRC-summing CrcWriter used by save_abm
 src/io/asdf.rs::write forwards bytes to the inner writer while summing a CRC (the Write impl of CrcWriter, used by save_asdf)
 src/io/asdf.rs::flush flushes the inner writer of the CRC-summing CrcWriter used by save_asdf
+src/io/mod.rs::save delegates to save_asdf (and to save_asdf_json for a .asdf.json path)
