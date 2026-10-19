@@ -3015,13 +3015,6 @@ fn with_jpeg_comment(jpeg: &[u8], payload: &[u8]) -> Vec<u8> {
     [&jpeg[..2], &seg, &jpeg[2..]].concat()
 }
 
-/// The heightmap images: `Heightmap::to_png` stores the identifier in a `tEXt` chunk before the
-/// image data (`tests/fixtures/provenance/heightmap_stamped.png` pins the bytes); the readers
-/// (`from_image_bytes` / `from_image`) read this crate's identifier as Current, a reproduced
-/// earlier one as VerifiedPrevious, refuse another (naming both), and read an image without one
-/// (a paint tool's PNG or JPEG) as Unpinned, which the `*_pinned` readers refuse; a malformed or
-/// repeated identifier, the key in a compressed text chunk, a cut chunk and a JPEG comment that is
-/// not exactly the tagged form are invalid, never read as unstamped
 /// (writer name as the scanner reads it, what it writes) for the image writer; the test below
 /// writes it, reads the identifier back and checks a mismatch
 #[cfg(all(feature = "image", feature = "terrain"))]
@@ -3030,6 +3023,13 @@ const IMAGE_WRITERS: &[(&str, &str)] = &[(
     "16-bit grey PNG heightmap",
 )];
 
+/// The heightmap images: `Heightmap::to_png` stores the identifier in a `tEXt` chunk before the
+/// image data (`tests/fixtures/provenance/heightmap_stamped.png` pins the bytes); the readers
+/// (`from_image_bytes` / `from_image`) read this crate's identifier as Current, a reproduced
+/// earlier one as VerifiedPrevious, refuse another (naming both), and read an image without one
+/// (a paint tool's PNG or JPEG) as Unpinned, which the `*_pinned` readers refuse; a malformed or
+/// repeated identifier, the key in a compressed text chunk, a cut chunk and a JPEG comment that is
+/// not exactly the tagged form are invalid, never read as unstamped
 #[cfg(all(feature = "image", feature = "terrain"))]
 #[test]
 fn heightmap_images_carry_and_check_the_identifier() {
@@ -3098,7 +3098,7 @@ fn heightmap_images_carry_and_check_the_identifier() {
     }
     // heights read from such a PNG are written back to the same bytes
     assert_eq!(back.to_png(&cfg).unwrap(), stamped);
-    let path = std::env::temp_dir().join(format!("alice_sdf_e4_{}.png", std::process::id()));
+    let path = std::env::temp_dir().join(format!("alice_sdf_g8_image_{}.png", std::process::id()));
     std::fs::write(&path, &stamped).unwrap();
     let pinned = Heightmap::from_image_pinned(&path, &cfg).unwrap();
     assert_eq!(
@@ -3207,6 +3207,27 @@ fn heightmap_images_carry_and_check_the_identifier() {
         format!("{}=zz", provenance::KEY).as_bytes(),
     ));
     invalid(&with_jpeg_comment(&jpeg, format!("{} ", tag).as_bytes()));
+    // fill bytes (0xFF) before the comment's marker, and markers without a length (RST0, TEM)
+    // before it: skipped, the identifier is still read
+    let filled = [&jpeg_stamped[..2], &[0xFF, 0xFF][..], &jpeg_stamped[2..]].concat();
+    assert_eq!(provenance::from_bytes(&filled).unwrap(), Provenance::sdf());
+    let markers = [
+        &jpeg_stamped[..2],
+        &[0xFF, 0xD0, 0xFF, 0x01][..],
+        &jpeg_stamped[2..],
+    ]
+    .concat();
+    assert_eq!(provenance::from_bytes(&markers).unwrap(), Provenance::sdf());
+    // the end of image before the start of scan, even when the bytes after it would walk on to
+    // the identifier (read as a 2-byte segment, they would)
+    invalid(
+        &[
+            &jpeg_stamped[..2],
+            &[0xFF, 0xD9, 0x00, 0x02][..],
+            &jpeg_stamped[2..],
+        ]
+        .concat(),
+    );
     let mut seg_overrun = with_jpeg_comment(&jpeg, b"hello");
     seg_overrun[4..6].copy_from_slice(&u16::MAX.to_be_bytes());
     invalid(&seg_overrun);
@@ -3241,7 +3262,7 @@ fn texture_fit_checks_the_image_identifier() {
         .into_parts()
         .0;
     let dir = std::env::temp_dir();
-    let current = dir.join(format!("alice_sdf_e4_fit_{}.png", std::process::id()));
+    let current = dir.join(format!("alice_sdf_g8_image_fit_{}.png", std::process::id()));
     std::fs::write(&current, hm.to_png(&cfg).unwrap()).unwrap();
     assert_eq!(
         fit_texture(&current, &config).unwrap().semantics(),
