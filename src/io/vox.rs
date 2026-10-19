@@ -210,21 +210,25 @@ fn parse_vox(bytes: &[u8]) -> Result<VoxModel, String> {
     }
     let mut size = (0u32, 0u32, 0u32);
     let mut voxels = Vec::new();
-    let mut off = 8;
-    // skip MAIN header (8 bytes id + 4 content size + 4 children size)
-    if bytes.len() < off + 12 || &bytes[off..off + 4] != b"MAIN" {
-        return Err("missing MAIN".into());
-    }
-    off += 12;
-    while off + 12 <= bytes.len() {
+    // MAIN's children must reach exactly the end of the file; a cut file is an error, never a
+    // partial model
+    let mut off = crate::provenance::vox_main_children(bytes)?;
+    while off < bytes.len() {
+        if off + 12 > bytes.len() {
+            return Err(format!("chunk header at byte {off} is cut short"));
+        }
         let id = &bytes[off..off + 4];
         let content_size = u32::from_le_bytes(bytes[off + 4..off + 8].try_into().unwrap()) as usize;
-        let _children_size =
+        let children_size =
             u32::from_le_bytes(bytes[off + 8..off + 12].try_into().unwrap()) as usize;
         let body_start = off + 12;
-        let body_end = body_start + content_size;
-        if body_end > bytes.len() {
-            break;
+        let body_end = body_start.saturating_add(content_size);
+        let chunk_end = body_end.saturating_add(children_size);
+        if chunk_end > bytes.len() {
+            return Err(format!(
+                "chunk {} at byte {off} overruns the file",
+                String::from_utf8_lossy(id)
+            ));
         }
         if id == b"SIZE" && content_size >= 12 {
             size = (
@@ -248,7 +252,7 @@ fn parse_vox(bytes: &[u8]) -> Result<VoxModel, String> {
                 });
             }
         }
-        off = body_end;
+        off = chunk_end;
     }
     Ok(VoxModel { size, voxels })
 }
@@ -302,6 +306,40 @@ mod tests {
         assert_eq!(loaded.size, m.size);
         assert_eq!(loaded.voxels.len(), m.voxels.len());
         std::fs::remove_file(&path).ok();
+    }
+
+    /// The model reader by itself (load_vox checks the identifier chunk first): a file cut short is
+    /// an error, never a partial model, whether MAIN's size still names the whole file or not
+    #[test]
+    fn a_cut_file_is_an_error_never_a_partial_model() {
+        let m = VoxModel {
+            size: (2, 2, 2),
+            voxels: vec![
+                Voxel {
+                    x: 0,
+                    y: 1,
+                    z: 1,
+                    color: 3,
+                },
+                Voxel {
+                    x: 1,
+                    y: 0,
+                    z: 1,
+                    color: 4,
+                },
+            ],
+        };
+        let b = encode_vox(&m, &crate::provenance::Provenance::sdf());
+        let xyzi = b.windows(4).position(|w| w == b"XYZI").unwrap();
+        let cut = b[..xyzi + 18].to_vec();
+        let e = parse_vox(&cut).unwrap_err();
+        assert!(e.contains("MAIN children size"), "{e}");
+        let mut refit = cut;
+        let n = u32::try_from(refit.len() - 20).unwrap();
+        refit[16..20].copy_from_slice(&n.to_le_bytes());
+        let e = parse_vox(&refit).unwrap_err();
+        assert!(e.contains("chunk XYZI at byte"), "{e}");
+        assert_eq!(parse_vox(&b).unwrap().voxels.len(), 2);
     }
 
     #[test]

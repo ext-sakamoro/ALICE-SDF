@@ -241,14 +241,26 @@ pub enum ProvenanceError {
 /// compressed), [`ProvenanceError::Io`] when the file cannot be read.
 pub fn read(path: impl AsRef<Path>) -> Result<Provenance, ProvenanceError> {
     let path = path.as_ref();
-    match from_bytes(&std::fs::read(path)?) {
+    let bytes = std::fs::read(path)?;
+    match from_bytes(&bytes) {
         Err(ProvenanceError::Unreadable(why)) => {
-            // a format with no place for the identifier (raw volume data) has it in a sidecar
+            // a format with no place for the identifier (raw volume data, .splat) has it in a
+            // sidecar; one that binds it to the file's SHA-256 is checked against these bytes
             let sidecar = sidecar_path(path);
-            if sidecar.is_file() {
-                tagged_in(&std::fs::read(sidecar)?, "sidecar")
+            if !sidecar.is_file() {
+                return Err(ProvenanceError::Unreadable(why));
+            }
+            let text = std::fs::read(&sidecar)?;
+            if find(&text, CONTENT_SHA256_KEY.as_bytes()).is_some() {
+                match bound_sidecar_id(path, &bytes) {
+                    Ok(Some(id)) => Ok(Provenance::new(id)),
+                    Ok(None) => Err(ProvenanceError::Unreadable(
+                        "sidecar: removed while reading".into(),
+                    )),
+                    Err(e) => Err(ProvenanceError::Unreadable(format!("sidecar: {e}"))),
+                }
             } else {
-                Err(ProvenanceError::Unreadable(why))
+                tagged_in(&text, "sidecar")
             }
         }
         other => other,
@@ -263,21 +275,15 @@ pub const VOX_CHUNK: &[u8; 4] = b"ALSD";
 /// another program, or written before identifiers were stored); an `ALSD` chunk that is cut short,
 /// has another length or layout version, or occurs twice is an error, never "no identifier"
 pub(crate) fn vox_stored_id(bytes: &[u8]) -> Result<Option<[u8; 32]>, String> {
-    if bytes.len() < 8 || &bytes[0..4] != b"VOX " {
-        return Err("not a VOX file".into());
-    }
-    if bytes.len() < 20 || &bytes[8..12] != b"MAIN" {
-        return Err("missing MAIN".into());
-    }
     let mut found: Option<[u8; 32]> = None;
-    let mut off = 20;
+    let mut off = vox_main_children(bytes)?;
     while off < bytes.len() {
         let rest = &bytes[off..];
         if rest.len() < 12 {
             if rest.starts_with(VOX_CHUNK) || (rest.len() < 4 && VOX_CHUNK.starts_with(rest)) {
                 return Err("ALSD chunk: truncated header".into());
             }
-            break;
+            return Err(format!("chunk header at byte {off} is cut short"));
         }
         let id = &rest[0..4];
         let content = u32::from_le_bytes([rest[4], rest[5], rest[6], rest[7]]) as usize;
@@ -304,11 +310,36 @@ pub(crate) fn vox_stored_id(bytes: &[u8]) -> Result<Option<[u8; 32]>, String> {
             found = Some(id);
         }
         if end > rest.len() {
-            break;
+            return Err(format!(
+                "chunk {} at byte {off} overruns the file",
+                String::from_utf8_lossy(id)
+            ));
         }
         off += end;
     }
     Ok(found)
+}
+
+/// The offset of MAIN's first child in a `.vox` file, after checking that MAIN's declared children
+/// size reaches exactly the end of the file (MagicaVoxel writes it so): a file cut short, or one
+/// with bytes after MAIN, is an error, so a chunk that is missing is never read as never written
+pub(crate) fn vox_main_children(bytes: &[u8]) -> Result<usize, String> {
+    if bytes.len() < 8 || &bytes[0..4] != b"VOX " {
+        return Err("not a VOX file".into());
+    }
+    if bytes.len() < 20 || &bytes[8..12] != b"MAIN" {
+        return Err("missing MAIN".into());
+    }
+    let content = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
+    let children = u32::from_le_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]) as usize;
+    let start = 20usize.saturating_add(content);
+    let have = bytes.len().saturating_sub(start);
+    if start > bytes.len() || children != have {
+        return Err(format!(
+            "MAIN children size {children}, the file has {have} bytes after MAIN's header"
+        ));
+    }
+    Ok(start)
 }
 
 /// The identifier stored in the bytes of a file

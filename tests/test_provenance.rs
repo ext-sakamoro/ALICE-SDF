@@ -2283,6 +2283,13 @@ fn vox_identifier_chunks_that_cannot_be_read_are_errors_never_unpinned() {
     assert_eq!(at + 48, own.len(), "ALSD is the last chunk");
     let set = |b: &mut [u8], o: usize, v: u32| b[o..o + 4].copy_from_slice(&v.to_le_bytes());
 
+    // MAIN's children size set to what the bytes hold, so the check under test is the ALSD one
+    let fit = |mut b: Vec<u8>| {
+        let n = u32::try_from(b.len() - 20).unwrap();
+        b[16..20].copy_from_slice(&n.to_le_bytes());
+        b
+    };
+
     let mut cases: Vec<(String, Vec<u8>, &str)> = [2usize, 4, 11, 12, 20, 47]
         .iter()
         .map(|&cut| {
@@ -2291,7 +2298,11 @@ fn vox_identifier_chunks_that_cannot_be_read_are_errors_never_unpinned() {
             } else {
                 "truncated body"
             };
-            (format!("cut to {cut} bytes"), own[..at + cut].to_vec(), why)
+            (
+                format!("cut to {cut} bytes"),
+                fit(own[..at + cut].to_vec()),
+                why,
+            )
         })
         .collect();
     let mut b = own.clone();
@@ -2303,9 +2314,35 @@ fn vox_identifier_chunks_that_cannot_be_read_are_errors_never_unpinned() {
     let mut b = own.clone();
     set(&mut b, at + 12, 2);
     cases.extend([("layout 2".to_string(), b, "layout version 2 is not known")]);
-    let twice = [&own[..], &own[at..]].concat();
+    let twice = fit([&own[..], &own[at..]].concat());
     cases.extend([("twice".to_string(), twice, "more than one ALSD chunk")]);
-    assert_eq!(cases.len(), 10);
+    // a stamped file cut short (inside XYZI, or inside ALSD) keeps MAIN's size of the whole file:
+    // an error, never a partial model read as unstamped
+    cases.extend([
+        (
+            "stamped, cut in XYZI".to_string(),
+            own[..at - 2].to_vec(),
+            "MAIN children size",
+        ),
+        (
+            "stamped, cut in ALSD".to_string(),
+            own[..at + 20].to_vec(),
+            "MAIN children size",
+        ),
+        (
+            "stamped, cut in XYZI, MAIN refitted".to_string(),
+            fit(own[..at - 2].to_vec()),
+            "chunk XYZI at byte",
+        ),
+    ]);
+    // the same for a file without the chunk (6.1.0, as MagicaVoxel writes it)
+    let old = std::fs::read(fixture("model_v1.vox")).unwrap();
+    cases.extend([(
+        "6.1.0 file cut in XYZI".to_string(),
+        old[..old.len() - 3].to_vec(),
+        "MAIN children size",
+    )]);
+    assert_eq!(cases.len(), 14);
 
     for (name, bytes, why) in cases {
         let from = provenance::from_bytes(&bytes);
@@ -2455,6 +2492,16 @@ fn splat_writers_store_and_loaders_check_the_identifier() {
             other => panic!("expected SemanticsMismatch, got {other:?}"),
         }
     }
+
+    // the .splat rewritten by another program after its sidecar: provenance::read refuses the
+    // sidecar's identifier as it does load_splat, never reports it as the file's
+    let rewritten = temp("rewritten.splat");
+    save_splat(&rewritten, &splats()).unwrap();
+    std::fs::write(&rewritten, splat_bytes(&splats()[..1])).unwrap();
+    assert!(matches!(
+        provenance::read(&rewritten),
+        Err(ProvenanceError::Unreadable(ref e)) if e.contains("rewritten after its sidecar")
+    ));
 
     // the sidecar removed: a file without an identifier
     std::fs::remove_file(provenance::sidecar_path(&own)).unwrap();
