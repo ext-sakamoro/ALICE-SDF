@@ -200,7 +200,8 @@ impl SvoChunk {
 
         let node_data = &data[36..];
         let node_byte_size = 32; // SvoNode is 32 bytes
-                                 // node_count comes from the bytes: on a 32-bit target its byte length can wrap
+
+        // node_count comes from the bytes: on a 32-bit target its byte length can wrap
         if node_data.len() < node_count.checked_mul(node_byte_size)? {
             return None;
         }
