@@ -76,6 +76,9 @@
 //! `check_state` refuses a payload whose identifier [`crate::check_sdf_semantics`]
 //! does not accept (a build that computes other distances would continue the
 //! shape on other bits) and a version 1 payload, which carries no identifier.
+//! The modifiers' own payloads are written by `alice-physics` and carry no
+//! identifier of the Physics arithmetic, so a modifier state computed under
+//! another Physics arithmetic is not yet detected.
 //!
 //! Author: Moroya Sakamoto
 
