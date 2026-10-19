@@ -265,6 +265,13 @@ const WRITERS: &[(&str, &str, Write)] = &[
             Some(id) => io::iges::export_iges_with_provenance(p, &node, &c, id).unwrap(),
         }
     }),
+    ("src/io/alembic.rs::export_alembic", "m.abc", |m, p, id| {
+        let c = io::AlembicConfig::default();
+        match id {
+            None => io::export_alembic(m, p, &c).unwrap(),
+            Some(id) => io::export_alembic_with_provenance(m, p, &c, id).unwrap(),
+        }
+    }),
     ("src/io/asdf.rs::save_asdf", "t.asdf", |_, p, id| {
         let tree = SdfTree::new(SdfNode::sphere(1.0));
         match id {
@@ -2635,4 +2642,47 @@ fn splat_sidecars_that_cannot_be_read_or_describe_other_bytes_are_errors_never_u
             );
         }
     }
+}
+
+/// `io::save` picks the writer by extension; both forms it writes carry this crate's identifier
+/// (the scanner lists it as delegating to `save_asdf`, which checks only the first)
+#[test]
+fn io_save_stores_the_identifier_for_both_extensions() {
+    let tree = SdfTree::new(SdfNode::sphere(1.0));
+    let mut compared = 0;
+    for file in ["t_io_save.asdf", "t_io_save.asdf.json"] {
+        let path = temp(file);
+        io::save(&tree, &path).unwrap();
+        assert_eq!(
+            provenance::read(&path).unwrap(),
+            Provenance::sdf(),
+            "{file}"
+        );
+        std::fs::remove_file(&path).ok();
+        compared += 1;
+    }
+    assert_eq!(compared, 2);
+}
+
+/// An Alembic archive whose metadata has no identifier is reported as missing, not read as some
+/// other value; a cut archive is unreadable
+#[test]
+fn alembic_without_identifier_is_missing_and_a_cut_archive_unreadable() {
+    let path = temp("m_unstamped.abc");
+    io::export_alembic(&mesh(), &path, &io::AlembicConfig::default()).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+    let key = provenance::KEY.as_bytes();
+    let at = bytes.windows(key.len()).position(|w| w == key).unwrap();
+    let mut unstamped = bytes.clone();
+    unstamped[at + key.len() - 2..at + key.len()].copy_from_slice(b"xx");
+    assert!(matches!(
+        provenance::from_bytes(&unstamped),
+        Err(ProvenanceError::Missing { format: "Alembic" })
+    ));
+    assert!(matches!(
+        provenance::from_bytes(&bytes[..20]),
+        Err(ProvenanceError::Unreadable(_))
+    ));
+    assert_eq!(provenance::from_bytes(&bytes).unwrap(), Provenance::sdf());
 }
