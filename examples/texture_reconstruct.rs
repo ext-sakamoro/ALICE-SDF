@@ -13,7 +13,11 @@
     reason = "example scene and animation values; the crate output these examples show is computed by the library"
 )]
 
-use alice_sdf::texture::{eval_octave, fit_texture, reconstruct, TextureFitConfig};
+use alice_sdf::provenance::StoredSemantics;
+use alice_sdf::texture::{
+    eval_octave, fit_texture, load_texture_fit, load_texture_fit_unverified, reconstruct,
+    save_texture_fit, TextureFitConfig,
+};
 
 fn main() {
     let (w, h) = (64u32, 48u32);
@@ -38,6 +42,20 @@ fn main() {
         "fit: bias {:.4}, {octaves} octave(s), PSNR {:.2} dB, NMSE {:.5}",
         fit.bias[0], fit.psnr_db, fit.nmse
     );
+
+    // store the fit with the semantics identifier; what is reconstructed below is what was read
+    // back, so the stored form is checked too
+    let stored = std::env::temp_dir().join("alice_sdf_texture_reconstruct.fit.json");
+    save_texture_fit(&fit, &stored).expect("save fit");
+    let fit_read = load_texture_fit(&stored).expect("load fit");
+    assert_eq!(fit_read, fit, "the stored fit reads back unchanged");
+    let semantics = load_texture_fit_unverified(&stored)
+        .expect("load fit")
+        .semantics();
+    assert_eq!(semantics, StoredSemantics::Current);
+    std::fs::remove_file(&stored).ok();
+    println!("stored fit: read back with identifier {semantics:?}");
+    let fit = fit_read;
 
     // at the source resolution the reconstruction is the fitted signal
     let same = reconstruct(&fit, w as usize, h as usize);

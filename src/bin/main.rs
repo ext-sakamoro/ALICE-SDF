@@ -837,7 +837,9 @@ fn cmd_texture_fit(
     shader: Option<String>,
     shader_output: Option<PathBuf>,
 ) {
-    use alice_sdf::texture::{fit_texture, generate_shader, ShaderLanguage, TextureFitConfig};
+    use alice_sdf::texture::{
+        fit_texture, generate_shader, save_texture_fit, ShaderLanguage, TextureFitConfig,
+    };
 
     let config = TextureFitConfig {
         max_octaves: octaves,
@@ -877,11 +879,10 @@ fn cmd_texture_fit(
     println!("  NMSE: {:.4}", result.nmse);
     println!("  Time: {:.3}s", elapsed.as_secs_f64());
 
-    // Save JSON
+    // Save JSON (with the semantics identifier, read back by `texture::load_texture_fit`)
     if let Some(out_path) = output {
-        let json = serde_json::to_string_pretty(&result).unwrap();
-        match std::fs::write(&out_path, json) {
-            Ok(_) => println!("  Saved parameters to {}", out_path.display()),
+        match save_texture_fit(&result, &out_path) {
+            Ok(()) => println!("  Saved parameters to {}", out_path.display()),
             Err(e) => eprintln!("  Failed to save JSON: {}", e),
         }
     }

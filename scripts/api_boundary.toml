@@ -26,7 +26,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 747 items (0 Linux-only): 56 handshake, 673 local, 18 pending (G8). Groups (count, decision):
+# 747 items (0 Linux-only): 58 handshake, 673 local, 16 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -55,6 +55,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  handshake: a_splat_from_6_1_0_reads_as_unpinned_and_is_refused_when_pinned
 #      1  handshake: alice_vdb_writers_store_and_loaders_check_the_identifier
 #      1  handshake: alice_vdb_grid_from_6_1_0_is_refused_by_default_and_read_unverified
+#      1  handshake: texture_fit_writer_stores_and_loaders_check_the_identifier
+#      1  handshake: texture_fit_without_identifier_is_unpinned_and_malformed_is_refused
 #      2  handshake: lod_chain_loaders_check_both_parts
 #      1  local: converts an animation clip already in memory; the file it came from is read by import_fbx_full, which checks the identifier
 #     18  handshake: a_file_from_6_1_0_is_read_unpinned_and_refused_by_the_pinned_importer
@@ -63,10 +65,9 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      7  pending: G8, the encoded buffer carries no semantics identifier, so a buffer encoded by another build decodes without a check
 #      2  pending: G8, the snapshot state carries no SDF identifier; check_state checks the layout, not the arithmetic the modifiers' state was computed under
 #      4  local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)
-#      2  pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier
 #      1  local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)
 #     12  local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic
-#     23  local: writes this crate's own value; stamping the stored file is G8's
+#     21  local: writes this crate's own value; stamping the stored file is G8's
 #      2  local: parses a shader language name
 #     12  local: writes this build's tree or mesh out; stamping the file is G8's
 #    195  local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the pending binding entries)
@@ -79,7 +80,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  local: the Godot extension entry point, registers this build's classes
 #      6  local: Godot dispatches engine Variants to this build's own classes; no file is read
 #     16  local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded
-#     61  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
+#     63  local: writes this build's own values to bytes or a path; stamping the stored file is G8's
 #      1  local: reports a stored file's format, version and node count as text; the tree is not returned
 #     10  local: writes this build's own volume or STEP data; stamping is G8's
 #      7  local: encodes this build's own mesh buffers
@@ -189,11 +190,13 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "impl::Deserialize for SdfNode" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
 "impl::Deserialize for SdfTree" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
 
-# 6 handshake
+# 8 handshake
 "fn::io::splat::load_splat" = "handshake: splat_writers_store_and_loaders_check_the_identifier"
 "fn::io::splat::load_splat_pinned" = "handshake: a_splat_from_6_1_0_reads_as_unpinned_and_is_refused_when_pinned"
 "fn::io::vdb::load_dense_grid_from_vdb" = "handshake: alice_vdb_writers_store_and_loaders_check_the_identifier"
 "fn::io::vdb::load_dense_grid_from_vdb_unverified" = "handshake: alice_vdb_grid_from_6_1_0_is_refused_by_default_and_read_unverified"
+"fn::texture::load_texture_fit" = "handshake: texture_fit_writer_stores_and_loaders_check_the_identifier"
+"fn::texture::load_texture_fit_unverified" = "handshake: texture_fit_without_identifier_is_unpinned_and_malformed_is_refused"
 "fn::io::vox::load_vox" = "handshake: vox_writers_store_and_loaders_check_the_identifier"
 "fn::io::vox::load_vox_pinned" = "handshake: a_vox_from_6_1_0_reads_as_unpinned_and_is_refused_when_pinned"
 
@@ -253,9 +256,6 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "impl::Deserialize for Triangle" = "local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)"
 "impl::Deserialize for Vertex" = "local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)"
 
-# 2 pending
-"impl::Deserialize for FittedOctave" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
-"impl::Deserialize for TextureFitResult" = "pending: G8, a serde read of a value computed under the SDF arithmetic carries no identifier"
 
 # 1 local
 "impl::Deserialize for SdfMetadata" = "local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)"
@@ -274,10 +274,9 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "impl::Deserialize for Timeline" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
 "impl::Deserialize for Track" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
 
-# 23 local
+# 21 local
 "impl::Serialize for Aabb" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for BoneTransform" = "local: writes this crate's own value; stamping the stored file is G8's"
-"impl::Serialize for FittedOctave" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for Interpolation" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for Keyframe" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for LodChainConfig" = "local: writes this crate's own value; stamping the stored file is G8's"
@@ -292,7 +291,6 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "impl::Serialize for SdfMetadata" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for SdfNode" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for SdfTree" = "local: writes this crate's own value; stamping the stored file is G8's"
-"impl::Serialize for TextureFitResult" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for TextureSlot" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for Timeline" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for Track" = "local: writes this crate's own value; stamping the stored file is G8's"
@@ -728,7 +726,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "target::wasm32-unknown-unknown::wasm::sdf_torus_w" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
 "target::wasm32-unknown-unknown::wasm::sphere_batch_flat" = "local: JavaScript numbers passed as inputs, distances or pixels out, evaluated in the module; no stored or transmitted form is decoded"
 
-# 61 local
+# 63 local
 "fn::io::abm::save_abm" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_lods" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::alembic::export_alembic" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
@@ -786,6 +784,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::io::usd::export_usda_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::vdb::bake_to_vdb" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::vdb::bake_to_vdb_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::texture::save_texture_fit" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::texture::save_texture_fit_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::vox::save_vox" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::vox::save_vox_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::abm::save_abm_with_lods_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"

@@ -11,9 +11,13 @@
 )]
 #![cfg(feature = "texture-fit")]
 
+use alice_sdf::io::IoError;
+use alice_sdf::provenance::{self, Provenance, StoredSemantics};
 use alice_sdf::texture::{
-    eval_octave, fit_texture, generate_shader, hash_noise_3d_cpu, nelder_mead, reconstruct,
-    ShaderLanguage, TextureFitConfig,
+    eval_octave, fit_texture, generate_shader, hash_noise_3d_cpu, load_texture_fit,
+    load_texture_fit_unverified, nelder_mead, reconstruct, save_texture_fit,
+    save_texture_fit_with_provenance, FittedOctave, ShaderLanguage, TextureFitConfig,
+    TextureFitResult,
 };
 use std::path::PathBuf;
 
@@ -446,4 +450,153 @@ fn generated_shaders_validate_with_naga() {
         2 + 1,
         "one call per octave plus the definition:\n{hlsl}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Stored fit: the semantics identifier (ALICE-Law G8)
+// ---------------------------------------------------------------------------
+
+/// (writer name as the scanner reads it, what it writes): the stored fit is written, read back
+/// through `provenance::read` and judged by the loaders below
+const FIT_WRITERS: &[(&str, &str)] =
+    &[("src/texture/mod.rs::save_texture_fit", "texture fit JSON")];
+
+fn sample_fit() -> TextureFitResult {
+    TextureFitResult {
+        width: 16,
+        height: 8,
+        channels: 1,
+        bias: vec![0.25],
+        octaves: vec![vec![
+            FittedOctave {
+                amplitude: 0.5,
+                frequency: 3.0,
+                phase: [0.125, -0.75],
+                seed: 7,
+                rotation: 0.3,
+            },
+            FittedOctave {
+                amplitude: -0.0625,
+                frequency: 11.5,
+                phase: [1.0e-7, 2.5],
+                seed: 4_000_000_000,
+                rotation: -1.25,
+            },
+        ]],
+        psnr_db: 31.5,
+        nmse: 0.0123,
+    }
+}
+
+fn fit_path(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join("alice_sdf_texture_fit_provenance");
+    std::fs::create_dir_all(&dir).unwrap();
+    dir.join(name)
+}
+
+/// `save_texture_fit` stores this crate's identifier, `save_texture_fit_with_provenance` the
+/// caller's; this crate's loads back bit for bit, another one is refused by both loaders
+#[test]
+fn texture_fit_writer_stores_and_loaders_check_the_identifier() {
+    assert!(FIT_WRITERS
+        .iter()
+        .any(|(w, _)| *w == "src/texture/mod.rs::save_texture_fit"));
+    let fit = sample_fit();
+    let own = fit_path("own.json");
+    save_texture_fit(&fit, &own).unwrap();
+    assert_eq!(provenance::read(&own).unwrap(), Provenance::sdf());
+    let back = load_texture_fit(&own).unwrap();
+    assert_eq!(back, fit);
+    let bits = |r: &TextureFitResult| -> Vec<u32> {
+        r.octaves
+            .iter()
+            .flatten()
+            .flat_map(|o| [o.amplitude, o.frequency, o.phase[0], o.phase[1], o.rotation])
+            .chain(r.bias.iter().copied())
+            .chain([r.psnr_db, r.nmse])
+            .map(f32::to_bits)
+            .collect()
+    };
+    assert_eq!(bits(&back), bits(&fit), "the fit reads back bit for bit");
+    assert_eq!(
+        load_texture_fit_unverified(&own).unwrap().semantics(),
+        StoredSemantics::Current
+    );
+
+    let other_id = Provenance::new([0xA5; 32]);
+    let other = fit_path("other.json");
+    save_texture_fit_with_provenance(&fit, &other, &other_id).unwrap();
+    assert_eq!(provenance::read(&other).unwrap(), other_id);
+    for err in [
+        load_texture_fit(&other).unwrap_err(),
+        load_texture_fit_unverified(&other).unwrap_err(),
+    ] {
+        match err {
+            IoError::SemanticsMismatch {
+                stored, expected, ..
+            } => {
+                assert_eq!(stored, other_id);
+                assert_eq!(expected, Provenance::sdf());
+            }
+            e => panic!("expected SemanticsMismatch, got {e:?}"),
+        }
+    }
+}
+
+/// A fit the CLI wrote before the identifier (the bare fields, no `format`) is refused by
+/// default and read as `Unpinned` by the explicit loader; a half-stamped or unknown-format
+/// document is an error, never read as unstamped
+#[test]
+fn texture_fit_without_identifier_is_unpinned_and_malformed_is_refused() {
+    let fit = sample_fit();
+    let own = fit_path("for_legacy.json");
+    save_texture_fit(&fit, &own).unwrap();
+    let doc: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&own).unwrap()).unwrap();
+    let write = |name: &str, edit: &dyn Fn(&mut serde_json::Map<String, serde_json::Value>)| {
+        let mut d = doc.as_object().unwrap().clone();
+        edit(&mut d);
+        let p = fit_path(name);
+        std::fs::write(&p, serde_json::to_string_pretty(&d).unwrap()).unwrap();
+        p
+    };
+
+    let legacy = write("legacy.json", &|d| {
+        d.remove("format");
+        d.remove(provenance::KEY);
+    });
+    assert!(matches!(
+        load_texture_fit(&legacy),
+        Err(IoError::Unpinned { .. })
+    ));
+    let (back, semantics) = load_texture_fit_unverified(&legacy).unwrap().into_parts();
+    assert_eq!(semantics, StoredSemantics::Unpinned);
+    assert_eq!(back, fit);
+
+    let no_id = write("no_id.json", &|d| {
+        d.remove(provenance::KEY);
+    });
+    let no_format = write("no_format.json", &|d| {
+        d.remove("format");
+    });
+    let bad_hex = write("bad_hex.json", &|d| {
+        d.insert(provenance::KEY.into(), "zz".into());
+    });
+    for p in [&no_id, &no_format, &bad_hex] {
+        assert!(
+            matches!(
+                load_texture_fit_unverified(p),
+                Err(IoError::InvalidFormat(_))
+            ),
+            "{}",
+            p.display()
+        );
+    }
+    let format_2 = write("format_2.json", &|d| {
+        d.insert("format".into(), 2.into());
+    });
+    assert!(matches!(
+        load_texture_fit_unverified(&format_2),
+        Err(IoError::UnsupportedVersion(2))
+    ));
 }

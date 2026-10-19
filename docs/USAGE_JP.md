@@ -687,7 +687,10 @@ alice-sdf texture-fit marble.png --octaves 12 --target-psnr 35.0 --iterations 20
 ### Rust API
 
 ```rust
-use alice_sdf::texture::{fit_texture, generate_shader, ShaderLanguage, TextureFitConfig};
+use alice_sdf::texture::{
+    fit_texture, generate_shader, load_texture_fit, save_texture_fit, ShaderLanguage,
+    TextureFitConfig,
+};
 use std::path::Path;
 
 let config = TextureFitConfig {
@@ -702,7 +705,14 @@ println!("PSNR: {:.1} dB, {} オクターブ", result.psnr_db, result.octaves[0]
 
 // スタンドアロンWGSLシェーダーを生成
 let shader = generate_shader(&result, ShaderLanguage::Wgsl, "granite.png");
+
+// Store the fit with the semantics identifier and read it back (identifier checked)
+save_texture_fit(&result, "granite.fit.json").unwrap();
+let stored = load_texture_fit("granite.fit.json").unwrap();
+assert_eq!(stored, result);
 ```
+
+`-o` / `save_texture_fit` が書く JSON は意味の識別子 (`"alice:semantics_id"`) を持つ `load_texture_fit` はそれを確かめて読み、識別子の無い file (7.0.0 より前に書いたもの) や別の noise の法則で書いた file は拒否する `load_texture_fit_unverified` はそれらも読み、`Unpinned` として返す
 
 ### 出力シェーダー言語
 

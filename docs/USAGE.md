@@ -689,7 +689,10 @@ alice-sdf texture-fit marble.png --octaves 12 --target-psnr 35.0 --iterations 20
 ### Rust API
 
 ```rust
-use alice_sdf::texture::{fit_texture, generate_shader, ShaderLanguage, TextureFitConfig};
+use alice_sdf::texture::{
+    fit_texture, generate_shader, load_texture_fit, save_texture_fit, ShaderLanguage,
+    TextureFitConfig,
+};
 use std::path::Path;
 
 let config = TextureFitConfig {
@@ -704,7 +707,14 @@ println!("PSNR: {:.1} dB, {} octaves", result.psnr_db, result.octaves[0].len());
 
 // Generate standalone WGSL shader
 let shader = generate_shader(&result, ShaderLanguage::Wgsl, "granite.png");
+
+// Store the fit with the semantics identifier and read it back (identifier checked)
+save_texture_fit(&result, "granite.fit.json").unwrap();
+let stored = load_texture_fit("granite.fit.json").unwrap();
+assert_eq!(stored, result);
 ```
+
+The JSON written by `-o` / `save_texture_fit` carries the semantics identifier (`"alice:semantics_id"`); `load_texture_fit` reads it back and refuses a file without it (written before 7.0.0) or written under another noise law. `load_texture_fit_unverified` reads such a file and reports it as `Unpinned`.
 
 ### Output Shader Languages
 

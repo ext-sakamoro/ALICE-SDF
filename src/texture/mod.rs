@@ -25,10 +25,20 @@ pub use noise_cpu::{eval_octave, hash_noise_3d_cpu};
 pub use optimizer::{nelder_mead, OptimizeResult};
 pub use shader::{generate_shader, ShaderLanguage};
 
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
 
+use crate::io::IoError;
+use crate::provenance::{Checked, Provenance, StoredSemantics, KEY};
+
 /// Result of fitting a texture to procedural noise octaves
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// The fitted parameters only reproduce the texture under the noise law they were fitted
+/// against, so the stored form carries the semantics identifier: write it with
+/// [`save_texture_fit`] and read it with [`load_texture_fit`]. The type has no serde impls of
+/// its own, so a stored fit cannot be read without the identifier check.
+#[derive(Debug, Clone, PartialEq)]
 pub struct TextureFitResult {
     /// Source image width
     pub width: u32,
@@ -47,7 +57,7 @@ pub struct TextureFitResult {
 }
 
 /// A single fitted noise octave
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FittedOctave {
     /// Amplitude (weight)
     pub amplitude: f32,
@@ -87,4 +97,189 @@ impl Default for TextureFitConfig {
             tileable: true,
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Stored form (JSON)
+// ---------------------------------------------------------------------------
+
+/// The format of the stored fit: 1 carries the semantics identifier; a document without
+/// `format` was written by the CLI before it (no identifier)
+const FIT_FORMAT: u32 = 1;
+
+/// The JSON document of a stored fit: the fields of [`TextureFitResult`] next to `format` and
+/// `alice:semantics_id`
+#[derive(Serialize, Deserialize)]
+struct FitDocument {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    format: Option<u32>,
+    #[serde(
+        rename = "alice:semantics_id",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    semantics_id: Option<String>,
+    width: u32,
+    height: u32,
+    channels: u32,
+    bias: Vec<f32>,
+    octaves: Vec<Vec<OctaveDocument>>,
+    psnr_db: f32,
+    nmse: f32,
+}
+
+/// One octave in a [`FitDocument`]
+#[derive(Serialize, Deserialize)]
+struct OctaveDocument {
+    amplitude: f32,
+    frequency: f32,
+    phase: [f32; 2],
+    seed: u32,
+    rotation: f32,
+}
+
+impl FitDocument {
+    fn new(result: &TextureFitResult, provenance: &Provenance) -> Self {
+        Self {
+            format: Some(FIT_FORMAT),
+            semantics_id: Some(provenance.hex()),
+            width: result.width,
+            height: result.height,
+            channels: result.channels,
+            bias: result.bias.clone(),
+            octaves: result
+                .octaves
+                .iter()
+                .map(|ch| {
+                    ch.iter()
+                        .map(|o| OctaveDocument {
+                            amplitude: o.amplitude,
+                            frequency: o.frequency,
+                            phase: o.phase,
+                            seed: o.seed,
+                            rotation: o.rotation,
+                        })
+                        .collect()
+                })
+                .collect(),
+            psnr_db: result.psnr_db,
+            nmse: result.nmse,
+        }
+    }
+
+    /// The stored identifier (`None` for a document written before `format` 1)
+    fn stored_id(&self) -> Result<Option<[u8; 32]>, IoError> {
+        match (self.format, &self.semantics_id) {
+            (None, None) => Ok(None),
+            (Some(FIT_FORMAT), Some(hex)) => Provenance::from_hex(hex)
+                .map(|p| Some(p.semantics_id))
+                .ok_or_else(|| {
+                    IoError::InvalidFormat(format!("texture fit: {KEY} is not 64 hex digits"))
+                }),
+            (Some(FIT_FORMAT), None) | (None, Some(_)) => Err(IoError::InvalidFormat(format!(
+                "texture fit: `format` and {KEY} must be both present or both absent"
+            ))),
+            (Some(f), _) => Err(IoError::UnsupportedVersion(
+                u16::try_from(f).unwrap_or(u16::MAX),
+            )),
+        }
+    }
+
+    fn into_result(self) -> TextureFitResult {
+        TextureFitResult {
+            width: self.width,
+            height: self.height,
+            channels: self.channels,
+            bias: self.bias,
+            octaves: self
+                .octaves
+                .into_iter()
+                .map(|ch| {
+                    ch.into_iter()
+                        .map(|o| FittedOctave {
+                            amplitude: o.amplitude,
+                            frequency: o.frequency,
+                            phase: o.phase,
+                            seed: o.seed,
+                            rotation: o.rotation,
+                        })
+                        .collect()
+                })
+                .collect(),
+            psnr_db: self.psnr_db,
+            nmse: self.nmse,
+        }
+    }
+}
+
+/// Write a fit as JSON with this crate's semantics identifier
+///
+/// The document holds the fields of [`TextureFitResult`] next to `"format": 1` and
+/// `"alice:semantics_id"`; [`load_texture_fit`] reads it back and checks the identifier.
+///
+/// # Errors
+///
+/// The I/O and JSON errors.
+pub fn save_texture_fit(result: &TextureFitResult, path: impl AsRef<Path>) -> Result<(), IoError> {
+    save_texture_fit_with_provenance(result, path, &Provenance::sdf())
+}
+
+/// [`save_texture_fit`] storing the given semantics identifier instead of this crate's
+///
+/// # Errors
+///
+/// As [`save_texture_fit`].
+pub fn save_texture_fit_with_provenance(
+    result: &TextureFitResult,
+    path: impl AsRef<Path>,
+    provenance: &Provenance,
+) -> Result<(), IoError> {
+    let json = serde_json::to_string_pretty(&FitDocument::new(result, provenance))
+        .map_err(|e| IoError::Serialization(format!("texture fit: {e}")))?;
+    std::fs::write(path, json + "\n")?;
+    Ok(())
+}
+
+/// Read a fit written by [`save_texture_fit`]
+///
+/// The fitted parameters are values computed under the noise law, so a document without an
+/// identifier (written by the CLI before `format` 1, possibly under an earlier noise law) is
+/// refused; [`load_texture_fit_unverified`] reads it and reports it as
+/// [`StoredSemantics::Unpinned`].
+///
+/// # Errors
+///
+/// [`IoError::Unpinned`] for a document without an identifier, [`IoError::SemanticsMismatch`]
+/// for another identifier, [`IoError::InvalidFormat`] / [`IoError::UnsupportedVersion`] for a
+/// malformed identifier or another format, and the I/O and JSON errors.
+pub fn load_texture_fit(path: impl AsRef<Path>) -> Result<TextureFitResult, IoError> {
+    load_fit(path.as_ref(), false).map(|c| c.into_parts().0)
+}
+
+/// [`load_texture_fit`] that also reads a document without an identifier, marking it
+/// [`StoredSemantics::Unpinned`]
+///
+/// # Errors
+///
+/// As [`load_texture_fit`], except [`IoError::Unpinned`].
+pub fn load_texture_fit_unverified(
+    path: impl AsRef<Path>,
+) -> Result<Checked<TextureFitResult>, IoError> {
+    load_fit(path.as_ref(), true)
+}
+
+fn load_fit(path: &Path, allow_unpinned: bool) -> Result<Checked<TextureFitResult>, IoError> {
+    let doc = read_fit_document(path)?;
+    let semantics: StoredSemantics =
+        crate::provenance::sdf_load_verdict(doc.stored_id()?, "texture fit", allow_unpinned)?;
+    Ok(Checked::new(doc.into_result(), semantics))
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "stored form checked: the document's format and alice:semantics_id go through sdf_load_verdict in load_fit before any value is returned"
+)]
+fn read_fit_document(path: &Path) -> Result<FitDocument, IoError> {
+    let text = std::fs::read_to_string(path)?;
+    serde_json::from_str(&text).map_err(|e| IoError::Serialization(format!("texture fit: {e}")))
 }
