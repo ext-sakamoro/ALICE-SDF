@@ -2503,6 +2503,39 @@ fn splat_writers_store_and_loaders_check_the_identifier() {
         Err(ProvenanceError::Unreadable(ref e)) if e.contains("rewritten after its sidecar")
     ));
 
+    // the SHA-256 line removed from a .splat sidecar: load_splat refuses it, and so does read()
+    let unbound = temp("unbound.splat");
+    save_splat(&unbound, &splats()).unwrap();
+    let sidecar = std::fs::read_to_string(provenance::sidecar_path(&unbound)).unwrap();
+    let id_only: String = sidecar
+        .lines()
+        .filter(|l| !l.starts_with("alice:content_sha256="))
+        .flat_map(|l| [l, "\n"])
+        .collect();
+    std::fs::write(provenance::sidecar_path(&unbound), id_only).unwrap();
+    for e in [
+        provenance::read(&unbound)
+            .map(|_| ())
+            .unwrap_err()
+            .to_string(),
+        load_splat(&unbound).map(|_| ()).unwrap_err().to_string(),
+    ] {
+        assert!(e.contains("has no alice:content_sha256"), "{e}");
+    }
+    // the same under other names (a .splat has no magic, the name is all there is): refused too
+    for name in ["unbound.bin", "unbound", "unbound.gsplat", "other.SPLAT"] {
+        let p = temp(name);
+        std::fs::copy(&unbound, &p).unwrap();
+        std::fs::copy(
+            provenance::sidecar_path(&unbound),
+            provenance::sidecar_path(&p),
+        )
+        .unwrap();
+        let e = provenance::read(&p).map(|_| ()).unwrap_err().to_string();
+        assert!(e.contains("has no alice:content_sha256"), "{name}: {e}");
+    }
+    assert_eq!(provenance::PLAIN_SIDECAR_EXTENSIONS, ["raw", "dds"]);
+
     // the sidecar removed: a file without an identifier
     std::fs::remove_file(provenance::sidecar_path(&own)).unwrap();
     assert_eq!(

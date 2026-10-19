@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1289 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1290 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1020 |
-| | **total** | **2318** |
+| | **total** | **2319** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1289)
+## L1 — example-only (1290)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -200,7 +200,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/primitives/cylinder.rs`: `sdf_cylinder_capped`
 - `src/primitives/plane.rs`: `sdf_plane_from_points`, `sdf_plane_xy`, `sdf_plane_xz`, `sdf_plane_yz`
 - `src/primitives/torus.rs`: `sdf_torus_capped`
-- `src/provenance.rs`: `CONTENT_SHA256_KEY`, `Checked::semantics`, `Stamp::sdf_with_producer`, `bound_sidecar_id`, `check`, `check_producer`, `check_sdf`, `dds_reserved`, `from_bytes_with_producer`, `read`, `read_with_producer`, `sidecar_path`, `write_bound_sidecar`, `write_sidecar`
+- `src/provenance.rs`: `CONTENT_SHA256_KEY`, `Checked::semantics`, `PLAIN_SIDECAR_EXTENSIONS`, `Stamp::sdf_with_producer`, `bound_sidecar_id`, `check`, `check_producer`, `check_sdf`, `dds_reserved`, `from_bytes_with_producer`, `read`, `read_with_producer`, `sidecar_path`, `write_bound_sidecar`, `write_sidecar`
 - `src/raw_minmax.rs`: `RawMinMax`, `raw_max_f32`, `raw_max_f32x8`, `raw_min_f32`, `raw_min_f32x8`
 - `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::fast`, `RaymarchConfig::high_quality`, `RaymarchConfig::relaxed`, `RaymarchConfig::with_bound`, `RaymarchResult`, `raymarch`, `raymarch_batch`, `raymarch_batch_parallel`, `raymarch_compiled`, `raymarch_compiled_batch_parallel`, `raymarch_compiled_with_config`, `raymarch_detailed`, `raymarch_jit`, `raymarch_jit_batch_parallel`, `raymarch_jit_simd_8`, `raymarch_jit_with_config`, `raymarch_relaxed`, `raymarch_simd_8`, `raymarch_with_config`, `render_depth`, `render_depth_compiled`, `render_depth_compiled_simd`, `render_depth_jit`, `render_depth_jit_simd`, `render_normals`, `render_normals_compiled`
 - `src/raycast/mod.rs`: `ambient_occlusion`, `ambient_occlusion_compiled`, `hard_shadow`, `hard_shadow_compiled`, `raycast`, `raycast_batch`, `soft_shadow`, `soft_shadow_compiled`

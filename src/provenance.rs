@@ -251,7 +251,15 @@ pub fn read(path: impl AsRef<Path>) -> Result<Provenance, ProvenanceError> {
                 return Err(ProvenanceError::Unreadable(why));
             }
             let text = std::fs::read(&sidecar)?;
-            if find(&text, CONTENT_SHA256_KEY.as_bytes()).is_some() {
+            // the bound form (identifier + the file's SHA-256) is the default, as load_splat
+            // demands; only the raw volume exports keep the plain sidecar, so a .splat under any
+            // name with its SHA-256 line removed is refused here too
+            let plain = path.extension().is_some_and(|e| {
+                PLAIN_SIDECAR_EXTENSIONS
+                    .iter()
+                    .any(|x| e.eq_ignore_ascii_case(x))
+            });
+            if !plain || find(&text, CONTENT_SHA256_KEY.as_bytes()).is_some() {
                 match bound_sidecar_id(path, &bytes) {
                     Ok(Some(id)) => Ok(Provenance::new(id)),
                     Ok(None) => Err(ProvenanceError::Unreadable(
@@ -882,6 +890,12 @@ pub fn sidecar_path(path: &Path) -> std::path::PathBuf {
 pub(crate) fn write_sidecar(path: &Path, p: &Provenance) -> std::io::Result<()> {
     std::fs::write(sidecar_path(path), format!("{}\n", p.tagged()))
 }
+
+/// The extensions whose sidecar is the plain `alice:semantics_id=` line
+///
+/// These are the raw volume exports (`volume::export_raw`, `volume::export_dds_3d`); every other
+/// sidecar is read in the bound form with the file's SHA-256.
+pub const PLAIN_SIDECAR_EXTENSIONS: &[&str] = &["raw", "dds"];
 
 /// The key of the SHA-256 of the file in a sidecar that binds the identifier to the bytes
 pub const CONTENT_SHA256_KEY: &str = "alice:content_sha256";
