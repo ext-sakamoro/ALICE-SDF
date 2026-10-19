@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1306 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1027 |
-| | **total** | **2342** |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1311 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1029 |
+| | **total** | **2349** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1306)
+## L1 — example-only (1311)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -216,10 +216,10 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/svo/streaming.rs`: `SVO_CHUNK_MAGIC`, `SVO_CHUNK_VERSION`, `SvoChunk`, `SvoChunk::from_bytes`, `SvoChunk::from_bytes_unverified`, `SvoChunk::memory_bytes`, `SvoChunk::new`, `SvoChunk::to_bytes`, `SvoChunk::to_bytes_with_provenance`, `SvoStreamingCache`, `SvoStreamingCache::clear`, `SvoStreamingCache::get`, `SvoStreamingCache::hit_rate`, `SvoStreamingCache::insert`, `SvoStreamingCache::is_empty`, `SvoStreamingCache::len`, `SvoStreamingCache::memory_used`, `SvoStreamingCache::new`, `SvoStreamingCache::remove`, `SvoStreamingCache::with_memory_budget`, `split_into_chunks`
 - `src/terrain/caves.rs`: `CaveConfig`, `generate_cave_sdf`, `generate_chamber`
 - `src/terrain/clipmap.rs`: `ClipmapLevel`, `ClipmapMesh`, `ClipmapTerrain`, `ClipmapTerrain::generate_level_mesh`, `ClipmapTerrain::generate_meshes`, `ClipmapTerrain::level_count`, `ClipmapTerrain::new`, `ClipmapTerrain::total_vertices`, `ClipmapTerrain::update`
-- `src/terrain/heightmap.rs`: `Heightmap::from_data`, `Heightmap::from_image`, `Heightmap::from_image_bytes`, `Heightmap::normal_at`, `Heightmap::sample_bicubic`, `HeightmapImageConfig`, `HeightmapImageConfig::new`
+- `src/terrain/heightmap.rs`: `Heightmap::from_data`, `Heightmap::from_image`, `Heightmap::from_image_bytes`, `Heightmap::from_image_bytes_pinned`, `Heightmap::from_image_pinned`, `Heightmap::normal_at`, `Heightmap::sample_bicubic`, `Heightmap::to_png`, `Heightmap::to_png_with_provenance`, `HeightmapImageConfig`, `HeightmapImageConfig::new`
 - `src/terrain/mod.rs`: `TerrainConfig`, `terrain_sdf`
 - `src/terrain/splatmap.rs`: `SplatLayer`, `Splatmap`, `Splatmap::add_layer`, `Splatmap::auto_splat_from_heightmap`, `Splatmap::dominant_material`, `Splatmap::get_weight`, `Splatmap::layer_count`, `Splatmap::new`, `Splatmap::normalize`, `Splatmap::set_weight`
-- `src/texture/fitting.rs`: `reconstruct`
+- `src/texture/fitting.rs`: `fit_texture_pinned`, `reconstruct`
 - `src/texture/mod.rs`: `load_texture_fit`, `load_texture_fit_unverified`
 - `src/tight_aabb.rs`: `TightAabbConfig::preset_medium`, `compute_tight_aabb`
 - `src/transforms/rotate.rs`: `transform_rotate_euler`

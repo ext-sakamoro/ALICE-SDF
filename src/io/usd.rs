@@ -15,7 +15,7 @@ use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
 use crate::provenance::Provenance;
-use crate::provenance::{mesh_import_verdict, Checked};
+use crate::provenance::{import_verdict, Checked};
 use std::io::Write;
 use std::path::Path;
 
@@ -274,7 +274,7 @@ pub fn import_usda_pinned(path: impl AsRef<Path>) -> Result<ImportedUsda, IoErro
 
 fn import_usda_with(path: &Path, allow_unpinned: bool) -> Result<Checked<ImportedUsda>, IoError> {
     let data = std::fs::read(path)?;
-    let semantics = mesh_import_verdict(&data, "USDA", allow_unpinned)?;
+    let semantics = import_verdict(&data, "USDA", allow_unpinned)?;
     parse_usda(&data).map(|value| Checked::new(value, semantics))
 }
 

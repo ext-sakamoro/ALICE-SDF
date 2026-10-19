@@ -20,7 +20,7 @@ mod optimizer;
 mod shader;
 mod spectrum;
 
-pub use fitting::{fit_texture, reconstruct};
+pub use fitting::{fit_texture, fit_texture_pinned, reconstruct};
 pub use noise_cpu::{eval_octave, hash_noise_3d_cpu};
 pub use optimizer::{nelder_mead, OptimizeResult};
 pub use shader::{generate_shader, ShaderLanguage};
@@ -31,6 +31,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::io::IoError;
 use crate::provenance::{Checked, Provenance, StoredSemantics, KEY};
+
+/// Why [`fit_texture`] failed
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum TextureFitError {
+    /// The image could not be read: I/O, its semantics identifier (another one, malformed, or
+    /// none for [`fit_texture_pinned`]) or its pixels
+    #[error(transparent)]
+    Io(#[from] crate::io::IoError),
+    /// The fit itself failed
+    #[error("{0}")]
+    Fit(String),
+}
 
 /// Result of fitting a texture to procedural noise octaves
 ///

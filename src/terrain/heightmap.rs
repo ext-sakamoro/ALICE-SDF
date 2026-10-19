@@ -3,6 +3,10 @@
 //! Author: Moroya Sakamoto
 
 use crate::compiled::real::LawMinMax;
+#[cfg(feature = "image")]
+use crate::io::IoError;
+#[cfg(feature = "image")]
+use crate::provenance::{image_format, import_verdict, Checked, Provenance};
 use glam::Vec3;
 
 /// 2D heightmap storing terrain elevation data
@@ -213,53 +217,175 @@ impl Heightmap {
         (self.width * self.depth) as usize
     }
 
-    /// Load a heightmap from an image file (PNG, JPEG)
+    /// Load a heightmap from an image file (PNG, JPEG), with what is known about the arithmetic
+    /// it was written under
     ///
-    /// Converts the image to grayscale and maps pixel luminance [0, 255]
-    /// to height values [0, height_scale].
+    /// As [`Heightmap::from_image_bytes`], on the bytes of the file at `path`.
     ///
     /// Requires the `image` feature to be enabled.
+    ///
+    /// # Errors
+    ///
+    /// [`IoError::Io`] when the file cannot be read, and the errors of
+    /// [`Heightmap::from_image_bytes`].
     #[cfg(feature = "image")]
     pub fn from_image(
         path: impl AsRef<std::path::Path>,
         config: &HeightmapImageConfig,
-    ) -> Result<Self, std::io::Error> {
-        let img = image::open(path.as_ref())
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
-        let gray = img.to_luma8();
-
-        Self::from_gray_image(&gray, config)
+    ) -> Result<Checked<Self>, IoError> {
+        Self::from_image_bytes(&std::fs::read(path.as_ref())?, config)
     }
 
-    /// Load a heightmap from in-memory image bytes (PNG, JPEG)
+    /// As [`Heightmap::from_image`], refusing an image without a semantics identifier
+    ///
+    /// # Errors
+    ///
+    /// As [`Heightmap::from_image_bytes_pinned`].
+    #[cfg(feature = "image")]
+    pub fn from_image_pinned(
+        path: impl AsRef<std::path::Path>,
+        config: &HeightmapImageConfig,
+    ) -> Result<Self, IoError> {
+        Self::from_image_bytes_pinned(&std::fs::read(path.as_ref())?, config)
+    }
+
+    /// Load a heightmap from in-memory image bytes (PNG, JPEG), with what is known about the
+    /// arithmetic it was written under
+    ///
+    /// The identifier is read from the same bytes before the pixels are decoded: a PNG `tEXt`
+    /// chunk or a JPEG comment `alice:semantics_id` (see [`crate::provenance::from_bytes`]), as
+    /// [`Heightmap::to_png_with_provenance`] writes it. An image without one (a paint tool's) is
+    /// read and marked [`crate::provenance::StoredSemantics::Unpinned`]; this crate's identifier
+    /// gives `Current`, an earlier one it reproduces `VerifiedPrevious`.
+    ///
+    /// An 8-bit image maps a grey level `p` to `p · height_scale / 255`, a 16-bit one to
+    /// `p · height_scale / 65535` (colour images are converted to grey first).
     ///
     /// Requires the `image` feature to be enabled.
+    ///
+    /// # Errors
+    ///
+    /// [`IoError::SemanticsMismatch`] (naming both identifiers) for an image stamped under another
+    /// identifier, [`IoError::InvalidFormat`] when the identifier is present but malformed or the
+    /// PNG / JPEG structure cannot be walked, or when the pixels cannot be decoded.
     #[cfg(feature = "image")]
     pub fn from_image_bytes(
         bytes: &[u8],
         config: &HeightmapImageConfig,
-    ) -> Result<Self, std::io::Error> {
-        let img = image::load_from_memory(bytes)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
-        let gray = img.to_luma8();
-
-        Self::from_gray_image(&gray, config)
+    ) -> Result<Checked<Self>, IoError> {
+        let semantics = import_verdict(bytes, image_format(bytes), true)?;
+        Ok(Checked::new(Self::decode_image(bytes, config)?, semantics))
     }
 
-    /// Build heightmap from a grayscale image buffer
+    /// As [`Heightmap::from_image_bytes`], refusing an image without a semantics identifier
+    ///
+    /// # Errors
+    ///
+    /// [`IoError::Unpinned`] for an image without an identifier, and the errors of
+    /// [`Heightmap::from_image_bytes`].
     #[cfg(feature = "image")]
-    fn from_gray_image(
-        gray: &image::GrayImage,
+    pub fn from_image_bytes_pinned(
+        bytes: &[u8],
         config: &HeightmapImageConfig,
-    ) -> Result<Self, std::io::Error> {
-        let width = gray.width();
-        let height = gray.height();
+    ) -> Result<Self, IoError> {
+        import_verdict(bytes, image_format(bytes), false)?;
+        Self::decode_image(bytes, config)
+    }
 
-        let scale = config.height_scale / 255.0;
-        let raw = gray.as_raw();
-        let heights: Vec<f32> = raw.iter().map(|&p| p as f32 * scale).collect();
+    /// Decodes the pixels of an image the caller has judged
+    #[cfg(feature = "image")]
+    fn decode_image(bytes: &[u8], config: &HeightmapImageConfig) -> Result<Self, IoError> {
+        let img = image::load_from_memory(bytes)
+            .map_err(|e| IoError::InvalidFormat(format!("image: {e}")))?;
+        let sixteen = matches!(
+            img,
+            image::DynamicImage::ImageLuma16(_)
+                | image::DynamicImage::ImageLumaA16(_)
+                | image::DynamicImage::ImageRgb16(_)
+                | image::DynamicImage::ImageRgba16(_)
+        );
+        let (width, height, heights) = if sixteen {
+            let gray = img.to_luma16();
+            let scale = config.height_scale / 65535.0;
+            let heights = gray
+                .as_raw()
+                .iter()
+                .map(|&p| f32::from(p) * scale)
+                .collect();
+            (gray.width(), gray.height(), heights)
+        } else {
+            let gray = img.to_luma8();
+            let scale = config.height_scale / 255.0;
+            let heights = gray
+                .as_raw()
+                .iter()
+                .map(|&p| f32::from(p) * scale)
+                .collect();
+            (gray.width(), gray.height(), heights)
+        };
+        Ok(Self::from_grey_heights(heights, width, height, config))
+    }
 
-        Ok(Self {
+    /// Encodes the heightmap as a 16-bit greyscale PNG under this crate's semantics identifier
+    ///
+    /// As [`Heightmap::to_png_with_provenance`] with [`Provenance::sdf`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Heightmap::to_png_with_provenance`].
+    #[cfg(feature = "image")]
+    pub fn to_png(&self, config: &HeightmapImageConfig) -> Result<Vec<u8>, IoError> {
+        self.to_png_with_provenance(config, &Provenance::sdf())
+    }
+
+    /// Encodes the heightmap as a 16-bit greyscale PNG, storing `provenance` in a `tEXt` chunk
+    /// `alice:semantics_id` before the image data
+    ///
+    /// A height `h` is stored as the grey level `round(h · 65535 / height_scale)`, clamped to
+    /// `0..=65535` (a NaN height is stored as 0), so [`Heightmap::from_image_bytes`] with the same
+    /// `height_scale` reads back `p · height_scale / 65535`: heights read from such a PNG are
+    /// written back to the same bytes. The world size is not stored (it comes from the
+    /// config when the image is read).
+    ///
+    /// # Errors
+    ///
+    /// [`IoError::Serialization`] when the PNG encoder fails (a zero width or depth).
+    #[cfg(feature = "image")]
+    pub fn to_png_with_provenance(
+        &self,
+        config: &HeightmapImageConfig,
+        provenance: &Provenance,
+    ) -> Result<Vec<u8>, IoError> {
+        let to_level = 65535.0 / config.height_scale;
+        let mut data = Vec::with_capacity(self.heights.len() * 2);
+        for &h in &self.heights {
+            // `as` saturates, and maps NaN to 0
+            let level = (h * to_level).round().clamp(0.0, 65535.0) as u16;
+            data.extend_from_slice(&level.to_be_bytes());
+        }
+        let encode_error = |e: png::EncodingError| IoError::Serialization(format!("PNG: {e}"));
+        let mut out = Vec::new();
+        let mut encoder = png::Encoder::new(&mut out, self.width, self.depth);
+        encoder.set_color(png::ColorType::Grayscale);
+        encoder.set_depth(png::BitDepth::Sixteen);
+        encoder
+            .add_text_chunk(crate::provenance::KEY.to_string(), provenance.hex())
+            .map_err(encode_error)?;
+        let mut writer = encoder.write_header().map_err(encode_error)?;
+        writer.write_image_data(&data).map_err(encode_error)?;
+        writer.finish().map_err(encode_error)?;
+        Ok(out)
+    }
+
+    /// Build a heightmap from the heights of a greyscale image
+    #[cfg(feature = "image")]
+    fn from_grey_heights(
+        heights: Vec<f32>,
+        width: u32,
+        height: u32,
+        config: &HeightmapImageConfig,
+    ) -> Self {
+        Self {
             heights,
             width,
             depth: height,
@@ -267,7 +393,7 @@ impl Heightmap {
             world_depth: config.world_depth.unwrap_or(height as f32),
             inv_world_width: 1.0 / config.world_width.unwrap_or(width as f32),
             inv_world_depth: 1.0 / config.world_depth.unwrap_or(height as f32),
-        })
+        }
     }
 }
 
@@ -477,7 +603,10 @@ mod tests {
             world_width: Some(400.0),
             world_depth: Some(400.0),
         };
-        let hm = Heightmap::from_image_bytes(&png_bytes, &config).unwrap();
+        let (hm, status) = Heightmap::from_image_bytes(&png_bytes, &config)
+            .unwrap()
+            .into_parts();
+        assert_eq!(status, crate::provenance::StoredSemantics::Unpinned);
 
         assert_eq!(hm.width, 4);
         assert_eq!(hm.depth, 4);

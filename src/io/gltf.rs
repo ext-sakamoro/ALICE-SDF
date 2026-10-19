@@ -15,7 +15,7 @@ use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
 use crate::provenance::Provenance;
-use crate::provenance::{mesh_import_verdict, Checked};
+use crate::provenance::{import_verdict, Checked};
 use std::io::Write;
 use std::path::Path;
 
@@ -1241,7 +1241,7 @@ pub fn import_glb_bytes_pinned(data: &[u8]) -> Result<Mesh, IoError> {
 }
 
 fn import_glb_bytes_with(data: &[u8], allow_unpinned: bool) -> Result<Checked<Mesh>, IoError> {
-    let semantics = mesh_import_verdict(data, "GLB", allow_unpinned)?;
+    let semantics = import_verdict(data, "GLB", allow_unpinned)?;
     parse_glb(data).map(|value| Checked::new(value, semantics))
 }
 
@@ -1304,7 +1304,7 @@ fn parse_glb(data: &[u8]) -> Result<Mesh, IoError> {
     // Parse JSON using serde_json::Value (minimal parsing)
     #[allow(
         clippy::disallowed_methods,
-        reason = "stored form checked: import_glb_bytes_with applies mesh_import_verdict to the same bytes before the mesh is returned"
+        reason = "stored form checked: import_glb_bytes_with applies import_verdict to the same bytes before the mesh is returned"
     )]
     let root: serde_json::Value = serde_json::from_slice(json_bytes)
         .map_err(|e| IoError::InvalidFormat(format!("Invalid glTF JSON: {}", e)))?;

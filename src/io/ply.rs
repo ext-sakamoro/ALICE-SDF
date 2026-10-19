@@ -8,7 +8,7 @@
 use crate::io::IoError;
 use crate::mesh::Mesh;
 use crate::provenance::Provenance;
-use crate::provenance::{mesh_import_verdict, Checked};
+use crate::provenance::{import_verdict, Checked};
 use std::path::Path;
 
 /// PLY export configuration
@@ -152,7 +152,7 @@ pub fn import_ply_pinned(path: impl AsRef<Path>) -> Result<Mesh, IoError> {
 
 fn import_ply_with(path: &Path, allow_unpinned: bool) -> Result<Checked<Mesh>, IoError> {
     let data = std::fs::read(path)?;
-    let semantics = mesh_import_verdict(&data, "PLY", allow_unpinned)?;
+    let semantics = import_verdict(&data, "PLY", allow_unpinned)?;
     parse_ply(&data).map(|value| Checked::new(value, semantics))
 }
 

@@ -381,6 +381,12 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
             .unwrap();
         return Ok(Provenance::new(id));
     }
+    if bytes.starts_with(PNG_SIGNATURE) {
+        return png_tagged(bytes);
+    }
+    if bytes.starts_with(JPEG_SOI) {
+        return jpeg_tagged(bytes);
+    }
     if bytes.starts_with(b"DDS ") {
         // DDS: the identifier block sits in the header's reserved dwords (bytes 32..76)
         let r = bytes
@@ -804,19 +810,19 @@ pub(crate) fn sdf_load_verdict(
     }
 }
 
-/// The verdict of a mesh importer on the bytes of a file of `format`: the identifier this
-/// crate's writers store ([`from_bytes`]), judged as [`sdf_load_verdict`] judges it
+/// The verdict of an importer (a mesh or an image) on the bytes of a file of `format`: the
+/// identifier this crate's writers store ([`from_bytes`]), judged as [`sdf_load_verdict`] judges it
 ///
 /// A file without an identifier (a format this module reads, carrying none, or a file whose
 /// layout [`from_bytes`] does not place, such as an OBJ that does not start with a comment) has
-/// none; a file that holds the key (or the binary STL header magic) but whose identifier cannot
-/// be read is an error, never read as unstamped.
+/// none; a file that holds the key (or the binary STL header magic), and a PNG or JPEG whose
+/// structure cannot be walked, is an error, never read as unstamped.
 ///
 /// # Errors
 ///
 /// As [`sdf_load_verdict`], and [`crate::io::IoError::InvalidFormat`] for an identifier that is
 /// present but malformed.
-pub(crate) fn mesh_import_verdict(
+pub(crate) fn import_verdict(
     bytes: &[u8],
     format: &'static str,
     allow_unpinned: bool,
@@ -824,7 +830,12 @@ pub(crate) fn mesh_import_verdict(
     let stored = match from_bytes(bytes) {
         Ok(p) => Some(p.semantics_id),
         Err(ProvenanceError::Missing { .. }) => None,
-        Err(e) if find(bytes, KEY.as_bytes()).is_some() || bytes.starts_with(STL_MAGIC) => {
+        Err(e)
+            if find(bytes, KEY.as_bytes()).is_some()
+                || bytes.starts_with(STL_MAGIC)
+                || bytes.starts_with(PNG_SIGNATURE)
+                || bytes.starts_with(JPEG_SOI) =>
+        {
             return Err(crate::io::IoError::InvalidFormat(format!("{format}: {e}")))
         }
         Err(_) => None,
@@ -964,6 +975,152 @@ pub(crate) fn bound_sidecar_id(path: &Path, bytes: &[u8]) -> Result<Option<[u8; 
         ));
     }
     Ok(Some(id))
+}
+
+/// The name of an image format in errors, from its signature (`PNG`, `JPEG`, else `image`)
+#[cfg(feature = "image")]
+pub(crate) fn image_format(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(PNG_SIGNATURE) {
+        "PNG"
+    } else if bytes.starts_with(JPEG_SOI) {
+        "JPEG"
+    } else {
+        "image"
+    }
+}
+
+/// The PNG file signature
+const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+
+/// The JPEG start-of-image marker
+const JPEG_SOI: &[u8; 2] = b"\xff\xd8";
+
+/// The CRC-32 of PNG chunks (ISO 3309, reflected polynomial `0xEDB88320`) over `parts` in order
+fn png_crc(parts: &[&[u8]]) -> u32 {
+    let mut crc = !0u32;
+    for part in parts {
+        for &b in *part {
+            crc ^= u32::from(b);
+            for _ in 0..8 {
+                crc = if crc & 1 == 1 {
+                    (crc >> 1) ^ 0xEDB8_8320
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+    }
+    !crc
+}
+
+/// The identifier of a PNG file: a `tEXt` chunk with the keyword [`KEY`] whose text is the 64 hex
+/// digits (written by [`crate::terrain::Heightmap::to_png_with_provenance`] before the image data)
+///
+/// The chunks are walked from the signature to `IEND`; a chunk whose length runs past the end, a
+/// cut chunk header and a file without `IEND` are unreadable (a truncated stamped file is never
+/// read as one without an identifier). The key chunk's CRC is checked, so a changed byte in the
+/// identifier is unreadable rather than a different identifier. The key only counts in `tEXt`
+/// (uncompressed): the keyword in a `zTXt` or `iTXt` chunk, a second key chunk, or a text that is
+/// not exactly 64 hex digits is unreadable.
+fn png_tagged(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
+    let bad = |what: &str| ProvenanceError::Unreadable(format!("PNG: {what}"));
+    let mut found = None;
+    let mut at = PNG_SIGNATURE.len();
+    loop {
+        let header = bytes
+            .get(at..at + 8)
+            .ok_or_else(|| bad("the file ends before IEND"))?;
+        let len = u32::from_be_bytes([header[0], header[1], header[2], header[3]]) as usize;
+        let kind = &header[4..8];
+        let data_end = (at + 8)
+            .checked_add(len)
+            .filter(|&e| e.checked_add(4).is_some_and(|c| c <= bytes.len()))
+            .ok_or_else(|| bad("a chunk runs past the end of the file"))?;
+        let data = &bytes[at + 8..data_end];
+        let keyword = data.split(|&b| b == 0).next().unwrap_or(data);
+        if keyword == KEY.as_bytes() {
+            if kind != b"tEXt" {
+                return Err(bad(&format!(
+                    "{KEY} is in a {} chunk (only tEXt is read)",
+                    String::from_utf8_lossy(kind)
+                )));
+            }
+            let stored = &bytes[data_end..data_end + 4];
+            if png_crc(&[kind, data]).to_be_bytes() != stored {
+                return Err(bad(&format!("the CRC of the {KEY} chunk does not match")));
+            }
+            let p = data
+                .get(KEY.len() + 1..)
+                .and_then(|text| std::str::from_utf8(text).ok())
+                .filter(|t| t.len() == 64)
+                .and_then(Provenance::from_hex)
+                .ok_or_else(|| bad(&format!("{KEY} is not 64 hex digits")))?;
+            if found.replace(p).is_some() {
+                return Err(bad(&format!("{KEY} appears twice")));
+            }
+        }
+        at = data_end + 4;
+        if kind == b"IEND" {
+            return found.ok_or(ProvenanceError::Missing { format: "PNG" });
+        }
+    }
+}
+
+/// The identifier of a JPEG file: a comment segment (`COM`) whose payload is
+/// `alice:semantics_id=<64 hex>`
+///
+/// The marker segments are walked from the start of image to the start of scan (after it the
+/// bytes are entropy-coded data); a segment whose length runs past the end, a file that ends
+/// before the start of scan, a second key comment, or a comment that starts with the key but is
+/// not exactly the tagged form is unreadable.
+fn jpeg_tagged(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
+    let bad = |what: &str| ProvenanceError::Unreadable(format!("JPEG: {what}"));
+    let mut found = None;
+    let mut at = JPEG_SOI.len();
+    loop {
+        if bytes.get(at) != Some(&0xFF) {
+            return Err(bad("a marker is expected before the start of scan"));
+        }
+        // fill bytes (0xFF) may precede a marker
+        while bytes.get(at + 1) == Some(&0xFF) {
+            at += 1;
+        }
+        let marker = *bytes
+            .get(at + 1)
+            .ok_or_else(|| bad("the file ends before the start of scan"))?;
+        match marker {
+            // the start of scan: the header segments end here
+            0xDA => return found.ok_or(ProvenanceError::Missing { format: "JPEG" }),
+            // markers without a length (TEM, RST0-7)
+            0x01 | 0xD0..=0xD7 => {
+                at += 2;
+                continue;
+            }
+            0xD9 => return Err(bad("the image ends before the start of scan")),
+            _ => {}
+        }
+        let len = bytes
+            .get(at + 2..at + 4)
+            .map(|l| usize::from(u16::from_be_bytes([l[0], l[1]])))
+            .ok_or_else(|| bad("the file ends inside a segment header"))?;
+        let end = at + 2 + len;
+        if len < 2 || end > bytes.len() {
+            return Err(bad("a segment runs past the end of the file"));
+        }
+        if marker == 0xFE && bytes[at + 4..end].starts_with(KEY.as_bytes()) {
+            let p = std::str::from_utf8(&bytes[at + 4..end])
+                .ok()
+                .and_then(|t| t.strip_prefix(KEY))
+                .and_then(|t| t.strip_prefix('='))
+                .filter(|t| t.len() == 64)
+                .and_then(Provenance::from_hex)
+                .ok_or_else(|| bad(&format!("the {KEY} comment is not {KEY}=<64 hex digits>")))?;
+            if found.replace(p).is_some() {
+                return Err(bad(&format!("{KEY} appears twice")));
+            }
+        }
+        at = end;
+    }
 }
 
 /// The position of the first occurrence of `needle` in `haystack`

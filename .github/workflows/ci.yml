@@ -239,7 +239,7 @@ jobs:
       # ⚠️ 1 行で書く (matrix に windows-latest があり既定 shell は pwsh、
       #    バックスラッシュ行継続は ParserError になる)
       - name: Test (integration, analytic oracles — aaa) [T4]
-        run: cargo test --features "aaa,image,codec" --test test_gi_volume_oracle --test test_terrain_destruction_oracle --test test_svo_api_oracle --test test_volume_api_oracle --test test_terrain_api_oracle --test test_gi_api_oracle --test test_destruction_api_oracle --test test_provenance
+        run: cargo test --features "aaa,image,codec,texture-fit" --test test_gi_volume_oracle --test test_terrain_destruction_oracle --test test_svo_api_oracle --test test_volume_api_oracle --test test_terrain_api_oracle --test test_gi_api_oracle --test test_destruction_api_oracle --test test_provenance
       # the SVO chunk's semantics identifier (tests/test_provenance.rs, *svo_chunk*, gated on svo):
       # counted on their own so a feature set without svo cannot drop them to 0 unnoticed
       - name: Test (provenance of the SVO chunk — svo)

@@ -4,7 +4,7 @@
 # tests/test_provenance.rs has its round-trip entry; G8 passes when no line is left
 # `expected-writers` is the number of public writers found; change it only with a new or removed writer
 
-expected-writers 57
+expected-writers 58
 
 src/io/alembic.rs::export_alembic
 src/io/mod.rs::save

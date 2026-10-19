@@ -57,7 +57,7 @@ path = "src/bin/main.rs"
 default = ["cli"]
 cli = ["dep:clap"]
 texture-fit = ["image", "cli"]
-image = ["dep:image"]  # PNG / JPEG decoding (heightmap import, texture-fit)
+image = ["dep:image", "dep:png"]  # PNG / JPEG decoding (heightmap import, texture-fit), PNG heightmap writing
 python = ["dep:pyo3", "dep:numpy"]
 godot = ["dep:godot"]  # Godot 4.x GDExtension integration
 jit = ["dep:cranelift-codegen", "dep:cranelift-frontend", "dep:cranelift-jit", "dep:cranelift-module", "dep:cranelift-native"]
@@ -179,6 +179,8 @@ naga = { version = "24", default-features = false, features = [
 
 # Image loading (optional, for texture-fit)
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }
+# PNG writing with a tEXt chunk (the heightmap writer stores the semantics identifier)
+png = { version = "0.18.1", optional = true }
 
 # WebAssembly bindings (optional)
 wasm-bindgen = { version = "0.2", optional = true }
