@@ -39,8 +39,21 @@ const fn earlier() -> Provenance {
     Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0])
 }
 
+/// (writer as scripts/provenance_writers.py names it, what it writes): the text and packet forms
+/// of this file, each stamped and read back by the tests below
+const TEXT_WRITERS: &[(&str, &str)] = &[
+    ("src/io/json.rs::to_json_string", "ASDF JSON text"),
+    (
+        "src/asp_bridge.rs::create_sdf_i_packet",
+        "ASP I-packet (feature asp)",
+    ),
+];
+
 #[test]
 fn asdf_json_carries_and_checks_the_identifier() {
+    assert!(TEXT_WRITERS
+        .iter()
+        .any(|(w, _)| *w == "src/io/json.rs::to_json_string"));
     let t = tree();
     let path = temp("stamped.asdf.json");
     io::save_asdf_json(&t, &path).unwrap();
@@ -163,6 +176,9 @@ mod packet {
 
     #[test]
     fn an_i_packet_carries_and_checks_the_identifier() {
+        assert!(TEXT_WRITERS
+            .iter()
+            .any(|(w, _)| *w == "src/asp_bridge.rs::create_sdf_i_packet"));
         let t = tree();
         let packet = create_sdf_i_packet(&t, 1).unwrap();
         assert_eq!(

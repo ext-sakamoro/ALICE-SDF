@@ -136,6 +136,10 @@ jobs:
               - 'scripts/api_boundary.toml'
               - 'scripts/api_boundary_parsers.py'
               - 'scripts/test_api_boundary_parsers.py'
+              - 'scripts/provenance_writers.py'
+              - 'scripts/provenance-pending.txt'
+              - 'scripts/provenance-not-writers.txt'
+              - 'tests/**'
               - 'scripts/integration-baseline.txt'
               - 'scripts/wiring_guard.py'
               - 'scripts/wiring-baseline.txt'
@@ -580,6 +584,11 @@ jobs:
         run: |
           python3 scripts/test_api_boundary_parsers.py
           python3 scripts/api_boundary_parsers.py
+      # ALICE-Law G8: every entry the call graph shows reaching a write sink (a trait-impl method
+      # included, which the text scan of the wiring-guard job cannot see) is a covered, pending or
+      # reasoned not-writer entry (the same index, of this commit)
+      - name: Every writer the call graph finds is classified
+        run: python3 scripts/provenance_writers.py --index target/scip
       - name: docs/integration-status.md is up to date
         run: |
           python3 scripts/scip_reach.py --write docs/integration-status.md

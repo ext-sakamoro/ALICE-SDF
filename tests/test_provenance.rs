@@ -1576,6 +1576,7 @@ const STORED_WRITERS: &[(&str, &str)] = &[
         "src/io/splat.rs::save_splat",
         ".splat with its .semantics sidecar",
     ),
+    ("src/io/vdb.rs::bake_to_vdb", "ALICE-VDB dense grid"),
 ];
 
 fn small_net() -> NeuralSdf {
@@ -1785,6 +1786,9 @@ fn alice_vdb_grid_from_6_1_0_is_refused_by_default_and_read_unverified() {
 #[test]
 fn alice_vdb_writers_store_and_loaders_check_the_identifier() {
     use alice_sdf::io::vdb;
+    assert!(STORED_WRITERS
+        .iter()
+        .any(|(w, _)| *w == "src/io/vdb.rs::bake_to_vdb"));
     let own = vdb_bytes(None);
     assert_eq!(&own[..9], b"ALICEVDB2");
     assert_eq!(provenance::from_bytes(&own).unwrap(), Provenance::sdf());
