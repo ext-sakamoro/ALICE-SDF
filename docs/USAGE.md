@@ -714,7 +714,7 @@ let stored = load_texture_fit("granite.fit.json").unwrap();
 assert_eq!(stored, result);
 ```
 
-The JSON written by `-o` / `save_texture_fit` carries the semantics identifier (`"alice:semantics_id"`); `load_texture_fit` reads it back and refuses a file without it (written before 7.0.0) or written under another noise law. `load_texture_fit_unverified` reads such a file and reports it as `Unpinned`.
+The JSON written by `-o` / `save_texture_fit` carries the semantics identifier (`"alice:semantics_id"`); `load_texture_fit` reads it back and refuses a file without it (written by 7.0.0 or earlier) or written under another noise law. `load_texture_fit_unverified` reads such a file and reports it as `Unpinned`.
 
 ### Output Shader Languages
 

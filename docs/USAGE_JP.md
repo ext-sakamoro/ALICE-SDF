@@ -706,13 +706,13 @@ println!("PSNR: {:.1} dB, {} オクターブ", result.psnr_db, result.octaves[0]
 // スタンドアロンWGSLシェーダーを生成
 let shader = generate_shader(&result, ShaderLanguage::Wgsl, "granite.png");
 
-// Store the fit with the semantics identifier and read it back (identifier checked)
+// 意味の識別子付きで fit を保存し、識別子を確かめて読み戻す
 save_texture_fit(&result, "granite.fit.json").unwrap();
 let stored = load_texture_fit("granite.fit.json").unwrap();
 assert_eq!(stored, result);
 ```
 
-`-o` / `save_texture_fit` が書く JSON は意味の識別子 (`"alice:semantics_id"`) を持つ `load_texture_fit` はそれを確かめて読み、識別子の無い file (7.0.0 より前に書いたもの) や別の noise の法則で書いた file は拒否する `load_texture_fit_unverified` はそれらも読み、`Unpinned` として返す
+`-o` / `save_texture_fit` が書く JSON は意味の識別子 (`"alice:semantics_id"`) を持つ `load_texture_fit` はそれを確かめて読み、識別子の無い file (7.0.0 以前に書いたもの) や別の noise の法則で書いた file は拒否する `load_texture_fit_unverified` はそれらも読み、`Unpinned` として返す
 
 ### 出力シェーダー言語
 

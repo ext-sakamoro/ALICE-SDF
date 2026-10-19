@@ -22,7 +22,10 @@ use alice_sdf::texture::{
 use std::path::PathBuf;
 
 fn temp_png(name: &str, width: u32, height: u32, pixels: &[f32]) -> PathBuf {
-    let dir = std::env::temp_dir().join("alice_sdf_texture_fit_oracle");
+    let dir = std::env::temp_dir().join(format!(
+        "alice_sdf_texture_fit_oracle_{}",
+        std::process::id()
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join(name);
     let bytes: Vec<u8> = pixels
@@ -489,7 +492,10 @@ fn sample_fit() -> TextureFitResult {
 }
 
 fn fit_path(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join("alice_sdf_texture_fit_provenance");
+    let dir = std::env::temp_dir().join(format!(
+        "alice_sdf_texture_fit_provenance_{}",
+        std::process::id()
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     dir.join(name)
 }
@@ -521,6 +527,17 @@ fn texture_fit_writer_stores_and_loaders_check_the_identifier() {
     assert_eq!(
         load_texture_fit_unverified(&own).unwrap().semantics(),
         StoredSemantics::Current
+    );
+
+    // an identifier this crate published before reads as a verified earlier one, by both loaders
+    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    assert_ne!(earlier, Provenance::sdf());
+    let prev = fit_path("earlier.json");
+    save_texture_fit_with_provenance(&fit, &prev, &earlier).unwrap();
+    assert_eq!(load_texture_fit(&prev).unwrap(), fit);
+    assert_eq!(
+        load_texture_fit_unverified(&prev).unwrap().semantics(),
+        StoredSemantics::VerifiedPrevious(earlier)
     );
 
     let other_id = Provenance::new([0xA5; 32]);

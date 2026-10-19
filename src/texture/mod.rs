@@ -104,7 +104,7 @@ impl Default for TextureFitConfig {
 // ---------------------------------------------------------------------------
 
 /// The format of the stored fit: 1 carries the semantics identifier; a document without
-/// `format` was written by the CLI before it (no identifier)
+/// `format` was written by the CLI of 7.0.0 or earlier (no identifier)
 const FIT_FORMAT: u32 = 1;
 
 /// The JSON document of a stored fit: the fields of [`TextureFitResult`] next to `format` and
@@ -243,7 +243,7 @@ pub fn save_texture_fit_with_provenance(
 /// Read a fit written by [`save_texture_fit`]
 ///
 /// The fitted parameters are values computed under the noise law, so a document without an
-/// identifier (written by the CLI before `format` 1, possibly under an earlier noise law) is
+/// identifier (written by the CLI of 7.0.0 or earlier, possibly under an earlier noise law) is
 /// refused; [`load_texture_fit_unverified`] reads it and reports it as
 /// [`StoredSemantics::Unpinned`].
 ///

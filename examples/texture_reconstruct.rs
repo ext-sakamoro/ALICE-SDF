@@ -29,7 +29,10 @@ fn main() {
             (value.clamp(0.0, 1.0) * 255.0).round() as u8
         })
         .collect();
-    let path = std::env::temp_dir().join("alice_sdf_texture_reconstruct.png");
+    let path = std::env::temp_dir().join(format!(
+        "alice_sdf_texture_reconstruct_{}.png",
+        std::process::id()
+    ));
     image::GrayImage::from_raw(w, h, pixels.clone())
         .unwrap()
         .save(&path)
@@ -45,7 +48,10 @@ fn main() {
 
     // store the fit with the semantics identifier; what is reconstructed below is what was read
     // back, so the stored form is checked too
-    let stored = std::env::temp_dir().join("alice_sdf_texture_reconstruct.fit.json");
+    let stored = std::env::temp_dir().join(format!(
+        "alice_sdf_texture_reconstruct_{}.fit.json",
+        std::process::id()
+    ));
     save_texture_fit(&fit, &stored).expect("save fit");
     let fit_read = load_texture_fit(&stored).expect("load fit");
     assert_eq!(fit_read, fit, "the stored fit reads back unchanged");
