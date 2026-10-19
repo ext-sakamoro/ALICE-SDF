@@ -3015,4 +3015,64 @@ fn alembic_without_identifier_is_missing_and_a_cut_archive_unreadable() {
         Err(ProvenanceError::Unreadable(_))
     ));
     assert_eq!(provenance::from_bytes(&bytes).unwrap(), Provenance::sdf());
+
+    // an identifier that is present but cannot be read is an error, never read as unstamped:
+    // a value that is not 64 hex digits (one digit replaced in place, so the node length holds)
+    let value = at + key.len() + 3; // past `":"`
+    let mut not_hex = bytes;
+    not_hex[value + 10] = b'g';
+    assert!(
+        matches!(
+            provenance::from_bytes(&not_hex),
+            Err(ProvenanceError::Unreadable(_))
+        ),
+        "a non-hex identifier is unreadable"
+    );
+    // two identifiers in the metadata (one archive built from the layout, see `ogawa`)
+    let hex = Provenance::sdf().hex();
+    let one = format!(
+        "{{\"generator\":\"ALICE-SDF\",\"{}\":\"{hex}\"}}",
+        provenance::KEY
+    );
+    assert_eq!(
+        provenance::from_bytes(&ogawa(&one)).unwrap(),
+        Provenance::sdf()
+    );
+    let two = format!(
+        "{{\"{k}\":\"{hex}\",\"{k}\":\"{hex}\"}}",
+        k = provenance::KEY
+    );
+    assert!(
+        matches!(
+            provenance::from_bytes(&ogawa(&two)),
+            Err(ProvenanceError::Unreadable(_))
+        ),
+        "two identifiers are unreadable"
+    );
+    // a node with another tag where the metadata belongs
+    let mut wrong_tag = ogawa(&one);
+    let meta_at = 13 + 1 + 8 + 3;
+    assert_eq!(wrong_tag[meta_at], 0x00);
+    wrong_tag[meta_at] = 0xFF;
+    assert!(
+        matches!(
+            provenance::from_bytes(&wrong_tag),
+            Err(ProvenanceError::Unreadable(_))
+        ),
+        "another node kind where the metadata belongs is unreadable"
+    );
+}
+
+/// The archive layout `io::export_alembic` writes, up to the metadata node: magic and version,
+/// the root group header, the archive name `ABC`, then `meta`
+fn ogawa(meta: &str) -> Vec<u8> {
+    let mut b = b"Ogawa\x00\x01\x00".to_vec();
+    b.push(0xFF);
+    b.extend_from_slice(&4u32.to_le_bytes());
+    for data in [b"ABC".as_slice(), meta.as_bytes()] {
+        b.push(0x00);
+        b.extend_from_slice(&(data.len() as u64).to_le_bytes());
+        b.extend_from_slice(data);
+    }
+    b
 }
