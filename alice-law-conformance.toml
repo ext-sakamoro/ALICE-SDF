@@ -22,7 +22,7 @@ evidence = [
 ]
 mutant = "measured 2026-10-17, each reverted: `x.sin()` in a pub fn appended to src/godot/mod.rs and to src/python/node.rs fails `cargo clippy --all-targets --features $LINT_FEATURES` (disallowed method f32::sin), and in src/wasm.rs fails the wasm32 step; the same godot plant passes the earlier feature list (glsl,...,rust), which is what this cell closes; in scripts/clippy_feature_coverage.py, dropping the uncovered-feature loop, the comment strip, the unset-variable mark, the preflight comparison or the empty check each turns scripts/test_clippy_feature_coverage.py red; earlier entry: x.sin() in src/lib.rs and src/terrain/mod.rs (feature terrain) fails clippy"
 since = ""
-note = "every feature is linted with -D warnings: the python, godot and wasm modules had lint debt that no run compiled (use_self, missing_const_for_fn, missing docs, a needless to_vec), fixed in this change; what godot-rust's derive and attribute macros expand to is allowed in src/godot/mod.rs with the reason, and the two #[wasm_bindgen] / #[func] functions that cannot be const say so. The font module (src/lib.rs line 126) compiles only with --cfg alice_font_bridge and a local alice-font path dependency that Cargo.toml does not declare, so no build of this crate (crates.io or CI) contains it and no banned call in it can run."
+note = "every feature is linted with -D warnings: the python, godot and wasm modules had lint debt that no run compiled (use_self, missing_const_for_fn, missing docs, a needless to_vec), fixed in this change; what godot-rust's derive and attribute macros expand to is allowed in src/godot/mod.rs with the reason, and the two #[wasm_bindgen] / #[func] functions that cannot be const say so. The font module (`src/lib.rs#pub mod font_bridge`) compiles only with --cfg alice_font_bridge and a local alice-font path dependency that Cargo.toml does not declare, so no build of this crate (crates.io or CI) contains it and no banned call in it can run."
 reference_repo = ""
 
 [G2]
@@ -57,7 +57,7 @@ evidence = [
 ]
 mutant = "-(a.mul_add(b, c)), Neg::neg(a.mul_add(b, c)), -0.0 - a.mul_add(b, c) and -1.0 * a.mul_add(b, c) on f32 / f64 added to src/lib.rs: clippy fails with disallowed_methods (f32::mul_add / f64::mul_add) on each; reverted"
 since = ""
-note = "unverified: the n/a rests on a scan of src/ by hand and det_math_guard.py's directory list, with no canary for the whole library and wide::f32x8::mul_add outside the clippy list; the library computes no fused multiply-add: a scan of src/ outside #[cfg(test)] modules for mul_add or fma finds only the three Real::mul_add definitions in src/compiled/real.rs, which are not fused, and the JIT emits no fma instruction (src/compiled/jit/codegen.rs line 21). Repeat with: git grep -nE 'mul_add|[.]fma[(]' -- src, ignoring hits inside #[cfg(test)] modules. Limit: wide::f32x8::mul_add is not in the clippy list, and det_math_guard.py covers only its directory list, so a negated f32x8 mul_add in, for example, src/mesh/ would not be caught by CI (checked: clippy did not flag it)."
+note = "unverified: the n/a rests on a scan of src/ by hand and det_math_guard.py's directory list, with no canary for the whole library and wide::f32x8::mul_add outside the clippy list; the library computes no fused multiply-add: a scan of src/ outside #[cfg(test)] modules for mul_add or fma finds only the three Real::mul_add definitions in src/compiled/real.rs, which are not fused, and the JIT emits no fma instruction (`src/compiled/jit/codegen.rs#fn mul_add_2r`). Repeat with: git grep -nE 'mul_add|[.]fma[(]' -- src, ignoring hits inside #[cfg(test)] modules. Limit: wide::f32x8::mul_add is not in the clippy list, and det_math_guard.py covers only its directory list, so a negated f32x8 mul_add in, for example, src/mesh/ would not be caught by CI (checked: clippy did not flag it)."
 reference_repo = ""
 
 [G4]
@@ -120,7 +120,7 @@ reference_repo = ""
 
 [G9]
 status = "fail-known"
-note = "there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (src/lib.rs line 189) is G6's, not a persisted one"
+note = "there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (`src/lib.rs#pub use alice_det_math::SEMANTICS_ID`) is G6's, not a persisted one"
 reference_repo = ""
 
 [G10]
