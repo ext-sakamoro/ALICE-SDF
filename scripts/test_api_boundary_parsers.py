@@ -87,6 +87,25 @@ BASE = {
 }
 
 
+class ReadIndex(unittest.TestCase):
+    """read_index() reads every index of the crate itself, the macOS one included."""
+
+    def test_a_symbol_only_the_macos_index_defines_is_read(self):
+        import test_scip_reach as tsr
+        mac = (tsr.Doc("src/metal.rs", "pub fn parse_mac() {}", indexes=("macos.scip",))
+               .define("metal/parse_mac().", 0, "parse_mac"))
+        wasm = tsr.Doc("src/wasm.rs", "pub fn in_wasm() {}", indexes=("wasm.scip",)).define("wasm/in_wasm().", 0, "in_wasm")
+        d = tsr.build([tsr.lib_doc(), mac, wasm])
+        an, every, problem = abp.read_index(d, d / "target" / "scip")
+        self.assertIsNone(problem)
+        self.assertIn(tsr.P + "metal/parse_mac().", every)
+        self.assertIn("src/metal.rs::parse_mac", an.items)
+        self.assertIn(tsr.P + "wasm/in_wasm().", every)
+        # the macOS index left out of the directory: a problem, not a smaller graph
+        (d / "target" / "scip" / "macos.scip").unlink()
+        self.assertIn("macos.scip", abp.read_index(d, d / "target" / "scip")[2] or "")
+
+
 class Keys(unittest.TestCase):
     def test_owner_and_name(self):
         self.assertEqual(abp.owner_and_name("fn::io::load"), (None, "load"))

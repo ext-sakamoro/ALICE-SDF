@@ -331,10 +331,11 @@ def reach_candidates(root: str, index: str) -> tuple[dict[str, set[str]], str | 
     problem, commit = abp.index_commit(Path(root), Path(index))
     if problem:
         return {}, None, problem
-    scips = [Path(index) / "native.scip", Path(index) / "wasm.scip"]
-    for sp in scips:
-        if not sp.is_file() or sp.stat().st_size == 0:
-            return {}, None, f"{sp} is missing or empty"
+    # every index of the crate itself (native, wasm32, macOS): a writer compiled only for one
+    # target is in the graph too
+    scips, problem = scip_reach.crate_index_paths(Path(index))
+    if problem:
+        return {}, None, problem
     an = scip_reach.analyze(Path(root), scips, keep_graph=True)
     entries = {k: set(v) for k, v in an.items.items()}
     every: set[str] = set()

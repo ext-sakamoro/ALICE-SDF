@@ -51,6 +51,40 @@ def tree(
     return root
 
 
+def macos_writer_tree() -> str:
+    """A git tree with a SCIP index of its HEAD: a writer compiled only for macOS (its
+    definition and its call of std::fs::write are in macos.scip only)."""
+    import subprocess
+    import test_scip_reach as tsr
+    text = "pub fn save_mac(p: &Path, b: &[u8]) { std::fs::write(p, b); }"
+    mac = tsr.Doc("src/metal.rs", text, indexes=("macos.scip",)).define("metal/save_mac().", 0, "save_mac")
+    mac.occ.append(tsr._f(1, tsr._packed(mac._pos(0, "write"))) + tsr._f(2, "rust-analyzer cargo std 1.0.0 fs/write()."))
+    wasm = tsr.Doc("src/wasm.rs", "pub fn in_wasm() {}", indexes=("wasm.scip",)).define("wasm/in_wasm().", 0, "in_wasm")
+    d = tsr.build([tsr.lib_doc(), mac, wasm])
+    git = ["git", "-C", str(d), "-c", "user.name=T", "-c", "user.email=t@example.invalid"]
+    subprocess.run(git[:3] + ["init", "-q"], check=True)
+    subprocess.run(git + ["add", "-A"], check=True)
+    subprocess.run(git + ["commit", "-qm", "c"], check=True)
+    head = subprocess.run(git[:3] + ["rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    (d / "target" / "scip" / "commit").write_text(f"{head} clean\n", encoding="utf-8")
+    return str(d)
+
+
+class MacosIndex(unittest.TestCase):
+    def test_a_writer_only_the_macos_index_has_reaches_its_sink(self):
+        root = macos_writer_tree()
+        out, commit, problem = pw.reach_candidates(root, os.path.join(root, "target", "scip"))
+        self.assertIsNone(problem)
+        self.assertEqual(out.get("src/metal.rs::save_mac"), {"std fs/write()."})
+
+    def test_without_the_macos_index_it_is_a_problem(self):
+        root = macos_writer_tree()
+        os.remove(os.path.join(root, "target", "scip", "macos.scip"))
+        out, _commit, problem = pw.reach_candidates(root, os.path.join(root, "target", "scip"))
+        self.assertEqual(out, {})
+        self.assertIn("macos.scip", problem or "")
+
+
 def errors(root: str, reached: dict[str, set[str]] | None = None) -> list[str]:
     return pw.check(root, reached)[0]
 

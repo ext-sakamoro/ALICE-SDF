@@ -359,6 +359,25 @@ def index_commit(root: Path, index: Path) -> tuple[str | None, str | None]:
     return None, recorded[0]
 
 
+def read_index(root: Path, index: Path):
+    """(the analysis with its call graph, every symbol, problem) of every index of the crate itself
+    (scripts/scip_reach.py CRATE_INDEXES: native, wasm32 and macOS, so an entry compiled only for
+    one target is followed too). Every symbol: the definitions (a trait's provided method nobody
+    calls is still an entry) and every referenced symbol (the parsers of other crates)."""
+    sys.path.insert(0, str(Path(root) / "scripts"))
+    import scip_reach  # noqa: E402
+
+    scips, problem = scip_reach.crate_index_paths(index)
+    if problem:
+        return None, set(), problem
+    an = scip_reach.analyze(Path(root), scips, keep_graph=True)
+    every: set[str] = set()
+    for p in scips:
+        for doc in scip_reach.load_scip(p):
+            every.update(o["symbol"] for o in doc["occ"] if o["symbol"] and not o["symbol"].startswith("local "))
+    return an, every, None
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=str(Path(__file__).resolve().parents[1]))
@@ -384,21 +403,10 @@ def main(argv: list[str] | None = None) -> int:
     if problem:
         print(f"api_boundary_parsers: {problem}", file=sys.stderr)
         return 1
-    scips = [index / "native.scip", index / "wasm.scip"]
-    for p in scips:
-        if not p.is_file() or p.stat().st_size == 0:
-            print(f"api_boundary_parsers: {p} is missing or empty", file=sys.stderr)
-            return 1
-    sys.path.insert(0, str(root / "scripts"))
-    import scip_reach  # noqa: E402
-
-    an = scip_reach.analyze(root, scips, keep_graph=True)
-    # every symbol of the index: the definitions (a trait's provided method nobody calls is
-    # still an entry) and every referenced symbol (the parsers of other crates)
-    every: set[str] = set()
-    for p in scips:
-        for doc in scip_reach.load_scip(p):
-            every.update(o["symbol"] for o in doc["occ"] if o["symbol"] and not o["symbol"].startswith("local "))
+    an, every, problem = read_index(root, index)
+    if problem:
+        print(f"api_boundary_parsers: {problem}", file=sys.stderr)
+        return 1
     defs = definitions(every, crate)
     by_desc: dict[str, set[str]] = {}
     for sym in every:
