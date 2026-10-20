@@ -8,12 +8,21 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 |----------|-------|
 | 🟢 Not ignored | 919 |
 | 🔴 Red by design | 0 |
-| ⏱ Gated (runtime / diagnostic / manual) | 0 |
+| ⏱ Gated (runtime / diagnostic / manual) | 3 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **919** |
+| **Total** | **922** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
+
+## ⏱ Gated (3)
+
+Correct tests that are too slow for every push, or that print a measurement table.
+Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ignored`.
+
+- `the_alembic_library_reads_the_mesh_and_the_identifier_bit_for_bit` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
+- `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
+- `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
 ## 🟢 Not ignored (919)
 
