@@ -80,6 +80,15 @@ SUBCRATES = (
 )
 SUB_BY_INDEX = {idx: (prefix, kind) for idx, prefix, kind in SUBCRATES}
 
+# Indexes of this crate itself, one per configuration (scripts/scip_index.sh). A
+# `pub` item counts as indexed when any of them defines it, so code compiled only
+# for one target (`cfg(target_arch = "wasm32")`, `cfg(target_os = "macos")`) is
+# analysed from the index built for that target.
+CRATE_INDEXES = ("native.scip", "wasm.scip", "macos.scip")
+# Indexes that must define at least one `src/` pub item (main() fails otherwise): an empty one would leave its target-only code unindexed and
+# the run would still compare the rest
+GUARDED_INDEXES = ("macos.scip",)
+
 
 def binding_of(rel: str) -> str | None:
     """The binding `rel` belongs to (its key in `roots_by_binding`), or None."""
@@ -198,6 +207,9 @@ class Analysis:
         # per SUBCRATES index: documents read, references to this crate's definitions
         self.sub_docs: dict[str, int] = {idx: 0 for idx, _p, _k in SUBCRATES}
         self.sub_refs: dict[str, int] = {idx: 0 for idx, _p, _k in SUBCRATES}
+        # per CRATE_INDEXES index: documents read, `src/` pub-item definitions
+        self.idx_docs: dict[str, int] = {idx: 0 for idx in CRATE_INDEXES}
+        self.idx_items: dict[str, int] = {idx: 0 for idx in CRATE_INDEXES}
         self.impl_links = 0       # trait-impl method -> in-crate trait method
         self.external_impls = 0   # trait-impl methods of traits defined outside the crate
         self.generated_items = 0  # items of types a macro invocation generates
@@ -422,6 +434,8 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
             rel = doc["path"]
             if prefix:
                 a.sub_docs[idx_name] += 1
+            elif idx_name in a.idx_docs:
+                a.idx_docs[idx_name] += 1
             for sym, target in doc["impl"]:
                 implementers.setdefault(target, set()).add(sym)
                 impl_targets.setdefault(sym, set()).add(target)
@@ -456,6 +470,8 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
                         name = line[sp_[0][1]:sp_[1][1]]
                         if name and re.search(PUB_DEF + re.escape(name) + r"\b", line):
                             a.items.setdefault(item_key(rel, name, s), set()).add(s)
+                            if idx_name in a.idx_items:
+                                a.idx_items[idx_name] += 1
                         else:
                             # a type defined at a macro invocation (`impl_x!(Name, 10);`):
                             # rust-analyzer puts the definition on the argument token
@@ -794,7 +810,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     root = Path(args.root)
     sdir = Path(args.scip) if Path(args.scip).is_absolute() else root / args.scip
-    paths = [sdir / "native.scip", sdir / "wasm.scip"] + [sdir / idx for idx, _p, _k in SUBCRATES]
+    paths = [sdir / idx for idx in CRATE_INDEXES] + [sdir / idx for idx, _p, _k in SUBCRATES]
     missing = [str(p) for p in paths if not p.exists()]
     if missing:
         print(f"error: SCIP index missing: {missing} (run scripts/scip_index.sh)", file=sys.stderr)
@@ -811,10 +827,19 @@ def main(argv: list[str] | None = None) -> int:
         if a.sub_docs[idx] == 0 or a.sub_refs[idx] == 0:
             errors.append(f"{idx} ({prefix}): {a.sub_docs[idx]} documents, {a.sub_refs[idx]} references to the "
                           "crate (its code would not count as a caller)")
+    for idx in GUARDED_INDEXES:
+        # a src/ pub-item definition comes from a document, so this covers an index
+        # with no document as well
+        if a.idx_items[idx] == 0:
+            errors.append(f"{idx}: {a.idx_docs[idx]} documents, {a.idx_items[idx]} src/ pub-item definitions "
+                          "(the code compiled only for its target would be unindexed)")
     if a.impl_links == 0:
         errors.append("0 trait-impl links resolved (calls through a trait would never reach an impl)")
     counts = {lv: sum(1 for v in a.level.values() if v == lv) for lv in ("L0", "L1", "live")}
-    print(f"compared: items {len(a.items)}, example refs {a.example_refs}, binding refs {a.binding_refs}, "
+    print(f"compared: items {len(a.items)}, "
+          + "".join(f"{idx.removesuffix('.scip')} docs {a.idx_docs[idx]} items {a.idx_items[idx]}, "
+                    for idx in CRATE_INDEXES)
+          + f"example refs {a.example_refs}, binding refs {a.binding_refs}, "
           + "".join(f"{idx.removesuffix('.scip')} refs {a.sub_refs[idx]}, " for idx, _p, _k in SUBCRATES)
           + f"trait-impl links {a.impl_links}, external-trait impls {a.external_impls}, "
           f"unindexed {len(a.unindexed)}, "

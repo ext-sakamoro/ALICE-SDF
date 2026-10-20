@@ -9,7 +9,9 @@ scip_reach.py turns exactly that case red.
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -46,8 +48,11 @@ def _packed(xs) -> bytes:
 
 
 class Doc:
-    def __init__(self, path: str, text: str):
+    # the indexes of the crate itself a document goes to: a real macOS index holds the
+    # common code too; the wasm index stays empty unless a case puts something there
+    def __init__(self, path: str, text: str, indexes: tuple[str, ...] = ("native.scip", "macos.scip")):
         self.path, self.lines = path, text.split("\n")
+        self.indexes = indexes
         self.occ: list[bytes] = []
         self.syms: list[bytes] = []
 
@@ -99,8 +104,8 @@ def build(docs: list[Doc]) -> Path:
         p.write_text("\n".join(doc.lines), encoding="utf-8")
     crate = [doc for doc in docs if sub_of(doc.path) is None]
     (d / "target" / "scip").mkdir(parents=True)
-    (d / "target" / "scip" / "native.scip").write_bytes(b"".join(doc.encode() for doc in crate))
-    (d / "target" / "scip" / "wasm.scip").write_bytes(b"")
+    for idx in sr.CRATE_INDEXES:
+        (d / "target" / "scip" / idx).write_bytes(b"".join(doc.encode() for doc in crate if idx in doc.indexes))
     for idx, prefix, _kind in sr.SUBCRATES:
         blob = b""
         for doc in docs:
@@ -115,7 +120,7 @@ def build(docs: list[Doc]) -> Path:
 
 def all_indexes(d: Path) -> list[Path]:
     s = d / "target" / "scip"
-    return [s / "native.scip", s / "wasm.scip"] + [s / idx for idx, _p, _k in sr.SUBCRATES]
+    return [s / idx for idx in sr.CRATE_INDEXES] + [s / idx for idx, _p, _k in sr.SUBCRATES]
 
 
 def levels(docs: list[Doc]) -> dict[str, str]:
@@ -624,6 +629,90 @@ class Unindexed(unittest.TestCase):
         text = (d / "scripts" / "integration-baseline.txt").read_text(encoding="utf-8")
         self.assertIn("unindexed: src/lib.rs::generated\n", text)
         self.assertEqual(sr.main(["--root", str(d), "--check-baseline"]), 0)
+
+
+class MacosIndex(unittest.TestCase):
+    """Code compiled only for macOS (`cfg(target_os = "macos")`) is in the macOS index only."""
+
+    MAC = ("src/metal.rs", "pub fn on_mac() {}\npub struct MacPool;")
+    KEYS = ["src/metal.rs::MacPool", "src/metal.rs::on_mac"]
+
+    def mac_doc(self, indexes=("macos.scip",)) -> Doc:
+        return (Doc(*self.MAC, indexes=indexes)
+                .define("metal/on_mac().", 0, "on_mac")
+                .define("metal/MacPool#", 1, "MacPool"))
+
+    def crate(self, docs: list[Doc]) -> Path:
+        """The crate with a baseline of exactly its L0 items, so --check-baseline fails
+        on unindexed items only."""
+        d = build([lib_doc(), Main.EX(), Main.FFI(), *Main.OTHER(), *docs])
+        (d / "scripts").mkdir()
+        lv = sr.analyze(d, all_indexes(d)).level
+        (d / "scripts" / "integration-baseline.txt").write_text(
+            "".join(f"{k}\n" for k, v in sorted(lv.items()) if v == "L0"), encoding="utf-8")
+        return d
+
+    def test_items_only_the_macos_index_defines_are_indexed(self):
+        d = self.crate([self.mac_doc()])
+        a = sr.analyze(d, all_indexes(d))
+        self.assertEqual(a.unindexed, [])
+        for k in self.KEYS:
+            self.assertIn(k, a.items)
+
+    def test_without_the_macos_index_they_are_unindexed(self):
+        d = self.crate([self.mac_doc()])
+        a = sr.analyze(d, [p for p in all_indexes(d) if p.name != "macos.scip"])
+        self.assertEqual(a.unindexed, self.KEYS)
+
+    def test_check_passes_with_the_macos_index_and_fails_without_its_items(self):
+        d = self.crate([self.mac_doc()])
+        self.assertEqual(sr.main(["--root", str(d), "--check-baseline"]), 0)
+        # an index built for another target than macOS: the common code is there, the
+        # macOS-only module is not, so its items come back as new unindexed items
+        d = self.crate([self.mac_doc(indexes=())])
+        self.assertEqual(sr.main(["--root", str(d), "--check-baseline"]), 1)
+
+    def test_counts_per_index(self):
+        d = self.crate([self.mac_doc()])
+        a = sr.analyze(d, all_indexes(d))
+        self.assertEqual(a.idx_items["macos.scip"], a.idx_items["native.scip"] + 2)
+        self.assertEqual(a.idx_docs["macos.scip"], a.idx_docs["native.scip"] + 1)
+
+    def test_empty_macos_index_fails(self):
+        d = self.crate([])
+        self.assertEqual(sr.main(["--root", str(d)]), 0)
+        (d / "target" / "scip" / "macos.scip").write_bytes(b"")
+        self.assertEqual(sr.main(["--root", str(d)]), 1)
+
+    def test_macos_index_without_a_src_item_fails(self):
+        d = self.crate([])
+        # documents but no pub item of src/: an example only
+        (d / "target" / "scip" / "macos.scip").write_bytes(Main.EX().encode())
+        self.assertEqual(sr.main(["--root", str(d)]), 1)
+
+    def test_missing_macos_index_fails(self):
+        d = self.crate([])
+        (d / "target" / "scip" / "macos.scip").unlink()
+        self.assertEqual(sr.main(["--root", str(d)]), 1)
+
+
+class IndexConfigs(unittest.TestCase):
+    """The rust-analyzer configurations scripts/scip_index.sh writes for this repository."""
+
+    def test_macos_config_is_the_native_one_on_aarch64_apple_darwin(self):
+        root = Path(__file__).resolve().parent.parent
+        out = Path(tempfile.mkdtemp())
+        subprocess.run(["bash", str(root / "scripts" / "scip_index.sh"), "--configs-only", str(out)],
+                       check=True, capture_output=True)
+        native = json.loads((out / "native.json").read_text())["cargo"]
+        macos = json.loads((out / "macos.json").read_text())["cargo"]
+        self.assertEqual(native["target"], "x86_64-unknown-linux-gnu")
+        self.assertEqual(macos["target"], "aarch64-apple-darwin")
+        # the Metal backend is behind the msl feature: the macOS index needs it
+        self.assertIn("msl", macos["features"])
+        self.assertEqual(macos["features"], native["features"])
+        self.assertNotIn("wasm", macos["features"])
+        self.assertEqual(sorted(p.name for p in out.glob("*.scip")), [])
 
 
 class Baseline(unittest.TestCase):

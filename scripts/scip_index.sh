@@ -3,10 +3,14 @@
 #
 # rust-analyzer only analyses the enabled features, so the default feature set
 # leaves out every feature-gated module (ffi, python, godot, gpu, jit, the shader
-# transpilers, the bridges, ...). The crate is indexed twice:
+# transpilers, the bridges, ...). The crate is indexed three times:
 #   native  every feature except `wasm`, on x86_64-unknown-linux-gnu
 #   wasm    `wasm` only, on wasm32-unknown-unknown (src/wasm.rs is compiled for
 #           `target_arch = "wasm32"` only, so a native index leaves it out)
+#   macos   every feature except `wasm`, on aarch64-apple-darwin (code under
+#           `cfg(target_os = "macos")` is left out of the native index)
+# rust-analyzer evaluates cfg for the configured target without compiling for it,
+# so all three are built the same way on any host, Linux included.
 #
 # A fixed target is used for the native index too: rust-analyzer evaluates
 # `cfg(target_arch = ...)` for the target it analyses, so without one an arm64
@@ -14,11 +18,17 @@
 # generated. The other crates of the repository (fuzz, server, mobile, openxr)
 # are indexed on their own.
 #
-# usage: scripts/scip_index.sh [OUT_DIR]   (default: target/scip)
+# usage: scripts/scip_index.sh [--configs-only] [OUT_DIR]   (default: target/scip)
+#   --configs-only  write the rust-analyzer configurations and stop (scripts/test_scip_reach.py)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+configs_only=0
+if [ "${1:-}" = "--configs-only" ]; then
+  configs_only=1
+  shift
+fi
 out="${1:-target/scip}"
 mkdir -p "$out"
 
@@ -30,9 +40,11 @@ print(json.dumps({"cargo": {"features": names, "target": "x86_64-unknown-linux-g
 EOF
 )
 printf '%s\n' "$native" > "$out/native.json"
+printf '%s\n' "${native/x86_64-unknown-linux-gnu/aarch64-apple-darwin}" > "$out/macos.json"
 printf '%s\n' '{"cargo":{"features":["wasm"],"noDefaultFeatures":true,"target":"wasm32-unknown-unknown"}}' > "$out/wasm.json"
+[ "$configs_only" = 0 ] || exit 0
 
-for set in native wasm; do
+for set in native wasm macos; do
   rm -f "$out/$set.scip"
   rust-analyzer scip . --config-path "$out/$set.json" --output "$out/$set.scip"
   [ -s "$out/$set.scip" ] || { echo "scip_index: $out/$set.scip is empty" >&2; exit 1; }
@@ -47,7 +59,7 @@ done
 # Their references to this crate carry the same symbols as the crate's own index.
 # Each with its default features, on the same fixed target.
 printf '%s\n' '{"cargo":{"target":"x86_64-unknown-linux-gnu"}}' > "$out/sub.json"
-written="$out/native.scip $out/wasm.scip"
+written="$out/native.scip $out/wasm.scip $out/macos.scip"
 for pair in fuzz:fuzz server:server mobile:mobile/uniffi-wrapper openxr:bindings/openxr; do
   name=${pair%%:*}
   dir=${pair#*:}
