@@ -145,6 +145,8 @@ python3 scripts/test_clippy_lib_gate.py
 python3 scripts/clippy_lib_gate.py --check
 python3 scripts/test_shader_fma_guard.py
 python3 scripts/shader_fma_guard.py
+python3 scripts/test_glam_feature_check.py
+python3 scripts/glam_feature_check.py
 
 step "status generators: oracle + 走査件数 0 で fail (docs/wiring-status.md / docs/oracle-status.md)"
 python3 scripts/test_gen_status.py

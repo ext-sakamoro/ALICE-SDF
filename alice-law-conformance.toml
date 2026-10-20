@@ -58,6 +58,7 @@ evidence = [
     "scripts/det_math_guard.py (no .mul_add( call in the evaluator and law directories by text, any receiver; .github/workflows/security-audit.yml)",
     ".github/clippy-lib/clippy.toml also bans glam::{Vec2, Vec3, Vec3A, Vec4, DVec2, DVec3, DVec4}::mul_add (fused on every glam 0.29 backend: f32::mul_add / libm fmaf / _mm_fmadd_ps / vfmaq_f32) and wide's transcendentals on f32x8 / f32x4 / f64x4 / f64x2 (sin, cos, tan, sin_cos, asin, acos, asin_acos, atan, atan2, exp, ln, log2, log10, powf and the pow_<type> form: wide 0.7.33 evaluates them with nested mul_add polynomials) and recip / recip_sqrt on f32x8 / f32x4 (rcpps / rsqrtps approximations under sse / avx, exact elsewhere), each with its own canary form",
     "src/compiled/real.rs Real::mul_add for f32 and f32x8 computes self * m + a with two roundings, so the library has no fused multiply-add to negate",
+    "scripts/glam_feature_check.py (tests scripts/test_glam_feature_check.py; ci.yml on Linux and scripts/preflight.sh): no glam in the resolved dependency graph (cargo metadata, every feature, all targets) has the fast-math feature, which makes glam's SSE2 mul_add fused when the fma target feature is on; 0 glam packages seen fails",
 ]
 mutant = "-(a.mul_add(b, c)), Neg::neg(a.mul_add(b, c)), -0.0 - a.mul_add(b, c) and -1.0 * a.mul_add(b, c) on f32 / f64 added to src/lib.rs: clippy fails with disallowed_methods (f32::mul_add / f64::mul_add) on each; reverted"
 since = ""

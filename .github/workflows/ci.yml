@@ -285,6 +285,16 @@ jobs:
           [ "$n" -eq 1 ] || { cargo tree --features "jit,physics" -i alice-det-math -e normal; exit 1; }
           cargo test --features "jit,physics" --test test_det_parity --test test_jit_sincos_det --test test_det_near_zero_parity
 
+      # G3: glam's `fast-math` feature fuses its SSE2 mul_add when the fma target feature is on, and any
+      # crate in the graph can enable it for the glam every crate shares. cargo metadata
+      # with every feature, all targets; 0 glam packages seen fails. Linux only: the
+      # resolved feature set does not depend on the host
+      - name: glam fast-math feature is off (oracle, then the resolved graph)
+        if: runner.os == 'Linux'
+        run: |
+          python3 scripts/test_glam_feature_check.py
+          python3 scripts/glam_feature_check.py
+
       # naga の parse / validate のみで GPU adapter は使わない (gpu feature は naga を引くため)
       - name: Test (integration, NPR shader validation — glsl + gpu)
         run: cargo test --features "glsl,gpu" --test npr_shader_validate
