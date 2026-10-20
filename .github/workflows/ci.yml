@@ -56,6 +56,7 @@ jobs:
       scip: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.scip == 'true' }}
       lint: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.lint == 'true' }}
       boundary: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.boundary == 'true' }}
+      alembic: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.alembic == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -116,6 +117,16 @@ jobs:
               - 'vrchat-package/**'
               - 'examples/vrchat_*'
               - 'scripts/vrchat-host-parity.sh'
+            # the .abc writer and its reader against the Alembic library (alembic-oracle job)
+            alembic:
+              - 'src/io/alembic.rs'
+              - 'src/io/mod.rs'
+              - 'src/provenance.rs'
+              - 'src/mesh/**'
+              - 'tests/test_alembic_oracle.rs'
+              - 'tests/oracle/alembic_*'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
             unreal:
               - 'unreal-plugin/**'
               - 'include/alice_sdf.h'
@@ -684,6 +695,42 @@ jobs:
           set -euo pipefail
           cargo test --features openvdb --test test_provenance alice_vdb 2>&1 | tee provenance-vdb.log
           python3 scripts/libtest_count.py provenance-vdb.log --min 3 --what "ALICE-VDB provenance tests (openvdb)"
+
+  # The .abc writer against the Alembic library: tests/oracle/alembic_reader.cpp reads what this
+  # crate writes and tests/oracle/alembic_refwriter.cpp writes the same mesh with the library, and
+  # tests/test_alembic_oracle.rs compares them bit for bit (positions, faces, normals, UVs, the
+  # identifier in the archive metadata, object / property hashes, sample digests). The tests are
+  # #[ignore] elsewhere because they need the library; here a missing program panics and fewer
+  # than 3 passing tests fail the job.
+  alembic-oracle:
+    name: Alembic library oracle (.abc)
+    needs: changes
+    if: needs.changes.outputs.alembic == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install the Alembic library
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libalembic-dev libimath-dev
+      - name: Build the oracle programs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/alembic-oracle
+          for n in alembic_reader alembic_refwriter; do
+            g++ -std=c++17 -O1 -I/usr/include/Imath "tests/oracle/$n.cpp" -lAlembic -o "target/alembic-oracle/$n"
+          done
+      - name: Test (Alembic oracle)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ALICE_SDF_ALEMBIC_READER="$PWD/target/alembic-oracle/alembic_reader"
+          export ALICE_SDF_ALEMBIC_REFWRITER="$PWD/target/alembic-oracle/alembic_refwriter"
+          cargo test --test test_alembic_oracle -- --ignored 2>&1 | tee alembic-oracle.log
+          python3 scripts/libtest_count.py alembic-oracle.log --min 3 --what "Alembic oracle tests"
 
   bevy:
     name: Bevy plugin (bindings/bevy/alice-sdf-bevy)

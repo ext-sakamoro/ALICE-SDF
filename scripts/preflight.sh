@@ -452,6 +452,24 @@ step "test: provenance of the ALICE-VDB grid (ci.yml の openvdb job と対、3 
 cargo test --features openvdb --test test_provenance alice_vdb 2>&1 | tee "${CARGO_TARGET_DIR:-target}/provenance-vdb.log"
 python3 scripts/libtest_count.py "${CARGO_TARGET_DIR:-target}/provenance-vdb.log" --min 3 --what "ALICE-VDB provenance tests (openvdb)"
 
+step "test: .abc against the Alembic library (ci.yml の alembic-oracle job と対、3 件未満で fail、library が無ければ PREFLIGHT-SKIP 行)"
+abc_inc=""
+for d in /usr/include /opt/homebrew/include /usr/local/include; do
+  [ -f "$d/Alembic/Abc/All.h" ] && abc_inc=$d && break
+done
+if [ -n "$abc_inc" ]; then
+  abc_out="${CARGO_TARGET_DIR:-target}/alembic-oracle"
+  mkdir -p "$abc_out"
+  for n in alembic_reader alembic_refwriter; do
+    c++ -std=c++17 -O1 -I"$abc_inc" -I"$abc_inc/Imath" "tests/oracle/$n.cpp" -L"${abc_inc%/include}/lib" -lAlembic -o "$abc_out/$n"
+  done
+  ALICE_SDF_ALEMBIC_READER="$abc_out/alembic_reader" ALICE_SDF_ALEMBIC_REFWRITER="$abc_out/alembic_refwriter" \
+    cargo test --test test_alembic_oracle -- --ignored 2>&1 | tee "$abc_out/alembic-oracle.log"
+  python3 scripts/libtest_count.py "$abc_out/alembic-oracle.log" --min 3 --what "Alembic oracle tests"
+else
+  echo "PREFLIGHT-SKIP: Alembic oracle: no Alembic headers (apt libalembic-dev / brew alembic), checked by the alembic-oracle CI job"
+fi
+
 step "gpu-parity: GPU <-> CPU law parity, shader validation, GPU marching cubes (Metal here, lavapipe in CI)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_law_parity --test test_gpu_noise_parity --test test_round_tie_parity \
