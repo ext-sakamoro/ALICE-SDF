@@ -11,7 +11,8 @@
 //   N <count> <hex bits of each float>      (when present)
 //   uv <count> <hex bits of each float>     (when present)
 //   digest <property> <stored 32 hex> <computed 32 hex>
-//   hash <object> <properties hash> <children hash>
+//   hash <object> <properties hash> <children hash>   (also for the top object `/`)
+//   constant <property> <0|1> samples <n>
 //
 // The stored digest of every array sample is printed beside the one the library computes from the
 // sample's bytes: a reader does not check it, so this is where a wrong digest shows
@@ -47,6 +48,7 @@ static void floats(const char* tag, const float* p, size_t n) {
 static int meshes = 0;
 
 static void digest(const char* name, Abc::IArrayProperty prop) {
+    std::printf("constant %s %d samples %zu\n", name, prop.isConstant() ? 1 : 0, prop.getNumSamples());
     AbcA::ArraySampleKey stored;
     prop.getKey(stored, Abc::ISampleSelector(Abc::index_t(0)));
     AbcA::ArraySamplePtr samp;
@@ -114,6 +116,9 @@ int main(int argc, char** argv) {
         const AbcCoreAbstract::MetaData& md = archive.getPtr()->getMetaData();
         for (AbcCoreAbstract::MetaData::const_iterator it = md.begin(); it != md.end(); ++it)
             std::printf("meta %s %s\n", it->first.c_str(), it->second.c_str());
+        AbcA::Digest ph, ch;
+        if (archive.getTop().getPropertiesHash(ph) && archive.getTop().getChildrenHash(ch))
+            std::printf("hash / %s %s\n", ph.str().c_str(), ch.str().c_str());
         walk(archive.getTop());
     } catch (const std::exception& e) {
         std::fprintf(stderr, "alembic_reader: %s\n", e.what());

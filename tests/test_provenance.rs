@@ -2994,87 +2994,90 @@ fn io_save_stores_the_identifier_for_both_extensions() {
     assert_eq!(compared, 2);
 }
 
-/// An Alembic archive whose metadata has no identifier is reported as missing, not read as some
-/// other value; a cut archive is unreadable
+/// The smallest Ogawa archive `provenance::read` reads the archive metadata from: the finished
+/// header, a root group of four children (three empty data blocks, then `meta`)
+fn ogawa_with_metadata(meta: &str) -> Vec<u8> {
+    let empty = 1u64 << 63;
+    let mut b = b"Ogawa\xFF\x00\x01".to_vec();
+    let data_at = 16u64;
+    let root_at = data_at + 8 + meta.len() as u64;
+    b.extend_from_slice(&root_at.to_le_bytes());
+    b.extend_from_slice(&(meta.len() as u64).to_le_bytes());
+    b.extend_from_slice(meta.as_bytes());
+    for child in [4, empty, empty, empty, data_at | empty] {
+        b.extend_from_slice(&child.to_le_bytes());
+    }
+    b
+}
+
+/// The identifier in an Alembic archive's metadata: an archive another program wrote without it
+/// (the Alembic library, tests/fixtures/provenance/alembic_foreign.abc) is Missing, never read as
+/// some value; one that holds the key but no readable value, two values, an unfinished or cut
+/// archive and the layout this crate wrote up to 7.0.0 (which no Alembic reader opens) are
+/// unreadable
 #[test]
-fn alembic_without_identifier_is_missing_and_a_cut_archive_unreadable() {
+fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
     let path = temp("m_unstamped.abc");
     io::export_alembic(&mesh(), &path, &io::AlembicConfig::default()).unwrap();
     let bytes = std::fs::read(&path).unwrap();
     std::fs::remove_file(&path).ok();
-    let key = provenance::KEY.as_bytes();
-    let at = bytes.windows(key.len()).position(|w| w == key).unwrap();
-    let mut unstamped = bytes.clone();
-    unstamped[at + key.len() - 2..at + key.len()].copy_from_slice(b"xx");
-    assert!(matches!(
-        provenance::from_bytes(&unstamped),
-        Err(ProvenanceError::Missing { format: "Alembic" })
-    ));
-    assert!(matches!(
-        provenance::from_bytes(&bytes[..20]),
-        Err(ProvenanceError::Unreadable(_))
-    ));
     assert_eq!(provenance::from_bytes(&bytes).unwrap(), Provenance::sdf());
 
-    // an identifier that is present but cannot be read is an error, never read as unstamped:
-    // a value that is not 64 hex digits (one digit replaced in place, so the node length holds)
-    let value = at + key.len() + 3; // past `":"`
-    let mut not_hex = bytes;
-    not_hex[value + 10] = b'g';
-    assert!(
-        matches!(
-            provenance::from_bytes(&not_hex),
-            Err(ProvenanceError::Unreadable(_))
-        ),
-        "a non-hex identifier is unreadable"
+    let foreign = std::fs::read(fixture("alembic_foreign.abc")).unwrap();
+    assert!(matches!(
+        provenance::from_bytes(&foreign),
+        Err(ProvenanceError::Missing { format: "Alembic" })
+    ));
+
+    // edits in place keep every length and position
+    let key = format!("{}=", provenance::KEY);
+    let at = bytes
+        .windows(key.len())
+        .position(|w| w == key.as_bytes())
+        .unwrap();
+    let edit = |f: &dyn Fn(&mut Vec<u8>)| {
+        let mut b = bytes.clone();
+        f(&mut b);
+        provenance::from_bytes(&b)
+    };
+    // another key name: no identifier
+    assert!(matches!(
+        edit(&|b| b[at + 5] = b'X'),
+        Err(ProvenanceError::Missing { format: "Alembic" })
+    ));
+    let unreadable = |r: Result<Provenance, ProvenanceError>, what: &str| {
+        assert!(
+            matches!(r, Err(ProvenanceError::Unreadable(_))),
+            "{what}: {r:?}"
+        );
+    };
+    unreadable(
+        edit(&|b| b[at + key.len() + 10] = b'g'),
+        "a non-hex identifier",
     );
-    // two identifiers in the metadata (one archive built from the layout, see `ogawa`)
+    unreadable(
+        edit(&|b| b[5] = 0x00),
+        "an unfinished archive (frozen byte 0)",
+    );
+    unreadable(edit(&|b| b[7] = 0x02), "another Ogawa version");
+    unreadable(provenance::from_bytes(&bytes[..20]), "a cut archive");
+    // the same key twice, in an archive built from the Ogawa layout (see `ogawa_with_metadata`)
     let hex = Provenance::sdf().hex();
-    let one = format!(
-        "{{\"generator\":\"ALICE-SDF\",\"{}\":\"{hex}\"}}",
-        provenance::KEY
-    );
     assert_eq!(
-        provenance::from_bytes(&ogawa(&one)).unwrap(),
+        provenance::from_bytes(&ogawa_with_metadata(&format!("{key}{hex}"))).unwrap(),
         Provenance::sdf()
     );
-    let two = format!(
-        "{{\"{k}\":\"{hex}\",\"{k}\":\"{hex}\"}}",
-        k = provenance::KEY
+    unreadable(
+        provenance::from_bytes(&ogawa_with_metadata(&format!("{key}{hex};{key}{hex}"))),
+        "two identifiers",
     );
-    assert!(
-        matches!(
-            provenance::from_bytes(&ogawa(&two)),
-            Err(ProvenanceError::Unreadable(_))
-        ),
-        "two identifiers are unreadable"
-    );
-    // a node with another tag where the metadata belongs
-    let mut wrong_tag = ogawa(&one);
-    let meta_at = 13 + 1 + 8 + 3;
-    assert_eq!(wrong_tag[meta_at], 0x00);
-    wrong_tag[meta_at] = 0xFF;
-    assert!(
-        matches!(
-            provenance::from_bytes(&wrong_tag),
-            Err(ProvenanceError::Unreadable(_))
-        ),
-        "another node kind where the metadata belongs is unreadable"
-    );
-}
-
-/// The archive layout `io::export_alembic` writes, up to the metadata node: magic and version,
-/// the root group header, the archive name `ABC`, then `meta`
-fn ogawa(meta: &str) -> Vec<u8> {
-    let mut b = b"Ogawa\x00\x01\x00".to_vec();
-    b.push(0xFF);
-    b.extend_from_slice(&4u32.to_le_bytes());
-    for data in [b"ABC".as_slice(), meta.as_bytes()] {
-        b.push(0x00);
-        b.extend_from_slice(&(data.len() as u64).to_le_bytes());
-        b.extend_from_slice(data);
+    // the layout this crate wrote up to 7.0.0: magic, version 1.0 in three bytes, a group tag
+    let mut old = b"Ogawa\x00\x01\x00\xFF".to_vec();
+    old.extend_from_slice(&6u32.to_le_bytes());
+    match provenance::from_bytes(&old) {
+        Err(ProvenanceError::Unreadable(why)) => assert!(why.contains("7.0.0"), "{why}"),
+        other => panic!("the 7.0.0 layout gave {other:?}"),
     }
-    b
 }
 
 // ---------------------------------------------------------------------------------------------

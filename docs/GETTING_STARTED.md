@@ -17,7 +17,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Real-time raymarching** - GPU-accelerated rendering
 - **PBR materials** - metallic-roughness workflow compatible with UE5/UE6/Unity/Godot
 - **Keyframe animation** - parametric deformation with timeline tracks
-- **Asset pipeline** - OBJ import/export, glTF 2.0 (.glb) export, FBX, USD, `.abc` (own layout, not Alembic Ogawa), Nanite, STL, PLY, 3MF, ABM export
+- **Asset pipeline** - OBJ import/export, glTF 2.0 (.glb) export, FBX, USD, Alembic, Nanite, STL, PLY, 3MF, ABM export
 - **5-layer mesh persistence** - ABM binary format, LOD chain persistence, chunked mesh cache with FIFO eviction, Unity/UE5/UE6 native export
 - **Manifold mesh guarantee** - validation, repair, and quality metrics
 - **Printability validation** (`validity`) - answers "can this be printed" *and states how it was decided*. A global erosion proof over `eval_interval` returns a three-valued `ErosionVerdict` (`HasThickEnoughRegion` / `EntirelyTooThin` / `Undecided`, where `Undecided` is **not** a pass), per-triangle sphere tracing measures exact local wall thickness, and overhang comes from the closed form `asin(-n · b)`. `export_step_validated` refuses to write a file that fails the requirements

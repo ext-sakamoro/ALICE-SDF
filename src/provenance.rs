@@ -16,7 +16,7 @@
 //! | PLY (binary and ASCII) | a header comment: `comment alice:semantics_id=<64 hex>` |
 //! | glTF (`.glb`, `.gltf`, meshopt-compressed `.glb`) | `asset.extras`: `{"alice:semantics_id": "<64 hex>"}` |
 //! | ASDF JSON (`.asdf.json`, [`crate::io::save_asdf_json`]) and the other JSON documents of this crate (the LOD chain sidecar `.abm.meta.json`) | the top-level field `"alice:semantics_id": "<64 hex>"` next to the document's fields |
-//! | Alembic (`.abc`, [`crate::io::alembic::export_alembic`]) | the archive metadata (the second data node, a JSON object): `"alice:semantics_id":"<64 hex>"` |
+//! | Alembic (`.abc`, [`crate::io::alembic::export_alembic`]) | the archive metadata (the fourth child of the root group, `key=value;...`): `alice:semantics_id=<64 hex>` |
 //! | USD (`.usda`) | the layer's `customLayerData`: `string "alice:semantics_id" = "<64 hex>"` |
 //! | STEP | the second string of `FILE_DESCRIPTION`: `'alice:semantics_id=<64 hex>'` |
 //! | IGES | two Start-section lines, `alice:semantics_id=` and the 64 hex digits (joined they read as one) |
@@ -1201,53 +1201,70 @@ fn tagged_in(bytes: &[u8], format: &'static str) -> Result<Provenance, Provenanc
     found.ok_or(ProvenanceError::Missing { format })
 }
 
-/// The identifier in the metadata of an Alembic archive written by
-/// [`crate::io::alembic::export_alembic`]: the magic and version (8 bytes), the root group header
-/// (tag `0xFF`, `u32` child count), the archive name data node, then the metadata data node (tag
-/// `0x00`, `u64` length, a JSON object holding `"alice:semantics_id":"<64 hex>"`)
+/// The identifier in the archive metadata of an Alembic (Ogawa) archive, as
+/// [`crate::io::alembic::export_alembic`] writes it: the header (`Ogawa`, the frozen byte `0xFF`,
+/// version `00 01`, the `u64` position of the root group), the root group's fourth child (a data
+/// block, the metadata `key=value;key=value`) and in it `alice:semantics_id=<64 hex>`. An archive
+/// of another program without that key has none (Missing); the layout this crate wrote up to
+/// 7.0.0 (`Ogawa` `00 01 00`, which no Alembic reader opens) is unreadable.
 fn read_alembic(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
-    let cut = || ProvenanceError::Unreadable("Alembic: truncated archive".into());
-    let data_node = |at: usize| -> Result<(&[u8], usize), ProvenanceError> {
-        if *bytes.get(at).ok_or_else(cut)? != 0x00 {
-            return Err(ProvenanceError::Unreadable(
-                "Alembic: no data node where the metadata belongs".into(),
-            ));
-        }
-        let len: [u8; 8] = bytes
-            .get(at + 1..at + 9)
-            .ok_or_else(cut)?
+    let bad = |why: &str| ProvenanceError::Unreadable(format!("Alembic: {why}"));
+    let u64_at = |at: usize| -> Result<u64, ProvenanceError> {
+        let w: [u8; 8] = bytes
+            .get(at..at.checked_add(8).ok_or_else(|| bad("truncated archive"))?)
+            .ok_or_else(|| bad("truncated archive"))?
             .try_into()
-            .unwrap();
-        let len = usize::try_from(u64::from_le_bytes(len)).map_err(|_| cut())?;
-        let start = at + 9;
-        let end = start.checked_add(len).ok_or_else(cut)?;
-        Ok((bytes.get(start..end).ok_or_else(cut)?, end))
+            .map_err(|_| bad("truncated archive"))?;
+        Ok(u64::from_le_bytes(w))
     };
-    if bytes.get(8) != Some(&0xFF) {
-        return Err(ProvenanceError::Unreadable(
-            "Alembic: no root group after the header".into(),
+    if bytes.get(5..8) == Some(&[0x00, 0x01, 0x00]) {
+        return Err(bad(
+            "the archive layout ALICE-SDF 7.0.0 and earlier wrote (not the Alembic Ogawa layout); export the mesh again",
         ));
     }
-    let (_, next) = data_node(13)?;
-    let (meta, _) = data_node(next)?;
-    let meta = std::str::from_utf8(meta)
-        .map_err(|_| ProvenanceError::Unreadable("Alembic: metadata is not UTF-8".into()))?;
-    let open = format!("\"{KEY}\":\"");
-    let mut values = meta.match_indices(&open).map(|(at, _)| {
-        let start = at + open.len();
-        meta.get(start..start + 64)
-            .and_then(Provenance::from_hex)
-            .filter(|_| meta[start + 64..].starts_with('"'))
-    });
+    if bytes.get(6..8) != Some(&[0x00, 0x01]) {
+        return Err(bad("not Ogawa version 0.1"));
+    }
+    if bytes.get(5) != Some(&0xFF) {
+        return Err(bad(
+            "the archive was not finished (frozen byte is not 0xFF)",
+        ));
+    }
+    let root = usize::try_from(u64_at(8)?).map_err(|_| bad("truncated archive"))?;
+    let children = u64_at(root)?;
+    if children < 4 {
+        return Err(bad("the root group has no archive metadata"));
+    }
+    let child = u64_at(root + 8 + 3 * 8)?;
+    if child & (1 << 63) == 0 {
+        return Err(bad("the archive metadata is not a data block"));
+    }
+    let meta: &[u8] = if child == 1 << 63 {
+        &[]
+    } else {
+        let at = usize::try_from(child & !(1 << 63)).map_err(|_| bad("truncated archive"))?;
+        let len = usize::try_from(u64_at(at)?).map_err(|_| bad("truncated archive"))?;
+        let start = at + 8;
+        bytes
+            .get(
+                start
+                    ..start
+                        .checked_add(len)
+                        .ok_or_else(|| bad("truncated archive"))?,
+            )
+            .ok_or_else(|| bad("truncated archive"))?
+    };
+    let meta = std::str::from_utf8(meta).map_err(|_| bad("archive metadata is not UTF-8"))?;
+    let mut values = meta
+        .split(';')
+        .filter_map(|kv| kv.split_once('='))
+        .filter(|(k, _)| *k == KEY)
+        .map(|(_, v)| Provenance::from_hex(v));
     match (values.next(), values.next()) {
         (None, _) => Err(ProvenanceError::Missing { format: "Alembic" }),
         (Some(Some(p)), None) => Ok(p),
-        (Some(None), _) => Err(ProvenanceError::Unreadable(format!(
-            "Alembic: {KEY} is not 64 hex digits"
-        ))),
-        (Some(Some(_)), Some(_)) => Err(ProvenanceError::Unreadable(format!(
-            "Alembic: more than one {KEY}"
-        ))),
+        (Some(None), _) => Err(bad(&format!("{KEY} is not 64 hex digits"))),
+        (Some(Some(_)), Some(_)) => Err(bad(&format!("more than one {KEY}"))),
     }
 }
 

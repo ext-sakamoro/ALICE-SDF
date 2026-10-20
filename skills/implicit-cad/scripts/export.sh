@@ -12,7 +12,7 @@
 #   .glb  — glTF 2.0 binary
 #   .fbx  — Autodesk FBX
 #   .usda — USD ASCII
-#   .abc  — this crate's own archive layout (Alembic tools do not open it)
+#   .abc  — Alembic (Ogawa)
 # All of them are in the CLI (the `cli` feature); none needs another feature.
 #
 # For STL / 3MF (3D print), use scripts/print.sh instead — the underlying

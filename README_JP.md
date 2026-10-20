@@ -141,7 +141,7 @@ box 系の形に掛けると Cranelift JIT が `NaN` を返し、基準である
 | 評価 | 木の評価器、コンパイル済みバイトコード (スカラー / SIMD / BVH)、Cranelift JIT、wgpu による GPU 計算、区間演算、解析的・自動微分の勾配、リプシッツ上界 |
 | シェーダー出力 | GLSL、WGSL、HLSL、Metal (WGSL 出力から naga で変換)、BlinkScript、依存のない Rust ソース |
 | メッシュ化 | marching cubes (一様 / 適応 / GPU)、dual contouring、間引き、LOD チェーン、多様体修復、UV 展開、meshlet、meshopt 互換コーデック |
-| ファイル形式 | `.asdf` / `.asdf.json` の木、OBJ、glTF、FBX、USD、`.abc` (独自の並び、Alembic の Ogawa ではない)、STL、PLY、3MF、STEP、IGES、MagicaVoxel、Gaussian splat、OpenVDB |
+| ファイル形式 | `.asdf` / `.asdf.json` の木、OBJ、glTF、FBX、USD、Alembic、STL、PLY、3MF、STEP、IGES、MagicaVoxel、Gaussian splat、OpenVDB |
 | 解析 | 印刷可能性 (3 値の判定を返す侵食の証明、肉厚、オーバーハング)、体積と表面積、タイトな境界箱、SDF 同士の衝突 |
 | ワールド | スパースボクセル八分木、ボクセル破壊、侵食付き地形、コーントレースによる大域照明 |
 

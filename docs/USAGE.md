@@ -178,7 +178,7 @@ export_glb(&mesh, "model.glb", &GltfConfig::aaa(), Some(&mat_lib))?;
 | `.glb` | - | yes | PBR | glTF 2.0 binary (game engines) |
 | `.fbx` | - | yes | PBR | FBX 7.4 ASCII/Binary (DCC tools) |
 | `.usda` | - | yes | UsdPreviewSurface | USD ASCII (Pixar/Omniverse/Houdini/Maya/Blender) |
-| `.abc` | - | yes | - | this crate's own archive layout under the `.abc` name; Alembic tools do not open it |
+| `.abc` | - | yes | - | Alembic (Ogawa), one static PolyMesh; read by the Alembic library (Maya/Houdini/Blender/Nuke/Katana) |
 | `.nanite` | - | yes | - | UE5 Nanite hierarchical cluster binary + JSON manifest |
 | `.stl` | yes | yes | - | STL ASCII/Binary (3D printing, CAD) |
 | `.ply` | yes | yes | - | PLY ASCII/Binary (point clouds, scanning) |
@@ -950,7 +950,7 @@ sdf.export_ue5(verts, indices, "temple.ue5_mesh")       # Unreal Engine 5
 | `alice_sdf_export_glb` | `.glb` | Binary glTF 2.0 |
 | `alice_sdf_export_fbx` | `.fbx` | Autodesk FBX |
 | `alice_sdf_export_usda` | `.usda` | Universal Scene Description |
-| `alice_sdf_export_alembic` | `.abc` | this crate's own archive layout (not Alembic Ogawa) |
+| `alice_sdf_export_alembic` | `.abc` | Alembic (Ogawa) |
 | `alice_sdf_save_abm` | `.abm` | ALICE Binary Mesh |
 | `alice_sdf_load_abm` | `.abm` | Load ABM → MeshHandle |
 | `alice_sdf_export_unity` | `.unity_mesh` | Unity JSON mesh |

@@ -148,7 +148,7 @@ needs, is listed in [`docs/MODULES.md`](docs/MODULES.md). API details are on
 | Evaluation | tree evaluator, compiled bytecode (scalar, SIMD, BVH), Cranelift JIT, GPU compute through wgpu; interval arithmetic, analytic and automatic gradients, Lipschitz bounds |
 | Shader output | GLSL, WGSL, HLSL, Metal (from the WGSL output through naga), BlinkScript, and dependency-free Rust source |
 | Meshing | marching cubes (uniform, adaptive, GPU), dual contouring, decimation, LOD chains, manifold repair, UV unwrap, meshlets, meshopt-compatible codecs |
-| File formats | `.asdf` / `.asdf.json` trees; OBJ, glTF, FBX, USD, `.abc` (own layout, not Alembic Ogawa), STL, PLY, 3MF, STEP, IGES, MagicaVoxel, Gaussian splats, OpenVDB |
+| File formats | `.asdf` / `.asdf.json` trees; OBJ, glTF, FBX, USD, Alembic, STL, PLY, 3MF, STEP, IGES, MagicaVoxel, Gaussian splats, OpenVDB |
 | Analysis | printability (erosion proof with a three-valued verdict, wall thickness, overhang), volume and surface area, tight bounding boxes, SDF-to-SDF collision |
 | Worlds | sparse voxel octree, voxel destruction, terrain with erosion, cone-traced global illumination |
 

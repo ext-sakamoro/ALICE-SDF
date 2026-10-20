@@ -16,7 +16,7 @@ ALICE-SDFは、ポリゴンメッシュの代わりに**形状の数学的記述
 - **リアルタイムレイマーチング** - GPU加速レンダリング
 - **PBRマテリアル** - UE5/UE6/Unity/Godot互換のメタリック-ラフネスワークフロー
 - **キーフレームアニメーション** - タイムライントラック付きパラメトリック変形
-- **アセットパイプライン** - OBJ、glTF 2.0 (.glb)、FBX、USD、`.abc` (独自の並び、Alembic の Ogawa ではない)、Nanite、STL、PLY、3MF、ABM、Unity、UE5/UE6エクスポート
+- **アセットパイプライン** - OBJ、glTF 2.0 (.glb)、FBX、USD、Alembic、Nanite、STL、PLY、3MF、ABM、Unity、UE5/UE6エクスポート
 - **マニフォールドメッシュ保証** - バリデーション、修復、品質メトリクス
 - **印刷可能性の検証** (`validity`) - 「これは印刷できるか」に**どう判定したかを添えて**答える 大域判定は `eval_interval` による erosion の証明で三値 `ErosionVerdict` (`HasThickEnoughRegion` / `EntirelyTooThin` / `Undecided`、**`Undecided` は合格ではない**)、局所肉厚は三角形ごとの sphere tracing で厳密実測、overhang は閉形式 `asin(-n · b)` `export_step_validated` は要件を満たさない形状の file を書かない
 - **適応型マーチングキューブ** - オクツリーベースのメッシュ生成、必要な箇所にディテールを集中 (外向き CCW 巻き順 + 水密、1.11.0 で index 順を反転 — CHANGELOG 参照)
