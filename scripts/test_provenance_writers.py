@@ -283,6 +283,24 @@ class Writers(unittest.TestCase):
         self.assertIsNone(pw.bin_fn_key("src/io/a.rs", sym))
         self.assertIsNone(pw.bin_fn_key("src/bin/main.rs", "rust-analyzer cargo alice-sdf 7.0.0 main/Cli#"))
 
+    def test_a_cli_fn_starts_from_what_its_own_body_references(self):
+        pre = "rust-analyzer cargo alice-sdf 7.0.0 "
+        occ = [
+            {"symbol": pre + "main().", "roles": 1, "range": [1, 3, 7], "enc": [1, 0, 4, 1]},
+            {"symbol": pre + "cmd_a().", "roles": 0, "range": [2, 4, 9]},
+            {"symbol": pre + "cmd_a().", "roles": 1, "range": [6, 3, 8], "enc": [6, 0, 9, 1]},
+            {"symbol": pre + "io/obj/export_obj().", "roles": 0, "range": [7, 4, 14]},
+            {"symbol": "local 3", "roles": 0, "range": [8, 4, 5]},
+            {"symbol": pre + "outside().", "roles": 0, "range": [12, 0, 7]},
+        ]
+        got = pw.bin_entries("src/bin/main.rs", occ)
+        self.assertEqual(got, {
+            # main calls cmd_a, whose references it takes along
+            "src/bin/main.rs::main": {pre + "main().", pre + "cmd_a().", pre + "io/obj/export_obj()."},
+            "src/bin/main.rs::cmd_a": {pre + "cmd_a().", pre + "io/obj/export_obj()."},
+        })
+        self.assertEqual(pw.bin_entries("src/io/a.rs", occ), {})
+
     def test_two_impls_of_one_name_share_a_key_and_both_must_delegate(self):
         src = ("impl A {\n    pub fn export_a(&self) { export_a(p) }\n}\n"
                "impl B {\n    pub fn export_a(&self) { other() }\n}\n")
