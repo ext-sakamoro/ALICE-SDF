@@ -2975,7 +2975,7 @@ fn codec_volume_stream_checks_the_identifier() {
 }
 
 /// `io::save` picks the writer by extension; both forms it writes carry this crate's identifier
-/// (the scanner lists it as delegating to `save_asdf`, which checks only the first)
+/// (scripts/provenance-not-writers.txt names both writers; the scanner checks the body calls each)
 #[test]
 fn io_save_stores_the_identifier_for_both_extensions() {
     let tree = SdfTree::new(SdfNode::sphere(1.0));
