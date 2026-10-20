@@ -19,7 +19,7 @@ run() {
   fi
 }
 
-kinds=(drop-face shrink-aabb no-scenes)
+kinds=(drop-face shrink-aabb no-scenes bytecode-id bytecode-unpinned manifest-id)
 gpu=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gpu"]["status"])' "$src/manifest.json")
 if [ "$gpu" = "ok" ]; then
   kinds+=(gpu-vertex gpu-extra-vertex)
@@ -40,6 +40,9 @@ expect() {
     drop-face) echo 'boundary edges \(not watertight\)' ;;
     shrink-aabb) echo 'collider AABB .* does not contain' ;;
     no-scenes) echo 'no scene verified' ;;
+    bytecode-id) echo 'law.bytecode: semantics identifier [0-9a-f]{64} is not this build' ;;
+    bytecode-unpinned) echo 'law.bytecode: ASDFBC01 stores no semantics identifier' ;;
+    manifest-id) echo 'manifest.json: semantics identifier [0-9a-f]{64} is not this build' ;;
     gpu-vertex) echo 'gpu-vs-cpu: vertex-to-surface distance' ;;
     gpu-extra-vertex) echo 'gpu-vs-cpu: topology differs' ;;
   esac

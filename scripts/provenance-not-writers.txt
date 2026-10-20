@@ -66,3 +66,9 @@ src/bin/main.rs::cmd_demo delegates to save
 src/bin/main.rs::cmd_export picks one library writer by the output extension (obj, glb, fbx, usda, abc, stl, 3mf, ply); each is covered or pending
 src/bin/main.rs::cmd_print picks one library writer by the output extension (3mf, stl, obj, ply); each is covered
 src/bin/main.rs::main dispatches each subcommand to its cmd_ fn; every one that writes is listed here or pending
+examples/bake_assets/main.rs::mutate corrupts a baked directory on purpose for scripts/bake_teeth.sh, which requires verify to refuse it
+examples/mesh_formats.rs::main writes a foreign OBJ without the identifier on purpose, to show it read as Unpinned
+examples/provenance_check.rs::main delegates to export_glb_meshopt_bytes (and to export_glb_meshopt_bytes_skinned for the skinned file)
+examples/terrain_system.rs::main writes a PNG test input that the heightmap reader then reads back
+examples/unreal_corpus_oracle.rs::main writes the parity corpus points and golden distance bits for the engine harness
+examples/unreal_corpus_oracle.rs::write_if_changed rewrites one corpus file only when its text changed, for the corpus generator

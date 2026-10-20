@@ -5,7 +5,7 @@
 # tests/test_provenance.rs has its round-trip entry; G8 passes when no line is left
 # `expected-writers` is the number of public writers found; change it only with a new or removed writer
 
-expected-writers 57
+expected-writers 62
 
 src/io/nanite.rs::export_nanite
 src/io/nanite.rs::export_nanite_hlsl_material
@@ -17,3 +17,6 @@ src/io/ue5_asset.rs::export_ue5_mesh_with_lods
 src/io/unity_mesh.rs::export_unity_mesh
 src/io/unity_mesh.rs::export_unity_mesh_binary
 src/bin/main.rs::cmd_texture_fit
+examples/msl_emit.rs::main
+examples/rust_transpile.rs::main
+examples/shader_export.rs::main

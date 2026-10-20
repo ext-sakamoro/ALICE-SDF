@@ -277,6 +277,18 @@ class Writers(unittest.TestCase):
         e = errors(tree(extra={"src/bin/main.rs": ok}), reached={"src/bin/main.rs::cmd_mesh": {"std fs/write()."}})
         self.assertTrue(any("src/bin/main.rs::cmd_mesh: neither covered" in x for x in e), e)
 
+    def test_any_fn_of_an_example_with_a_sink_is_a_candidate_and_a_table_covers_it(self):
+        body = "fn write_law(p: &Path) { std::fs::write(p, b).unwrap(); }\nfn main() { write_law(p) }\n"
+        e = errors(tree(extra={"examples/bake/stored.rs": body}))
+        self.assertTrue(any("examples/bake/stored.rs::write_law: neither covered" in x for x in e), e)
+        self.assertFalse(any("::main" in x for x in e), e)
+        # a helper's name or return type is no evidence in a program: only a sink is
+        helpers = "fn encode_srgb(c: f32) -> u8 { 0 }\nfn render(&self) -> Vec<u8> { vec![] }\n"
+        self.assertEqual(errors(tree(extra={"examples/icon.rs": helpers, "src/bin/main.rs": helpers})), [])
+        table = 'const T: &[(&str, &str)] = &[("examples/bake/stored.rs::write_law", "x")];\n'
+        ok = tree(extra={"examples/bake/stored.rs": body, "tests/test_bake.rs": table}, pending="expected-writers 3\nsrc/io/a.rs::save_b\n")
+        self.assertEqual(errors(ok), [])
+
     def test_a_fn_of_the_command_line_tool_is_an_index_entry(self):
         sym = "rust-analyzer cargo alice-sdf 7.0.0 main/cmd_to_mesh()."
         self.assertEqual(pw.bin_fn_key("src/bin/main.rs", sym), "src/bin/main.rs::cmd_to_mesh")
