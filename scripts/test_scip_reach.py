@@ -48,9 +48,9 @@ def _packed(xs) -> bytes:
 
 
 class Doc:
-    # the indexes of the crate itself a document goes to: a real macOS index holds the
-    # common code too; the wasm index stays empty unless a case puts something there
-    def __init__(self, path: str, text: str, indexes: tuple[str, ...] = ("native.scip", "macos.scip")):
+    # the indexes of the crate itself a document goes to: the real wasm and macOS indexes
+    # hold the common code too, so a document is in all three unless a case says otherwise
+    def __init__(self, path: str, text: str, indexes: tuple[str, ...] = sr.CRATE_INDEXES):
         self.path, self.lines = path, text.split("\n")
         self.indexes = indexes
         self.occ: list[bytes] = []
@@ -696,16 +696,48 @@ class MacosIndex(unittest.TestCase):
         self.assertEqual(sr.main(["--root", str(d)]), 1)
 
 
+class GuardedIndexes(unittest.TestCase):
+    """The wasm and macOS indexes each define src/ pub items, or the run fails."""
+
+    def crate(self) -> Path:
+        return build([lib_doc(), Main.EX(), Main.FFI(), *Main.OTHER()])
+
+    def test_the_fixture_indexes_are_not_empty(self):
+        d = self.crate()
+        a = sr.analyze(d, all_indexes(d))
+        for idx in sr.CRATE_INDEXES:
+            self.assertGreater(a.idx_docs[idx], 0, idx)
+            self.assertGreater(a.idx_items[idx], 0, idx)
+        self.assertEqual(sr.main(["--root", str(d)]), 0)
+
+    def test_an_empty_guarded_index_fails(self):
+        for idx in ("wasm.scip", "macos.scip"):
+            with self.subTest(idx=idx):
+                d = self.crate()
+                (d / "target" / "scip" / idx).write_bytes(b"")
+                self.assertEqual(sr.main(["--root", str(d)]), 1)
+
+    def test_a_guarded_index_without_a_src_item_fails(self):
+        for idx in ("wasm.scip", "macos.scip"):
+            with self.subTest(idx=idx):
+                d = self.crate()
+                (d / "target" / "scip" / idx).write_bytes(Main.EX().encode())
+                self.assertEqual(sr.main(["--root", str(d)]), 1)
+
+    def test_a_missing_guarded_index_fails(self):
+        for idx in ("wasm.scip", "macos.scip"):
+            with self.subTest(idx=idx):
+                d = self.crate()
+                (d / "target" / "scip" / idx).unlink()
+                self.assertEqual(sr.main(["--root", str(d)]), 1)
+
+
 class CrateIndexPaths(unittest.TestCase):
     """The list the readers of the call graph take (scripts/api_boundary_parsers.py,
     scripts/provenance_writers.py)."""
 
     def test_every_crate_index_is_listed(self):
         d = build([lib_doc()])
-        for idx in sr.CRATE_INDEXES:  # build() leaves wasm.scip empty
-            p = d / "target" / "scip" / idx
-            if p.stat().st_size == 0:
-                p.write_bytes(lib_doc().encode())
         paths, problem = sr.crate_index_paths(d / "target" / "scip")
         self.assertIsNone(problem)
         self.assertEqual([p.name for p in paths], ["native.scip", "wasm.scip", "macos.scip"])
