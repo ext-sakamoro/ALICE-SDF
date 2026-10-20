@@ -1,9 +1,13 @@
 //! Alembic (.abc) Export
 //!
-//! Exports meshes to Alembic format for VFX pipelines.
-//! Uses a minimal Ogawa archive format (binary, compact).
+//! Writes a mesh to a `.abc` file in this crate's own archive layout. The layout starts with
+//! the bytes `Ogawa` but is not the Alembic Ogawa format: the Alembic library and the tools built
+//! on it (Maya, Houdini, Blender, Nuke, Katana) do not open it.
 //!
-//! Compatible with: Maya, Houdini, Blender, Nuke, Katana
+//! Layout: `Ogawa` `00 01 00`, then nodes: a group is `0xFF` and a `u32` child count, a data node
+//! is `0x00`, a `u64` length and the bytes. The root group holds the name `ABC`, the metadata
+//! JSON (with `alice:semantics_id`) and a group `mesh` with positions (`f32`), face indices
+//! (`i32`), face counts (`i32`) and, when configured, normals and UVs (`f32`), little-endian.
 //!
 //! Author: Moroya Sakamoto
 
@@ -90,7 +94,7 @@ impl<W: Write> OgawaWriter<W> {
     }
 }
 
-/// Export mesh to Alembic (.abc) Ogawa format
+/// Export a mesh to a `.abc` file in this crate's own archive layout (see the module doc)
 ///
 /// The archive's metadata (the second data node, a JSON object) carries this crate's semantics
 /// identifier as `"alice:semantics_id": "<64 hex>"`; [`crate::provenance::read`] reads it back.

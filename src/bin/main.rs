@@ -96,7 +96,7 @@ enum Commands {
     Export {
         /// Input SDF file (.asdf or .asdf.json)
         input: PathBuf,
-        /// Output mesh file (.obj, .glb, .fbx, .usda, .abc)
+        /// Output mesh file (.obj, .glb, .fbx, .usda, .abc = this crate's own layout, not Alembic Ogawa)
         #[arg(short, long)]
         output: PathBuf,
         /// Grid resolution for marching cubes

@@ -8,11 +8,12 @@
 #   scripts/export.sh --help
 #
 # Format is auto-detected from the --output extension:
-#   .obj  — Wavefront OBJ (always available)
+#   .obj  — Wavefront OBJ
 #   .glb  — glTF 2.0 binary
-#   .fbx  — Autodesk FBX (requires --features fbx on parent crate)
-#   .usda — USD ASCII (requires --features usd)
-#   .abc  — Alembic (requires --features alembic)
+#   .fbx  — Autodesk FBX
+#   .usda — USD ASCII
+#   .abc  — this crate's own archive layout (Alembic tools do not open it)
+# All of them are in the CLI (the `cli` feature); none needs another feature.
 #
 # For STL / 3MF (3D print), use scripts/print.sh instead — the underlying
 # alice-sdf CLI splits export (visualization formats) from print (fabrication).
