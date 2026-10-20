@@ -160,6 +160,8 @@ scripts/public_text.sh
 step "docs: oracle + CHANGELOG の構造 / README と code の一致"
 python3 scripts/test_docs_lint.py
 python3 scripts/docs_lint.py --check
+# ci.yml wiring-guard: release artifact audit oracle
+python3 scripts/test_release_artifact_audit.py
 python3 scripts/test_tracked_binaries.py
 python3 scripts/tracked_binaries.py
 python3 scripts/test_readme_sync.py

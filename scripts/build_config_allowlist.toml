@@ -21,3 +21,13 @@ reason = "the dynamic G14 check: its rules and documentation spell out the flags
 [[exclude]]
 path = "scripts/test_build_flags_check.py"
 reason = "the dynamic check's tests: the flags appear in sample rustc command lines"
+
+[[allow]]
+path = ".github/workflows/release.yml"
+line = 'run: echo "RUSTFLAGS=$(scripts/release_remap_flags.sh)" >> "$GITHUB_ENV"'
+reason = "the release library's RUSTFLAGS is scripts/release_remap_flags.sh's output: three --remap-path-prefix flags and nothing else (pinned by RemapFlags in scripts/test_release_artifact_audit.py); a path remap does not change floating-point results"
+
+[[allow]]
+path = ".github/workflows/release-wheels.yml"
+line = 'run: echo "RUSTFLAGS=$(scripts/release_remap_flags.sh)" >> "$GITHUB_ENV"'
+reason = "the wheels' RUSTFLAGS is scripts/release_remap_flags.sh's output: three --remap-path-prefix flags and nothing else (pinned by RemapFlags in scripts/test_release_artifact_audit.py); a path remap does not change floating-point results"

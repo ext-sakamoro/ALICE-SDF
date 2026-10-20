@@ -107,6 +107,13 @@ jobs:
           TOML
           echo "" > ../ALICE-Font/src/lib.rs
 
+      # the build machine's paths (this checkout, the dependency sources under the cargo
+      # home) are remapped so the shipped library does not carry them; the release job
+      # checks the zips with scripts/release_artifact_audit.py before they are uploaded
+      - name: Remap build paths
+        shell: bash
+        run: echo "RUSTFLAGS=$(scripts/release_remap_flags.sh)" >> "$GITHUB_ENV"
+
       # `unreal` = ffi + hlsl + glsl + gpu: the plugin calls alice_sdf_to_wgsl
       # (GenerateWgsl) too, and a narrower set makes every user's build fail in
       # the linker (3.2.0).
@@ -224,18 +231,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v5
+
       - uses: actions/download-artifact@v7
         with:
+          path: assets/
           merge-multiple: true
 
       - name: List release assets
-        run: ls -la -- *.zip
+        run: ls -la -- assets/*.zip
+
+      # no home path, private name, internal word or token-like string in what is shipped
+      - name: Release artifact audit
+        run: python3 scripts/release_artifact_audit.py assets/
 
       - name: Upload to release
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            AliceSDF-UE5-Plugin-*.zip
-            AliceSDF-Unity-Plugin-*.zip
-            AliceSDF-VRChat-Package.zip
+            assets/AliceSDF-UE5-Plugin-*.zip
+            assets/AliceSDF-Unity-Plugin-*.zip
+            assets/AliceSDF-VRChat-Package.zip
           generate_release_notes: true

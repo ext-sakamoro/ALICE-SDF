@@ -468,6 +468,11 @@ jobs:
         run: python scripts/test_docs_lint.py
       - name: docs lint (CHANGELOG の構造、比較 0 件で fail、公開してはいけない語は public-text.yml)
         run: python scripts/docs_lint.py --check
+      # what a release ships is read with the ALICE-Law public-text checker (scripts/release_artifact_audit.py
+      # in release.yml and release-wheels.yml, on each of their OSes); its tests build a small Rust
+      # program with rustc. Here, not in the shared public-text.yml, whose bytes the registry pins
+      - name: release artifact audit oracle (検査器自身の試験)
+        run: python scripts/test_release_artifact_audit.py
       - name: tracked binaries oracle (検査器自身の試験)
         run: python scripts/test_tracked_binaries.py
       - name: tracked binaries (build した library を commit しない、走査 0 件で fail)
