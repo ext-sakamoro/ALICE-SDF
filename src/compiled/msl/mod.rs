@@ -32,10 +32,18 @@
 //! | 1 | `output_distances` / `output` | storage, read_write |
 //! | 2 | `point_count` | uniform `u32` |
 //! | 3 | `sdf_params` | uniform `Params` (only in [`TranspileMode::Dynamic`]) |
-//! | [`MslShader::sizes_buffer_slot`] | — | `u32` lengths of the runtime-sized arrays, in declaration order (one past the highest binding) |
+//! | [`MslShader::sizes_buffer_slot`](crate::compiled::msl::MslShader::sizes_buffer_slot) | — | `u32` lengths of the runtime-sized arrays, in declaration order (one past the highest binding) |
 //!
 //! The sizes buffer is required because the WGSL uses runtime-sized arrays;
 //! Metal has no equivalent, so naga passes the lengths in explicitly.
+//!
+//! # Floating point
+//!
+//! The source starts with `#pragma METAL fp contract(off)`, so the Metal compiler
+//! does not fuse `a * b + c` whatever options it is given (ALICE-Law G3). The sign
+//! of a zero needs fast math off on the caller's side:
+//! [`MslShader::REQUIRED_COMPILE_OPTIONS`](crate::compiled::msl::MslShader::REQUIRED_COMPILE_OPTIONS) is the single source of those options,
+//! and the head of the emitted source repeats them.
 //!
 //! # Usage
 //!
@@ -48,7 +56,8 @@
 //!     .smooth_union(SdfNode::box3d(0.5, 0.5, 0.5), 0.2);
 //!
 //! let shader = MslShader::transpile(&shape, TranspileMode::Hardcoded)?;
-//! // Feed shader.source to MTLDevice::newLibraryWithSource, then look up
+//! // Feed shader.source to MTLDevice::newLibraryWithSource with
+//! // MslShader::REQUIRED_COMPILE_OPTIONS (fast math off, MSL 2.0), then look up
 //! // shader.entry_point and dispatch shader.workgroup_size threads per group.
 //! println!("{}", shader.source);
 //! ```
@@ -57,4 +66,4 @@
 
 mod transpiler;
 
-pub use transpiler::{MslError, MslShader};
+pub use transpiler::{MslCompileRequirements, MslError, MslShader};

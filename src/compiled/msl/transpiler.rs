@@ -17,6 +17,14 @@ use naga::back::msl;
 /// SDF shaders use.
 const MSL_LANG_VERSION: (u8, u8) = (2, 0);
 
+/// Put first in every emitted MSL source: the Metal compiler contracts `a * b + c`
+/// into one fused multiply-add by default, and still does so inside one
+/// expression with fast math off (`mathMode = .safe`), while the CPU paths round
+/// twice (ALICE-Law G3). The pragma holds whatever compile options the caller
+/// passes; measured on Apple silicon with MSL 2.0 and the default language
+/// version (`tests/test_msl_metal_oracle.rs`, `metal_does_not_fuse_a_multiply_add`).
+const MSL_FP_CONTRACT_OFF: &str = "#pragma METAL fp contract(off)\n";
+
 /// Failure while turning a WGSL shader into MSL.
 ///
 /// Every variant carries the full diagnostic text: a silent fallback would ship
@@ -47,6 +55,24 @@ impl core::fmt::Display for MslError {
 
 impl std::error::Error for MslError {}
 
+/// The Metal compile options an emitted kernel needs for its bits to match the
+/// CPU laws.
+///
+/// The source fixes contraction itself (`#pragma METAL fp contract(off)`,
+/// ALICE-Law G3); the sign of a zero it cannot fix: with fast math on, Metal drops
+/// it (`-(a * b + c)` with a result of zero comes back `+0.0`), and no construct of
+/// the source keeps it in general (measured on Apple silicon:
+/// `tests/test_msl_metal_oracle.rs`, `metal_signed_zero_needs_fast_math_off`). The
+/// caller sets these on `MTLCompileOptions` before `newLibraryWithSource`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct MslCompileRequirements {
+    /// `MTLCompileOptions.fastMathEnabled` (or `mathMode = .safe`, macOS 15+).
+    pub fast_math_enabled: bool,
+    /// `MTLCompileOptions.languageVersion` the source is written for (major, minor).
+    pub language_version: (u8, u8),
+}
+
 /// An SDF evaluated as a Metal compute kernel.
 #[derive(Debug, Clone)]
 pub struct MslShader {
@@ -75,6 +101,13 @@ pub struct MslShader {
 }
 
 impl MslShader {
+    /// The compile options every emitted kernel needs (see [`MslCompileRequirements`]);
+    /// the single source of them, also written into the head of [`Self::source`].
+    pub const REQUIRED_COMPILE_OPTIONS: MslCompileRequirements = MslCompileRequirements {
+        fast_math_enabled: false,
+        language_version: MSL_LANG_VERSION,
+    };
+
     /// Transpile an SDF node to a Metal compute kernel.
     ///
     /// `WgslShader::transpile` alone emits only the SDF functions (no entry
@@ -173,9 +206,14 @@ impl MslShader {
             ..msl::Options::default()
         };
 
-        let (source, translation) =
+        let (naga_source, translation) =
             msl::write_string(&module, &info, &options, &msl::PipelineOptions::default())
                 .map_err(|e| MslError::MslWrite(format!("{e:?}")))?;
+        let required = Self::REQUIRED_COMPILE_OPTIONS;
+        let source = format!(
+            "{MSL_FP_CONTRACT_OFF}// compile with fastMathEnabled = {}, languageVersion = {}.{} (MslShader::REQUIRED_COMPILE_OPTIONS)\n{naga_source}",
+            required.fast_math_enabled, required.language_version.0, required.language_version.1,
+        );
 
         // The MSL function name is **not** the WGSL one: `main` is reserved in
         // MSL, so naga renames entry points and reports the mapping here. Using

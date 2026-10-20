@@ -6,25 +6,26 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 925 |
+| 🟢 Not ignored | 927 |
 | 🔴 Red by design | 0 |
-| ⏱ Gated (runtime / diagnostic / manual) | 3 |
+| ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **928** |
+| **Total** | **931** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## ⏱ Gated (3)
+## ⏱ Gated (4)
 
 Correct tests that are too slow for every push, or that print a measurement table.
 Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ignored`.
 
+- `metal_default_fast_math_loses_the_sign_of_zero` (test_msl_metal_oracle.rs) — driver observation: Metal default fast math loses the sign of zero
 - `the_alembic_library_reads_the_mesh_and_the_identifier_bit_for_bit` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (925)
+## 🟢 Not ignored (927)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -118,6 +119,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_gi_api_oracle.rs` | 4 |
 | `test_law_minmax_ties.rs` | 4 |
 | `test_mesh_cloud_hermite_oracle.rs` | 4 |
+| `test_msl_metal_oracle.rs` | 4 |
 | `test_neural_mlp_closed_form.rs` | 4 |
 | `test_new_modifiers.rs` | 4 |
 | `test_sdf_eval_cache_oracle.rs` | 4 |
@@ -146,7 +148,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_interval_soundness.rs` | 2 |
 | `test_jit_sincos_det.rs` | 2 |
 | `test_live_sdf_gpu_parity.rs` | 2 |
-| `test_msl_metal_oracle.rs` | 2 |
 | `test_tight_aabb_cover_oracle.rs` | 2 |
 | `test_transpiler_naga_validate.rs` | 2 |
 | `test_asdf_roundtrip_parity.rs` | 1 |

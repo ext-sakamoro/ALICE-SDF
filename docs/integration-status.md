@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1311 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1313 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1030 |
-| | **total** | **2350** |
+| | **total** | **2352** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1311)
+## L1 — example-only (1313)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -94,7 +94,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/jit/codegen.rs`: `JitCompiler`, `JitCompiler::compile_sdf`, `JitCompiler::compile_sdf_dynamic`, `JitCompiler::new`, `extract_jit_params`
 - `src/compiled/jit/runtime.rs`: `JitCompiledSdf`, `JitCompiledSdf::compile`, `JitCompiledSdf::eval`, `JitCompiledSdf::eval_batch`, `JitCompiledSdf::eval_batch_parallel`, `JitCompiledSdf::lipschitz`, `JitCompiledSdfDynamic`, `JitCompiledSdfDynamic::compile`, `JitCompiledSdfDynamic::eval`, `JitCompiledSdfDynamic::eval_batch`, `JitCompiledSdfDynamic::eval_batch_parallel`, `JitCompiledSdfDynamic::lipschitz`, `JitCompiledSdfDynamic::params`, `JitCompiledSdfDynamic::update_params`, `JitError`
 - `src/compiled/jit/simd/mod.rs`: `JitSimdSdf::eval_8`, `JitSimdSdf::eval_soa`, `JitSimdSdfDynamic`, `JitSimdSdfDynamic::compile`, `JitSimdSdfDynamic::eval_8`, `JitSimdSdfDynamic::eval_8_raw`, `JitSimdSdfDynamic::eval_batch`, `JitSimdSdfDynamic::eval_soa`, `JitSimdSdfDynamic::params`, `JitSimdSdfDynamic::update_params`, `extract_simd_params`
-- `src/compiled/msl/transpiler.rs`: `MslError`, `MslShader`, `MslShader::from_wgsl`, `MslShader::transpile`
+- `src/compiled/msl/transpiler.rs`: `MslCompileRequirements`, `MslError`, `MslShader`, `MslShader::REQUIRED_COMPILE_OPTIONS`, `MslShader::from_wgsl`, `MslShader::transpile`
 - `src/compiled/opcode.rs`: `OpCode::is_binary_op`, `OpCode::is_modifier`, `OpCode::is_post_process`, `OpCode::is_primitive`, `OpCode::is_transform`, `OpCode::modifies_point`
 - `src/compiled/real.rs`: `Vec3R::max_element`, `Vec3R::round`, `law_min_f64`
 - `src/compiled/refit.rs`: `refit_partial`

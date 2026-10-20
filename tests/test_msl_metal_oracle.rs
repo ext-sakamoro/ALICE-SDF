@@ -71,9 +71,33 @@ fn device_or_skip() -> Option<Device> {
 }
 
 /// Compile `shader` and evaluate `pts` on the GPU.
-fn run_on_metal(device: &Device, shader: &MslShader, pts: &[Vec3]) -> Result<Vec<f32>, String> {
+/// The options a caller is told to use: `MslShader::REQUIRED_COMPILE_OPTIONS`.
+fn required_options() -> metal::CompileOptions {
+    let req = MslShader::REQUIRED_COMPILE_OPTIONS;
+    assert_eq!(
+        req.language_version,
+        (2, 0),
+        "map the new version to metal::MTLLanguageVersion here"
+    );
+    let options = metal::CompileOptions::new();
+    options.set_fast_math_enabled(req.fast_math_enabled);
+    options.set_language_version(metal::MTLLanguageVersion::V2_0);
+    options
+}
+
+/// Metal's defaults (fast math on), what a caller gets without setting anything.
+fn default_options() -> metal::CompileOptions {
+    metal::CompileOptions::new()
+}
+
+fn run_on_metal(
+    device: &Device,
+    shader: &MslShader,
+    pts: &[Vec3],
+    options: &metal::CompileOptions,
+) -> Result<Vec<f32>, String> {
     let library = device
-        .new_library_with_source(&shader.source, &metal::CompileOptions::new())
+        .new_library_with_source(&shader.source, options)
         .map_err(|e| format!("Metal compile failed: {e}"))?;
     let function = library
         .get_function(&shader.entry_point, None)
@@ -147,9 +171,7 @@ fn every_corpus_node_compiles_as_metal() {
                 continue;
             }
         };
-        if let Err(e) =
-            device.new_library_with_source(&shader.source, &metal::CompileOptions::new())
-        {
+        if let Err(e) = device.new_library_with_source(&shader.source, &required_options()) {
             failures.push(format!("{name}: Metal compile failed: {e}"));
             continue;
         }
@@ -184,7 +206,7 @@ fn metal_matches_cpu_for_every_corpus_node() {
                 continue;
             }
         };
-        let got = match run_on_metal(&device, &shader, &pts) {
+        let got = match run_on_metal(&device, &shader, &pts, &required_options()) {
             Ok(v) => v,
             Err(e) => {
                 failures.push(format!("{name}: {e}"));
@@ -223,4 +245,150 @@ fn metal_matches_cpu_for_every_corpus_node() {
         global_worst.0,
         global_worst.1
     );
+}
+
+/// The compute layout of the transpiler's WGSL with `sdf_eval` replaced by `body`,
+/// so `run_on_metal` drives it exactly as it drives a corpus node.
+fn kernel_wgsl(body: &str) -> String {
+    format!(
+        "struct InputPoint {{ x: f32, y: f32, z: f32, _pad: f32, }}
+struct OutputDistance {{ distance: f32, _pad1: f32, _pad2: f32, _pad3: f32, }}
+@group(0) @binding(0) var<storage, read> input_points: array<InputPoint>;
+@group(0) @binding(1) var<storage, read_write> output_distances: array<OutputDistance>;
+@group(0) @binding(2) var<uniform> point_count: u32;
+fn sdf_eval(p: vec3<f32>) -> f32 {{ return {body}; }}
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
+    let idx = global_id.x;
+    if (idx >= point_count) {{ return; }}
+    let point = input_points[idx];
+    output_distances[idx].distance = sdf_eval(vec3<f32>(point.x, point.y, point.z));
+}}
+"
+    )
+}
+
+/// The discriminator: with a = b = 1 + 2^-12 and c = -(1 + 2^-11),
+/// a * b = 1 + 2^-11 + 2^-24 rounds to 1 + 2^-11, so two roundings give exactly 0
+/// and one fused rounding gives 2^-24.
+fn discriminator() -> Vec3 {
+    let (a, b, c) = (
+        1.0 + 2f32.powi(-12),
+        1.0 + 2f32.powi(-12),
+        -(1.0 + 2f32.powi(-11)),
+    );
+    assert_eq!((a * b + c).to_bits(), 0.0f32.to_bits());
+    assert_eq!(a.mul_add(b, c).to_bits(), 2f32.powi(-24).to_bits());
+    Vec3::new(a, b, c)
+}
+
+/// (WGSL body, the two-roundings result)
+const FORMS: [(&str, f32); 3] = [
+    ("p.x * p.y + p.z", 0.0),
+    ("-(p.x * p.y + p.z)", -0.0),
+    ("(p.x * p.y) + p.z", 0.0),
+];
+
+/// ALICE-Law G3 on the GPU: the emitted MSL does not let the Metal compiler fuse
+/// `a * b + c`, even with Metal's default options (fast math on), which fuse it
+/// without the `#pragma METAL fp contract(off)` that `MslShader` puts first
+/// (measured on Apple silicon). Here only the fused value is ruled out: the sign of
+/// a zero is the next test's business. Runs where Metal exists:
+/// scripts/preflight.sh on macOS sets ALICE_SDF_REQUIRE_METAL=1; the macOS CI
+/// runner skips when it has no device (printed); Linux and Windows do not build
+/// this file.
+#[test]
+fn metal_does_not_fuse_a_multiply_add() {
+    let Some(device) = device_or_skip() else {
+        return;
+    };
+    let pts = [discriminator()];
+    let fused = 2f32.powi(-24);
+    let mut compared = 0;
+    for (body, _) in FORMS {
+        let shader = MslShader::from_wgsl(&kernel_wgsl(body)).expect("transpile");
+        assert!(shader
+            .source
+            .starts_with("#pragma METAL fp contract(off)\n"));
+        let got =
+            run_on_metal(&device, &shader, &pts, &default_options()).expect("run on Metal")[0];
+        assert!(
+            got == 0.0,
+            "`{body}` on Metal (default options) gave {got:e} (bits {:#010x}); the fused value is {fused:e} or its negation, two roundings give a zero",
+            got.to_bits()
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, FORMS.len());
+    eprintln!("Metal, default options: {compared} multiply-add forms not fused");
+}
+
+/// The sign of a zero needs `MslShader::REQUIRED_COMPILE_OPTIONS` (fast math off):
+/// with Metal's defaults `-(a * b + c)` of a zero comes back `+0.0`, and no
+/// construct of the emitted source keeps the sign in general (measured on Apple
+/// silicon; a bit-flip negation does for that one operator only). With the
+/// required options every form gives the two-roundings bits exactly.
+#[test]
+fn metal_signed_zero_needs_fast_math_off() {
+    // checked with or without a device: the default keeps fast math on and loses
+    // the sign of zero (`metal_default_fast_math_loses_the_sign_of_zero`)
+    let required = std::hint::black_box(MslShader::REQUIRED_COMPILE_OPTIONS);
+    assert!(
+        !required.fast_math_enabled,
+        "REQUIRED_COMPILE_OPTIONS must turn Metal's fast math off"
+    );
+    let Some(device) = device_or_skip() else {
+        return;
+    };
+    let pts = [discriminator()];
+    let mut compared = 0;
+    for (body, want) in FORMS {
+        let shader = MslShader::from_wgsl(&kernel_wgsl(body)).expect("transpile");
+        let got =
+            run_on_metal(&device, &shader, &pts, &required_options()).expect("run on Metal")[0];
+        assert_eq!(
+            got.to_bits(),
+            want.to_bits(),
+            "`{body}` on Metal (required options) gave {got:e} (bits {:#010x}), want {want:e}",
+            got.to_bits()
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, FORMS.len());
+    eprintln!("Metal, required options: {compared} multiply-add forms bit-exact");
+}
+
+/// Why `REQUIRED_COMPILE_OPTIONS` turns fast math off: with Metal's defaults (fast
+/// math on) the negation of a zero sum loses its sign. Measured on Apple silicon
+/// (Metal language 2.0, the discriminator input): `-(p.x * p.y + p.z)` gives
+/// `0x00000000` with the defaults and `0x80000000` with the required options; the
+/// other two forms give `+0` under both. This asserts the observed default
+/// behaviour, so it pins a driver, not this crate: it is ignored in CI and run by
+/// hand where Metal exists. If it fails, a driver stopped losing the sign and the
+/// note on `REQUIRED_COMPILE_OPTIONS` can be revisited.
+#[test]
+#[ignore = "driver observation: Metal default fast math loses the sign of zero"]
+fn metal_default_fast_math_loses_the_sign_of_zero() {
+    let Some(device) = device_or_skip() else {
+        return;
+    };
+    let pts = [discriminator()];
+    let mut compared = 0;
+    for (body, want) in FORMS {
+        let shader = MslShader::from_wgsl(&kernel_wgsl(body)).expect("transpile");
+        let got =
+            run_on_metal(&device, &shader, &pts, &default_options()).expect("run on Metal")[0];
+        // fast math drops the sign of a zero: every form comes back +0
+        assert_eq!(
+            got.to_bits(),
+            0.0f32.to_bits(),
+            "`{body}` on Metal (default options) gave {got:e} (bits {:#010x}); observed was +0",
+            got.to_bits()
+        );
+        compared += 1;
+        if want.is_sign_negative() {
+            eprintln!("Metal, default options: `{body}` lost the sign (want {want:e}, got +0)");
+        }
+    }
+    assert_eq!(compared, FORMS.len());
 }
