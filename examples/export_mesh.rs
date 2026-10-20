@@ -9,8 +9,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use std::fmt::Write;
-
+use alice_sdf::io::{export_obj, ObjConfig};
 use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig};
 use alice_sdf::prelude::*;
 use glam::Vec3;
@@ -35,15 +34,15 @@ fn main() {
     println!("  Vertices:  {}", mesh.vertices.len());
     println!("  Triangles: {}", mesh.indices.len() / 3);
 
-    // Write simple OBJ manually
+    // Write the OBJ with the library writer, which stores the semantics identifier in its
+    // header comments (positions and faces only, as a viewer needs)
     let path = "output.obj";
-    let mut obj = String::new();
-    for v in &mesh.vertices {
-        let _ = writeln!(obj, "v {} {} {}", v.position.x, v.position.y, v.position.z);
-    }
-    for tri in mesh.indices.chunks(3) {
-        let _ = writeln!(obj, "f {} {} {}", tri[0] + 1, tri[1] + 1, tri[2] + 1);
-    }
-    std::fs::write(path, obj).expect("Failed to write OBJ");
+    let obj = ObjConfig {
+        export_normals: false,
+        export_uvs: false,
+        export_materials: false,
+        ..ObjConfig::default()
+    };
+    export_obj(&mesh, path, &obj, None).expect("Failed to write OBJ");
     println!("  Exported to: {path}");
 }

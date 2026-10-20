@@ -16,9 +16,10 @@
 //! - `mesh.glb` — glTF 2.0 binary of the render mesh (GPU when present)
 //! - `mesh.nanite` — Nanite cluster hierarchy (scenes marked for it)
 //! - `law.asdf` / `law.asdf.json` — the SDF tree itself (binary / JSON)
-//! - `law.bytecode` — the compiled bytecode (`CompiledSdf`), layout below
+//! - `law.bytecode` — the compiled bytecode (`CompiledSdf`) with the semantics
+//!   identifier, layout in `stored.rs`
 //!
-//! and `<out-dir>/manifest.json` with, per scene, the grid, the mesh counts
+//! and `<out-dir>/manifest.json` (with the semantics identifier) with, per scene, the grid, the mesh counts
 //! and bounds, a physics collider block (tight AABB of the field, volume,
 //! centre of mass, inertia tensor about it, unit density) and the SHA-256 of
 //! every file.
@@ -34,14 +35,10 @@
 //! skipped and the manifest says so; `ALICE_SDF_REQUIRE_GPU=1` turns that into
 //! a failure (CI runs on lavapipe with it set).
 //!
-//! `law.bytecode` layout (little-endian): magic `ASDFBC01`, `u32` instruction
-//! count, `u32` aux length, `f32` Lipschitz bound, then per instruction
-//! `7 × f32` params, `u8` opcode, `u8` flags, `u16` child count, `u32` skip
-//! offset, `u32` aux offset, `u32` aux length (44 bytes), then the aux `f32`s.
-//!
 //! Author: Moroya Sakamoto
 
 mod mass;
+mod stored;
 
 use alice_sdf::io::{
     export_glb, export_nanite, import_glb_pinned, load_abm, load_asdf, load_asdf_json, save_abm,
@@ -51,6 +48,7 @@ use alice_sdf::mesh::{
     generate_nanite_mesh, sdf_to_mesh, validate_mesh, MarchingCubesConfig, Mesh, NaniteConfig,
 };
 use alice_sdf::prelude::*;
+use alice_sdf::provenance::Provenance;
 use alice_sdf::tight_aabb::compute_tight_aabb;
 use glam::DVec3;
 use mass::{mass_properties, MassProps};
@@ -60,7 +58,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const FORMAT: &str = "alice-sdf-bake/1";
+const FORMAT: &str = "alice-sdf-bake/2";
 const DEFAULT_RES: u32 = 64;
 
 /// GPU and CPU meshes on the same grid: largest vertex-to-surface distance
@@ -284,29 +282,6 @@ fn max_distance_to_surface(a: &Mesh, b: &Mesh, cell: f32) -> f64 {
     worst
 }
 
-fn bytecode_bytes(c: &CompiledSdf) -> Vec<u8> {
-    let mut out = Vec::new();
-    out.extend_from_slice(b"ASDFBC01");
-    out.extend_from_slice(&(c.instructions().len() as u32).to_le_bytes());
-    out.extend_from_slice(&(c.aux_data().len() as u32).to_le_bytes());
-    out.extend_from_slice(&c.lipschitz().to_le_bytes());
-    for ins in c.instructions() {
-        for p in ins.params {
-            out.extend_from_slice(&p.to_le_bytes());
-        }
-        out.push(ins.opcode as u8);
-        out.push(ins.flags);
-        out.extend_from_slice(&ins.child_count.to_le_bytes());
-        out.extend_from_slice(&ins.skip_offset.to_le_bytes());
-        out.extend_from_slice(&ins.aux_offset.to_le_bytes());
-        out.extend_from_slice(&ins.aux_len.to_le_bytes());
-    }
-    for a in c.aux_data() {
-        out.extend_from_slice(&a.to_le_bytes());
-    }
-    out
-}
-
 fn v3(v: Vec3) -> Value {
     json!([v.x, v.y, v.z])
 }
@@ -426,8 +401,7 @@ fn bake(out: &Path, res: u32) -> Result<(), String> {
         files.push(("law.asdf", "law/asdf"));
         save_asdf_json(&tree, dir.join("law.asdf.json")).map_err(|e| e.to_string())?;
         files.push(("law.asdf.json", "law/json"));
-        std::fs::write(dir.join("law.bytecode"), bytecode_bytes(&compiled))
-            .map_err(|e| e.to_string())?;
+        stored::write_bytecode(&dir.join("law.bytecode"), &compiled)?;
         files.push(("law.bytecode", "law/bytecode"));
 
         let mut file_entries = Vec::new();
@@ -481,8 +455,7 @@ fn bake(out: &Path, res: u32) -> Result<(), String> {
 }
 
 fn write_manifest(out: &Path, manifest: &Value) -> Result<(), String> {
-    let text = serde_json::to_string_pretty(manifest).map_err(|e| e.to_string())?;
-    std::fs::write(out.join("manifest.json"), text + "\n").map_err(|e| e.to_string())
+    stored::write_manifest(&out.join("manifest.json"), manifest)
 }
 
 fn read_manifest(out: &Path) -> Result<Value, String> {
@@ -514,6 +487,7 @@ impl Checks {
 }
 
 fn verify(out: &Path) -> Result<(), String> {
+    stored::manifest_semantics(&out.join("manifest.json"))?;
     let manifest = read_manifest(out)?;
     if manifest["format"] != FORMAT {
         return Err(format!(
@@ -612,10 +586,17 @@ fn verify_scene(out: &Path, sj: &Value, gpu_ok: bool, c: &mut Checks) -> Result<
     let expected = to_json_string(&SdfTree::new(scene.node.clone())).map_err(|e| e.to_string())?;
     c.check(a == expected, || "law.asdf is not the scene's tree".into());
     let compiled = CompiledSdf::try_compile(&tree.root).map_err(|e| e.to_string())?;
-    let stored = std::fs::read(dir.join("law.bytecode")).map_err(|e| e.to_string())?;
-    c.check(stored == bytecode_bytes(&compiled), || {
-        "law.bytecode != compile(law.asdf)".into()
-    });
+    let bytes = std::fs::read(dir.join("law.bytecode")).map_err(|e| e.to_string())?;
+    match stored::bytecode_semantics(&bytes) {
+        Ok(_) => {
+            // the identifier is checked above; the rest must be the recompiled bytecode
+            let expected = stored::bytecode_bytes(&compiled, &Provenance::sdf());
+            c.check(bytes.get(40..) == expected.get(40..), || {
+                "law.bytecode != compile(law.asdf)".into()
+            });
+        }
+        Err(e) => c.check(false, || e),
+    }
     let node = tree.root;
 
     let cell = num(&sj["cell"], "cell")? as f32;
@@ -796,6 +777,9 @@ fn mutate(kind: &str, out: &Path) -> Result<(), String> {
     } else {
         format!("{first}/mesh_cpu.abm")
     };
+    let bytecode_path = format!("{first}/law.bytecode");
+    // the identifier the manifest is written with: another one for `manifest-id`
+    let mut manifest_id = Provenance::sdf();
     match kind {
         // move one GPU vertex by half a cell
         "gpu-vertex" => {
@@ -837,13 +821,30 @@ fn mutate(kind: &str, out: &Path) -> Result<(), String> {
             *aabb = aabb_json(lo + d, hi - d);
         }
         "no-scenes" => manifest["scenes"] = json!([]),
+        // another semantics identifier in the bytecode, the rest unchanged
+        "bytecode-id" => {
+            let mut b = std::fs::read(out.join(&bytecode_path)).map_err(|e| e.to_string())?;
+            b.get_mut(8..40).ok_or("law.bytecode is cut")?.fill(0xAB);
+            std::fs::write(out.join(&bytecode_path), b).map_err(|e| e.to_string())?;
+            refresh_sha(&mut manifest, out, &bytecode_path)?;
+        }
+        // the earlier layout without the identifier (ASDFBC01), the rest unchanged
+        "bytecode-unpinned" => {
+            let b = std::fs::read(out.join(&bytecode_path)).map_err(|e| e.to_string())?;
+            let mut v1 = stored::BYTECODE_MAGIC_V1.to_vec();
+            v1.extend_from_slice(b.get(40..).ok_or("law.bytecode is cut")?);
+            std::fs::write(out.join(&bytecode_path), v1).map_err(|e| e.to_string())?;
+            refresh_sha(&mut manifest, out, &bytecode_path)?;
+        }
+        // another semantics identifier in the manifest
+        "manifest-id" => manifest_id = Provenance::new([0xAB; 32]),
         _ => {
             return Err(format!(
-                "unknown mutation {kind} (gpu-vertex | gpu-extra-vertex | drop-face | shrink-aabb | no-scenes)"
+                "unknown mutation {kind} (gpu-vertex | gpu-extra-vertex | drop-face | shrink-aabb | no-scenes | bytecode-id | bytecode-unpinned | manifest-id)"
             ))
         }
     }
-    write_manifest(out, &manifest)?;
+    stored::write_manifest_with_provenance(&out.join("manifest.json"), &manifest, &manifest_id)?;
     println!("mutated {} ({kind})", out.display());
     Ok(())
 }

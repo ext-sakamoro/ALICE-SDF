@@ -4,7 +4,9 @@
 Candidates come from two scans, and every candidate must be classified:
 
   * the text scan (every OS, no index): a `pub fn` under src/ (any fn under src/bin/, the command-line
-    tool, whose fns are private), outside `#[cfg(test)]` modules, that has a writer's name (`export*`, `save*`, `write*`, `bake_to*`, `encode*`, `serialize*`,
+    tool, whose fns are private, and under examples/, whose writers a user copies; these two are
+    candidates by a write sink or the variant suffix only), outside `#[cfg(test)]` modules, that
+    has a writer's name (`export*`, `save*`, `write*`, `bake_to*`, `encode*`, `serialize*`,
     `persist*`, `dump*`, `to_bytes`, `to_vec`), a write sink (a `Write`, `BufWriter` or `File`
     parameter; `File::create` / `create_new` / `options`, `fs::write` / `copy` / `rename` or
     `OpenOptions` in the body), a stored form as its return type (`Vec<u8>`, `[u8; N]`, `&[u8]`,
@@ -21,7 +23,7 @@ Two fns of one file with one name (methods of two impls) share the key `<file>::
 extend a writer of the same file and be called in a test under tests/. Each candidate must be
 exactly one of
 
-  - covered: named as `"<file>::<fn>"` in a table of a test under tests/, which writes it, reads the
+  - covered: named as `"<file>::<fn>"` (a file of src/ or examples/) in a table of a test under tests/, which writes it, reads the
     identifier back and checks a mismatch,
   - pending: listed in scripts/provenance-pending.txt (writers that do not store it yet), or
   - not a writer: listed in scripts/provenance-not-writers.txt with its reason. A reason
@@ -63,8 +65,12 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SRC_DIR = "src"
+# the examples: a user copies what they write, so a stored form they write by hand counts too
+EXAMPLES_DIR = "examples"
 # the command-line tool: its fns are private, yet each writes a file the user keeps
 BIN_DIR = "src/bin/"
+# the files whose every fn is scanned, not only the `pub fn`s
+ANY_FN_DIRS = (BIN_DIR, EXAMPLES_DIR + "/")
 TEST_FILE = "tests/test_provenance.rs"
 PENDING_FILE = "scripts/provenance-pending.txt"
 NOT_WRITERS_FILE = "scripts/provenance-not-writers.txt"
@@ -97,7 +103,7 @@ SINK_SYM = re.compile(
     r"|fs/impl#\[OpenOptions\]open\(\)\.|io/(?:\S*\[Write\]|Write#)(?:write|write_all|write_fmt|write_vectored|flush)\(\)\.)"
 )
 TEST_MODULE = re.compile(r"#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*(?:#\s*\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{")
-COVERED = re.compile(r'\(\s*"(src/[\w/]+\.rs::\w+)"\s*,')
+COVERED = re.compile(r'\(\s*"((?:src|examples)/[\w/]+\.rs::\w+)"\s*,')
 
 
 def blank_comments_and_strings(text: str) -> str:
@@ -161,10 +167,11 @@ def outside_test_modules(text: str) -> str:
 
 def writer_files(root: str) -> list[str]:
     out = []
-    for dirpath, _, files in os.walk(os.path.join(root, SRC_DIR)):
-        rel_dir = os.path.relpath(dirpath, root).replace(os.sep, "/")
-        # keys use "/" on every OS: they are compared with the names in the test and the lists
-        out += [f"{rel_dir}/{f}" for f in files if f.endswith(".rs")]
+    for top in (SRC_DIR, EXAMPLES_DIR):
+        for dirpath, _, files in os.walk(os.path.join(root, top)):
+            rel_dir = os.path.relpath(dirpath, root).replace(os.sep, "/")
+            # keys use "/" on every OS: they are compared with the names in the test and the lists
+            out += [f"{rel_dir}/{f}" for f in files if f.endswith(".rs")]
     return sorted(out)
 
 
@@ -224,18 +231,21 @@ def candidates(root: str) -> dict[str, list[str]]:
     for rel in writer_files(root):
         with open(os.path.join(root, rel), encoding="utf-8") as fh:
             text = outside_test_modules(fh.read())
-        fns = fn_defs(text, ANY_FN if rel.startswith(BIN_DIR) else PUB_FN)
+        fns = fn_defs(text, ANY_FN if rel.startswith(ANY_FN_DIRS) else PUB_FN)
+        # a program's own helpers (the CLI, the examples) are candidates by a write sink only: their
+        # names and return types say nothing of a public interface
+        program = rel.startswith(ANY_FN_DIRS)
         picked = set()
         for name, defs in fns.items():
             for sig, body in defs:
                 ret = sig.split("->", 1)[1] if "->" in sig else ""
                 if (
-                    WRITER_NAME.match(name)
-                    or VARIANT.search(name)
+                    VARIANT.search(name)
                     or SINK_SIG.search(sig)
                     or SINK_BODY.search(body)
-                    or RET_BYTES.match(ret)
-                    or (RET_TEXT.match(ret) and re.match(r"(?:to|as)_", name))
+                    or (not program and WRITER_NAME.match(name))
+                    or (not program and RET_BYTES.match(ret))
+                    or (not program and RET_TEXT.match(ret) and re.match(r"(?:to|as)_", name))
                 ):
                     picked.add(name)
         # a variant counts its base, whatever the base's name
