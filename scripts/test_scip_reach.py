@@ -696,6 +696,34 @@ class MacosIndex(unittest.TestCase):
         self.assertEqual(sr.main(["--root", str(d)]), 1)
 
 
+class CrateIndexPaths(unittest.TestCase):
+    """The list the readers of the call graph take (scripts/api_boundary_parsers.py,
+    scripts/provenance_writers.py)."""
+
+    def test_every_crate_index_is_listed(self):
+        d = build([lib_doc()])
+        for idx in sr.CRATE_INDEXES:  # build() leaves wasm.scip empty
+            p = d / "target" / "scip" / idx
+            if p.stat().st_size == 0:
+                p.write_bytes(lib_doc().encode())
+        paths, problem = sr.crate_index_paths(d / "target" / "scip")
+        self.assertIsNone(problem)
+        self.assertEqual([p.name for p in paths], ["native.scip", "wasm.scip", "macos.scip"])
+
+    def test_a_missing_or_empty_index_is_a_problem(self):
+        for idx in sr.CRATE_INDEXES:
+            for how in ("missing", "empty"):
+                with self.subTest(idx=idx, how=how):
+                    d = build([lib_doc()])
+                    for other in sr.CRATE_INDEXES:
+                        (d / "target" / "scip" / other).write_bytes(lib_doc().encode())
+                    p = d / "target" / "scip" / idx
+                    p.unlink() if how == "missing" else p.write_bytes(b"")
+                    paths, problem = sr.crate_index_paths(d / "target" / "scip")
+                    self.assertEqual(paths, [])
+                    self.assertIn(idx, problem or "")
+
+
 class IndexConfigs(unittest.TestCase):
     """The rust-analyzer configurations scripts/scip_index.sh writes for this repository."""
 

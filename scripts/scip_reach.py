@@ -90,6 +90,17 @@ CRATE_INDEXES = ("native.scip", "wasm.scip", "macos.scip")
 GUARDED_INDEXES = ("macos.scip",)
 
 
+def crate_index_paths(index: Path) -> tuple[list[Path], str | None]:
+    """The CRATE_INDEXES files in `index`, or a problem when one is missing or empty. The
+    readers of the call graph (scripts/api_boundary_parsers.py, scripts/provenance_writers.py)
+    take their list from here, so code compiled only for one target is in their graph too."""
+    paths = [Path(index) / idx for idx in CRATE_INDEXES]
+    for p in paths:
+        if not p.is_file() or p.stat().st_size == 0:
+            return [], f"{p} is missing or empty"
+    return paths, None
+
+
 def binding_of(rel: str) -> str | None:
     """The binding `rel` belongs to (its key in `roots_by_binding`), or None."""
     for b in BINDINGS:
