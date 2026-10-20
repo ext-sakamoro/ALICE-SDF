@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -43,6 +44,7 @@ int main(int argc, char** argv) {
     Alembic::AbcCoreAbstract::MetaData md;
     std::vector<float> P, N, uv;
     std::vector<int32_t> fi, fc;
+    std::set<std::string> seen;
     std::string line;
     while (std::getline(in, line)) {
         std::istringstream ls(line);
@@ -56,6 +58,7 @@ int main(int argc, char** argv) {
         }
         size_t n = 0;
         ls >> n;
+        seen.insert(tag);
         for (size_t i = 0; i < n; ++i) {
             std::string t;
             ls >> t;
@@ -66,7 +69,8 @@ int main(int argc, char** argv) {
             else if (tag == "faceCounts") fc.push_back(std::stoi(t));
         }
     }
-    if (P.empty() || fi.empty() || fc.empty()) {
+    // a mesh with no vertices is allowed (its lines carry a count of 0); a missing line is not
+    if (!seen.count("P") || !seen.count("faceIndices") || !seen.count("faceCounts")) {
         std::fprintf(stderr, "alembic_refwriter: no mesh in %s\n", argv[1]);
         return 1;
     }

@@ -185,7 +185,11 @@ fn the_alembic_library_reads_the_mesh_and_the_identifier_bit_for_bit() {
 #[ignore = "needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)"]
 fn this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh() {
     let id = Provenance::sdf();
-    let meshes = [("mc", mesh()), ("tie", signed_zero_tie())];
+    let meshes = [
+        ("mc", mesh()),
+        ("tie", signed_zero_tie()),
+        ("empty", Mesh::new()),
+    ];
     for ((name, m), (normals, uvs)) in meshes
         .iter()
         .flat_map(|m| CONFIGS.iter().map(move |c| (m, *c)))

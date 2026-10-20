@@ -259,11 +259,12 @@ fn archive_bytes(mesh: &Mesh, config: &AlembicConfig, provenance: &Provenance) -
     let library = out.data(&[&LIBRARY_VERSION.to_le_bytes()]);
 
     let n = mesh.vertices.len();
-    let mut lo = [f64::INFINITY; 3];
-    let mut hi = [f64::NEG_INFINITY; 3];
+    // as Imath's Box3d: it starts empty (min the largest finite value, max its negation), which is
+    // what the library stores for a mesh with no vertices, and Box::extendBy compares strictly in
+    // vertex order, so a tie between 0.0 and -0.0 keeps the first one
+    let mut lo = [f64::MAX; 3];
+    let mut hi = [-f64::MAX; 3];
     for v in &mesh.vertices {
-        // as Imath's Box::extendBy: a strict comparison in vertex order, so a tie between
-        // 0.0 and -0.0 keeps the first one and the stored bounds do not depend on a min / max
         for (k, c) in v.position.to_array().into_iter().enumerate() {
             let c = f64::from(c);
             if c < lo[k] {
@@ -273,10 +274,6 @@ fn archive_bytes(mesh: &Mesh, config: &AlembicConfig, provenance: &Provenance) -
                 hi[k] = c;
             }
         }
-    }
-    if n == 0 {
-        lo = [0.0; 3];
-        hi = [0.0; 3];
     }
     let bounds: Vec<u8> = lo.iter().chain(&hi).flat_map(|x| x.to_le_bytes()).collect();
     let positions = f32_bytes(mesh.vertices.iter().flat_map(|v| v.position.to_array()));
@@ -335,7 +332,9 @@ fn archive_bytes(mesh: &Mesh, config: &AlembicConfig, provenance: &Provenance) -
             counts,
         ),
     ];
-    if config.export_uvs {
+    // the library writes no N / uv for an empty sample (an unset geometry parameter), so a mesh
+    // with no vertices carries neither
+    if config.export_uvs && n > 0 {
         let uv = f32_bytes(mesh.vertices.iter().flat_map(|v| v.uv.to_array()));
         props.push((
             Prop {
@@ -349,7 +348,7 @@ fn archive_bytes(mesh: &Mesh, config: &AlembicConfig, provenance: &Provenance) -
             uv,
         ));
     }
-    if config.export_normals {
+    if config.export_normals && n > 0 {
         let normals = f32_bytes(mesh.vertices.iter().flat_map(|v| v.normal.to_array()));
         props.push((
             Prop {
