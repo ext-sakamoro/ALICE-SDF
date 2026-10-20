@@ -1,10 +1,11 @@
-# Public writers that do not store the semantics identifier yet (ALICE-Law G8)
+# Public writers (and fns of the command-line tool, src/bin, that write a file) that do not store
+# the semantics identifier yet (ALICE-Law G8)
 #
 # scripts/provenance_writers.py: a line leaves this file when the writer stores the identifier and
 # tests/test_provenance.rs has its round-trip entry; G8 passes when no line is left
 # `expected-writers` is the number of public writers found; change it only with a new or removed writer
 
-expected-writers 56
+expected-writers 57
 
 src/io/nanite.rs::export_nanite
 src/io/nanite.rs::export_nanite_hlsl_material
@@ -15,3 +16,4 @@ src/io/ue5_asset.rs::export_ue5_mesh_binary
 src/io/ue5_asset.rs::export_ue5_mesh_with_lods
 src/io/unity_mesh.rs::export_unity_mesh
 src/io/unity_mesh.rs::export_unity_mesh_binary
+src/bin/main.rs::cmd_texture_fit

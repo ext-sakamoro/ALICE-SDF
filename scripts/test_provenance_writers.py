@@ -259,6 +259,30 @@ class Writers(unittest.TestCase):
         self.assertIsNone(pw.SINK_SYM.match("std fs/impl#[File]open()."))
         self.assertIsNone(pw.SINK_SYM.match("std fs/read()."))
 
+    def test_any_fn_of_the_command_line_tool_with_a_sink_is_a_candidate(self):
+        # the CLI's fns are private, yet each writes a file the user keeps
+        body = "fn cmd_mesh(p: &Path) { std::fs::write(p, obj).unwrap(); }\nfn cmd_info() {}\n"
+        e = errors(tree(extra={"src/bin/main.rs": body}))
+        self.assertTrue(any("src/bin/main.rs::cmd_mesh: neither covered" in x for x in e), e)
+        self.assertTrue(any("3 writers found" in x for x in e), e)
+        self.assertFalse(any("cmd_info" in x for x in e), e)
+        # a private fn elsewhere under src/ stays out of the text scan
+        self.assertEqual(errors(tree(extra={"src/b.rs": body})), [])
+        # a CLI fn that delegates to a library writer is classified like any other candidate
+        line = "src/bin/main.rs::cmd_mesh delegates to export_a\n"
+        ok = "fn cmd_mesh(p: &Path) { export_a(p).unwrap(); }\n"
+        self.assertEqual(errors(tree(extra={"src/bin/main.rs": ok}, not_writers=line)), [])
+        self.assertEqual(errors(tree(extra={"src/bin/main.rs": ok}, not_writers=line),
+                                reached={"src/bin/main.rs::cmd_mesh": {"std fs/write()."}}), [])
+        e = errors(tree(extra={"src/bin/main.rs": ok}), reached={"src/bin/main.rs::cmd_mesh": {"std fs/write()."}})
+        self.assertTrue(any("src/bin/main.rs::cmd_mesh: neither covered" in x for x in e), e)
+
+    def test_a_fn_of_the_command_line_tool_is_an_index_entry(self):
+        sym = "rust-analyzer cargo alice-sdf 7.0.0 main/cmd_to_mesh()."
+        self.assertEqual(pw.bin_fn_key("src/bin/main.rs", sym), "src/bin/main.rs::cmd_to_mesh")
+        self.assertIsNone(pw.bin_fn_key("src/io/a.rs", sym))
+        self.assertIsNone(pw.bin_fn_key("src/bin/main.rs", "rust-analyzer cargo alice-sdf 7.0.0 main/Cli#"))
+
     def test_two_impls_of_one_name_share_a_key_and_both_must_delegate(self):
         src = ("impl A {\n    pub fn export_a(&self) { export_a(p) }\n}\n"
                "impl B {\n    pub fn export_a(&self) { other() }\n}\n")

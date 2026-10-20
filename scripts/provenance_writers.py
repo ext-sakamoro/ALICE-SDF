@@ -3,8 +3,8 @@
 
 Candidates come from two scans, and every candidate must be classified:
 
-  * the text scan (every OS, no index): a `pub fn` under src/, outside `#[cfg(test)]` modules, that
-    has a writer's name (`export*`, `save*`, `write*`, `bake_to*`, `encode*`, `serialize*`,
+  * the text scan (every OS, no index): a `pub fn` under src/ (any fn under src/bin/, the command-line
+    tool, whose fns are private), outside `#[cfg(test)]` modules, that has a writer's name (`export*`, `save*`, `write*`, `bake_to*`, `encode*`, `serialize*`,
     `persist*`, `dump*`, `to_bytes`, `to_vec`), a write sink (a `Write`, `BufWriter` or `File`
     parameter; `File::create` / `create_new` / `options`, `fs::write` / `copy` / `rename` or
     `OpenOptions` in the body), a stored form as its return type (`Vec<u8>`, `[u8; N]`, `&[u8]`,
@@ -12,8 +12,8 @@ Candidates come from two scans, and every candidate must be classified:
     `_with_provenance` / `_with_stamp` suffix, which also makes the fn it extends a candidate
     whatever its name;
   * with `--index DIR` (the SCIP index of scripts/scip_index.sh, built from this commit): every pub
-    item and every trait-impl method of src/ whose call graph (scripts/scip_reach.py) reaches a
-    write sink of std (file creation and writes of std::fs, any `Write` method). This sees what text
+    item and every trait-impl method of src/, and every fn of src/bin/, whose call graph
+    (scripts/scip_reach.py) reaches a write sink of std (file creation and writes of std::fs, any `Write` method). This sees what text
     cannot: a trait-impl method has no `pub`, a writer may have any name.
 
 Two fns of one file with one name (methods of two impls) share the key `<file>::<fn>`. The
@@ -60,11 +60,18 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SRC_DIR = "src"
+# the command-line tool: its fns are private, yet each writes a file the user keeps
+BIN_DIR = "src/bin/"
 TEST_FILE = "tests/test_provenance.rs"
 PENDING_FILE = "scripts/provenance-pending.txt"
 NOT_WRITERS_FILE = "scripts/provenance-not-writers.txt"
 
 PUB_FN = re.compile(r"^\s*pub\s+(?:(?:const|async|unsafe|extern\s*(?:\"[^\"]*\")?)\s+)*fn\s+(\w+)", re.M)
+ANY_FN = re.compile(
+    r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:(?:const|async|unsafe|extern\s*(?:\"[^\"]*\")?)\s+)*fn\s+(\w+)", re.M
+)
+# a fn definition in the index: `.../<name>().` (a free fn or a method)
+FN_SYM = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\(\)\.$")
 WRITER_NAME = re.compile(r"^(?:(?:export|save|write|bake_to|encode|serialize|persist|dump)\w*|to_bytes|to_vec)$")
 # a write sink in the signature (a `Write` parameter) or the body (a file created or written)
 SINK_SIG = re.compile(
@@ -179,6 +186,33 @@ def signature_end(text: str, i: int) -> int | None:
     return None
 
 
+def fn_defs(text: str, pattern: re.Pattern[str]) -> dict[str, list[tuple[str, str]]]:
+    """{name: [(signature, body), ...]} of every fn `pattern` finds in `text` that has a body"""
+    fns: dict[str, list[tuple[str, str]]] = {}
+    for m in pattern.finditer(text):
+        brace = signature_end(text, m.end())
+        if brace is None:
+            continue  # a declaration without a body (trait or extern item)
+        depth, end = 1, brace + 1
+        while end < len(text) and depth:
+            depth += {"{": 1, "}": -1}.get(text[end], 0)
+            end += 1
+        fns.setdefault(m.group(1), []).append((text[m.end():brace], text[brace:end]))
+    return fns
+
+
+def bodies(root: str, key: str) -> list[str]:
+    """The bodies of every fn named by `key` in its file, whatever its visibility (an entry only
+    the call graph finds has no body in the text scan)"""
+    rel, _, name = key.partition("::")
+    path = os.path.join(root, rel)
+    if not os.path.isfile(path):
+        return []
+    with open(path, encoding="utf-8") as fh:
+        text = outside_test_modules(fh.read())
+    return [body for _, body in fn_defs(text, ANY_FN).get(name, [])]
+
+
 def candidates(root: str) -> dict[str, list[str]]:
     """{"<file>::<fn>": [body, ...]} of every public fn with a writer's name, a write sink, a stored
     form as its return type, or the `_with_provenance` / `_with_stamp` suffix (and the fn that
@@ -187,16 +221,7 @@ def candidates(root: str) -> dict[str, list[str]]:
     for rel in writer_files(root):
         with open(os.path.join(root, rel), encoding="utf-8") as fh:
             text = outside_test_modules(fh.read())
-        fns: dict[str, list[tuple[str, str]]] = {}
-        for m in PUB_FN.finditer(text):
-            brace = signature_end(text, m.end())
-            if brace is None:
-                continue  # a declaration without a body (trait or extern item)
-            depth, end = 1, brace + 1
-            while end < len(text) and depth:
-                depth += {"{": 1, "}": -1}.get(text[end], 0)
-                end += 1
-            fns.setdefault(m.group(1), []).append((text[m.end():brace], text[brace:end]))
+        fns = fn_defs(text, ANY_FN if rel.startswith(BIN_DIR) else PUB_FN)
         picked = set()
         for name, defs in fns.items():
             for sig, body in defs:
@@ -226,6 +251,12 @@ def reach_hits(entries: dict[str, set[str]], reach, sinks: set[str]) -> dict[str
         if got:
             hits[key] = got
     return hits
+
+
+def bin_fn_key(path: str, sym: str) -> str | None:
+    """`src/bin/x.rs::name` for a fn defined in the command-line tool, else None"""
+    f = FN_SYM.search(sym) if path.startswith(BIN_DIR) else None
+    return f"{path}::{f.group(1)}" if f else None
 
 
 def legacy(key: str) -> str:
@@ -264,6 +295,10 @@ def reach_candidates(root: str, index: str) -> tuple[dict[str, set[str]], str | 
                 m = scip_reach.IMPL_METHOD_RE.search(sym)
                 if m and o["roles"] & 1 and doc["path"].startswith("src/"):
                     entries.setdefault(f"{doc['path']}::{m.group(1)}::{m.group(3)}", set()).add(sym)
+                # a fn of the command-line tool is private and no item of the analysis (src/bin/
+                # is one of its roots), yet it writes the files the user keeps: an entry of its own
+                elif o["roles"] & 1 and (key := bin_fn_key(doc["path"], sym)):
+                    entries.setdefault(key, set()).add(sym)
     sinks = {sym for sym in every if (sh := abp.short(sym)) and SINK_SYM.match(sh)}
     if not sinks:
         return {}, commit, "the index holds no write sink (compared nothing)"
@@ -401,7 +436,7 @@ def check(root: str, reached: dict[str, set[str]] | None = None) -> tuple[list[s
             target = reason[len("delegates to "):].split()[0]
             if target not in writer_names:
                 errors.append(f"{NOT_WRITERS_FILE}: {key} delegates to `{target}`, which is no covered or pending writer")
-            elif not cand.get(key) or not all(calls(b, target) for b in cand[key]):
+            elif not (bs := cand.get(key) or bodies(root, key)) or not all(calls(b, target) for b in bs):
                 errors.append(f"{NOT_WRITERS_FILE}: {key} delegates to `{target}`, but its body does not call it")
         elif len(reason.split()) < 5:
             errors.append(f"{NOT_WRITERS_FILE}: {key}: the reason needs at least five words")
