@@ -4,7 +4,13 @@
 `PublicText` needs no network: what it cannot know to compare exits 2 (a malformed
 pin, a base that is not a commit), before anything is fetched. `Planted` fetches the
 checker at this repository's pin and shows it has teeth: a planted note link is a
-finding, and the same tree without it is clean with a non-zero file count.
+finding, and the same tree without it is clean with a non-zero file count. It takes the
+checker from this repository's pin (its `rev` and `sha256`) but not this repository's
+settings: a pin may also approve settings (a third line `config-sha256 <sha256 of
+.public-text.toml>`), and settings name this repository's own files (an allowance for a
+line of its CHANGELOG is a finding where that line is absent). `SettingsApproval` plants a
+pin with that line and settings of its own, so the approval is exercised in every
+repository, whether or not it has settings.
 
 The check itself (the checker at the pin on the tree and the commits) runs in the
 Public text workflow and in scripts/preflight.sh.
@@ -13,6 +19,7 @@ usage: python3 scripts/test_public_text.py
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -83,6 +90,23 @@ EARLIER_PIN = ("rev 779fa443f95bc0caca5ca2d5bdb9156051fd6143\n"
                "sha256 e439fdd7495e45486b67d57d227f828426b703c0224b8a00d2e8a1c2f1e66594\n")
 
 
+def plant_repo(source: Path, r: Path, settings: bool) -> None:
+    """A repository at `r` with the script and the pin of `source`. With `settings`, the pin as it
+    is and `source`'s `.public-text.toml` (which the pin's config-sha256 line approves); without,
+    only the pin's checker (`rev` and `sha256`) and no settings."""
+    (r / "scripts").mkdir(parents=True)
+    (r / ".github").mkdir()
+    shutil.copy(SCRIPT, r / "scripts" / "public_text.sh")
+    pin = (source / ".github" / "public-text-pin").read_text()
+    if settings:
+        shutil.copy(source / ".public-text.toml", r / ".public-text.toml")
+    else:
+        pin = "".join(l for l in pin.splitlines(keepends=True) if l.split()[:1] in (["rev"], ["sha256"]))
+    (r / ".github" / "public-text-pin").write_text(pin)
+    (r / "README.md").write_text("A clean file.\n")
+    git("init", "-q", "-b", "main", cwd=r)
+
+
 class Planted(unittest.TestCase):
     """The checker at this repository's pin, on a repository with and without a planted
     note link, in the tree and in a commit message, and the integrity of what is fetched
@@ -92,12 +116,7 @@ class Planted(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp(prefix="public-text-planted-"))
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.r = self.tmp / "r"
-        (self.r / "scripts").mkdir(parents=True)
-        (self.r / ".github").mkdir()
-        shutil.copy(SCRIPT, self.r / "scripts" / "public_text.sh")
-        shutil.copy(ROOT / ".github" / "public-text-pin", self.r / ".github" / "public-text-pin")
-        (self.r / "README.md").write_text("A clean file.\n")
-        git("init", "-q", "-b", "main", cwd=self.r)
+        plant_repo(ROOT, self.r, settings=False)
         self.env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 
     def commit(self, message: str = "c") -> None:
@@ -161,6 +180,65 @@ class Planted(unittest.TestCase):
         p = self.check()
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertRegex(p.stdout, r"public text: 0 findings in [1-9][0-9]* files at HEAD")
+
+
+class SettingsApproval(unittest.TestCase):
+    """A pin with a third line `config-sha256 <sha256>` approves the settings file
+    `.public-text.toml` with that hash. A source shaped that way (this repository's checker
+    revision and SHA-256, settings of the test's own) is planted, so the copy of the settings and
+    the checker's comparison are both exercised in every repository (fetches ALICE-Law)."""
+
+    SETTINGS = "[public-text]\n"
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="public-text-settings-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.source = self.tmp / "source"
+        (self.source / ".github").mkdir(parents=True)
+        rev, checker = (ROOT / ".github" / "public-text-pin").read_text().split()[1:4:2]
+        approved = hashlib.sha256(self.SETTINGS.encode()).hexdigest()
+        (self.source / ".github" / "public-text-pin").write_text(
+            f"rev {rev}\nsha256 {checker}\nconfig-sha256 {approved}\n")
+        (self.source / ".public-text.toml").write_text(self.SETTINGS)
+        self.r = self.tmp / "r"
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
+    def check(self) -> subprocess.CompletedProcess:
+        git("add", "-A", cwd=self.r)
+        git("commit", "-qm", "c", cwd=self.r)
+        return subprocess.run(["bash", "scripts/public_text.sh", "HEAD"], cwd=self.r, capture_output=True,
+                              text=True, env=self.env, timeout=300)
+
+    def test_a_pin_that_approves_the_copied_settings_is_clean(self) -> None:
+        plant_repo(self.source, self.r, settings=True)
+        self.assertTrue((self.r / ".public-text.toml").is_file(), "the settings were not copied")
+        p = self.check()
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertRegex(p.stdout, r"public text: 0 findings in [1-9][0-9]* files at HEAD")
+
+    def test_settings_the_pin_does_not_approve_are_a_finding(self) -> None:
+        plant_repo(self.source, self.r, settings=True)
+        (self.r / ".public-text.toml").write_text(self.SETTINGS + "\n")
+        p = self.check()
+        self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+        self.assertIn("config-sha256 does not match .public-text.toml", p.stdout)
+
+    def test_the_planted_form_keeps_the_checker_and_drops_the_approval(self) -> None:
+        # what Planted plants from a repository whose pin approves settings: the checker only
+        plant_repo(self.source, self.r, settings=False)
+        pin = (self.r / ".github" / "public-text-pin").read_text().splitlines()
+        self.assertEqual([l.split()[0] for l in pin], ["rev", "sha256"])
+        self.assertFalse((self.r / ".public-text.toml").exists())
+        p = self.check()
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertRegex(p.stdout, r"public text: 0 findings in [1-9][0-9]* files at HEAD")
+
+    def test_a_pin_that_approves_settings_that_are_absent_is_a_finding(self) -> None:
+        plant_repo(self.source, self.r, settings=True)
+        (self.r / ".public-text.toml").unlink()
+        p = self.check()
+        self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+        self.assertIn("config-sha256 does not match .public-text.toml", p.stdout)
 
 
 if __name__ == "__main__":
