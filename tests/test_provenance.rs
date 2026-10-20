@@ -2887,7 +2887,7 @@ fn meshopt_codecs_read_the_stamped_form_and_raw_bytes_by_name() {
 
 /// The compressed SDF volume stream (`codec_bridge`): the identifier follows the header (flag
 /// 0x10); `try_decode_sdf_volume` reads this crate's and a reproduced earlier one and refuses
-/// another (naming both) and a stream written before 7.0.0 (6.1.0's, without the flag);
+/// another (naming both) and a stream written by 7.0.0 or earlier (6.1.0's, without the flag);
 /// `decode_sdf_volume` / `decompress_sdf` panic on those with a message naming the identifiers;
 /// `try_decode_sdf_volume_unverified` returns an old stream marked Unpinned
 #[cfg(feature = "codec")]

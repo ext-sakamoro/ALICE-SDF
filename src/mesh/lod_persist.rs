@@ -255,7 +255,7 @@ impl LodChainPersist {
 /// Metadata stored in the `.abm.meta.json` sidecar file
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LodChainMetadata {
-    /// Sidecar format (1 when absent: written before 7.0.0)
+    /// Sidecar format (1 when absent: written by 7.0.0 or earlier)
     #[serde(default = "metadata_format_1")]
     format: u32,
     /// The semantics identifier the computed values were written under (format 2)
@@ -344,8 +344,8 @@ pub fn save_lod_chain_with_provenance(
 /// # Errors
 ///
 /// [`IoError::SemanticsMismatch`] when either part was written under another identifier,
-/// [`IoError::Unpinned`] when either part carries none (a chain written before 7.0.0; read it
-/// with [`load_lod_chain_unverified`]), and the I/O and format errors of the two parts.
+/// [`IoError::Unpinned`] when either part carries none (a chain written by 7.0.0 or earlier; read
+/// it with [`load_lod_chain_unverified`]), and the I/O and format errors of the two parts.
 pub fn load_lod_chain(path: impl AsRef<Path>) -> Result<LodChainPersist, IoError> {
     load_lod_chain_checked(path, false).map(|c| c.into_parts().0)
 }
@@ -498,8 +498,8 @@ pub fn save_lod_chain_metadata_with_provenance(
 /// Load LOD chain configuration from JSON sidecar
 ///
 /// The configuration is the authored generation settings, so a sidecar without an identifier
-/// (written before 7.0.0) is read and marked [`StoredSemantics::Unpinned`]; one written under
-/// another identifier is refused. Unlike [`load_lod_chain`] (and `load_abm`), which refuse an
+/// (written by 7.0.0 or earlier) is read and marked [`StoredSemantics::Unpinned`]; one written
+/// under another identifier is refused. Unlike [`load_lod_chain`] (and `load_abm`), which refuse an
 /// unpinned part by default because they return computed values, this reader returns only
 /// those settings and leaves the decision on an unpinned sidecar to the caller through the
 /// returned status.
@@ -513,7 +513,8 @@ pub fn load_lod_chain_metadata(path: impl AsRef<Path>) -> Result<Checked<LodChai
     Ok(Checked::new(metadata.config, semantics))
 }
 
-/// The sidecar format: 2 carries the semantics identifier (format 1, before 7.0.0, has none)
+/// The sidecar format: 2 carries the semantics identifier (format 1, written by 7.0.0 or
+/// earlier, has none)
 const METADATA_FORMAT: u32 = 2;
 
 /// The identifier verdict of a sidecar: its stored identifier (format 2) through the same rule

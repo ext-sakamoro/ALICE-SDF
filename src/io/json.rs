@@ -9,7 +9,7 @@
 //! of the arithmetic the tree was written under (this crate's `SDF_SEMANTICS_ID` unless a
 //! `*_with_provenance` writer is given another). The readers check it: [`load_asdf_json`] and
 //! [`from_json_string`] refuse a document without one ([`IoError::Unpinned`], a document
-//! written before 7.0.0) and one with another identifier ([`IoError::SemanticsMismatch`]);
+//! written by 7.0.0 or earlier) and one with another identifier ([`IoError::SemanticsMismatch`]);
 //! [`load_asdf_json_unverified`] and [`from_json_string_unverified`] also read a document
 //! without one and return the tree with what is known about it ([`Checked`]).
 //!

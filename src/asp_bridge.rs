@@ -34,7 +34,7 @@
 //! An I-packet carries the identifier of the arithmetic the tree was built under: the parameter
 //! `alice_semantics_v` = 2 marks it, the first 32 coefficient entries hold the identifier's
 //! bytes and the tree's bytes follow (`asdf_offset` = 32). [`decode_sdf_i_packet`] refuses a
-//! packet without one (a sender before 7.0.0) and one with another identifier;
+//! packet without one (a sender of 7.0.0 or earlier) and one with another identifier;
 //! [`decode_sdf_i_packet_unverified`] also reads a packet without one and returns the tree with
 //! what is known about it.
 
@@ -165,7 +165,7 @@ pub fn create_sdf_d_packet(
 ///
 /// # Errors
 ///
-/// A packet without a semantics identifier (sent before 7.0.0; read it with
+/// A packet without a semantics identifier (sent by 7.0.0 or earlier; read it with
 /// [`decode_sdf_i_packet_unverified`]), one with another identifier, and the format errors.
 pub fn decode_sdf_i_packet(packet: &AspPacket) -> Result<SdfTree, String> {
     decode_checked(packet, false).map(|c| c.into_parts().0)
