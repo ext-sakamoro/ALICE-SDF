@@ -1,5 +1,5 @@
-# Public fns that look like writers (by name or by a write sink) but store no durable form of
-# their own (ALICE-Law G8)
+# Public fns (and fns of the command-line tool, src/bin) that look like writers (by name or by a
+# write sink) but store no durable form of their own (ALICE-Law G8)
 #
 # scripts/provenance_writers.py: one line per candidate, `<file>::<fn> <reason>`. A reason
 # `delegates to <fn>` names the covered or pending writer the body calls (through a `use ... as`
@@ -58,3 +58,4 @@ src/io/abm.rs::write forwards bytes to the inner writer while summing a CRC (the
 src/io/abm.rs::flush flushes the inner writer of the CRC-summing CrcWriter used by save_abm
 src/io/asdf.rs::write forwards bytes to the inner writer while summing a CRC (the Write impl of CrcWriter, used by save_asdf)
 src/io/asdf.rs::flush flushes the inner writer of the CRC-summing CrcWriter used by save_asdf
+src/bin/main.rs::cmd_to_mesh delegates to export_obj
