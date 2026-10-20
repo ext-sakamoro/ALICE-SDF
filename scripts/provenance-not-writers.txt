@@ -3,7 +3,8 @@
 #
 # scripts/provenance_writers.py: one line per candidate, `<file>::<fn> <reason>`. A reason
 # `delegates to <fn>` names the covered or pending writer the body calls (through a `use ... as`
-# alias is enough), and the check fails when the body stops calling it; any other reason has at
+# alias is enough), and the check fails when the body stops calling it; a fn with branches names
+# each writer after a `to` (`delegates to a (and to b for ...)`), and each is checked; any other reason has at
 # least five words. A line that names no candidate fails.
 
 src/cache/chunked.rs::persist_dirty delegates to save_abm

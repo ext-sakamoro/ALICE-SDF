@@ -25,8 +25,8 @@ exactly one of
     identifier back and checks a mismatch,
   - pending: listed in scripts/provenance-pending.txt (writers that do not store it yet), or
   - not a writer: listed in scripts/provenance-not-writers.txt with its reason. A reason
-    `delegates to <fn>` must name a covered or pending writer and every body of the key must call
-    it (through a `use ... as` alias is enough); any other reason has at least five words. A line
+    `delegates to <fn>` (`delegates to <a> (and to <b> for ...)` for a fn with branches) must name
+    covered or pending writers, each after a `to`, and every body of the key must call each of them (through a `use ... as` alias is enough); any other reason has at least five words. A line
     for an entry only the call graph finds is checked, without an index, to name a fn of that file
     that is no plain `pub fn`.
 
@@ -479,11 +479,13 @@ def check(root: str, reached: dict[str, set[str]] | None = None) -> tuple[list[s
         if key in cov or key in todo:
             errors.append(f"{NOT_WRITERS_FILE}: {key} is also covered or pending")
         if reason.startswith("delegates to "):
-            target = reason[len("delegates to "):].split()[0]
-            if target not in writer_names:
-                errors.append(f"{NOT_WRITERS_FILE}: {key} delegates to `{target}`, which is no covered or pending writer")
-            elif not (bs := cand.get(key) or bodies(root, key)) or not all(calls(b, target) for b in bs):
-                errors.append(f"{NOT_WRITERS_FILE}: {key} delegates to `{target}`, but its body does not call it")
+            # every fn the reason names after a `to` (`delegates to a (and to b for ...)`) is checked
+            bs = cand.get(key) or bodies(root, key)
+            for target in re.findall(r"\bto\s+(\w+)", reason):
+                if target not in writer_names:
+                    errors.append(f"{NOT_WRITERS_FILE}: {key} delegates to `{target}`, which is no covered or pending writer")
+                elif not bs or not all(calls(b, target) for b in bs):
+                    errors.append(f"{NOT_WRITERS_FILE}: {key} delegates to `{target}`, but its body does not call it")
         elif len(reason.split()) < 5:
             errors.append(f"{NOT_WRITERS_FILE}: {key}: the reason needs at least five words")
     test_text = "\n".join(blank_comments_and_strings(t) for t in test_texts(root).values())
