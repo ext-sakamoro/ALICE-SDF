@@ -125,6 +125,9 @@ jobs:
               - 'src/mesh/**'
               - 'tests/test_alembic_oracle.rs'
               - 'tests/oracle/alembic_*'
+              - 'tests/oracle/alembic-library.txt'
+              - 'scripts/alembic_library_check.py'
+              - 'scripts/test_alembic_library_check.py'
               - 'Cargo.toml'
               - 'Cargo.lock'
             unreal:
@@ -711,18 +714,67 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install the Alembic library
+      # No Ubuntu or Debian stable release packages the Alembic C++ library (measured 2026-10-21:
+      # noble, noble-updates and jammy universe, Debian bookworm and trixie), so the job builds the
+      # release in tests/oracle/alembic-library.txt from its tag tarball, Ogawa back end only
+      - name: Read the pinned Alembic release
+        shell: bash
+        run: |
+          set -euo pipefail
+          pin=tests/oracle/alembic-library.txt
+          field() { awk -v k="$1" '$1 == k { print $2 }' "$pin"; }
+          {
+            echo "ALEMBIC_VERSION=$(field version)"
+            echo "ALEMBIC_URL=$(field url)"
+            echo "ALEMBIC_SHA256=$(field sha256)"
+            echo "ALEMBIC_PREFIX=$RUNNER_TEMP/alembic-prefix"
+          } >> "$GITHUB_ENV"
+          echo "pinned Alembic $(field version) sha256 $(field sha256)"
+      - name: Install Imath and cmake
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libalembic-dev libimath-dev
+          sudo apt-get install -y --no-install-recommends libimath-dev cmake
+      - name: Cache the Alembic build
+        id: alembic-cache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: ${{ runner.temp }}/alembic-prefix
+          key: alembic-${{ env.ALEMBIC_VERSION }}-${{ env.ALEMBIC_SHA256 }}-ogawa-${{ runner.os }}
+      - name: Print the cache key
+        run: |
+          echo "cache key: alembic-${ALEMBIC_VERSION}-${ALEMBIC_SHA256}-ogawa-${RUNNER_OS} hit=${{ steps.alembic-cache.outputs.cache-hit }}"
+      - name: Build the Alembic library (Ogawa only)
+        if: steps.alembic-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSL "$ALEMBIC_URL" -o alembic.tar.gz
+          # the sha256 is checked before anything is extracted; a mismatch stops the job here
+          echo "$ALEMBIC_SHA256  alembic.tar.gz" | sha256sum -c -
+          mkdir alembic-src
+          tar -xzf alembic.tar.gz -C alembic-src --strip-components=1
+          cmake -S alembic-src -B alembic-build -DCMAKE_BUILD_TYPE=Release -DUSE_HDF5=OFF \
+            -DUSE_TESTS=OFF -DUSE_BINARIES=OFF -DUSE_EXAMPLES=OFF -DALEMBIC_SHARED_LIBS=ON \
+            -DCMAKE_INSTALL_PREFIX="$ALEMBIC_PREFIX"
+          cmake --build alembic-build -j "$(nproc)"
+          cmake --install alembic-build
+      - name: Check the Alembic library (version and Ogawa only, also on a cache hit)
+        run: |
+          python3 scripts/test_alembic_library_check.py
+          python3 scripts/alembic_library_check.py "$ALEMBIC_PREFIX/include" --ogawa-only
       - name: Build the oracle programs
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p target/alembic-oracle
+          lib="$ALEMBIC_PREFIX/lib"
           for n in alembic_reader alembic_refwriter; do
-            g++ -std=c++17 -O1 -I/usr/include/Imath "tests/oracle/$n.cpp" -lAlembic -o "target/alembic-oracle/$n"
+            g++ -std=c++17 -O1 -I"$ALEMBIC_PREFIX/include" -I/usr/include/Imath "tests/oracle/$n.cpp" \
+              -L"$lib" -Wl,-rpath,"$lib" -lAlembic -o "target/alembic-oracle/$n"
           done
+          # the reader is linked against this build, not another copy on the system
+          ldd target/alembic-oracle/alembic_reader | grep -F "$lib/libAlembic"
       - name: Test (Alembic oracle)
         shell: bash
         run: |

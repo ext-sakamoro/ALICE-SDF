@@ -457,7 +457,10 @@ abc_inc=""
 for d in /usr/include /opt/homebrew/include /usr/local/include; do
   [ -f "$d/Alembic/Abc/All.h" ] && abc_inc=$d && break
 done
+python3 scripts/test_alembic_library_check.py
 if [ -n "$abc_inc" ]; then
+  # the release the CI job builds (tests/oracle/alembic-library.txt); a local library may carry HDF5 too
+  python3 scripts/alembic_library_check.py "$abc_inc"
   abc_out="${CARGO_TARGET_DIR:-target}/alembic-oracle"
   mkdir -p "$abc_out"
   for n in alembic_reader alembic_refwriter; do
@@ -467,7 +470,7 @@ if [ -n "$abc_inc" ]; then
     cargo test --test test_alembic_oracle -- --ignored 2>&1 | tee "$abc_out/alembic-oracle.log"
   python3 scripts/libtest_count.py "$abc_out/alembic-oracle.log" --min 3 --what "Alembic oracle tests"
 else
-  echo "PREFLIGHT-SKIP: Alembic oracle: no Alembic headers (apt libalembic-dev / brew alembic), checked by the alembic-oracle CI job"
+  echo "PREFLIGHT-SKIP: Alembic oracle: no Alembic headers (brew alembic, or a build of tests/oracle/alembic-library.txt), checked by the alembic-oracle CI job"
 fi
 
 step "gpu-parity: GPU <-> CPU law parity, shader validation, GPU marching cubes (Metal here, lavapipe in CI)"

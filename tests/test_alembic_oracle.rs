@@ -6,7 +6,8 @@
 //! itself and with what it reads from the library's own file for that mesh (object and property
 //! hashes, stored and recomputed sample digests).
 //!
-//! The two programs are built by the `alembic-oracle` CI job (Linux, `libalembic-dev`), which sets
+//! The two programs are built by the `alembic-oracle` CI job (Linux, against the Alembic release in
+//! tests/oracle/alembic-library.txt, built from its tag tarball), which sets
 //! `ALICE_SDF_ALEMBIC_READER` / `ALICE_SDF_ALEMBIC_REFWRITER` and runs the ignored tests; a missing
 //! program fails, so the job cannot pass having compared nothing.
 //!
