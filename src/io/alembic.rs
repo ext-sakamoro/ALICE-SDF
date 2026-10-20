@@ -2,8 +2,8 @@
 //!
 //! Writes a mesh as an Alembic archive in the Ogawa layout (the layout of Alembic 1.8): one
 //! static `PolyMesh` object named `mesh` under the top object, with positions `P`,
-//! `.faceIndices`, `.faceCounts`, `.selfBnds` and, when configured, per-vertex normals `N` and
-//! UVs `uv`. The Alembic library reads it (tests/test_alembic_oracle.rs reads it with the library
+//! `.faceIndices`, `.faceCounts`, `.selfBnds` and, when configured and the mesh has vertices,
+//! per-vertex normals `N` and UVs `uv`. The Alembic library reads it (tests/test_alembic_oracle.rs reads it with the library
 //! and compares it with what the library itself writes for the same mesh), so the tools built on
 //! it (Maya, Houdini, Blender, Nuke, Katana) can open it.
 //!
@@ -30,9 +30,10 @@ use std::path::Path;
 pub struct AlembicConfig {
     /// Frames per second, stored as the archive metadata `_ai_DCC_FPS` (the mesh is static)
     pub fps: f64,
-    /// Export vertex normals (`N`, per vertex)
+    /// Export vertex normals (`N`, per vertex; not written for a mesh with no vertices, as the
+    /// library writes none for an empty sample)
     pub export_normals: bool,
-    /// Export UV coordinates (`uv`, per vertex)
+    /// Export UV coordinates (`uv`, per vertex; not written for a mesh with no vertices)
     pub export_uvs: bool,
 }
 
