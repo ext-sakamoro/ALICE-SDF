@@ -128,6 +128,7 @@ Per-file counts (the test names are in `tests/`):
 | `float_environment.rs` | 2 |
 | `noise_shader_validate.rs` | 2 |
 | `test_aabb_unified_oracle.rs` | 2 |
+| `test_bake_stored_forms.rs` | 2 |
 | `test_det_near_zero_parity.rs` | 2 |
 | `test_hlsl_dxc_compile.rs` | 2 |
 | `test_instanced_wgsl_gpu_parity.rs` | 2 |
