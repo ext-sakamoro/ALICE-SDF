@@ -323,7 +323,21 @@ class Writers(unittest.TestCase):
             "src/bin/main.rs::main": {pre + "main().", pre + "cmd_a().", pre + "io/obj/export_obj()."},
             "src/bin/main.rs::cmd_a": {pre + "cmd_a().", pre + "io/obj/export_obj()."},
         })
+        self.assertEqual(pw.bin_entries("src/bin/main.rs", occ[:0]), {})
         self.assertEqual(pw.bin_entries("src/io/a.rs", occ), {})
+
+    def test_a_reference_in_a_nested_cli_fn_belongs_to_the_innermost_fn(self):
+        pre = "rust-analyzer cargo alice-sdf 7.0.0 "
+        occ = [
+            {"symbol": pre + "cmd_outer().", "roles": 1, "range": [1, 3, 12], "enc": [1, 0, 10, 1]},
+            # a fn nested in cmd_outer's body, which cmd_outer never calls
+            {"symbol": pre + "cmd_outer/helper().", "roles": 1, "range": [3, 7, 13], "enc": [3, 4, 6, 5]},
+            {"symbol": pre + "io/obj/export_obj().", "roles": 0, "range": [4, 8, 18]},
+            {"symbol": pre + "info().", "roles": 0, "range": [8, 4, 8]},
+        ]
+        got = pw.bin_entries("src/bin/main.rs", occ)
+        self.assertEqual(got["src/bin/main.rs::helper"], {pre + "cmd_outer/helper().", pre + "io/obj/export_obj()."})
+        self.assertEqual(got["src/bin/main.rs::cmd_outer"], {pre + "cmd_outer().", pre + "info()."})
 
     def test_two_impls_of_one_name_share_a_key_and_both_must_delegate(self):
         src = ("impl A {\n    pub fn export_a(&self) { export_a(p) }\n}\n"
