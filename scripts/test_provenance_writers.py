@@ -283,6 +283,18 @@ class Writers(unittest.TestCase):
         self.assertIsNone(pw.bin_fn_key("src/io/a.rs", sym))
         self.assertIsNone(pw.bin_fn_key("src/bin/main.rs", "rust-analyzer cargo alice-sdf 7.0.0 main/Cli#"))
 
+    def test_every_writer_a_delegation_names_is_checked(self):
+        src = SRC.replace("#[cfg(test)]", "pub fn save(p: &Path) { if j { save_b() } else { export_a(p) } }\n\n#[cfg(test)]")
+        line = "src/io/a.rs::save delegates to export_a (and to save_b for a JSON path)\n"
+        self.assertEqual(errors(tree(src=src, not_writers=line)), [])
+        # the second branch writes through another fn: only the second name catches it
+        bad = src.replace("save_b() }", "save_b_with_provenance() }")
+        e = errors(tree(src=bad, not_writers=line))
+        self.assertTrue(any("delegates to `save_b`, but its body does not call it" in x for x in e), e)
+        self.assertFalse(any("`export_a`" in x for x in e), e)
+        e = errors(tree(src=src, not_writers="src/io/a.rs::save delegates to export_a (and to nothing_here for x)\n"))
+        self.assertTrue(any("`nothing_here`, which is no covered or pending writer" in x for x in e), e)
+
     def test_a_cli_fn_starts_from_what_its_own_body_references(self):
         pre = "rust-analyzer cargo alice-sdf 7.0.0 "
         occ = [
