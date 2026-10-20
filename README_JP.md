@@ -200,7 +200,7 @@ crate だけを取り込む
 | `volume` | | 場を 3D テクスチャに焼き込む `gpu` を含む |
 | `glsl` | | GLSL 出力 (Unity / OpenGL / Vulkan / Shadertoy) |
 | `hlsl` | | HLSL 出力 (Unreal Engine / DirectX) |
-| `msl` | | Metal Shading Language 出力 (WGSL から naga で変換) `gpu` を含む |
+| `msl` | | Metal Shading Language 出力 (WGSL から naga で変換) macOS では `GpuEvaluator` も Metal 上で fast math を切って実行し、`a * b + c` を 2 回の丸めのまま保つ `gpu` を含む |
 | `blinkscript` | | Nuke 用 BlinkScript 出力 `hlsl` を含む |
 | `rust` | | `eval_compiled` とビット一致する依存のない Rust ソース (`fn sdf` / `fn normal`)、`build.rs` 向け |
 | `all-shaders` | | `gpu`、`glsl`、`hlsl`、`msl`、`blinkscript` |

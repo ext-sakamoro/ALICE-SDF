@@ -72,6 +72,8 @@
 //! Author: Moroya Sakamoto
 
 mod gpu_eval;
+#[cfg(all(target_os = "macos", feature = "msl"))]
+mod gpu_metal;
 mod transpiler;
 
 pub use gpu_eval::{GpuBufferPool, GpuError, GpuEvalFuture, GpuEvaluator};

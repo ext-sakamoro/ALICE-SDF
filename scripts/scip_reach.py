@@ -222,6 +222,8 @@ class Analysis:
         # per CRATE_INDEXES index: documents read, `src/` pub-item definitions
         self.idx_docs: dict[str, int] = {idx: 0 for idx in CRATE_INDEXES}
         self.idx_items: dict[str, int] = {idx: 0 for idx in CRATE_INDEXES}
+        # per CRATE_INDEXES index: `src/x.rs::name` of the pub items it defines (target-only lines)
+        self.idx_keys: dict[str, set[str]] = {idx: set() for idx in CRATE_INDEXES}
         self.impl_links = 0       # trait-impl method -> in-crate trait method
         self.external_impls = 0   # trait-impl methods of traits defined outside the crate
         self.generated_items = 0  # items of types a macro invocation generates
@@ -309,21 +311,53 @@ def _keep_mask(text: str) -> tuple[list[str], list[str]]:
     return text.split("\n"), code.split("\n")
 
 
+def pub_items(root: Path, rel: str) -> set[str]:
+    """`src/x.rs::name` for every `pub` definition in one source file (comments, strings,
+    cfg(test) and use statements removed)."""
+    _raw, code = _keep_mask((Path(root) / rel).read_text(encoding="utf-8", errors="replace"))
+    return {f"{rel}::{m.group(1)}" for line in code for m in PUB_NAME_RE.finditer(line)}
+
+
 def unindexed_items(root: Path, indexed: set[str]) -> list[str]:
-    """`src/x.rs::name` for every `pub` definition in the source (comments, strings,
-    cfg(test) and use statements removed) that no index definition accounts for."""
+    """`src/x.rs::name` for every `pub` definition in the source that no index definition
+    accounts for."""
     out = set()
     for p in sorted((Path(root) / "src").rglob("*.rs")):
         rel = p.relative_to(root).as_posix()
         if binding_of(rel):
             continue
-        _raw, code = _keep_mask(p.read_text(encoding="utf-8", errors="replace"))
-        for line in code:
-            for m in PUB_NAME_RE.finditer(line):
-                key = f"{rel}::{m.group(1)}"
-                if key not in indexed:
-                    out.add(key)
+        out |= pub_items(root, rel) - indexed
     return sorted(out)
+
+
+def target_only_problems(root: Path, a: Analysis, entries: list[str]) -> tuple[list[str], list[str]]:
+    """(problems, one summary line per entry) for the `target-only: <index> <file>` lines of
+    the baseline: a file compiled for one target only (`cfg(target_os = "macos")`) whose pub
+    items must all be defined by that target's index and by no other index of the crate.
+    Without such a line a file that the index of its target stops covering would only show
+    as new unindexed items, which a baseline line can silence."""
+    problems, summary = [], []
+    for entry in entries:
+        idx, _, rel = entry.partition(" ")
+        if idx not in CRATE_INDEXES or not rel:
+            problems.append(f"target-only entry {entry!r}: expected `<one of {', '.join(CRATE_INDEXES)}> <src file>`")
+            continue
+        if not (Path(root) / rel).is_file():
+            problems.append(f"target-only entry {entry}: {rel} does not exist (remove the line)")
+            continue
+        items = pub_items(root, rel)
+        if not items:
+            problems.append(f"target-only entry {entry}: {rel} has no pub item (the check would compare nothing)")
+            continue
+        got = items & a.idx_keys[idx]
+        for k in sorted(items - got):
+            problems.append(f"target-only {k}: not defined by {idx}")
+        for other in CRATE_INDEXES:
+            if other != idx:
+                for k in sorted(items & a.idx_keys[other]):
+                    problems.append(f"target-only {k}: also defined by {other} (the file is not {idx}-only)")
+        summary.append(f"target-only {idx} {rel}: {len(got)}/{len(items)} pub items defined")
+    return problems, summary
 
 
 def item_key(rel: str, name: str, sym: str) -> str:
@@ -484,6 +518,7 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
                             a.items.setdefault(item_key(rel, name, s), set()).add(s)
                             if idx_name in a.idx_items:
                                 a.idx_items[idx_name] += 1
+                                a.idx_keys[idx_name].add(legacy_key(item_key(rel, name, s)))
                         else:
                             # a type defined at a macro invocation (`impl_x!(Name, 10);`):
                             # rust-analyzer puts the definition on the argument token
@@ -864,9 +899,13 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.write).write_text(report(a, baseline_unwired(root)), encoding="utf-8")
     bpath = Path(args.baseline) if Path(args.baseline).is_absolute() else root / args.baseline
     l0 = sorted(k for k, v in a.level.items() if v == "L0")
+    # target-only lines are declarations, not measurements: --write-baseline keeps them
+    target_only = ([ln.strip()[len(TARGET_ONLY):] for ln in bpath.read_text(encoding="utf-8").splitlines()
+                    if ln.strip().startswith(TARGET_ONLY)] if bpath.exists() else [])
     if args.write_baseline:
         bpath.write_text(BASELINE_HEADER + "".join(f"{k}\n" for k in l0)
-                         + "".join(f"{UNINDEXED}{k}\n" for k in a.unindexed), encoding="utf-8")
+                         + "".join(f"{UNINDEXED}{k}\n" for k in a.unindexed)
+                         + "".join(f"{TARGET_ONLY}{e}\n" for e in target_only), encoding="utf-8")
         print(f"wrote {len(l0)} L0 entries and {len(a.unindexed)} unindexed entries to {bpath}")
     if args.check_baseline:
         if not bpath.exists():
@@ -874,7 +913,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         lines = {ln.strip() for ln in bpath.read_text(encoding="utf-8").splitlines()
                  if ln.strip() and not ln.startswith("#")}
-        base = {ln for ln in lines if not ln.startswith(UNINDEXED)}
+        base = {ln for ln in lines if not ln.startswith((UNINDEXED, TARGET_ONLY))}
+        to_problems, to_summary = target_only_problems(root, a, target_only)
+        for p in to_problems:
+            print(f"error: {p}", file=sys.stderr)
+        for line in to_summary:
+            print(line)
         base_unindexed = {ln[len(UNINDEXED):] for ln in lines if ln.startswith(UNINDEXED)}
         new_unindexed = [k for k in a.unindexed if k not in base_unindexed]
         stale_unindexed = sorted(base_unindexed - set(a.unindexed))
@@ -893,12 +937,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: stale baseline entry {k} (now {lv}): remove the line", file=sys.stderr)
         print(f"baseline: {len(base)} entries, new L0 {len(new)}, stale {len(stale)}; "
               f"unindexed {len(base_unindexed)} entries, new {len(new_unindexed)}, stale {len(stale_unindexed)}")
-        if new or stale or new_unindexed or stale_unindexed:
+        if new or stale or new_unindexed or stale_unindexed or to_problems:
             return 1
     return 0
 
 
 UNINDEXED = "unindexed: "
+TARGET_ONLY = "target-only: "
 BASELINE_HEADER = """# L0 items (no non-test code reaches them) that existed when the ratchet was
 # introduced. scripts/scip_reach.py --check-baseline fails on any L0 item not
 # listed here, and on any line here that is no longer L0. Shrink this file;
@@ -906,6 +951,8 @@ BASELINE_HEADER = """# L0 items (no non-test code reaches them) that existed whe
 # Lines starting with "unindexed: " are pub items the SCIP index has no
 # definition for (macro_rules bodies); they have no level, the same ratchet
 # applies to them.
+# Lines starting with "target-only: " name an index and a file compiled for that
+# target only: every pub item of the file is defined by that index and by no other.
 """
 
 

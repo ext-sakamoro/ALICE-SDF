@@ -1,7 +1,22 @@
 //! GPU Evaluator: WebGPU-based SDF Evaluation (Deep Fried Edition)
 //!
-//! This module provides GPU-accelerated SDF evaluation using wgpu.
+//! This module provides GPU-accelerated SDF evaluation.
 //! It can evaluate millions of points in parallel on the GPU.
+//!
+//! # Backends and ALICE-Law G3
+//!
+//! The WGSL kernel must keep `a * b + c` as two roundings and keep the sign of a
+//! zero, as the CPU does. Measured on Apple silicon:
+//!
+//! - **macOS with the `msl` feature**: the kernel runs on Metal as
+//!   [`crate::compiled::msl::MslShader`]'s MSL (`#pragma METAL fp contract(off)`),
+//!   compiled with `MslShader::REQUIRED_COMPILE_OPTIONS` (fast math off)
+//!   (`gpu_metal.rs`, oracle `tests/test_gpu_fma_contraction.rs`).
+//! - **wgpu** (every other target, and macOS without `msl`): wgpu 24 compiles
+//!   naga's MSL with Metal's default fast math and offers no option for it, so on
+//!   Metal `a * b + c` is fused and the sign of a zero is lost; this is the
+//!   non-conforming configuration. Vulkan, DX12 and GL are not measured.
+//! - [`GpuEvaluator::from_glsl_compute`] always runs through wgpu.
 //!
 //! # Deep Fried Optimizations
 //!
@@ -82,10 +97,16 @@ struct GpuOutputFull {
 /// Size of the dynamic parameter buffer (1024 vec4<f32> = 4096 floats = 16KB)
 const PARAM_BUFFER_SIZE: u64 = 1024 * 16;
 
-/// GPU-based SDF evaluator
-///
-/// Uses WebGPU compute shaders to evaluate SDF at many points in parallel.
-pub struct GpuEvaluator {
+/// The wgpu backend of [`GpuEvaluator`]: every target, and macOS without the `msl`
+/// feature (where Metal contracts `a * b + c`, see the module docs).
+#[cfg_attr(
+    all(target_os = "macos", feature = "msl"),
+    allow(
+        dead_code,
+        reason = "on macOS with msl the WGSL constructors build the Metal engine; wgpu is left for from_glsl_compute"
+    )
+)]
+struct WgpuEngine {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::ComputePipeline,
@@ -100,43 +121,14 @@ pub struct GpuEvaluator {
     workgroup_size: u32,
 }
 
-impl GpuEvaluator {
-    /// Create a new GPU evaluator for the given SDF
-    ///
-    /// This compiles the SDF to a WGSL compute shader and creates
-    /// the necessary GPU resources.
-    pub fn new(node: &SdfNode) -> Result<Self, GpuError> {
-        let shader = WgslShader::transpile(node, super::transpiler::TranspileMode::Hardcoded);
-        Self::from_shader(&shader)
-    }
-
-    /// Create a GPU evaluator from a pre-generated WGSL shader
-    pub fn from_shader(shader: &WgslShader) -> Result<Self, GpuError> {
-        let compute_shader = shader.to_compute_shader();
-        let mut evaluator = Self::from_wgsl(&compute_shader)?;
-        evaluator.workgroup_size = shader.workgroup_size;
-        Ok(evaluator)
-    }
-
-    /// Create a GPU evaluator from raw WGSL source
-    pub fn from_wgsl(wgsl_source: &str) -> Result<Self, GpuError> {
-        Self::from_source(wgpu::ShaderSource::Wgsl(wgsl_source.into()))
-    }
-
-    /// Create a GPU evaluator from a GLSL compute shader (`#version 450`,
-    /// `main` entry, the same three bindings as the WGSL compute wrapper).
-    /// wgpu compiles it through naga's GLSL front end, so the GLSL
-    /// transpiler's output can be run on the GPU and compared with the CPU
-    /// — the parity oracle for the GLSL path (`tests/test_gpu_law_parity.rs`).
-    #[cfg(feature = "glsl")]
-    pub fn from_glsl_compute(glsl_source: &str) -> Result<Self, GpuError> {
-        Self::from_source(wgpu::ShaderSource::Glsl {
-            shader: glsl_source.into(),
-            stage: wgpu::naga::ShaderStage::Compute,
-            defines: wgpu::naga::FastHashMap::default(),
-        })
-    }
-
+#[cfg_attr(
+    all(target_os = "macos", feature = "msl"),
+    allow(
+        dead_code,
+        reason = "on macOS with msl the WGSL constructors build the Metal engine; wgpu is left for from_glsl_compute"
+    )
+)]
+impl WgpuEngine {
     fn from_source(source: wgpu::ShaderSource<'_>) -> Result<Self, GpuError> {
         // Initialize wgpu synchronously using pollster
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -392,17 +384,12 @@ impl GpuEvaluator {
         })
     }
 
-    /// Get information about the GPU being used
-    pub fn device_info(&self) -> String {
-        "WebGPU Device (via wgpu)".to_string()
-    }
-
     /// Create a persistent buffer pool for repeated evaluations
     ///
     /// Avoids buffer allocation overhead when calling `eval_batch` many times.
     /// The pool reuses GPU buffers, only re-allocating when capacity is exceeded.
-    pub fn create_buffer_pool(&self, initial_capacity: usize) -> GpuBufferPool {
-        GpuBufferPool::new(&self.device, initial_capacity)
+    fn create_buffer_pool(&self, initial_capacity: usize) -> WgpuPool {
+        WgpuPool::new(&self.device, initial_capacity)
     }
 
     /// Evaluate using a persistent buffer pool (avoids re-allocation)
@@ -412,7 +399,7 @@ impl GpuEvaluator {
     pub fn eval_batch_pooled(
         &self,
         points: &[Vec3],
-        pool: &mut GpuBufferPool,
+        pool: &mut WgpuPool,
     ) -> Result<Vec<f32>, GpuError> {
         if points.is_empty() {
             return Ok(Vec::new());
@@ -489,54 +476,6 @@ impl GpuEvaluator {
         pool.staging_buffer.unmap();
 
         Ok(distances)
-    }
-
-    /// Auto-tuned batch evaluation
-    ///
-    /// Splits large batches into optimal chunk sizes to balance GPU
-    /// occupancy with buffer transfer overhead.
-    pub fn eval_batch_auto(
-        &self,
-        points: &[Vec3],
-        pool: &mut GpuBufferPool,
-    ) -> Result<Vec<f32>, GpuError> {
-        if points.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        // For small batches, use single dispatch
-        if points.len() <= AUTO_TUNE_THRESHOLD {
-            return self.eval_batch_pooled(points, pool);
-        }
-
-        // Split into optimal chunks
-        let chunk_size = optimal_chunk_size(points.len());
-        let mut all_distances = Vec::with_capacity(points.len());
-
-        for chunk in points.chunks(chunk_size) {
-            let distances = self.eval_batch_pooled(chunk, pool)?;
-            all_distances.extend_from_slice(&distances);
-        }
-
-        Ok(all_distances)
-    }
-
-    // ========== Deep Fried Edition: Async API ==========
-
-    /// Create a new GPU evaluator asynchronously
-    ///
-    /// Use this when you want to initialize the GPU without blocking.
-    pub async fn new_async(node: &SdfNode) -> Result<Self, GpuError> {
-        let shader = WgslShader::transpile(node, super::transpiler::TranspileMode::Hardcoded);
-        Self::from_shader_async(&shader).await
-    }
-
-    /// Create a GPU evaluator from a pre-generated WGSL shader (async)
-    pub async fn from_shader_async(shader: &WgslShader) -> Result<Self, GpuError> {
-        let compute_shader = shader.to_compute_shader();
-        let mut evaluator = Self::from_wgsl_async(&compute_shader).await?;
-        evaluator.workgroup_size = shader.workgroup_size;
-        Ok(evaluator)
     }
 
     /// Create a GPU evaluator from raw WGSL source (async)
@@ -1084,29 +1023,6 @@ impl GpuEvaluator {
 
         Ok(results)
     }
-
-    /// Package a batch for GPU evaluation and return a handle to run it
-    ///
-    /// Nothing is dispatched here: the batch is evaluated when the handle is
-    /// consumed, by [`GpuEvalFuture::wait`] (blocking, `eval_batch`) or
-    /// [`GpuEvalFuture::resolve`] (async, `eval_batch_async`). The handle
-    /// borrows the evaluator, so the borrow checker keeps the evaluator alive
-    /// until the handle is consumed (until 5.0.0 the handle held a raw pointer
-    /// and dropping the evaluator first was a use-after-free in safe code).
-    ///
-    /// # Example
-    /// ```no_run
-    /// # use alice_sdf::prelude::*;
-    /// # use alice_sdf::compiled::GpuEvaluator;
-    /// let gpu = GpuEvaluator::new(&SdfNode::sphere(1.0)).unwrap();
-    /// let future = gpu.eval_batch_submit(vec![Vec3::ZERO, Vec3::X]);
-    /// // Do other CPU work here...
-    /// let distances = future.wait().unwrap();
-    /// assert_eq!(distances.len(), 2);
-    /// ```
-    pub const fn eval_batch_submit(&self, points: Vec<Vec3>) -> GpuEvalFuture<'_> {
-        GpuEvalFuture::new(self, points)
-    }
 }
 
 /// Auto-tune threshold: below this, single dispatch is optimal
@@ -1137,16 +1053,30 @@ const fn optimal_chunk_size(total_points: usize) -> usize {
 /// Buffer creation is one of the most expensive GPU operations.
 /// By reusing buffers, `eval_batch_pooled` can be 2-5x faster than
 /// `eval_batch` for repeated calls with similar-sized batches.
-pub struct GpuBufferPool {
+#[cfg_attr(
+    all(target_os = "macos", feature = "msl"),
+    allow(
+        dead_code,
+        reason = "on macOS with msl the WGSL constructors build the Metal engine; wgpu is left for from_glsl_compute"
+    )
+)]
+struct WgpuPool {
     /// Current capacity (number of points)
-    pub capacity: usize,
+    capacity: usize,
     input_buffer: wgpu::Buffer,
     output_buffer: wgpu::Buffer,
     staging_buffer: wgpu::Buffer,
     count_buffer: wgpu::Buffer,
 }
 
-impl GpuBufferPool {
+#[cfg_attr(
+    all(target_os = "macos", feature = "msl"),
+    allow(
+        dead_code,
+        reason = "on macOS with msl the WGSL constructors build the Metal engine; wgpu is left for from_glsl_compute"
+    )
+)]
+impl WgpuPool {
     /// Create a new buffer pool with the given initial capacity
     fn new(device: &wgpu::Device, capacity: usize) -> Self {
         let cap = capacity.max(256); // Minimum 256 points
@@ -1202,6 +1132,391 @@ impl GpuBufferPool {
         // Grow by 1.5x or to required size, whichever is larger
         let new_cap = (self.capacity * 3 / 2).max(required);
         *self = Self::new(device, new_cap);
+    }
+}
+
+impl std::fmt::Debug for WgpuPool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WgpuPool")
+            .field("capacity", &self.capacity)
+            .field(
+                "input_bytes",
+                &(self.capacity * std::mem::size_of::<GpuInputPoint>()),
+            )
+            .field(
+                "output_bytes",
+                &(self.capacity * std::mem::size_of::<GpuOutputDistance>()),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+/// The backend a [`GpuEvaluator`] runs on.
+enum Engine {
+    #[cfg_attr(
+        all(target_os = "macos", feature = "msl", not(feature = "glsl")),
+        allow(
+            dead_code,
+            reason = "on macOS with msl only from_glsl_compute builds the wgpu engine"
+        )
+    )]
+    Wgpu(WgpuEngine),
+    #[cfg(all(target_os = "macos", feature = "msl"))]
+    Metal(super::gpu_metal::MetalEngine),
+}
+
+/// GPU-based SDF evaluator
+///
+/// Evaluates the WGSL compute kernel of an SDF at many points in parallel. On
+/// macOS with the `msl` feature the kernel runs on Metal through
+/// [`crate::compiled::msl::MslShader`] with
+/// [`MslShader::REQUIRED_COMPILE_OPTIONS`](crate::compiled::msl::MslShader::REQUIRED_COMPILE_OPTIONS),
+/// so `a * b + c` keeps its two roundings and a zero keeps its sign (ALICE-Law G3);
+/// elsewhere it runs through wgpu (see the module docs for what is measured per
+/// backend).
+pub struct GpuEvaluator {
+    engine: Engine,
+}
+
+impl GpuEvaluator {
+    /// Create a new GPU evaluator for the given SDF
+    ///
+    /// This compiles the SDF to a WGSL compute shader and creates
+    /// the necessary GPU resources.
+    pub fn new(node: &SdfNode) -> Result<Self, GpuError> {
+        let shader = WgslShader::transpile(node, super::transpiler::TranspileMode::Hardcoded);
+        Self::from_shader(&shader)
+    }
+
+    /// Create a GPU evaluator from a pre-generated WGSL shader
+    pub fn from_shader(shader: &WgslShader) -> Result<Self, GpuError> {
+        let mut evaluator = Self::from_wgsl(&shader.to_compute_shader())?;
+        evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
+        Ok(evaluator)
+    }
+
+    /// Create a GPU evaluator from raw WGSL source
+    pub fn from_wgsl(wgsl_source: &str) -> Result<Self, GpuError> {
+        #[cfg(all(target_os = "macos", feature = "msl"))]
+        {
+            super::gpu_metal::MetalEngine::from_wgsl(wgsl_source).map(|m| Self {
+                engine: Engine::Metal(m),
+            })
+        }
+        #[cfg(not(all(target_os = "macos", feature = "msl")))]
+        {
+            WgpuEngine::from_source(wgpu::ShaderSource::Wgsl(wgsl_source.into())).map(|w| Self {
+                engine: Engine::Wgpu(w),
+            })
+        }
+    }
+
+    /// Create a GPU evaluator from a GLSL compute shader (`#version 450`,
+    /// `main` entry, the same three bindings as the WGSL compute wrapper).
+    /// wgpu compiles it through naga's GLSL front end, so the GLSL
+    /// transpiler's output can be run on the GPU and compared with the CPU
+    /// — the parity oracle for the GLSL path (`tests/test_gpu_law_parity.rs`).
+    ///
+    /// This always runs through wgpu, also on macOS: Metal may contract
+    /// `a * b + c` here (see the module docs).
+    #[cfg(feature = "glsl")]
+    pub fn from_glsl_compute(glsl_source: &str) -> Result<Self, GpuError> {
+        WgpuEngine::from_source(wgpu::ShaderSource::Glsl {
+            shader: glsl_source.into(),
+            stage: wgpu::naga::ShaderStage::Compute,
+            defines: wgpu::naga::FastHashMap::default(),
+        })
+        .map(|w| Self {
+            engine: Engine::Wgpu(w),
+        })
+    }
+
+    /// The wgpu path dispatches with the transpiler's workgroup size; the Metal
+    /// path reads it from the kernel itself.
+    const fn set_wgpu_workgroup_size(&mut self, size: u32) {
+        match &mut self.engine {
+            Engine::Wgpu(w) => w.workgroup_size = size,
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            Engine::Metal(_) => {}
+        }
+    }
+
+    /// Evaluate the SDF at multiple points using the GPU
+    ///
+    /// This is highly efficient for large numbers of points (1000+).
+    /// For small numbers of points, CPU evaluation may be faster due to
+    /// GPU dispatch overhead.
+    pub fn eval_batch(&self, points: &[Vec3]) -> Result<Vec<f32>, GpuError> {
+        match &self.engine {
+            Engine::Wgpu(w) => w.eval_batch(points),
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            Engine::Metal(m) => m.eval_batch(points),
+        }
+    }
+
+    /// Get information about the GPU being used
+    pub fn device_info(&self) -> String {
+        match &self.engine {
+            Engine::Wgpu(_) => "WebGPU Device (via wgpu)".to_string(),
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            Engine::Metal(m) => m.device_info(),
+        }
+    }
+
+    /// Create a persistent buffer pool for repeated evaluations
+    ///
+    /// Avoids buffer allocation overhead when calling `eval_batch` many times.
+    /// The pool reuses GPU buffers, only re-allocating when capacity is exceeded.
+    pub fn create_buffer_pool(&self, initial_capacity: usize) -> GpuBufferPool {
+        match &self.engine {
+            Engine::Wgpu(w) => GpuBufferPool::from_wgpu(w.create_buffer_pool(initial_capacity)),
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            Engine::Metal(m) => GpuBufferPool::from_metal(m.create_buffer_pool(initial_capacity)),
+        }
+    }
+
+    /// Evaluate using a persistent buffer pool (avoids re-allocation)
+    ///
+    /// This is significantly faster than `eval_batch` for repeated calls
+    /// with similar-sized point batches (e.g., marching cubes, raymarching).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `pool` was created by an evaluator on another backend.
+    pub fn eval_batch_pooled(
+        &self,
+        points: &[Vec3],
+        pool: &mut GpuBufferPool,
+    ) -> Result<Vec<f32>, GpuError> {
+        let result = match (&self.engine, &mut pool.buffers) {
+            (Engine::Wgpu(w), PoolBuffers::Wgpu(p)) => w.eval_batch_pooled(points, p),
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            (Engine::Metal(m), PoolBuffers::Metal(p)) => m.eval_batch_pooled(points, p),
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            _ => panic!("GpuBufferPool was created by an evaluator on another backend"),
+        };
+        pool.sync_capacity();
+        result
+    }
+
+    /// Auto-tuned batch evaluation
+    ///
+    /// Splits large batches into optimal chunk sizes to balance GPU
+    /// occupancy with buffer transfer overhead.
+    pub fn eval_batch_auto(
+        &self,
+        points: &[Vec3],
+        pool: &mut GpuBufferPool,
+    ) -> Result<Vec<f32>, GpuError> {
+        if points.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // For small batches, use single dispatch
+        if points.len() <= AUTO_TUNE_THRESHOLD {
+            return self.eval_batch_pooled(points, pool);
+        }
+
+        // Split into optimal chunks
+        let chunk_size = optimal_chunk_size(points.len());
+        let mut all_distances = Vec::with_capacity(points.len());
+
+        for chunk in points.chunks(chunk_size) {
+            let distances = self.eval_batch_pooled(chunk, pool)?;
+            all_distances.extend_from_slice(&distances);
+        }
+
+        Ok(all_distances)
+    }
+
+    // ========== Deep Fried Edition: Async API ==========
+
+    /// Create a new GPU evaluator asynchronously
+    ///
+    /// Use this when you want to initialize the GPU without blocking.
+    pub async fn new_async(node: &SdfNode) -> Result<Self, GpuError> {
+        let shader = WgslShader::transpile(node, super::transpiler::TranspileMode::Hardcoded);
+        Self::from_shader_async(&shader).await
+    }
+
+    /// Create a GPU evaluator from a pre-generated WGSL shader (async)
+    pub async fn from_shader_async(shader: &WgslShader) -> Result<Self, GpuError> {
+        let compute_shader = shader.to_compute_shader();
+        let mut evaluator = Self::from_wgsl_async(&compute_shader).await?;
+        evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
+        Ok(evaluator)
+    }
+
+    /// Create a GPU evaluator from raw WGSL source (async)
+    ///
+    /// On the Metal path the device and the pipeline are made synchronously
+    /// (Metal has no asynchronous device request).
+    #[cfg_attr(
+        all(target_os = "macos", feature = "msl"),
+        allow(
+            clippy::unused_async,
+            clippy::unused_async_trait_impl,
+            reason = "the async signature is the public API; Metal has no async device request"
+        )
+    )]
+    pub async fn from_wgsl_async(wgsl_source: &str) -> Result<Self, GpuError> {
+        #[cfg(all(target_os = "macos", feature = "msl"))]
+        {
+            Self::from_wgsl(wgsl_source)
+        }
+        #[cfg(not(all(target_os = "macos", feature = "msl")))]
+        {
+            WgpuEngine::from_wgsl_async(wgsl_source)
+                .await
+                .map(|w| Self {
+                    engine: Engine::Wgpu(w),
+                })
+        }
+    }
+
+    /// Evaluate the SDF at multiple points using the GPU (async)
+    ///
+    /// This is the async version that allows CPU work while GPU computes.
+    /// Use this for optimal CPU/GPU overlap in real-time applications.
+    pub async fn eval_batch_async(&self, points: &[Vec3]) -> Result<Vec<f32>, GpuError> {
+        match &self.engine {
+            Engine::Wgpu(w) => w.eval_batch_async(points).await,
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            Engine::Metal(m) => m.eval_batch(points),
+        }
+    }
+
+    // ========== Dynamic Parameter Binding ==========
+
+    /// Create a new GPU evaluator with Dynamic parameter binding
+    ///
+    /// In Dynamic mode, SDF parameters (radius, size, blend ratio, etc.)
+    /// can be updated at 60fps without shader recompilation via `update_params()`.
+    pub fn new_dynamic(node: &SdfNode) -> Result<Self, GpuError> {
+        #[cfg(all(target_os = "macos", feature = "msl"))]
+        {
+            super::gpu_metal::MetalEngine::new_dynamic(node).map(|m| Self {
+                engine: Engine::Metal(m),
+            })
+        }
+        #[cfg(not(all(target_os = "macos", feature = "msl")))]
+        {
+            WgpuEngine::new_dynamic(node).map(|w| Self {
+                engine: Engine::Wgpu(w),
+            })
+        }
+    }
+
+    /// Update SDF parameters without recompiling shaders
+    ///
+    /// Traverses the node tree in the same order as transpilation to extract
+    /// current values, then uploads them to the GPU.
+    ///
+    /// This is a zero-latency operation suitable for 60fps animation.
+    ///
+    /// # Panics
+    /// Panics if the evaluator was not created with `new_dynamic()`.
+    pub fn update_params(&self, node: &SdfNode) {
+        match &self.engine {
+            Engine::Wgpu(w) => w.update_params(node),
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            Engine::Metal(m) => m.update_params(node),
+        }
+    }
+
+    /// Evaluate the SDF at multiple points, returning both distance and normal
+    ///
+    /// Uses GPU-side Tetrahedral Method for normal estimation (4 SDF evaluations).
+    /// Output is `(distance, normal)` per point.
+    ///
+    /// # Panics
+    /// Panics if the evaluator was not created with `new_dynamic()`.
+    pub fn eval_batch_full(&self, points: &[Vec3]) -> Result<Vec<(f32, Vec3)>, GpuError> {
+        match &self.engine {
+            Engine::Wgpu(w) => w.eval_batch_full(points),
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            Engine::Metal(m) => m.eval_batch_full(points),
+        }
+    }
+
+    /// Package a batch for GPU evaluation and return a handle to run it
+    ///
+    /// Nothing is dispatched here: the batch is evaluated when the handle is
+    /// consumed, by [`GpuEvalFuture::wait`] (blocking, `eval_batch`) or
+    /// [`GpuEvalFuture::resolve`] (async, `eval_batch_async`). The handle
+    /// borrows the evaluator, so the borrow checker keeps the evaluator alive
+    /// until the handle is consumed (until 5.0.0 the handle held a raw pointer
+    /// and dropping the evaluator first was a use-after-free in safe code).
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use alice_sdf::prelude::*;
+    /// # use alice_sdf::compiled::GpuEvaluator;
+    /// let gpu = GpuEvaluator::new(&SdfNode::sphere(1.0)).unwrap();
+    /// let future = gpu.eval_batch_submit(vec![Vec3::ZERO, Vec3::X]);
+    /// // Do other CPU work here...
+    /// let distances = future.wait().unwrap();
+    /// assert_eq!(distances.len(), 2);
+    /// ```
+    pub const fn eval_batch_submit(&self, points: Vec<Vec3>) -> GpuEvalFuture<'_> {
+        GpuEvalFuture::new(self, points)
+    }
+}
+
+/// The buffers behind a [`GpuBufferPool`], on the backend of the evaluator that made it.
+enum PoolBuffers {
+    #[cfg_attr(
+        all(target_os = "macos", feature = "msl", not(feature = "glsl")),
+        allow(
+            dead_code,
+            reason = "on macOS with msl only from_glsl_compute builds the wgpu engine"
+        )
+    )]
+    Wgpu(WgpuPool),
+    #[cfg(all(target_os = "macos", feature = "msl"))]
+    Metal(super::gpu_metal::MetalPool),
+}
+
+/// Persistent GPU buffer pool for repeated evaluations
+///
+/// Avoids the overhead of creating and destroying GPU buffers for every
+/// `eval_batch` call. Buffers are allocated once and reused, only growing
+/// when the batch size exceeds current capacity.
+///
+/// # Performance
+///
+/// Buffer creation is one of the most expensive GPU operations.
+/// By reusing buffers, `eval_batch_pooled` can be 2-5x faster than
+/// `eval_batch` for repeated calls with similar-sized batches.
+pub struct GpuBufferPool {
+    /// Current capacity (number of points)
+    pub capacity: usize,
+    buffers: PoolBuffers,
+}
+
+impl GpuBufferPool {
+    const fn from_wgpu(pool: WgpuPool) -> Self {
+        Self {
+            capacity: pool.capacity,
+            buffers: PoolBuffers::Wgpu(pool),
+        }
+    }
+
+    #[cfg(all(target_os = "macos", feature = "msl"))]
+    const fn from_metal(pool: super::gpu_metal::MetalPool) -> Self {
+        Self {
+            capacity: pool.capacity(),
+            buffers: PoolBuffers::Metal(pool),
+        }
+    }
+
+    /// Mirror the backend pool's capacity after it may have grown.
+    const fn sync_capacity(&mut self) {
+        self.capacity = match &self.buffers {
+            PoolBuffers::Wgpu(p) => p.capacity,
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            PoolBuffers::Metal(p) => p.capacity(),
+        };
     }
 }
 

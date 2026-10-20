@@ -696,6 +696,75 @@ class MacosIndex(unittest.TestCase):
         self.assertEqual(sr.main(["--root", str(d)]), 1)
 
 
+class TargetOnly(unittest.TestCase):
+    """`target-only: <index> <file>` lines of the baseline (--check-baseline)."""
+
+    LINE = "target-only: macos.scip src/metal.rs\n"
+
+    def crate(self, mac_indexes=("macos.scip",), line: str = LINE, extra: list[Doc] | None = None) -> Path:
+        d = MacosIndex().crate([MacosIndex().mac_doc(indexes=mac_indexes), *(extra or [])])
+        b = d / "scripts" / "integration-baseline.txt"
+        b.write_text(b.read_text(encoding="utf-8") + line, encoding="utf-8")
+        return d
+
+    def check(self, d: Path) -> tuple[int, str, str]:
+        import contextlib
+        import io
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = sr.main(["--root", str(d), "--check-baseline"])
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_a_file_only_its_index_defines_passes(self):
+        rc, out, _err = self.check(self.crate())
+        self.assertEqual(rc, 0)
+        self.assertIn("target-only macos.scip src/metal.rs: 2/2 pub items defined", out)
+
+    def test_an_item_the_index_does_not_define_fails(self):
+        # its unindexed line listed in the baseline, so only the target-only check can fail it
+        d = self.crate(mac_indexes=())
+        b = d / "scripts" / "integration-baseline.txt"
+        b.write_text(b.read_text(encoding="utf-8") + "".join(f"unindexed: {k}\n" for k in MacosIndex.KEYS),
+                     encoding="utf-8")
+        rc, _out, err = self.check(d)
+        self.assertEqual(rc, 1)
+        self.assertIn("target-only src/metal.rs::on_mac: not defined by macos.scip", err)
+        self.assertNotIn("new unindexed", err)
+
+    def test_a_file_another_index_defines_too_fails(self):
+        rc, _out, err = self.check(self.crate(mac_indexes=("native.scip", "macos.scip")))
+        self.assertEqual(rc, 1)
+        self.assertIn("also defined by native.scip", err)
+
+    def test_a_missing_file_or_a_file_without_pub_items_fails(self):
+        rc, _out, err = self.check(self.crate(line="target-only: macos.scip src/gone.rs\n"))
+        self.assertEqual(rc, 1)
+        self.assertIn("src/gone.rs does not exist", err)
+        empty = Doc("src/empty.rs", "fn private() {}", indexes=("macos.scip",))
+        rc, _out, err = self.check(self.crate(line="target-only: macos.scip src/empty.rs\n", extra=[empty]))
+        self.assertEqual(rc, 1)
+        self.assertIn("has no pub item", err)
+
+    def test_an_unknown_index_fails(self):
+        rc, _out, err = self.check(self.crate(line="target-only: ios.scip src/metal.rs\n"))
+        self.assertEqual(rc, 1)
+        self.assertIn("expected", err)
+
+    def test_write_baseline_keeps_the_line(self):
+        d = self.crate()
+        self.assertEqual(sr.main(["--root", str(d), "--write-baseline"]), 0)
+        text = (d / "scripts" / "integration-baseline.txt").read_text(encoding="utf-8")
+        self.assertIn(self.LINE, text)
+        self.assertEqual(self.check(d)[0], 0)
+
+    def test_this_repository_declares_the_metal_backend(self):
+        root = Path(__file__).resolve().parent.parent
+        text = (root / "scripts" / "integration-baseline.txt").read_text(encoding="utf-8")
+        self.assertIn("target-only: macos.scip src/compiled/wgsl/gpu_metal.rs\n", text)
+        # the pub items the macOS index must define (measured: 11 pub(super) items)
+        self.assertEqual(len(sr.pub_items(root, "src/compiled/wgsl/gpu_metal.rs")), 11)
+
+
 class GuardedIndexes(unittest.TestCase):
     """The wasm and macOS indexes each define src/ pub items, or the run fails."""
 

@@ -1085,6 +1085,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "godot" = "the Godot binding framework; values come from the engine in the same process"
 "js-sys" = "JavaScript bindings of the wasm module; values come from the page in the same process"
 "log" = "logging facade"
+"metal" = "binds the system Metal API for the msl GPU backend (src/compiled/wgsl/gpu_metal.rs); the only bytes it receives are the MSL text this crate generates through naga, compiled with new_library_with_source; no library is loaded from data, a file or a URL, and neither the default library nor a binary archive is used (tests/test_metal_library_from_source_only.rs)"
 "numpy" = "NumPy arrays passed in the same process to the Python binding"
 "png" = "only its encoder is used, to write this crate's own heightmap as a PNG (Heightmap::to_png); PNG input is decoded by image, which is in parser_crates"
 "pollster" = "blocks on futures of the GPU code"

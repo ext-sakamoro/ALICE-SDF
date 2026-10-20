@@ -71,7 +71,7 @@ terrain = []  # Terrain system (heightmap + erosion + caves)
 gi = ["svo"]  # Cone tracing global illumination
 hlsl = []  # HLSL transpiler for UE5/DirectX
 glsl = []  # GLSL transpiler for Unity/OpenGL/Vulkan
-msl = ["gpu", "dep:naga"]  # MSL emit for Metal/Apple (WGSL -> naga -> MSL、法則は WGSL 単一 source)
+msl = ["gpu", "dep:naga", "dep:metal"]  # MSL emit for Metal/Apple (WGSL -> naga -> MSL、法則は WGSL 単一 source)
 rust = []  # Rust source emit (fn sdf / fn normal) bit-identical to eval_compiled, for build.rs
 blinkscript = ["hlsl"]  # BlinkScript transpiler for Foundry Nuke (delegates to HLSL body)
 # Bridge features. codec / physics / asp / sdf-cache resolve to the sibling
@@ -204,6 +204,11 @@ gltf = { version = "1", default-features = false }
 # Toolchain component is needed. Same version wgpu-hal already pulls in.
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 metal = "0.31"
+
+# The Metal backend of GpuEvaluator (src/compiled/wgsl/gpu_metal.rs): the `msl` feature
+# runs the WGSL kernel as MslShader's MSL with fast math off. Same version as above.
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = { version = "0.31", optional = true }
 
 [[bench]]
 name = "sdf_eval"

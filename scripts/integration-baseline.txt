@@ -5,6 +5,8 @@
 # Lines starting with "unindexed: " are pub items the SCIP index has no
 # definition for (macro_rules bodies); they have no level, the same ratchet
 # applies to them.
+# Lines starting with "target-only: " name an index and a file compiled for that
+# target only: every pub item of the file is defined by that index and by no other.
 src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph
 src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function
 src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED
@@ -21,3 +23,4 @@ unindexed: src/font_bridge.rs::glyph_to_3d
 unindexed: src/font_bridge.rs::glyph_to_sdf2d
 unindexed: src/font_bridge.rs::text_to_3d
 unindexed: src/font_bridge.rs::text_to_sdf2d
+target-only: macos.scip src/compiled/wgsl/gpu_metal.rs

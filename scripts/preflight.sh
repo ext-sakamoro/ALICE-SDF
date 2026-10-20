@@ -421,6 +421,9 @@ cargo test --lib --features "ffi,hlsl,glsl"
 if [ "$(uname -s)" = "Darwin" ]; then
   step "test: MSL -> Metal oracle (corpus compile + CPU parity, macOS のみ)"
   ALICE_SDF_REQUIRE_METAL=1 cargo test --features msl --test test_msl_metal_oracle -- --nocapture
+  step "test: GpuEvaluator on Metal does not fuse a multiply-add (msl、ci.yml の macOS step と対、走った件数 0 で fail)"
+  ALICE_SDF_REQUIRE_METAL=1 cargo test --features msl --test test_gpu_fma_contraction -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-gpu-fma.log"
+  python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-gpu-fma.log" --min 1 --what "GpuEvaluator fma contraction tests (msl, Metal)"
 else
   step "skip: MSL -> Metal oracle (Metal は macOS のみ)"
 fi

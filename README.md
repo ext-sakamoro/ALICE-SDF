@@ -210,7 +210,7 @@ permissively licensed crates.
 | `volume` | | Bake a field into a 3D texture. Implies `gpu`. |
 | `glsl` | | GLSL output (Unity, OpenGL, Vulkan, Shadertoy). |
 | `hlsl` | | HLSL output (Unreal Engine, DirectX). |
-| `msl` | | Metal Shading Language output, converted from WGSL with naga. Implies `gpu`. |
+| `msl` | | Metal Shading Language output, converted from WGSL with naga. On macOS it also runs `GpuEvaluator` on Metal with fast math off, so `a * b + c` keeps two roundings. Implies `gpu`. |
 | `blinkscript` | | BlinkScript output for Nuke. Implies `hlsl`. |
 | `rust` | | Dependency-free Rust source (`fn sdf`, `fn normal`) bit-identical to `eval_compiled`, for `build.rs`. |
 | `all-shaders` | | `gpu`, `glsl`, `hlsl`, `msl` and `blinkscript`. |
