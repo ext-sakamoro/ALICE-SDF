@@ -39,6 +39,6 @@ float sdf_helix(float3 p, float major_r, float minor_r, float pitch, float hh) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_helix(p, 0.6, 0.1, 0.5, 0.4);
+    precise float d0 = sdf_helix(p, 0.6, 0.1, 0.5, 0.4);
     return d0;
 }

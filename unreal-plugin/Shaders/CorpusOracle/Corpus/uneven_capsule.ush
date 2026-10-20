@@ -20,6 +20,6 @@ float sdf_uneven_capsule(float3 p, float r1, float r2, float ch, float hd) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_uneven_capsule(p, 0.3, 0.2, 0.25, 0.1);
+    precise float d0 = sdf_uneven_capsule(p, 0.3, 0.2, 0.25, 0.1);
     return d0;
 }

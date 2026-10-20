@@ -13,6 +13,6 @@ float sdf_rounded_cone(float3 p, float r1, float r2, float h) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_rounded_cone(p, 0.4, 0.2, 0.3);
+    precise float d0 = sdf_rounded_cone(p, 0.4, 0.2, 0.3);
     return d0;
 }

@@ -16,6 +16,6 @@ float sdf_horseshoe(float3 pos, float an, float r, float le, float w, float t) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_horseshoe(p, 0.8, 0.5, 0.15, 0.1, 0.2);
+    precise float d0 = sdf_horseshoe(p, 0.8, 0.5, 0.15, 0.1, 0.2);
     return d0;
 }

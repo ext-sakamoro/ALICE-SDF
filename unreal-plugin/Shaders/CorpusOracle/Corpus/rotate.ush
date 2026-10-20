@@ -5,8 +5,8 @@ float3 quat_rotate(float3 v, float4 q) {
     return v + q.w * t + cross(q.xyz, t);
 }
 float sdf_eval(float3 p) {
-    float3 d0 = quat_rotate(p, float4(-0.0, -0.3428978, -0.0, 0.9393727));
-    float3 d1 = abs(d0) - float3(0.25, 0.2, 0.15);
-    float d2 = length(max(d1, float3(0.0, 0.0, 0.0))) + min(max(d1.x, max(d1.y, d1.z)), 0.0);
+    precise float3 d0 = quat_rotate(p, float4(-0.0, -0.3428978, -0.0, 0.9393727));
+    precise float3 d1 = abs(d0) - float3(0.25, 0.2, 0.15);
+    precise float d2 = length(max(d1, float3(0.0, 0.0, 0.0))) + min(max(d1.x, max(d1.y, d1.z)), 0.0);
     return d2;
 }

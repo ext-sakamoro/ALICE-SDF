@@ -14,6 +14,6 @@ float sdf_cross_shape(float3 p, float len, float th, float rr, float h) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_cross_shape(p, 0.6, 0.2, 0.05, 0.1);
+    precise float d0 = sdf_cross_shape(p, 0.6, 0.2, 0.05, 0.1);
     return d0;
 }

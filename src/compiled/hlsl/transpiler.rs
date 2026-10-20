@@ -55,28 +55,28 @@ impl ShaderLang for HlslLang {
         format!("float3({0}, {0}, {0})", v)
     }
     fn decl_float(name: &str, expr: &str) -> String {
-        format!("    float {} = {};\n", name, expr)
+        format!("    precise float {} = {};\n", name, expr)
     }
     fn decl_vec2(name: &str, expr: &str) -> String {
-        format!("    float2 {} = {};\n", name, expr)
+        format!("    precise float2 {} = {};\n", name, expr)
     }
     fn decl_vec3(name: &str, expr: &str) -> String {
-        format!("    float3 {} = {};\n", name, expr)
+        format!("    precise float3 {} = {};\n", name, expr)
     }
     fn decl_mut_float(name: &str, expr: &str) -> String {
-        format!("    float {} = {};\n", name, expr)
+        format!("    precise float {} = {};\n", name, expr)
     }
     fn decl_mut_vec2(name: &str, expr: &str) -> String {
-        format!("    float2 {} = {};\n", name, expr)
+        format!("    precise float2 {} = {};\n", name, expr)
     }
     fn decl_mut_vec3(name: &str, expr: &str) -> String {
-        format!("    float3 {} = {};\n", name, expr)
+        format!("    precise float3 {} = {};\n", name, expr)
     }
     fn decl_mut_float_typed(name: &str) -> String {
-        format!("    float {};\n", name)
+        format!("    precise float {};\n", name)
     }
     fn decl_mut_vec3_typed(name: &str) -> String {
-        format!("    float3 {};\n", name)
+        format!("    precise float3 {};\n", name)
     }
     fn select_expr(cond: &str, true_val: &str, false_val: &str) -> String {
         format!("(({}) ? {} : {})", cond, true_val, false_val)

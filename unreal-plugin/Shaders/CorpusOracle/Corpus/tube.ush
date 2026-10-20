@@ -9,6 +9,6 @@ float sdf_tube(float3 p, float outer_r, float thick, float h) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_tube(p, 0.5, 0.1, 0.2);
+    precise float d0 = sdf_tube(p, 0.5, 0.1, 0.2);
     return d0;
 }

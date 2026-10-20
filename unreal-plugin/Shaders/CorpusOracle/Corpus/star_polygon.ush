@@ -34,6 +34,6 @@ float sdf_star_polygon(float3 p, float radius, float np, float m, float hh) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_star_polygon(p, 0.6, 5.0, 0.3, 0.1);
+    precise float d0 = sdf_star_polygon(p, 0.6, 5.0, 0.3, 0.1);
     return d0;
 }

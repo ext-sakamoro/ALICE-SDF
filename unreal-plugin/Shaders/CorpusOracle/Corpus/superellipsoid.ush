@@ -15,6 +15,6 @@ float sdf_superellipsoid(float3 p, float hx, float hy, float hz, float e1, float
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_superellipsoid(p, 0.25, 0.2, 0.15, 0.8, 1.2);
+    precise float d0 = sdf_superellipsoid(p, 0.25, 0.2, 0.15, 0.8, 1.2);
     return d0;
 }

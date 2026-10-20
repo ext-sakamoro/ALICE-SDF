@@ -21,8 +21,8 @@ float sdf_pyramid(float3 p, float h) {
 }
 
 float sdf_eval(float3 p) {
-    float3 d0 = p - float3(0.0, 3.0, 0.0);
-    float3 d1 = d0 - float3(3.5, 3.5, 3.5) * clamp(floor(d0 * float3(0.2857143, 0.2857143, 0.2857143) + 0.5), -float3(1.5, 1.5, 1.5), float3(1.5, 1.5, 1.5));
-    float d2 = sdf_pyramid(d1, 0.75);
+    precise float3 d0 = p - float3(0.0, 3.0, 0.0);
+    precise float3 d1 = d0 - float3(3.5, 3.5, 3.5) * clamp(floor(d0 * float3(0.2857143, 0.2857143, 0.2857143) + 0.5), -float3(1.5, 1.5, 1.5), float3(1.5, 1.5, 1.5));
+    precise float d2 = sdf_pyramid(d1, 0.75);
     return d2;
 }

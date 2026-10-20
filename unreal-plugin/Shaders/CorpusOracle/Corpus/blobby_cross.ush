@@ -24,6 +24,6 @@ float sdf_blobby_cross(float3 p, float size, float hh) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_blobby_cross(p, 0.6, 0.1);
+    precise float d0 = sdf_blobby_cross(p, 0.6, 0.1);
     return d0;
 }

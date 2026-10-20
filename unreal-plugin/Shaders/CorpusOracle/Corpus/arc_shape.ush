@@ -16,6 +16,6 @@ float sdf_arc_shape(float3 p, float aperture, float radius, float thickness, flo
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_arc_shape(p, 0.8, 0.6, 0.1, 0.1);
+    precise float d0 = sdf_arc_shape(p, 0.8, 0.6, 0.1, 0.1);
     return d0;
 }

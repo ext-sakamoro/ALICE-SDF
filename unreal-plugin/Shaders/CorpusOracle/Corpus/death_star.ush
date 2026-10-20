@@ -10,6 +10,6 @@ float sdf_death_star(float3 p, float ra, float rb, float d) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_death_star(p, 0.6, 0.4, 0.5);
+    precise float d0 = sdf_death_star(p, 0.6, 0.4, 0.5);
     return d0;
 }

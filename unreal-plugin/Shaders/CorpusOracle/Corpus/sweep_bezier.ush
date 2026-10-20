@@ -44,8 +44,8 @@ float bezier_distance_2d(float2 q, float2 p0, float2 p1, float2 p2) {
 }
 
 float sdf_eval(float3 p) {
-    float3 d1 = float3(bezier_distance_2d(float2(p.x, p.z), float2(-1.0, 0.0), float2(0.0, 1.0), float2(1.0, 0.0)), p.y, 0.0);
-    float d2 = length(d1) - 0.6;
-    float d0 = d2;
+    precise float3 d1 = float3(bezier_distance_2d(float2(p.x, p.z), float2(-1.0, 0.0), float2(0.0, 1.0), float2(1.0, 0.0)), p.y, 0.0);
+    precise float d2 = length(d1) - 0.6;
+    precise float d0 = d2;
     return d0;
 }

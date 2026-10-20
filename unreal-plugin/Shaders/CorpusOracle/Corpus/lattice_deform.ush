@@ -2,8 +2,8 @@
 // corpus node `lattice_deform`: HlslShader::transpile(.., Hardcoded)
 static const float alice_ffd_cp_0[24] = { -1.1, -1.1, -1.1, 1.1, -1.1, -1.1, -1.1, 1.1, -1.1, 1.1, 1.1, -1.1, -1.1, -1.1, 1.1, 1.1, -1.1, 1.1, -1.1, 1.1, 1.1, 1.1, 1.1, 1.1 };
 float3 alice_ffd_0(float3 p) {
-    float3 s = clamp((p - float3(-1.0, -1.0, -1.0)) * float3(0.5, 0.5, 0.5), float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0));
-    float3 r = float3(0.0, 0.0, 0.0);
+    precise float3 s = clamp((p - float3(-1.0, -1.0, -1.0)) * float3(0.5, 0.5, 0.5), float3(0.0, 0.0, 0.0), float3(1.0, 1.0, 1.0));
+    precise float3 r = float3(0.0, 0.0, 0.0);
     r = r + float3(alice_ffd_cp_0[0], alice_ffd_cp_0[1], alice_ffd_cp_0[2]) * (((1.0 - s.x) * (1.0 - s.x) * (1.0 - s.x)) * ((1.0 - s.y) * (1.0 - s.y) * (1.0 - s.y)) * ((1.0 - s.z) * (1.0 - s.z) * (1.0 - s.z)));
     r = r + float3(alice_ffd_cp_0[3], alice_ffd_cp_0[4], alice_ffd_cp_0[5]) * (((1.0 - s.x) * (1.0 - s.x) * (1.0 - s.x)) * ((1.0 - s.y) * (1.0 - s.y) * (1.0 - s.y)) * (3.0 * s.z * (1.0 - s.z) * (1.0 - s.z)));
     r = r + float3(alice_ffd_cp_0[6], alice_ffd_cp_0[7], alice_ffd_cp_0[8]) * (((1.0 - s.x) * (1.0 - s.x) * (1.0 - s.x)) * ((1.0 - s.y) * (1.0 - s.y) * (1.0 - s.y)) * (3.0 * s.z * s.z * (1.0 - s.z)));
@@ -15,14 +15,14 @@ float3 alice_ffd_0(float3 p) {
     return r;
 }
 float sdf_eval(float3 p) {
-    float3 d1 = p;
-    float d2 = 1.0;
+    precise float3 d1 = p;
+    precise float d2 = 1.0;
     if (!(p.x < float3(-1.0, -1.0, -1.0).x || p.y < float3(-1.0, -1.0, -1.0).y || p.z < float3(-1.0, -1.0, -1.0).z || p.x > float3(1.0, 1.0, 1.0).x || p.y > float3(1.0, 1.0, 1.0).y || p.z > float3(1.0, 1.0, 1.0).z)) {
         d1 = alice_ffd_0(p);
         d2 = max(length(alice_ffd_0(p + float3(0.001, 0.0, 0.0)) - alice_ffd_0(p - float3(0.001, 0.0, 0.0))) / 0.002, 0.1);
     }
-    float3 d3 = abs(d1) - float3(0.25, 0.2, 0.15);
-    float d4 = length(max(d3, float3(0.0, 0.0, 0.0))) + min(max(d3.x, max(d3.y, d3.z)), 0.0);
-    float d5 = d4 / d2;
+    precise float3 d3 = abs(d1) - float3(0.25, 0.2, 0.15);
+    precise float d4 = length(max(d3, float3(0.0, 0.0, 0.0))) + min(max(d3.x, max(d3.y, d3.z)), 0.0);
+    precise float d5 = d4 / d2;
     return d5;
 }

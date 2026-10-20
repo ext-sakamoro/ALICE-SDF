@@ -9,6 +9,6 @@ float sdf_solid_angle(float3 p, float an, float ra) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_solid_angle(p, 0.8, 0.6);
+    precise float d0 = sdf_solid_angle(p, 0.8, 0.6);
     return d0;
 }

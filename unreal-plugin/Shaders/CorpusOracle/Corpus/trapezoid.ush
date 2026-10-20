@@ -28,6 +28,6 @@ float sdf_trapezoid(float3 p, float r1, float r2, float th, float hd) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_trapezoid(p, 0.5, 0.3, 0.2, 0.1);
+    precise float d0 = sdf_trapezoid(p, 0.5, 0.3, 0.2, 0.1);
     return d0;
 }

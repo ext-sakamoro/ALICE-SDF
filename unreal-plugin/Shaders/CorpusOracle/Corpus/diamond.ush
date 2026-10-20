@@ -12,6 +12,6 @@ float sdf_diamond(float3 p, float r, float h) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_diamond(p, 0.5, 0.35);
+    precise float d0 = sdf_diamond(p, 0.5, 0.35);
     return d0;
 }

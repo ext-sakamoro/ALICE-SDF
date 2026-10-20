@@ -55,28 +55,28 @@ impl ShaderLang for GlslLang {
         format!("vec3({})", v)
     }
     fn decl_float(name: &str, expr: &str) -> String {
-        format!("    float {} = {};\n", name, expr)
+        format!("    ALICE_PRECISE float {} = {};\n", name, expr)
     }
     fn decl_vec2(name: &str, expr: &str) -> String {
-        format!("    vec2 {} = {};\n", name, expr)
+        format!("    ALICE_PRECISE vec2 {} = {};\n", name, expr)
     }
     fn decl_vec3(name: &str, expr: &str) -> String {
-        format!("    vec3 {} = {};\n", name, expr)
+        format!("    ALICE_PRECISE vec3 {} = {};\n", name, expr)
     }
     fn decl_mut_float(name: &str, expr: &str) -> String {
-        format!("    float {} = {};\n", name, expr)
+        format!("    ALICE_PRECISE float {} = {};\n", name, expr)
     }
     fn decl_mut_vec2(name: &str, expr: &str) -> String {
-        format!("    vec2 {} = {};\n", name, expr)
+        format!("    ALICE_PRECISE vec2 {} = {};\n", name, expr)
     }
     fn decl_mut_vec3(name: &str, expr: &str) -> String {
-        format!("    vec3 {} = {};\n", name, expr)
+        format!("    ALICE_PRECISE vec3 {} = {};\n", name, expr)
     }
     fn decl_mut_float_typed(name: &str) -> String {
-        format!("    float {};\n", name)
+        format!("    ALICE_PRECISE float {};\n", name)
     }
     fn decl_mut_vec3_typed(name: &str) -> String {
-        format!("    vec3 {};\n", name)
+        format!("    ALICE_PRECISE vec3 {};\n", name)
     }
     fn select_expr(cond: &str, true_val: &str, false_val: &str) -> String {
         format!("(({}) ? {} : {})", cond, true_val, false_val)
@@ -628,12 +628,27 @@ impl GlslTranspiler {
             GenericTranspiler::new(TranspileModeLang::Hardcoded);
         generic.helper_functions.clone_from(&self.helper_functions);
         generic.globals.clone_from(&self.globals);
-        generic.generate_shader(body)
+        format!("{PRECISE_MACRO}{}", generic.generate_shader(body))
     }
 
     // transpile_node_inner has been moved to GenericTranspiler<GlslLang>
     // in transpiler_common.rs — see the transpile_node delegation method above.
 }
+
+/// ALICE-Law G3: every floating-point local is declared `ALICE_PRECISE`, so a
+/// compiler may not contract `a * b + c` into one rounding. `precise` exists from
+/// GLSL 4.00 and GLSL ES 3.20; on an older version (GLSL 3.30, GLSL ES 3.00, the
+/// WebGL2 version of `render_pipeline`) the macro is empty and contraction is
+/// left to the driver: a residual of the version the caller chooses.
+const PRECISE_MACRO: &str = r"#ifndef ALICE_PRECISE
+#if (defined(GL_ES) && __VERSION__ >= 320) || (!defined(GL_ES) && __VERSION__ >= 400)
+#define ALICE_PRECISE precise
+#else
+#define ALICE_PRECISE
+#endif
+#endif
+
+";
 
 // Helper function definitions for GLSL
 const HELPER_TAPER_BOUND: &str = r"// Same law as `alice_sdf::compiled::real::taper_bound` (Jacobian ball + cone ∩ slab).

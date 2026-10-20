@@ -9,6 +9,6 @@ float sdf_vesica(float3 p, float r, float d) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_vesica(p, 0.6, 0.15);
+    precise float d0 = sdf_vesica(p, 0.6, 0.15);
     return d0;
 }

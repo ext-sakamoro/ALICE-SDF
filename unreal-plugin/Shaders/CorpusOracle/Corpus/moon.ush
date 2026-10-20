@@ -12,6 +12,6 @@ float sdf_moon(float3 p, float d, float ra, float rb, float h) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_moon(p, 0.3, 0.6, 0.5, 0.1);
+    precise float d0 = sdf_moon(p, 0.3, 0.6, 0.5, 0.1);
     return d0;
 }

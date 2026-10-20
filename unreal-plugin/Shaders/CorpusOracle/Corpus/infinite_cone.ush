@@ -8,6 +8,6 @@ float sdf_infinite_cone(float3 p, float an) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_infinite_cone(p, 0.6);
+    precise float d0 = sdf_infinite_cone(p, 0.6);
     return d0;
 }

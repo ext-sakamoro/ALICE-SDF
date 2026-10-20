@@ -25,7 +25,7 @@ float sdf_pyramid(float3 p, float h) {
 }
 
 float sdf_eval(float3 p) {
-    float3 d0 = quat_rotate(p, float4(-0.0, 0.9995736, -0.0, -0.029199546));
-    float d1 = sdf_pyramid(d0, 0.75);
+    precise float3 d0 = quat_rotate(p, float4(-0.0, 0.9995736, -0.0, -0.029199546));
+    precise float d1 = sdf_pyramid(d0, 0.75);
     return d1;
 }

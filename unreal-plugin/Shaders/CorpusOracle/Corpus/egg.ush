@@ -17,6 +17,6 @@ float sdf_egg(float3 p, float ra, float rb) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_egg(p, 0.5, 0.3);
+    precise float d0 = sdf_egg(p, 0.5, 0.3);
     return d0;
 }

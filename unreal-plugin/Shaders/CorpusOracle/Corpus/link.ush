@@ -9,6 +9,6 @@ float sdf_link(float3 p, float le, float r1, float r2) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_link(p, 0.2, 0.3, 0.1);
+    precise float d0 = sdf_link(p, 0.2, 0.3, 0.1);
     return d0;
 }

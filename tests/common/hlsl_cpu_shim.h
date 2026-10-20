@@ -28,6 +28,12 @@
 #ifndef ALICE_SDF_HLSL_CPU_SHIM_H
 #define ALICE_SDF_HLSL_CPU_SHIM_H
 
+// HLSL `precise` forbids contracting the computation of a variable (ALICE-Law
+// G3). C++ has no such qualifier; the harness compiles every unit with
+// `-ffp-contract=off`, which forbids contraction everywhere, so the qualifier
+// is empty here and the values are the ones `precise` asks of a driver.
+#define precise
+
 typedef unsigned int uint;
 
 // ---------------------------------------------------------------------------

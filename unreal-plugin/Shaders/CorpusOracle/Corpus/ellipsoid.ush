@@ -84,6 +84,6 @@ float sdf_ellipsoid(float3 p, float3 radii) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_ellipsoid(p, float3(0.6, 0.4, 0.3));
+    precise float d0 = sdf_ellipsoid(p, float3(0.6, 0.4, 0.3));
     return d0;
 }

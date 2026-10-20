@@ -50,8 +50,8 @@ float perlin_noise_3d(float3 p, uint seed) {
     return y0 + w * (y1 - y0);
 }
 float sdf_eval(float3 p) {
-    float d0 = length(p) - 0.6;
-    float d1 = perlin_noise_3d(p * 2.0, 42u);
-    float d2 = d0 + d1 * 0.1;
+    precise float d0 = length(p) - 0.6;
+    precise float d1 = perlin_noise_3d(p * 2.0, 42u);
+    precise float d2 = d0 + d1 * 0.1;
     return d2;
 }

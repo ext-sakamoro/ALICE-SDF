@@ -27,6 +27,6 @@ float sdf_regular_polygon(float3 p, float radius, float n, float hh) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_regular_polygon(p, 0.6, 6.0, 0.1);
+    precise float d0 = sdf_regular_polygon(p, 0.6, 6.0, 0.1);
     return d0;
 }

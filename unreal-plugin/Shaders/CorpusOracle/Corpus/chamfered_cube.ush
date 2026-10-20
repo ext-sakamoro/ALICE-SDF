@@ -10,6 +10,6 @@ float sdf_chamfered_cube(float3 p, float hx, float hy, float hz, float ch) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_chamfered_cube(p, 0.25, 0.2, 0.15, 0.1);
+    precise float d0 = sdf_chamfered_cube(p, 0.25, 0.2, 0.15, 0.1);
     return d0;
 }

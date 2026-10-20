@@ -13,6 +13,6 @@ float sdf_octahedron(float3 p, float s) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_octahedron(p, 0.6);
+    precise float d0 = sdf_octahedron(p, 0.6);
     return d0;
 }

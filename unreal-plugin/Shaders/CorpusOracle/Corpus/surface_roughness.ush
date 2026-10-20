@@ -31,14 +31,14 @@ float hash_noise_3d(float3 p, uint seed) {
     return (c0 + (c1 - c0) * u.z) * 2.0 - 1.0;
 }
 float sdf_eval(float3 p) {
-    float d0 = length(p) - 0.6;
-    float3 d3 = p * 3.0;
-    float d2 = 0.0;
-    float d2_a = 1.0;
+    precise float d0 = length(p) - 0.6;
+    precise float3 d3 = p * 3.0;
+    precise float d2 = 0.0;
+    precise float d2_a = 1.0;
     d2 = d2 + d2_a * hash_noise_3d(d3 * 1.0, 42u);
     d2_a = d2_a * 0.5;
     d2 = d2 + d2_a * hash_noise_3d(d3 * 2.0, 42u);
     d2_a = d2_a * 0.5;
-    float d1 = d0 + 0.05 * d2;
+    precise float d1 = d0 + 0.05 * d2;
     return d1;
 }

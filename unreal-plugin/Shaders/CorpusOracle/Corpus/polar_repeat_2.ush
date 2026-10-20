@@ -10,15 +10,15 @@ float alice_atan2(float y, float x) {
 }
 
 float sdf_eval(float3 p) {
-    float d1 = alice_atan2(p.z, p.x);
-    float d2 = 6.2831855 / 2.0;
-    float d3 = 2.0 / 6.2831855;
-    float d4 = floor(d1 * d3 + 0.5) * d2;
-    float d5 = cos(d4);
-    float d6 = sin(d4);
-    float3 d7 = float3(d5 * p.x + d6 * p.z, p.y, -d6 * p.x + d5 * p.z);
-    float3 d8 = d7 - float3(0.8, 0.0, 0.0);
-    float d9 = length(d8) - 0.6;
-    float d0 = d9;
+    precise float d1 = alice_atan2(p.z, p.x);
+    precise float d2 = 6.2831855 / 2.0;
+    precise float d3 = 2.0 / 6.2831855;
+    precise float d4 = floor(d1 * d3 + 0.5) * d2;
+    precise float d5 = cos(d4);
+    precise float d6 = sin(d4);
+    precise float3 d7 = float3(d5 * p.x + d6 * p.z, p.y, -d6 * p.x + d5 * p.z);
+    precise float3 d8 = d7 - float3(0.8, 0.0, 0.0);
+    precise float d9 = length(d8) - 0.6;
+    precise float d0 = d9;
     return d0;
 }

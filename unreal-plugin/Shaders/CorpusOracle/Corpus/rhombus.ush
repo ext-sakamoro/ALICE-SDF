@@ -13,6 +13,6 @@ float sdf_rhombus(float3 p, float la, float lb, float h, float ra) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_rhombus(p, 0.5, 0.3, 0.1, 0.05);
+    precise float d0 = sdf_rhombus(p, 0.5, 0.3, 0.1, 0.05);
     return d0;
 }

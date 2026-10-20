@@ -11,6 +11,6 @@ float sdf_barrel(float3 p, float radius, float h, float bulge) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_barrel(p, 0.5, 0.3, 0.2);
+    precise float d0 = sdf_barrel(p, 0.5, 0.3, 0.2);
     return d0;
 }

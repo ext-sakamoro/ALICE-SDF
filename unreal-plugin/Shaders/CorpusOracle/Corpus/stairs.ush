@@ -23,6 +23,6 @@ float sdf_stairs(float3 p, float sw, float sh, float ns, float hd) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_stairs(p, 0.3, 0.2, 4.0, 0.15);
+    precise float d0 = sdf_stairs(p, 0.3, 0.2, 4.0, 0.15);
     return d0;
 }

@@ -8,6 +8,6 @@ float sdf_capped_torus(float3 p, float ra, float rb, float an) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_capped_torus(p, 0.6, 0.2, 1.0);
+    precise float d0 = sdf_capped_torus(p, 0.6, 0.2, 1.0);
     return d0;
 }

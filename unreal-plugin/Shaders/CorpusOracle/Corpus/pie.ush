@@ -15,6 +15,6 @@ float sdf_pie(float3 p, float angle, float radius, float h) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_pie(p, 0.8, 0.6, 0.1);
+    precise float d0 = sdf_pie(p, 0.8, 0.6, 0.1);
     return d0;
 }

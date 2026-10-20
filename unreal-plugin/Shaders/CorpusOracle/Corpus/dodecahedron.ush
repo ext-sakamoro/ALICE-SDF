@@ -11,6 +11,6 @@ float sdf_dodecahedron(float3 p, float r) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_dodecahedron(p, 0.6);
+    precise float d0 = sdf_dodecahedron(p, 0.6);
     return d0;
 }

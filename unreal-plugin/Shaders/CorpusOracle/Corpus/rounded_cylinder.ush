@@ -6,6 +6,6 @@ float sdf_rounded_cylinder(float3 p, float r, float rr, float h) {
 }
 
 float sdf_eval(float3 p) {
-    float d0 = sdf_rounded_cylinder(p, 0.4, 0.1, 0.25);
+    precise float d0 = sdf_rounded_cylinder(p, 0.4, 0.1, 0.25);
     return d0;
 }
