@@ -6,16 +6,16 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 913 |
+| 🟢 Not ignored | 915 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 0 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **913** |
+| **Total** | **915** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🟢 Not ignored (913)
+## 🟢 Not ignored (915)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -128,6 +128,7 @@ Per-file counts (the test names are in `tests/`):
 | `float_environment.rs` | 2 |
 | `noise_shader_validate.rs` | 2 |
 | `test_aabb_unified_oracle.rs` | 2 |
+| `test_bake_stored_forms.rs` | 2 |
 | `test_det_near_zero_parity.rs` | 2 |
 | `test_hlsl_dxc_compile.rs` | 2 |
 | `test_instanced_wgsl_gpu_parity.rs` | 2 |
