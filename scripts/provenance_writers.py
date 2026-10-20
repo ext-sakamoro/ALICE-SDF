@@ -44,6 +44,9 @@ What the scans do not see (known residuals, so a pass is not a proof):
     `String` counts as a stored form only for a `to_*` / `as_*` fn
   * in text mode, a `pub fn` written on the line of its `impl` header (`impl X { pub fn f() ... }`);
     rustfmt never writes that form, and `cargo fmt --check` rejects it
+  * in --index mode, the code of the bindings (src/python/, src/ffi/, src/godot/, src/wasm.rs): the
+    call graph keeps their references as roots, not edges, so their fns are found by the text scan
+    only (src/bin/ is the exception: each of its fns starts from what its body references)
   * in --index mode, what scripts/api_boundary_parsers.py lists for the call graph: calls through a
     function pointer or a stored closure, bodies a macro generates (a `write!` expands to no
     reference), and dynamic dispatch to an impl whose self type is never reached
@@ -259,6 +262,48 @@ def bin_fn_key(path: str, sym: str) -> str | None:
     return f"{path}::{f.group(1)}" if f else None
 
 
+def bin_entries(path: str, occ: list[dict]) -> dict[str, set[str]]:
+    """{`src/bin/x.rs::name`: its symbol and every symbol referenced inside its body (the innermost
+    enclosing fn), and those of the tool's fns it calls} for the fns of a document of the
+    command-line tool; {} for any other document.
+    `occ` holds SCIP occurrences: `symbol`, `roles` (bit 0 = definition), `range`, `enc` (the
+    enclosing range of a definition), each `[line, char, (line,) char]`"""
+    if not path.startswith(BIN_DIR):
+        return {}
+
+    def span(r: list[int]) -> tuple[tuple[int, int], tuple[int, int]] | None:
+        if len(r) == 4:
+            return (r[0], r[1]), (r[2], r[3])
+        return ((r[0], r[1]), (r[0], r[2])) if len(r) == 3 else None
+
+    defs = []  # (start, end, symbol, key)
+    for o in occ:
+        sym = o["symbol"]
+        if o["roles"] & 1 and sym and (key := bin_fn_key(path, sym)) and (enc := span(o.get("enc") or [])):
+            defs.append((enc[0], enc[1], sym, key))
+    out = {key: {sym} for _, _, sym, key in defs}
+    for o in occ:
+        sym = o["symbol"]
+        at = span(o["range"])
+        if o["roles"] & 1 or not sym or sym.startswith("local ") or at is None:
+            continue
+        inside = [d for d in defs if d[0] <= at[0] <= d[1]]
+        if inside:
+            out[max(inside, key=lambda d: d[0])[3]].add(sym)
+    # the call graph holds no edge out of a fn of the tool, so a call to another one of its fns
+    # takes that fn's references along (to a fixpoint)
+    by_sym = {sym: key for _, _, sym, key in defs}
+    changed = True
+    while changed:
+        changed = False
+        for key, syms in out.items():
+            more = set().union(*(out[by_sym[x]] for x in syms if x in by_sym)) - syms
+            if more:
+                syms |= more
+                changed = True
+    return out
+
+
 def legacy(key: str) -> str:
     """`src/x.rs::Type::name` -> `src/x.rs::name`, the key form of the lists and the test table"""
     rel, _, rest = key.partition("::")
@@ -295,10 +340,11 @@ def reach_candidates(root: str, index: str) -> tuple[dict[str, set[str]], str | 
                 m = scip_reach.IMPL_METHOD_RE.search(sym)
                 if m and o["roles"] & 1 and doc["path"].startswith("src/"):
                     entries.setdefault(f"{doc['path']}::{m.group(1)}::{m.group(3)}", set()).add(sym)
-                # a fn of the command-line tool is private and no item of the analysis (src/bin/
-                # is one of its roots), yet it writes the files the user keeps: an entry of its own
-                elif o["roles"] & 1 and (key := bin_fn_key(doc["path"], sym)):
-                    entries.setdefault(key, set()).add(sym)
+            # a fn of the command-line tool is private and no item of the analysis; src/bin/ is one
+            # of its roots, so its references are roots, not edges: each fn starts from what its
+            # own body references
+            for key, syms in bin_entries(doc["path"], doc["occ"]).items():
+                entries.setdefault(key, set()).update(syms)
     sinks = {sym for sym in every if (sh := abp.short(sym)) and SINK_SYM.match(sh)}
     if not sinks:
         return {}, commit, "the index holds no write sink (compared nothing)"

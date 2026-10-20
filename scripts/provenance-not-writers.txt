@@ -60,3 +60,8 @@ src/io/asdf.rs::write forwards bytes to the inner writer while summing a CRC (th
 src/io/asdf.rs::flush flushes the inner writer of the CRC-summing CrcWriter used by save_asdf
 src/io/mod.rs::save delegates to save_asdf (and to save_asdf_json for a .asdf.json path)
 src/bin/main.rs::cmd_to_mesh delegates to export_obj
+src/bin/main.rs::cmd_convert delegates to save
+src/bin/main.rs::cmd_demo delegates to save
+src/bin/main.rs::cmd_export picks one library writer by the output extension (obj, glb, fbx, usda, abc, stl, 3mf, ply); each is covered or pending
+src/bin/main.rs::cmd_print picks one library writer by the output extension (3mf, stl, obj, ply); each is covered
+src/bin/main.rs::main dispatches each subcommand to its cmd_ fn; every one that writes is listed here or pending
