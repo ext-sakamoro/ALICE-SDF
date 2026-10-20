@@ -85,9 +85,10 @@ SUB_BY_INDEX = {idx: (prefix, kind) for idx, prefix, kind in SUBCRATES}
 # for one target (`cfg(target_arch = "wasm32")`, `cfg(target_os = "macos")`) is
 # analysed from the index built for that target.
 CRATE_INDEXES = ("native.scip", "wasm.scip", "macos.scip")
-# Indexes that must define at least one `src/` pub item (main() fails otherwise): an empty one would leave its target-only code unindexed and
-# the run would still compare the rest
-GUARDED_INDEXES = ("macos.scip",)
+# Indexes that must define at least one `src/` pub item (main() fails otherwise): an
+# empty one would leave its target-only code unindexed and the run would still compare
+# the rest. The native index is covered by the item count of the whole run
+GUARDED_INDEXES = ("wasm.scip", "macos.scip")
 
 
 def crate_index_paths(index: Path) -> tuple[list[Path], str | None]:
