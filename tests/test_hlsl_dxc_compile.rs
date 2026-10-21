@@ -99,8 +99,9 @@ fn compute_entry(expr: &str) -> String {
         "\nRWStructuredBuffer<float> alice_out : register(u0);\n\
          [numthreads(64, 1, 1)]\n\
          void cs_main(uint3 id : SV_DispatchThreadID) {{\n\
-         \x20   float3 p = float3((float)id.x, (float)id.y, (float)id.z) * 0.01 - 1.0;\n\
-         \x20   alice_out[id.x] = {expr};\n\
+         \x20   precise float3 p = float3((float)id.x, (float)id.y, (float)id.z) * 0.01 - 1.0;\n\
+         \x20   precise float alice_v = {expr};\n\
+         \x20   alice_out[id.x] = alice_v;\n\
          }}\n"
     )
 }
@@ -174,7 +175,8 @@ fn units_for(name: &str, tag: &str, sh: &HlslShader) -> Vec<Unit> {
             src: pixel_entry(
                 "    float d;\n    float3 n;\n    AliceSdf_float(p, d, n);\n\
                      \x20   half dh;\n    half3 nh;\n    AliceSdf_half(p, dh, nh);\n\
-                     \x20   return float4(d + (float)dh, n.x + (float)nh.y, 0.0, 1.0);",
+                     \x20   precise float4 alice_c = float4(d + (float)dh, n.x + (float)nh.y, 0.0, 1.0);\n\
+                     \x20   return alice_c;",
             ),
         },
     ]
@@ -442,4 +444,251 @@ fn dxc_rejects_known_bad_outputs() {
         wrong_reason.join("\n")
     );
     assert!(rejected > 0, "0 broken units were compiled");
+}
+
+/// The DXIL listing (`-Fc`) of one unit (its include written next to it, as `compile`
+/// does), or the error lines.
+fn dxil_listing(dxc: &str, dir: &Path, unit: &Unit) -> Result<String, String> {
+    let file = dir.join(format!("{}.hlsl", unit.name));
+    let listing = dir.join(format!("{}.dxil.txt", unit.name));
+    let src = match &unit.include {
+        Some(text) => {
+            let inc = format!("{}.inc.hlsl", unit.name);
+            let path = dir.join(&inc);
+            std::fs::write(&path, text).map_err(|e| format!("write {}: {e}", path.display()))?;
+            format!("#include \"{inc}\"\n{}", unit.src)
+        }
+        None => unit.src.clone(),
+    };
+    std::fs::write(&file, src).map_err(|e| format!("write {}: {e}", file.display()))?;
+    let _ = std::fs::remove_file(&listing);
+    let out = Command::new(dxc)
+        .args(["-T", unit.profile, "-E", unit.entry])
+        .arg(&file)
+        .arg("-Fc")
+        .arg(&listing)
+        .output()
+        .map_err(|e| format!("cannot run {dxc}: {e}"))?;
+    if out.status.success() {
+        return std::fs::read_to_string(&listing)
+            .map_err(|e| format!("{}: no listing: {e}", unit.name));
+    }
+    Err(format!(
+        "{}: {}",
+        unit.name,
+        String::from_utf8_lossy(&out.stderr)
+    ))
+}
+
+/// DXIL `FMad` (operation 46): a multiply and an add computed with one rounding.
+fn fmad_count(listing: &str) -> usize {
+    listing.matches("@dx.op.tertiary.f32(i32 46,").count()
+}
+
+/// The DXIL counterpart of SPIR-V `NoContraction`: (multiply-to-add pairs read, pairs
+/// where the `fmul` or the `fadd` / `fsub` reading it carries a flag that lets a driver
+/// contract them: `fast`, `contract` or `reassoc`). `precise` removes those flags.
+fn contractible_pairs(listing: &str) -> (usize, usize) {
+    const LOOSE: [&str; 3] = ["fast", "contract", "reassoc"];
+    // `%r = op <flags> <type> %a, %b`: (result, op, loose, operands)
+    let ops: Vec<(&str, &str, bool, Vec<&str>)> = listing
+        .lines()
+        .filter_map(|l| {
+            let (result, rhs) = l.trim().split_once(" = ")?;
+            let mut words = rhs.split_whitespace();
+            let op = words.next()?;
+            if !matches!(op, "fmul" | "fadd" | "fsub") {
+                return None;
+            }
+            let rest: Vec<&str> = words.collect();
+            let ty = rest.iter().position(|w| {
+                w.starts_with("float") || w.starts_with("half") || w.starts_with("double")
+            })?;
+            let loose = rest[..ty].iter().any(|f| LOOSE.contains(f));
+            let operands = rest[ty + 1..]
+                .iter()
+                .map(|o| o.trim_end_matches(','))
+                .collect();
+            Some((result, op, loose, operands))
+        })
+        .collect();
+    let muls: std::collections::HashMap<&str, bool> = ops
+        .iter()
+        .filter(|o| o.1 == "fmul")
+        .map(|o| (o.0, o.2))
+        .collect();
+    let (mut pairs, mut loose) = (0, 0);
+    for (_, op, add_loose, operands) in &ops {
+        if *op == "fmul" {
+            continue;
+        }
+        for operand in operands {
+            if let Some(mul_loose) = muls.get(operand) {
+                pairs += 1;
+                if *mul_loose || *add_loose {
+                    loose += 1;
+                }
+            }
+        }
+    }
+    (pairs, loose)
+}
+
+#[test]
+fn contractible_pairs_reads_fast_math_flags() {
+    let precise = "  %3 = fmul float %1, %2\n  %4 = fadd float %3, %0\n";
+    assert_eq!(contractible_pairs(precise), (1, 0));
+    let fast = "  %3 = fmul fast float %1, %2\n  %4 = fadd float %0, %3\n";
+    assert_eq!(contractible_pairs(fast), (1, 1));
+    let contract = "  %3 = fmul float %1, %2\n  %4 = fsub contract float %3, %0\n";
+    assert_eq!(contractible_pairs(contract), (1, 1));
+    // a multiply nobody adds, and an add of two non-products, are no pairs
+    let none = "  %3 = fmul fast float %1, %2\n  %5 = fadd fast float %0, %1\n";
+    assert_eq!(contractible_pairs(none), (0, 0));
+    // a fast multiply that reaches the add through fneg: no direct pair, but the op is
+    // flagged, which `loose_ops` (the check of precise units) counts
+    let via_fneg =
+        "  %3 = fmul fast float %1, %2\n  %4 = fneg float %3\n  %5 = fadd float %4, %0\n";
+    assert_eq!(contractible_pairs(via_fneg), (0, 0));
+    assert_eq!(loose_ops(via_fneg), (2, 1));
+    assert_eq!(loose_ops(precise), (2, 0));
+    assert_eq!(loose_ops("  %5 = fsub reassoc nsz float %1, %2\n"), (1, 1));
+}
+
+/// (fmul / fadd / fsub ops, ops carrying `fast`, `contract` or `reassoc`). In a unit
+/// where every floating-point local is `precise`, every one of them must be flag-free:
+/// a flagged multiply may reach an add through `fneg`, `select`, `phi` or
+/// `extractelement`, which the pair count does not follow.
+fn loose_ops(listing: &str) -> (usize, usize) {
+    const LOOSE: [&str; 3] = ["fast", "contract", "reassoc"];
+    let (mut ops, mut loose) = (0, 0);
+    for line in listing.lines() {
+        let Some((_, rhs)) = line.trim().split_once(" = ") else {
+            continue;
+        };
+        let mut words = rhs.split_whitespace();
+        if !matches!(words.next(), Some("fmul" | "fadd" | "fsub")) {
+            continue;
+        }
+        ops += 1;
+        if words
+            .take_while(|w| {
+                !w.starts_with("float") && !w.starts_with("half") && !w.starts_with("double")
+            })
+            .any(|f| LOOSE.contains(&f))
+        {
+            loose += 1;
+        }
+    }
+    (ops, loose)
+}
+
+/// The unit with every `precise` removed (the control: what dxc does without it).
+fn without_precise(unit: &Unit) -> Unit {
+    Unit {
+        name: format!("{}.plain", unit.name),
+        profile: unit.profile,
+        entry: unit.entry,
+        include: unit.include.as_ref().map(|t| t.replace("precise ", "")),
+        src: unit.src.replace("precise ", ""),
+    }
+}
+
+/// ALICE-Law G3 in the compiled HLSL: with every floating-point local `precise`, no
+/// `fmul` whose result an `fadd` / `fsub` reads, nor that add, carries a fast-math flag
+/// (`fast`, `contract`, `reassoc`) in the DXIL of any HLSL output of any corpus node
+/// (both modes, each in the wrapper its consumer adds: `units_for`) or of the Nanite
+/// material function: a driver may not contract them. dxc itself forms no `FMad` from
+/// such a pair (the count is reported). The same units with `precise` removed must have
+/// flagged pairs, per output: otherwise the check would pass for any qualifier.
+#[test]
+fn dxil_of_every_output_is_not_contractible() {
+    let Some(dxc) = dxc_or_skip("dxil_of_every_output_is_not_contractible") else {
+        return;
+    };
+    let dir = scratch("hlsl_dxc_fmad");
+    let mut units = Vec::new();
+    for (name, node) in corpus() {
+        for (tag, mode) in [
+            ("hardcoded", HlslTranspileMode::Hardcoded),
+            ("dynamic", HlslTranspileMode::Dynamic),
+        ] {
+            units.extend(units_for(name, tag, &HlslShader::transpile(&node, mode)));
+        }
+        let path = dir.join(format!("{name}.nanite.usf"));
+        alice_sdf::io::nanite::export_nanite_hlsl_material(&node, &path).unwrap();
+        units.push(Unit {
+            name: format!("{name}.nanite"),
+            profile: "cs_6_0",
+            entry: "cs_main",
+            include: Some(std::fs::read_to_string(&path).unwrap()),
+            src: compute_entry("AliceSdfMaterial(p).w"),
+        });
+    }
+    let output = |n: &str| n.rsplit('.').next().unwrap_or("").to_string();
+    let mut control: Vec<(String, usize)> = Vec::new();
+    let mut per_output_pairs: Vec<(String, usize)> = Vec::new();
+    let mut fmad = 0;
+    let mut problems = Vec::new();
+    for unit in &units {
+        match dxil_listing(&dxc, &dir, unit) {
+            Ok(listing) => {
+                let o = output(&unit.name);
+                let n = fmad_count(&listing);
+                fmad += n;
+                if n > 0 {
+                    problems.push(format!("{}: {n} FMad", unit.name));
+                }
+                let (p, _) = contractible_pairs(&listing);
+                match per_output_pairs.iter_mut().find(|c| c.0 == o) {
+                    Some(c) => c.1 += p,
+                    None => per_output_pairs.push((o, p)),
+                }
+                let (ops, loose) = loose_ops(&listing);
+                if loose > 0 {
+                    problems.push(format!(
+                        "{}: {loose} of {ops} fmul / fadd / fsub carry fast / contract / reassoc",
+                        unit.name
+                    ));
+                }
+            }
+            Err(e) => problems.push(e),
+        }
+        match dxil_listing(&dxc, &dir, &without_precise(unit)) {
+            Ok(listing) => {
+                let o = output(&unit.name);
+                // without `precise` the driver may contract: flagged ops (or an FMad dxc
+                // already made)
+                let n = loose_ops(&listing).1 + fmad_count(&listing);
+                match control.iter_mut().find(|c| c.0 == o) {
+                    Some(c) => c.1 += n,
+                    None => control.push((o, n)),
+                }
+            }
+            Err(e) => problems.push(e),
+        }
+    }
+    eprintln!(
+        "dxc: {} units checked, {fmad} FMad, multiply-to-add pairs per output {per_output_pairs:?}; contractible (flagged ops + FMad) per output without precise: {control:?}",
+        units.len()
+    );
+    assert!(!units.is_empty(), "0 units compiled");
+    for (o, p) in &per_output_pairs {
+        assert!(
+            *p > 0,
+            "{o}: 0 multiply-to-add pairs read in its DXIL listings"
+        );
+    }
+    for (o, n) in &control {
+        assert!(
+            *n > 0,
+            "{o}: without `precise` nothing is contractible: the check compares nothing for it"
+        );
+    }
+    assert!(
+        problems.is_empty(),
+        "{} problems, first 20:\n{}",
+        problems.len(),
+        problems[..problems.len().min(20)].join("\n")
+    );
 }

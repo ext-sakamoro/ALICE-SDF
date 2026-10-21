@@ -411,6 +411,13 @@ if command -v "${ALICE_SDF_DXC:-dxc}" >/dev/null 2>&1; then
 else
   step "SKIPPED: HLSL dxc compile gate (dxc が無い、ALICE_SDF_DXC で指定可) — 0 件 compile、CI の hlsl-dxc.yml が検査する"
 fi
+# GLSL の全出力を glslang で SPIR-V にし、ALICE_PRECISE が NoContraction になることを確かめる (hlsl-dxc.yml の glslang の step と対)
+if command -v "${ALICE_SDF_GLSLANG:-glslang}" >/dev/null 2>&1; then
+  step "test: GLSL outputs compiled by glslang, NoContraction (hlsl-dxc.yml と対)"
+  ALICE_SDF_REQUIRE_GLSLANG=1 cargo test --features glsl --test test_glsl_glslang_precise -- --nocapture
+else
+  step "SKIPPED: GLSL glslang gate (glslang が無い、ALICE_SDF_GLSLANG で指定可) — 0 件 compile、CI の hlsl-dxc.yml が検査する"
+fi
 
 step "test: ffi + shaders (src/ffi の unit test 15 本、ci.yml と対)"
 cargo test --lib --features "ffi,hlsl,glsl"

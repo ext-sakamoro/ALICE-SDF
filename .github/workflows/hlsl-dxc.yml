@@ -14,19 +14,31 @@ name: HLSL DXC compile
 
 on:
   push:
-    branches: [ main ]
+    # ci/**: the branch is checked before it lands; the paths filter keeps the
+    # job to changes of the shader text (the runners are shared)
+    branches: [ main, 'ci/**' ]
     paths:
       - 'src/compiled/hlsl/**'
+      - 'src/compiled/glsl/**'
       - 'src/compiled/transpiler_common.rs'
+      - 'src/modifiers/surface_roughness.rs'
+      - 'src/io/nanite.rs'
+      - 'src/texture/shader.rs'
       - 'tests/test_hlsl_dxc_compile.rs'
+      - 'tests/test_glsl_glslang_precise.rs'
       - 'tests/common/corpus.rs'
       - '.github/workflows/hlsl-dxc.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'src/compiled/hlsl/**'
+      - 'src/compiled/glsl/**'
       - 'src/compiled/transpiler_common.rs'
+      - 'src/modifiers/surface_roughness.rs'
+      - 'src/io/nanite.rs'
+      - 'src/texture/shader.rs'
       - 'tests/test_hlsl_dxc_compile.rs'
+      - 'tests/test_glsl_glslang_precise.rs'
       - 'tests/common/corpus.rs'
       - '.github/workflows/hlsl-dxc.yml'
 
@@ -45,6 +57,8 @@ env:
   DXC_VERSION: v1.9.2609
   DXC_ASSET: linux_dxc_2026_09_28.x86_x64.tar.gz
   DXC_SHA256: 96faadc7f5c282d2ffda49804beb4c3ee38127bc252b723234e3c5cdf7aa39a1
+  GLSLANG_VERSION: 16.6.0
+  GLSLANG_SHA256: 2c34071f56ecf39d16233294d3739cf43f981fd39080f2fd9dccb782101191ce
 
 jobs:
   dxc:
@@ -73,3 +87,24 @@ jobs:
         env:
           ALICE_SDF_REQUIRE_DXC: "1"
         run: cargo test --features hlsl --test test_hlsl_dxc_compile -- --nocapture
+
+      # ALICE-Law G3 in the compiled GLSL: SPIR-V NoContraction from ALICE_PRECISE
+      - name: Install glslang (pinned release, checksum verified)
+        # measured even when the dxc step failed: both compilers report in one run
+        if: always()
+        run: |
+          set -euo pipefail
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/glslang.tar.gz" \
+            "https://github.com/KhronosGroup/glslang/releases/download/${GLSLANG_VERSION}/glslang-${GLSLANG_VERSION}-linux-x86_64-release.tar.gz"
+          echo "${GLSLANG_SHA256}  $RUNNER_TEMP/glslang.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/glslang"
+          tar xzf "$RUNNER_TEMP/glslang.tar.gz" -C "$RUNNER_TEMP/glslang"
+          echo "ALICE_SDF_GLSLANG=$RUNNER_TEMP/glslang/bin/glslang" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/glslang/bin/glslang" --version
+
+      - name: Compile every GLSL output with glslang (NoContraction, version gate)
+        # measured even when the dxc step failed: both compilers report in one run
+        if: always()
+        env:
+          ALICE_SDF_REQUIRE_GLSLANG: "1"
+        run: cargo test --features glsl --test test_glsl_glslang_precise -- --nocapture

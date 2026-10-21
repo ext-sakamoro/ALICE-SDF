@@ -6,11 +6,11 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 938 |
+| 🟢 Not ignored | 942 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **942** |
+| **Total** | **946** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -25,7 +25,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (938)
+## 🟢 Not ignored (942)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -118,6 +118,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_eval_grid_oracle.rs` | 4 |
 | `test_exact_eval_cache.rs` | 4 |
 | `test_gi_api_oracle.rs` | 4 |
+| `test_hlsl_dxc_compile.rs` | 4 |
 | `test_law_minmax_ties.rs` | 4 |
 | `test_mesh_cloud_hermite_oracle.rs` | 4 |
 | `test_metal_library_from_source_only.rs` | 4 |
@@ -144,7 +145,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_aabb_unified_oracle.rs` | 2 |
 | `test_bake_stored_forms.rs` | 2 |
 | `test_det_near_zero_parity.rs` | 2 |
-| `test_hlsl_dxc_compile.rs` | 2 |
+| `test_glsl_glslang_precise.rs` | 2 |
 | `test_instanced_wgsl_gpu_parity.rs` | 2 |
 | `test_interval_predicate_oracle.rs` | 2 |
 | `test_interval_soundness.rs` | 2 |

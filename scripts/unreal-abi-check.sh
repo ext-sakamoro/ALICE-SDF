@@ -213,7 +213,14 @@ echo "ok: $(grep -rlE --include='*.usf' --include='*.ush' '' unreal-plugin/Shade
 step "generated corpus oracle files == tests/common/corpus.rs"
 # --features unreal: a narrower set rebuilds the cdylib this script
 # just inspected (and the one Unreal links) without the FFI.
+# Regenerated from nothing: every tracked file there is the example's output, so
+# a file it no longer writes shows as deleted below, and an example that writes
+# nothing (or somewhere else) cannot leave the committed files to pass as current.
+rm -rf unreal-plugin/Shaders/CorpusOracle unreal-plugin/Source/AliceSDF/Private/Generated
 cargo run --example unreal_corpus_oracle --features unreal -- --plugin unreal-plugin --golden target/unreal-golden
+generated=$(find unreal-plugin/Shaders/CorpusOracle/Corpus -name '*.ush' 2>/dev/null | wc -l | tr -d ' ')
+[[ "$generated" -gt 0 ]] || fail "the corpus oracle example wrote 0 shader files (compared nothing)"
+echo "ok: $generated corpus shader files regenerated"
 git diff --exit-code --stat -- unreal-plugin/Shaders/CorpusOracle unreal-plugin/Source/AliceSDF/Private/Generated \
     || fail "generated corpus files are stale — commit the regenerated unreal-plugin/Shaders/CorpusOracle + Source/AliceSDF/Private/Generated"
 untracked=$(git ls-files --others --exclude-standard -- unreal-plugin/Shaders/CorpusOracle unreal-plugin/Source/AliceSDF/Private/Generated)
