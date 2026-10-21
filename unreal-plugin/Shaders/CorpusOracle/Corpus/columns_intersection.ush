@@ -2,40 +2,43 @@
 // corpus node `columns_intersection`: HlslShader::transpile(.., Hardcoded)
 // Columns (hg_sdf fOpUnionColumns family) — same law as `sdf_columns_*_r` on the CPU: 45° rotate, shift by r/√2, wrap into r·2/n cells, rotate back.
 float alice_columns_union(float a, float b, float r, float n) {
-    float m = min(a, b);
-    float a2 = min(a, b);
-    float b2 = max(a, b);
-    float cs = r * (2.0 / n);
-    float s = 0.70710678;
-    float ra = s * (a2 + b2) - r * 0.70710678;
-    float rb = s * (b2 - a2);
-    float hc = cs * 0.5;
-    float y = ra + hc;
+    precise float m = min(a, b);
+    precise float a2 = min(a, b);
+    precise float b2 = max(a, b);
+    precise float cs = r * (2.0 / n);
+    precise float s = 0.70710678;
+    precise float ra = s * (a2 + b2) - r * 0.70710678;
+    precise float rb = s * (b2 - a2);
+    precise float hc = cs * 0.5;
+    precise float y = ra + hc;
     ra = y - cs * floor(y / cs) - hc;
-    float a3 = s * (ra + rb);
-    float b3 = s * (rb - ra);
-    float inner = min(min(a3, b3), m);
-    return m > r ? m : inner;
+    precise float a3 = s * (ra + rb);
+    precise float b3 = s * (rb - ra);
+    precise float inner = min(min(a3, b3), m);
+    precise float alice_r = m > r ? m : inner;
+    return alice_r;
 }
 float alice_columns_subtraction(float a0, float b, float r, float n) {
-    float a = -a0;
-    float m = min(a, b);
-    float a2 = min(a, b);
-    float b2 = max(a, b);
-    float cs = r * (2.0 / n);
-    float s = 0.70710678;
-    float ra = s * (a2 + b2) - r * 0.70710678;
-    float rb = s * (b2 - a2);
-    float hc = cs * 0.5;
-    float y = ra + hc;
+    precise float a = -a0;
+    precise float m = min(a, b);
+    precise float a2 = min(a, b);
+    precise float b2 = max(a, b);
+    precise float cs = r * (2.0 / n);
+    precise float s = 0.70710678;
+    precise float ra = s * (a2 + b2) - r * 0.70710678;
+    precise float rb = s * (b2 - a2);
+    precise float hc = cs * 0.5;
+    precise float y = ra + hc;
     ra = y - cs * floor(y / cs) - hc;
-    float a3 = s * (ra + rb);
-    float b3 = s * (rb - ra);
-    float inner = -min(min(a3, b3), m);
-    return m > r ? -m : inner;
+    precise float a3 = s * (ra + rb);
+    precise float b3 = s * (rb - ra);
+    precise float inner = -min(min(a3, b3), m);
+    precise float alice_r = m > r ? -m : inner;
+    return alice_r;
 }
 float alice_columns_intersection(float a, float b, float r, float n) {
-    return alice_columns_subtraction(a, -b, r, n);
+    precise float alice_r = alice_columns_subtraction(a, -b, r, n);
+    return alice_r;
 }
 
 float sdf_eval(float3 p) {

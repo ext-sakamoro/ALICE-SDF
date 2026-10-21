@@ -2,27 +2,28 @@
 // corpus node `taper`: HlslShader::transpile(.., Hardcoded)
 // Same law as `alice_sdf::compiled::real::taper_bound` (Jacobian ball + cone ∩ slab).
 float alice_taper_bound(float d, float3 p, float factor, float rx, float ry) {
-    float fa = abs(factor);
+    precise float fa = abs(factor);
     if (fa == 0.0) { return d; }
-    float den_abs = max(abs(1.0 - p.y * factor), 1e-6);
-    float s = 1.0 / den_abs;
-    float rho = sqrt(p.x * p.x + p.z * p.z);
-    float d_abs = abs(d);
-    float j0 = max(s, 1.0) + fa * s * s * rho;
-    float r = min(d_abs / j0, den_abs / (fa + fa));
-    float den1 = max(den_abs - fa * r, 1e-6);
-    float s1 = 1.0 / den1;
-    float j1 = max(s1, 1.0) + fa * s1 * s1 * (rho + r);
-    float mag = min(d_abs / j1, r);
-    float d_j = (d < 0.0) ? -mag : mag;
+    precise float den_abs = max(abs(1.0 - p.y * factor), 1e-6);
+    precise float s = 1.0 / den_abs;
+    precise float rho = sqrt(p.x * p.x + p.z * p.z);
+    precise float d_abs = abs(d);
+    precise float j0 = max(s, 1.0) + fa * s * s * rho;
+    precise float r = min(d_abs / j0, den_abs / (fa + fa));
+    precise float den1 = max(den_abs - fa * r, 1e-6);
+    precise float s1 = 1.0 / den1;
+    precise float j1 = max(s1, 1.0) + fa * s1 * s1 * (rho + r);
+    precise float mag = min(d_abs / j1, r);
+    precise float d_j = (d < 0.0) ? -mag : mag;
     if (rx >= 1e30 || ry >= 1e30) { return d_j; }
-    float k = rx * fa;
-    float inv_n = 1.0 / sqrt(1.0 + k * k);
-    float big_y = p.y - 1.0 / factor;
-    float d_cone = (rho - k * abs(big_y)) * inv_n;
-    float d_slab = abs(p.y) - ry;
-    float d_region = max(d_cone, d_slab);
-    return (d < 0.0) ? d_j : max(d_j, d_region);
+    precise float k = rx * fa;
+    precise float inv_n = 1.0 / sqrt(1.0 + k * k);
+    precise float big_y = p.y - 1.0 / factor;
+    precise float d_cone = (rho - k * abs(big_y)) * inv_n;
+    precise float d_slab = abs(p.y) - ry;
+    precise float d_region = max(d_cone, d_slab);
+    precise float alice_r = (d < 0.0) ? d_j : max(d_j, d_region);
+    return alice_r;
 }
 float sdf_eval(float3 p) {
     precise float d1 = 1.0 - p.y * 0.5;

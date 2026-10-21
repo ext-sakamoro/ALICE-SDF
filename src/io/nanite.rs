@@ -318,7 +318,7 @@ pub fn export_nanite_hlsl_material(
     writeln!(w, "float3 AliceSdfNormal(float3 p)")?;
     writeln!(w, "{{")?;
     writeln!(w, "    const float eps = 0.001;")?;
-    writeln!(w, "    return normalize(float3(")?;
+    writeln!(w, "    precise float3 n = normalize(float3(")?;
     writeln!(
         w,
         "        sdf_eval(p + float3(eps, 0, 0)) - sdf_eval(p - float3(eps, 0, 0)),"
@@ -332,6 +332,7 @@ pub fn export_nanite_hlsl_material(
         "        sdf_eval(p + float3(0, 0, eps)) - sdf_eval(p - float3(0, 0, eps))"
     )?;
     writeln!(w, "    ));")?;
+    writeln!(w, "    return n;")?;
     writeln!(w, "}}")?;
     writeln!(w)?;
 
@@ -340,9 +341,10 @@ pub fn export_nanite_hlsl_material(
     writeln!(w, "// Returns: float4(normal.xyz, signed_distance)")?;
     writeln!(w, "float4 AliceSdfMaterial(float3 WorldPosition)")?;
     writeln!(w, "{{")?;
-    writeln!(w, "    float d = sdf_eval(WorldPosition);")?;
-    writeln!(w, "    float3 n = AliceSdfNormal(WorldPosition);")?;
-    writeln!(w, "    return float4(n, d);")?;
+    writeln!(w, "    precise float d = sdf_eval(WorldPosition);")?;
+    writeln!(w, "    precise float3 n = AliceSdfNormal(WorldPosition);")?;
+    writeln!(w, "    precise float4 alice_r = float4(n, d);")?;
+    writeln!(w, "    return alice_r;")?;
     writeln!(w, "}}")?;
 
     w.flush()?;

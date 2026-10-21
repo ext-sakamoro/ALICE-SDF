@@ -3,22 +3,23 @@
 float alice_atan2(float y, float x) {
     bool sy = asint(y) < 0;
     bool sx = asint(x) < 0;
-    float r = atan2(y, x);
+    precise float r = atan2(y, x);
     r = (x == 0.0) ? (sy ? -1.5707964 : 1.5707964) : r;
     r = (y == 0.0) ? (sx ? (sy ? -3.1415927 : 3.1415927) : y) : r;
     return r;
 }
 
 float sdf_octahedron(float3 p, float s) {
-    float3 ap = abs(p);
-    float m = ap.x + ap.y + ap.z - s;
-    float3 q;
+    precise float3 ap = abs(p);
+    precise float m = ap.x + ap.y + ap.z - s;
+    precise float3 q;
     if (3.0 * ap.x < m) q = ap;
     else if (3.0 * ap.y < m) q = float3(ap.y, ap.z, ap.x);
     else if (3.0 * ap.z < m) q = float3(ap.z, ap.x, ap.y);
-    else return m * 0.57735027;
-    float k = clamp(0.5 * (q.z - q.y + s), 0.0, s);
-    return length(float3(q.x, q.y - s + k, q.z - k));
+    else { precise float alice_r = m * 0.57735027; return alice_r; }
+    precise float k = clamp(0.5 * (q.z - q.y + s), 0.0, s);
+    precise float alice_r = length(float3(q.x, q.y - s + k, q.z - k));
+    return alice_r;
 }
 
 float sdf_eval(float3 p) {

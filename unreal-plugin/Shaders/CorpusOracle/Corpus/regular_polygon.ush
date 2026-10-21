@@ -3,7 +3,7 @@
 float alice_atan2(float y, float x) {
     bool sy = asint(y) < 0;
     bool sx = asint(x) < 0;
-    float r = atan2(y, x);
+    precise float r = atan2(y, x);
     r = (x == 0.0) ? (sy ? -1.5707964 : 1.5707964) : r;
     r = (y == 0.0) ? (sx ? (sy ? -3.1415927 : 3.1415927) : y) : r;
     return r;
@@ -11,19 +11,20 @@ float alice_atan2(float y, float x) {
 
 float sdf_regular_polygon(float3 p, float radius, float n, float hh) {
     // IQ regular polygon (exact), XZ plane, radius = circumradius (1.9.2)
-    float nn = trunc(max(n, 3.0));
-    float an = 3.14159265358979 / nn;
-    float2 acs = float2(cos(an), sin(an));
-    float a0 = alice_atan2(p.x, p.z);
-    float bn = a0 - 2.0 * an * floor(a0 / (2.0 * an)) - an;
-    float r = length(p.xz);
-    float2 q = float2(r * cos(bn), abs(r * sin(bn)));
+    precise float nn = trunc(max(n, 3.0));
+    precise float an = 3.14159265358979 / nn;
+    precise float2 acs = float2(cos(an), sin(an));
+    precise float a0 = alice_atan2(p.x, p.z);
+    precise float bn = a0 - 2.0 * an * floor(a0 / (2.0 * an)) - an;
+    precise float r = length(p.xz);
+    precise float2 q = float2(r * cos(bn), abs(r * sin(bn)));
     q -= radius * acs;
     q.y += clamp(-q.y, 0.0, radius * acs.y);
-    float d2d = length(q) * sign(q.x);
-    float dy = abs(p.y) - hh;
-    float2 w = max(float2(d2d, dy), float2(0.0, 0.0));
-    return min(max(d2d, dy), 0.0) + length(w);
+    precise float d2d = length(q) * sign(q.x);
+    precise float dy = abs(p.y) - hh;
+    precise float2 w = max(float2(d2d, dy), float2(0.0, 0.0));
+    precise float alice_r = min(max(d2d, dy), 0.0) + length(w);
+    return alice_r;
 }
 
 float sdf_eval(float3 p) {

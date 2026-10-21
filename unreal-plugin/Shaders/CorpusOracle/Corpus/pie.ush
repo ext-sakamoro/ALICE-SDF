@@ -2,16 +2,17 @@
 // corpus node `pie`: HlslShader::transpile(.., Hardcoded)
 float sdf_pie(float3 p, float angle, float radius, float h) {
     // IQ sdPie in the XZ plane (|x|, z), extruded along Y — same law as `sdf_pie` on the CPU.
-    float2 q = float2(abs(p.x), p.z);
-    float2 sc = float2(sin(angle), cos(angle));
-    float l = length(q) - radius;
-    float m = length(q - sc * clamp(dot(q, sc), 0.0, radius));
-    float cr = sc.y * q.x - sc.x * q.y;
-    float sgn = cr > 0.0 ? 1.0 : (cr < 0.0 ? -1.0 : 0.0);
-    float d2d = max(l, m * sgn);
-    float dy = abs(p.y) - h;
-    float2 w = max(float2(d2d, dy), float2(0.0, 0.0));
-    return min(max(d2d, dy), 0.0) + length(w);
+    precise float2 q = float2(abs(p.x), p.z);
+    precise float2 sc = float2(sin(angle), cos(angle));
+    precise float l = length(q) - radius;
+    precise float m = length(q - sc * clamp(dot(q, sc), 0.0, radius));
+    precise float cr = sc.y * q.x - sc.x * q.y;
+    precise float sgn = cr > 0.0 ? 1.0 : (cr < 0.0 ? -1.0 : 0.0);
+    precise float d2d = max(l, m * sgn);
+    precise float dy = abs(p.y) - h;
+    precise float2 w = max(float2(d2d, dy), float2(0.0, 0.0));
+    precise float alice_r = min(max(d2d, dy), 0.0) + length(w);
+    return alice_r;
 }
 
 float sdf_eval(float3 p) {

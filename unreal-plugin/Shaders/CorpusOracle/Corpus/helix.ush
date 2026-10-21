@@ -3,7 +3,7 @@
 float alice_atan2(float y, float x) {
     bool sy = asint(y) < 0;
     bool sx = asint(x) < 0;
-    float r = atan2(y, x);
+    precise float r = atan2(y, x);
     r = (x == 0.0) ? (sy ? -1.5707964 : 1.5707964) : r;
     r = (y == 0.0) ? (sx ? (sy ? -3.1415927 : 3.1415927) : y) : r;
     return r;
@@ -11,31 +11,32 @@ float alice_atan2(float y, float x) {
 
 float sdf_helix(float3 p, float major_r, float minor_r, float pitch, float hh) {
     const float tau = 6.28318530717959;
-    float r = length(float2(p.x, p.z));
-    float theta = (r > 0.0) ? alice_atan2(p.z, p.x) : 0.0;
-    float py = p.y;
-    float c = pitch / tau;
-    float two_rr = 2.0 * r * major_r;
-    float k = floor((py - theta * c) / pitch + 0.5);
-    float best = 1e30;
-    for (float dk = -1.0; dk <= 1.0; dk += 1.0) {
-        float phi = theta + (k + dk) * tau;
+    precise float r = length(float2(p.x, p.z));
+    precise float theta = (r > 0.0) ? alice_atan2(p.z, p.x) : 0.0;
+    precise float py = p.y;
+    precise float c = pitch / tau;
+    precise float two_rr = 2.0 * r * major_r;
+    precise float k = floor((py - theta * c) / pitch + 0.5);
+    precise float best = 1e30;
+    for (precise float dk = -1.0; dk <= 1.0; dk += 1.0) {
+        precise float phi = theta + (k + dk) * tau;
         for (int it = 0; it < 6; it++) {
-            float s = sin(phi - theta);
-            float co = cos(phi - theta);
-            float dy = py - c * phi;
-            float f1 = two_rr * s - 2.0 * c * dy;
-            float f2 = max(two_rr * co + 2.0 * c * c, 1e-6);
+            precise float s = sin(phi - theta);
+            precise float co = cos(phi - theta);
+            precise float dy = py - c * phi;
+            precise float f1 = two_rr * s - 2.0 * c * dy;
+            precise float f2 = max(two_rr * co + 2.0 * c * c, 1e-6);
             phi = phi - clamp(f1 / f2, -1.5707963, 1.5707963);
         }
-        float co = cos(phi - theta);
-        float dy = py - c * phi;
-        float d2 = dy * dy + max(r * r + major_r * major_r - two_rr * co, 0.0);
+        precise float co = cos(phi - theta);
+        precise float dy = py - c * phi;
+        precise float d2 = dy * dy + max(r * r + major_r * major_r - two_rr * co, 0.0);
         best = min(best, d2);
     }
-    float d_tube = sqrt(best) - minor_r;
-    float d_cap = abs(py) - hh;
-    return max(d_tube, d_cap);
+    precise float d_tube = sqrt(best) - minor_r;
+    precise float d_cap = abs(py) - hh;
+    precise float alice_r = max(d_tube, d_cap);
+    return alice_r;
 }
 
 float sdf_eval(float3 p) {

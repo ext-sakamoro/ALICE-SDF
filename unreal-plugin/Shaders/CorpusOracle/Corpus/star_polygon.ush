@@ -3,34 +3,35 @@
 float alice_atan2(float y, float x) {
     bool sy = asint(y) < 0;
     bool sx = asint(x) < 0;
-    float r = atan2(y, x);
+    precise float r = atan2(y, x);
     r = (x == 0.0) ? (sy ? -1.5707964 : 1.5707964) : r;
     r = (y == 0.0) ? (sx ? (sy ? -3.1415927 : 3.1415927) : y) : r;
     return r;
 }
 
 float sdf_star_polygon(float3 p, float radius, float np, float m, float hh) {
-    float qx = abs(p.x);
-    float qz = p.z;
-    float n = max(np, 3.0);
-    float an = 3.14159265358979 / n;
-    float r = length(float2(qx, qz));
-    float angle = alice_atan2(qx, qz);
+    precise float qx = abs(p.x);
+    precise float qz = p.z;
+    precise float n = max(np, 3.0);
+    precise float an = 3.14159265358979 / n;
+    precise float r = length(float2(qx, qz));
+    precise float angle = alice_atan2(qx, qz);
     angle = fmod(fmod(angle, 2.0 * an) + 2.0 * an, 2.0 * an);
     if (angle > an) angle = 2.0 * an - angle;
-    float2 pt = float2(r * cos(angle), r * sin(angle));
-    float2 a = float2(radius, 0.0);
-    float2 b = float2(m * cos(an), m * sin(an));
-    float2 ab = b - a;
-    float2 ap = pt - a;
-    float t = clamp(dot(ap, ab) / dot(ab, ab), 0.0, 1.0);
-    float2 closest = a + ab * t;
-    float dist = length(pt - closest);
-    float cross_val = ab.x * ap.y - ab.y * ap.x;
-    float d2d = (cross_val > 0.0) ? -dist : dist;
-    float dy = abs(p.y) - hh;
-    float2 w = max(float2(d2d, dy), float2(0.0, 0.0));
-    return min(max(d2d, dy), 0.0) + length(w);
+    precise float2 pt = float2(r * cos(angle), r * sin(angle));
+    precise float2 a = float2(radius, 0.0);
+    precise float2 b = float2(m * cos(an), m * sin(an));
+    precise float2 ab = b - a;
+    precise float2 ap = pt - a;
+    precise float t = clamp(dot(ap, ab) / dot(ab, ab), 0.0, 1.0);
+    precise float2 closest = a + ab * t;
+    precise float dist = length(pt - closest);
+    precise float cross_val = ab.x * ap.y - ab.y * ap.x;
+    precise float d2d = (cross_val > 0.0) ? -dist : dist;
+    precise float dy = abs(p.y) - hh;
+    precise float2 w = max(float2(d2d, dy), float2(0.0, 0.0));
+    precise float alice_r = min(max(d2d, dy), 0.0) + length(w);
+    return alice_r;
 }
 
 float sdf_eval(float3 p) {

@@ -3,7 +3,7 @@
 float alice_atan2(float y, float x) {
     bool sy = asint(y) < 0;
     bool sx = asint(x) < 0;
-    float r = atan2(y, x);
+    precise float r = atan2(y, x);
     r = (x == 0.0) ? (sy ? -1.5707964 : 1.5707964) : r;
     r = (y == 0.0) ? (sx ? (sy ? -3.1415927 : 3.1415927) : y) : r;
     return r;

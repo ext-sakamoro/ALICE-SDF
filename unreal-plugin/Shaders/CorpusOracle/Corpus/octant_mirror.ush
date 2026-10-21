@@ -2,12 +2,13 @@
 // corpus node `octant_mirror`: HlslShader::transpile(.., Hardcoded)
 // Octant mirror — same law as `octant_mirror` on the CPU: abs then sort descending (x ≥ y ≥ z).
 float3 alice_octant_mirror(float3 p0) {
-    float3 a = abs(p0);
-    float x = max(a.x, a.y);
-    float y = min(a.x, a.y);
-    float y1 = max(y, a.z);
-    float z = min(y, a.z);
-    return float3(max(x, y1), min(x, y1), z);
+    precise float3 a = abs(p0);
+    precise float x = max(a.x, a.y);
+    precise float y = min(a.x, a.y);
+    precise float y1 = max(y, a.z);
+    precise float z = min(y, a.z);
+    precise float3 alice_r = float3(max(x, y1), min(x, y1), z);
+    return alice_r;
 }
 
 float sdf_eval(float3 p) {

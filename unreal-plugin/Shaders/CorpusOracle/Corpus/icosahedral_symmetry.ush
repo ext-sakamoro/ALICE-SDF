@@ -2,19 +2,19 @@
 // corpus node `icosahedral_symmetry`: HlslShader::transpile(.., Hardcoded)
 // Icosahedral fold — same law as `icosahedral_fold` on the CPU (octant fold, 8 × sort + 3 plane reflections).
 float3 alice_icosahedral_fold(float3 p0) {
-    float3 p = abs(p0);
-    float3 n0 = normalize(float3(0.0, 1.0, 1.618034));
-    float3 n1 = normalize(float3(1.0, 1.618034, 0.0));
-    float3 n2 = normalize(float3(1.618034, 0.0, 1.0));
+    precise float3 p = abs(p0);
+    precise float3 n0 = normalize(float3(0.0, 1.0, 1.618034));
+    precise float3 n1 = normalize(float3(1.0, 1.618034, 0.0));
+    precise float3 n2 = normalize(float3(1.618034, 0.0, 1.0));
     for (int i = 0; i < 8; i++) {
         if (p.y > p.x) p = float3(p.y, p.x, p.z);
         if (p.z > p.y) p = float3(p.x, p.z, p.y);
         if (p.y > p.x) p = float3(p.y, p.x, p.z);
-        float d0 = dot(p, n0);
+        precise float d0 = dot(p, n0);
         if (d0 < 0.0) p -= n0 * (2.0 * d0);
-        float d1 = dot(p, n1);
+        precise float d1 = dot(p, n1);
         if (d1 < 0.0) p -= n1 * (2.0 * d1);
-        float d2 = dot(p, n2);
+        precise float d2 = dot(p, n2);
         if (d2 < 0.0) p -= n2 * (2.0 * d2);
     }
     return p;

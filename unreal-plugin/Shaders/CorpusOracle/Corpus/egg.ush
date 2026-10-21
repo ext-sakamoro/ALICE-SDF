@@ -2,18 +2,20 @@
 // corpus node `egg`: HlslShader::transpile(.., Hardcoded)
 float sdf_egg(float3 p, float ra, float rb) {
     const float k = 1.7320508;
-    float px = length(p.xz);
-    float py = p.y;
-    float r = ra - rb;
-    float d;
+    precise float px = length(p.xz);
+    precise float py = p.y;
+    precise float r = ra - rb;
+    precise float d;
+    precise float alice_kpr = k * (px + r);
     if (py < 0.0) {
         d = length(float2(px, py)) - r;
-    } else if (k * (px + r) < py) {
+    } else if (alice_kpr < py) {
         d = length(float2(px, py - k * r)) - r;
     } else {
         d = length(float2(px + r, py)) - 2.0 * r;
     }
-    return d - rb;
+    precise float alice_r = d - rb;
+    return alice_r;
 }
 
 float sdf_eval(float3 p) {

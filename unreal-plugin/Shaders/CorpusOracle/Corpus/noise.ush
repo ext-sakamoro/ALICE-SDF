@@ -16,38 +16,41 @@ float alice_perlin_grad(uint h, float3 c) {
     uint e = LUT[h & 15u];
     uint u_src = (e >> 4u) & 3u;
     uint v_src = (e >> 2u) & 3u;
-    float u_sign = 1.0 - 2.0 * (float)((e >> 1u) & 1u);
-    float v_sign = 1.0 - 2.0 * (float)(e & 1u);
-    return c[u_src] * u_sign + c[v_src] * v_sign;
+    precise float u_sign = 1.0 - 2.0 * (float)((e >> 1u) & 1u);
+    precise float v_sign = 1.0 - 2.0 * (float)(e & 1u);
+    precise float alice_r = c[u_src] * u_sign + c[v_src] * v_sign;
+    return alice_r;
 }
 float alice_perlin_fade(float t) {
-    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+    precise float alice_r = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+    return alice_r;
 }
 // Same law as `alice_sdf::modifiers::perlin_noise_3d` (integer lattice hash + 16-gradient LUT + quintic fade).
 float perlin_noise_3d(float3 p, uint seed) {
-    float3 fl = floor(p);
+    precise float3 fl = floor(p);
     int xi = (int)fl.x;
     int yi = (int)fl.y;
     int zi = (int)fl.z;
-    float3 f = p - fl;
-    float u = alice_perlin_fade(f.x);
-    float v = alice_perlin_fade(f.y);
-    float w = alice_perlin_fade(f.z);
-    float aaa = alice_perlin_grad(alice_perlin_hash(xi, yi, zi, seed), f);
-    float aba = alice_perlin_grad(alice_perlin_hash(xi, yi + 1, zi, seed), float3(f.x, f.y - 1.0, f.z));
-    float aab = alice_perlin_grad(alice_perlin_hash(xi, yi, zi + 1, seed), float3(f.x, f.y, f.z - 1.0));
-    float abb = alice_perlin_grad(alice_perlin_hash(xi, yi + 1, zi + 1, seed), float3(f.x, f.y - 1.0, f.z - 1.0));
-    float baa = alice_perlin_grad(alice_perlin_hash(xi + 1, yi, zi, seed), float3(f.x - 1.0, f.y, f.z));
-    float bba = alice_perlin_grad(alice_perlin_hash(xi + 1, yi + 1, zi, seed), float3(f.x - 1.0, f.y - 1.0, f.z));
-    float bab = alice_perlin_grad(alice_perlin_hash(xi + 1, yi, zi + 1, seed), float3(f.x - 1.0, f.y, f.z - 1.0));
-    float bbb = alice_perlin_grad(alice_perlin_hash(xi + 1, yi + 1, zi + 1, seed), float3(f.x - 1.0, f.y - 1.0, f.z - 1.0));
-    float x0 = aaa + u * (baa - aaa);
-    float x1 = aba + u * (bba - aba);
-    float x2 = aab + u * (bab - aab);
-    float x3 = abb + u * (bbb - abb);
-    float y0 = x0 + v * (x1 - x0);
-    float y1 = x2 + v * (x3 - x2);
-    return y0 + w * (y1 - y0);
+    precise float3 f = p - fl;
+    precise float u = alice_perlin_fade(f.x);
+    precise float v = alice_perlin_fade(f.y);
+    precise float w = alice_perlin_fade(f.z);
+    precise float aaa = alice_perlin_grad(alice_perlin_hash(xi, yi, zi, seed), f);
+    precise float aba = alice_perlin_grad(alice_perlin_hash(xi, yi + 1, zi, seed), float3(f.x, f.y - 1.0, f.z));
+    precise float aab = alice_perlin_grad(alice_perlin_hash(xi, yi, zi + 1, seed), float3(f.x, f.y, f.z - 1.0));
+    precise float abb = alice_perlin_grad(alice_perlin_hash(xi, yi + 1, zi + 1, seed), float3(f.x, f.y - 1.0, f.z - 1.0));
+    precise float baa = alice_perlin_grad(alice_perlin_hash(xi + 1, yi, zi, seed), float3(f.x - 1.0, f.y, f.z));
+    precise float bba = alice_perlin_grad(alice_perlin_hash(xi + 1, yi + 1, zi, seed), float3(f.x - 1.0, f.y - 1.0, f.z));
+    precise float bab = alice_perlin_grad(alice_perlin_hash(xi + 1, yi, zi + 1, seed), float3(f.x - 1.0, f.y, f.z - 1.0));
+    precise float bbb = alice_perlin_grad(alice_perlin_hash(xi + 1, yi + 1, zi + 1, seed), float3(f.x - 1.0, f.y - 1.0, f.z - 1.0));
+    precise float x0 = aaa + u * (baa - aaa);
+    precise float x1 = aba + u * (bba - aba);
+    precise float x2 = aab + u * (bab - aab);
+    precise float x3 = abb + u * (bbb - abb);
+    precise float y0 = x0 + v * (x1 - x0);
+    precise float y1 = x2 + v * (x3 - x2);
+    precise float alice_r = y0 + w * (y1 - y0);
+    return alice_r;
 }
 float sdf_eval(float3 p) {
     precise float d0 = length(p) - 0.6;
