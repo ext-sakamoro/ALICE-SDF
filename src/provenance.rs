@@ -624,17 +624,15 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
             .ok_or_else(|| ProvenanceError::Unreadable("PLY: no end_header".into()))?;
         return tagged_in(&bytes[..end], "PLY");
     }
-    if bytes.starts_with(b"//") {
-        // shader text (the Nanite HLSL material): the identifier is one of the leading `//`
-        // comment lines
-        let mut end = 0;
-        for line in bytes.split_inclusive(|&b| b == b'\n') {
-            if !line.starts_with(b"//") {
-                break;
-            }
-            end += line.len();
-        }
-        return tagged_in(&bytes[..end], "shader text");
+    if bytes.starts_with(b"//")
+        || (glsl_version_prefix_len(bytes).is_some() && !key_in_leading_hash_block(bytes))
+    {
+        // shader text (the whole shaders of the transpilers, the Nanite HLSL material): the
+        // identifier is one of the leading `//` comment lines, after the `#version` line of GLSL,
+        // read by the same rule as the readers that compile shader text (one verdict for the same
+        // bytes). An OBJ whose first comment only looks like a version line keeps its OBJ-style
+        // tag (`# alice:semantics_id=` in its leading `#` lines) through the OBJ branch below
+        return shader_text_tag(bytes);
     }
     if bytes.starts_with(b"#") {
         // OBJ (and MTL): the identifier is one of the leading comment lines
@@ -1238,6 +1236,152 @@ pub fn check_sdf(path: impl AsRef<Path>) -> Result<StoredSemantics, ProvenanceEr
     check(path, &Provenance::sdf(), crate::PREVIOUS_SDF_SEMANTICS_IDS)
 }
 
+/// The length of the text up to and including a GLSL version line that starts it, read
+/// tolerantly: a byte order mark, blank lines and white space before it, white space after `#` and
+/// around the words, a trailing `\r`; the line is `#version <digits>` with an optional profile
+/// word (`es`, `core`, `compatibility`) and nothing else. The writers emit the exact form
+/// (`#version N[ profile]` on line 1): GLSL ES takes nothing before `#version`, not even a comment
+/// or a blank line, so the identifier of GLSL text sits in the `//` block right after this line.
+fn glsl_version_prefix_len(bytes: &[u8]) -> Option<usize> {
+    let ws = |b: &u8| *b == b' ' || *b == b'\t';
+    let mut at = if bytes.starts_with(b"\xEF\xBB\xBF") {
+        3
+    } else {
+        0
+    };
+    loop {
+        let line_end = bytes[at..].iter().position(|&b| b == b'\n').map(|e| at + e);
+        let line = bytes[at..line_end.unwrap_or(bytes.len())].trim_ascii();
+        if line.is_empty() {
+            at = line_end? + 1;
+            continue;
+        }
+        let rest = line.strip_prefix(b"#")?.trim_ascii_start();
+        let rest = rest.strip_prefix(b"version")?;
+        if !rest.first().is_some_and(ws) {
+            return None;
+        }
+        let rest = rest.trim_ascii_start();
+        let digits = rest.iter().take_while(|b| b.is_ascii_digit()).count();
+        if digits == 0 {
+            return None;
+        }
+        let rest = &rest[digits..];
+        if !rest.is_empty() {
+            let word = rest.trim_ascii_start();
+            if !rest.first().is_some_and(ws)
+                || word.is_empty()
+                || !word.iter().all(u8::is_ascii_lowercase)
+            {
+                return None;
+            }
+        }
+        return Some(line_end.map_or(bytes.len(), |e| e + 1));
+    }
+}
+
+/// The key in the leading block of `#` lines (where an OBJ stores it, see the OBJ branch of
+/// [`from_bytes`])
+fn key_in_leading_hash_block(bytes: &[u8]) -> bool {
+    let mut end = 0;
+    for line in bytes.split_inclusive(|&b| b == b'\n') {
+        if !line.starts_with(b"#") {
+            break;
+        }
+        end += line.len();
+    }
+    find(&bytes[..end], KEY.as_bytes()).is_some()
+}
+
+/// The range of the leading block of `//` comment lines of shader text, after a GLSL `#version`
+/// line when one starts the text (empty when neither does)
+fn shader_leading_block(bytes: &[u8]) -> std::ops::Range<usize> {
+    let start = glsl_version_prefix_len(bytes).unwrap_or(0);
+    let mut end = start;
+    for line in bytes[start..].split_inclusive(|&b| b == b'\n') {
+        if !line.starts_with(b"//") {
+            break;
+        }
+        end += line.len();
+    }
+    start..end
+}
+
+/// The identifier of shader text: one value in its leading block ([`shader_leading_block`]), the
+/// only place it is read from, by [`from_bytes`] and by the readers that compile shader text
+/// ([`shader_text_verdict`]). The key anywhere else in the text (below the block, before a
+/// `#version` line) makes the text unreadable, never unstamped: a tag that is present is never
+/// ignored.
+fn shader_text_tag(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
+    let block = shader_leading_block(bytes);
+    if find(&bytes[..block.start], KEY.as_bytes()).is_some()
+        || find(&bytes[block.end..], KEY.as_bytes()).is_some()
+    {
+        return Err(ProvenanceError::Unreadable(format!(
+            "shader text: {KEY} outside the leading // block"
+        )));
+    }
+    tagged_in(&bytes[block], "shader text")
+}
+
+/// `body` under this crate's identifier: the form of every whole shader the transpilers emit, the
+/// line `// alice:semantics_id=<64 hex>` first, or second after the `#version` line of GLSL
+#[cfg(any(feature = "gpu", feature = "glsl", feature = "hlsl"))]
+pub(crate) fn tagged_shader(body: &str) -> String {
+    tagged_shader_with(&Provenance::sdf(), body)
+}
+
+/// `body` under the identifier `provenance` (shader text derived from text that carried it)
+#[cfg(any(feature = "gpu", feature = "glsl", feature = "hlsl"))]
+pub(crate) fn tagged_shader_with(provenance: &Provenance, body: &str) -> String {
+    let tag = format!("// {KEY}={}\n", provenance.hex());
+    match glsl_version_prefix_len(body.as_bytes()) {
+        // a version line that ends the text has no line end of its own
+        Some(n) if !body[..n].ends_with('\n') => format!("{}\n{tag}{}", &body[..n], &body[n..]),
+        Some(n) => format!("{}{tag}{}", &body[..n], &body[n..]),
+        None => format!("{tag}{body}"),
+    }
+}
+
+/// Why a reader that compiles shader text refuses it
+#[cfg(feature = "gpu")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ShaderRefusal {
+    /// No identifier in the leading `//` block, and the reader is a `*_pinned` one
+    Unpinned,
+    /// An identifier that is neither this crate's nor one it still reproduces
+    Mismatch {
+        stored: Provenance,
+        expected: Provenance,
+    },
+    /// An identifier that is present but malformed, or two different ones
+    Invalid(String),
+}
+
+/// The verdict of a reader that compiles shader text: the identifier in the leading `//` block,
+/// judged as this crate's loaders judge a stored identifier ([`sdf_load_verdict`]). Text without
+/// the key anywhere (another program's text) is `Unpinned`, refused by the `*_pinned` readers;
+/// the key outside the leading block is invalid ([`shader_text_tag`]). Nothing here touches a
+/// device, so a refusal never costs one.
+#[cfg(feature = "gpu")]
+pub(crate) fn shader_text_verdict(
+    text: &str,
+    allow_unpinned: bool,
+) -> Result<StoredSemantics, ShaderRefusal> {
+    let stored = match shader_text_tag(text.as_bytes()) {
+        Ok(p) => Some(p.semantics_id),
+        Err(ProvenanceError::Missing { .. }) => None,
+        Err(e) => return Err(ShaderRefusal::Invalid(e.to_string())),
+    };
+    sdf_load_verdict(stored, "shader text", allow_unpinned).map_err(|e| match e {
+        crate::io::IoError::Unpinned { .. } => ShaderRefusal::Unpinned,
+        crate::io::IoError::SemanticsMismatch {
+            stored, expected, ..
+        } => ShaderRefusal::Mismatch { stored, expected },
+        other => ShaderRefusal::Invalid(other.to_string()),
+    })
+}
+
 /// `alice:semantics_id=<64 hex>` anywhere in `bytes`; exactly one distinct value is accepted
 fn tagged_in(bytes: &[u8], format: &'static str) -> Result<Provenance, ProvenanceError> {
     let key = format!("{KEY}=");
@@ -1405,6 +1549,150 @@ fn zip_entry<'a>(bytes: &'a [u8], name: &str) -> Result<Option<&'a [u8]>, Proven
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The reader takes a version line with a byte order mark, blank lines and white space around
+    /// it; anything else on the line (or another word) is no version line
+    #[test]
+    fn glsl_version_line_reading_is_tolerant_and_exact_about_the_words() {
+        for (text, len) in [
+            ("#version 450\nx", 13),
+            ("#version 300 es\r\nx", 17),
+            ("\u{feff}#version 450\nx", 16),
+            ("\n\n  #version 450\nx", 17),
+            ("# version 450  core \nx", 21),
+            ("#\tversion\t460\tcore\nx", 19),
+            ("#version 450", 12),
+        ] {
+            assert_eq!(
+                glsl_version_prefix_len(text.as_bytes()),
+                Some(len),
+                "{text:?}"
+            );
+        }
+        for text in [
+            "#version\n",
+            "#version x\n",
+            "#versions 1\n",
+            "#version 450ES\n",
+            "#version 450 es extra\n",
+            "#version 450 Es\n",
+            "#VERSION 450\n",
+            "// #version 450\n",
+            "\n\n",
+            "",
+        ] {
+            assert_eq!(glsl_version_prefix_len(text.as_bytes()), None, "{text:?}");
+        }
+    }
+
+    /// The stored-form reader and the readers that compile shader text give one verdict for the
+    /// same GLSL-like bytes: every combination of a version line (in the forms the reader
+    /// tolerates), a leading block and a body, with this crate's identifier, another one, both or
+    /// none, in and out of the block
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn from_bytes_and_the_shader_readers_agree_on_glsl_like_text() {
+        let ours = format!("// {KEY}={}", Provenance::sdf().hex());
+        let other = format!("// {KEY}={}", Provenance::new([0x5a; 32]).hex());
+        let stored = |bytes: &[u8]| match from_bytes(bytes) {
+            Ok(p) if p == Provenance::sdf() => "current",
+            Ok(_) => "mismatch",
+            Err(ProvenanceError::Missing { .. }) => "unpinned",
+            Err(ProvenanceError::Unreadable(_)) => "invalid",
+            Err(e) => panic!("{e}"),
+        };
+        let read = |text: &str| match shader_text_verdict(text, true) {
+            Ok(StoredSemantics::Current) => "current",
+            Ok(StoredSemantics::Unpinned) => "unpinned",
+            Ok(StoredSemantics::VerifiedPrevious(_)) => "previous",
+            Err(ShaderRefusal::Mismatch { .. }) => "mismatch",
+            Err(ShaderRefusal::Invalid(_)) => "invalid",
+            Err(ShaderRefusal::Unpinned) => panic!("unpinned refused with allow_unpinned"),
+        };
+        let prefixes = [
+            "#version 450\n",
+            "#version 300 es\n",
+            "#version 460 core\r\n",
+            "\n#version 330\n",
+            "\u{feff}#version 450\n",
+            "# version 450  core \n",
+        ];
+        let blocks: [&[&str]; 10] = [
+            &[],
+            &["// a comment"],
+            &[&ours],
+            &[&other],
+            &["// a comment", &ours],
+            &[&ours, &other],
+            &[&ours, &ours],
+            &["#extension GL_X : enable"],
+            &[""],
+            &["#extension GL_X : enable", &ours],
+        ];
+        let bodies: [&[&str]; 3] = [
+            &["void main() {}"],
+            &["void main() {}", &ours],
+            &["void main() {}", &other],
+        ];
+        let mut seen = std::collections::BTreeSet::new();
+        let mut compared = 0;
+        for prefix in prefixes {
+            for block in blocks {
+                for body in bodies {
+                    let mut text = prefix.to_string();
+                    for line in block.iter().chain(body.iter()) {
+                        text.push_str(line);
+                        text.push('\n');
+                    }
+                    let (a, b) = (stored(text.as_bytes()), read(&text));
+                    assert_eq!(a, b, "{text:?}");
+                    seen.insert(a);
+                    compared += 1;
+                }
+            }
+            // a version line that ends the text
+            let bare = prefix.trim_end_matches(['\n', '\r']);
+            assert_eq!(stored(bare.as_bytes()), read(bare), "{bare:?}");
+            compared += 1;
+        }
+        assert!(compared >= 180, "{compared} texts compared");
+        assert_eq!(
+            seen.into_iter().collect::<Vec<_>>(),
+            ["current", "invalid", "mismatch", "unpinned"],
+            "every verdict is exercised"
+        );
+    }
+
+    /// The writer puts the tag on line 1, or on line 2 after `#version`; a version line that ends
+    /// the text gets its line end first
+    #[cfg(any(feature = "gpu", feature = "glsl", feature = "hlsl"))]
+    #[test]
+    fn the_tag_goes_after_a_version_line_with_its_line_end() {
+        let tag = format!("// {KEY}={}", Provenance::sdf().hex());
+        assert_eq!(
+            tagged_shader("#version 450"),
+            format!("#version 450\n{tag}\n")
+        );
+        assert_eq!(
+            tagged_shader("#version 300 es\nvoid main() {}\n"),
+            format!("#version 300 es\n{tag}\nvoid main() {{}}\n")
+        );
+        assert_eq!(
+            tagged_shader("struct S { x: f32 }\n"),
+            format!("{tag}\nstruct S {{ x: f32 }}\n")
+        );
+        for body in [
+            "#version 450",
+            "#version 300 es\nvoid main() {}\n",
+            "fn f() {}\n",
+        ] {
+            assert_eq!(
+                from_bytes(tagged_shader(body).as_bytes()).ok(),
+                Some(Provenance::sdf()),
+                "{body:?}"
+            );
+        }
+    }
 
     #[test]
     fn weaker_orders_unpinned_previous_current() {

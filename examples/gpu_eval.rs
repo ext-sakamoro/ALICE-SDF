@@ -302,10 +302,22 @@ fn run_api_tour() {
         &from_shader.eval_batch(&pts).unwrap(),
         want(r, c),
     );
+    // the transpiler's whole shader carries this crate's semantics identifier, so the readers
+    // mark it `Current` (text from another program would be `Unpinned`)
     let compute = WgslShader::transpile(&moved, TranspileMode::Hardcoded).to_compute_shader();
-    let from_wgsl = pollster::block_on(GpuEvaluator::from_wgsl_async(&compute)).unwrap();
+    let (from_wgsl, semantics) = pollster::block_on(GpuEvaluator::from_wgsl_async(&compute))
+        .unwrap()
+        .into_parts();
+    assert_eq!(semantics, alice_sdf::provenance::StoredSemantics::Current);
     assert_close(
         "from_wgsl_async",
+        &from_wgsl.eval_batch(&pts).unwrap(),
+        want(r2, c2),
+    );
+    let (from_wgsl, semantics) = GpuEvaluator::from_wgsl(&compute).unwrap().into_parts();
+    assert_eq!(semantics, alice_sdf::provenance::StoredSemantics::Current);
+    assert_close(
+        "from_wgsl",
         &from_wgsl.eval_batch(&pts).unwrap(),
         want(r2, c2),
     );
@@ -346,7 +358,16 @@ fn run_api_tour() {
              }}\n",
             glsl.get_eval_function()
         );
-        let gpu_glsl = GpuEvaluator::from_glsl_compute(&src).expect("GLSL compute shader");
+        // this wrapper is the host's text, not this crate's: it carries no semantics identifier,
+        // so the reader marks it unpinned and the pinned reader refuses it
+        let (gpu_glsl, semantics) = GpuEvaluator::from_glsl_compute(&src)
+            .expect("GLSL compute shader")
+            .into_parts();
+        assert_eq!(semantics, alice_sdf::provenance::StoredSemantics::Unpinned);
+        assert!(matches!(
+            GpuEvaluator::from_glsl_compute_pinned(&src),
+            Err(alice_sdf::compiled::GpuError::Unpinned)
+        ));
         assert_close(
             "from_glsl_compute",
             &gpu_glsl.eval_batch(&pts).unwrap(),

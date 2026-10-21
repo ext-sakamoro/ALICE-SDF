@@ -306,7 +306,10 @@ fn metal_does_not_fuse_a_multiply_add() {
     let fused = 2f32.powi(-24);
     let mut compared = 0;
     for (body, _) in FORMS {
-        let shader = MslShader::from_wgsl(&kernel_wgsl(body)).expect("transpile");
+        let shader = MslShader::from_wgsl(&kernel_wgsl(body))
+            .expect("transpile")
+            .into_parts()
+            .0;
         assert!(shader
             .source
             .starts_with("#pragma METAL fp contract(off)\n"));
@@ -343,7 +346,10 @@ fn metal_signed_zero_needs_fast_math_off() {
     let pts = [discriminator()];
     let mut compared = 0;
     for (body, want) in FORMS {
-        let shader = MslShader::from_wgsl(&kernel_wgsl(body)).expect("transpile");
+        let shader = MslShader::from_wgsl(&kernel_wgsl(body))
+            .expect("transpile")
+            .into_parts()
+            .0;
         let got =
             run_on_metal(&device, &shader, &pts, &required_options()).expect("run on Metal")[0];
         assert_eq!(
@@ -375,7 +381,10 @@ fn metal_default_fast_math_loses_the_sign_of_zero() {
     let pts = [discriminator()];
     let mut compared = 0;
     for (body, want) in FORMS {
-        let shader = MslShader::from_wgsl(&kernel_wgsl(body)).expect("transpile");
+        let shader = MslShader::from_wgsl(&kernel_wgsl(body))
+            .expect("transpile")
+            .into_parts()
+            .0;
         let got =
             run_on_metal(&device, &shader, &pts, &default_options()).expect("run on Metal")[0];
         // fast math drops the sign of a zero: every form comes back +0

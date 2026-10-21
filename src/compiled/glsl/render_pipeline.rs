@@ -810,6 +810,10 @@ void main(){{
 /// `Mat getMat(float id, vec3 p)`; `struct Mat` is declared before the source.
 /// With `config.dual_sdf` it must also define `float sdf_eval_lite(vec3 p)`.
 pub fn build_full_shader(sdf_eval_source: &str, config: &RenderConfig) -> String {
+    crate::provenance::tagged_shader(&build_full_shader_text(sdf_eval_source, config))
+}
+
+fn build_full_shader_text(sdf_eval_source: &str, config: &RenderConfig) -> String {
     let version = config.glsl_version;
     let biome = if config.biome_terrain {
         BIOME_SYSTEM

@@ -198,7 +198,7 @@ fn validate(stage: naga::ShaderStage, what: &str, src: &str) {
 }
 
 fn gpu_or_skip(what: &str, src: &str) -> Option<GpuEvaluator> {
-    match GpuEvaluator::from_glsl_compute(src) {
+    match GpuEvaluator::from_glsl_compute(src).map(|c| c.into_parts().0) {
         Ok(g) => Some(g),
         Err(e) => {
             assert!(

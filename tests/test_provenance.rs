@@ -3617,13 +3617,12 @@ fn nanite_hlsl_material_carries_the_identifier() {
             format: "shader text"
         })
     ));
-    // the key below the leading comment block (in the shader body) is not the identifier
+    // the key below the leading comment block (in the shader body) is not the identifier, and a
+    // present key is never read as absent: the text is unreadable
     let below = format!("{without}{tag}\n");
     assert!(matches!(
         provenance::from_bytes(below.as_bytes()),
-        Err(ProvenanceError::Missing {
-            format: "shader text"
-        })
+        Err(ProvenanceError::Unreadable(_))
     ));
     let not_hex = text.replace(&Provenance::sdf().hex(), &"g".repeat(64));
     assert!(matches!(

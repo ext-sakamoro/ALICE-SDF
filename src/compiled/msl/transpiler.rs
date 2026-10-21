@@ -40,6 +40,19 @@ pub enum MslError {
     MslWrite(String),
     /// No compute entry point was found in the WGSL.
     NoEntryPoint,
+    /// The WGSL carries another semantics identifier in its leading `//` block (see
+    /// [`crate::provenance`]): it was transpiled under another arithmetic
+    SemanticsMismatch {
+        /// The identifier in the text
+        stored: crate::provenance::Provenance,
+        /// This crate's identifier
+        expected: crate::provenance::Provenance,
+    },
+    /// The WGSL carries no semantics identifier in its leading `//` block, and the reader is
+    /// [`MslShader::from_wgsl_pinned`]
+    Unpinned,
+    /// The identifier in the leading `//` block is malformed, or there are two different ones
+    InvalidFormat(String),
 }
 
 impl core::fmt::Display for MslError {
@@ -49,11 +62,33 @@ impl core::fmt::Display for MslError {
             Self::Validation(e) => write!(f, "WGSL validation failed before MSL emit: {e}"),
             Self::MslWrite(e) => write!(f, "naga could not write MSL: {e}"),
             Self::NoEntryPoint => write!(f, "no entry point in the WGSL module"),
+            Self::SemanticsMismatch { stored, expected } => write!(
+                f,
+                "WGSL: semantics identifier mismatch: stored {stored}, expected {expected}"
+            ),
+            Self::Unpinned => write!(
+                f,
+                "WGSL: no semantics identifier in the leading // block (use MslShader::from_wgsl to read it unpinned)"
+            ),
+            Self::InvalidFormat(e) => write!(f, "WGSL: {e}"),
         }
     }
 }
 
 impl std::error::Error for MslError {}
+
+impl From<crate::provenance::ShaderRefusal> for MslError {
+    fn from(r: crate::provenance::ShaderRefusal) -> Self {
+        use crate::provenance::ShaderRefusal;
+        match r {
+            ShaderRefusal::Unpinned => Self::Unpinned,
+            ShaderRefusal::Mismatch { stored, expected } => {
+                Self::SemanticsMismatch { stored, expected }
+            }
+            ShaderRefusal::Invalid(e) => Self::InvalidFormat(e),
+        }
+    }
+}
 
 /// The Metal compile options an emitted kernel needs for its bits to match the
 /// CPU laws.
@@ -123,10 +158,18 @@ impl MslShader {
     /// cannot write MSL for it.
     pub fn transpile(node: &SdfNode, mode: TranspileMode) -> Result<Self, MslError> {
         let wgsl = WgslShader::transpile(node, mode);
-        Self::from_wgsl(&wgsl.to_compute_shader())
+        Self::from_wgsl_pinned(&wgsl.to_compute_shader())
     }
 
-    /// Translate an arbitrary WGSL compute shader to MSL.
+    /// Translate an arbitrary WGSL compute shader to MSL, with what is known about the arithmetic
+    /// it was transpiled under
+    ///
+    /// The identifier is read from the leading `//` block of `wgsl` (see [`crate::provenance`]):
+    /// this crate's text is [`StoredSemantics::Current`](crate::provenance::StoredSemantics::Current),
+    /// text without the key anywhere (another program's WGSL) is `Unpinned`, text under another
+    /// identifier, and the key outside the leading block, are refused before naga sees it. The MSL
+    /// carries the identifier the WGSL carried (none for `Unpinned`).
+    /// [`MslShader::from_wgsl_pinned`] also refuses `Unpinned`.
     ///
     /// Used by the oracle tests to run the same translation over shaders that
     /// are not produced by [`MslShader::transpile`] (NPR, noise, marching
@@ -134,8 +177,35 @@ impl MslShader {
     ///
     /// # Errors
     ///
-    /// See [`MslShader::transpile`].
-    pub fn from_wgsl(wgsl: &str) -> Result<Self, MslError> {
+    /// [`MslError::SemanticsMismatch`] for another identifier, [`MslError::InvalidFormat`] for a
+    /// malformed one, otherwise see [`MslShader::transpile`].
+    pub fn from_wgsl(wgsl: &str) -> Result<crate::provenance::Checked<Self>, MslError> {
+        Self::judged(wgsl, true)
+    }
+
+    /// [`MslShader::from_wgsl`] that refuses WGSL without this crate's identifier
+    ///
+    /// # Errors
+    ///
+    /// [`MslError::Unpinned`] for text without an identifier, otherwise as
+    /// [`MslShader::from_wgsl`].
+    pub fn from_wgsl_pinned(wgsl: &str) -> Result<Self, MslError> {
+        Self::judged(wgsl, false).map(|c| c.into_parts().0)
+    }
+
+    fn judged(
+        wgsl: &str,
+        allow_unpinned: bool,
+    ) -> Result<crate::provenance::Checked<Self>, MslError> {
+        let semantics = crate::provenance::shader_text_verdict(wgsl, allow_unpinned)?;
+        Self::translate(wgsl, semantics)
+            .map(|shader| crate::provenance::Checked::new(shader, semantics))
+    }
+
+    fn translate(
+        wgsl: &str,
+        semantics: crate::provenance::StoredSemantics,
+    ) -> Result<Self, MslError> {
         let module = naga::front::wgsl::parse_str(wgsl)
             .map_err(|e| MslError::WgslParse(e.emit_to_string(wgsl)))?;
 
@@ -210,10 +280,18 @@ impl MslShader {
             msl::write_string(&module, &info, &options, &msl::PipelineOptions::default())
                 .map_err(|e| MslError::MslWrite(format!("{e:?}")))?;
         let required = Self::REQUIRED_COMPILE_OPTIONS;
-        let source = format!(
+        let body = format!(
             "{MSL_FP_CONTRACT_OFF}// compile with fastMathEnabled = {}, languageVersion = {}.{} (MslShader::REQUIRED_COMPILE_OPTIONS)\n{naga_source}",
             required.fast_math_enabled, required.language_version.0, required.language_version.1,
         );
+        // the MSL carries the identifier of the WGSL it came from
+        let source = match semantics {
+            crate::provenance::StoredSemantics::Current => crate::provenance::tagged_shader(&body),
+            crate::provenance::StoredSemantics::VerifiedPrevious(p) => {
+                crate::provenance::tagged_shader_with(&p, &body)
+            }
+            crate::provenance::StoredSemantics::Unpinned => body,
+        };
 
         // The MSL function name is **not** the WGSL one: `main` is reserved in
         // MSL, so naga renames entry points and reports the mapping here. Using

@@ -71,7 +71,8 @@ fn gpu_evaluator_does_not_fuse_a_multiply_add() {
     let pts = [discriminator()];
     let mut compared = 0;
     for (body, want) in FORMS {
-        let evaluator = match GpuEvaluator::from_wgsl(&kernel_wgsl(body)) {
+        let evaluator = match GpuEvaluator::from_wgsl(&kernel_wgsl(body)).map(|c| c.into_parts().0)
+        {
             Ok(e) => e,
             Err(e) => {
                 for var in ["ALICE_SDF_REQUIRE_GPU", "ALICE_SDF_REQUIRE_METAL"] {

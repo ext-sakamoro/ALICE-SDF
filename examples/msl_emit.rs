@@ -46,7 +46,7 @@ fn main() {
     // (parameters in a uniform buffer at binding 3).
     let normals =
         WgslShader::transpile(&shape, TranspileMode::Dynamic).to_compute_shader_with_normals();
-    let with_normals = MslShader::from_wgsl(&normals).expect("MSL emit (normals)");
+    let with_normals = MslShader::from_wgsl_pinned(&normals).expect("MSL emit (normals)");
     assert_eq!(with_normals.sizes_buffer_slot, 4);
     eprintln!(
         "[msl_emit] normals kernel `{}`, {} bytes of MSL",

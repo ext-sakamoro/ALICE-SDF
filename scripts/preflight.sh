@@ -432,6 +432,9 @@ cargo test --lib --features "ffi,hlsl,glsl"
 if [ "$(uname -s)" = "Darwin" ]; then
   step "test: MSL -> Metal oracle (corpus compile + CPU parity, macOS のみ)"
   ALICE_SDF_REQUIRE_METAL=1 cargo test --features msl --test test_msl_metal_oracle -- --nocapture
+  step "test: shader text semantics identifier (msl、ci.yml の macOS step と対、9 件未満で fail)"
+  cargo test --features msl --test test_shader_text_provenance -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-shader-text-provenance-msl.log"
+  python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-shader-text-provenance-msl.log" --min 9 --what "shader text provenance tests (msl)"
   step "test: GpuEvaluator on Metal does not fuse a multiply-add (msl、ci.yml の macOS step と対、走った件数 0 で fail)"
   ALICE_SDF_REQUIRE_METAL=1 cargo test --features msl --test test_gpu_fma_contraction -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-gpu-fma.log"
   python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-gpu-fma.log" --min 1 --what "GpuEvaluator fma contraction tests (msl, Metal)"
@@ -502,6 +505,10 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_transpiler_naga_validate --test noise_shader_validate --test test_mesh_orientation --test test_mc_shared_vertex_oracle \
   --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity --test test_instanced_wgsl_gpu_parity \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_shader_precise_temporaries
+
+step "gpu-parity: shader text semantics identifier (gpu, glsl, hlsl, volume、ci.yml の gpu-parity job と対、9 件未満で fail)"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl,volume" --test test_shader_text_provenance -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log" --min 9 --what "shader text provenance tests (gpu, glsl, hlsl, volume)"
 
 step "gpu-parity: GPU unit tests ran, not skipped (6, ci.yml の GPU unit tests ran と対)"
 python3 scripts/test_gpu_test_count.py

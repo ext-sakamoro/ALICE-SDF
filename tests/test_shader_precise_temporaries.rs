@@ -869,6 +869,7 @@ const EMITTERS: [Emitter; 13] = [
         &[
             ("device_info", "a device description, no shader text"),
             ("from_glsl_compute", "takes shader text, emits none"),
+            ("from_glsl_compute_pinned", "takes shader text, emits none"),
             ("from_shader", "takes shader text, emits none"),
         ],
     ),

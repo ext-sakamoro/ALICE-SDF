@@ -312,3 +312,92 @@ fn the_qualifier_is_precise_from_450_and_es_320_and_empty_before() {
         }
     }
 }
+
+/// The semantics identifier of the whole GLSL (ALICE-Law G8) sits on line 2, after `#version`:
+/// GLSL ES takes nothing before `#version`, not even a comment. Every whole output a compiler
+/// takes, desktop and ES (`render_pipeline::build_full_shader`, `to_fragment_shader_full`), is
+/// tagged that way and compiles; the same ES text with the tag moved before `#version`, or with a
+/// statement before it, is refused (the teeth: this is what the placement avoids)
+#[test]
+fn tagged_whole_glsl_compiles_and_es_takes_nothing_before_version() {
+    use alice_sdf::compiled::glsl::render_pipeline::build_full_shader;
+    use alice_sdf::compiled::glsl::RenderConfig;
+    use alice_sdf::provenance::{Provenance, KEY};
+    let Some(glslang) =
+        glslang_or_skip("tagged_whole_glsl_compiles_and_es_takes_nothing_before_version")
+    else {
+        return;
+    };
+    let dir = scratch("glslang_g8_tag");
+    let tag = format!("// {KEY}={}", Provenance::sdf().hex());
+    let mut compiled = 0;
+    for (name, node) in corpus() {
+        for mode in [GlslTranspileMode::Hardcoded, GlslTranspileMode::Dynamic] {
+            let sh = GlslShader::transpile(&node, mode);
+            let es = [
+                (
+                    "full",
+                    build_full_shader(&sh.source, &RenderConfig::default()),
+                ),
+                (
+                    "fragment_full",
+                    sh.to_fragment_shader_full(&RenderConfig::default()),
+                ),
+            ];
+            let desktop = [
+                ("compute", sh.to_compute_shader()),
+                ("vulkan", sh.to_vulkan_compute_shader()),
+                ("fragment", sh.to_fragment_shader()),
+            ];
+            for (what, text) in es.iter().chain(desktop.iter()) {
+                let lines: Vec<&str> = text.lines().collect();
+                assert!(
+                    lines[0].starts_with("#version ") && lines[1] == tag,
+                    "{name} {mode:?} {what}: not `#version` then the tag:\n{}\n{}",
+                    lines[0],
+                    lines[1]
+                );
+            }
+            // a Dynamic source reads `params`, a block the host declares, so only the Hardcoded
+            // ES text is a whole unit by itself
+            if mode == GlslTranspileMode::Dynamic {
+                continue;
+            }
+            for (what, text) in &es {
+                assert!(text.starts_with("#version 300 es\n"), "{name} {what}");
+                let unit = format!("{name}_{mode:?}_{what}.frag");
+                compile(&glslang, &dir, &unit, text, &[]).unwrap_or_else(|e| {
+                    panic!("{name} {mode:?} {what}: the tagged ES text does not compile:\n{e}")
+                });
+                compiled += 1;
+                // the teeth: anything before `#version` is refused in ES
+                let rest = text
+                    .split_once('\n')
+                    .unwrap()
+                    .1
+                    .replacen(&format!("{tag}\n"), "", 1);
+                for (moved, bad) in [
+                    ("tag first", format!("{tag}\n#version 300 es\n{rest}")),
+                    (
+                        "statement first",
+                        format!("precision highp float;\n#version 300 es\n{rest}"),
+                    ),
+                ] {
+                    let err = compile(
+                        &glslang,
+                        &dir,
+                        &format!("bad_{moved}_{unit}").replace(' ', "_"),
+                        &bad,
+                        &[],
+                    )
+                    .expect_err(&format!("{name} {what}: ES took {moved}"));
+                    assert!(
+                        err.contains("must occur first"),
+                        "{name} {what}: {moved} refused for another reason:\n{err}"
+                    );
+                }
+            }
+        }
+    }
+    assert!(compiled > 0, "0 tagged ES units compiled");
+}

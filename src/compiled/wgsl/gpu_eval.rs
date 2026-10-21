@@ -51,7 +51,57 @@ pub enum GpuError {
     /// Buffer mapping error
     #[error("Buffer mapping error: {0}")]
     BufferMapping(String),
+
+    /// The shader text carries another semantics identifier in its leading `//` block (see
+    /// [`crate::provenance`]): it was transpiled under another arithmetic
+    #[error("shader text: semantics identifier mismatch: stored {stored}, expected {expected}")]
+    SemanticsMismatch {
+        /// The identifier in the text
+        stored: crate::provenance::Provenance,
+        /// This crate's identifier
+        expected: crate::provenance::Provenance,
+    },
+
+    /// The shader text carries no semantics identifier in its leading `//` block, and the
+    /// constructor is a `*_pinned` one
+    #[error("shader text: no semantics identifier in the leading // block (use the constructor that is not *_pinned to run it unpinned)")]
+    Unpinned,
+
+    /// The identifier in the leading `//` block is malformed, or there are two different ones
+    #[error("shader text: {0}")]
+    InvalidFormat(String),
 }
+
+impl From<crate::provenance::ShaderRefusal> for GpuError {
+    fn from(r: crate::provenance::ShaderRefusal) -> Self {
+        use crate::provenance::ShaderRefusal;
+        match r {
+            ShaderRefusal::Unpinned => Self::Unpinned,
+            ShaderRefusal::Mismatch { stored, expected } => {
+                Self::SemanticsMismatch { stored, expected }
+            }
+            ShaderRefusal::Invalid(e) => Self::InvalidFormat(e),
+        }
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The engine builds started on this thread (a unit test checks that a refused text starts
+    /// none)
+    static ENGINE_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Counts an engine build in the unit tests
+#[cfg(test)]
+fn note_engine_build() {
+    ENGINE_BUILDS.with(|n| n.set(n.get() + 1));
+}
+
+/// Nothing in a normal build
+#[cfg(not(test))]
+#[inline]
+const fn note_engine_build() {}
 
 /// Input point for GPU evaluation (16 bytes, aligned)
 #[repr(C)]
@@ -1189,14 +1239,47 @@ impl GpuEvaluator {
     }
 
     /// Create a GPU evaluator from a pre-generated WGSL shader
+    ///
+    /// The shader is this crate's own, so its text carries this crate's identifier; it is read
+    /// through [`GpuEvaluator::from_wgsl_pinned`].
     pub fn from_shader(shader: &WgslShader) -> Result<Self, GpuError> {
-        let mut evaluator = Self::from_wgsl(&shader.to_compute_shader())?;
+        let mut evaluator = Self::from_wgsl_pinned(&shader.to_compute_shader())?;
         evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
         Ok(evaluator)
     }
 
-    /// Create a GPU evaluator from raw WGSL source
-    pub fn from_wgsl(wgsl_source: &str) -> Result<Self, GpuError> {
+    /// Create a GPU evaluator from raw WGSL source, with what is known about the arithmetic it was
+    /// transpiled under
+    ///
+    /// The identifier is read from the leading `//` block of the text (see
+    /// [`crate::provenance`]) before any device is requested: this crate's text is
+    /// [`StoredSemantics::Current`](crate::provenance::StoredSemantics::Current), text without
+    /// the key anywhere (another program's WGSL) is `Unpinned`, text under another identifier is
+    /// refused, and the key outside the leading block (below it) is refused as invalid.
+    /// [`GpuEvaluator::from_wgsl_pinned`] also refuses `Unpinned`.
+    ///
+    /// # Errors
+    ///
+    /// [`GpuError::SemanticsMismatch`] for another identifier, [`GpuError::InvalidFormat`] for a
+    /// malformed one, and the device and compile errors.
+    pub fn from_wgsl(wgsl_source: &str) -> Result<crate::provenance::Checked<Self>, GpuError> {
+        let semantics = crate::provenance::shader_text_verdict(wgsl_source, true)?;
+        Self::build_from_wgsl(wgsl_source).map(|e| crate::provenance::Checked::new(e, semantics))
+    }
+
+    /// [`GpuEvaluator::from_wgsl`] that refuses text without this crate's identifier
+    ///
+    /// # Errors
+    ///
+    /// [`GpuError::Unpinned`] for text without an identifier, otherwise as
+    /// [`GpuEvaluator::from_wgsl`].
+    pub fn from_wgsl_pinned(wgsl_source: &str) -> Result<Self, GpuError> {
+        crate::provenance::shader_text_verdict(wgsl_source, false)?;
+        Self::build_from_wgsl(wgsl_source)
+    }
+
+    fn build_from_wgsl(wgsl_source: &str) -> Result<Self, GpuError> {
+        note_engine_build();
         #[cfg(all(target_os = "macos", feature = "msl"))]
         {
             super::gpu_metal::MetalEngine::from_wgsl(wgsl_source).map(|m| Self {
@@ -1219,8 +1302,38 @@ impl GpuEvaluator {
     ///
     /// This always runs through wgpu, also on macOS: Metal may contract
     /// `a * b + c` here (see the module docs).
+    ///
+    /// The identifier is read from the leading `//` block as in [`GpuEvaluator::from_wgsl`]
+    /// (for GLSL the block comes right after the `#version` line, which GLSL ES needs first), and
+    /// [`GpuEvaluator::from_glsl_compute_pinned`] also refuses `Unpinned`.
+    ///
+    /// # Errors
+    ///
+    /// As [`GpuEvaluator::from_wgsl`].
     #[cfg(feature = "glsl")]
-    pub fn from_glsl_compute(glsl_source: &str) -> Result<Self, GpuError> {
+    pub fn from_glsl_compute(
+        glsl_source: &str,
+    ) -> Result<crate::provenance::Checked<Self>, GpuError> {
+        let semantics = crate::provenance::shader_text_verdict(glsl_source, true)?;
+        Self::build_from_glsl_compute(glsl_source)
+            .map(|e| crate::provenance::Checked::new(e, semantics))
+    }
+
+    /// [`GpuEvaluator::from_glsl_compute`] that refuses text without this crate's identifier
+    ///
+    /// # Errors
+    ///
+    /// [`GpuError::Unpinned`] for text without an identifier, otherwise as
+    /// [`GpuEvaluator::from_glsl_compute`].
+    #[cfg(feature = "glsl")]
+    pub fn from_glsl_compute_pinned(glsl_source: &str) -> Result<Self, GpuError> {
+        crate::provenance::shader_text_verdict(glsl_source, false)?;
+        Self::build_from_glsl_compute(glsl_source)
+    }
+
+    #[cfg(feature = "glsl")]
+    fn build_from_glsl_compute(glsl_source: &str) -> Result<Self, GpuError> {
+        note_engine_build();
         WgpuEngine::from_source(wgpu::ShaderSource::Glsl {
             shader: glsl_source.into(),
             stage: wgpu::naga::ShaderStage::Compute,
@@ -1342,30 +1455,59 @@ impl GpuEvaluator {
     /// Create a GPU evaluator from a pre-generated WGSL shader (async)
     pub async fn from_shader_async(shader: &WgslShader) -> Result<Self, GpuError> {
         let compute_shader = shader.to_compute_shader();
-        let mut evaluator = Self::from_wgsl_async(&compute_shader).await?;
+        let mut evaluator = Self::from_wgsl_async_pinned(&compute_shader).await?;
         evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
         Ok(evaluator)
     }
 
     /// Create a GPU evaluator from raw WGSL source (async)
     ///
+    /// The identifier is read from the leading `//` block as in [`GpuEvaluator::from_wgsl`],
+    /// before any device is requested; [`GpuEvaluator::from_wgsl_async_pinned`] also refuses
+    /// `Unpinned`.
+    ///
     /// On the Metal path the device and the pipeline are made synchronously
     /// (Metal has no asynchronous device request).
+    ///
+    /// # Errors
+    ///
+    /// As [`GpuEvaluator::from_wgsl`].
+    pub async fn from_wgsl_async(
+        wgsl_source: &str,
+    ) -> Result<crate::provenance::Checked<Self>, GpuError> {
+        let semantics = crate::provenance::shader_text_verdict(wgsl_source, true)?;
+        Self::build_from_wgsl_async(wgsl_source)
+            .await
+            .map(|e| crate::provenance::Checked::new(e, semantics))
+    }
+
+    /// [`GpuEvaluator::from_wgsl_async`] that refuses text without this crate's identifier
+    ///
+    /// # Errors
+    ///
+    /// [`GpuError::Unpinned`] for text without an identifier, otherwise as
+    /// [`GpuEvaluator::from_wgsl_async`].
+    pub async fn from_wgsl_async_pinned(wgsl_source: &str) -> Result<Self, GpuError> {
+        crate::provenance::shader_text_verdict(wgsl_source, false)?;
+        Self::build_from_wgsl_async(wgsl_source).await
+    }
+
     #[cfg_attr(
         all(target_os = "macos", feature = "msl"),
         allow(
             clippy::unused_async,
             clippy::unused_async_trait_impl,
-            reason = "the async signature is the public API; Metal has no async device request"
+            reason = "the async signature serves the wgpu path; Metal has no async device request"
         )
     )]
-    pub async fn from_wgsl_async(wgsl_source: &str) -> Result<Self, GpuError> {
+    async fn build_from_wgsl_async(wgsl_source: &str) -> Result<Self, GpuError> {
         #[cfg(all(target_os = "macos", feature = "msl"))]
         {
-            Self::from_wgsl(wgsl_source)
+            Self::build_from_wgsl(wgsl_source)
         }
         #[cfg(not(all(target_os = "macos", feature = "msl")))]
         {
+            note_engine_build();
             WgpuEngine::from_wgsl_async(wgsl_source)
                 .await
                 .map(|w| Self {
@@ -1617,6 +1759,65 @@ impl std::fmt::Debug for GpuEvaluator {
 mod tests {
     use super::*;
     use crate::eval::eval;
+
+    /// A refused text starts no engine build (so no device is requested): the verdict comes from
+    /// the leading `//` block alone. Without a GPU every other result of these constructors would
+    /// be a device error, so the count is the only way to see the order on a machine with one
+    #[test]
+    fn verdict_runs_before_any_device_request() {
+        let own = WgslShader::transpile(
+            &SdfNode::sphere(1.0),
+            crate::compiled::wgsl::TranspileMode::Hardcoded,
+        )
+        .to_compute_shader();
+        let key = format!("// {}=", crate::provenance::KEY);
+        let untagged: String = own
+            .lines()
+            .filter(|l| !l.starts_with(&key))
+            .flat_map(|l| [l, "\n"])
+            .collect();
+        let other = format!(
+            "// {}={}\n{untagged}",
+            crate::provenance::KEY,
+            crate::provenance::Provenance::new([0x5a; 32]).hex()
+        );
+        let before = ENGINE_BUILDS.with(std::cell::Cell::get);
+        assert!(matches!(
+            GpuEvaluator::from_wgsl(&other),
+            Err(GpuError::SemanticsMismatch { .. })
+        ));
+        assert!(matches!(
+            GpuEvaluator::from_wgsl_pinned(&untagged),
+            Err(GpuError::Unpinned)
+        ));
+        assert!(matches!(
+            pollster::block_on(GpuEvaluator::from_wgsl_async(&other)),
+            Err(GpuError::SemanticsMismatch { .. })
+        ));
+        assert!(matches!(
+            pollster::block_on(GpuEvaluator::from_wgsl_async_pinned(&untagged)),
+            Err(GpuError::Unpinned)
+        ));
+        #[cfg(feature = "glsl")]
+        {
+            assert!(matches!(
+                GpuEvaluator::from_glsl_compute(&other),
+                Err(GpuError::SemanticsMismatch { .. })
+            ));
+            assert!(matches!(
+                GpuEvaluator::from_glsl_compute_pinned(&untagged),
+                Err(GpuError::Unpinned)
+            ));
+        }
+        assert_eq!(
+            ENGINE_BUILDS.with(std::cell::Cell::get),
+            before,
+            "a refused text started an engine build"
+        );
+        // the counter itself counts: an accepted text starts one (whatever the device answers)
+        let _ = GpuEvaluator::from_wgsl(&own);
+        assert_eq!(ENGINE_BUILDS.with(std::cell::Cell::get), before + 1);
+    }
 
     #[test]
     fn test_gpu_eval_sphere() {

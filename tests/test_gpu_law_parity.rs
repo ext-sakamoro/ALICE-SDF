@@ -358,7 +358,9 @@ void main() {{
                 continue;
             }
             let shader = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
-            let gpu = match GpuEvaluator::from_glsl_compute(&compute_wrapper(&shader.source)) {
+            let gpu = match GpuEvaluator::from_glsl_compute(&compute_wrapper(&shader.source))
+                .map(|c| c.into_parts().0)
+            {
                 Ok(g) => g,
                 Err(e) => {
                     assert!(
@@ -398,7 +400,9 @@ void main() {{
         let pts = points(2048);
         crate::common::corpus::assert_projective_case_discriminates(&pts, 1e-4);
         let shader = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
-        let gpu = match GpuEvaluator::from_glsl_compute(&compute_wrapper(&shader.source)) {
+        let gpu = match GpuEvaluator::from_glsl_compute(&compute_wrapper(&shader.source))
+            .map(|c| c.into_parts().0)
+        {
             Ok(g) => g,
             Err(e) => {
                 assert!(
@@ -488,7 +492,9 @@ mod glsl_axis_ties {
             let shader = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
             let gpu = match GpuEvaluator::from_glsl_compute(
                 &super::glsl_execution::compute_wrapper(&shader.source),
-            ) {
+            )
+            .map(|c| c.into_parts().0)
+            {
                 Ok(g) => g,
                 Err(e) => {
                     assert!(

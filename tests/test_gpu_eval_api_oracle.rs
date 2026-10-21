@@ -347,7 +347,7 @@ fn async_constructors_and_submitted_batches_match_the_closed_form() {
     let src = WgslShader::transpile(&B.node(), TranspileMode::Hardcoded).to_compute_shader();
     let gpu = require(
         "from_wgsl_async",
-        pollster::block_on(GpuEvaluator::from_wgsl_async(&src)),
+        pollster::block_on(GpuEvaluator::from_wgsl_async_pinned(&src)),
     )
     .expect("an adapter was found a moment ago");
     check_dist(
@@ -389,7 +389,10 @@ void main() {{
 ",
         library.get_eval_function()
     );
-    let Some(gpu) = require("from_glsl_compute", GpuEvaluator::from_glsl_compute(&src)) else {
+    let Some(gpu) = require(
+        "from_glsl_compute",
+        GpuEvaluator::from_glsl_compute(&src).map(|c| c.into_parts().0),
+    ) else {
         return;
     };
     let pts = points(1000);
@@ -446,7 +449,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     .validate(&module)
     .unwrap_or_else(|e| panic!("material WGSL does not validate: {e:?}"));
 
-    let Some(gpu) = require("material", GpuEvaluator::from_wgsl(&src)) else {
+    let Some(gpu) = require(
+        "material",
+        GpuEvaluator::from_wgsl(&src).map(|c| c.into_parts().0),
+    ) else {
         return;
     };
     // Points that are clearly nearer to one ball (no ties within 1e-3).

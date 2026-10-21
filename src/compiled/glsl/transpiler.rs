@@ -283,6 +283,10 @@ void SdfEval_float(float3 p, out float distance) {{
 
     /// Generate a complete GLSL compute shader for batch evaluation
     pub fn to_compute_shader(&self) -> String {
+        crate::provenance::tagged_shader(&self.to_compute_shader_text())
+    }
+
+    fn to_compute_shader_text(&self) -> String {
         let params_decl = if self.mode == GlslTranspileMode::Dynamic {
             "\nlayout(std140, binding = 2) uniform SdfParams {\n    vec4 params[1024]; // 4096 scalar floats\n};\n"
         } else {
@@ -350,6 +354,10 @@ void main() {{
     /// Bindings 0-2 are the layout `GpuEvaluator` (`gpu` feature) binds, so
     /// a Hardcoded shader runs through `GpuEvaluator::from_glsl_compute`.
     pub fn to_vulkan_compute_shader(&self) -> String {
+        crate::provenance::tagged_shader(&self.to_vulkan_compute_shader_text())
+    }
+
+    fn to_vulkan_compute_shader_text(&self) -> String {
         let params_decl = if self.mode == GlslTranspileMode::Dynamic {
             "\nlayout(std140, set = 0, binding = 3) uniform SdfParams {\n    vec4 params[1024]; // 4096 scalar floats\n};\n"
         } else {
@@ -402,6 +410,10 @@ void main() {{
 
     /// Generate a fragment shader for raymarching (Shadertoy-compatible)
     pub fn to_fragment_shader(&self) -> String {
+        crate::provenance::tagged_shader(&self.to_fragment_shader_text())
+    }
+
+    fn to_fragment_shader_text(&self) -> String {
         let params_decl = if self.mode == GlslTranspileMode::Dynamic {
             "\nlayout(std140, binding = 2) uniform SdfParams {\n    vec4 params[1024];\n};\n"
         } else {

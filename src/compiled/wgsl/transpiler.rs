@@ -389,6 +389,10 @@ impl WgslShader {
 
     /// Generate a complete compute shader for batch distance evaluation
     pub fn to_compute_shader(&self) -> String {
+        crate::provenance::tagged_shader(&self.to_compute_shader_text())
+    }
+
+    fn to_compute_shader_text(&self) -> String {
         let params_decl = if self.mode == TranspileMode::Dynamic {
             "\nstruct Params {\n    data: array<vec4<f32>, 1024>,\n}\n\n@group(0) @binding(3) var<uniform> sdf_params: Params;\n"
         } else {
@@ -443,6 +447,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     /// Uses the Tetrahedral Method (4 SDF evaluations) for GPU-side normal estimation.
     /// Output is packed as `(dist, nx, ny, nz)` per point.
     pub fn to_compute_shader_with_normals(&self) -> String {
+        crate::provenance::tagged_shader(&self.to_compute_shader_with_normals_text())
+    }
+
+    fn to_compute_shader_with_normals_text(&self) -> String {
         let params_decl = if self.mode == TranspileMode::Dynamic {
             "\nstruct Params {\n    data: array<vec4<f32>, 1024>,\n}\n\n@group(0) @binding(3) var<uniform> sdf_params: Params;\n"
         } else {
@@ -522,6 +530,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     /// Each thread evaluates one voxel and writes to a flat storage buffer.
     #[cfg(feature = "volume")]
     pub fn to_volume_shader(&self) -> String {
+        crate::provenance::tagged_shader(&self.to_volume_shader_text())
+    }
+
+    #[cfg(feature = "volume")]
+    fn to_volume_shader_text(&self) -> String {
         format!(
             r"// ALICE-SDF Volume Bake Shader (3D Dispatch)
 

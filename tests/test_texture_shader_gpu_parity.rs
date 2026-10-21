@@ -102,7 +102,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 fn emitted_wgsl_matches_reconstruct() {
     let r = fit_result();
     let wgsl = generate_shader(&r, ShaderLanguage::Wgsl, "oracle");
-    let gpu = match GpuEvaluator::from_wgsl(&compute_shader(&wgsl)) {
+    let gpu = match GpuEvaluator::from_wgsl(&compute_shader(&wgsl)).map(|c| c.into_parts().0) {
         Ok(g) => g,
         Err(e) => {
             assert!(

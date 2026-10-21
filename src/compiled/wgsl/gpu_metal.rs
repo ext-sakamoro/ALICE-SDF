@@ -78,7 +78,10 @@ struct Kernel {
 
 impl Kernel {
     fn compile(device: &Device, wgsl: &str) -> Result<Self, GpuError> {
+        // the text was judged by the GpuEvaluator constructor (or is this crate's own), so a
+        // mismatch never reaches here; the second read of its leading block only marks it
         let shader = MslShader::from_wgsl(wgsl)
+            .map(|c| c.into_parts().0)
             .map_err(|e| GpuError::ShaderCompilation(format!("MSL: {e}")))?;
         let options = compile_options()?;
         let library = device

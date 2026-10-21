@@ -25,7 +25,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 776 items (0 Linux-only): 76 handshake, 694 local, 6 pending (G8). Groups (count, decision):
+# 779 items (0 Linux-only): 84 handshake, 693 local, 2 pending (G8). Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: asdf_loaders_check_the_identifier
@@ -95,7 +95,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  local: builds a packet from this build's own tree
 #      6  local: serialises this build's own value
 #      4  local: writes this build's own state for a snapshot or shape hash
-#      4  pending: G8, compiles shader text that may come from another build's transpiler; the text carries no semantics identifier, so a law transpiled under another arithmetic runs without a check
+#      6  handshake: gpu_readers_refuse_without_a_gpu
+#      2  handshake: msl_from_wgsl_checks_the_identifier
 #     32  local: generates shader or source text from a tree of this process
 #     13  local: generates shader text
 #     29  local: shader text builders over names and expressions
@@ -886,11 +887,17 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::<Participant for LiveSdf>::write_state" = "local: writes this build's own state for a snapshot or shape hash"
 "fn::shape_state" = "local: writes this build's own state for a snapshot or shape hash"
 
-# 4 pending
-"fn::GpuEvaluator::from_glsl_compute" = "pending: G8, compiles shader text that may come from another build's transpiler; the text carries no semantics identifier, so a law transpiled under another arithmetic runs without a check"
-"fn::GpuEvaluator::from_wgsl" = "pending: G8, compiles shader text that may come from another build's transpiler; the text carries no semantics identifier, so a law transpiled under another arithmetic runs without a check"
-"fn::GpuEvaluator::from_wgsl_async" = "pending: G8, compiles shader text that may come from another build's transpiler; the text carries no semantics identifier, so a law transpiled under another arithmetic runs without a check"
-"fn::MslShader::from_wgsl" = "pending: G8, compiles shader text that may come from another build's transpiler; the text carries no semantics identifier, so a law transpiled under another arithmetic runs without a check"
+# 6 handshake
+"fn::GpuEvaluator::from_glsl_compute" = "handshake: gpu_readers_refuse_without_a_gpu"
+"fn::GpuEvaluator::from_glsl_compute_pinned" = "handshake: gpu_readers_refuse_without_a_gpu"
+"fn::GpuEvaluator::from_wgsl" = "handshake: gpu_readers_refuse_without_a_gpu"
+"fn::GpuEvaluator::from_wgsl_pinned" = "handshake: gpu_readers_refuse_without_a_gpu"
+"fn::GpuEvaluator::from_wgsl_async" = "handshake: gpu_readers_refuse_without_a_gpu"
+"fn::GpuEvaluator::from_wgsl_async_pinned" = "handshake: gpu_readers_refuse_without_a_gpu"
+
+# 2 handshake
+"fn::MslShader::from_wgsl" = "handshake: msl_from_wgsl_checks_the_identifier"
+"fn::MslShader::from_wgsl_pinned" = "handshake: msl_from_wgsl_checks_the_identifier"
 
 # 32 local
 "fn::BlinkScriptShader::get_eval_function" = "local: generates shader or source text from a tree of this process"

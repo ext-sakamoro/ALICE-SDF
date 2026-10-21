@@ -6,11 +6,11 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 945 |
+| 🟢 Not ignored | 958 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **949** |
+| **Total** | **962** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -25,7 +25,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (945)
+## 🟢 Not ignored (958)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -48,6 +48,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_gpu_law_parity.rs` | 13 |
 | `test_io_format_oracle.rs` | 13 |
 | `test_texture_fit_oracle.rs` | 13 |
+| `test_shader_text_provenance.rs` | 12 |
 | `test_validity_oracle.rs` | 12 |
 | `test_binding_oracle.rs` | 11 |
 | `test_cache_correctness.rs` | 11 |
@@ -132,6 +133,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_csg_multi_oracle.rs` | 3 |
 | `test_det_golden.rs` | 3 |
 | `test_det_near_zero_probe.rs` | 3 |
+| `test_glsl_glslang_precise.rs` | 3 |
 | `test_gpu_noise_parity.rs` | 3 |
 | `test_law_nan_operands.rs` | 3 |
 | `test_law_scalar_minmax_ties.rs` | 3 |
@@ -145,7 +147,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_aabb_unified_oracle.rs` | 2 |
 | `test_bake_stored_forms.rs` | 2 |
 | `test_det_near_zero_parity.rs` | 2 |
-| `test_glsl_glslang_precise.rs` | 2 |
 | `test_instanced_wgsl_gpu_parity.rs` | 2 |
 | `test_interval_predicate_oracle.rs` | 2 |
 | `test_interval_soundness.rs` | 2 |

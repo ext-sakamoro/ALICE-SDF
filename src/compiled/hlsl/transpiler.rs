@@ -364,6 +364,10 @@ void AliceSdf_half(float3 Position, out half Distance, out half3 Normal) {{
 
     /// Generate a complete HLSL compute shader for batch evaluation
     pub fn to_compute_shader(&self) -> String {
+        crate::provenance::tagged_shader(&self.to_compute_shader_text())
+    }
+
+    fn to_compute_shader_text(&self) -> String {
         let params_decl = if self.mode == HlslTranspileMode::Dynamic {
             "\ncbuffer SdfParams : register(b1) {\n    float4 params[1024]; // 4096 scalar floats\n};\n"
         } else {

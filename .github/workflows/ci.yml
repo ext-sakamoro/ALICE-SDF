@@ -397,6 +397,16 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: cargo test --features msl --test test_msl_metal_oracle -- --nocapture
 
+      # ALICE-Law G8: the msl arms of tests/test_shader_text_provenance.rs (MslShader::from_wgsl
+      # and its pinned twin, the MSL of the transpiler, the Nanite header form), counted
+      - name: Test (shader text semantics identifier — msl, macOS only)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features msl --test test_shader_text_provenance -- --nocapture 2>&1 | tee shader-text-provenance-msl.log
+          python3 scripts/libtest_count.py shader-text-provenance-msl.log --min 9 --what "shader text provenance tests (msl)"
+
       # ALICE-Law G3: GpuEvaluator は macOS の msl で MslShader の MSL (fast math off) を
       # Metal で実行する その経路が積和を融合しないことを、この runner の Metal device で確かめる
       # (上の step で corpus が Metal で走っていることを確かめた device) device が無い時の skip は
@@ -1165,6 +1175,18 @@ jobs:
           --test test_glsl_export_oracle
           --test test_shader_precise_temporaries
           -- --nocapture
+
+      # ALICE-Law G8: the whole shader text carries the semantics identifier and the four
+      # readers that compile shader text check it (tests/test_shader_text_provenance.rs). The
+      # accepted cases build an evaluator, so they run here on lavapipe; the arms of
+      # gpu / glsl / hlsl / volume compile only with those features, counted so a feature set
+      # that drops them cannot pass with 0 tests (the msl arms run in the macOS test job)
+      - name: Shader text semantics identifier (gpu, glsl, hlsl, volume)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features "gpu,glsl,hlsl,volume" --test test_shader_text_provenance -- --nocapture 2>&1 | tee shader-text-provenance.log
+          python3 scripts/libtest_count.py shader-text-provenance.log --min 9 --what "shader text provenance tests (gpu, glsl, hlsl, volume)"
 
       # The GPU unit tests (src/compiled/wgsl/gpu_eval.rs, src/mesh/gpu_marching_cubes.rs)
       # return early without a usable device and libtest still says ok; each prints
