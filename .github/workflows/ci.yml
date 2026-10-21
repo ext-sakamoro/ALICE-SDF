@@ -357,7 +357,7 @@ jobs:
       - name: Test (integration, HLSL / BlinkScript value parity)
         env:
           ALICE_SDF_REQUIRE_CXX: "1"
-        run: cargo test --features "hlsl,blinkscript" --test test_hlsl_blinkscript_parity --test test_hlsl_export_oracle --test test_round_tie_parity
+        run: cargo test --features "hlsl,blinkscript" --test test_hlsl_blinkscript_parity --test test_hlsl_export_oracle --test test_round_tie_parity --test test_shader_precise_temporaries
 
       # JIT の parity arm は書かれていたが CI で一度も実行されていなかった
       # (2026-09-30 実測)。`cargo test --tests` は default feature なので
@@ -1155,6 +1155,7 @@ jobs:
           --test test_instanced_wgsl_gpu_parity
           --test test_gpu_eval_api_oracle
           --test test_glsl_export_oracle
+          --test test_shader_precise_temporaries
           -- --nocapture
 
       # The GPU unit tests (src/compiled/wgsl/gpu_eval.rs, src/mesh/gpu_marching_cubes.rs)

@@ -400,7 +400,7 @@ cargo test --features msl,glsl,hlsl,blinkscript --test test_shader_no_fused_mult
 
 step "test: HLSL / BlinkScript value parity + exports + round-tie hlsl arm (ci.yml の HLSL step と対)"
 ALICE_SDF_REQUIRE_CXX=1 cargo test --features "hlsl,blinkscript" --test test_hlsl_blinkscript_parity \
-  --test test_hlsl_export_oracle --test test_round_tie_parity
+  --test test_hlsl_export_oracle --test test_round_tie_parity --test test_shader_precise_temporaries
 
 # HLSL の全出力を DirectX Shader Compiler で compile する gate (hlsl-dxc.yml と対)
 # macOS 向けの公式 dxc は無いので、dxc が無い host では skip を明示して出す
@@ -490,7 +490,7 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_law_parity --test test_gpu_noise_parity --test test_round_tie_parity \
   --test test_transpiler_naga_validate --test noise_shader_validate --test test_mesh_orientation --test test_mc_shared_vertex_oracle \
   --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity --test test_instanced_wgsl_gpu_parity \
-  --test test_gpu_eval_api_oracle --test test_glsl_export_oracle
+  --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_shader_precise_temporaries
 
 step "gpu-parity: GPU unit tests ran, not skipped (6, ci.yml の GPU unit tests ran と対)"
 python3 scripts/test_gpu_test_count.py
