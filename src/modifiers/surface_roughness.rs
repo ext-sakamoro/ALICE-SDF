@@ -107,37 +107,64 @@ fn hash_noise_3d(p: vec3<f32>, seed: u32) -> f32 {
     return (c0 + (c1 - c0) * u.z) * 2.0 - 1.0;
 }";
 
-/// GLSL source of `hash_noise_3d` (see [`HASH_NOISE_WGSL`]).
-pub const HASH_NOISE_GLSL: &str = r"uint alice_pcg(uint v) {
+/// The `ALICE_PRECISE` qualifier of emitted GLSL (ALICE-Law G3): every
+/// floating-point local is declared with it, so a compiler may not contract
+/// `a * b + c` into one rounding. `precise` exists from GLSL 4.00 and GLSL ES
+/// 3.20; on an older version (GLSL 3.30, GLSL ES 3.00) the macro is empty and
+/// contraction is left to the driver, a residual of the version the caller
+/// chooses. Guarded, so a source may carry the block more than once.
+macro_rules! glsl_precise_macro {
+    () => {
+        "#ifndef ALICE_PRECISE
+#if (defined(GL_ES) && __VERSION__ >= 320) || (!defined(GL_ES) && __VERSION__ >= 400)
+#define ALICE_PRECISE precise
+#else
+#define ALICE_PRECISE
+#endif
+#endif
+"
+    };
+}
+#[cfg(feature = "glsl")]
+pub(crate) use glsl_precise_macro;
+
+/// GLSL source of `hash_noise_3d` (see [`HASH_NOISE_WGSL`]). It defines the
+/// `ALICE_PRECISE` qualifier it uses, so it compiles wherever it is pasted.
+pub const HASH_NOISE_GLSL: &str = concat!(
+    glsl_precise_macro!(),
+    r"uint alice_pcg(uint v) {
     v = v * 747796405u + 2891336453u;
     uint w = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
     return (w >> 22u) ^ w;
 }
 float alice_hash3(vec3 i, uint seed) {
     uvec3 q = floatBitsToUint(i);
-    return float(alice_pcg(q.x ^ alice_pcg(q.y ^ alice_pcg(q.z ^ seed)))) * (1.0 / 4294967295.0);
+    ALICE_PRECISE float alice_r = float(alice_pcg(q.x ^ alice_pcg(q.y ^ alice_pcg(q.z ^ seed)))) * (1.0 / 4294967295.0);
+    return alice_r;
 }
 // Same law as `alice_sdf::modifiers::surface_roughness::hash_noise_3d` (PCG lattice hash, bit-exact with the CPU).
 float hash_noise_3d(vec3 p, uint seed) {
-    vec3 i = floor(p);
-    vec3 f = p - i;
-    vec3 u = f * f * (3.0 - 2.0 * f);
-    float n000 = alice_hash3(i, seed);
-    float n100 = alice_hash3(i + vec3(1.0, 0.0, 0.0), seed);
-    float n010 = alice_hash3(i + vec3(0.0, 1.0, 0.0), seed);
-    float n110 = alice_hash3(i + vec3(1.0, 1.0, 0.0), seed);
-    float n001 = alice_hash3(i + vec3(0.0, 0.0, 1.0), seed);
-    float n101 = alice_hash3(i + vec3(1.0, 0.0, 1.0), seed);
-    float n011 = alice_hash3(i + vec3(0.0, 1.0, 1.0), seed);
-    float n111 = alice_hash3(i + vec3(1.0, 1.0, 1.0), seed);
-    float c00 = n000 + (n100 - n000) * u.x;
-    float c10 = n010 + (n110 - n010) * u.x;
-    float c01 = n001 + (n101 - n001) * u.x;
-    float c11 = n011 + (n111 - n011) * u.x;
-    float c0 = c00 + (c10 - c00) * u.y;
-    float c1 = c01 + (c11 - c01) * u.y;
-    return (c0 + (c1 - c0) * u.z) * 2.0 - 1.0;
-}";
+    ALICE_PRECISE vec3 i = floor(p);
+    ALICE_PRECISE vec3 f = p - i;
+    ALICE_PRECISE vec3 u = f * f * (3.0 - 2.0 * f);
+    ALICE_PRECISE float n000 = alice_hash3(i, seed);
+    ALICE_PRECISE float n100 = alice_hash3(i + vec3(1.0, 0.0, 0.0), seed);
+    ALICE_PRECISE float n010 = alice_hash3(i + vec3(0.0, 1.0, 0.0), seed);
+    ALICE_PRECISE float n110 = alice_hash3(i + vec3(1.0, 1.0, 0.0), seed);
+    ALICE_PRECISE float n001 = alice_hash3(i + vec3(0.0, 0.0, 1.0), seed);
+    ALICE_PRECISE float n101 = alice_hash3(i + vec3(1.0, 0.0, 1.0), seed);
+    ALICE_PRECISE float n011 = alice_hash3(i + vec3(0.0, 1.0, 1.0), seed);
+    ALICE_PRECISE float n111 = alice_hash3(i + vec3(1.0, 1.0, 1.0), seed);
+    ALICE_PRECISE float c00 = n000 + (n100 - n000) * u.x;
+    ALICE_PRECISE float c10 = n010 + (n110 - n010) * u.x;
+    ALICE_PRECISE float c01 = n001 + (n101 - n001) * u.x;
+    ALICE_PRECISE float c11 = n011 + (n111 - n011) * u.x;
+    ALICE_PRECISE float c0 = c00 + (c10 - c00) * u.y;
+    ALICE_PRECISE float c1 = c01 + (c11 - c01) * u.y;
+    ALICE_PRECISE float alice_r = (c0 + (c1 - c0) * u.z) * 2.0 - 1.0;
+    return alice_r;
+}"
+);
 
 /// HLSL source of `hash_noise_3d` (see [`HASH_NOISE_WGSL`]).
 pub const HASH_NOISE_HLSL: &str = r"uint alice_pcg(uint v) {
@@ -147,28 +174,30 @@ pub const HASH_NOISE_HLSL: &str = r"uint alice_pcg(uint v) {
 }
 float alice_hash3(float3 i, uint seed) {
     uint3 q = asuint(i);
-    return (float)alice_pcg(q.x ^ alice_pcg(q.y ^ alice_pcg(q.z ^ seed))) * (1.0 / 4294967295.0);
+    precise float alice_r = (float)alice_pcg(q.x ^ alice_pcg(q.y ^ alice_pcg(q.z ^ seed))) * (1.0 / 4294967295.0);
+    return alice_r;
 }
 // Same law as `alice_sdf::modifiers::surface_roughness::hash_noise_3d` (PCG lattice hash, bit-exact with the CPU).
 float hash_noise_3d(float3 p, uint seed) {
-    float3 i = floor(p);
-    float3 f = p - i;
-    float3 u = f * f * (3.0 - 2.0 * f);
-    float n000 = alice_hash3(i, seed);
-    float n100 = alice_hash3(i + float3(1.0, 0.0, 0.0), seed);
-    float n010 = alice_hash3(i + float3(0.0, 1.0, 0.0), seed);
-    float n110 = alice_hash3(i + float3(1.0, 1.0, 0.0), seed);
-    float n001 = alice_hash3(i + float3(0.0, 0.0, 1.0), seed);
-    float n101 = alice_hash3(i + float3(1.0, 0.0, 1.0), seed);
-    float n011 = alice_hash3(i + float3(0.0, 1.0, 1.0), seed);
-    float n111 = alice_hash3(i + float3(1.0, 1.0, 1.0), seed);
-    float c00 = n000 + (n100 - n000) * u.x;
-    float c10 = n010 + (n110 - n010) * u.x;
-    float c01 = n001 + (n101 - n001) * u.x;
-    float c11 = n011 + (n111 - n011) * u.x;
-    float c0 = c00 + (c10 - c00) * u.y;
-    float c1 = c01 + (c11 - c01) * u.y;
-    return (c0 + (c1 - c0) * u.z) * 2.0 - 1.0;
+    precise float3 i = floor(p);
+    precise float3 f = p - i;
+    precise float3 u = f * f * (3.0 - 2.0 * f);
+    precise float n000 = alice_hash3(i, seed);
+    precise float n100 = alice_hash3(i + float3(1.0, 0.0, 0.0), seed);
+    precise float n010 = alice_hash3(i + float3(0.0, 1.0, 0.0), seed);
+    precise float n110 = alice_hash3(i + float3(1.0, 1.0, 0.0), seed);
+    precise float n001 = alice_hash3(i + float3(0.0, 0.0, 1.0), seed);
+    precise float n101 = alice_hash3(i + float3(1.0, 0.0, 1.0), seed);
+    precise float n011 = alice_hash3(i + float3(0.0, 1.0, 1.0), seed);
+    precise float n111 = alice_hash3(i + float3(1.0, 1.0, 1.0), seed);
+    precise float c00 = n000 + (n100 - n000) * u.x;
+    precise float c10 = n010 + (n110 - n010) * u.x;
+    precise float c01 = n001 + (n101 - n001) * u.x;
+    precise float c11 = n011 + (n111 - n011) * u.x;
+    precise float c0 = c00 + (c10 - c00) * u.y;
+    precise float c1 = c01 + (c11 - c01) * u.y;
+    precise float alice_r = (c0 + (c1 - c0) * u.z) * 2.0 - 1.0;
+    return alice_r;
 }";
 
 /// Seed the transpilers hard-code for `SurfaceRoughness`.

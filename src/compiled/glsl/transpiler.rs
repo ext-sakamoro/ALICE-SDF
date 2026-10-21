@@ -215,6 +215,11 @@ impl GlslShader {
     }
 
     /// Transpile an SDF node tree to GLSL with specific version and mode
+    ///
+    /// Every floating-point local is declared `ALICE_PRECISE` (ALICE-Law G3: no
+    /// contraction of `a * b + c` into one rounding). The qualifier is `precise`
+    /// from GLSL 4.00 and GLSL ES 3.20; with an older `version` (330, or GLSL ES
+    /// 3.00 as in `render_pipeline`) it is empty and the driver may contract.
     pub fn transpile_with_version(node: &SdfNode, mode: GlslTranspileMode, version: u32) -> Self {
         let mut transpiler = GlslTranspiler::new(mode);
         let body = transpiler.transpile_node(node, "p");
@@ -267,7 +272,8 @@ impl GlslShader {
 {source}
 
 void SdfEval_float(float3 p, out float distance) {{
-    distance = sdf_eval(p);
+    ALICE_PRECISE float alice_d = sdf_eval(p);
+    distance = alice_d;
 }}
 ",
             dynamic_note = dynamic_note,
@@ -315,7 +321,7 @@ void main() {{
     if (idx >= point_count) return;
 
     InputPoint pt = input_points[idx];
-    vec3 p = vec3(pt.x, pt.y, pt.z);
+    ALICE_PRECISE vec3 p = vec3(pt.x, pt.y, pt.z);
     output_distances[idx].distance = sdf_eval(p);
 }}
 ",
@@ -384,7 +390,7 @@ void main() {{
     if (idx >= point_count) return;
 
     InputPoint pt = input_points[idx];
-    vec3 p = vec3(pt.x, pt.y, pt.z);
+    ALICE_PRECISE vec3 p = vec3(pt.x, pt.y, pt.z);
     output_distances[idx].distance = sdf_eval(p);
 }}
 ",
@@ -420,37 +426,44 @@ out vec4 fragColor;
 vec3 calcNormal(vec3 p) {{
     const float h = 0.0001;
     const vec2 k = vec2(1.0, -1.0);
-    return normalize(
-        k.xyy * sdf_eval(p + k.xyy * h) +
-        k.yyx * sdf_eval(p + k.yyx * h) +
-        k.yxy * sdf_eval(p + k.yxy * h) +
-        k.xxx * sdf_eval(p + k.xxx * h)
+    // the sample points are precise locals: glslang also keeps the call arguments of
+    // a precise expression uncontracted, a local does not depend on that
+    ALICE_PRECISE vec3 p0 = p + k.xyy * h;
+    ALICE_PRECISE vec3 p1 = p + k.yyx * h;
+    ALICE_PRECISE vec3 p2 = p + k.yxy * h;
+    ALICE_PRECISE vec3 p3 = p + k.xxx * h;
+    ALICE_PRECISE vec3 n = normalize(
+        k.xyy * sdf_eval(p0) +
+        k.yyx * sdf_eval(p1) +
+        k.yxy * sdf_eval(p2) +
+        k.xxx * sdf_eval(p3)
     );
+    return n;
 }}
 
 void main() {{
-    vec2 uv = (gl_FragCoord.xy - 0.5 * iResolution.xy) / iResolution.y;
+    ALICE_PRECISE vec2 uv = (gl_FragCoord.xy - 0.5 * iResolution.xy) / iResolution.y;
 
     // Camera
-    vec3 ro = vec3(0.0, 0.0, 5.0);
-    vec3 rd = normalize(vec3(uv, -1.5));
+    ALICE_PRECISE vec3 ro = vec3(0.0, 0.0, 5.0);
+    ALICE_PRECISE vec3 rd = normalize(vec3(uv, -1.5));
 
     // Raymarching
-    float t = 0.0;
+    ALICE_PRECISE float t = 0.0;
     for (int i = 0; i < 128; i++) {{
-        vec3 p = ro + rd * t;
-        float d = sdf_eval(p);
+        ALICE_PRECISE vec3 p = ro + rd * t;
+        ALICE_PRECISE float d = sdf_eval(p);
         if (d < 0.001 || t > 100.0) break;
         t += d;
     }}
 
     // Shading
-    vec3 col = vec3(0.0);
+    ALICE_PRECISE vec3 col = vec3(0.0);
     if (t < 100.0) {{
-        vec3 p = ro + rd * t;
-        vec3 n = calcNormal(p);
-        vec3 light = normalize(vec3(1.0, 1.0, 1.0));
-        float diff = max(dot(n, light), 0.0);
+        ALICE_PRECISE vec3 p = ro + rd * t;
+        ALICE_PRECISE vec3 n = calcNormal(p);
+        ALICE_PRECISE vec3 light = normalize(vec3(1.0, 1.0, 1.0));
+        ALICE_PRECISE float diff = max(dot(n, light), 0.0);
         col = vec3(0.8, 0.7, 0.6) * (0.2 + 0.8 * diff);
     }}
 
@@ -552,15 +565,17 @@ void main() {{
 {params_section}{source}
 
 void AliceSdf_float(float3 Position, out float Distance, out float3 Normal) {{
-    Distance = sdf_eval(Position);
+    ALICE_PRECISE float alice_d = sdf_eval(Position);
+    Distance = alice_d;
 
     // Central difference normal
-    float e = 0.001;
-    Normal = normalize(float3(
+    ALICE_PRECISE float e = 0.001;
+    ALICE_PRECISE float3 n = normalize(float3(
         sdf_eval(Position + float3(e,0,0)) - sdf_eval(Position - float3(e,0,0)),
         sdf_eval(Position + float3(0,e,0)) - sdf_eval(Position - float3(0,e,0)),
         sdf_eval(Position + float3(0,0,e)) - sdf_eval(Position - float3(0,0,e))
     ));
+    Normal = n;
 }}
 
 void AliceSdf_half(float3 Position, out float Distance, out float3 Normal) {{
@@ -635,45 +650,35 @@ impl GlslTranspiler {
     // in transpiler_common.rs — see the transpile_node delegation method above.
 }
 
-/// ALICE-Law G3: every floating-point local is declared `ALICE_PRECISE`, so a
-/// compiler may not contract `a * b + c` into one rounding. `precise` exists from
-/// GLSL 4.00 and GLSL ES 3.20; on an older version (GLSL 3.30, GLSL ES 3.00, the
-/// WebGL2 version of `render_pipeline`) the macro is empty and contraction is
-/// left to the driver: a residual of the version the caller chooses.
-const PRECISE_MACRO: &str = r"#ifndef ALICE_PRECISE
-#if (defined(GL_ES) && __VERSION__ >= 320) || (!defined(GL_ES) && __VERSION__ >= 400)
-#define ALICE_PRECISE precise
-#else
-#define ALICE_PRECISE
-#endif
-#endif
-
-";
+/// The `ALICE_PRECISE` definition every GLSL source starts with (ALICE-Law G3,
+/// see `glsl_precise_macro`).
+const PRECISE_MACRO: &str = concat!(crate::modifiers::glsl_precise_macro!(), "\n");
 
 // Helper function definitions for GLSL
 const HELPER_TAPER_BOUND: &str = r"// Same law as `alice_sdf::compiled::real::taper_bound` (Jacobian ball + cone ∩ slab).
 float alice_taper_bound(float d, vec3 p, float factor, float rx, float ry) {
-    float fa = abs(factor);
+    ALICE_PRECISE float fa = abs(factor);
     if (fa == 0.0) { return d; }
-    float den_abs = max(abs(1.0 - p.y * factor), 1e-6);
-    float s = 1.0 / den_abs;
-    float rho = sqrt(p.x * p.x + p.z * p.z);
-    float d_abs = abs(d);
-    float j0 = max(s, 1.0) + fa * s * s * rho;
-    float r = min(d_abs / j0, den_abs / (fa + fa));
-    float den1 = max(den_abs - fa * r, 1e-6);
-    float s1 = 1.0 / den1;
-    float j1 = max(s1, 1.0) + fa * s1 * s1 * (rho + r);
-    float mag = min(d_abs / j1, r);
-    float d_j = (d < 0.0) ? -mag : mag;
+    ALICE_PRECISE float den_abs = max(abs(1.0 - p.y * factor), 1e-6);
+    ALICE_PRECISE float s = 1.0 / den_abs;
+    ALICE_PRECISE float rho = sqrt(p.x * p.x + p.z * p.z);
+    ALICE_PRECISE float d_abs = abs(d);
+    ALICE_PRECISE float j0 = max(s, 1.0) + fa * s * s * rho;
+    ALICE_PRECISE float r = min(d_abs / j0, den_abs / (fa + fa));
+    ALICE_PRECISE float den1 = max(den_abs - fa * r, 1e-6);
+    ALICE_PRECISE float s1 = 1.0 / den1;
+    ALICE_PRECISE float j1 = max(s1, 1.0) + fa * s1 * s1 * (rho + r);
+    ALICE_PRECISE float mag = min(d_abs / j1, r);
+    ALICE_PRECISE float d_j = (d < 0.0) ? -mag : mag;
     if (rx >= 1e30 || ry >= 1e30) { return d_j; }
-    float k = rx * fa;
-    float inv_n = 1.0 / sqrt(1.0 + k * k);
-    float big_y = p.y - 1.0 / factor;
-    float d_cone = (rho - k * abs(big_y)) * inv_n;
-    float d_slab = abs(p.y) - ry;
-    float d_region = max(d_cone, d_slab);
-    return (d < 0.0) ? d_j : max(d_j, d_region);
+    ALICE_PRECISE float k = rx * fa;
+    ALICE_PRECISE float inv_n = 1.0 / sqrt(1.0 + k * k);
+    ALICE_PRECISE float big_y = p.y - 1.0 / factor;
+    ALICE_PRECISE float d_cone = (rho - k * abs(big_y)) * inv_n;
+    ALICE_PRECISE float d_slab = abs(p.y) - ry;
+    ALICE_PRECISE float d_region = max(d_cone, d_slab);
+    ALICE_PRECISE float alice_r = (d < 0.0) ? d_j : max(d_j, d_region);
+    return alice_r;
 }";
 
 const HELPER_HASH_NOISE: &str = crate::modifiers::HASH_NOISE_GLSL;
@@ -694,38 +699,41 @@ float alice_perlin_grad(uint h, vec3 c) {
     uint e = LUT[h & 15u];
     uint u_src = (e >> 4u) & 3u;
     uint v_src = (e >> 2u) & 3u;
-    float u_sign = 1.0 - 2.0 * float((e >> 1u) & 1u);
-    float v_sign = 1.0 - 2.0 * float(e & 1u);
-    return c[u_src] * u_sign + c[v_src] * v_sign;
+    ALICE_PRECISE float u_sign = 1.0 - 2.0 * float((e >> 1u) & 1u);
+    ALICE_PRECISE float v_sign = 1.0 - 2.0 * float(e & 1u);
+    ALICE_PRECISE float alice_r = c[u_src] * u_sign + c[v_src] * v_sign;
+    return alice_r;
 }
 float alice_perlin_fade(float t) {
-    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+    ALICE_PRECISE float alice_r = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+    return alice_r;
 }
 // Same law as `alice_sdf::modifiers::perlin_noise_3d` (integer lattice hash + 16-gradient LUT + quintic fade).
 float perlin_noise_3d(vec3 p, uint seed) {
-    vec3 fl = floor(p);
+    ALICE_PRECISE vec3 fl = floor(p);
     int xi = int(fl.x);
     int yi = int(fl.y);
     int zi = int(fl.z);
-    vec3 f = p - fl;
-    float u = alice_perlin_fade(f.x);
-    float v = alice_perlin_fade(f.y);
-    float w = alice_perlin_fade(f.z);
-    float aaa = alice_perlin_grad(alice_perlin_hash(xi, yi, zi, seed), f);
-    float aba = alice_perlin_grad(alice_perlin_hash(xi, yi + 1, zi, seed), vec3(f.x, f.y - 1.0, f.z));
-    float aab = alice_perlin_grad(alice_perlin_hash(xi, yi, zi + 1, seed), vec3(f.x, f.y, f.z - 1.0));
-    float abb = alice_perlin_grad(alice_perlin_hash(xi, yi + 1, zi + 1, seed), vec3(f.x, f.y - 1.0, f.z - 1.0));
-    float baa = alice_perlin_grad(alice_perlin_hash(xi + 1, yi, zi, seed), vec3(f.x - 1.0, f.y, f.z));
-    float bba = alice_perlin_grad(alice_perlin_hash(xi + 1, yi + 1, zi, seed), vec3(f.x - 1.0, f.y - 1.0, f.z));
-    float bab = alice_perlin_grad(alice_perlin_hash(xi + 1, yi, zi + 1, seed), vec3(f.x - 1.0, f.y, f.z - 1.0));
-    float bbb = alice_perlin_grad(alice_perlin_hash(xi + 1, yi + 1, zi + 1, seed), vec3(f.x - 1.0, f.y - 1.0, f.z - 1.0));
-    float x0 = aaa + u * (baa - aaa);
-    float x1 = aba + u * (bba - aba);
-    float x2 = aab + u * (bab - aab);
-    float x3 = abb + u * (bbb - abb);
-    float y0 = x0 + v * (x1 - x0);
-    float y1 = x2 + v * (x3 - x2);
-    return y0 + w * (y1 - y0);
+    ALICE_PRECISE vec3 f = p - fl;
+    ALICE_PRECISE float u = alice_perlin_fade(f.x);
+    ALICE_PRECISE float v = alice_perlin_fade(f.y);
+    ALICE_PRECISE float w = alice_perlin_fade(f.z);
+    ALICE_PRECISE float aaa = alice_perlin_grad(alice_perlin_hash(xi, yi, zi, seed), f);
+    ALICE_PRECISE float aba = alice_perlin_grad(alice_perlin_hash(xi, yi + 1, zi, seed), vec3(f.x, f.y - 1.0, f.z));
+    ALICE_PRECISE float aab = alice_perlin_grad(alice_perlin_hash(xi, yi, zi + 1, seed), vec3(f.x, f.y, f.z - 1.0));
+    ALICE_PRECISE float abb = alice_perlin_grad(alice_perlin_hash(xi, yi + 1, zi + 1, seed), vec3(f.x, f.y - 1.0, f.z - 1.0));
+    ALICE_PRECISE float baa = alice_perlin_grad(alice_perlin_hash(xi + 1, yi, zi, seed), vec3(f.x - 1.0, f.y, f.z));
+    ALICE_PRECISE float bba = alice_perlin_grad(alice_perlin_hash(xi + 1, yi + 1, zi, seed), vec3(f.x - 1.0, f.y - 1.0, f.z));
+    ALICE_PRECISE float bab = alice_perlin_grad(alice_perlin_hash(xi + 1, yi, zi + 1, seed), vec3(f.x - 1.0, f.y, f.z - 1.0));
+    ALICE_PRECISE float bbb = alice_perlin_grad(alice_perlin_hash(xi + 1, yi + 1, zi + 1, seed), vec3(f.x - 1.0, f.y - 1.0, f.z - 1.0));
+    ALICE_PRECISE float x0 = aaa + u * (baa - aaa);
+    ALICE_PRECISE float x1 = aba + u * (bba - aba);
+    ALICE_PRECISE float x2 = aab + u * (bab - aab);
+    ALICE_PRECISE float x3 = abb + u * (bbb - abb);
+    ALICE_PRECISE float y0 = x0 + v * (x1 - x0);
+    ALICE_PRECISE float y1 = x2 + v * (x3 - x2);
+    ALICE_PRECISE float alice_r = y0 + w * (y1 - y0);
+    return alice_r;
 }";
 
 /// `atan2` with the CPU law's exact axis cases (alice-det-math `atan2`,
@@ -738,7 +746,7 @@ float perlin_noise_3d(vec3 p, uint seed) {
 const HELPER_ALICE_ATAN2: &str = r"float alice_atan2(float y, float x) {
     bool sy = floatBitsToInt(y) < 0;
     bool sx = floatBitsToInt(x) < 0;
-    float r = atan(y, x);
+    ALICE_PRECISE float r = atan(y, x);
     r = (x == 0.0) ? (sy ? -1.5707964 : 1.5707964) : r;
     r = (y == 0.0) ? (sx ? (sy ? -3.1415927 : 3.1415927) : y) : r;
     return r;
@@ -746,83 +754,88 @@ const HELPER_ALICE_ATAN2: &str = r"float alice_atan2(float y, float x) {
 ";
 
 const HELPER_QUAT_ROTATE: &str = r"vec3 quat_rotate(vec3 v, vec4 q) {
-    vec3 t = 2.0 * cross(q.xyz, v);
-    return v + q.w * t + cross(q.xyz, t);
+    ALICE_PRECISE vec3 t = 2.0 * cross(q.xyz, v);
+    ALICE_PRECISE vec3 alice_r = v + q.w * t + cross(q.xyz, t);
+    return alice_r;
 }";
 
 const HELPER_SDF_ROUNDED_CONE: &str = r"float sdf_rounded_cone(vec3 p, float r1, float r2, float h) {
-    float qx = length(p.xz);
-    float qy = p.y + h;
-    float ht = h * 2.0;
-    float b = (r1 - r2) / ht;
-    float a = sqrt(1.0 - b * b);
-    float k = qx * (-b) + qy * a;
-    if (k < 0.0) return length(vec2(qx, qy)) - r1;
-    if (k > a * ht) return length(vec2(qx, qy - ht)) - r2;
-    return qx * a + qy * b - r1;
+    ALICE_PRECISE float qx = length(p.xz);
+    ALICE_PRECISE float qy = p.y + h;
+    ALICE_PRECISE float ht = h * 2.0;
+    ALICE_PRECISE float b = (r1 - r2) / ht;
+    ALICE_PRECISE float a = sqrt(1.0 - b * b);
+    ALICE_PRECISE float k = qx * (-b) + qy * a;
+    if (k < 0.0) { ALICE_PRECISE float alice_r = length(vec2(qx, qy)) - r1; return alice_r; }
+    if (k > a * ht) { ALICE_PRECISE float alice_r = length(vec2(qx, qy - ht)) - r2; return alice_r; }
+    ALICE_PRECISE float alice_r = qx * a + qy * b - r1;
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_PYRAMID: &str = r"float sdf_pyramid(vec3 p, float h) {
-    float ht = h * 2.0;
-    float m2 = ht * ht + 0.25;
-    float py = p.y + h;
-    float px = abs(p.x);
-    float pz = abs(p.z);
-    if (pz > px) { float tmp = px; px = pz; pz = tmp; }
+    ALICE_PRECISE float ht = h * 2.0;
+    ALICE_PRECISE float m2 = ht * ht + 0.25;
+    ALICE_PRECISE float py = p.y + h;
+    ALICE_PRECISE float px = abs(p.x);
+    ALICE_PRECISE float pz = abs(p.z);
+    if (pz > px) { ALICE_PRECISE float tmp = px; px = pz; pz = tmp; }
     px -= 0.5;
     pz -= 0.5;
-    float qx = pz;
-    float qy = ht * py - 0.5 * px;
-    float qz = ht * px + 0.5 * py;
-    float s = max(-qx, 0.0);
-    float t = clamp((qy - 0.5 * pz) / (m2 + 0.25), 0.0, 1.0);
-    float a = m2 * (qx + s) * (qx + s) + qy * qy;
-    float b = m2 * (qx + 0.5 * t) * (qx + 0.5 * t) + (qy - m2 * t) * (qy - m2 * t);
-    float d2 = (min(-qx * m2 - qy * 0.5, qy) > 0.0) ? 0.0 : min(a, b);
-    return sqrt((d2 + qz * qz) / m2) * (max(qz, -py) < 0.0 ? -1.0 : 1.0);
+    ALICE_PRECISE float qx = pz;
+    ALICE_PRECISE float qy = ht * py - 0.5 * px;
+    ALICE_PRECISE float qz = ht * px + 0.5 * py;
+    ALICE_PRECISE float s = max(-qx, 0.0);
+    ALICE_PRECISE float t = clamp((qy - 0.5 * pz) / (m2 + 0.25), 0.0, 1.0);
+    ALICE_PRECISE float a = m2 * (qx + s) * (qx + s) + qy * qy;
+    ALICE_PRECISE float b = m2 * (qx + 0.5 * t) * (qx + 0.5 * t) + (qy - m2 * t) * (qy - m2 * t);
+    ALICE_PRECISE float d2 = (min(-qx * m2 - qy * 0.5, qy) > 0.0) ? 0.0 : min(a, b);
+    ALICE_PRECISE float alice_r = sqrt((d2 + qz * qz) / m2) * (max(qz, -py) < 0.0 ? -1.0 : 1.0);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_OCTAHEDRON: &str = r"float sdf_octahedron(vec3 p, float s) {
-    vec3 ap = abs(p);
-    float m = ap.x + ap.y + ap.z - s;
-    vec3 q;
+    ALICE_PRECISE vec3 ap = abs(p);
+    ALICE_PRECISE float m = ap.x + ap.y + ap.z - s;
+    ALICE_PRECISE vec3 q;
     if (3.0 * ap.x < m) q = ap;
     else if (3.0 * ap.y < m) q = vec3(ap.y, ap.z, ap.x);
     else if (3.0 * ap.z < m) q = vec3(ap.z, ap.x, ap.y);
-    else return m * 0.57735027;
-    float k = clamp(0.5 * (q.z - q.y + s), 0.0, s);
-    return length(vec3(q.x, q.y - s + k, q.z - k));
+    else { ALICE_PRECISE float alice_r = m * 0.57735027; return alice_r; }
+    ALICE_PRECISE float k = clamp(0.5 * (q.z - q.y + s), 0.0, s);
+    ALICE_PRECISE float alice_r = length(vec3(q.x, q.y - s + k, q.z - k));
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_HEX_PRISM: &str = r"float sdf_hex_prism(vec3 p, float hex_r, float h) {
-    float kx = -0.8660254;
-    float ky = 0.5;
-    float kz = 0.57735027;
-    float px = abs(p.x);
-    float py = abs(p.y);
-    float pz = abs(p.z);
-    float dot_kxy = kx * px + ky * py;
-    float refl = 2.0 * min(dot_kxy, 0.0);
+    ALICE_PRECISE float kx = -0.8660254;
+    ALICE_PRECISE float ky = 0.5;
+    ALICE_PRECISE float kz = 0.57735027;
+    ALICE_PRECISE float px = abs(p.x);
+    ALICE_PRECISE float py = abs(p.y);
+    ALICE_PRECISE float pz = abs(p.z);
+    ALICE_PRECISE float dot_kxy = kx * px + ky * py;
+    ALICE_PRECISE float refl = 2.0 * min(dot_kxy, 0.0);
     px -= refl * kx;
     py -= refl * ky;
-    float clamped_x = clamp(px, -kz * hex_r, kz * hex_r);
-    float dx = px - clamped_x;
-    float dy = py - hex_r;
-    float d_xy = sqrt(dx * dx + dy * dy) * (dy < 0.0 ? -1.0 : 1.0);
-    float d_z = pz - h;
-    return min(max(d_xy, d_z), 0.0) + length(max(vec2(d_xy, d_z), vec2(0.0)));
+    ALICE_PRECISE float clamped_x = clamp(px, -kz * hex_r, kz * hex_r);
+    ALICE_PRECISE float dx = px - clamped_x;
+    ALICE_PRECISE float dy = py - hex_r;
+    ALICE_PRECISE float d_xy = sqrt(dx * dx + dy * dy) * (dy < 0.0 ? -1.0 : 1.0);
+    ALICE_PRECISE float d_z = pz - h;
+    ALICE_PRECISE float alice_r = min(max(d_xy, d_z), 0.0) + length(max(vec2(d_xy, d_z), vec2(0.0)));
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_TRIANGLE: &str = r"float sdf_triangle(vec3 p, vec3 a, vec3 b, vec3 c) {
-    vec3 ba = b - a; vec3 pa = p - a;
-    vec3 cb = c - b; vec3 pb = p - b;
-    vec3 ac = a - c; vec3 pc = p - c;
-    vec3 nor = cross(ba, ac);
-    return sqrt(
+    ALICE_PRECISE vec3 ba = b - a; ALICE_PRECISE vec3 pa = p - a;
+    ALICE_PRECISE vec3 cb = c - b; ALICE_PRECISE vec3 pb = p - b;
+    ALICE_PRECISE vec3 ac = a - c; ALICE_PRECISE vec3 pc = p - c;
+    ALICE_PRECISE vec3 nor = cross(ba, ac);
+    ALICE_PRECISE float alice_r = sqrt(
         (sign(dot(cross(ba, nor), pa)) +
          sign(dot(cross(cb, nor), pb)) +
          sign(dot(cross(ac, nor), pc)) < 2.0)
@@ -837,323 +850,354 @@ const HELPER_SDF_TRIANGLE: &str = r"float sdf_triangle(vec3 p, vec3 a, vec3 b, v
         :
         dot(nor, pa) * dot(nor, pa) / dot(nor, nor)
     );
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_BEZIER: &str = r"float sdf_bezier(vec3 pos, vec3 A, vec3 B, vec3 C, float r) {
-    vec3 a = B - A;
-    vec3 b = A - 2.0 * B + C;
-    vec3 c = a * 2.0;
-    vec3 d = A - pos;
-    float kk = 1.0 / max(dot(b, b), 1e-10);
-    float kx = kk * dot(a, b);
-    float ky = kk * (2.0 * dot(a, a) + dot(d, b)) / 3.0;
-    float kz = kk * dot(d, a);
-    float p2 = ky - kx * kx;
-    float q = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
-    float p3 = p2 * p2 * p2;
-    float h = q * q + 4.0 * p3;
-    float res;
+    ALICE_PRECISE vec3 a = B - A;
+    ALICE_PRECISE vec3 b = A - 2.0 * B + C;
+    ALICE_PRECISE vec3 c = a * 2.0;
+    ALICE_PRECISE vec3 d = A - pos;
+    ALICE_PRECISE float kk = 1.0 / max(dot(b, b), 1e-10);
+    ALICE_PRECISE float kx = kk * dot(a, b);
+    ALICE_PRECISE float ky = kk * (2.0 * dot(a, a) + dot(d, b)) / 3.0;
+    ALICE_PRECISE float kz = kk * dot(d, a);
+    ALICE_PRECISE float p2 = ky - kx * kx;
+    ALICE_PRECISE float q = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
+    ALICE_PRECISE float p3 = p2 * p2 * p2;
+    ALICE_PRECISE float h = q * q + 4.0 * p3;
+    ALICE_PRECISE float res;
     if (h >= 0.0) {
         h = sqrt(h);
-        vec2 x = (vec2(h, -h) - q) * 0.5;
-        vec2 uv = sign(x) * pow(abs(x), vec2(1.0 / 3.0));
-        float t = clamp(uv.x + uv.y - kx, 0.0, 1.0);
+        ALICE_PRECISE vec2 x = (vec2(h, -h) - q) * 0.5;
+        ALICE_PRECISE vec2 uv = sign(x) * pow(abs(x), vec2(1.0 / 3.0));
+        ALICE_PRECISE float t = clamp(uv.x + uv.y - kx, 0.0, 1.0);
         res = dot(d + (c + b * t) * t, d + (c + b * t) * t);
     } else {
-        float z = sqrt(-p2);
-        float v2 = acos(q / (p2 * z * 2.0)) / 3.0;
-        float m = cos(v2);
-        float n = sin(v2) * 1.732050808;
-        float t1 = clamp(( m + m) * z - kx, 0.0, 1.0);
-        float t2 = clamp((-n - m) * z - kx, 0.0, 1.0);
-        float d1 = dot(d + (c + b * t1) * t1, d + (c + b * t1) * t1);
-        float d2 = dot(d + (c + b * t2) * t2, d + (c + b * t2) * t2);
+        ALICE_PRECISE float z = sqrt(-p2);
+        ALICE_PRECISE float v2 = acos(q / (p2 * z * 2.0)) / 3.0;
+        ALICE_PRECISE float m = cos(v2);
+        ALICE_PRECISE float n = sin(v2) * 1.732050808;
+        ALICE_PRECISE float t1 = clamp(( m + m) * z - kx, 0.0, 1.0);
+        ALICE_PRECISE float t2 = clamp((-n - m) * z - kx, 0.0, 1.0);
+        ALICE_PRECISE float d1 = dot(d + (c + b * t1) * t1, d + (c + b * t1) * t1);
+        ALICE_PRECISE float d2 = dot(d + (c + b * t2) * t2, d + (c + b * t2) * t2);
         res = min(d1, d2);
     }
-    return sqrt(res) - r;
+    ALICE_PRECISE float alice_r = sqrt(res) - r;
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_LINK: &str = r"float sdf_link(vec3 p, float le, float r1, float r2) {
-    float qx = p.x;
-    float qy = max(abs(p.y) - le, 0.0);
-    float qz = p.z;
-    float xy_len = sqrt(qx * qx + qy * qy) - r1;
-    return sqrt(xy_len * xy_len + qz * qz) - r2;
+    ALICE_PRECISE float qx = p.x;
+    ALICE_PRECISE float qy = max(abs(p.y) - le, 0.0);
+    ALICE_PRECISE float qz = p.z;
+    ALICE_PRECISE float xy_len = sqrt(qx * qx + qy * qy) - r1;
+    ALICE_PRECISE float alice_r = sqrt(xy_len * xy_len + qz * qz) - r2;
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_CAPPED_CONE: &str = r"float sdf_capped_cone(vec3 p, float h, float r1, float r2) {
-    float qx = length(p.xz);
-    float qy = p.y;
-    vec2 k1 = vec2(r2, h);
-    vec2 k2 = vec2(r2 - r1, 2.0 * h);
-    float min_r = (qy < 0.0) ? r1 : r2;
-    vec2 ca = vec2(qx - min(qx, min_r), abs(qy) - h);
-    vec2 q = vec2(qx, qy);
-    vec2 cb = q - k1 + k2 * clamp(dot(k1 - q, k2) / dot(k2, k2), 0.0, 1.0);
-    float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
-    return s * sqrt(min(dot(ca, ca), dot(cb, cb)));
+    ALICE_PRECISE float qx = length(p.xz);
+    ALICE_PRECISE float qy = p.y;
+    ALICE_PRECISE vec2 k1 = vec2(r2, h);
+    ALICE_PRECISE vec2 k2 = vec2(r2 - r1, 2.0 * h);
+    ALICE_PRECISE float min_r = (qy < 0.0) ? r1 : r2;
+    ALICE_PRECISE vec2 ca = vec2(qx - min(qx, min_r), abs(qy) - h);
+    ALICE_PRECISE vec2 q = vec2(qx, qy);
+    ALICE_PRECISE vec2 cb = q - k1 + k2 * clamp(dot(k1 - q, k2) / dot(k2, k2), 0.0, 1.0);
+    ALICE_PRECISE float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
+    ALICE_PRECISE float alice_r = s * sqrt(min(dot(ca, ca), dot(cb, cb)));
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_CAPPED_TORUS: &str = r"float sdf_capped_torus(vec3 p, float ra, float rb, float an) {
-    vec2 sc = vec2(sin(an), cos(an));
-    float px = abs(p.x);
-    float k = (sc.y * px > sc.x * p.y) ? dot(vec2(px, p.y), sc) : length(vec2(px, p.y));
-    return sqrt(px * px + p.y * p.y + p.z * p.z + ra * ra - 2.0 * ra * k) - rb;
+    ALICE_PRECISE vec2 sc = vec2(sin(an), cos(an));
+    ALICE_PRECISE float px = abs(p.x);
+    ALICE_PRECISE float k = (sc.y * px > sc.x * p.y) ? dot(vec2(px, p.y), sc) : length(vec2(px, p.y));
+    ALICE_PRECISE float alice_r = sqrt(px * px + p.y * p.y + p.z * p.z + ra * ra - 2.0 * ra * k) - rb;
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_ROUNDED_CYLINDER: &str = r"float sdf_rounded_cylinder(vec3 p, float r, float rr, float h) {
-    vec2 d = vec2(length(p.xz) - r + rr, abs(p.y) - h);
-    return min(max(d.x, d.y), 0.0) + length(max(d, vec2(0.0))) - rr;
+    ALICE_PRECISE vec2 d = vec2(length(p.xz) - r + rr, abs(p.y) - h);
+    ALICE_PRECISE float alice_r = min(max(d.x, d.y), 0.0) + length(max(d, vec2(0.0))) - rr;
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_TRIANGULAR_PRISM: &str = r"float sdf_triangular_prism(vec3 p, float w, float h) {
-    vec3 q = abs(p);
-    return max(q.z - h, max(q.x * 0.866025 + p.y * 0.5, -p.y) - w * 0.5);
+    ALICE_PRECISE vec3 q = abs(p);
+    ALICE_PRECISE float alice_r = max(q.z - h, max(q.x * 0.866025 + p.y * 0.5, -p.y) - w * 0.5);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_CUT_SPHERE: &str = r"float sdf_cut_sphere(vec3 p, float r, float h) {
-    float w = sqrt(max(r * r - h * h, 0.0));
-    vec2 q = vec2(length(p.xz), p.y);
-    float s = max((h - r) * q.x * q.x + w * w * (h + r - 2.0 * q.y), h * q.x - w * q.y);
-    if (s < 0.0) return length(q) - r;
-    if (q.x < w) return h - q.y;
-    return length(q - vec2(w, h));
+    ALICE_PRECISE float w = sqrt(max(r * r - h * h, 0.0));
+    ALICE_PRECISE vec2 q = vec2(length(p.xz), p.y);
+    ALICE_PRECISE float s = max((h - r) * q.x * q.x + w * w * (h + r - 2.0 * q.y), h * q.x - w * q.y);
+    if (s < 0.0) { ALICE_PRECISE float alice_r = length(q) - r; return alice_r; }
+    if (q.x < w) { ALICE_PRECISE float alice_r = h - q.y; return alice_r; }
+    ALICE_PRECISE float alice_r = length(q - vec2(w, h));
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_CUT_HOLLOW_SPHERE: &str = r"float sdf_cut_hollow_sphere(vec3 p, float r, float h, float t) {
-    float w = sqrt(max(r * r - h * h, 0.0));
-    vec2 q = vec2(length(p.xz), p.y);
-    if (h * q.x < w * q.y) return length(q - vec2(w, h)) - t;
-    return abs(length(q) - r) - t;
+    ALICE_PRECISE float w = sqrt(max(r * r - h * h, 0.0));
+    ALICE_PRECISE vec2 q = vec2(length(p.xz), p.y);
+    if (h * q.x < w * q.y) { ALICE_PRECISE float alice_r = length(q - vec2(w, h)) - t; return alice_r; }
+    ALICE_PRECISE float alice_r = abs(length(q) - r) - t;
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_DEATH_STAR: &str = r"float sdf_death_star(vec3 p, float ra, float rb, float d) {
-    float a = (ra * ra - rb * rb + d * d) / (2.0 * d);
-    float b = sqrt(max(ra * ra - a * a, 0.0));
-    vec2 q = vec2(p.x, length(p.yz));
-    if (q.x * b - q.y * a > d * max(b - q.y, 0.0))
-        return length(q - vec2(a, b));
-    return max(length(q) - ra, -(length(q - vec2(d, 0.0)) - rb));
+    ALICE_PRECISE float a = (ra * ra - rb * rb + d * d) / (2.0 * d);
+    ALICE_PRECISE float b = sqrt(max(ra * ra - a * a, 0.0));
+    ALICE_PRECISE vec2 q = vec2(p.x, length(p.yz));
+    ALICE_PRECISE float alice_lhs = q.x * b - q.y * a;
+    ALICE_PRECISE float alice_rhs = d * max(b - q.y, 0.0);
+    if (alice_lhs > alice_rhs)
+        { ALICE_PRECISE float alice_r = length(q - vec2(a, b)); return alice_r; }
+    ALICE_PRECISE float alice_r = max(length(q) - ra, -(length(q - vec2(d, 0.0)) - rb));
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_SOLID_ANGLE: &str = r"float sdf_solid_angle(vec3 p, float an, float ra) {
-    vec2 c = vec2(sin(an), cos(an));
-    vec2 q = vec2(length(p.xz), p.y);
-    float l = length(q) - ra;
-    float m = length(q - c * clamp(dot(q, c), 0.0, ra));
-    return max(l, m * sign(c.y * q.x - c.x * q.y));
+    ALICE_PRECISE vec2 c = vec2(sin(an), cos(an));
+    ALICE_PRECISE vec2 q = vec2(length(p.xz), p.y);
+    ALICE_PRECISE float l = length(q) - ra;
+    ALICE_PRECISE float m = length(q - c * clamp(dot(q, c), 0.0, ra));
+    ALICE_PRECISE float alice_r = max(l, m * sign(c.y * q.x - c.x * q.y));
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_RHOMBUS: &str = r"float ndot_rh(vec2 a, vec2 b) {
-    return a.x * b.x - a.y * b.y;
+    ALICE_PRECISE float alice_r = a.x * b.x - a.y * b.y;
+    return alice_r;
 }
 float sdf_rhombus(vec3 p, float la, float lb, float h, float ra) {
-    vec3 ap = abs(p);
-    vec2 b = vec2(la, lb);
-    float f = clamp(ndot_rh(b, b - 2.0 * ap.xz) / dot(b, b), -1.0, 1.0);
-    float dxz = length(ap.xz - 0.5 * b * vec2(1.0 - f, 1.0 + f)) * sign(ap.x * b.y + ap.z * b.x - b.x * b.y) - ra;
-    vec2 q = vec2(dxz, ap.y - h);
-    return min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0)));
+    ALICE_PRECISE vec3 ap = abs(p);
+    ALICE_PRECISE vec2 b = vec2(la, lb);
+    ALICE_PRECISE float f = clamp(ndot_rh(b, b - 2.0 * ap.xz) / dot(b, b), -1.0, 1.0);
+    ALICE_PRECISE float dxz = length(ap.xz - 0.5 * b * vec2(1.0 - f, 1.0 + f)) * sign(ap.x * b.y + ap.z * b.x - b.x * b.y) - ra;
+    ALICE_PRECISE vec2 q = vec2(dxz, ap.y - h);
+    ALICE_PRECISE float alice_r = min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0)));
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_HORSESHOE: &str = r"float sdf_horseshoe(vec3 pos, float an, float r, float le, float w, float t) {
-    vec2 c = vec2(cos(an), sin(an));
-    float px = abs(pos.x);
-    float l = length(vec2(px, pos.y));
-    float qx = -c.x * px + c.y * pos.y;
-    float qy = c.y * px + c.x * pos.y;
+    ALICE_PRECISE vec2 c = vec2(cos(an), sin(an));
+    ALICE_PRECISE float px = abs(pos.x);
+    ALICE_PRECISE float l = length(vec2(px, pos.y));
+    ALICE_PRECISE float qx = -c.x * px + c.y * pos.y;
+    ALICE_PRECISE float qy = c.y * px + c.x * pos.y;
     if (!(qy > 0.0 || qx > 0.0)) { qx = l * sign(-c.x); }
     if (!(qx > 0.0)) { qy = l; }
-    float bx = qx - le;
-    float by = abs(qy - r) - w;
-    float d2 = length(max(vec2(bx, by), vec2(0.0, 0.0))) + min(max(bx, by), 0.0);
-    float dz = abs(pos.z) - t;
-    return length(max(vec2(d2, dz), vec2(0.0, 0.0))) + min(max(d2, dz), 0.0);
+    ALICE_PRECISE float bx = qx - le;
+    ALICE_PRECISE float by = abs(qy - r) - w;
+    ALICE_PRECISE float d2 = length(max(vec2(bx, by), vec2(0.0, 0.0))) + min(max(bx, by), 0.0);
+    ALICE_PRECISE float dz = abs(pos.z) - t;
+    ALICE_PRECISE float alice_r = length(max(vec2(d2, dz), vec2(0.0, 0.0))) + min(max(d2, dz), 0.0);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_VESICA: &str = r"float sdf_vesica(vec3 p, float r, float d) {
     // Lens of revolution about Y: 2-D vesica in (length(p.xz), |y|) — same law as `sdf_vesica` on the CPU.
-    vec2 q = vec2(length(p.xz), abs(p.y));
-    float b = sqrt(max(r * r - d * d, 0.0));
-    if ((q.y - b) * d > q.x * b) return length(vec2(q.x, q.y - b));
-    return length(vec2(q.x + d, q.y)) - r;
+    ALICE_PRECISE vec2 q = vec2(length(p.xz), abs(p.y));
+    ALICE_PRECISE float b = sqrt(max(r * r - d * d, 0.0));
+    if ((q.y - b) * d > q.x * b) { ALICE_PRECISE float alice_r = length(vec2(q.x, q.y - b)); return alice_r; }
+    ALICE_PRECISE float alice_r = length(vec2(q.x + d, q.y)) - r;
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_INFINITE_CONE: &str = r"float sdf_infinite_cone(vec3 p, float an) {
-    vec2 c = vec2(sin(an), cos(an));
-    vec2 q = vec2(length(p.xz), -p.y);
-    float d = length(q - c * max(dot(q, c), 0.0));
-    return d * ((q.x * c.y - q.y * c.x < 0.0) ? -1.0 : 1.0);
+    ALICE_PRECISE vec2 c = vec2(sin(an), cos(an));
+    ALICE_PRECISE vec2 q = vec2(length(p.xz), -p.y);
+    ALICE_PRECISE float d = length(q - c * max(dot(q, c), 0.0));
+    ALICE_PRECISE float alice_r = d * ((q.x * c.y - q.y * c.x < 0.0) ? -1.0 : 1.0);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_HEART: &str = r"float sdf_heart(vec3 p, float s) {
     // IQ sdHeart (2-D) revolved about Y, shifted so the centre is at the origin — same law as `sdf_heart` on the CPU.
-    vec3 sp = p / s;
-    float qx = length(sp.xz);
-    float qy = sp.y - 0.5;
+    ALICE_PRECISE vec3 sp = p / s;
+    ALICE_PRECISE float qx = length(sp.xz);
+    ALICE_PRECISE float qy = sp.y - 0.5;
     if (qx + qy > 1.0) {
-        vec2 e = vec2(qx - 0.25, qy - 0.75);
-        return (sqrt(dot(e, e)) - 0.35355339) * s;
+        ALICE_PRECISE vec2 e = vec2(qx - 0.25, qy - 0.75);
+        ALICE_PRECISE float alice_r = (sqrt(dot(e, e)) - 0.35355339) * s;
+        return alice_r;
     }
-    vec2 e1 = vec2(qx, qy - 1.0);
-    float t = max(qx + qy, 0.0) * 0.5;
-    vec2 e2 = vec2(qx - t, qy - t);
-    float d = sqrt(min(dot(e1, e1), dot(e2, e2)));
-    return (qx > qy ? d : -d) * s;
+    ALICE_PRECISE vec2 e1 = vec2(qx, qy - 1.0);
+    ALICE_PRECISE float t = max(qx + qy, 0.0) * 0.5;
+    ALICE_PRECISE vec2 e2 = vec2(qx - t, qy - t);
+    ALICE_PRECISE float d = sqrt(min(dot(e1, e1), dot(e2, e2)));
+    ALICE_PRECISE float alice_r = (qx > qy ? d : -d) * s;
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_TUBE: &str = r"float sdf_tube(vec3 p, float outer_r, float thick, float h) {
-    float r = length(p.xz);
-    float dr = abs(r - outer_r) - thick;
-    float dy = abs(p.y) - h;
-    vec2 w = max(vec2(dr, dy), vec2(0.0));
-    return min(max(dr, dy), 0.0) + length(w);
+    ALICE_PRECISE float r = length(p.xz);
+    ALICE_PRECISE float dr = abs(r - outer_r) - thick;
+    ALICE_PRECISE float dy = abs(p.y) - h;
+    ALICE_PRECISE vec2 w = max(vec2(dr, dy), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(dr, dy), 0.0) + length(w);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_BARREL: &str = r"float sdf_barrel(vec3 p, float radius, float h, float bulge) {
-    float r = length(p.xz);
-    float yn = clamp(p.y / h, -1.0, 1.0);
-    float er = radius + bulge * (1.0 - yn * yn);
-    float dr = r - er;
-    float dy = abs(p.y) - h;
-    vec2 w = max(vec2(dr, dy), vec2(0.0));
-    return min(max(dr, dy), 0.0) + length(w);
+    ALICE_PRECISE float r = length(p.xz);
+    ALICE_PRECISE float yn = clamp(p.y / h, -1.0, 1.0);
+    ALICE_PRECISE float er = radius + bulge * (1.0 - yn * yn);
+    ALICE_PRECISE float dr = r - er;
+    ALICE_PRECISE float dy = abs(p.y) - h;
+    ALICE_PRECISE vec2 w = max(vec2(dr, dy), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(dr, dy), 0.0) + length(w);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_DIAMOND: &str = r"float sdf_diamond(vec3 p, float r, float h) {
-    vec2 q = vec2(length(p.xz), abs(p.y));
-    vec2 ba = vec2(-r, h);
-    vec2 qa = q - vec2(r, 0.0);
-    float t = clamp(dot(qa, ba) / dot(ba, ba), 0.0, 1.0);
-    vec2 closest = vec2(r, 0.0) + ba * t;
-    float dist = length(q - closest);
-    if (q.x * h + q.y * r < r * h) return -dist;
+    ALICE_PRECISE vec2 q = vec2(length(p.xz), abs(p.y));
+    ALICE_PRECISE vec2 ba = vec2(-r, h);
+    ALICE_PRECISE vec2 qa = q - vec2(r, 0.0);
+    ALICE_PRECISE float t = clamp(dot(qa, ba) / dot(ba, ba), 0.0, 1.0);
+    ALICE_PRECISE vec2 closest = vec2(r, 0.0) + ba * t;
+    ALICE_PRECISE float dist = length(q - closest);
+    ALICE_PRECISE float alice_lhs = q.x * h + q.y * r;
+    ALICE_PRECISE float alice_rhs = r * h;
+    if (alice_lhs < alice_rhs) return -dist;
     return dist;
 }
 ";
 
 const HELPER_SDF_CHAMFERED_CUBE: &str = r"float sdf_chamfered_cube(vec3 p, float hx, float hy, float hz, float ch) {
-    vec3 ap = abs(p);
-    vec3 q = ap - vec3(hx, hy, hz);
-    float d_box = min(max(q.x, max(q.y, q.z)), 0.0) + length(max(q, vec3(0.0)));
-    float s = hx + hy + hz;
-    float d_ch = (ap.x + ap.y + ap.z - s + ch) * 0.57735;
-    return max(d_box, d_ch);
+    ALICE_PRECISE vec3 ap = abs(p);
+    ALICE_PRECISE vec3 q = ap - vec3(hx, hy, hz);
+    ALICE_PRECISE float d_box = min(max(q.x, max(q.y, q.z)), 0.0) + length(max(q, vec3(0.0)));
+    ALICE_PRECISE float s = hx + hy + hz;
+    ALICE_PRECISE float d_ch = (ap.x + ap.y + ap.z - s + ch) * 0.57735;
+    ALICE_PRECISE float alice_r = max(d_box, d_ch);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_SUPERELLIPSOID: &str = r"float sdf_superellipsoid(vec3 p, float hx, float hy, float hz, float e1, float e2) {
-    float qx = max(abs(p.x / hx), 0.00001);
-    float qy = max(abs(p.y / hy), 0.00001);
-    float qz = max(abs(p.z / hz), 0.00001);
-    float ee1 = max(e1, 0.02);
-    float ee2 = max(e2, 0.02);
-    float m1 = 2.0 / ee2;
-    float m2 = 2.0 / ee1;
-    float w = pow(qx, m1) + pow(qz, m1);
-    float v = pow(w, ee2 / ee1) + pow(qy, m2);
-    float f = pow(v, ee1 * 0.5);
-    return (f - 1.0) * min(hx, min(hy, hz)) * 0.5;
+    ALICE_PRECISE float qx = max(abs(p.x / hx), 0.00001);
+    ALICE_PRECISE float qy = max(abs(p.y / hy), 0.00001);
+    ALICE_PRECISE float qz = max(abs(p.z / hz), 0.00001);
+    ALICE_PRECISE float ee1 = max(e1, 0.02);
+    ALICE_PRECISE float ee2 = max(e2, 0.02);
+    ALICE_PRECISE float m1 = 2.0 / ee2;
+    ALICE_PRECISE float m2 = 2.0 / ee1;
+    ALICE_PRECISE float w = pow(qx, m1) + pow(qz, m1);
+    ALICE_PRECISE float v = pow(w, ee2 / ee1) + pow(qy, m2);
+    ALICE_PRECISE float f = pow(v, ee1 * 0.5);
+    ALICE_PRECISE float alice_r = (f - 1.0) * min(hx, min(hy, hz)) * 0.5;
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_ROUNDED_X: &str = r"float sdf_rounded_x(vec3 p, float w, float r, float h) {
-    vec2 q = abs(p.xz);
-    float s = min(q.x + q.y, w) * 0.5;
-    float d2d = length(q - vec2(s)) - r;
-    float dy = abs(p.y) - h;
-    vec2 ww = max(vec2(d2d, dy), vec2(0.0));
-    return min(max(d2d, dy), 0.0) + length(ww);
+    ALICE_PRECISE vec2 q = abs(p.xz);
+    ALICE_PRECISE float s = min(q.x + q.y, w) * 0.5;
+    ALICE_PRECISE float d2d = length(q - vec2(s)) - r;
+    ALICE_PRECISE float dy = abs(p.y) - h;
+    ALICE_PRECISE vec2 ww = max(vec2(d2d, dy), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(d2d, dy), 0.0) + length(ww);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_PIE: &str = r"float sdf_pie(vec3 p, float angle, float radius, float h) {
     // IQ sdPie in the XZ plane (|x|, z), extruded along Y — same law as `sdf_pie` on the CPU.
-    vec2 q = vec2(abs(p.x), p.z);
-    vec2 sc = vec2(sin(angle), cos(angle));
-    float l = length(q) - radius;
-    float m = length(q - sc * clamp(dot(q, sc), 0.0, radius));
-    float cr = sc.y * q.x - sc.x * q.y;
-    float sgn = cr > 0.0 ? 1.0 : (cr < 0.0 ? -1.0 : 0.0);
-    float d2d = max(l, m * sgn);
-    float dy = abs(p.y) - h;
-    vec2 w = max(vec2(d2d, dy), vec2(0.0));
-    return min(max(d2d, dy), 0.0) + length(w);
+    ALICE_PRECISE vec2 q = vec2(abs(p.x), p.z);
+    ALICE_PRECISE vec2 sc = vec2(sin(angle), cos(angle));
+    ALICE_PRECISE float l = length(q) - radius;
+    ALICE_PRECISE float m = length(q - sc * clamp(dot(q, sc), 0.0, radius));
+    ALICE_PRECISE float cr = sc.y * q.x - sc.x * q.y;
+    ALICE_PRECISE float sgn = cr > 0.0 ? 1.0 : (cr < 0.0 ? -1.0 : 0.0);
+    ALICE_PRECISE float d2d = max(l, m * sgn);
+    ALICE_PRECISE float dy = abs(p.y) - h;
+    ALICE_PRECISE vec2 w = max(vec2(d2d, dy), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(d2d, dy), 0.0) + length(w);
+    return alice_r;
 }
 ";
 
 const HELPER_COLUMNS: &str = r"// Columns (hg_sdf fOpUnionColumns family) — same law as `sdf_columns_*_r` on the CPU: 45° rotate, shift by r/√2, wrap into r·2/n cells, rotate back.
 float alice_columns_union(float a, float b, float r, float n) {
-    float m = min(a, b);
-    float a2 = min(a, b);
-    float b2 = max(a, b);
-    float cs = r * (2.0 / n);
-    float s = 0.70710678;
-    float ra = s * (a2 + b2) - r * 0.70710678;
-    float rb = s * (b2 - a2);
-    float hc = cs * 0.5;
-    float y = ra + hc;
+    ALICE_PRECISE float m = min(a, b);
+    ALICE_PRECISE float a2 = min(a, b);
+    ALICE_PRECISE float b2 = max(a, b);
+    ALICE_PRECISE float cs = r * (2.0 / n);
+    ALICE_PRECISE float s = 0.70710678;
+    ALICE_PRECISE float ra = s * (a2 + b2) - r * 0.70710678;
+    ALICE_PRECISE float rb = s * (b2 - a2);
+    ALICE_PRECISE float hc = cs * 0.5;
+    ALICE_PRECISE float y = ra + hc;
     ra = y - cs * floor(y / cs) - hc;
-    float a3 = s * (ra + rb);
-    float b3 = s * (rb - ra);
-    float inner = min(min(a3, b3), m);
-    return m > r ? m : inner;
+    ALICE_PRECISE float a3 = s * (ra + rb);
+    ALICE_PRECISE float b3 = s * (rb - ra);
+    ALICE_PRECISE float inner = min(min(a3, b3), m);
+    ALICE_PRECISE float alice_r = m > r ? m : inner;
+    return alice_r;
 }
 float alice_columns_subtraction(float a0, float b, float r, float n) {
-    float a = -a0;
-    float m = min(a, b);
-    float a2 = min(a, b);
-    float b2 = max(a, b);
-    float cs = r * (2.0 / n);
-    float s = 0.70710678;
-    float ra = s * (a2 + b2) - r * 0.70710678;
-    float rb = s * (b2 - a2);
-    float hc = cs * 0.5;
-    float y = ra + hc;
+    ALICE_PRECISE float a = -a0;
+    ALICE_PRECISE float m = min(a, b);
+    ALICE_PRECISE float a2 = min(a, b);
+    ALICE_PRECISE float b2 = max(a, b);
+    ALICE_PRECISE float cs = r * (2.0 / n);
+    ALICE_PRECISE float s = 0.70710678;
+    ALICE_PRECISE float ra = s * (a2 + b2) - r * 0.70710678;
+    ALICE_PRECISE float rb = s * (b2 - a2);
+    ALICE_PRECISE float hc = cs * 0.5;
+    ALICE_PRECISE float y = ra + hc;
     ra = y - cs * floor(y / cs) - hc;
-    float a3 = s * (ra + rb);
-    float b3 = s * (rb - ra);
-    float inner = -min(min(a3, b3), m);
-    return m > r ? -m : inner;
+    ALICE_PRECISE float a3 = s * (ra + rb);
+    ALICE_PRECISE float b3 = s * (rb - ra);
+    ALICE_PRECISE float inner = -min(min(a3, b3), m);
+    ALICE_PRECISE float alice_r = m > r ? -m : inner;
+    return alice_r;
 }
 float alice_columns_intersection(float a, float b, float r, float n) {
-    return alice_columns_subtraction(a, -b, r, n);
+    ALICE_PRECISE float alice_r = alice_columns_subtraction(a, -b, r, n);
+    return alice_r;
 }
 ";
 
 const HELPER_ICOSAHEDRAL_FOLD: &str = r"// Icosahedral fold — same law as `icosahedral_fold` on the CPU (octant fold, 8 × sort + 3 plane reflections).
 vec3 alice_icosahedral_fold(vec3 p0) {
-    vec3 p = abs(p0);
-    vec3 n0 = normalize(vec3(0.0, 1.0, 1.618034));
-    vec3 n1 = normalize(vec3(1.0, 1.618034, 0.0));
-    vec3 n2 = normalize(vec3(1.618034, 0.0, 1.0));
+    ALICE_PRECISE vec3 p = abs(p0);
+    ALICE_PRECISE vec3 n0 = normalize(vec3(0.0, 1.0, 1.618034));
+    ALICE_PRECISE vec3 n1 = normalize(vec3(1.0, 1.618034, 0.0));
+    ALICE_PRECISE vec3 n2 = normalize(vec3(1.618034, 0.0, 1.0));
     for (int i = 0; i < 8; i++) {
         if (p.y > p.x) p = vec3(p.y, p.x, p.z);
         if (p.z > p.y) p = vec3(p.x, p.z, p.y);
         if (p.y > p.x) p = vec3(p.y, p.x, p.z);
-        float d0 = dot(p, n0);
+        ALICE_PRECISE float d0 = dot(p, n0);
         if (d0 < 0.0) p -= n0 * (2.0 * d0);
-        float d1 = dot(p, n1);
+        ALICE_PRECISE float d1 = dot(p, n1);
         if (d1 < 0.0) p -= n1 * (2.0 * d1);
-        float d2 = dot(p, n2);
+        ALICE_PRECISE float d2 = dot(p, n2);
         if (d2 < 0.0) p -= n2 * (2.0 * d2);
     }
     return p;
@@ -1162,100 +1206,107 @@ vec3 alice_icosahedral_fold(vec3 p0) {
 
 const HELPER_OCTANT_MIRROR: &str = r"// Octant mirror — same law as `octant_mirror` on the CPU: abs then sort descending (x ≥ y ≥ z).
 vec3 alice_octant_mirror(vec3 p0) {
-    vec3 a = abs(p0);
-    float x = max(a.x, a.y);
-    float y = min(a.x, a.y);
-    float y1 = max(y, a.z);
-    float z = min(y, a.z);
-    return vec3(max(x, y1), min(x, y1), z);
+    ALICE_PRECISE vec3 a = abs(p0);
+    ALICE_PRECISE float x = max(a.x, a.y);
+    ALICE_PRECISE float y = min(a.x, a.y);
+    ALICE_PRECISE float y1 = max(y, a.z);
+    ALICE_PRECISE float z = min(y, a.z);
+    ALICE_PRECISE vec3 alice_r = vec3(max(x, y1), min(x, y1), z);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_TRAPEZOID: &str = r"float _trap_ds(float px, float py, float ax, float ay, float bx, float by) {
-    float dx = bx - ax;
-    float dy = by - ay;
-    float len_sq = dx * dx + dy * dy;
-    float t = len_sq > 0.0 ? ((px - ax) * dx + (py - ay) * dy) / len_sq : 0.0;
+    ALICE_PRECISE float dx = bx - ax;
+    ALICE_PRECISE float dy = by - ay;
+    ALICE_PRECISE float len_sq = dx * dx + dy * dy;
+    ALICE_PRECISE float t = len_sq > 0.0 ? ((px - ax) * dx + (py - ay) * dy) / len_sq : 0.0;
     t = clamp(t, 0.0, 1.0);
-    float cx = ax + dx * t;
-    float cy = ay + dy * t;
-    return sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+    ALICE_PRECISE float cx = ax + dx * t;
+    ALICE_PRECISE float cy = ay + dy * t;
+    ALICE_PRECISE float alice_r = sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+    return alice_r;
 }
 float sdf_trapezoid(vec3 p, float r1, float r2, float th, float hd) {
-    float px = abs(p.x);
-    float py = p.y;
-    float he = th;
-    float d_bot = _trap_ds(px, py, 0.0, -he, r1, -he);
-    float d_slant = _trap_ds(px, py, r1, -he, r2, he);
-    float d_top = _trap_ds(px, py, r2, he, 0.0, he);
-    float d_unsigned = min(d_bot, min(d_slant, d_top));
-    float nx = 2.0 * he;
-    float ny = r1 - r2;
-    float d_slant_plane = (px - r1) * nx + (py + he) * ny;
-    float d2d = (py >= -he && py <= he && d_slant_plane <= 0.0) ? -d_unsigned : d_unsigned;
-    float dz = abs(p.z) - hd;
-    vec2 ww = max(vec2(d2d, dz), vec2(0.0));
-    return min(max(d2d, dz), 0.0) + length(ww);
+    ALICE_PRECISE float px = abs(p.x);
+    ALICE_PRECISE float py = p.y;
+    ALICE_PRECISE float he = th;
+    ALICE_PRECISE float d_bot = _trap_ds(px, py, 0.0, -he, r1, -he);
+    ALICE_PRECISE float d_slant = _trap_ds(px, py, r1, -he, r2, he);
+    ALICE_PRECISE float d_top = _trap_ds(px, py, r2, he, 0.0, he);
+    ALICE_PRECISE float d_unsigned = min(d_bot, min(d_slant, d_top));
+    ALICE_PRECISE float nx = 2.0 * he;
+    ALICE_PRECISE float ny = r1 - r2;
+    ALICE_PRECISE float d_slant_plane = (px - r1) * nx + (py + he) * ny;
+    ALICE_PRECISE float d2d = (py >= -he && py <= he && d_slant_plane <= 0.0) ? -d_unsigned : d_unsigned;
+    ALICE_PRECISE float dz = abs(p.z) - hd;
+    ALICE_PRECISE vec2 ww = max(vec2(d2d, dz), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(d2d, dz), 0.0) + length(ww);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_PARALLELOGRAM: &str = r"float _para_ds(float px, float py, float ax, float ay, float bx, float by) {
-    float dx = bx - ax;
-    float dy = by - ay;
-    float len_sq = dx * dx + dy * dy;
-    float t = len_sq > 0.0 ? ((px - ax) * dx + (py - ay) * dy) / len_sq : 0.0;
+    ALICE_PRECISE float dx = bx - ax;
+    ALICE_PRECISE float dy = by - ay;
+    ALICE_PRECISE float len_sq = dx * dx + dy * dy;
+    ALICE_PRECISE float t = len_sq > 0.0 ? ((px - ax) * dx + (py - ay) * dy) / len_sq : 0.0;
     t = clamp(t, 0.0, 1.0);
-    float cx = ax + dx * t;
-    float cy = ay + dy * t;
-    return sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+    ALICE_PRECISE float cx = ax + dx * t;
+    ALICE_PRECISE float cy = ay + dy * t;
+    ALICE_PRECISE float alice_r = sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+    return alice_r;
 }
 float _para_c2d(float px, float py, float ax, float ay, float bx, float by) {
-    return (px - ax) * (by - ay) - (py - ay) * (bx - ax);
+    ALICE_PRECISE float alice_r = (px - ax) * (by - ay) - (py - ay) * (bx - ax);
+    return alice_r;
 }
 float sdf_parallelogram(vec3 p, float w, float ph, float sk, float hd) {
-    float px = p.x;
-    float py = p.y;
-    float vdx = w - sk;  float vdy = -ph;
-    float vax = w + sk;  float vay = ph;
-    float vbx = -w + sk; float vby = ph;
-    float vcx = -w - sk; float vcy = -ph;
-    float d1 = _para_ds(px, py, vdx, vdy, vax, vay);
-    float d2 = _para_ds(px, py, vax, vay, vbx, vby);
-    float d3 = _para_ds(px, py, vbx, vby, vcx, vcy);
-    float d4 = _para_ds(px, py, vcx, vcy, vdx, vdy);
-    float d_unsigned = min(d1, min(d2, min(d3, d4)));
-    float c1 = _para_c2d(px, py, vdx, vdy, vax, vay);
-    float c2 = _para_c2d(px, py, vax, vay, vbx, vby);
-    float c3 = _para_c2d(px, py, vbx, vby, vcx, vcy);
-    float c4 = _para_c2d(px, py, vcx, vcy, vdx, vdy);
-    float d2d = (c1 <= 0.0 && c2 <= 0.0 && c3 <= 0.0 && c4 <= 0.0) ? -d_unsigned : d_unsigned;
-    float dz = abs(p.z) - hd;
-    vec2 ww = max(vec2(d2d, dz), vec2(0.0));
-    return min(max(d2d, dz), 0.0) + length(ww);
+    ALICE_PRECISE float px = p.x;
+    ALICE_PRECISE float py = p.y;
+    ALICE_PRECISE float vdx = w - sk;  ALICE_PRECISE float vdy = -ph;
+    ALICE_PRECISE float vax = w + sk;  ALICE_PRECISE float vay = ph;
+    ALICE_PRECISE float vbx = -w + sk; ALICE_PRECISE float vby = ph;
+    ALICE_PRECISE float vcx = -w - sk; ALICE_PRECISE float vcy = -ph;
+    ALICE_PRECISE float d1 = _para_ds(px, py, vdx, vdy, vax, vay);
+    ALICE_PRECISE float d2 = _para_ds(px, py, vax, vay, vbx, vby);
+    ALICE_PRECISE float d3 = _para_ds(px, py, vbx, vby, vcx, vcy);
+    ALICE_PRECISE float d4 = _para_ds(px, py, vcx, vcy, vdx, vdy);
+    ALICE_PRECISE float d_unsigned = min(d1, min(d2, min(d3, d4)));
+    ALICE_PRECISE float c1 = _para_c2d(px, py, vdx, vdy, vax, vay);
+    ALICE_PRECISE float c2 = _para_c2d(px, py, vax, vay, vbx, vby);
+    ALICE_PRECISE float c3 = _para_c2d(px, py, vbx, vby, vcx, vcy);
+    ALICE_PRECISE float c4 = _para_c2d(px, py, vcx, vcy, vdx, vdy);
+    ALICE_PRECISE float d2d = (c1 <= 0.0 && c2 <= 0.0 && c3 <= 0.0 && c4 <= 0.0) ? -d_unsigned : d_unsigned;
+    ALICE_PRECISE float dz = abs(p.z) - hd;
+    ALICE_PRECISE vec2 ww = max(vec2(d2d, dz), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(d2d, dz), 0.0) + length(ww);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_TUNNEL: &str = r"float sdf_tunnel(vec3 p, float w, float h2d, float hd) {
-    float px = abs(p.x);
-    float py = p.y;
-    float dx = px - w;
-    float dy_rect = abs(py) - h2d;
-    float d_rect = length(max(vec2(dx, dy_rect), vec2(0.0))) + min(max(dx, dy_rect), 0.0);
-    float d_circle = length(vec2(px, py - h2d)) - w;
-    float d2d = py > h2d ? min(d_rect, d_circle) : d_rect;
-    float dz = abs(p.z) - hd;
-    vec2 ww = max(vec2(d2d, dz), vec2(0.0));
-    return min(max(d2d, dz), 0.0) + length(ww);
+    ALICE_PRECISE float px = abs(p.x);
+    ALICE_PRECISE float py = p.y;
+    ALICE_PRECISE float dx = px - w;
+    ALICE_PRECISE float dy_rect = abs(py) - h2d;
+    ALICE_PRECISE float d_rect = length(max(vec2(dx, dy_rect), vec2(0.0))) + min(max(dx, dy_rect), 0.0);
+    ALICE_PRECISE float d_circle = length(vec2(px, py - h2d)) - w;
+    ALICE_PRECISE float d2d = py > h2d ? min(d_rect, d_circle) : d_rect;
+    ALICE_PRECISE float dz = abs(p.z) - hd;
+    ALICE_PRECISE vec2 ww = max(vec2(d2d, dz), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(d2d, dz), 0.0) + length(ww);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_UNEVEN_CAPSULE: &str = r"float sdf_uneven_capsule(vec3 p, float r1, float r2, float ch, float hd) {
-    float px = abs(p.x);
-    float hh = ch * 2.0;
-    float b = (r1 - r2) / hh;
-    float a = sqrt(max(1.0 - b * b, 0.0));
-    float k = dot(vec2(-b, a), vec2(px, p.y));
-    float d2d;
+    ALICE_PRECISE float px = abs(p.x);
+    ALICE_PRECISE float hh = ch * 2.0;
+    ALICE_PRECISE float b = (r1 - r2) / hh;
+    ALICE_PRECISE float a = sqrt(max(1.0 - b * b, 0.0));
+    ALICE_PRECISE float k = dot(vec2(-b, a), vec2(px, p.y));
+    ALICE_PRECISE float d2d;
     if (k < 0.0) {
         d2d = length(vec2(px, p.y)) - r1;
     } else if (k > a * hh) {
@@ -1263,212 +1314,226 @@ const HELPER_SDF_UNEVEN_CAPSULE: &str = r"float sdf_uneven_capsule(vec3 p, float
     } else {
         d2d = dot(vec2(px, p.y), vec2(a, b)) - r1;
     }
-    float dz = abs(p.z) - hd;
-    vec2 ww = max(vec2(d2d, dz), vec2(0.0));
-    return min(max(d2d, dz), 0.0) + length(ww);
+    ALICE_PRECISE float dz = abs(p.z) - hd;
+    ALICE_PRECISE vec2 ww = max(vec2(d2d, dz), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(d2d, dz), 0.0) + length(ww);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_EGG: &str = r"float sdf_egg(vec3 p, float ra, float rb) {
     const float k = 1.7320508;
-    float px = length(p.xz);
-    float py = p.y;
-    float r = ra - rb;
-    float d;
+    ALICE_PRECISE float px = length(p.xz);
+    ALICE_PRECISE float py = p.y;
+    ALICE_PRECISE float r = ra - rb;
+    ALICE_PRECISE float d;
+    ALICE_PRECISE float alice_kpr = k * (px + r);
     if (py < 0.0) {
         d = length(vec2(px, py)) - r;
-    } else if (k * (px + r) < py) {
+    } else if (alice_kpr < py) {
         d = length(vec2(px, py - k * r)) - r;
     } else {
         d = length(vec2(px + r, py)) - 2.0 * r;
     }
-    return d - rb;
+    ALICE_PRECISE float alice_r = d - rb;
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_ARC_SHAPE: &str = r"float sdf_arc_shape(vec3 p, float aperture, float radius, float thickness, float h) {
-    float qx = abs(p.x);
-    float qz = p.z;
-    vec2 sc = vec2(sin(aperture), cos(aperture));
-    float d2d;
+    ALICE_PRECISE float qx = abs(p.x);
+    ALICE_PRECISE float qz = p.z;
+    ALICE_PRECISE vec2 sc = vec2(sin(aperture), cos(aperture));
+    ALICE_PRECISE float d2d;
     if (sc.y * qx > sc.x * qz) {
         d2d = length(vec2(qx, qz) - sc * radius) - thickness;
     } else {
         d2d = abs(length(vec2(qx, qz)) - radius) - thickness;
     }
-    float dy = abs(p.y) - h;
-    vec2 ww = max(vec2(d2d, dy), vec2(0.0));
-    return min(max(d2d, dy), 0.0) + length(ww);
+    ALICE_PRECISE float dy = abs(p.y) - h;
+    ALICE_PRECISE vec2 ww = max(vec2(d2d, dy), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(d2d, dy), 0.0) + length(ww);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_MOON: &str = r"float sdf_moon(vec3 p, float d, float ra, float rb, float h) {
-    float qx = abs(p.x);
-    float qz = p.z;
-    float d_outer = length(vec2(qx, qz)) - ra;
-    float d_inner = length(vec2(qx - d, qz)) - rb;
-    float d2d = max(d_outer, -d_inner);
-    float dy = abs(p.y) - h;
-    vec2 ww = max(vec2(d2d, dy), vec2(0.0));
-    return min(max(d2d, dy), 0.0) + length(ww);
+    ALICE_PRECISE float qx = abs(p.x);
+    ALICE_PRECISE float qz = p.z;
+    ALICE_PRECISE float d_outer = length(vec2(qx, qz)) - ra;
+    ALICE_PRECISE float d_inner = length(vec2(qx - d, qz)) - rb;
+    ALICE_PRECISE float d2d = max(d_outer, -d_inner);
+    ALICE_PRECISE float dy = abs(p.y) - h;
+    ALICE_PRECISE vec2 ww = max(vec2(d2d, dy), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(d2d, dy), 0.0) + length(ww);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_CROSS_SHAPE: &str = r"float sdf_cross_shape(vec3 p, float len, float th, float rr, float h) {
-    float qx = abs(p.x);
-    float qz = abs(p.z);
-    vec2 dh = vec2(qx - len, qz - th);
-    vec2 dv = vec2(qx - th, qz - len);
-    float dh_sdf = length(max(dh, vec2(0.0))) + min(max(dh.x, dh.y), 0.0);
-    float dv_sdf = length(max(dv, vec2(0.0))) + min(max(dv.x, dv.y), 0.0);
-    float d2d = min(dh_sdf, dv_sdf) - rr;
-    float dy = abs(p.y) - h;
-    vec2 ww = max(vec2(d2d, dy), vec2(0.0));
-    return min(max(d2d, dy), 0.0) + length(ww);
+    ALICE_PRECISE float qx = abs(p.x);
+    ALICE_PRECISE float qz = abs(p.z);
+    ALICE_PRECISE vec2 dh = vec2(qx - len, qz - th);
+    ALICE_PRECISE vec2 dv = vec2(qx - th, qz - len);
+    ALICE_PRECISE float dh_sdf = length(max(dh, vec2(0.0))) + min(max(dh.x, dh.y), 0.0);
+    ALICE_PRECISE float dv_sdf = length(max(dv, vec2(0.0))) + min(max(dv.x, dv.y), 0.0);
+    ALICE_PRECISE float d2d = min(dh_sdf, dv_sdf) - rr;
+    ALICE_PRECISE float dy = abs(p.y) - h;
+    ALICE_PRECISE vec2 ww = max(vec2(d2d, dy), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(d2d, dy), 0.0) + length(ww);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_BLOBBY_CROSS: &str = r"float sdf_blobby_cross(vec3 p, float size, float hh) {
     const float he = 0.5;
-    vec2 pos = abs(vec2(p.x, p.z) / size);
+    ALICE_PRECISE vec2 pos = abs(vec2(p.x, p.z) / size);
     pos = vec2(abs(pos.x - pos.y), 1.0 - pos.x - pos.y) * 0.70710678;
-    float pp = (he - pos.y - 0.25 / he) / (6.0 * he);
-    float q = pos.x / (he * he * 16.0);
-    float h = q * q - pp * pp * pp;
-    float x;
+    ALICE_PRECISE float pp = (he - pos.y - 0.25 / he) / (6.0 * he);
+    ALICE_PRECISE float q = pos.x / (he * he * 16.0);
+    ALICE_PRECISE float h = q * q - pp * pp * pp;
+    ALICE_PRECISE float x;
     if (h >= 0.0) {
-        float r = sqrt(h);
+        ALICE_PRECISE float r = sqrt(h);
         x = pow(q + r, 1.0 / 3.0) - pow(abs(q - r), 1.0 / 3.0) * sign(r - q);
     } else {
-        float r = sqrt(pp);
+        ALICE_PRECISE float r = sqrt(pp);
         x = 2.0 * r * cos(acos(q / (pp * r)) / 3.0);
     }
     x = min(x, 0.70710678);
-    vec2 z = vec2(x, he * (1.0 - 2.0 * x * x)) - pos;
-    float d_2d = length(z) * sign(z.y) * size;
-    float d_y = abs(p.y) - hh;
-    vec2 w = vec2(max(d_2d, 0.0), max(d_y, 0.0));
-    return min(max(d_2d, d_y), 0.0) + length(w);
+    ALICE_PRECISE vec2 z = vec2(x, he * (1.0 - 2.0 * x * x)) - pos;
+    ALICE_PRECISE float d_2d = length(z) * sign(z.y) * size;
+    ALICE_PRECISE float d_y = abs(p.y) - hh;
+    ALICE_PRECISE vec2 w = vec2(max(d_2d, 0.0), max(d_y, 0.0));
+    ALICE_PRECISE float alice_r = min(max(d_2d, d_y), 0.0) + length(w);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_PARABOLA_SEGMENT: &str = r"float sdf_parabola_segment(vec3 p, float w, float ph, float hd) {
-    float px = abs(p.x);
-    float py = p.y;
-    float ww_sq = w * w;
-    float y_arch = ph * (1.0 - px * px / ww_sq);
+    ALICE_PRECISE float px = abs(p.x);
+    ALICE_PRECISE float py = p.y;
+    ALICE_PRECISE float ww_sq = w * w;
+    ALICE_PRECISE float y_arch = ph * (1.0 - px * px / ww_sq);
     bool is_in = (px <= w && py >= 0.0 && py <= y_arch);
-    float t = clamp(px, 0.0, w);
+    ALICE_PRECISE float t = clamp(px, 0.0, w);
     for (int i = 0; i < 8; i++) {
-        float ft = ph * (1.0 - t * t / ww_sq);
-        float dft = -2.0 * ph * t / ww_sq;
-        float ex = px - t;
-        float ey = py - ft;
-        float f = -ex + ey * dft;
-        float df = 1.0 + dft * dft + ey * (-2.0 * ph / ww_sq);
+        ALICE_PRECISE float ft = ph * (1.0 - t * t / ww_sq);
+        ALICE_PRECISE float dft = -2.0 * ph * t / ww_sq;
+        ALICE_PRECISE float ex = px - t;
+        ALICE_PRECISE float ey = py - ft;
+        ALICE_PRECISE float f = -ex + ey * dft;
+        ALICE_PRECISE float df = 1.0 + dft * dft + ey * (-2.0 * ph / ww_sq);
         if (abs(df) > 1e-10) { t = clamp(t - f / df, 0.0, w); }
     }
-    float cy = ph * (1.0 - t * t / ww_sq);
-    float d_para = length(vec2(px - t, py - cy));
-    float d_base = (px <= w) ? abs(py) : length(vec2(px - w, py));
-    float d_unsigned = min(d_para, d_base);
-    float d2d = is_in ? -d_unsigned : d_unsigned;
-    float dz = abs(p.z) - hd;
-    vec2 ext = max(vec2(d2d, dz), vec2(0.0));
-    return min(max(d2d, dz), 0.0) + length(ext);
+    ALICE_PRECISE float cy = ph * (1.0 - t * t / ww_sq);
+    ALICE_PRECISE float d_para = length(vec2(px - t, py - cy));
+    ALICE_PRECISE float d_base = (px <= w) ? abs(py) : length(vec2(px - w, py));
+    ALICE_PRECISE float d_unsigned = min(d_para, d_base);
+    ALICE_PRECISE float d2d = is_in ? -d_unsigned : d_unsigned;
+    ALICE_PRECISE float dz = abs(p.z) - hd;
+    ALICE_PRECISE vec2 ext = max(vec2(d2d, dz), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(d2d, dz), 0.0) + length(ext);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_REGULAR_POLYGON: &str = r"float sdf_regular_polygon(vec3 p, float radius, float n, float hh) {
     // IQ regular polygon (exact), XZ plane, radius = circumradius (1.9.2)
-    float nn = trunc(max(n, 3.0));
-    float an = 3.14159265358979 / nn;
-    vec2 acs = vec2(cos(an), sin(an));
-    float bn = mod(alice_atan2(p.x, p.z), 2.0 * an) - an;
-    float r = length(p.xz);
-    vec2 q = vec2(r * cos(bn), abs(r * sin(bn)));
+    ALICE_PRECISE float nn = trunc(max(n, 3.0));
+    ALICE_PRECISE float an = 3.14159265358979 / nn;
+    ALICE_PRECISE vec2 acs = vec2(cos(an), sin(an));
+    ALICE_PRECISE float bn = mod(alice_atan2(p.x, p.z), 2.0 * an) - an;
+    ALICE_PRECISE float r = length(p.xz);
+    ALICE_PRECISE vec2 q = vec2(r * cos(bn), abs(r * sin(bn)));
     q -= radius * acs;
     q.y += clamp(-q.y, 0.0, radius * acs.y);
-    float d2d = length(q) * sign(q.x);
-    float dy = abs(p.y) - hh;
-    vec2 w = max(vec2(d2d, dy), vec2(0.0));
-    return min(max(d2d, dy), 0.0) + length(w);
+    ALICE_PRECISE float d2d = length(q) * sign(q.x);
+    ALICE_PRECISE float dy = abs(p.y) - hh;
+    ALICE_PRECISE vec2 w = max(vec2(d2d, dy), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(d2d, dy), 0.0) + length(w);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_STAR_POLYGON: &str = r"float sdf_star_polygon(vec3 p, float radius, float np, float m, float hh) {
-    float qx = abs(p.x);
-    float qz = p.z;
-    float n = max(np, 3.0);
-    float an = 3.14159265358979 / n;
-    float r = length(vec2(qx, qz));
-    float angle = alice_atan2(qx, qz);
+    ALICE_PRECISE float qx = abs(p.x);
+    ALICE_PRECISE float qz = p.z;
+    ALICE_PRECISE float n = max(np, 3.0);
+    ALICE_PRECISE float an = 3.14159265358979 / n;
+    ALICE_PRECISE float r = length(vec2(qx, qz));
+    ALICE_PRECISE float angle = alice_atan2(qx, qz);
     angle = mod(mod(angle, 2.0 * an) + 2.0 * an, 2.0 * an);
     if (angle > an) angle = 2.0 * an - angle;
-    vec2 pt = vec2(r * cos(angle), r * sin(angle));
-    vec2 a = vec2(radius, 0.0);
-    vec2 b = vec2(m * cos(an), m * sin(an));
-    vec2 ab = b - a;
-    vec2 ap = pt - a;
-    float t = clamp(dot(ap, ab) / dot(ab, ab), 0.0, 1.0);
-    vec2 closest = a + ab * t;
-    float dist = length(pt - closest);
-    float cross_val = ab.x * ap.y - ab.y * ap.x;
-    float d2d = (cross_val > 0.0) ? -dist : dist;
-    float dy = abs(p.y) - hh;
-    vec2 w = max(vec2(d2d, dy), vec2(0.0));
-    return min(max(d2d, dy), 0.0) + length(w);
+    ALICE_PRECISE vec2 pt = vec2(r * cos(angle), r * sin(angle));
+    ALICE_PRECISE vec2 a = vec2(radius, 0.0);
+    ALICE_PRECISE vec2 b = vec2(m * cos(an), m * sin(an));
+    ALICE_PRECISE vec2 ab = b - a;
+    ALICE_PRECISE vec2 ap = pt - a;
+    ALICE_PRECISE float t = clamp(dot(ap, ab) / dot(ab, ab), 0.0, 1.0);
+    ALICE_PRECISE vec2 closest = a + ab * t;
+    ALICE_PRECISE float dist = length(pt - closest);
+    ALICE_PRECISE float cross_val = ab.x * ap.y - ab.y * ap.x;
+    ALICE_PRECISE float d2d = (cross_val > 0.0) ? -dist : dist;
+    ALICE_PRECISE float dy = abs(p.y) - hh;
+    ALICE_PRECISE vec2 w = max(vec2(d2d, dy), vec2(0.0));
+    ALICE_PRECISE float alice_r = min(max(d2d, dy), 0.0) + length(w);
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_STAIRS: &str = r"float _stair_box(float lx, float ly, float s, float sw, float sh) {
-    float cx = s * sw + sw * 0.5;
-    float hy = (s + 1.0) * sh * 0.5;
-    float dx = abs(lx - cx) - sw * 0.5;
-    float dy = abs(ly - hy) - hy;
-    return length(max(vec2(dx, dy), vec2(0.0, 0.0))) + min(max(dx, dy), 0.0);
+    ALICE_PRECISE float cx = s * sw + sw * 0.5;
+    ALICE_PRECISE float hy = (s + 1.0) * sh * 0.5;
+    ALICE_PRECISE float dx = abs(lx - cx) - sw * 0.5;
+    ALICE_PRECISE float dy = abs(ly - hy) - hy;
+    ALICE_PRECISE float alice_r = length(max(vec2(dx, dy), vec2(0.0, 0.0))) + min(max(dx, dy), 0.0);
+    return alice_r;
 }
 float sdf_stairs(vec3 p, float sw, float sh, float ns, float hd) {
-    float n = max(ns, 1.0);
-    float tw = n * sw;
-    float th = n * sh;
-    float lx = p.x + tw * 0.5;
-    float ly = p.y + th * 0.5;
-    float d2d = 1e30;
-    for (float si = 0.0; si < n; si += 1.0) {
+    ALICE_PRECISE float n = max(ns, 1.0);
+    ALICE_PRECISE float tw = n * sw;
+    ALICE_PRECISE float th = n * sh;
+    ALICE_PRECISE float lx = p.x + tw * 0.5;
+    ALICE_PRECISE float ly = p.y + th * 0.5;
+    ALICE_PRECISE float d2d = 1e30;
+    for (ALICE_PRECISE float si = 0.0; si < n; si += 1.0) {
         d2d = min(d2d, _stair_box(lx, ly, si, sw, sh));
     }
-    float dz = abs(p.z) - hd;
-    vec2 w = max(vec2(d2d, dz), vec2(0.0, 0.0));
-    return min(max(d2d, dz), 0.0) + length(w);
+    ALICE_PRECISE float dz = abs(p.z) - hd;
+    ALICE_PRECISE vec2 w = max(vec2(d2d, dz), vec2(0.0, 0.0));
+    ALICE_PRECISE float alice_r = min(max(d2d, dz), 0.0) + length(w);
+    return alice_r;
 }
 ";
 
 /// Regular tetrahedron: max of 4 face-plane distances (mirrors `primitives::tetrahedron`).
 const HELPER_SDF_TETRAHEDRON: &str = r"float sdf_tetrahedron(vec3 p, float s) {
-    float d = dot(p, vec3(0.57735026, 0.57735026, 0.57735026));
+    ALICE_PRECISE float d = dot(p, vec3(0.57735026, 0.57735026, 0.57735026));
     d = max(d, dot(p, vec3(-0.57735026, -0.57735026, 0.57735026)));
     d = max(d, dot(p, vec3(-0.57735026, 0.57735026, -0.57735026)));
     d = max(d, dot(p, vec3(0.57735026, -0.57735026, -0.57735026)));
-    return d - s;
+    ALICE_PRECISE float alice_r = d - s;
+    return alice_r;
 }
 ";
 
 /// Dodecahedron: GDF over the 6 dodecahedron normals (mirrors `gdf_eval`).
 const HELPER_SDF_DODECAHEDRON: &str = r"float sdf_dodecahedron(vec3 p, float r) {
-    float d = abs(dot(p, vec3(0.0, 0.8506508, 0.5257311)));
+    ALICE_PRECISE float d = abs(dot(p, vec3(0.0, 0.8506508, 0.5257311)));
     d = max(d, abs(dot(p, vec3(0.0, 0.8506508, -0.5257311))));
     d = max(d, abs(dot(p, vec3(0.8506508, 0.5257311, 0.0))));
     d = max(d, abs(dot(p, vec3(-0.8506508, 0.5257311, 0.0))));
     d = max(d, abs(dot(p, vec3(0.5257311, 0.0, 0.8506508))));
     d = max(d, abs(dot(p, vec3(0.5257311, 0.0, -0.8506508))));
-    return d - r;
+    ALICE_PRECISE float alice_r = d - r;
+    return alice_r;
 }
 ";
 
 /// Icosahedron: GDF over octahedron + icosahedron normals (mirrors `primitives::icosahedron`).
 const HELPER_SDF_ICOSAHEDRON: &str = r"float sdf_icosahedron(vec3 p, float r) {
-    float d = abs(dot(p, vec3(0.57735026, 0.57735026, 0.57735026)));
+    ALICE_PRECISE float d = abs(dot(p, vec3(0.57735026, 0.57735026, 0.57735026)));
     d = max(d, abs(dot(p, vec3(-0.57735026, 0.57735026, 0.57735026))));
     d = max(d, abs(dot(p, vec3(0.57735026, -0.57735026, 0.57735026))));
     d = max(d, abs(dot(p, vec3(0.57735026, 0.57735026, -0.57735026))));
@@ -1478,26 +1543,28 @@ const HELPER_SDF_ICOSAHEDRON: &str = r"float sdf_icosahedron(vec3 p, float r) {
     d = max(d, abs(dot(p, vec3(0.5257311, -0.8506508, 0.0))));
     d = max(d, abs(dot(p, vec3(0.8506508, 0.0, 0.5257311))));
     d = max(d, abs(dot(p, vec3(-0.8506508, 0.0, 0.5257311))));
-    return d - r;
+    ALICE_PRECISE float alice_r = d - r;
+    return alice_r;
 }
 ";
 
 /// Truncated octahedron: GDF over cube + octahedron normals.
 const HELPER_SDF_TRUNCATED_OCTAHEDRON: &str = r"float sdf_truncated_octahedron(vec3 p, float r) {
-    float d = abs(dot(p, vec3(1.0, 0.0, 0.0)));
+    ALICE_PRECISE float d = abs(dot(p, vec3(1.0, 0.0, 0.0)));
     d = max(d, abs(dot(p, vec3(0.0, 1.0, 0.0))));
     d = max(d, abs(dot(p, vec3(0.0, 0.0, 1.0))));
     d = max(d, abs(dot(p, vec3(0.57735026, 0.57735026, 0.57735026))));
     d = max(d, abs(dot(p, vec3(-0.57735026, 0.57735026, 0.57735026))));
     d = max(d, abs(dot(p, vec3(0.57735026, -0.57735026, 0.57735026))));
     d = max(d, abs(dot(p, vec3(0.57735026, 0.57735026, -0.57735026))));
-    return d - r;
+    ALICE_PRECISE float alice_r = d - r;
+    return alice_r;
 }
 ";
 
 /// Truncated icosahedron: GDF over octahedron + icosahedron + dodecahedron normals.
 const HELPER_SDF_TRUNCATED_ICOSAHEDRON: &str = r"float sdf_truncated_icosahedron(vec3 p, float r) {
-    float d = abs(dot(p, vec3(0.57735026, 0.57735026, 0.57735026)));
+    ALICE_PRECISE float d = abs(dot(p, vec3(0.57735026, 0.57735026, 0.57735026)));
     d = max(d, abs(dot(p, vec3(-0.57735026, 0.57735026, 0.57735026))));
     d = max(d, abs(dot(p, vec3(0.57735026, -0.57735026, 0.57735026))));
     d = max(d, abs(dot(p, vec3(0.57735026, 0.57735026, -0.57735026))));
@@ -1513,112 +1580,116 @@ const HELPER_SDF_TRUNCATED_ICOSAHEDRON: &str = r"float sdf_truncated_icosahedron
     d = max(d, abs(dot(p, vec3(-0.8506508, 0.5257311, 0.0))));
     d = max(d, abs(dot(p, vec3(0.5257311, 0.0, 0.8506508))));
     d = max(d, abs(dot(p, vec3(0.5257311, 0.0, -0.8506508))));
-    return d - r;
+    ALICE_PRECISE float alice_r = d - r;
+    return alice_r;
 }
 ";
 
 /// IQ `sdBezier`: closed-form distance to a quadratic Bézier (mirrors
 /// `modifiers::sweep::bezier_distance_2d`, degenerate curve → segment).
 const HELPER_BEZIER_DISTANCE_2D: &str = r"float bezier_distance_2d(vec2 q, vec2 p0, vec2 p1, vec2 p2) {
-    vec2 a = p1 - p0;
-    vec2 b = p0 - p1 * 2.0 + p2;
-    vec2 c = a * 2.0;
-    vec2 d = p0 - q;
-    float bb = dot(b, b);
+    ALICE_PRECISE vec2 a = p1 - p0;
+    ALICE_PRECISE vec2 b = p0 - p1 * 2.0 + p2;
+    ALICE_PRECISE vec2 c = a * 2.0;
+    ALICE_PRECISE vec2 d = p0 - q;
+    ALICE_PRECISE float bb = dot(b, b);
     if (bb < 1e-12) {
-        vec2 ac = p2 - p0;
-        float t = clamp(-dot(d, ac) / max(dot(ac, ac), 1e-12), 0.0, 1.0);
-        return length(d + ac * t);
+        ALICE_PRECISE vec2 ac = p2 - p0;
+        ALICE_PRECISE float t = clamp(-dot(d, ac) / max(dot(ac, ac), 1e-12), 0.0, 1.0);
+        ALICE_PRECISE float alice_r = length(d + ac * t);
+        return alice_r;
     }
-    float kk = 1.0 / bb;
-    float kx = kk * dot(a, b);
-    float ky = kk * (2.0 * dot(a, a) + dot(d, b)) / 3.0;
-    float kz = kk * dot(d, a);
-    float p = ky - kx * kx;
-    float p3 = p * p * p;
-    float qq = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
-    float h = qq * qq + 4.0 * p3;
-    float res;
+    ALICE_PRECISE float kk = 1.0 / bb;
+    ALICE_PRECISE float kx = kk * dot(a, b);
+    ALICE_PRECISE float ky = kk * (2.0 * dot(a, a) + dot(d, b)) / 3.0;
+    ALICE_PRECISE float kz = kk * dot(d, a);
+    ALICE_PRECISE float p = ky - kx * kx;
+    ALICE_PRECISE float p3 = p * p * p;
+    ALICE_PRECISE float qq = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
+    ALICE_PRECISE float h = qq * qq + 4.0 * p3;
+    ALICE_PRECISE float res;
     if (h >= 0.0) {
-        float hs = sqrt(h);
-        float x0 = (hs - qq) * 0.5;
-        float x1 = (-hs - qq) * 0.5;
-        float u = sign(x0) * pow(abs(x0), 1.0 / 3.0);
-        float v = sign(x1) * pow(abs(x1), 1.0 / 3.0);
-        float t = clamp(u + v - kx, 0.0, 1.0);
-        vec2 e = d + (c + b * t) * t;
+        ALICE_PRECISE float hs = sqrt(h);
+        ALICE_PRECISE float x0 = (hs - qq) * 0.5;
+        ALICE_PRECISE float x1 = (-hs - qq) * 0.5;
+        ALICE_PRECISE float u = sign(x0) * pow(abs(x0), 1.0 / 3.0);
+        ALICE_PRECISE float v = sign(x1) * pow(abs(x1), 1.0 / 3.0);
+        ALICE_PRECISE float t = clamp(u + v - kx, 0.0, 1.0);
+        ALICE_PRECISE vec2 e = d + (c + b * t) * t;
         res = dot(e, e);
     } else {
-        float z = sqrt(-p);
-        float v = acos(clamp(qq / (p * z * 2.0), -1.0, 1.0)) / 3.0;
-        float m = cos(v);
-        float n = sin(v) * 1.7320508;
-        float t0 = clamp((m + m) * z - kx, 0.0, 1.0);
-        float t1 = clamp((-n - m) * z - kx, 0.0, 1.0);
-        vec2 e0 = d + (c + b * t0) * t0;
-        vec2 e1 = d + (c + b * t1) * t1;
+        ALICE_PRECISE float z = sqrt(-p);
+        ALICE_PRECISE float v = acos(clamp(qq / (p * z * 2.0), -1.0, 1.0)) / 3.0;
+        ALICE_PRECISE float m = cos(v);
+        ALICE_PRECISE float n = sin(v) * 1.7320508;
+        ALICE_PRECISE float t0 = clamp((m + m) * z - kx, 0.0, 1.0);
+        ALICE_PRECISE float t1 = clamp((-n - m) * z - kx, 0.0, 1.0);
+        ALICE_PRECISE vec2 e0 = d + (c + b * t0) * t0;
+        ALICE_PRECISE vec2 e1 = d + (c + b * t1) * t1;
         res = min(dot(e0, e0), dot(e1, e1));
     }
-    return sqrt(res);
+    ALICE_PRECISE float alice_r = sqrt(res);
+    return alice_r;
 }
 ";
 
 /// Exact ellipsoid signed distance (Eberly nearest point; mirrors
 /// `primitives::ellipsoid::sdf_ellipsoid_exact`, dimension reductions unrolled).
 const HELPER_SDF_ELLIPSOID: &str = r"float _ell_bisect(int n, float r0, float r1, float r2, float z0, float z1, float z2, float g) {
-    float n0 = r0 * z0;
-    float n1 = (n > 1) ? r1 * z1 : 0.0;
-    float n2 = (n > 2) ? r2 * z2 : 0.0;
-    float zl = (n == 3) ? z2 : ((n == 2) ? z1 : z0);
-    float s0 = zl - 1.0;
-    float s1 = (g < 0.0) ? 0.0 : sqrt(n0 * n0 + n1 * n1 + n2 * n2) - 1.0;
-    float s = 0.0;
+    ALICE_PRECISE float n0 = r0 * z0;
+    ALICE_PRECISE float n1 = (n > 1) ? r1 * z1 : 0.0;
+    ALICE_PRECISE float n2 = (n > 2) ? r2 * z2 : 0.0;
+    ALICE_PRECISE float zl = (n == 3) ? z2 : ((n == 2) ? z1 : z0);
+    ALICE_PRECISE float s0 = zl - 1.0;
+    ALICE_PRECISE float s1 = (g < 0.0) ? 0.0 : sqrt(n0 * n0 + n1 * n1 + n2 * n2) - 1.0;
+    ALICE_PRECISE float s = 0.0;
     for (int it = 0; it < 64; it++) {
         s = 0.5 * (s0 + s1);
         if (s == s0 || s == s1) { break; }
-        float gs = -1.0;
-        float q0 = n0 / (s + r0);
+        ALICE_PRECISE float gs = -1.0;
+        ALICE_PRECISE float q0 = n0 / (s + r0);
         gs += q0 * q0;
-        if (n > 1) { float q1 = n1 / (s + r1); gs += q1 * q1; }
-        if (n > 2) { float q2 = n2 / (s + r2); gs += q2 * q2; }
+        if (n > 1) { ALICE_PRECISE float q1 = n1 / (s + r1); gs += q1 * q1; }
+        if (n > 2) { ALICE_PRECISE float q2 = n2 / (s + r2); gs += q2 * q2; }
         if (gs > 0.0) { s0 = s; } else if (gs < 0.0) { s1 = s; } else { break; }
     }
     return s;
 }
 float _ell_sqr_dist_n(int n, float e0, float e1, float e2, float y0, float y1, float y2) {
-    float el = (n == 3) ? e2 : ((n == 2) ? e1 : e0);
-    float z0 = y0 / e0;
-    float z1 = (n > 1) ? y1 / e1 : 0.0;
-    float z2 = (n > 2) ? y2 / e2 : 0.0;
-    float g = z0 * z0 + z1 * z1 + z2 * z2 - 1.0;
+    ALICE_PRECISE float el = (n == 3) ? e2 : ((n == 2) ? e1 : e0);
+    ALICE_PRECISE float z0 = y0 / e0;
+    ALICE_PRECISE float z1 = (n > 1) ? y1 / e1 : 0.0;
+    ALICE_PRECISE float z2 = (n > 2) ? y2 / e2 : 0.0;
+    ALICE_PRECISE float g = z0 * z0 + z1 * z1 + z2 * z2 - 1.0;
     if (g == 0.0) { return 0.0; }
-    float r0 = (e0 / el) * (e0 / el);
-    float r1 = (e1 / el) * (e1 / el);
-    float r2 = (e2 / el) * (e2 / el);
-    float sb = _ell_bisect(n, r0, r1, r2, z0, z1, z2, g);
-    float x0 = r0 * y0 / (sb + r0) - y0;
-    float x1 = (n > 1) ? r1 * y1 / (sb + r1) - y1 : 0.0;
-    float x2 = (n > 2) ? r2 * y2 / (sb + r2) - y2 : 0.0;
-    return x0 * x0 + x1 * x1 + x2 * x2;
+    ALICE_PRECISE float r0 = (e0 / el) * (e0 / el);
+    ALICE_PRECISE float r1 = (e1 / el) * (e1 / el);
+    ALICE_PRECISE float r2 = (e2 / el) * (e2 / el);
+    ALICE_PRECISE float sb = _ell_bisect(n, r0, r1, r2, z0, z1, z2, g);
+    ALICE_PRECISE float x0 = r0 * y0 / (sb + r0) - y0;
+    ALICE_PRECISE float x1 = (n > 1) ? r1 * y1 / (sb + r1) - y1 : 0.0;
+    ALICE_PRECISE float x2 = (n > 2) ? r2 * y2 / (sb + r2) - y2 : 0.0;
+    ALICE_PRECISE float alice_r = x0 * x0 + x1 * x1 + x2 * x2;
+    return alice_r;
 }
 float sdf_ellipsoid(vec3 p, vec3 radii) {
-    vec3 e = max(radii, vec3(1e-10, 1e-10, 1e-10));
-    vec3 y = abs(p);
-    if (e.x < e.y) { float t = e.x; e.x = e.y; e.y = t; float u = y.x; y.x = y.y; y.y = u; }
-    if (e.y < e.z) { float t = e.y; e.y = e.z; e.z = t; float u = y.y; y.y = y.z; y.z = u; }
-    if (e.x < e.y) { float t = e.x; e.x = e.y; e.y = t; float u = y.x; y.x = y.y; y.y = u; }
-    float d2 = 0.0;
+    ALICE_PRECISE vec3 e = max(radii, vec3(1e-10, 1e-10, 1e-10));
+    ALICE_PRECISE vec3 y = abs(p);
+    if (e.x < e.y) { ALICE_PRECISE float t = e.x; e.x = e.y; e.y = t; ALICE_PRECISE float u = y.x; y.x = y.y; y.y = u; }
+    if (e.y < e.z) { ALICE_PRECISE float t = e.y; e.y = e.z; e.z = t; ALICE_PRECISE float u = y.y; y.y = y.z; y.z = u; }
+    if (e.x < e.y) { ALICE_PRECISE float t = e.x; e.x = e.y; e.y = t; ALICE_PRECISE float u = y.x; y.x = y.y; y.y = u; }
+    ALICE_PRECISE float d2 = 0.0;
     if (y.z > 0.0) {
         d2 = _ell_sqr_dist_n(3, e.x, e.y, e.z, y.x, y.y, y.z);
     } else {
-        float n0 = e.x * y.x; float n1 = e.y * y.y;
-        float d0 = e.x * e.x - e.z * e.z; float d1 = e.y * e.y - e.z * e.z;
+        ALICE_PRECISE float n0 = e.x * y.x; ALICE_PRECISE float n1 = e.y * y.y;
+        ALICE_PRECISE float d0 = e.x * e.x - e.z * e.z; ALICE_PRECISE float d1 = e.y * e.y - e.z * e.z;
         bool done = false;
         if (n0 < d0 && n1 < d1) {
-            float x0 = n0 / d0; float x1 = n1 / d1;
-            float discr = 1.0 - x0 * x0 - x1 * x1;
+            ALICE_PRECISE float x0 = n0 / d0; ALICE_PRECISE float x1 = n1 / d1;
+            ALICE_PRECISE float discr = 1.0 - x0 * x0 - x1 * x1;
             if (discr > 0.0) {
-                float a = e.x * x0 - y.x; float b = e.y * x1 - y.y; float c = e.z * sqrt(discr);
+                ALICE_PRECISE float a = e.x * x0 - y.x; ALICE_PRECISE float b = e.y * x1 - y.y; ALICE_PRECISE float c = e.z * sqrt(discr);
                 d2 = a * a + b * b + c * c;
                 done = true;
             }
@@ -1627,55 +1698,57 @@ float sdf_ellipsoid(vec3 p, vec3 radii) {
             if (y.y > 0.0) {
                 d2 = _ell_sqr_dist_n(2, e.x, e.y, e.z, y.x, y.y, 0.0);
             } else {
-                float m0 = e.x * y.x;
-                float q0 = e.x * e.x - e.y * e.y;
+                ALICE_PRECISE float m0 = e.x * y.x;
+                ALICE_PRECISE float q0 = e.x * e.x - e.y * e.y;
                 bool done2 = false;
                 if (m0 < q0) {
-                    float x0 = m0 / q0;
-                    float discr = 1.0 - x0 * x0;
+                    ALICE_PRECISE float x0 = m0 / q0;
+                    ALICE_PRECISE float discr = 1.0 - x0 * x0;
                     if (discr > 0.0) {
-                        float a = e.x * x0 - y.x; float b = e.y * sqrt(discr);
+                        ALICE_PRECISE float a = e.x * x0 - y.x; ALICE_PRECISE float b = e.y * sqrt(discr);
                         d2 = a * a + b * b;
                         done2 = true;
                     }
                 }
-                if (!done2) { float a = y.x - e.x; d2 = a * a; }
+                if (!done2) { ALICE_PRECISE float a = y.x - e.x; d2 = a * a; }
             }
         }
     }
     bool inside = (y.x / e.x) * (y.x / e.x) + (y.y / e.y) * (y.y / e.y) + (y.z / e.z) * (y.z / e.z) < 1.0;
-    float d = sqrt(max(d2, 0.0));
-    return inside ? -d : d;
+    ALICE_PRECISE float d = sqrt(max(d2, 0.0));
+    ALICE_PRECISE float alice_r = inside ? -d : d;
+    return alice_r;
 }
 ";
 
 const HELPER_SDF_HELIX: &str = r"float sdf_helix(vec3 p, float major_r, float minor_r, float pitch, float hh) {
     const float tau = 6.28318530717959;
-    float r = length(vec2(p.x, p.z));
-    float theta = (r > 0.0) ? alice_atan2(p.z, p.x) : 0.0;
-    float py = p.y;
-    float c = pitch / tau;
-    float two_rr = 2.0 * r * major_r;
-    float k = floor((py - theta * c) / pitch + 0.5);
-    float best = 1e30;
-    for (float dk = -1.0; dk <= 1.0; dk += 1.0) {
-        float phi = theta + (k + dk) * tau;
+    ALICE_PRECISE float r = length(vec2(p.x, p.z));
+    ALICE_PRECISE float theta = (r > 0.0) ? alice_atan2(p.z, p.x) : 0.0;
+    ALICE_PRECISE float py = p.y;
+    ALICE_PRECISE float c = pitch / tau;
+    ALICE_PRECISE float two_rr = 2.0 * r * major_r;
+    ALICE_PRECISE float k = floor((py - theta * c) / pitch + 0.5);
+    ALICE_PRECISE float best = 1e30;
+    for (ALICE_PRECISE float dk = -1.0; dk <= 1.0; dk += 1.0) {
+        ALICE_PRECISE float phi = theta + (k + dk) * tau;
         for (int it = 0; it < 6; it++) {
-            float s = sin(phi - theta);
-            float co = cos(phi - theta);
-            float dy = py - c * phi;
-            float f1 = two_rr * s - 2.0 * c * dy;
-            float f2 = max(two_rr * co + 2.0 * c * c, 1e-6);
+            ALICE_PRECISE float s = sin(phi - theta);
+            ALICE_PRECISE float co = cos(phi - theta);
+            ALICE_PRECISE float dy = py - c * phi;
+            ALICE_PRECISE float f1 = two_rr * s - 2.0 * c * dy;
+            ALICE_PRECISE float f2 = max(two_rr * co + 2.0 * c * c, 1e-6);
             phi = phi - clamp(f1 / f2, -1.5707963, 1.5707963);
         }
-        float co = cos(phi - theta);
-        float dy = py - c * phi;
-        float d2 = dy * dy + max(r * r + major_r * major_r - two_rr * co, 0.0);
+        ALICE_PRECISE float co = cos(phi - theta);
+        ALICE_PRECISE float dy = py - c * phi;
+        ALICE_PRECISE float d2 = dy * dy + max(r * r + major_r * major_r - two_rr * co, 0.0);
         best = min(best, d2);
     }
-    float d_tube = sqrt(best) - minor_r;
-    float d_cap = abs(py) - hh;
-    return max(d_tube, d_cap);
+    ALICE_PRECISE float d_tube = sqrt(best) - minor_r;
+    ALICE_PRECISE float d_cap = abs(py) - hh;
+    ALICE_PRECISE float alice_r = max(d_tube, d_cap);
+    return alice_r;
 }
 ";
 

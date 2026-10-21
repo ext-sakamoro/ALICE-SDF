@@ -133,16 +133,16 @@ fn generate_hlsl(result: &TextureFitResult, source_name: &str) -> String {
 
     if let Some(octaves) = result.octaves.first() {
         let bias = result.bias.first().copied().unwrap_or(0.0);
-        writeln!(s, "    float value = {:.6};", bias).unwrap();
+        writeln!(s, "    precise float value = {:.6};", bias).unwrap();
 
         for oct in octaves {
             if oct.rotation.abs() > 1e-6 {
                 writeln!(s, "    {{").unwrap();
-                writeln!(s, "        float s = sin({:.6});", oct.rotation).unwrap();
-                writeln!(s, "        float c = cos({:.6});", oct.rotation).unwrap();
+                writeln!(s, "        precise float s = sin({:.6});", oct.rotation).unwrap();
+                writeln!(s, "        precise float c = cos({:.6});", oct.rotation).unwrap();
                 writeln!(
                     s,
-                    "        float2 ruv = float2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);"
+                    "        precise float2 ruv = float2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);"
                 )
                 .unwrap();
                 writeln!(s, "        value += {:.6} * hash_noise_3d(float3(ruv * {:.6} + float2({:.6}, {:.6}), 0.0), {}u);",
@@ -155,7 +155,8 @@ fn generate_hlsl(result: &TextureFitResult, source_name: &str) -> String {
         }
     }
 
-    writeln!(s, "    return saturate(value);").unwrap();
+    writeln!(s, "    precise float alice_r = saturate(value);").unwrap();
+    writeln!(s, "    return alice_r;").unwrap();
     writeln!(s, "}}").unwrap();
     s
 }
@@ -186,16 +187,26 @@ fn generate_glsl(result: &TextureFitResult, source_name: &str) -> String {
 
     if let Some(octaves) = result.octaves.first() {
         let bias = result.bias.first().copied().unwrap_or(0.0);
-        writeln!(s, "    float value = {:.6};", bias).unwrap();
+        writeln!(s, "    ALICE_PRECISE float value = {:.6};", bias).unwrap();
 
         for oct in octaves {
             if oct.rotation.abs() > 1e-6 {
                 writeln!(s, "    {{").unwrap();
-                writeln!(s, "        float s = sin({:.6});", oct.rotation).unwrap();
-                writeln!(s, "        float c = cos({:.6});", oct.rotation).unwrap();
                 writeln!(
                     s,
-                    "        vec2 ruv = vec2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);"
+                    "        ALICE_PRECISE float s = sin({:.6});",
+                    oct.rotation
+                )
+                .unwrap();
+                writeln!(
+                    s,
+                    "        ALICE_PRECISE float c = cos({:.6});",
+                    oct.rotation
+                )
+                .unwrap();
+                writeln!(
+                    s,
+                    "        ALICE_PRECISE vec2 ruv = vec2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);"
                 )
                 .unwrap();
                 writeln!(s, "        value += {:.6} * hash_noise_3d(vec3(ruv * {:.6} + vec2({:.6}, {:.6}), 0.0), {}u);",
@@ -208,7 +219,12 @@ fn generate_glsl(result: &TextureFitResult, source_name: &str) -> String {
         }
     }
 
-    writeln!(s, "    return clamp(value, 0.0, 1.0);").unwrap();
+    writeln!(
+        s,
+        "    ALICE_PRECISE float alice_r = clamp(value, 0.0, 1.0);"
+    )
+    .unwrap();
+    writeln!(s, "    return alice_r;").unwrap();
     writeln!(s, "}}").unwrap();
     s
 }
@@ -263,7 +279,8 @@ mod tests {
         let shader = generate_shader(&result, ShaderLanguage::Hlsl, "granite.png");
         assert!(shader.contains("float hash_noise_3d(float3"));
         assert!(shader.contains("float procedural_texture(float2"));
-        assert!(shader.contains("return saturate(value);"));
+        assert!(shader.contains("precise float alice_r = saturate(value);"));
+        assert!(shader.contains("return alice_r;"));
     }
 
     #[test]
@@ -272,7 +289,8 @@ mod tests {
         let shader = generate_shader(&result, ShaderLanguage::Glsl, "granite.png");
         assert!(shader.contains("float hash_noise_3d(vec3"));
         assert!(shader.contains("float procedural_texture(vec2"));
-        assert!(shader.contains("return clamp(value, 0.0, 1.0);"));
+        assert!(shader.contains("ALICE_PRECISE float alice_r = clamp(value, 0.0, 1.0);"));
+        assert!(shader.contains("return alice_r;"));
     }
 
     #[test]

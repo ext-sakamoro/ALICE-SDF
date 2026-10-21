@@ -25,6 +25,8 @@ mod repeat;
 mod revolution;
 mod shear;
 mod surface_roughness;
+#[cfg(feature = "glsl")]
+pub(crate) use surface_roughness::glsl_precise_macro;
 mod sweep;
 mod taper;
 mod twist;
