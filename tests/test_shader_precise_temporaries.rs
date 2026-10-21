@@ -745,6 +745,13 @@ const HLSL_SCANNED: [&str; 7] = [
     "transpile",
 ];
 
+/// What the author of a new public shader-text function does when `every_public_emitter_is_scanned`
+/// names it (a function added on a branch made before this gate fails here on rebase)
+const FIX: &str = "add it to EMITTERS in tests/test_shader_precise_temporaries.rs: under the \
+functions whose output is scanned, and push its output into the scan of a test in this file \
+(as `nanite_material_computes_every_float_into_a_precise_local` does for both Nanite writers), \
+or under the functions left out, with the reason";
+
 /// Every module under `src/` with a public function that emits or takes shader text,
 /// and for each function whether the scan above reads its output or why it is left out.
 /// A function found in a file that is not here, or not listed for its file, fails
@@ -968,7 +975,8 @@ fn every_public_emitter_is_scanned() {
         let Some((_, scanned, left_out)) = entry else {
             if let Some(name) = found.first() {
                 problems.push(format!(
-                    "{rel}: `{name}` emits or takes shader text and the file is not in EMITTERS"
+                    "{rel}: `{name}` emits or takes shader text and the file is not in EMITTERS \
+                     ({FIX})"
                 ));
             }
             continue;
@@ -977,7 +985,8 @@ fn every_public_emitter_is_scanned() {
         for name in &found {
             if !scanned.contains(&name.as_str()) && !left_out.iter().any(|(n, _)| n == name) {
                 problems.push(format!(
-                    "{rel}: `{name}` returns shader text and is neither scanned nor left out with a reason"
+                    "{rel}: `{name}` returns shader text and is neither scanned nor left out with a reason \
+                     ({FIX})"
                 ));
             }
         }
