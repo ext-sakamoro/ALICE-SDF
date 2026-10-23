@@ -256,6 +256,10 @@ required-features = ["glsl", "hlsl", "blinkscript"]
 
 # Metal kernel from the WGSL emit (naga), with its dispatch metadata.
 [[example]]
+name = "sdf2d_wgsl"
+required-features = ["gpu"]
+
+[[example]]
 name = "msl_emit"
 required-features = ["msl"]
 

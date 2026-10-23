@@ -1228,6 +1228,18 @@ jobs:
           cargo test --features "gpu,glsl,hlsl,volume,blinkscript,texture-fit" --test test_shader_text_provenance -- --nocapture 2>&1 | tee shader-text-provenance.log
           python3 scripts/libtest_count.py shader-text-provenance.log --min 14 --what "shader text provenance tests (gpu, glsl, hlsl, volume, blinkscript, texture-fit)"
 
+      # The 2D SDF as WGSL (tests/test_sdf2d_wgsl.rs): every variant passes naga, the compute
+      # shader carries the semantics identifier and the fragment none, and on lavapipe the
+      # distances are those of eval_2d within the tolerance; the job's ALICE_SDF_REQUIRE_GPU makes a
+      # missing device fail, and the count and the `gpu-test: ran` line make sure the cases ran
+      - name: 2D SDF WGSL (naga, identifier, GPU distances against eval_2d)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features gpu --test test_sdf2d_wgsl -- --nocapture 2>&1 | tee sdf2d-wgsl.log
+          python3 scripts/libtest_count.py sdf2d-wgsl.log --min 5 --what "2D SDF WGSL tests"
+          grep -q "^gpu-test: ran" sdf2d-wgsl.log || { echo "::error::the 2D SDF GPU parity did not run"; exit 1; }
+
       # The GPU unit tests (src/compiled/wgsl/gpu_eval.rs, src/mesh/gpu_marching_cubes.rs)
       # return early without a usable device and libtest still says ok; each prints
       # `gpu-test: ran` or `gpu-test: skipped` (`gpu_test_support` in src/lib.rs). Here a device

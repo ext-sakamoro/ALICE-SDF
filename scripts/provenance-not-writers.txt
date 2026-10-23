@@ -47,6 +47,7 @@ src/compiled/instanced.rs::to_instanced_wgsl generates shader source text from a
 src/compiled/wgsl/transpiler.rs::to_compute_shader generates shader source text from a tree of this process; no stored value is written
 src/compiled/wgsl/transpiler.rs::to_compute_shader_with_normals generates shader source text from a tree of this process; no stored value is written
 src/compiled/wgsl/transpiler.rs::to_volume_shader generates shader source text from a tree of this process; no stored value is written
+src/compiled/wgsl/sdf2d.rs::to_compute_shader generates shader source text from a tree of this process; no stored value is written
 src/python/io.rs::to_json delegates to to_json_string
 src/mesh/meshopt_vertex_codec.rs::decode_vertex_buffer decodes a vertex buffer: it reads stored bytes and writes none
 src/provenance.rs::stl_header builds the 80-byte STL header that carries the identifier for the STL writers
