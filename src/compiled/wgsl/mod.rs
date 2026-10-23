@@ -74,7 +74,9 @@
 mod gpu_eval;
 #[cfg(all(target_os = "macos", feature = "msl"))]
 mod gpu_metal;
+mod sdf2d;
 mod transpiler;
 
 pub use gpu_eval::{GpuBufferPool, GpuError, GpuEvalFuture, GpuEvaluator};
+pub use sdf2d::{Wgsl2dError, Wgsl2dShader};
 pub use transpiler::{TranspileMode, WgslShader};

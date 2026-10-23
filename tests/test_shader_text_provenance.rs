@@ -718,6 +718,7 @@ void main() {{
 /// `src/compiled/`, fails here until it is placed
 const WHOLE: &[(&str, &str)] = &[
     ("src/compiled/wgsl/transpiler.rs", "to_compute_shader"),
+    ("src/compiled/wgsl/sdf2d.rs", "to_compute_shader"),
     (
         "src/compiled/wgsl/transpiler.rs",
         "to_compute_shader_with_normals",
@@ -755,6 +756,7 @@ const NOT_SHADER: &str = "not shader text";
 
 const OTHER: &[(&str, &str, &str)] = &[
     ("src/compiled/wgsl/transpiler.rs", "source", FRAGMENT),
+    ("src/compiled/wgsl/sdf2d.rs", "source", FRAGMENT),
     (
         "src/compiled/wgsl/transpiler.rs",
         "transpile_material",
@@ -1021,6 +1023,15 @@ fn samples() -> Vec<(&'static str, &'static str, String)> {
         use alice_sdf::compiled::{InstancedSdf, TranspileMode, WgslShader};
         use alice_sdf::mesh::gpu_mc_shaders as mc;
         const F: &str = "src/compiled/wgsl/transpiler.rs";
+        {
+            use alice_sdf::compiled::wgsl::Wgsl2dShader;
+            use alice_sdf::sdf2d::Sdf2dNode;
+            const F2: &str = "src/compiled/wgsl/sdf2d.rs";
+            let flat = Sdf2dNode::circle(0.5).union(Sdf2dNode::rect(0.4, 0.2).rotate(0.3));
+            let s = Wgsl2dShader::transpile(&flat).expect("finite parameters");
+            out.push((F2, "source", s.source.clone()));
+            out.push((F2, "to_compute_shader", s.to_compute_shader()));
+        }
         for mode in [TranspileMode::Hardcoded, TranspileMode::Dynamic] {
             let s = WgslShader::transpile(node, mode);
             out.push((F, "source", s.source.clone()));
