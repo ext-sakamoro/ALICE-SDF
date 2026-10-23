@@ -122,51 +122,38 @@ fn write_committed(path: &Path, contents: &str, whole: bool) -> bool {
     .unwrap_or_else(|e| panic!("write {}: {e}", path.display()))
 }
 
-fn main() {
-    let args = parse_args();
-    let pts = grid();
+/// What [`write_plugin`] wrote
+pub struct PluginFiles {
+    /// corpus nodes
+    pub nodes: usize,
+    /// shader-capable corpus nodes (one `.ush` each)
+    pub shader_nodes: usize,
+    /// `.ush` / `.usf` files written or removed
+    pub shader_files_changed: usize,
+    /// whether the C++ manifest header changed
+    pub manifest_changed: bool,
+}
+
+/// Writes the files the plugin commits under `plugin`
+///
+/// A `.ush` per shader-capable corpus node, `SdfCorpusOracle.usf` and the C++ manifest header;
+/// tests/test_g8_example_text.rs runs this into a temporary directory and checks each file
+/// against the shader rule
+pub fn write_plugin(plugin: &Path, grid_points: usize) -> PluginFiles {
     let corpus = corpus::corpus();
-
-    // ---- golden (not committed) ---------------------------------------
-    fs::create_dir_all(&args.golden).expect("golden dir");
-    let mut points_txt = String::new();
-    for p in &pts {
-        writeln!(
-            points_txt,
-            "{:08x} {:08x} {:08x}",
-            p.x.to_bits(),
-            p.y.to_bits(),
-            p.z.to_bits()
-        )
-        .unwrap();
-    }
-    fs::write(args.golden.join("points.txt"), points_txt).expect("points.txt");
-
     let mut all_names: Vec<&str> = Vec::new();
     // Not every node has a bytecode form (`terrain` carries a heightmap the
     // VM has no opcode for). The manifest records which, so the automation
     // test can require `alice_sdf_compile` to succeed exactly where it should.
     let mut compilable: Vec<bool> = Vec::new();
     let mut shader_names: Vec<&str> = Vec::new();
-    let corpus_dir = args.plugin.join("Shaders/CorpusOracle/Corpus");
+    let corpus_dir = plugin.join("Shaders/CorpusOracle/Corpus");
     let mut shader_files_changed = 0usize;
 
     for (name, node) in &corpus {
         check_name(name);
         all_names.push(name);
         compilable.push(CompiledSdf::try_compile(node).is_ok());
-
-        // .asdf round trip is part of what the FFI test exercises.
-        let tree = SdfTree::new(node.clone());
-        alice_sdf::io::save(&tree, args.golden.join(format!("{name}.asdf")))
-            .unwrap_or_else(|e| panic!("{name}: save .asdf: {e}"));
-
-        let mut golden = String::new();
-        for &p in &pts {
-            writeln!(golden, "{:08x}", eval(node, p).to_bits()).unwrap();
-        }
-        fs::write(args.golden.join(format!("{name}.golden")), golden).expect("golden");
-
         if shader_unsupported_nodes(node).is_empty() {
             shader_names.push(name);
             let shader = HlslShader::transpile(node, HlslTranspileMode::Hardcoded);
@@ -238,7 +225,7 @@ fn main() {
          }\n",
     );
     if write_committed(
-        &args.plugin.join("Shaders/CorpusOracle/SdfCorpusOracle.usf"),
+        &plugin.join("Shaders/CorpusOracle/SdfCorpusOracle.usf"),
         &usf,
         true,
     ) {
@@ -263,7 +250,7 @@ fn main() {
         shader_names.len()
     )
     .unwrap();
-    writeln!(h, "#define ALICE_SDF_CORPUS_GRID_POINTS {}", pts.len()).unwrap();
+    writeln!(h, "#define ALICE_SDF_CORPUS_GRID_POINTS {}", grid_points).unwrap();
     writeln!(
         h,
         "#define ALICE_SDF_CORPUS_RANDOM_POINTS {RANDOM_POINTS}\n"
@@ -287,22 +274,63 @@ fn main() {
         writeln!(h, "\tTEXT(\"{name}\"),").unwrap();
     }
     h.push_str("};\n");
-    let manifest = args
-        .plugin
-        .join("Source/AliceSDF/Private/Generated/AliceSdfCorpusManifest.h");
+    let manifest = plugin.join("Source/AliceSDF/Private/Generated/AliceSdfCorpusManifest.h");
     let manifest_changed = write_committed(&manifest, &h, false);
 
+    PluginFiles {
+        nodes: all_names.len(),
+        shader_nodes: shader_names.len(),
+        shader_files_changed,
+        manifest_changed,
+    }
+}
+
+fn main() {
+    let args = parse_args();
+    let pts = grid();
+    let corpus = corpus::corpus();
+
+    // ---- golden (not committed) ---------------------------------------
+    fs::create_dir_all(&args.golden).expect("golden dir");
+    let mut points_txt = String::new();
+    for p in &pts {
+        writeln!(
+            points_txt,
+            "{:08x} {:08x} {:08x}",
+            p.x.to_bits(),
+            p.y.to_bits(),
+            p.z.to_bits()
+        )
+        .unwrap();
+    }
+    fs::write(args.golden.join("points.txt"), points_txt).expect("points.txt");
+
+    for (name, node) in &corpus {
+        check_name(name);
+        // .asdf round trip is part of what the FFI test exercises.
+        let tree = SdfTree::new(node.clone());
+        alice_sdf::io::save(&tree, args.golden.join(format!("{name}.asdf")))
+            .unwrap_or_else(|e| panic!("{name}: save .asdf: {e}"));
+
+        let mut golden = String::new();
+        for &p in &pts {
+            writeln!(golden, "{:08x}", eval(node, p).to_bits()).unwrap();
+        }
+        fs::write(args.golden.join(format!("{name}.golden")), golden).expect("golden");
+    }
+
+    let plugin = write_plugin(&args.plugin, pts.len());
     println!(
         "unreal corpus oracle: {} nodes ({} shader-capable), {} grid points → {}",
-        all_names.len(),
-        shader_names.len(),
+        plugin.nodes,
+        plugin.shader_nodes,
         pts.len(),
         args.golden.display()
     );
     println!(
         "generated files changed: {} shader, manifest {}",
-        shader_files_changed,
-        if manifest_changed {
+        plugin.shader_files_changed,
+        if plugin.manifest_changed {
             "changed"
         } else {
             "unchanged"

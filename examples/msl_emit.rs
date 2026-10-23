@@ -21,13 +21,26 @@ use alice_sdf::compiled::msl::{MslError, MslShader};
 use alice_sdf::compiled::{TranspileMode, WgslShader};
 use alice_sdf::prelude::*;
 
+/// The distance kernel this example emits
+pub fn kernel(shape: &SdfNode) -> MslShader {
+    MslShader::transpile(shape, TranspileMode::Hardcoded).expect("MSL emit")
+}
+
+/// Writes `kernel` to `path`
+///
+/// A whole shader, carrying the identifier the transpiler wrote (ALICE-Law G8);
+/// tests/test_g8_example_text.rs runs this and checks the file
+pub fn write_kernel(path: &std::path::Path, kernel: &MslShader) -> std::io::Result<bool> {
+    stored_text::write_whole_text(path, &kernel.source)
+}
+
 fn main() {
     let shape = SdfNode::sphere(0.8)
         .smooth_union(SdfNode::torus(1.0, 0.2), 0.15)
         .translate(0.0, 0.25, 0.0);
 
     // Distance kernel straight from the tree.
-    let kernel = MslShader::transpile(&shape, TranspileMode::Hardcoded).expect("MSL emit");
+    let kernel = kernel(&shape);
     assert_ne!(
         kernel.entry_point, "main",
         "`main` is reserved in MSL and is renamed"
@@ -68,9 +81,7 @@ fn main() {
 
     match std::env::args().nth(1) {
         Some(path) => {
-            // a whole shader: it carries the identifier the transpiler wrote (ALICE-Law G8)
-            stored_text::write_whole_text(std::path::Path::new(&path), &kernel.source)
-                .expect("write MSL");
+            write_kernel(std::path::Path::new(&path), &kernel).expect("write MSL");
             eprintln!("[msl_emit] wrote {path}");
         }
         None => print!("{}", kernel.source),

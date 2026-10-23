@@ -1,12 +1,15 @@
-//! ALICE-Law G8: the whole texts the examples write (shaders and the generated Rust module) carry
-//! the semantics identifier, and the examples' fragments carry none
+//! ALICE-Law G8: every file the examples write is checked against the shader rule: a text with a
+//! shader entry point (a whole shader) carries the semantics identifier, a text without one (a
+//! fragment pasted into a host file, a list a host build reads) carries none, and the generated
+//! Rust module, whole by rule, carries it
 //!
-//! The examples write emitted text through `examples/support/stored_text.rs`: `write_whole_text`
-//! for a whole shader (`msl_emit`, the whole kernels of `shader_export`, the `.usf` of
-//! `unreal_corpus_oracle`) and for the Rust of `rust_transpile`; `write_fragment_text` for the
-//! fragments pasted into a host file. Each case here writes a file through it, reads the identifier
-//! back with the crate's reader (`provenance::read` / `provenance::check_sdf`), and checks that a
-//! file under another identifier is refused naming both.
+//! The examples themselves run here, into temporary directories: `shader_export::run`,
+//! `msl_emit::write_kernel`, `rust_transpile::write_source` and `unreal_corpus_oracle::write_plugin`
+//! (the plugin files it commits). Whether a file is whole is decided by the entry point
+//! (`tests/common/shader_text.rs`, the rule `tests/test_shader_text_provenance.rs` applies to the
+//! emitters), not by the kind the example chose, so a whole kernel written as a fragment without
+//! its tag fails. Every whole text is then written under another identifier and without one, and
+//! `examples/support/stored_text.rs` must refuse both and refuse it as a fragment.
 //!
 //! Oracle: the identifier is the constant `SDF_SEMANTICS_ID` (`Provenance::sdf`); the generated
 //! Rust must name it, so a semantics move without re-emission fails here.
@@ -20,94 +23,132 @@
     feature = "blinkscript",
     feature = "rust"
 ))]
+#![allow(
+    clippy::duplicate_mod,
+    reason = "each example is its own crate and includes examples/support/stored_text.rs; this test includes the examples together"
+)]
 
 #[path = "../examples/support/stored_text.rs"]
 mod stored_text;
 
-use alice_sdf::compiled::glsl::{render_pipeline::build_full_shader, RenderConfig};
-use alice_sdf::compiled::msl::MslShader;
+#[path = "common/shader_text.rs"]
+mod shader_text;
+
+// ALLOW-DEAD: each example's main and its own helpers are not called from this test
+#[allow(dead_code)]
+#[path = "../examples/msl_emit.rs"]
+mod msl_emit;
+
+// ALLOW-DEAD: each example's main and its own helpers are not called from this test
+#[allow(dead_code)]
+#[path = "../examples/rust_transpile.rs"]
+mod rust_transpile;
+
+// ALLOW-DEAD: each example's main and its own helpers are not called from this test
+#[allow(dead_code)]
+#[path = "../examples/shader_export.rs"]
+mod shader_export;
+
+// ALLOW-DEAD: each example's main and its own helpers are not called from this test
+#[allow(dead_code)]
+#[path = "../examples/unreal_corpus_oracle.rs"]
+mod unreal_corpus_oracle;
+
 use alice_sdf::compiled::rust::RustSource;
-use alice_sdf::compiled::{
-    BlinkScriptShader, BlinkScriptTranspileMode, GlslShader, GlslTranspileMode, HlslShader,
-    HlslTranspileMode, TranspileMode,
-};
 use alice_sdf::prelude::*;
 use alice_sdf::provenance::{self, Provenance, StoredSemantics, KEY};
 use alice_sdf::SDF_SEMANTICS_ID;
-use std::path::PathBuf;
+use shader_text::has_entry_point;
+use std::path::{Path, PathBuf};
 
-/// The example writers of whole text, as `provenance_writers.py` names them
+/// The example writer of whole text, as `provenance_writers.py` names it
 const WRITERS: &[(&str, &str)] = &[(
     "examples/support/stored_text.rs::write_whole_text",
     "whole shader text and generated Rust",
 )];
 
-fn dir() -> PathBuf {
-    let d = std::env::temp_dir().join(format!("alice_sdf_g8_example_text_{}", std::process::id()));
+fn dir(tag: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!(
+        "alice_sdf_g8_example_text_{}_{tag}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
 }
 
+fn files_under(root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut todo = vec![root.to_path_buf()];
+    while let Some(d) = todo.pop() {
+        for e in std::fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                todo.push(p);
+            } else {
+                out.push(p);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 fn shape() -> SdfNode {
-    SdfNode::sphere(1.0)
-        .translate(0.25, -0.5, 0.125)
-        .smooth_union(SdfNode::box3d(0.5, 0.4, 0.3), 0.2)
+    SdfNode::sphere(0.8)
+        .smooth_union(SdfNode::torus(1.0, 0.2), 0.15)
+        .translate(0.0, 0.25, 0.0)
 }
 
-/// The whole texts the examples write, by the file name they give them
-fn whole_texts() -> Vec<(&'static str, String)> {
-    let s = shape();
-    let glsl = GlslShader::transpile(&s, GlslTranspileMode::Hardcoded);
-    let hlsl = HlslShader::transpile(&s, HlslTranspileMode::Hardcoded);
-    let dual = build_full_shader(
-        glsl.get_eval_function(),
-        &RenderConfig {
-            dual_sdf: true,
-            ..RenderConfig::default()
-        },
-    );
-    let usf = format!(
-        "{}// GENERATED by examples/unreal_corpus_oracle.rs\n#include \"/Engine/Public/Platform.ush\"\n\n\
-         [numthreads(64, 1, 1)]\nvoid MainCS(uint3 DispatchThreadId : SV_DispatchThreadID) {{}}\n",
-        stored_text::tag_line()
-    );
-    vec![
-        (
-            "msl_emit.metal",
-            MslShader::transpile(&s, TranspileMode::Hardcoded)
-                .unwrap()
-                .source,
-        ),
-        ("sdf_compute.comp", glsl.to_compute_shader()),
-        ("sdf_compute_vulkan.comp", glsl.to_vulkan_compute_shader()),
-        ("sdf_shadertoy.frag", glsl.to_fragment_shader()),
-        (
-            "sdf_full_pipeline.frag",
-            glsl.to_fragment_shader_full(&RenderConfig::default()),
-        ),
-        ("sdf_full_pipeline_dual.frag", dual),
-        ("sdf_compute.hlsl", hlsl.to_compute_shader()),
-        ("SdfCorpusOracle.usf", usf),
-        (
-            "rust_transpile.rs",
-            RustSource::transpile(&s).unwrap().source().to_string(),
-        ),
-    ]
+/// Runs every example's writer, each into its own directory: (example, files it wrote)
+fn written_by_the_examples(tag: &str) -> Vec<(&'static str, Vec<PathBuf>)> {
+    let shaders = dir(&format!("{tag}_shader_export"));
+    let mut listed = shader_export::run(Some(&shaders));
+    let msl = dir(&format!("{tag}_msl_emit"));
+    msl_emit::write_kernel(&msl.join("kernel.metal"), &msl_emit::kernel(&shape())).unwrap();
+    let rust = dir(&format!("{tag}_rust_transpile"));
+    rust_transpile::write_source(
+        &rust.join("scene.rs"),
+        &RustSource::transpile(&shape()).unwrap(),
+    )
+    .unwrap();
+    let plugin = dir(&format!("{tag}_unreal_corpus_oracle"));
+    let files = unreal_corpus_oracle::write_plugin(&plugin, 1);
+    assert!(files.shader_nodes > 0 && files.manifest_changed);
+    let out = vec![
+        ("shader_export", files_under(&shaders)),
+        ("msl_emit", files_under(&msl)),
+        ("rust_transpile", files_under(&rust)),
+        ("unreal_corpus_oracle", files_under(&plugin)),
+    ];
+    // what shader_export says it wrote is what is on disk
+    listed.sort();
+    assert_eq!(listed, out[0].1);
+    // one .ush per shader-capable node, the .usf and the manifest header
+    assert_eq!(out[3].1.len(), files.shader_nodes + 2);
+    out
 }
 
-/// The fragments the examples write
-fn fragments() -> Vec<(&'static str, String)> {
-    let s = shape();
-    let hlsl = HlslShader::transpile(&s, HlslTranspileMode::Hardcoded);
-    let blink = BlinkScriptShader::transpile(&s, BlinkScriptTranspileMode::Hardcoded);
-    vec![
-        ("MF_AliceSdf.ush", hlsl.export_ue5_material_function()),
-        ("ue5_custom_node.hlsl", hlsl.to_ue5_custom_node()),
-        ("SdfEval.hlsl", hlsl.to_unity_custom_function()),
-        ("AliceSdf.hlsl", hlsl.export_unity_shader_graph()),
-        ("sdf_eval.blink", blink.get_eval_function().to_string()),
-        ("corpus_node.ush", hlsl.source),
-    ]
+/// Whether the file at `path` is whole by the rule: generated Rust is, shader text is when it has
+/// an entry point
+fn is_whole(path: &Path, text: &str) -> bool {
+    path.extension().is_some_and(|e| e == "rs") || has_entry_point(text)
+}
+
+/// The whole texts the examples wrote: (example and file name, text)
+fn whole_texts(tag: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for (example, files) in written_by_the_examples(tag) {
+        for path in files {
+            let text = std::fs::read_to_string(&path).unwrap();
+            if is_whole(&path, &text) {
+                let name = path.file_name().unwrap().to_string_lossy().into_owned();
+                out.push((format!("{example}_{name}"), text));
+            }
+        }
+    }
+    assert!(out.len() >= 9, "{} whole texts", out.len());
+    out
 }
 
 #[test]
@@ -119,42 +160,51 @@ fn the_writer_table_names_the_example_writer() {
 }
 
 #[test]
-fn whole_texts_written_by_the_examples_carry_the_identifier() {
-    let texts = whole_texts();
-    assert_eq!(texts.len(), 9);
-    for (name, text) in &texts {
-        let path = dir().join(name);
-        let _ = std::fs::remove_file(&path);
-        assert!(
-            stored_text::write_whole_text(&path, text).unwrap(),
-            "{name}"
-        );
-        // the same text again does not rewrite the file
-        assert!(
-            !stored_text::write_whole_text(&path, text).unwrap(),
-            "{name}"
-        );
-        assert_eq!(
-            provenance::read(&path).unwrap().semantics_id,
-            SDF_SEMANTICS_ID,
-            "{name}"
-        );
-        assert_eq!(
-            provenance::check_sdf(&path).unwrap(),
-            StoredSemantics::Current,
-            "{name}"
-        );
+fn every_file_the_examples_write_follows_the_shader_rule() {
+    let (mut whole, mut fragments) = (0, 0);
+    for (example, files) in written_by_the_examples("rule") {
+        assert!(!files.is_empty(), "{example} wrote nothing");
+        for path in files {
+            let text = std::fs::read_to_string(&path).unwrap();
+            if is_whole(&path, &text) {
+                whole += 1;
+                assert_eq!(
+                    provenance::read(&path).map(|p| p.semantics_id).ok(),
+                    Some(SDF_SEMANTICS_ID),
+                    "{example}: {} is whole and must carry the identifier",
+                    path.display()
+                );
+                assert_eq!(
+                    provenance::check_sdf(&path).unwrap(),
+                    StoredSemantics::Current,
+                    "{}",
+                    path.display()
+                );
+            } else {
+                fragments += 1;
+                assert!(
+                    !text.contains(KEY),
+                    "{example}: {} has no entry point and must carry no identifier",
+                    path.display()
+                );
+            }
+        }
     }
+    // the examples write both kinds: 6 whole kernels of shader_export, the MSL, the Rust and the
+    // .usf; 6 fragments of shader_export, a .ush per node and the manifest header
+    assert!(whole >= 9, "{whole} whole files");
+    assert!(fragments >= 8, "{fragments} fragments");
 }
 
 #[test]
 fn a_whole_text_under_another_identifier_is_refused_naming_both() {
     let other = Provenance::new([0xAB; 32]);
-    for (name, text) in whole_texts() {
+    let d = dir("other");
+    for (name, text) in whole_texts("other_src") {
         let moved = text.replace(&Provenance::sdf().hex(), &other.hex());
         assert_ne!(moved, text, "{name}: the identifier is in the text");
         // the writer refuses it, naming both identifiers
-        let path = dir().join(format!("other_{name}"));
+        let path = d.join(&name);
         let e = stored_text::write_whole_text(&path, &moved)
             .unwrap_err()
             .to_string();
@@ -174,16 +224,23 @@ fn a_whole_text_under_another_identifier_is_refused_naming_both() {
 }
 
 #[test]
-fn a_whole_text_without_the_identifier_is_not_written() {
-    for (name, text) in whole_texts() {
+fn a_whole_text_without_the_identifier_is_written_neither_way() {
+    let d = dir("bare");
+    for (name, text) in whole_texts("bare_src") {
         let mut bare = String::new();
         for line in text.lines().filter(|l| !l.contains(KEY)) {
             bare.push_str(line);
             bare.push('\n');
         }
-        let path = dir().join(format!("bare_{name}"));
+        let path = d.join(&name);
         assert!(
             stored_text::write_whole_text(&path, &bare).is_err(),
+            "{name}"
+        );
+        assert!(!path.exists(), "{name}");
+        // and a whole text is never written as a fragment
+        assert!(
+            stored_text::write_fragment_text(&path, &text).is_err(),
             "{name}"
         );
         assert!(!path.exists(), "{name}");
@@ -202,24 +259,4 @@ fn the_generated_rust_names_the_current_semantics_identifier() {
     // in the leading block, before the first item
     let first_item = src.source().find("pub fn sdf").unwrap();
     assert!(src.source()[..first_item].contains(&Provenance::sdf().tagged()));
-}
-
-#[test]
-fn fragments_carry_no_identifier_and_a_whole_text_is_not_written_as_one() {
-    let frags = fragments();
-    assert_eq!(frags.len(), 6);
-    for (name, text) in &frags {
-        assert!(!text.contains(KEY), "{name}");
-        let path = dir().join(name);
-        stored_text::write_fragment_text(&path, text).unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), *text, "{name}");
-    }
-    for (name, text) in whole_texts() {
-        let path = dir().join(format!("as_fragment_{name}"));
-        assert!(
-            stored_text::write_fragment_text(&path, &text).is_err(),
-            "{name}"
-        );
-        assert!(!path.exists(), "{name}");
-    }
 }

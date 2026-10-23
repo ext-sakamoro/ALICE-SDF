@@ -234,7 +234,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo test --features "msl,glsl,hlsl,blinkscript,rust" --test test_g8_example_text 2>&1 | tee g8-example-text.log
-          python3 scripts/libtest_count.py g8-example-text.log --min 6 --what "example text provenance tests"
+          python3 scripts/libtest_count.py g8-example-text.log --min 5 --what "example text provenance tests"
 
       # min/max signed-zero Law parity across tree / SIMD / JIT (and SVO bytes).
       # Runs on every matrix OS so the x86_64 and aarch64 legs both assert the

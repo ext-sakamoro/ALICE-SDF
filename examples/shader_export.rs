@@ -38,16 +38,26 @@ enum Kind {
 }
 
 fn main() {
+    let out_dir = std::env::args().nth(1).map(std::path::PathBuf::from);
+    for path in run(out_dir.as_deref()) {
+        println!("wrote {}", path.display());
+    }
+}
+
+/// Emits every form and returns the files written
+///
+/// Each form is written into `out_dir` when one is given; tests/test_g8_example_text.rs runs
+/// this and checks each file against the shader rule
+pub fn run(out_dir: Option<&std::path::Path>) -> Vec<std::path::PathBuf> {
     let shape = SdfNode::sphere(1.0)
         .translate(0.25, -0.5, 0.125)
         .smooth_union(SdfNode::box3d(0.5, 0.4, 0.3), 0.2);
-    let out_dir = std::env::args().nth(1).map(std::path::PathBuf::from);
     let mut written = Vec::new();
     // a whole shader carries the identifier its transpiler wrote; a fragment, pasted into a host
     // file or graph, carries none (ALICE-Law G8, examples/support/stored_text.rs)
     let mut emit = |name: &str, src: &str, kind: Kind| {
         println!("{name:<32} {:>6} bytes", src.len());
-        if let Some(dir) = &out_dir {
+        if let Some(dir) = out_dir {
             let path = dir.join(name);
             match kind {
                 Kind::Whole => stored_text::write_whole_text(&path, src),
@@ -160,7 +170,5 @@ fn main() {
         Kind::Fragment,
     );
 
-    for path in &written {
-        println!("wrote {}", path.display());
-    }
+    written
 }

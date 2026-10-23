@@ -20,6 +20,14 @@ use alice_sdf::compiled::rust::{is_supported, RustSource, RustTranspileOptions};
 use alice_sdf::compiled::{eval_compiled, CompiledSdf};
 use alice_sdf::prelude::*;
 
+/// Writes the generated module to `path`
+///
+/// The module names the semantics identifier it reproduces (ALICE-Law G8);
+/// tests/test_g8_example_text.rs runs this and checks the file
+pub fn write_source(path: &std::path::Path, src: &RustSource) -> std::io::Result<bool> {
+    stored_text::write_whole_text(path, src.source())
+}
+
 fn main() {
     let shape = SdfNode::sphere(0.6)
         .smooth_union(
@@ -75,9 +83,7 @@ fn main() {
 
     match std::env::args().nth(1) {
         Some(path) => {
-            // the module names the semantics identifier it reproduces (ALICE-Law G8)
-            if let Err(e) = stored_text::write_whole_text(std::path::Path::new(&path), src.source())
-            {
+            if let Err(e) = write_source(std::path::Path::new(&path), &src) {
                 eprintln!("write {path}: {e}");
                 std::process::exit(1);
             }

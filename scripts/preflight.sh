@@ -349,9 +349,9 @@ cargo test --tests
 step "test: feature-gated oracles (svo / texture-fit)"
 cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
 
-step "test: the examples' whole text carries the semantics identifier (ci.yml と対、6 件未満で fail)"
+step "test: the examples' whole text carries the semantics identifier (ci.yml と対、5 件未満で fail)"
 cargo test --features "msl,glsl,hlsl,blinkscript,rust" --test test_g8_example_text 2>&1 | tee "${TMPDIR:-/tmp}/sdf-g8-example-text.log"
-python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-g8-example-text.log" --min 6 --what "example text provenance tests"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-g8-example-text.log" --min 5 --what "example text provenance tests"
 
 step "test: min/max signed-zero Law parity (tree / SIMD / JIT / SVO)"
 cargo test --features "jit,svo" --test test_minmax_signed_zero_probe
