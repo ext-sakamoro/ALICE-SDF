@@ -154,7 +154,9 @@ impl<'a> SceneShaderBuilder<'a> {
     }
 
     /// Compose and return the final shader source, or `None` if the target
-    /// language's transpiler feature is not enabled at compile time
+    /// language's transpiler feature is not enabled at compile time. The source is a whole
+    /// shader and carries this crate's semantics identifier (`// alice:semantics_id=<64 hex>`,
+    /// on line 1, or line 2 after the GLSL `#version` line; see [`crate::provenance`])
     #[must_use]
     pub fn try_build(&self) -> Option<String> {
         let helpers = full_helpers_for(self.language);
@@ -165,7 +167,12 @@ impl<'a> SceneShaderBuilder<'a> {
             ShaderLanguage::Wgsl => "",
             ShaderLanguage::Hlsl => "",
         };
-        Some(format!("{header}{helpers}\n{sdf_fn}\n{main_fn}"))
+        let text = format!("{header}{helpers}\n{sdf_fn}\n{main_fn}");
+        // a whole shader carries this crate's semantics identifier (after `#version` in GLSL);
+        // without a transpiler feature `transpile_sdf` has returned `None` above
+        #[cfg(any(feature = "gpu", feature = "glsl", feature = "hlsl"))]
+        let text = crate::provenance::tagged_shader(&text);
+        Some(text)
     }
 
     /// Compose and return the final shader source

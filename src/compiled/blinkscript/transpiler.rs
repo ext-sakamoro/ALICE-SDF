@@ -79,6 +79,9 @@ impl BlinkScriptShader {
     /// * `z_uniform` — the world-space `z` slice sampled at every pixel.
     /// * `bounds` — `(min, max)` cubic world-space range that maps to the
     ///   image's [0, width) × [0, height) range.
+    ///
+    /// The kernel is whole BlinkScript text, so it carries this crate's semantics identifier on
+    /// its first line (`// alice:semantics_id=<64 hex>`, see [`crate::provenance`]).
     pub fn to_kernel(&self, z_uniform: f32, bounds: (f32, f32)) -> String {
         let (bmin, bmax) = bounds;
         let dynamic_note = if self.mode == BlinkScriptTranspileMode::Dynamic {
@@ -86,7 +89,7 @@ impl BlinkScriptShader {
         } else {
             ""
         };
-        format!(
+        crate::provenance::tagged_shader(&format!(
             r#"// ALICE-SDF Generated BlinkScript Kernel
 // Function body reused verbatim from the HLSL transpiler.
 // Drop into the "Kernel" text area of a BlinkScript node in Nuke 12+.
@@ -129,7 +132,7 @@ kernel AliceSdfSliceKernel : ImageComputationKernel<eComponentWise>
             z_uniform = z_uniform,
             bmin = bmin,
             bmax = bmax,
-        )
+        ))
     }
 
     /// Return only the raw `sdf_eval` function body, for callers that want

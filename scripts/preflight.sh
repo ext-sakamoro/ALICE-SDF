@@ -506,9 +506,9 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity --test test_instanced_wgsl_gpu_parity \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_shader_precise_temporaries
 
-step "gpu-parity: shader text semantics identifier (gpu, glsl, hlsl, volume、ci.yml の gpu-parity job と対、9 件未満で fail)"
-ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl,volume" --test test_shader_text_provenance -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log"
-python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log" --min 9 --what "shader text provenance tests (gpu, glsl, hlsl, volume)"
+step "gpu-parity: shader text semantics identifier (gpu, glsl, hlsl, volume, blinkscript, texture-fit、ci.yml の gpu-parity job と対、14 件未満で fail)"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl,volume,blinkscript,texture-fit" --test test_shader_text_provenance -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log" --min 14 --what "shader text provenance tests (gpu, glsl, hlsl, volume, blinkscript, texture-fit)"
 
 step "gpu-parity: GPU unit tests ran, not skipped (6, ci.yml の GPU unit tests ran と対)"
 python3 scripts/test_gpu_test_count.py

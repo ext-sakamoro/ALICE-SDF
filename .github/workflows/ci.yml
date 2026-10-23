@@ -1179,14 +1179,16 @@ jobs:
       # ALICE-Law G8: the whole shader text carries the semantics identifier and the four
       # readers that compile shader text check it (tests/test_shader_text_provenance.rs). The
       # accepted cases build an evaluator, so they run here on lavapipe; the arms of
-      # gpu / glsl / hlsl / volume compile only with those features, counted so a feature set
-      # that drops them cannot pass with 0 tests (the msl arms run in the macOS test job)
-      - name: Shader text semantics identifier (gpu, glsl, hlsl, volume)
+      # gpu / glsl / hlsl / volume / blinkscript / texture-fit compile only with those features
+      # (the WHOLE / FRAGMENT check derives every table entry from its output only when the
+      # entry's feature is on), counted so a feature set that drops them cannot pass with 0
+      # tests (the msl arms run in the macOS test job)
+      - name: Shader text semantics identifier (gpu, glsl, hlsl, volume, blinkscript, texture-fit)
         shell: bash
         run: |
           set -euo pipefail
-          cargo test --features "gpu,glsl,hlsl,volume" --test test_shader_text_provenance -- --nocapture 2>&1 | tee shader-text-provenance.log
-          python3 scripts/libtest_count.py shader-text-provenance.log --min 9 --what "shader text provenance tests (gpu, glsl, hlsl, volume)"
+          cargo test --features "gpu,glsl,hlsl,volume,blinkscript,texture-fit" --test test_shader_text_provenance -- --nocapture 2>&1 | tee shader-text-provenance.log
+          python3 scripts/libtest_count.py shader-text-provenance.log --min 14 --what "shader text provenance tests (gpu, glsl, hlsl, volume, blinkscript, texture-fit)"
 
       # The GPU unit tests (src/compiled/wgsl/gpu_eval.rs, src/mesh/gpu_marching_cubes.rs)
       # return early without a usable device and libtest still says ok; each prints

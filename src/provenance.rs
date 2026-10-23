@@ -24,11 +24,17 @@
 //! | ABM (`.abm`, version 2) | the 32 bytes after the 32-byte header; this crate's loaders refuse another identifier and, by default, a version 1 file without one |
 //! | Nanite (`.nanite`, version 4, [`crate::io::nanite::export_nanite`]) | the 32 bytes after the 32-byte header; versions 1-3 carry none |
 //! | Nanite manifest (`.nanite.json`) | the top-level field `"alice:semantics_id": "<64 hex>"` |
-//! | shader text (the Nanite HLSL material `.usf`) | a line `// alice:semantics_id=<64 hex>` in the leading `//` comment block |
+//! | shader text (the whole shaders of the transpilers, the instanced WGSL, the BlinkScript kernel, the NPR scene shader, the Nanite HLSL material `.usf`) | a line `// alice:semantics_id=<64 hex>` in the leading `//` comment block (after the `#version` line of GLSL) |
 //! | UE5 / Unity binary mesh (`ALUE` / `ALMB`, version 2, [`crate::io::export_ue5_mesh_binary`] / [`crate::io::export_unity_mesh_binary`]) | the 32 bytes after the 16-byte header; version 1 carries none |
 //! | UE5 / Unity JSON mesh ([`crate::io::export_ue5_mesh`] / [`crate::io::export_unity_mesh`]) | the top-level field `"alice:semantics_id": "<64 hex>"` next to the mesh object |
 //! | DDS 3D texture | the header's reserved dwords: tag `ALSD`, version `1`, the 32 identifier bytes |
 //! | raw volume data (no header) | a sidecar file `<path>.semantics`: `alice:semantics_id=<64 hex>` |
+//!
+//! `<64 hex>` is exactly 64 lower-case hex digits, as [`Provenance::hex`] writes them. In the text
+//! forms (`alice:semantics_id=<64 hex>`) the digits end the value: the end of the text, or a byte
+//! that is not an ASCII letter, digit or `_` (in binary FBX, the end of the string property). A
+//! stored value of any other form (upper-case digits, a 65th digit, letters after the digits, too
+//! few digits) is [`ProvenanceError::Unreadable`], never a missing identifier.
 //!
 //! [`read`] finds the identifier in a file of any of these formats, and [`check`] compares it with
 //! the expected one (or an earlier one the caller has verified) and names both on a mismatch.
@@ -116,9 +122,11 @@ impl Provenance {
         h
     }
 
+    /// The identifier from its stored form: exactly 64 lower-case hex digits (what [`Self::hex`]
+    /// writes); upper-case digits are refused
     pub(crate) fn from_hex(s: &str) -> Option<Self> {
         let s = s.as_bytes();
-        if s.len() != 64 {
+        if s.len() != 64 || !s.iter().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
             return None;
         }
         let mut id = [0u8; 32];
@@ -366,7 +374,7 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
         return read_3mf(bytes);
     }
     if bytes.starts_with(b"Kaydara FBX Binary") {
-        return tagged_in(bytes, "FBX");
+        return tagged_in_fbx_binary(bytes);
     }
     if bytes.starts_with(b"; FBX") {
         return tagged_in(bytes, "FBX");
@@ -1382,32 +1390,67 @@ pub(crate) fn shader_text_verdict(
     })
 }
 
-/// `alice:semantics_id=<64 hex>` anywhere in `bytes`; exactly one distinct value is accepted
+/// `alice:semantics_id=<64 hex>` anywhere in `bytes`; exactly one distinct value is accepted. The
+/// value is exactly 64 lower-case hex digits and ends there (the end of the text, or a byte that
+/// is not an ASCII letter, digit or `_`): a key with any other value makes the identifier
+/// unreadable, never absent
 fn tagged_in(bytes: &[u8], format: &'static str) -> Result<Provenance, ProvenanceError> {
+    tagged_in_with(bytes, format, |b, _, end| {
+        b.get(end)
+            .is_none_or(|&c| !(c.is_ascii_alphanumeric() || c == b'_'))
+    })
+}
+
+/// [`tagged_in`] for binary FBX, where the value is followed by the bytes of the next record: the
+/// value ends the length-prefixed string property (`S`, `u32` length, bytes) that holds the key
+fn tagged_in_fbx_binary(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
+    tagged_in_with(bytes, "FBX", |b, key_at, end| {
+        // the string starts at most a short prefix (`ALICE-SDF `) before the key
+        (key_at.saturating_sub(256)..key_at).any(|s| {
+            b[s] == b'S'
+                && b.get(s + 1..s + 5)
+                    .and_then(|l| <[u8; 4]>::try_from(l).ok())
+                    .is_some_and(|l| {
+                        usize::try_from(u32::from_le_bytes(l)).ok() == end.checked_sub(s + 5)
+                    })
+        })
+    })
+}
+
+/// The occurrences of the key in `bytes`, each with a value that `ends(bytes, key_at, value_end)`
+/// accepts as ending at `value_end`
+fn tagged_in_with(
+    bytes: &[u8],
+    format: &'static str,
+    ends: impl Fn(&[u8], usize, usize) -> bool,
+) -> Result<Provenance, ProvenanceError> {
     let key = format!("{KEY}=");
     let key = key.as_bytes();
     let mut found: Option<Provenance> = None;
-    let mut i = 0;
-    while i + key.len() + 64 <= bytes.len() {
-        if &bytes[i..i + key.len()] == key {
-            let start = i + key.len();
-            let hex = std::str::from_utf8(&bytes[start..start + 64])
-                .map_err(|_| ProvenanceError::Unreadable(format!("{format}: {KEY} is not hex")))?;
-            let p = Provenance::from_hex(hex).ok_or_else(|| {
-                ProvenanceError::Unreadable(format!("{format}: {KEY} is not hex"))
+    let mut from = 0;
+    while let Some(off) = find(&bytes[from..], key) {
+        let key_at = from + off;
+        let start = key_at + key.len();
+        let end = start + 64;
+        let p = bytes
+            .get(start..end)
+            .filter(|_| ends(bytes, key_at, end))
+            .and_then(|v| std::str::from_utf8(v).ok())
+            .and_then(Provenance::from_hex)
+            .ok_or_else(|| {
+                ProvenanceError::Unreadable(format!(
+                    "{format}: {KEY} is not 64 lower-case hex digits ending the value"
+                ))
             })?;
-            match found {
-                Some(q) if q != p => {
-                    return Err(ProvenanceError::Unreadable(format!(
-                        "{format}: two different {KEY} values"
-                    )))
-                }
-                _ => found = Some(p),
+        match found {
+            Some(q) if q != p => {
+                return Err(ProvenanceError::Unreadable(format!(
+                    "{format}: two different {KEY} values"
+                )))
             }
-            i = start + 64;
-        } else {
-            i += 1;
+            _ => found = Some(p),
         }
+        from = end;
     }
     found.ok_or(ProvenanceError::Missing { format })
 }

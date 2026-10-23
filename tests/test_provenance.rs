@@ -3696,3 +3696,98 @@ fn engine_binary_meshes_of_version_1_are_missing() {
     }
     assert_eq!(compared, 2);
 }
+
+/// The stored form is exactly 64 lower-case hex digits that end the value: a 65th digit, letters
+/// after the digits, or upper-case digits make the identifier unreadable (never `Current`, never
+/// read as absent). The text forms read through the key (OBJ, shader text, ASCII STL, ASCII FBX,
+/// sidecar-style text) and binary FBX (whose value must end its length-prefixed string) are
+/// covered.
+///
+/// Oracle: the documented tag format `alice:semantics_id=<64 hex>` and the writers' lower-case
+/// [`Provenance::hex`]; `Unreadable` per the doc of [`provenance::read`] (the identifier is present
+/// but cannot be read). Not produced by the reader under test.
+#[test]
+fn only_64_lower_case_hex_digits_ending_the_value_are_read() {
+    let hex = Provenance::sdf().hex();
+    assert_eq!(hex, hex.to_ascii_lowercase());
+    let key = provenance::KEY;
+    type Form = (&'static str, fn(&str) -> String);
+    let forms: [Form; 4] = [
+        ("OBJ", |v| format!("# {}={v}\nv 0 0 0\n", provenance::KEY)),
+        ("shader text", |v| {
+            format!("// {}={v}\nfn f() {{}}\n", provenance::KEY)
+        }),
+        ("ASCII STL", |v| {
+            format!("solid {}={v}\nendsolid\n", provenance::KEY)
+        }),
+        ("ASCII FBX", |v| {
+            format!(
+                "; FBX 7.4.0 project file\nFBXHeaderExtension:  {{\n\tCreator: \"ALICE-SDF {}={v}\"\n}}\n",
+                provenance::KEY
+            )
+        }),
+    ];
+    let mut checked = 0;
+    for (format, make) in forms {
+        assert_eq!(
+            provenance::from_bytes(make(&hex).as_bytes()).ok(),
+            Some(Provenance::sdf()),
+            "{format}: the valid tag"
+        );
+        for (what, value) in [
+            ("a 65th hex digit", format!("{hex}0")),
+            ("letters after the digits", format!("{hex}zz")),
+            ("upper-case hex", hex.to_ascii_uppercase()),
+            ("63 digits at the end", hex[..63].to_string()),
+        ] {
+            let r = provenance::from_bytes(make(&value).as_bytes());
+            assert!(
+                matches!(r, Err(ProvenanceError::Unreadable(_))),
+                "{format} {what} ({key}={value}): {r:?}"
+            );
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 16);
+
+    // binary FBX: the value ends the length-prefixed `Creator` string
+    let m = mesh();
+    let path = temp("strict_tail.fbx");
+    let c = io::FbxConfig {
+        format: io::FbxFormat::Binary,
+        ..Default::default()
+    };
+    io::export_fbx(&m, &path, &c, None).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+    assert_eq!(
+        provenance::from_bytes(&bytes).ok(),
+        Some(Provenance::sdf()),
+        "binary FBX: the valid tag"
+    );
+    let at = bytes
+        .windows(key.len())
+        .position(|w| w == key.as_bytes())
+        .unwrap();
+    let start = at + key.len() + 1;
+    let mut upper = bytes.clone();
+    upper[start..start + 64].make_ascii_uppercase();
+    assert!(matches!(
+        provenance::from_bytes(&upper),
+        Err(ProvenanceError::Unreadable(_))
+    ));
+    // the string's declared length one byte longer: the digits no longer end the value
+    let creator = format!("ALICE-SDF {key}={hex}");
+    let s = at - "ALICE-SDF ".len() - 5;
+    assert_eq!(bytes[s], b'S');
+    assert_eq!(
+        u32::from_le_bytes(bytes[s + 1..s + 5].try_into().unwrap()) as usize,
+        creator.len()
+    );
+    let mut longer = bytes;
+    longer[s + 1..s + 5].copy_from_slice(&(creator.len() as u32 + 1).to_le_bytes());
+    assert!(matches!(
+        provenance::from_bytes(&longer),
+        Err(ProvenanceError::Unreadable(_))
+    ));
+}

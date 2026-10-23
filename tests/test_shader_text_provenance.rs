@@ -383,6 +383,62 @@ fn whole_msl_carries_the_identifier() {
     }
 }
 
+/// The instanced compute shader is whole WGSL (bindings and `@compute main`; wgpu compiles it in
+/// tests/test_instanced_wgsl_gpu_parity.rs)
+#[cfg(feature = "gpu")]
+#[test]
+fn whole_instanced_wgsl_carries_the_identifier() {
+    use alice_sdf::compiled::InstancedSdf;
+    for (name, node) in common::corpus::corpus() {
+        assert_whole_tagged(
+            &format!("instanced WGSL {name}"),
+            &InstancedSdf::to_instanced_wgsl(&node),
+        );
+    }
+}
+
+/// The BlinkScript kernel is the whole text of a Nuke BlinkScript node (`kernel ... :
+/// ImageComputationKernel` with `process`)
+#[cfg(feature = "blinkscript")]
+#[test]
+fn whole_blinkscript_kernel_carries_the_identifier() {
+    use alice_sdf::compiled::{BlinkScriptShader, BlinkScriptTranspileMode};
+    for (name, node) in common::corpus::corpus() {
+        for mode in [
+            BlinkScriptTranspileMode::Hardcoded,
+            BlinkScriptTranspileMode::Dynamic,
+        ] {
+            assert_whole_tagged(
+                &format!("BlinkScript kernel {name} {mode:?}"),
+                &BlinkScriptShader::transpile(&node, mode).to_kernel(0.0, (-2.0, 2.0)),
+            );
+        }
+    }
+}
+
+/// The NPR scene shader is whole text for a graphics API (GLSL `void main`, WGSL `@fragment`, HLSL
+/// `PS : SV_TARGET`), in each language whose transpiler is enabled
+#[cfg(any(feature = "gpu", feature = "glsl", feature = "hlsl"))]
+#[test]
+fn whole_npr_scene_shader_carries_the_identifier() {
+    use alice_sdf::npr::scene_composer::SceneShaderBuilder;
+    use alice_sdf::npr::shader_glue::ShaderLanguage;
+    let mut built = 0;
+    for (name, node) in common::corpus::corpus() {
+        for lang in [
+            ShaderLanguage::Glsl,
+            ShaderLanguage::Wgsl,
+            ShaderLanguage::Hlsl,
+        ] {
+            if let Some(text) = SceneShaderBuilder::new(&node, lang).try_build() {
+                assert_whole_tagged(&format!("NPR scene {name} {lang:?}"), &text);
+                built += 1;
+            }
+        }
+    }
+    assert!(built > 0, "no NPR scene shader built");
+}
+
 // --------------------------------------------------------------------------------------- readers
 
 /// `MslShader::from_wgsl` (naga only, no GPU)
@@ -640,6 +696,9 @@ const WHOLE: &[(&str, &str)] = &[
     ("src/compiled/glsl/render_pipeline.rs", "build_full_shader"),
     ("src/compiled/hlsl/transpiler.rs", "to_compute_shader"),
     ("src/compiled/msl/transpiler.rs", "source"),
+    ("src/compiled/instanced.rs", "to_instanced_wgsl"),
+    ("src/compiled/blinkscript/transpiler.rs", "to_kernel"),
+    ("src/npr/scene_composer.rs", "build"),
 ];
 
 const FRAGMENT: &str = "fragment: pasted into a host file or graph, not compiled by this crate";
@@ -687,11 +746,6 @@ const OTHER: &[(&str, &str, &str)] = &[
         FRAGMENT,
     ),
     ("src/compiled/blinkscript/transpiler.rs", "source", FRAGMENT),
-    (
-        "src/compiled/blinkscript/transpiler.rs",
-        "to_kernel",
-        FRAGMENT,
-    ),
     ("src/compiled/msl/transpiler.rs", "entry_point", NOT_SHADER),
     (
         "src/compiled/msl/transpiler.rs",
@@ -716,7 +770,6 @@ const OTHER: &[(&str, &str, &str)] = &[
     ),
     ("src/texture/shader.rs", "generate_shader", FRAGMENT),
     ("src/compiled/msl/transpiler.rs", "wgsl_source", INTERNAL),
-    ("src/compiled/instanced.rs", "to_instanced_wgsl", FRAGMENT),
     (
         "src/compiled/transpiler_common.rs",
         "generate_shader",
@@ -761,7 +814,6 @@ const OTHER: &[(&str, &str, &str)] = &[
         "emit_wgsl_bytecode_evaluator",
         FRAGMENT,
     ),
-    ("src/npr/scene_composer.rs", "build", INTERNAL),
     ("src/npr/shader_glue.rs", "full_helpers_for", FRAGMENT),
     ("src/io/json.rs", "to_json_string", NOT_SHADER),
     ("src/io/mod.rs", "get_info", NOT_SHADER),
@@ -870,4 +922,455 @@ fn every_text_emitter_is_whole_fragment_or_not_shader() {
         }
     }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
+// ------------------------------------------------------------------ classification by entry point
+
+/// The text of `text` outside `//` comments
+fn code_of(text: &str) -> String {
+    text.lines()
+        .map(|l| l.find("//").map_or(l, |i| &l[..i]))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Whether `text` holds a shader entry point, the mark of a whole shader (one an API or compiler
+/// takes as is) as opposed to a fragment pasted into a host file. The markers are those the
+/// transpilers write: WGSL stage attributes, GLSL `void main(`, HLSL `[numthreads(` and the
+/// `SV_Target` / `SV_Position` stage semantics (case-insensitive in HLSL), MSL `kernel` / `fragment` / `vertex` functions (naga
+/// output), and the BlinkScript `ImageComputationKernel` container
+fn has_entry_point(text: &str) -> bool {
+    let code = code_of(text);
+    let line_starts = |w: &str| code.lines().any(|l| l.trim_start().starts_with(w));
+    ["@compute", "@fragment", "@vertex"]
+        .iter()
+        .any(|m| code.contains(m))
+        || code.contains("void main(")
+        || code.contains("[numthreads(")
+        || code.to_ascii_uppercase().contains("SV_TARGET")
+        || code.to_ascii_uppercase().contains("SV_POSITION")
+        || line_starts("kernel void ")
+        || line_starts("fragment ")
+        || line_starts("vertex ")
+        || code.contains(": ImageComputationKernel")
+}
+
+/// Table entries with no path from the public API: the language types `GenericTranspiler` is
+/// generic over (`WgslLang` / `GlslLang` / `HlslLang`) live in private modules. Their text is the
+/// building block of the `source` fields, which are sampled. The test below checks that this
+/// list is exactly the `transpiler_common.rs` entries that are not `NOT_SHADER`, and that the
+/// language types stay private; a public path to them turns it red, so they get samples
+const NO_PUBLIC_PATH: &[(&str, &str)] = &[
+    ("src/compiled/transpiler_common.rs", "generate_shader"),
+    ("src/compiled/transpiler_common.rs", "globals"),
+    ("src/compiled/transpiler_common.rs", "transpile_node"),
+    ("src/compiled/transpiler_common.rs", "transpile_node_inner"),
+];
+
+/// Whether the features an entry needs are enabled in this build
+fn entry_enabled(file: &str, name: &str) -> bool {
+    if file == "src/compiled/wgsl/transpiler.rs" && name == "to_volume_shader" {
+        cfg!(feature = "volume")
+    } else if file == "src/npr/scene_composer.rs" {
+        cfg!(any(feature = "gpu", feature = "glsl", feature = "hlsl"))
+    } else if file.starts_with("src/compiled/blinkscript/") {
+        cfg!(feature = "blinkscript")
+    } else if file.starts_with("src/compiled/msl/") {
+        cfg!(feature = "msl")
+    } else if file.starts_with("src/compiled/hlsl/") {
+        cfg!(feature = "hlsl")
+    } else if file.starts_with("src/compiled/glsl/") {
+        cfg!(feature = "glsl")
+    } else if file.starts_with("src/compiled/wgsl/")
+        || file == "src/compiled/instanced.rs"
+        || file == "src/mesh/gpu_mc_shaders.rs"
+    {
+        cfg!(feature = "gpu")
+    } else if file.starts_with("src/texture/") {
+        cfg!(feature = "texture-fit")
+    } else {
+        true
+    }
+}
+
+/// The output of every table entry reachable in this build, as (file, name, text)
+#[allow(unused_mut, unused_variables, deprecated)]
+fn samples() -> Vec<(&'static str, &'static str, String)> {
+    let corpus = common::corpus::corpus();
+    let node = &corpus[0].1;
+    let mut out: Vec<(&'static str, &'static str, String)> = Vec::new();
+    {
+        use alice_sdf::npr::shader_glue::{full_helpers_for, ShaderLanguage};
+        out.push((
+            "src/npr/compiled_color.rs",
+            "emit_wgsl_bytecode_evaluator",
+            alice_sdf::npr::compiled_color::emit_wgsl_bytecode_evaluator(),
+        ));
+        for lang in [
+            ShaderLanguage::Glsl,
+            ShaderLanguage::Wgsl,
+            ShaderLanguage::Hlsl,
+        ] {
+            out.push((
+                "src/npr/shader_glue.rs",
+                "full_helpers_for",
+                full_helpers_for(lang),
+            ));
+            #[cfg(any(feature = "gpu", feature = "glsl", feature = "hlsl"))]
+            if let Some(t) =
+                alice_sdf::npr::scene_composer::SceneShaderBuilder::new(node, lang).try_build()
+            {
+                out.push(("src/npr/scene_composer.rs", "build", t));
+            }
+        }
+    }
+    #[cfg(feature = "gpu")]
+    {
+        use alice_sdf::compiled::{InstancedSdf, TranspileMode, WgslShader};
+        use alice_sdf::mesh::gpu_mc_shaders as mc;
+        const F: &str = "src/compiled/wgsl/transpiler.rs";
+        for mode in [TranspileMode::Hardcoded, TranspileMode::Dynamic] {
+            let s = WgslShader::transpile(node, mode);
+            out.push((F, "source", s.source.clone()));
+            out.push((F, "to_compute_shader", s.to_compute_shader()));
+            out.push((
+                F,
+                "to_compute_shader_with_normals",
+                s.to_compute_shader_with_normals(),
+            ));
+            #[cfg(feature = "volume")]
+            out.push((F, "to_volume_shader", s.to_volume_shader()));
+            out.push((
+                F,
+                "transpile_material",
+                WgslShader::transpile_material(node, mode),
+            ));
+        }
+        out.push((
+            "src/compiled/instanced.rs",
+            "to_instanced_wgsl",
+            InstancedSdf::to_instanced_wgsl(node),
+        ));
+        let s = WgslShader::transpile(node, TranspileMode::Hardcoded);
+        const M: &str = "src/mesh/gpu_mc_shaders.rs";
+        out.push((
+            M,
+            "generate_sdf_grid_shader",
+            mc::generate_sdf_grid_shader(&s),
+        ));
+        out.push((
+            M,
+            "generate_classify_shader",
+            mc::generate_classify_shader(),
+        ));
+        out.push((M, "generate_vertex_shader", mc::generate_vertex_shader(&s)));
+        out.push((
+            M,
+            "generate_prefix_sum_scan_shader",
+            mc::generate_prefix_sum_scan_shader(),
+        ));
+        out.push((
+            M,
+            "generate_prefix_sum_propagate_shader",
+            mc::generate_prefix_sum_propagate_shader(),
+        ));
+    }
+    #[cfg(feature = "glsl")]
+    {
+        use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode, RenderConfig};
+        const F: &str = "src/compiled/glsl/transpiler.rs";
+        for mode in [GlslTranspileMode::Hardcoded, GlslTranspileMode::Dynamic] {
+            let s = GlslShader::transpile(node, mode);
+            out.push((F, "source", s.source.clone()));
+            out.push((F, "to_compute_shader", s.to_compute_shader()));
+            out.push((F, "to_vulkan_compute_shader", s.to_vulkan_compute_shader()));
+            out.push((F, "to_fragment_shader", s.to_fragment_shader()));
+            out.push((
+                F,
+                "to_fragment_shader_full",
+                s.to_fragment_shader_full(&RenderConfig::default()),
+            ));
+            out.push((F, "to_unity_custom_function", s.to_unity_custom_function()));
+            out.push((
+                F,
+                "export_unity_shader_graph",
+                s.export_unity_shader_graph(),
+            ));
+            out.push((
+                "src/compiled/glsl/render_pipeline.rs",
+                "build_full_shader",
+                alice_sdf::compiled::glsl::render_pipeline::build_full_shader(
+                    &s.source,
+                    &RenderConfig::default(),
+                ),
+            ));
+        }
+    }
+    #[cfg(feature = "hlsl")]
+    {
+        use alice_sdf::compiled::hlsl::{HlslShader, HlslTranspileMode};
+        const F: &str = "src/compiled/hlsl/transpiler.rs";
+        for mode in [HlslTranspileMode::Hardcoded, HlslTranspileMode::Dynamic] {
+            let s = HlslShader::transpile(node, mode);
+            out.push((F, "source", s.source.clone()));
+            out.push((F, "to_compute_shader", s.to_compute_shader()));
+            out.push((F, "to_ue5_custom_node", s.to_ue5_custom_node()));
+            out.push((F, "to_unity_custom_function", s.to_unity_custom_function()));
+            out.push((
+                F,
+                "export_unity_shader_graph",
+                s.export_unity_shader_graph(),
+            ));
+            out.push((
+                F,
+                "export_ue5_material_function",
+                s.export_ue5_material_function(),
+            ));
+        }
+    }
+    #[cfg(feature = "blinkscript")]
+    {
+        use alice_sdf::compiled::{BlinkScriptShader, BlinkScriptTranspileMode};
+        const F: &str = "src/compiled/blinkscript/transpiler.rs";
+        for mode in [
+            BlinkScriptTranspileMode::Hardcoded,
+            BlinkScriptTranspileMode::Dynamic,
+        ] {
+            let s = BlinkScriptShader::transpile(node, mode);
+            out.push((F, "source", s.source.clone()));
+            out.push((F, "to_kernel", s.to_kernel(0.0, (-2.0, 2.0))));
+        }
+    }
+    #[cfg(feature = "msl")]
+    {
+        use alice_sdf::compiled::msl::MslShader;
+        use alice_sdf::compiled::TranspileMode;
+        const F: &str = "src/compiled/msl/transpiler.rs";
+        for mode in [TranspileMode::Hardcoded, TranspileMode::Dynamic] {
+            let s = MslShader::transpile(node, mode).unwrap();
+            out.push((F, "source", s.source.clone()));
+            out.push((F, "wgsl_source", s.wgsl_source.clone()));
+        }
+    }
+    #[cfg(feature = "texture-fit")]
+    {
+        use alice_sdf::texture::{generate_shader, FittedOctave, ShaderLanguage, TextureFitResult};
+        let fit = TextureFitResult {
+            width: 4,
+            height: 4,
+            channels: 1,
+            bias: vec![0.5],
+            octaves: vec![vec![FittedOctave {
+                amplitude: 0.25,
+                frequency: 2.0,
+                phase: [0.1, 0.2],
+                seed: 7,
+                rotation: 0.3,
+            }]],
+            psnr_db: 30.0,
+            nmse: 0.01,
+        };
+        for lang in [
+            ShaderLanguage::Wgsl,
+            ShaderLanguage::Hlsl,
+            ShaderLanguage::Glsl,
+        ] {
+            out.push((
+                "src/texture/shader.rs",
+                "generate_shader",
+                generate_shader(&fit, lang, "sample"),
+            ));
+        }
+    }
+    out
+}
+
+/// The WHOLE / FRAGMENT / INTERNAL label of every table entry follows from its output: an entry
+/// whose text holds a shader entry point is a whole shader (WHOLE, tagged; or INTERNAL), one
+/// without is a fragment. Each label is checked against a sample of the output, so a hand label
+/// that disagrees with the text fails here
+#[test]
+fn whole_or_fragment_follows_from_the_entry_point() {
+    let samples = samples();
+    let label = |file: &str, name: &str| -> Option<&'static str> {
+        if WHOLE.iter().any(|(f, n)| *f == file && *n == name) {
+            return Some("WHOLE");
+        }
+        OTHER
+            .iter()
+            .find(|(f, n, _)| *f == file && *n == name)
+            .map(|(_, _, why)| *why)
+    };
+    let mut problems = Vec::new();
+    let mut compared = 0;
+    for (file, name, text) in &samples {
+        let Some(l) = label(file, name) else {
+            problems.push(format!("{file}: `{name}` is sampled but not in the table"));
+            continue;
+        };
+        if l == NOT_SHADER {
+            problems.push(format!(
+                "{file}: `{name}` is sampled but labelled not shader text"
+            ));
+            continue;
+        }
+        let whole_by_label = l == "WHOLE" || l == INTERNAL;
+        if has_entry_point(text) != whole_by_label {
+            problems.push(format!(
+                "{file}: `{name}` is labelled {l:?} but its output holds {} entry point",
+                if has_entry_point(text) { "an" } else { "no" }
+            ));
+        }
+        if l == "WHOLE" && provenance::from_bytes(text.as_bytes()).ok() != Some(Provenance::sdf()) {
+            problems.push(format!(
+                "{file}: `{name}` is WHOLE but its output does not carry the identifier"
+            ));
+        }
+        compared += 1;
+    }
+    // every labelled entry of an enabled file has a sample (or no public path, checked below)
+    for (file, name, l) in WHOLE
+        .iter()
+        .map(|(f, n)| (*f, *n, "WHOLE"))
+        .chain(OTHER.iter().copied())
+    {
+        if l == NOT_SHADER || !entry_enabled(file, name) {
+            continue;
+        }
+        let sampled = samples.iter().any(|(f, n, _)| *f == file && *n == name);
+        let exempt = NO_PUBLIC_PATH.contains(&(file, name));
+        if !sampled && !exempt {
+            problems.push(format!(
+                "{file}: `{name}` ({l}) has no sample in samples() of \
+                 tests/test_shader_text_provenance.rs"
+            ));
+        }
+        if sampled && exempt {
+            problems.push(format!(
+                "{file}: `{name}` is sampled, remove it from NO_PUBLIC_PATH"
+            ));
+        }
+    }
+    let common: Vec<(&str, &str)> = OTHER
+        .iter()
+        .filter(|(f, _, l)| *f == "src/compiled/transpiler_common.rs" && *l != NOT_SHADER)
+        .map(|(f, n, _)| (*f, *n))
+        .collect();
+    let mut listed = NO_PUBLIC_PATH.to_vec();
+    listed.sort_unstable();
+    let mut common_sorted = common.clone();
+    common_sorted.sort_unstable();
+    if listed != common_sorted {
+        problems.push(format!(
+            "NO_PUBLIC_PATH {listed:?} is not exactly the shader entries of transpiler_common.rs \
+             {common_sorted:?}"
+        ));
+    }
+    // the language types stay unreachable: their transpiler modules are private and not
+    // re-exported (a public path makes the four entries sampleable, so they leave the list)
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    for (dir, ty) in [
+        ("wgsl", "WgslLang"),
+        ("glsl", "GlslLang"),
+        ("hlsl", "HlslLang"),
+    ] {
+        let m = std::fs::read_to_string(root.join(format!("src/compiled/{dir}/mod.rs"))).unwrap();
+        let reexported = m.lines().any(|l| {
+            let l = l.trim();
+            l.starts_with("pub mod transpiler") || (l.starts_with("pub use") && l.contains(ty))
+        });
+        if reexported {
+            problems.push(format!(
+                "src/compiled/{dir}/mod.rs makes `{ty}` public: sample the transpiler_common.rs \
+                 entries and remove them from NO_PUBLIC_PATH"
+            ));
+        }
+    }
+    assert!(compared > 0, "no sample compared");
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+    eprintln!("whole_or_fragment_follows_from_the_entry_point: {compared} samples compared");
+}
+
+/// Where `src/` hands each INTERNAL entry's text to a compiler, as (file, name, caller file, the
+/// call in the caller, the compile call in the caller). An INTERNAL entry is whole text that this
+/// crate compiles itself; one without such a caller is a whole shader for the user (WHOLE)
+const INTERNAL_COMPILED_AT: &[(&str, &str, &str, &str, &str)] = &[
+    (
+        "src/mesh/gpu_mc_shaders.rs",
+        "generate_sdf_grid_shader",
+        "src/mesh/gpu_marching_cubes.rs",
+        "gpu_mc_shaders::generate_sdf_grid_shader(",
+        "device.create_shader_module(",
+    ),
+    (
+        "src/mesh/gpu_mc_shaders.rs",
+        "generate_classify_shader",
+        "src/mesh/gpu_marching_cubes.rs",
+        "gpu_mc_shaders::generate_classify_shader(",
+        "device.create_shader_module(",
+    ),
+    (
+        "src/mesh/gpu_mc_shaders.rs",
+        "generate_vertex_shader",
+        "src/mesh/gpu_marching_cubes.rs",
+        "gpu_mc_shaders::generate_vertex_shader(",
+        "device.create_shader_module(",
+    ),
+    (
+        "src/mesh/gpu_mc_shaders.rs",
+        "generate_prefix_sum_scan_shader",
+        "src/mesh/gpu_marching_cubes.rs",
+        "gpu_mc_shaders::generate_prefix_sum_scan_shader(",
+        "device.create_shader_module(",
+    ),
+    (
+        "src/mesh/gpu_mc_shaders.rs",
+        "generate_prefix_sum_propagate_shader",
+        "src/mesh/gpu_marching_cubes.rs",
+        "gpu_mc_shaders::generate_prefix_sum_propagate_shader(",
+        "device.create_shader_module(",
+    ),
+    (
+        "src/compiled/msl/transpiler.rs",
+        "wgsl_source",
+        "src/compiled/msl/transpiler.rs",
+        "wgsl_source: wgsl.to_string()",
+        "naga::front::wgsl::parse_str(wgsl)",
+    ),
+];
+
+#[test]
+fn every_internal_entry_is_compiled_by_this_crate() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let internal: Vec<(&str, &str)> = OTHER
+        .iter()
+        .filter(|(_, _, l)| *l == INTERNAL)
+        .map(|(f, n, _)| (*f, *n))
+        .collect();
+    let mut listed: Vec<(&str, &str)> = INTERNAL_COMPILED_AT
+        .iter()
+        .map(|(f, n, _, _, _)| (*f, *n))
+        .collect();
+    let mut want = internal.clone();
+    listed.sort_unstable();
+    want.sort_unstable();
+    assert_eq!(
+        listed, want,
+        "INTERNAL_COMPILED_AT does not list exactly the INTERNAL entries"
+    );
+    let mut checked = 0;
+    for (file, name, caller, call, compile) in INTERNAL_COMPILED_AT {
+        let code = code_of(&std::fs::read_to_string(root.join(caller)).unwrap());
+        assert!(
+            code.contains(call),
+            "{file}: `{name}` is INTERNAL but {caller} no longer has `{call}`: if nothing in \
+             src/ compiles its text, it is a whole shader for the user (move it to WHOLE and tag it)"
+        );
+        assert!(
+            code.contains(compile),
+            "{file}: `{name}`: {caller} has no compile call `{compile}`"
+        );
+        checked += 1;
+    }
+    assert!(checked > 0, "no INTERNAL entry checked");
 }
