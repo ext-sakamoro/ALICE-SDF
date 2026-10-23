@@ -762,7 +762,7 @@ type Emitter = (
     &'static [&'static str],
     &'static [(&'static str, &'static str)],
 );
-const EMITTERS: [Emitter; 13] = [
+const EMITTERS: [Emitter; 14] = [
     (
         "src/compiled/glsl/transpiler.rs",
         &GLSL_SCANNED,
@@ -833,6 +833,17 @@ const EMITTERS: [Emitter; 13] = [
             (
                 "shader_unsupported_nodes",
                 "a list of node names, no shader text",
+            ),
+        ],
+    ),
+    (
+        "src/compiled/wgsl/sdf2d.rs",
+        &[],
+        &[
+            ("transpile", "WGSL: G3 on WGSL is the MSL / Metal path"),
+            (
+                "to_compute_shader",
+                "WGSL: G3 on WGSL is the MSL / Metal path",
             ),
         ],
     ),
