@@ -434,7 +434,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
   ALICE_SDF_REQUIRE_METAL=1 cargo test --features msl --test test_msl_metal_oracle -- --nocapture
   step "test: shader text semantics identifier (msl、ci.yml の macOS step と対、9 件未満で fail)"
   cargo test --features msl --test test_shader_text_provenance -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-shader-text-provenance-msl.log"
-  python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-shader-text-provenance-msl.log" --min 9 --what "shader text provenance tests (msl)"
+  python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-shader-text-provenance-msl.log" --min 13 --what "shader text provenance tests (msl)"
   step "test: GpuEvaluator on Metal does not fuse a multiply-add (msl、ci.yml の macOS step と対、走った件数 0 で fail)"
   ALICE_SDF_REQUIRE_METAL=1 cargo test --features msl --test test_gpu_fma_contraction -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-gpu-fma.log"
   python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-gpu-fma.log" --min 1 --what "GpuEvaluator fma contraction tests (msl, Metal)"

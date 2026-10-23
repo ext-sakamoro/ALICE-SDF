@@ -405,7 +405,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo test --features msl --test test_shader_text_provenance -- --nocapture 2>&1 | tee shader-text-provenance-msl.log
-          python3 scripts/libtest_count.py shader-text-provenance-msl.log --min 9 --what "shader text provenance tests (msl)"
+          python3 scripts/libtest_count.py shader-text-provenance-msl.log --min 13 --what "shader text provenance tests (msl)"
 
       # ALICE-Law G3: GpuEvaluator は macOS の msl で MslShader の MSL (fast math off) を
       # Metal で実行する その経路が積和を融合しないことを、この runner の Metal device で確かめる
