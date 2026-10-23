@@ -397,6 +397,40 @@ fn whole_instanced_wgsl_carries_the_identifier() {
     }
 }
 
+/// The GPU marching cubes passes are whole WGSL compute shaders: `mesh::gpu_mc_shaders` is a
+/// public module, so a caller can take their text (Pass 1 and Pass 3 embed the SDF's `sdf_eval`)
+/// as well as this crate compiling it; each one carries the identifier, and naga still parses it
+#[cfg(feature = "gpu")]
+#[test]
+fn whole_gpu_mc_shaders_carry_the_identifier() {
+    use alice_sdf::compiled::{TranspileMode, WgslShader};
+    use alice_sdf::mesh::gpu_mc_shaders as mc;
+    let parses = |what: &str, text: &str| {
+        assert_whole_tagged(what, text);
+        naga::front::wgsl::parse_str(text)
+            .unwrap_or_else(|e| panic!("{what}: naga does not parse the tagged text: {e}"));
+    };
+    // the pipeline transpiles in Hardcoded mode (src/mesh/gpu_marching_cubes.rs); the passes bind
+    // no parameter buffer, so a Dynamic-mode `sdf_eval` has no `sdf_params` to read
+    for (name, node) in common::corpus::corpus() {
+        let s = WgslShader::transpile(&node, TranspileMode::Hardcoded);
+        parses(
+            &format!("MC Pass 1 {name}"),
+            &mc::generate_sdf_grid_shader(&s),
+        );
+        parses(
+            &format!("MC Pass 3 {name}"),
+            &mc::generate_vertex_shader(&s),
+        );
+    }
+    parses("MC Pass 2", &mc::generate_classify_shader());
+    parses("MC prefix sum scan", &mc::generate_prefix_sum_scan_shader());
+    parses(
+        "MC prefix sum propagate",
+        &mc::generate_prefix_sum_propagate_shader(),
+    );
+}
+
 /// The BlinkScript kernel is the whole text of a Nuke BlinkScript node (`kernel ... :
 /// ImageComputationKernel` with `process`)
 #[cfg(feature = "blinkscript")]
@@ -699,11 +733,21 @@ const WHOLE: &[(&str, &str)] = &[
     ("src/compiled/instanced.rs", "to_instanced_wgsl"),
     ("src/compiled/blinkscript/transpiler.rs", "to_kernel"),
     ("src/npr/scene_composer.rs", "build"),
+    ("src/compiled/msl/transpiler.rs", "wgsl_source"),
+    ("src/mesh/gpu_mc_shaders.rs", "generate_sdf_grid_shader"),
+    ("src/mesh/gpu_mc_shaders.rs", "generate_classify_shader"),
+    ("src/mesh/gpu_mc_shaders.rs", "generate_vertex_shader"),
+    (
+        "src/mesh/gpu_mc_shaders.rs",
+        "generate_prefix_sum_scan_shader",
+    ),
+    (
+        "src/mesh/gpu_mc_shaders.rs",
+        "generate_prefix_sum_propagate_shader",
+    ),
 ];
 
 const FRAGMENT: &str = "fragment: pasted into a host file or graph, not compiled by this crate";
-const INTERNAL: &str =
-    "internal: whole text this crate compiles itself, never read back through the four readers";
 const NOT_SHADER: &str = "not shader text";
 
 const OTHER: &[(&str, &str, &str)] = &[
@@ -769,7 +813,6 @@ const OTHER: &[(&str, &str, &str)] = &[
         NOT_SHADER,
     ),
     ("src/texture/shader.rs", "generate_shader", FRAGMENT),
-    ("src/compiled/msl/transpiler.rs", "wgsl_source", INTERNAL),
     (
         "src/compiled/transpiler_common.rs",
         "generate_shader",
@@ -784,31 +827,6 @@ const OTHER: &[(&str, &str, &str)] = &[
     ),
     ("src/compiled/transpiler_common.rs", "lit", NOT_SHADER),
     ("src/compiled/wgsl/gpu_eval.rs", "device_info", NOT_SHADER),
-    (
-        "src/mesh/gpu_mc_shaders.rs",
-        "generate_classify_shader",
-        INTERNAL,
-    ),
-    (
-        "src/mesh/gpu_mc_shaders.rs",
-        "generate_prefix_sum_propagate_shader",
-        INTERNAL,
-    ),
-    (
-        "src/mesh/gpu_mc_shaders.rs",
-        "generate_prefix_sum_scan_shader",
-        INTERNAL,
-    ),
-    (
-        "src/mesh/gpu_mc_shaders.rs",
-        "generate_sdf_grid_shader",
-        INTERNAL,
-    ),
-    (
-        "src/mesh/gpu_mc_shaders.rs",
-        "generate_vertex_shader",
-        INTERNAL,
-    ),
     (
         "src/npr/compiled_color.rs",
         "emit_wgsl_bytecode_evaluator",
@@ -1185,9 +1203,10 @@ fn samples() -> Vec<(&'static str, &'static str, String)> {
     out
 }
 
-/// The WHOLE / FRAGMENT / INTERNAL label of every table entry follows from its output: an entry
-/// whose text holds a shader entry point is a whole shader (WHOLE, tagged; or INTERNAL), one
-/// without is a fragment. Each label is checked against a sample of the output, so a hand label
+/// The WHOLE / FRAGMENT label of every table entry follows from its output alone: an entry whose
+/// text holds a shader entry point is a whole shader (WHOLE, tagged), one without is a fragment.
+/// No third label exists for whole text, so whole text that leaves the crate untagged cannot be
+/// placed. Each label is checked against a sample of the output, so a hand label
 /// that disagrees with the text fails here
 #[test]
 fn whole_or_fragment_follows_from_the_entry_point() {
@@ -1214,7 +1233,7 @@ fn whole_or_fragment_follows_from_the_entry_point() {
             ));
             continue;
         }
-        let whole_by_label = l == "WHOLE" || l == INTERNAL;
+        let whole_by_label = l == "WHOLE";
         if has_entry_point(text) != whole_by_label {
             problems.push(format!(
                 "{file}: `{name}` is labelled {l:?} but its output holds {} entry point",
@@ -1289,88 +1308,4 @@ fn whole_or_fragment_follows_from_the_entry_point() {
     assert!(compared > 0, "no sample compared");
     assert!(problems.is_empty(), "{}", problems.join("\n"));
     eprintln!("whole_or_fragment_follows_from_the_entry_point: {compared} samples compared");
-}
-
-/// Where `src/` hands each INTERNAL entry's text to a compiler, as (file, name, caller file, the
-/// call in the caller, the compile call in the caller). An INTERNAL entry is whole text that this
-/// crate compiles itself; one without such a caller is a whole shader for the user (WHOLE)
-const INTERNAL_COMPILED_AT: &[(&str, &str, &str, &str, &str)] = &[
-    (
-        "src/mesh/gpu_mc_shaders.rs",
-        "generate_sdf_grid_shader",
-        "src/mesh/gpu_marching_cubes.rs",
-        "gpu_mc_shaders::generate_sdf_grid_shader(",
-        "device.create_shader_module(",
-    ),
-    (
-        "src/mesh/gpu_mc_shaders.rs",
-        "generate_classify_shader",
-        "src/mesh/gpu_marching_cubes.rs",
-        "gpu_mc_shaders::generate_classify_shader(",
-        "device.create_shader_module(",
-    ),
-    (
-        "src/mesh/gpu_mc_shaders.rs",
-        "generate_vertex_shader",
-        "src/mesh/gpu_marching_cubes.rs",
-        "gpu_mc_shaders::generate_vertex_shader(",
-        "device.create_shader_module(",
-    ),
-    (
-        "src/mesh/gpu_mc_shaders.rs",
-        "generate_prefix_sum_scan_shader",
-        "src/mesh/gpu_marching_cubes.rs",
-        "gpu_mc_shaders::generate_prefix_sum_scan_shader(",
-        "device.create_shader_module(",
-    ),
-    (
-        "src/mesh/gpu_mc_shaders.rs",
-        "generate_prefix_sum_propagate_shader",
-        "src/mesh/gpu_marching_cubes.rs",
-        "gpu_mc_shaders::generate_prefix_sum_propagate_shader(",
-        "device.create_shader_module(",
-    ),
-    (
-        "src/compiled/msl/transpiler.rs",
-        "wgsl_source",
-        "src/compiled/msl/transpiler.rs",
-        "wgsl_source: wgsl.to_string()",
-        "naga::front::wgsl::parse_str(wgsl)",
-    ),
-];
-
-#[test]
-fn every_internal_entry_is_compiled_by_this_crate() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let internal: Vec<(&str, &str)> = OTHER
-        .iter()
-        .filter(|(_, _, l)| *l == INTERNAL)
-        .map(|(f, n, _)| (*f, *n))
-        .collect();
-    let mut listed: Vec<(&str, &str)> = INTERNAL_COMPILED_AT
-        .iter()
-        .map(|(f, n, _, _, _)| (*f, *n))
-        .collect();
-    let mut want = internal.clone();
-    listed.sort_unstable();
-    want.sort_unstable();
-    assert_eq!(
-        listed, want,
-        "INTERNAL_COMPILED_AT does not list exactly the INTERNAL entries"
-    );
-    let mut checked = 0;
-    for (file, name, caller, call, compile) in INTERNAL_COMPILED_AT {
-        let code = code_of(&std::fs::read_to_string(root.join(caller)).unwrap());
-        assert!(
-            code.contains(call),
-            "{file}: `{name}` is INTERNAL but {caller} no longer has `{call}`: if nothing in \
-             src/ compiles its text, it is a whole shader for the user (move it to WHOLE and tag it)"
-        );
-        assert!(
-            code.contains(compile),
-            "{file}: `{name}`: {caller} has no compile call `{compile}`"
-        );
-        checked += 1;
-    }
-    assert!(checked > 0, "no INTERNAL entry checked");
 }

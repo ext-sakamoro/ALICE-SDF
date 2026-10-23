@@ -11,6 +11,11 @@
 //! The EDGE_TABLE and TRI_TABLE from Lorensen & Cline are embedded as
 //! WGSL constant arrays for zero-latency lookup on the GPU.
 //!
+//! Every generated shader is whole WGSL (it has a `@compute` entry point), so
+//! it carries this crate's semantics identifier on its first line
+//! (`// alice:semantics_id=<64 hex>`, see [`crate::provenance`]); naga and
+//! wgpu read the line as a comment.
+//!
 //! Author: Moroya Sakamoto
 
 use crate::compiled::WgslShader;
@@ -25,7 +30,7 @@ use crate::compiled::WgslShader;
 /// marching cubes formula, so both paths sample the field at bit-identical
 /// points.
 pub fn generate_sdf_grid_shader(sdf_shader: &WgslShader) -> String {
-    format!(
+    crate::provenance::tagged_shader(&format!(
         r"// ALICE-SDF GPU Marching Cubes - Pass 1: SDF Grid Eval
 
 struct GridUniforms {{
@@ -64,7 +69,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 }}
 ",
         sdf_func = sdf_shader.source,
-    )
+    ))
 }
 
 /// Generate Pass 2 shader: Cell Classification + Vertex Count
@@ -72,7 +77,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// For each cell, compute cube_index from 8 corners and look up
 /// vertex count from TRI_TABLE. Output count per cell for prefix sum.
 pub fn generate_classify_shader() -> String {
-    format!(
+    crate::provenance::tagged_shader(&format!(
         r"// ALICE-SDF GPU Marching Cubes - Pass 2: Cell Classification
 
 struct GridUniforms {{
@@ -149,7 +154,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 ",
         edge_table = generate_edge_table_wgsl(),
         vertex_count_table = generate_vertex_count_table_wgsl(),
-    )
+    ))
 }
 
 /// Uniform block and the "inside" rule shared by the edge passes.
@@ -191,7 +196,7 @@ fn crossings_below(x: u32, y: u32, z: u32, below: u32) -> u32 {
 /// sign-changing edges (0–3) of every grid point and adds them to the
 /// total vertex count.
 pub(crate) fn generate_edge_count_shader() -> String {
-    format!(
+    crate::provenance::tagged_shader(&format!(
         r"// ALICE-SDF GPU Marching Cubes - Pass 2b: Edge Count
 
 @group(0) @binding(0) var<storage, read> sdf_grid: array<f32>;
@@ -212,7 +217,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     }}
 }}
 "
-    )
+    ))
 }
 
 /// Generate Pass 3 shader: Vertex Generation
@@ -224,7 +229,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// normal is the tetrahedral gradient of the SDF at the position, so a
 /// vertex has one value whichever cell refers to it.
 pub fn generate_vertex_shader(sdf_shader: &WgslShader) -> String {
-    format!(
+    crate::provenance::tagged_shader(&format!(
         r"// ALICE-SDF GPU Marching Cubes - Pass 3: Edge Vertex Generation
 
 struct GpuVertex {{
@@ -318,7 +323,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 ",
         common = EDGE_COMMON,
         sdf_func = sdf_shader.source,
-    )
+    ))
 }
 
 /// Generate Pass 4 shader: triangle indices
@@ -328,7 +333,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// point along lower axes), at the cell's offset (exclusive prefix sum of
 /// the Pass 2 counts).
 pub(crate) fn generate_cell_index_shader() -> String {
-    format!(
+    crate::provenance::tagged_shader(&format!(
         r"// ALICE-SDF GPU Marching Cubes - Pass 4: Triangle Indices
 
 @group(0) @binding(0) var<storage, read> sdf_grid: array<f32>;
@@ -394,7 +399,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     }}
 }}
 "
-    )
+    ))
 }
 
 /// The flat triangle table Pass 4 reads through its `TRI_TABLE` storage
@@ -471,7 +476,7 @@ pub const PREFIX_SUM_WG: u32 = 256;
 /// Each workgroup scans a block of `PREFIX_SUM_WG` elements.
 /// Block sums are written to `block_sums` for recursive scanning.
 pub fn generate_prefix_sum_scan_shader() -> String {
-    format!(
+    crate::provenance::tagged_shader(&format!(
         r"// ALICE-SDF GPU Prefix Sum - Scan Pass (Hillis-Steele)
 
 @group(0) @binding(0) var<storage, read> input: array<u32>;
@@ -553,14 +558,14 @@ fn main(
 }}
 ",
         wg = PREFIX_SUM_WG,
-    )
+    ))
 }
 
 /// Generate Prefix Sum Propagate shader
 ///
 /// Adds scanned block sums back to each element (skipping block 0).
 pub fn generate_prefix_sum_propagate_shader() -> String {
-    format!(
+    crate::provenance::tagged_shader(&format!(
         r"// ALICE-SDF GPU Prefix Sum - Propagate Pass
 
 @group(0) @binding(0) var<storage, read_write> data: array<u32>;
@@ -586,7 +591,7 @@ fn main(
 }}
 ",
         wg = PREFIX_SUM_WG,
-    )
+    ))
 }
 
 /// Standard Marching Cubes TRI_TABLE (Lorensen & Cline, 1987)
