@@ -397,6 +397,40 @@ fn whole_instanced_wgsl_carries_the_identifier() {
     }
 }
 
+/// The GPU marching cubes passes are whole WGSL compute shaders: `mesh::gpu_mc_shaders` is a
+/// public module, so a caller can take their text (Pass 1 and Pass 3 embed the SDF's `sdf_eval`)
+/// as well as this crate compiling it; each one carries the identifier, and naga still parses it
+#[cfg(feature = "gpu")]
+#[test]
+fn whole_gpu_mc_shaders_carry_the_identifier() {
+    use alice_sdf::compiled::{TranspileMode, WgslShader};
+    use alice_sdf::mesh::gpu_mc_shaders as mc;
+    let parses = |what: &str, text: &str| {
+        assert_whole_tagged(what, text);
+        naga::front::wgsl::parse_str(text)
+            .unwrap_or_else(|e| panic!("{what}: naga does not parse the tagged text: {e}"));
+    };
+    // the pipeline transpiles in Hardcoded mode (src/mesh/gpu_marching_cubes.rs); the passes bind
+    // no parameter buffer, so a Dynamic-mode `sdf_eval` has no `sdf_params` to read
+    for (name, node) in common::corpus::corpus() {
+        let s = WgslShader::transpile(&node, TranspileMode::Hardcoded);
+        parses(
+            &format!("MC Pass 1 {name}"),
+            &mc::generate_sdf_grid_shader(&s),
+        );
+        parses(
+            &format!("MC Pass 3 {name}"),
+            &mc::generate_vertex_shader(&s),
+        );
+    }
+    parses("MC Pass 2", &mc::generate_classify_shader());
+    parses("MC prefix sum scan", &mc::generate_prefix_sum_scan_shader());
+    parses(
+        "MC prefix sum propagate",
+        &mc::generate_prefix_sum_propagate_shader(),
+    );
+}
+
 /// The BlinkScript kernel is the whole text of a Nuke BlinkScript node (`kernel ... :
 /// ImageComputationKernel` with `process`)
 #[cfg(feature = "blinkscript")]
@@ -703,8 +737,14 @@ const WHOLE: &[(&str, &str)] = &[
     ("src/mesh/gpu_mc_shaders.rs", "generate_sdf_grid_shader"),
     ("src/mesh/gpu_mc_shaders.rs", "generate_classify_shader"),
     ("src/mesh/gpu_mc_shaders.rs", "generate_vertex_shader"),
-    ("src/mesh/gpu_mc_shaders.rs", "generate_prefix_sum_scan_shader"),
-    ("src/mesh/gpu_mc_shaders.rs", "generate_prefix_sum_propagate_shader"),
+    (
+        "src/mesh/gpu_mc_shaders.rs",
+        "generate_prefix_sum_scan_shader",
+    ),
+    (
+        "src/mesh/gpu_mc_shaders.rs",
+        "generate_prefix_sum_propagate_shader",
+    ),
 ];
 
 const FRAGMENT: &str = "fragment: pasted into a host file or graph, not compiled by this crate";
