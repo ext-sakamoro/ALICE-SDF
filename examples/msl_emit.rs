@@ -14,6 +14,9 @@
 //!
 //! Author: Moroya Sakamoto
 
+#[path = "support/stored_text.rs"]
+mod stored_text;
+
 use alice_sdf::compiled::msl::{MslError, MslShader};
 use alice_sdf::compiled::{TranspileMode, WgslShader};
 use alice_sdf::prelude::*;
@@ -65,7 +68,9 @@ fn main() {
 
     match std::env::args().nth(1) {
         Some(path) => {
-            std::fs::write(&path, &kernel.source).expect("write MSL");
+            // a whole shader: it carries the identifier the transpiler wrote (ALICE-Law G8)
+            stored_text::write_whole_text(std::path::Path::new(&path), &kernel.source)
+                .expect("write MSL");
             eprintln!("[msl_emit] wrote {path}");
         }
         None => print!("{}", kernel.source),

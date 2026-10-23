@@ -13,6 +13,9 @@
 //!
 //! Author: Moroya Sakamoto
 
+#[path = "support/stored_text.rs"]
+mod stored_text;
+
 use alice_sdf::compiled::rust::{is_supported, RustSource, RustTranspileOptions};
 use alice_sdf::compiled::{eval_compiled, CompiledSdf};
 use alice_sdf::prelude::*;
@@ -72,7 +75,9 @@ fn main() {
 
     match std::env::args().nth(1) {
         Some(path) => {
-            if let Err(e) = std::fs::write(&path, src.source()) {
+            // the module names the semantics identifier it reproduces (ALICE-Law G8)
+            if let Err(e) = stored_text::write_whole_text(std::path::Path::new(&path), src.source())
+            {
                 eprintln!("write {path}: {e}");
                 std::process::exit(1);
             }

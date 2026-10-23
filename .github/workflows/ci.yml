@@ -134,6 +134,7 @@ jobs:
               - 'unreal-plugin/**'
               - 'include/alice_sdf.h'
               - 'examples/unreal_corpus_oracle.rs'
+              - 'examples/support/stored_text.rs'
               - 'scripts/unreal-*'
             # what changes the API boundary rustdoc enumerates (api-boundary-os job)
             boundary:
@@ -224,6 +225,16 @@ jobs:
       # feature-gated integration oracles (svo: tests/test_svo_query_oracle.rs)
       - name: Test (integration, feature-gated oracles — svo / texture-fit)
         run: cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
+
+      # ALICE-Law G8: the whole texts the examples write (shaders and the generated Rust) carry
+      # the semantics identifier and their fragments carry none (tests/test_g8_example_text.rs),
+      # counted so a feature set that drops the file cannot pass with 0 tests
+      - name: Test (the examples' whole text carries the semantics identifier)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features "msl,glsl,hlsl,blinkscript,rust" --test test_g8_example_text 2>&1 | tee g8-example-text.log
+          python3 scripts/libtest_count.py g8-example-text.log --min 6 --what "example text provenance tests"
 
       # min/max signed-zero Law parity across tree / SIMD / JIT (and SVO bytes).
       # Runs on every matrix OS so the x86_64 and aarch64 legs both assert the
