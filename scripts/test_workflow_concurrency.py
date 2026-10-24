@@ -2,8 +2,8 @@
 """Oracle for scripts/workflow_concurrency.py: a branch-push workflow without the key fails,
 with it passes, tag-only and push-less workflows are exempt, an empty tree fails.
 
-Kept byte-identical in ALICE-LOL, ALICE-SDF and ALICE-DetMath (this file and
-scripts/workflow_concurrency.py); change every copy together."""
+Shared byte-identical by the ALICE crates that carry it (this file and
+scripts/workflow_concurrency.py, ALICE-Law's shared table); change every copy together."""
 import sys
 import tempfile
 import unittest
@@ -83,6 +83,35 @@ class Concurrency(unittest.TestCase):
     def test_mixed_hosted_and_self_hosted_jobs_are_not_exempt(self):
         mixed = "jobs:\n  a:\n    runs-on: [self-hosted, windows]\n  b:\n    runs-on: ubuntu-latest\n"
         self.assertEqual(run("name: x\non:\n  push:\n" + self.REASON + self.REF + mixed), 1)
+
+    # a self-hosted workflow that runs on ci/** through scripts/changed_paths.py: its `changes` job
+    # (decide) and its gate job run on a hosted runner, every other job on the self-hosted one
+    CHANGES = ("  changes:\n    runs-on: ubuntu-latest\n    steps:\n"
+               "      - run: python3 scripts/changed_paths.py decide --patterns-file .github/paths/x.txt\n")
+    HOSTED_GATE = ("  gate:\n    runs-on: ubuntu-latest\n    steps:\n"
+                   "      - run: python3 scripts/changed_paths.py gate --needs-json x\n")
+    SH_JOB = "  a:\n    runs-on: [self-hosted, windows]\n"
+
+    def wf(self, jobs: str) -> str:
+        return "name: x\non:\n  push:\n" + self.REASON + self.REF + "jobs:\n" + jobs
+
+    def test_self_hosted_with_the_changes_and_gate_jobs_passes(self):
+        self.assertEqual(run(self.wf(self.CHANGES + self.SH_JOB + self.HOSTED_GATE)), 0)
+
+    def test_a_hosted_job_besides_changes_and_the_gate_is_not_exempt(self):
+        extra = "  b:\n    runs-on: ubuntu-latest\n"
+        self.assertEqual(run(self.wf(self.CHANGES + self.SH_JOB + extra + self.HOSTED_GATE)), 1)
+
+    def test_a_changes_job_that_does_not_decide_is_not_exempt(self):
+        changes = self.CHANGES.replace("changed_paths.py decide", "something_else.py")
+        self.assertEqual(run(self.wf(changes + self.SH_JOB + self.HOSTED_GATE)), 1)
+
+    def test_a_gate_job_that_does_not_gate_is_not_exempt(self):
+        gate = self.HOSTED_GATE.replace("changed_paths.py gate", "changed_paths.py sync")
+        self.assertEqual(run(self.wf(self.CHANGES + self.SH_JOB + gate)), 1)
+
+    def test_changes_and_gate_without_a_self_hosted_job_are_not_exempt(self):
+        self.assertEqual(run(self.wf(self.CHANGES + self.HOSTED_GATE)), 1)
 
     def test_a_hosted_workflow_with_the_reason_comment_is_not_exempt(self):
         self.assertEqual(run("name: x\non:\n  push:\n" + self.REASON + self.REF + JOBS), 1)

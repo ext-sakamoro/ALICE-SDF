@@ -8,7 +8,9 @@ A workflow whose push trigger names only tags (a release) is exempt, as is one w
 no push trigger. Fails when such a workflow lacks the key, and when no workflow was read.
 
 A workflow whose jobs ALL run on `self-hosted` runners (one machine) may keep one group
-per ref on main instead of one per commit: a per-commit group would let a burst of
+per ref on main instead of one per commit (the `changes` job that runs `changed_paths.py
+decide` and the job that runs `changed_paths.py gate` may run on a hosted runner: they only
+decide and report, so the machine still runs one workflow's jobs): a per-commit group would let a burst of
 pushes queue without bound on that machine, while a per-ref group keeps at most one
 pending run (the latest main commit is always run; an older pending one may be
 superseded). It must say so in a comment line starting with SELF_HOSTED_REASON and
@@ -17,8 +19,8 @@ an in-progress run on main (the cancel rule applies to it unchanged).
 
 usage: workflow_concurrency.py [workflows dir]
 
-Kept byte-identical in ALICE-LOL, ALICE-SDF and ALICE-DetMath (this file and its
-test); change every copy together.
+Shared byte-identical by the ALICE crates that carry it (this file and its test,
+ALICE-Law's shared table); change every copy together.
 """
 from __future__ import annotations
 
@@ -36,10 +38,46 @@ SELF_HOSTED_REASON = "# concurrency: single self-hosted runner"
 MIN_REASON = 12
 
 
+DECIDE_RE = re.compile(r"changed_paths\.py\s+decide\b")
+GATE_RE = re.compile(r"changed_paths\.py\s+gate\b")
+
+
+def jobs_of(text: str) -> dict[str, list[str]]:
+    """job id -> the lines of its block (comment-only lines left out: a comment ends no block)"""
+    lines = [l for l in text.splitlines() if not l.lstrip().startswith("#")]
+    try:
+        start = next(i for i, l in enumerate(lines) if re.match(r"^jobs:\s*$", l))
+    except StopIteration:
+        return {}
+    jobs: dict[str, list[str]] = {}
+    cur = None
+    for l in lines[start + 1:]:
+        if re.match(r"^\S", l):
+            break
+        m = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", l)
+        if m:
+            cur = m.group(1)
+            jobs[cur] = []
+        elif cur is not None:
+            jobs[cur].append(l)
+    return jobs
+
+
 def all_jobs_self_hosted(text: str) -> bool:
-    """whether the workflow has jobs and every `runs-on` names `self-hosted`"""
-    runs = re.findall(r"^\s+runs-on:\s*(.+)$", text, re.M)
-    return bool(runs) and all("self-hosted" in r for r in runs)
+    """whether the workflow has a self-hosted job and every job's `runs-on` names `self-hosted`,
+    apart from changed_paths.py's `changes` job (decide) and its gate job (gate)"""
+    jobs = jobs_of(text)
+    hosted = 0
+    for jid, body in jobs.items():
+        runs = [m.group(1) for l in body if (m := re.match(r"^    runs-on:\s*(.+)$", l))]
+        if runs and all("self-hosted" in r for r in runs):
+            hosted += 1
+            continue
+        joined = "\n".join(body)
+        if (jid == "changes" and DECIDE_RE.search(joined)) or GATE_RE.search(joined):
+            continue
+        return False
+    return hosted > 0
 
 
 def self_hosted_reason(text: str) -> bool:
