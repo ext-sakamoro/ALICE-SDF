@@ -256,7 +256,7 @@ User: "A snowman with a top hat"
 
 LLM-generated shapes are not just visual — they are physics-ready. The `CompiledSdfField` wrapper exposes the SDF as an O(1) collision query surface, enabling rigid body, destruction, and fluid interactions without convex decomposition.
 
-> **Bridge note** — `alice-sdf = { version = "7", features = ["physics"] }` pulls alice-physics from crates.io (since 1.12.0). See [Installation](../README.md#installation).
+> **Bridge note** — `alice-sdf = { version = "7", features = ["physics"] }` pulls alice-physics 4, pinned to a git commit of ALICE-Physics until 4.0.0 is on crates.io (from crates.io since 1.12.0 for the 1.x to 3.x releases). See [Installation](../README.md#installation).
 
 ### Quick Start
 

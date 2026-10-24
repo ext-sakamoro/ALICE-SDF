@@ -288,8 +288,9 @@ cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
 
 依存グラフの `alice-det-math` は 1 つの版にそろえること 2 つの版があると同じ関数の
 実装が 2 つになり、決定性が失われる `cargo tree -i alice-det-math` で確認できる
-この版は `alice-det-math` 0.5 を使い、`physics` feature は同じ 0.5 を使う `alice-physics` 3 を
-要求する (2.x は 0.4)
+この版は `alice-det-math` 0.5 を使い、`physics` feature は同じ 0.5 を使う `alice-physics` 4 を
+要求する (2.x は 0.4) `alice-physics` 4.0.0 は crates.io に未公開なので、依存は ALICE-Physics の
+git の commit に pin し、版の要求 `4` を併記している
 
 リリース履歴は [`CHANGELOG.md`](CHANGELOG.md)、予定は
 [`docs/ROADMAP.md`](docs/ROADMAP.md) にある
@@ -315,7 +316,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 | G4 debug-release-arch-goldens | 適合 |  |
 | G5 release-profile-test-leg | 適合 |  |
 | G6 semantics-id | 適合 | the identifier does not depend on the enabled features: the physics bridge's values cross into alice-physics, which is G7's boundary, not a pin of this crate. … |
-| G7 handshake-carries-id | 未確認 | unverified while pending entries remain (their number and readers are in the header of scripts/api_boundary.toml): the readers of the stored or transmitted … |
+| G7 handshake-carries-id | 適合 | pass: every enumerated entry is a handshake or a reasoned local, none pending (the counts are in the header of scripts/api_boundary.toml; a pending entry with … |
 | G8 persisted-semantics-id | 未達 | the writers of STL (binary and ASCII), 3MF, FBX (binary and ASCII), OBJ (with its MTL), PLY (binary and ASCII) glTF (.glb, .gltf, meshopt .glb, in … |
 | G9 persisted-meaning-change-is-major | 未達 | there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (`src/lib.rs#pub use … |
 | G10 no-run-varying-artifacts | 適合 | the Law path's cache is ExactEvalCache. cache_bridge::SdfEvalCache (feature sdf-cache, not default) stays outside the Law guarantee and says so in its … |
