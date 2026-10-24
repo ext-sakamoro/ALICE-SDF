@@ -1,0 +1,14 @@
+# the paths that run .github/workflows/fuzz.yml (scripts/changed_paths.py decide)
+# on.pull_request.paths of the workflow must list the same patterns in the same order
+# (scripts/changed_paths.py sync)
+# every file that can change a job's result is listed: a missing one skips the job on a
+# change that alters it
+src/**
+Cargo.toml
+fuzz/**
+scripts/fuzz_runs.py
+scripts/test_fuzz_runs.py
+.github/workflows/fuzz.yml
+.github/actions/**
+scripts/changed_paths.py
+.github/paths/fuzz.txt
