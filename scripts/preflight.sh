@@ -278,6 +278,10 @@ cargo deny --all-features check all
 step "machete: unused dependencies"
 cargo machete
 
+step "package: git-pinned dependency patches (security-audit.yml package job)"
+python3 scripts/test_package_git_patches.py
+python3 scripts/package_git_patches.py args >/dev/null
+
 step "stub-guard: todo! / unimplemented! / panic!(STUB) / dbg!() in src/"
 hits=$(grep -rnE 'todo!\(|unimplemented!\(|panic!\([^)]*STUB' src/ --include="*.rs" --exclude-dir=bin || true)
 if [ -n "$hits" ]; then echo "$hits"; echo "stub in src/ (production path)" >&2; exit 1; fi

@@ -64,21 +64,27 @@
 //!
 //! # Snapshots
 //!
-//! As a participant the shape writes (payload version 2, little endian):
+//! As a participant the shape writes (payload version 3, little endian):
 //! `version: u32`, the identifier of what this crate computes
-//! ([`crate::SDF_SEMANTICS_ID`], 32 bytes), the craters (`count: u64`, then `cx, cy, cz, r` as `f32`
+//! ([`crate::SDF_SEMANTICS_ID`], 32 bytes), the identifier of the
+//! `alice-physics` stepping the modifiers ran under
+//! ([`alice_physics::PHYSICS_SEMANTICS_ID`], 32 bytes), the craters (`count: u64`, then `cx, cy, cz, r` as `f32`
 //! bits), the modifiers (`count: u64`, then per modifier `kind: u32`,
 //! `len: u64` and its own participant payload). The base node is not in the
 //! payload: a snapshot restores into a `LiveSdf` built from the same base
 //! with modifiers of the same kinds in the same order. A restore raises the
 //! generation and records the whole space as changed.
 //!
-//! `check_state` refuses a payload whose identifier [`crate::check_sdf_semantics`]
+//! `check_state` refuses a payload whose SDF identifier [`crate::check_sdf_semantics`]
 //! does not accept (a build that computes other distances would continue the
-//! shape on other bits) and a version 1 payload, which carries no identifier.
-//! The modifiers' own payloads are written by `alice-physics` and carry no
-//! identifier of the Physics arithmetic, so a modifier state computed under
-//! another Physics arithmetic is not yet detected.
+//! shape on other bits), one whose Physics identifier is neither this build's
+//! [`alice_physics::PHYSICS_SEMANTICS_ID`] nor one of
+//! [`alice_physics::PREVIOUS_PHYSICS_SEMANTICS_IDS`] (the modifiers' own
+//! payloads, written by `alice-physics`, carry none, so this is the identifier
+//! that names the arithmetic they were stepped under; the same rule as the
+//! header of an `alice-physics` world snapshot), a version 2 payload, which
+//! carries no Physics identifier, and a version 1 payload, which carries
+//! neither.
 //!
 //! Author: Moroya Sakamoto
 
@@ -103,7 +109,7 @@ use alice_physics::thermal::ThermalModifier;
 use alice_physics::world_participant::{
     ObservationSink, Participant, ParticipantFault, ParticipantKind, StateError, SubstepCtx,
 };
-use alice_physics::{Fix128, Vec3Fix};
+use alice_physics::{Fix128, Vec3Fix, PHYSICS_SEMANTICS_ID, PREVIOUS_PHYSICS_SEMANTICS_IDS};
 use glam::Vec3;
 use rayon::prelude::*;
 use std::any::Any;
@@ -112,8 +118,9 @@ use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// Payload version written by [`LiveSdf`]'s `write_state`.
 ///
-/// Version 2 added the semantics identifier after the version.
-const STATE_VERSION: u32 = 2;
+/// Version 2 added the semantics identifier after the version; version 3
+/// added the `alice-physics` identifier after it.
+const STATE_VERSION: u32 = 3;
 
 /// Number of change records kept; a consumer further behind is told
 /// [`DirtyRegion::Everywhere`].
@@ -803,6 +810,11 @@ fn decode_state(bytes: &[u8]) -> Result<DecodedState<'_>, StateError> {
     if !crate::check_sdf_semantics(&id).is_reproducible() {
         return Err(StateError::InvalidValue);
     }
+    let mut physics = [0u8; 32];
+    physics.copy_from_slice(r.take(32)?);
+    if physics != PHYSICS_SEMANTICS_ID && !PREVIOUS_PHYSICS_SEMANTICS_IDS.contains(&physics) {
+        return Err(StateError::InvalidValue);
+    }
     let n = r.u64()?;
     let mut craters = Vec::new();
     for _ in 0..n {
@@ -857,6 +869,7 @@ impl Participant for LiveSdf {
         let s = self.read();
         out.extend_from_slice(&STATE_VERSION.to_le_bytes());
         out.extend_from_slice(&crate::SDF_SEMANTICS_ID);
+        out.extend_from_slice(&PHYSICS_SEMANTICS_ID);
         out.extend_from_slice(&(s.craters.len() as u64).to_le_bytes());
         for c in &s.craters {
             for v in [c.center.x, c.center.y, c.center.z, c.radius] {
