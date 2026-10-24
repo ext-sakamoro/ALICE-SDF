@@ -16,6 +16,7 @@
     "shader"
   ],
   "license": "LicenseRef-Proprietary",
+  "private": true,
   "samples": [
     {
       "displayName": "SDF Gallery - Basic",

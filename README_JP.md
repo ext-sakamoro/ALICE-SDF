@@ -365,6 +365,3 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 `LicenseRef-Proprietary` 条文は [LICENSE-Proprietary](LICENSE-Proprietary)
 
 Enquiries: https://extoria.co.jp/
-
-多くの距離関数は Inigo Quilez、Mercury (hg_sdf)、Ken Perlin が公開した式に従う
-一覧と範囲は [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) にある

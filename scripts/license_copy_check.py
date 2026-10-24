@@ -18,8 +18,7 @@ COPIES = [
     "server/LICENSE-Proprietary",
     "skills/implicit-cad/LICENSE-Proprietary",
     "unity-sdf-universe/LICENSE-Proprietary",
-    # the VRChat package is distributed on its own; Unity packages name the text LICENSE.md
-    "vrchat-package/LICENSE.md",
+    "vrchat-package/LICENSE-Proprietary",
 ]
 def check(root: Path, copies: list[str]) -> int:
     master_path = root / MASTER.name
