@@ -38,7 +38,8 @@
     "webxr"
   ],
   "author": "Moroya Sakamoto <sakamoro@alicelaw.net>",
-  "license": "Apache-2.0",
+  "license": "LicenseRef-Proprietary",
+  "private": true,
   "repository": {
     "type": "git",
     "url": "https://github.com/ext-sakamoro/ALICE-SDF",
