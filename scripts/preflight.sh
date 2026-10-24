@@ -93,6 +93,10 @@ python3 scripts/check_eol.py
 python3 scripts/test_workflow_concurrency.py
 python3 scripts/workflow_concurrency.py
 
+step "changed paths: oracle + trigger lint (no on.push paths off main, pattern files = pull_request paths)"
+python3 scripts/test_changed_paths.py
+python3 scripts/changed_paths.py sync
+
 step "wiring-guard: oracle + 新規の未配線 / 理由の無い dead_code が無い"
 python3 scripts/test_wiring_guard.py
 python3 scripts/wiring_guard.py
