@@ -52,6 +52,10 @@ jobs:
   changes:
     name: Changed paths
     runs-on: ubuntu-latest
+    # the workflow's default shell is pwsh (for the self-hosted Windows job); these steps are bash
+    defaults:
+      run:
+        shell: bash
     timeout-minutes: 5
     outputs:
       run: ${{ steps.policy.outputs.run }}
@@ -151,6 +155,9 @@ jobs:
     if: always()
     needs: [changes, unity-sdf-universe]
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
