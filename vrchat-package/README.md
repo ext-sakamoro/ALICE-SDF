@@ -484,7 +484,9 @@ More (with `grep`-able strings and the reasoning) in [`AGENTS.md`](AGENTS.md) §
 
 ## License
 
-ALICE Community License 1.1 (see LICENSE.md)
+`LicenseRef-Proprietary`. The text is [LICENSE-Proprietary](LICENSE.md).
+
+Enquiries: https://extoria.co.jp/
 
 ## Author
 

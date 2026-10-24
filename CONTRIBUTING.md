@@ -21,9 +21,10 @@ cargo fmt -- --check
 cargo doc --no-deps 2>&1 | grep warning
 ```
 
-## License Boundary Policy (Apache-2.0 Core)
+## Scope Policy
 
-The ALICE-SDF crate is licensed under Apache-2.0. To prevent feature creep
+The ALICE-SDF crate is licensed under `LicenseRef-Proprietary` (see
+[LICENSE-Proprietary](LICENSE-Proprietary)). To prevent feature creep
 that would make the core trivially wrappable as a competing SaaS product, the
 following rules apply:
 
@@ -42,8 +43,7 @@ following rules apply:
 - Billing, metering, or usage tracking
 - Database connections or ORM
 
-These features belong in AGPL-licensed crates (ALICE-CDN, ALICE-API, etc.)
-or commercial modules. See `BRAND_GUIDELINES.md` in ALICE-Eco-System.
+These features belong in other crates (ALICE-CDN, ALICE-API, etc.). See `BRAND_GUIDELINES.md` in ALICE-Eco-System.
 
 ## Design Constraints
 

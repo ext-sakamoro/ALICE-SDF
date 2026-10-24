@@ -512,7 +512,9 @@ grep できる文字列と理由付きの一覧は [`AGENTS.md`](AGENTS.md) §5
 
 ## ライセンス
 
-ALICE Community License 1.1 (LICENSE.md を参照)
+`LicenseRef-Proprietary` 条文は [LICENSE-Proprietary](LICENSE.md)
+
+Enquiries: https://extoria.co.jp/
 
 ## 作者
 

@@ -2,9 +2,10 @@
 name        = "alice-sdf-bevy"
 version     = "0.1.0"
 edition     = "2021"
-authors     = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
+authors     = ["Moroya Sakamoto"]
 description = "Bevy plugin for ALICE-SDF — SDF shapes as Bevy Components, mesh generation as Bevy Assets"
-license     = "Apache-2.0"
+license     = "LicenseRef-Proprietary"
+publish = false
 repository  = "https://github.com/ext-sakamoro/ALICE-SDF"
 keywords    = ["bevy", "sdf", "signed-distance-function", "plugin", "rendering"]
 categories  = ["game-engines", "graphics"]
