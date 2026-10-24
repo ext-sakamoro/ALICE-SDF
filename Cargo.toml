@@ -6,9 +6,10 @@ edition = "2021"
 # 選ばない = lockfile が宣言 MSRV から silent に乖離しない (1.10.3 で 1.75 宣言のまま
 # clap_lex 1.1.0 (edition 2024) を掴んでいた事案の根絶、CI `msrv` job と対)
 resolver = "3"
-authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
+authors = ["Moroya Sakamoto"]
 description = "ALICE-SDF: 3D/Spatial Data Specialist — Store laws, not polygons. GLSL/WGSL/HLSL transpile, SVO, GPU marching cubes, texture-fit, procedural CSG. Optional bridges to alice-physics / alice-codec / libasp / alice-cache behind features."
-license = "Apache-2.0"
+license = "LicenseRef-Proprietary"
+publish = false
 repository = "https://github.com/ext-sakamoro/ALICE-SDF"
 homepage = "https://github.com/ext-sakamoro/ALICE-SDF"
 documentation = "https://docs.rs/alice-sdf"
@@ -36,8 +37,7 @@ include = [
     "/asset/**",
     "/README.md",
     "/README_JP.md",
-    "/LICENSE-APACHE",
-    "/LICENSE-COMMUNITY",
+    "/LICENSE-Proprietary",
     "/TRADEMARK_NOTICE",
     "/THIRD-PARTY-NOTICES.md",
     "/CHANGELOG.md",

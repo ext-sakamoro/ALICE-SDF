@@ -512,7 +512,8 @@ grep できる文字列と理由付きの一覧は [`AGENTS.md`](AGENTS.md) §5
 
 ## ライセンス
 
-ALICE Community License 1.1 (LICENSE.md を参照)
+この版から `LicenseRef-Proprietary` (LICENSE.md を参照) ALICE Community License 1.1 で受け取った
+copy は、受け取った分についてそのライセンスのまま
 
 ## 作者
 

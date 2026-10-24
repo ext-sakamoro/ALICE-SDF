@@ -484,7 +484,8 @@ More (with `grep`-able strings and the reasoning) in [`AGENTS.md`](AGENTS.md) §
 
 ## License
 
-ALICE Community License 1.1 (see LICENSE.md)
+`LicenseRef-Proprietary` from this version (see LICENSE.md). Copies received under the
+ALICE Community License 1.1 keep that licence for what was received.
 
 ## Author
 
