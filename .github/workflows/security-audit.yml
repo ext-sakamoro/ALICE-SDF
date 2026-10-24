@@ -11,18 +11,11 @@ name: Security & Hygiene
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'src/**'
-      - 'deny.toml'
-      - 'scripts/**'
-      - '.github/workflows/security-audit.yml'
-      - '.github/actions/**'
-      - 'examples/*/Cargo.toml'
-      - 'bindings/*/Cargo.toml'
-      - 'bindings/*/*/Cargo.toml'
+    # no paths here: a branch created at a SHA another ref already has gets an empty
+    # diff from GitHub's filter and the run is skipped; the changes job below compares
+    # with merge-base(origin/main) instead (patterns: .github/paths/security-audit.txt)
+    # ci/**: a gate that decides whether a commit may land runs before it lands
+    branches: [main, 'ci/**']
   schedule:
     # 毎週月曜 09:00 UTC = 18:00 JST
     # commit 間で新規公表された CVE を weekly で catch
@@ -41,8 +34,39 @@ env:
   CARGO_HTTP_MULTIPLEXING: "false"
 
 jobs:
+  # which files changed: a new or force-pushed branch is compared with merge-base(origin/main),
+  # another push with before..after, a pull request with base...head; schedule and manual
+  # runs always run; any error runs (fail-closed) — scripts/changed_paths.py
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: decide
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after || github.sha }}
+          CREATED: ${{ github.event.created }}
+          FORCED: ${{ github.event.forced }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python3 scripts/changed_paths.py decide --event "$EVENT"
+          --before "$BEFORE" --after "$AFTER" --created "$CREATED" --forced "$FORCED"
+          --base "$PR_BASE" --head "$PR_HEAD"
+          --patterns-file .github/paths/security-audit.txt
+
   audit:
     name: cargo audit (RustSec CVE scan)
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -66,6 +90,8 @@ jobs:
 
   deny:
     name: cargo-deny (license + advisories + bans + sources)
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -82,6 +108,8 @@ jobs:
 
   unused-deps:
     name: cargo-machete (unused dependencies)
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -94,6 +122,8 @@ jobs:
 
   package-integrity:
     name: Package integrity (publish される .crate が build できるか)
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -135,10 +165,12 @@ jobs:
 
   coverage:
     name: Coverage (cargo-llvm-cov、informational)
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     # Informational by design (not a test gate): coverage is a number to
-    # watch, no threshold is enforced.
-    continue-on-error: true
+    # watch, no threshold is enforced. The step, not the job, may fail: the job
+    # succeeds (the gate needs every job to) and a failure is a warning annotation
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -154,6 +186,9 @@ jobs:
       # set -o pipefail: `| tee` / `| tail` が cargo の exit code を mask して
       # build error を green に見せる
       - name: Run coverage
+        id: coverage
+        continue-on-error: true
+        shell: bash
         run: |
           set -o pipefail
           cargo llvm-cov --lib --summary-only --workspace \
@@ -161,6 +196,9 @@ jobs:
           echo ""
           echo "=== Coverage summary (default features) ==="
           cargo llvm-cov --lib --summary-only 2>&1 | tail -20
+      - name: Report a failed coverage run
+        if: steps.coverage.outcome == 'failure'
+        run: echo "::warning title=coverage::cargo llvm-cov failed; see the Run coverage step and coverage-summary.txt"
 
       - name: Upload coverage summary as artifact
         uses: actions/upload-artifact@v6
@@ -171,6 +209,8 @@ jobs:
 
   stub-guard:
     name: Stub / mock / dbg guard (grep)
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -247,3 +287,17 @@ jobs:
           else
             echo "✓ No TODO/FIXME/XXX/HACK in src/"
           fi
+
+  # red when the changes job said run and a job was skipped, cancelled or failed
+  gate:
+    name: Gate
+    if: always()
+    needs: [changes, audit, deny, unused-deps, package-integrity, coverage, stub-guard]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: gate
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/changed_paths.py gate --needs-json "$NEEDS"
