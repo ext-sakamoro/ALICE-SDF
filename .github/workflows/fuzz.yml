@@ -23,16 +23,6 @@ on:
       - 'scripts/test_fuzz_runs.py'
       - '.github/workflows/fuzz.yml'
       - '.github/actions/**'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'Cargo.toml'
-      - 'fuzz/**'
-      - 'scripts/fuzz_runs.py'
-      - 'scripts/test_fuzz_runs.py'
-      - '.github/workflows/fuzz.yml'
-      - '.github/actions/**'
   schedule:
     # 毎日 03:00 UTC = 12:00 JST (idle 時間帯)
     # 長時間 batch fuzzing の 1 段目、PR 検知漏れの safety net

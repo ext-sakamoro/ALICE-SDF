@@ -10,8 +10,6 @@ on:
   # no paths filter: a new branch at an existing commit would skip the run, and the job takes seconds
   push:
     branches: [main, "ci/**"]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

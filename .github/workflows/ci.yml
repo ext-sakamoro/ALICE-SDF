@@ -4,8 +4,6 @@ on:
   push:
     # ci/**: 取り込み前の branch の CI を main と同じ job で走らせる
     branches: [main, 'ci/**']
-  pull_request:
-    branches: [main]
   # A full run on demand (every job, no path filter): the release gate reads the
   # latest run of this workflow on the publish commit, and a CHANGELOG-only commit
   # would otherwise skip the code jobs, which the gate refuses

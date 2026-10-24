@@ -15,8 +15,6 @@ on:
   push:
     # ci/** runs the whole workflow on a branch before it is landed on main
     branches: [main, "ci/**"]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

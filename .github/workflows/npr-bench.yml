@@ -1,12 +1,6 @@
 name: NPR Benchmark Regression
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "src/npr/**"
-      - "benches/npr_primitives.rs"
-      - ".github/workflows/npr-bench.yml"
   workflow_dispatch:
 
 concurrency:

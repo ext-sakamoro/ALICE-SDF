@@ -34,21 +34,6 @@ on:
       - 'scripts/unreal-*'
       - '.github/workflows/unreal.yml'
       - '.github/actions/**'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'benches/**'
-      - 'examples/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - 'unreal-plugin/**'
-      - 'include/alice_sdf.h'
-      - 'scripts/unreal-*'
-      - '.github/workflows/unreal.yml'
-      - '.github/actions/**'
   # 今日のように engine を入れ直した後で「commit を作らずに検証だけしたい」場合の入口
   # no workflow_dispatch: a job on the self-hosted host may start only from a
   # reviewed push to main (path-filtered), not from a manual run; a manual run

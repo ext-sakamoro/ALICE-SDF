@@ -28,19 +28,6 @@ on:
       - 'tests/test_glsl_glslang_precise.rs'
       - 'tests/common/corpus.rs'
       - '.github/workflows/hlsl-dxc.yml'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'src/compiled/hlsl/**'
-      - 'src/compiled/glsl/**'
-      - 'src/compiled/transpiler_common.rs'
-      - 'src/modifiers/surface_roughness.rs'
-      - 'src/io/nanite.rs'
-      - 'src/texture/shader.rs'
-      - 'tests/test_hlsl_dxc_compile.rs'
-      - 'tests/test_glsl_glslang_precise.rs'
-      - 'tests/common/corpus.rs'
-      - '.github/workflows/hlsl-dxc.yml'
 
 permissions:
   contents: read
