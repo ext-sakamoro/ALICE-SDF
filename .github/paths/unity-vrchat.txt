@@ -1,0 +1,13 @@
+# the paths that run .github/workflows/unity-vrchat.yml (scripts/changed_paths.py decide)
+# on.pull_request.paths of the workflow must list the same patterns in the same order
+# (scripts/changed_paths.py sync)
+# every file that can change a job's result is listed: a missing one skips the job on a
+# change that alters it
+vrchat-package/**
+!vrchat-package/**.md
+!vrchat-package/Documentation~/**
+!vrchat-package/Product~/**
+scripts/unity-*
+.github/workflows/unity-vrchat.yml
+scripts/changed_paths.py
+.github/paths/unity-vrchat.txt

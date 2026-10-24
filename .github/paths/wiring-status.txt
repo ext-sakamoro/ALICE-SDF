@@ -1,0 +1,11 @@
+# the paths that run .github/workflows/wiring-status.yml (scripts/changed_paths.py decide)
+# on.pull_request.paths of the workflow must list the same patterns in the same order
+# (scripts/changed_paths.py sync)
+# every file that can change a job's result is listed: a missing one skips the job on a
+# change that alters it
+src/**/*.rs
+scripts/wiring_guard.py
+scripts/wiring-baseline.txt
+scripts/gen-wiring-status.py
+scripts/changed_paths.py
+.github/paths/wiring-status.txt
