@@ -312,7 +312,7 @@ jobs:
 
       # LiveSdf: one shape for the physics world (collider + participant) and the chunked mesh
       - name: Test (integration, live SDF oracle — physics)
-        run: cargo test --features physics --test test_live_sdf_oracle --test test_live_sdf_closed_loop
+        run: cargo test --features physics --test test_live_sdf_oracle --test test_live_sdf_closed_loop --test test_live_sdf_interrupted
 
       # With `physics`, alice-physics brings its own alice-det-math: the build must still
       # hold one version (two would be two implementations of every function), and the

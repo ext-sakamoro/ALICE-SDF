@@ -390,7 +390,7 @@ step "test: physics bridge determinism oracle"
 cargo test --features physics --test test_physics_bridge_determinism
 
 step "test: live SDF oracle (physics、ci.yml と対)"
-cargo test --features physics --test test_live_sdf_oracle --test test_live_sdf_closed_loop
+cargo test --features physics --test test_live_sdf_oracle --test test_live_sdf_closed_loop --test test_live_sdf_interrupted
 
 step "det-math is one version with physics, and the JIT matches it"
 n=$(cargo tree --features "jit,physics" -i alice-det-math -e normal --prefix none | grep -cE '^alice-det-math v')
