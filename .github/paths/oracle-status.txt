@@ -1,0 +1,10 @@
+# the paths that run .github/workflows/oracle-status.yml (scripts/changed_paths.py decide)
+# on.pull_request.paths of the workflow must list the same patterns in the same order
+# (scripts/changed_paths.py sync)
+# every file that can change a job's result is listed: a missing one skips the job on a
+# change that alters it
+tests/**/*.rs
+src/**/*.rs
+scripts/gen-oracle-status.py
+scripts/changed_paths.py
+.github/paths/oracle-status.txt

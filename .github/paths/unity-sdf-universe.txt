@@ -1,0 +1,15 @@
+# the paths that run .github/workflows/unity-sdf-universe.yml (scripts/changed_paths.py decide)
+# on.pull_request.paths of the workflow must list the same patterns in the same order
+# (scripts/changed_paths.py sync)
+# every file that can change a job's result is listed: a missing one skips the job on a
+# change that alters it
+unity-sdf-universe/**
+!unity-sdf-universe/**.md
+bindings/AliceSdf.cs
+src/**
+Cargo.toml
+Cargo.lock
+rust-toolchain.toml
+.github/workflows/unity-sdf-universe.yml
+scripts/changed_paths.py
+.github/paths/unity-sdf-universe.txt
