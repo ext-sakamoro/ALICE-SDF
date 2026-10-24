@@ -343,6 +343,9 @@ cargo test --lib
 step "test: cargo test --lib --features glsl,hlsl,gpu,texture-fit (shader transpilers + texture-fit)"
 cargo test --lib --features "glsl,hlsl,gpu,texture-fit"
 
+step "test: cargo fetch --locked (the offline metadata lookup of the metal guard test)"
+cargo fetch --locked
+
 step "test: cargo test --tests (integration)"
 cargo test --tests
 

@@ -193,6 +193,27 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
+      # tests/test_metal_library_from_source_only.rs reads `cargo metadata --locked --offline`,
+      # which resolves every platform's dependencies, so the cache has to hold all of them, not
+      # only what this host builds (a cold cache lacks e.g. the Windows-only anstyle-wincon)
+      - name: Fetch every platform's locked crates
+        run: cargo fetch --locked
+
+      # The fetch above is what the offline lookup needs: with an empty cargo home the lookup
+      # must fail, and after `cargo fetch --locked` it must succeed (Linux lane only, no build)
+      - name: Offline metadata needs the fetch (cold cargo home)
+        if: runner.os == 'Linux'
+        run: |
+          export CARGO_HOME="$RUNNER_TEMP/cold-cargo-home"
+          mkdir -p "$CARGO_HOME"
+          if cargo metadata --format-version 1 --locked --offline > /dev/null 2>&1; then
+            echo "::error::offline metadata succeeded with an empty cargo home; this check measures nothing"
+            exit 1
+          fi
+          cargo fetch --locked
+          cargo metadata --format-version 1 --locked --offline > /dev/null
+          echo "offline metadata: fails cold, passes after fetch"
+
       # 主要ビルド (retry あり、本番 HTTP/2 errror 耐性)
       - name: Build (default)
         uses: nick-fields/retry@v4
@@ -916,6 +937,12 @@ jobs:
         with:
           workspaces: |
             mobile/uniffi-wrapper
+
+      # tests/test_metal_library_from_source_only.rs reads `cargo metadata --locked --offline`,
+      # which resolves every platform's dependencies, so the cache has to hold all of them, not
+      # only what this host builds (a cold cache lacks e.g. the Windows-only anstyle-wincon)
+      - name: Fetch every platform's locked crates
+        run: cargo fetch --locked
 
       - name: Add mobile rustup targets
         run: |
