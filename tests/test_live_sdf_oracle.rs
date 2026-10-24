@@ -598,9 +598,12 @@ fn a_snapshot_restores_craters_and_modifiers_bit_for_bit() {
 }
 
 // The payload names what the writer computed. oracle: the documented layout
-// (version 2, then `alice_sdf::SDF_SEMANTICS_ID`) and the rule of
+// (version 3, then `alice_sdf::SDF_SEMANTICS_ID`, then
+// `alice_physics::PHYSICS_SEMANTICS_ID`), the rule of
 // `alice_sdf::check_sdf_semantics` (this build's identifier or one of
-// `PREVIOUS_SDF_SEMANTICS_IDS` is accepted, anything else refused).
+// `PREVIOUS_SDF_SEMANTICS_IDS` is accepted, anything else refused) and the
+// rule of an alice-physics world snapshot header for the Physics identifier
+// (this build's or one of `PREVIOUS_PHYSICS_SEMANTICS_IDS`).
 
 /// A shape with a crater and a stepped modifier, and the payload it writes.
 fn stepped_payload() -> (LiveSdf, Vec<u8>) {
@@ -624,8 +627,78 @@ fn target() -> LiveSdf {
 #[test]
 fn a_snapshot_payload_carries_the_semantics_identifier() {
     let (_, payload) = stepped_payload();
-    assert_eq!(payload[..4], 2u32.to_le_bytes(), "payload version");
+    assert_eq!(payload[..4], 3u32.to_le_bytes(), "payload version");
     assert_eq!(payload[4..36], alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(payload[36..68], alice_physics::PHYSICS_SEMANTICS_ID);
+}
+
+#[test]
+fn a_payload_under_other_physics_semantics_is_refused() {
+    let (_, payload) = stepped_payload();
+    let b = target();
+    let mut refused = 0;
+    for i in 36..68 {
+        let mut other = payload.clone();
+        other[i] ^= 0x01;
+        assert_eq!(
+            b.check_state(&other),
+            Err(StateError::InvalidValue),
+            "Physics identifier byte {}",
+            i - 36
+        );
+        refused += 1;
+    }
+    assert_eq!(refused, 32);
+}
+
+#[test]
+#[should_panic(expected = "read_state called with a payload check_state refuses")]
+fn read_state_refuses_a_payload_under_other_physics_semantics() {
+    let (_, mut payload) = stepped_payload();
+    let mut b = target();
+    payload[36] ^= 0x01;
+    b.read_state(&payload);
+}
+
+#[test]
+fn a_version_2_payload_is_refused() {
+    let (_, payload) = stepped_payload();
+    let b = target();
+    // As version 2 wrote it: the SDF identifier, no Physics identifier.
+    let mut v2 = 2u32.to_le_bytes().to_vec();
+    v2.extend_from_slice(&payload[4..36]);
+    v2.extend_from_slice(&payload[68..]);
+    assert_eq!(b.check_state(&v2), Err(StateError::InvalidValue));
+    // Version 2 with both identifiers is not a layout either.
+    let mut relabelled = payload.clone();
+    relabelled[..4].copy_from_slice(&2u32.to_le_bytes());
+    assert_eq!(b.check_state(&relabelled), Err(StateError::InvalidValue));
+}
+
+#[test]
+fn a_payload_under_a_previous_physics_identifier_restores_bit_for_bit() {
+    let (a, payload) = stepped_payload();
+    assert!(!alice_physics::PREVIOUS_PHYSICS_SEMANTICS_IDS.is_empty());
+    let mut restored = 0;
+    for id in alice_physics::PREVIOUS_PHYSICS_SEMANTICS_IDS {
+        assert_ne!(id, &alice_physics::PHYSICS_SEMANTICS_ID);
+        let mut previous = payload.clone();
+        previous[36..68].copy_from_slice(id);
+        let mut b = target();
+        assert_eq!(b.check_state(&previous), Ok(()));
+        b.read_state(&previous);
+        let mut compared = 0;
+        for p in sample_points() {
+            assert_eq!(a.eval(p).to_bits(), b.eval(p).to_bits(), "at {p}");
+            compared += 1;
+        }
+        assert!(compared > 0);
+        restored += 1;
+    }
+    assert_eq!(
+        restored,
+        alice_physics::PREVIOUS_PHYSICS_SEMANTICS_IDS.len()
+    );
 }
 
 #[test]
@@ -662,7 +735,7 @@ fn a_version_1_payload_is_refused() {
     let b = target();
     // As version 1 wrote it: no identifier after the version.
     let mut v1 = 1u32.to_le_bytes().to_vec();
-    v1.extend_from_slice(&payload[36..]);
+    v1.extend_from_slice(&payload[68..]);
     assert_eq!(b.check_state(&v1), Err(StateError::InvalidValue));
     // Version 1 with an identifier is not a layout either.
     let mut relabelled = payload.clone();
@@ -713,8 +786,9 @@ fn a_world_restore_refuses_the_shape_under_other_semantics() {
     }
     let blob = world.snapshot_world();
 
-    let mut needle = 2u32.to_le_bytes().to_vec();
+    let mut needle = 3u32.to_le_bytes().to_vec();
     needle.extend_from_slice(&alice_sdf::SDF_SEMANTICS_ID);
+    needle.extend_from_slice(&alice_physics::PHYSICS_SEMANTICS_ID);
     let at: Vec<usize> = blob
         .windows(needle.len())
         .enumerate()
@@ -733,24 +807,33 @@ fn a_world_restore_refuses_the_shape_under_other_semantics() {
     let mut other = world_with(&other_live, true, 4);
     assert_eq!(other.restore_world(&blob), Ok(()));
 
-    let mut changed = blob.clone();
-    changed[at[0] + 4] ^= 0x01;
-    let changed = reseal(changed);
-    let fresh_live = LiveSdf::new(slab());
-    fresh_live.add_modifier(erosion());
-    let mut fresh = world_with(&fresh_live, true, 4);
-    assert_eq!(
-        fresh.restore_world(&changed),
-        Err(WorldSnapshotError::ParticipantState {
-            index: 0,
-            error: StateError::InvalidValue,
-        })
-    );
-    assert_eq!(
-        fresh_live.crater_count(),
-        0,
-        "a refused restore leaves the shape"
-    );
+    // The SDF identifier (offset 4) and the Physics identifier the
+    // modifiers ran under (offset 36) are each refused inside the world's
+    // blob, whose own header still names this build's Physics identifier.
+    let mut refused = 0;
+    for offset in [4, 36] {
+        let mut changed = blob.clone();
+        changed[at[0] + offset] ^= 0x01;
+        let changed = reseal(changed);
+        let fresh_live = LiveSdf::new(slab());
+        fresh_live.add_modifier(erosion());
+        let mut fresh = world_with(&fresh_live, true, 4);
+        assert_eq!(
+            fresh.restore_world(&changed),
+            Err(WorldSnapshotError::ParticipantState {
+                index: 0,
+                error: StateError::InvalidValue,
+            }),
+            "identifier at payload offset {offset}"
+        );
+        assert_eq!(
+            fresh_live.crater_count(),
+            0,
+            "a refused restore leaves the shape"
+        );
+        refused += 1;
+    }
+    assert_eq!(refused, 2);
 }
 
 #[test]
