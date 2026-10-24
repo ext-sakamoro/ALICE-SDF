@@ -35,6 +35,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Changed
 - Licence: `Apache-2.0` → `LicenseRef-Proprietary`
+- `.github/dependabot.yml`、`CONTRIBUTING.md` を削除した
 - Licence of the Unity integration (`unity-sdf-universe/`) and the VRChat package (`vrchat-package/`): ALICE Community License 1.1 → `LicenseRef-Proprietary` `LICENSE-COMMUNITY` is removed, `vrchat-package/LICENSE.md` holds the `LICENSE-Proprietary` text and `vrchat-package/package.json` declares `LicenseRef-Proprietary`
 - Every manifest (Cargo.toml, package.json, pyproject.toml) declares `LicenseRef-Proprietary`; the npm packages (`npm/`, `bindings/threejs/`) are `private` Each package directory holds a byte-identical copy of `LICENSE-Proprietary` (`scripts/license_copy_check.py`); `scripts/license_check.py` fails on any other declared licence or on a `LICENSE-MIT` / `LICENSE-APACHE` / `LICENSE-COMMUNITY` file, and on 0 declarations read
 - CI: `scripts/default_dependency_licenses.py` checks that every dependency of the default build has a licence the crate's declared licence takes, reading the declaration and the dependencies with `cargo metadata --locked`: a permissive declaration (`Apache-2.0`, `MIT`) takes permissive dependencies only, `LicenseRef-Proprietary` takes what `deny.toml` allows (its `allow` list, the crate's `[[licenses.exceptions]]`, `[[licenses.clarify]]`) or `LicenseRef-Proprietary`, another declaration fails; reaching nothing or a root without a licence is still exit 2 (before: permissive dependencies only, whatever the declaration)
