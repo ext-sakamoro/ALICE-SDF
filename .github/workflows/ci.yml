@@ -531,6 +531,13 @@ jobs:
         run: python scripts/test_wiring_guard.py
       - name: wiring-guard (新規の未配線 / 理由の無い dead_code が無い)
         run: python scripts/wiring_guard.py
+      # scripts/changed_paths.py decides whether the path-filtered workflows run (its own tests),
+      # then the trigger lint: no on.push paths off main, each pattern file equals its workflow's
+      # pull_request paths, the gate job needs every job
+      - name: Changed paths tests + trigger lint
+        run: |
+          python scripts/test_changed_paths.py
+          python scripts/changed_paths.py sync
       - name: CI test coverage oracle (検査器自身の試験)
         run: python scripts/test_ci_test_coverage_check.py
       - name: CI test coverage (feature 付き oracle を走らせる cargo test が CI にある)

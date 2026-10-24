@@ -84,6 +84,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - texture-fit の f64 の和 2 つ (`spectrum` の行と列の spectrum の和、`fitting` の cost の chunk ごとの誤差の和) が rayon の分割の仕方に依存し、thread 数で最後の bit が変わっていた 並列に計算した値を index の順に集めてからその順に足す (試験 `the_energy_sums_are_in_index_order_on_every_thread_count` / `the_cost_is_summed_in_chunk_order_on_every_thread_count`、1 / 2 / 3 / 8 thread を順の和と bit で比べる)
 - GPU の unit test 6 本 (`gpu_eval` の `test_gpu_eval_*`、`gpu_marching_cubes` の `test_gpu_mc_*`) が adapter の有無しか見ず、adapter はあるが device を作れない環境 (`Parent device is lost`) で `unwrap` が panic していた device の作成まで試す `src/lib.rs` の `gpu_test_support::gpu_ready` で判定し、走ったか飛ばしたかを `gpu-test: ran` / `gpu-test: skipped` の行で残す 飛ばした test も libtest では `ok` なので、CI の lavapipe の job は `ALICE_SDF_REQUIRE_GPU=1` で飛ばしを失敗にし、`scripts/gpu_test_count.py` (試験 `scripts/test_gpu_test_count.py`) で 6 本が走ったことを数える 他の runner では走った数と飛ばした数を log に出す
 - python / godot / wasm の binding に、どの clippy run も compile していなかったため残っていた lint を直した (`Self` の使用、`const fn`、doc の無い wasm の関数、不要な `to_vec`) godot-rust の macro が展開する code の lint は理由つきで `src/godot/mod.rs` で許可した
+- CI: `fuzz.yml` / `hlsl-dxc.yml` / `semver-checks.yml` の on.push から paths filter を外し、`scripts/changed_paths.py` (ALICE-Crypto と同一) と `.github/paths/<workflow>.txt` で実行可否を決める changes job と gate job に移した 新しい `ci/**` branch の最初の push で head の commit が対象 path に触れないと run が作られていなかった CI と preflight で `scripts/test_changed_paths.py` と `scripts/changed_paths.py sync` を実行する
 
 ## [7.0.0] - 2026-10-17
 

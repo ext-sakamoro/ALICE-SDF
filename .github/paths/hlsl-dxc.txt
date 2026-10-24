@@ -1,0 +1,17 @@
+# the paths that run .github/workflows/hlsl-dxc.yml (scripts/changed_paths.py decide)
+# on.pull_request.paths of the workflow must list the same patterns in the same order
+# (scripts/changed_paths.py sync)
+# every file that can change a job's result is listed: a missing one skips the job on a
+# change that alters it
+src/compiled/hlsl/**
+src/compiled/glsl/**
+src/compiled/transpiler_common.rs
+src/modifiers/surface_roughness.rs
+src/io/nanite.rs
+src/texture/shader.rs
+tests/test_hlsl_dxc_compile.rs
+tests/test_glsl_glslang_precise.rs
+tests/common/corpus.rs
+.github/workflows/hlsl-dxc.yml
+scripts/changed_paths.py
+.github/paths/hlsl-dxc.txt
