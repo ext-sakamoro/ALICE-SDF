@@ -20,16 +20,12 @@ name: Unity (unity-sdf-universe)
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'unity-sdf-universe/**'
-      - '!unity-sdf-universe/**.md'
-      - 'bindings/AliceSdf.cs'
-      - 'src/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - '.github/workflows/unity-sdf-universe.yml'
+    # no paths here: a branch created at a SHA another ref already has gets an empty
+    # diff from GitHub's filter and the run is skipped; the changes job below compares
+    # with merge-base(origin/main) instead (patterns: .github/paths/unity-sdf-universe.txt)
+    # ci/**: the owner's ci/ commits run here before they land (user decision); the
+    # changes job and its policy step decide, the job's own `if:` repeats the guard
+    branches: [main, 'ci/**']
   # no workflow_dispatch: a job on the self-hosted host may start only from a
   # reviewed push to main (path-filtered), not from a manual run; a manual run
   # needs an environment with required reviewers first
@@ -40,7 +36,7 @@ on:
 # and a run on main is never cancelled
 concurrency:
   group: unity-sdf-universe-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -50,8 +46,50 @@ defaults:
     shell: pwsh
 
 jobs:
+  # which files changed: a new or force-pushed branch is compared with merge-base(origin/main),
+  # another push with before..after, a pull request with base...head; schedule and manual
+  # runs always run; any error runs (fail-closed) — scripts/changed_paths.py
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.policy.outputs.run }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: decide
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after || github.sha }}
+          CREATED: ${{ github.event.created }}
+          FORCED: ${{ github.event.forced }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python3 scripts/changed_paths.py decide --event "$EVENT"
+          --before "$BEFORE" --after "$AFTER" --created "$CREATED" --forced "$FORCED"
+          --base "$PR_BASE" --head "$PR_HEAD"
+          --patterns-file .github/paths/unity-sdf-universe.txt
+      # the self-hosted host runs only the owner's pushes in this repository (user decision);
+      # a skip by policy is run=false, so the gate expects the job skipped
+      - name: policy
+        id: policy
+        env:
+          DECIDED: ${{ steps.decide.outputs.run }}
+          ALLOWED: ${{ github.repository == 'ext-sakamoro/ALICE-SDF' && github.actor == 'ext-sakamoro' && github.triggering_actor == 'ext-sakamoro' }}
+        run: |
+          if [ "$DECIDED" = true ] && [ "$ALLOWED" = true ]; then run=true; else run=false; fi
+          echo "decided=$DECIDED allowed=$ALLOWED run=$run"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   unity-sdf-universe:
     name: Unity 2022.3.22f1 — compile + native FFI smoke test
+    needs: changes
+    if: needs.changes.outputs.run == 'true' && github.repository == 'ext-sakamoro/ALICE-SDF' && github.actor == 'ext-sakamoro' && github.triggering_actor == 'ext-sakamoro'
     runs-on: [self-hosted, windows, unity]
     timeout-minutes: 30
     steps:
@@ -106,3 +144,17 @@ jobs:
           name: unity-sdf-universe-log
           path: unity-sdf-universe-ci.log
           if-no-files-found: ignore
+
+  # red when the changes job said run and a job was skipped, cancelled or failed
+  gate:
+    name: Gate
+    if: always()
+    needs: [changes, unity-sdf-universe]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: gate
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/changed_paths.py gate --needs-json "$NEEDS"

@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""Tests of scripts/self_hosted_guard.py (fixture workflows written by hand)."""
+from __future__ import annotations
+
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import self_hosted_guard as g  # noqa: E402
+
+GUARD = " && ".join(g.REQUIRED)
+OK = f"""name: Unity
+on:
+  push:
+    branches: [main, 'ci/**']
+concurrency:
+  group: unity-${{{{ github.ref }}}}
+  cancel-in-progress: false
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo
+  unity:
+    needs: changes
+    if: needs.changes.outputs.run == 'true' && {GUARD}
+    runs-on: [self-hosted, windows, unity]
+    steps:
+      - run: echo
+"""
+
+
+class Guard(unittest.TestCase):
+    def check(self, *texts):
+        with tempfile.TemporaryDirectory() as d:
+            for i, t in enumerate(texts):
+                (Path(d) / f"w{i}.yml").write_text(t, encoding="utf-8")
+            return g.check(Path(d))
+
+    def test_a_guarded_job_passes(self):
+        self.assertEqual(self.check(OK), ([], 1))
+
+    def test_each_missing_condition_fails(self):
+        for r in g.REQUIRED:
+            with self.subTest(r=r):
+                errs, _ = self.check(OK.replace(" && " + r, "").replace(r + " && ", ""))
+                self.assertTrue(any("does not require" in e and r in e for e in errs), errs)
+
+    def test_a_job_without_if_fails(self):
+        t = OK.replace(f"    if: needs.changes.outputs.run == 'true' && {GUARD}\n", "")
+        errs, n = self.check(t)
+        self.assertEqual(n, 1)
+        self.assertTrue(any("does not require" in e for e in errs), errs)
+
+    def test_workflow_dispatch_fails(self):
+        errs, _ = self.check(OK.replace("    branches: [main, 'ci/**']\n", "    branches: [main, 'ci/**']\n  workflow_dispatch:\n"))
+        self.assertTrue(any("workflow_dispatch" in e for e in errs), errs)
+
+    def test_a_cancelling_group_fails(self):
+        for c in ("true", "${{ github.ref != 'refs/heads/main' }}"):
+            with self.subTest(c=c):
+                errs, _ = self.check(OK.replace("cancel-in-progress: false", f"cancel-in-progress: {c}"))
+                self.assertTrue(any("cancel-in-progress: false" in e for e in errs), errs)
+        errs, _ = self.check(OK.replace("concurrency:\n  group: unity-${{ github.ref }}\n  cancel-in-progress: false\n", ""))
+        self.assertTrue(any("cancel-in-progress: false" in e for e in errs), errs)
+
+    def test_runs_on_forms(self):
+        for ro in ("self-hosted", "[self-hosted]", "{group: g, labels: [self-hosted, ue5]}"):
+            with self.subTest(ro=ro):
+                errs, n = self.check(OK.replace("runs-on: [self-hosted, windows, unity]", f"runs-on: {ro}"))
+                self.assertEqual((errs, n), ([], 1))
+
+    def test_only_hosted_runners_is_nothing_compared(self):
+        t = OK.replace("runs-on: [self-hosted, windows, unity]", "runs-on: windows-latest")
+        errs, n = self.check(t)
+        self.assertEqual(n, 0)
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "w.yml").write_text(t, encoding="utf-8")
+            self.assertEqual(g.main([d]), 1)
+
+    def test_a_file_outside_the_reader_subset_is_a_finding(self):
+        errs, _ = self.check(OK, "on: &x\n  push: *x\n")
+        self.assertTrue(any("w1.yml" in e for e in errs), errs)
+
+    # the three conditions must be conjuncts of the whole `if:` (a probe that names them but lets
+    # the job run anyway must fail)
+    def with_if(self, cond: str) -> str:
+        # double-quoted: an `if:` that starts with `!` or `'` is otherwise a YAML tag / quoted scalar
+        return OK.replace(f"    if: needs.changes.outputs.run == 'true' && {GUARD}\n", f'    if: "{cond}"\n')
+
+    def test_conditions_not_conjuncts_of_the_whole_expression_fail(self):
+        for cond in (f"{GUARD} || true", f"!({GUARD})", f"always() || {GUARD}",
+                     f"({GUARD}) || github.event_name == 'push'", f"true || ({GUARD})",
+                     f"'{GUARD}'", f"x-${{{{ {GUARD} }}}}",
+                     # && binds tighter: `a || b && R` is `a || (b && R)`, the conditions stay intact
+                     f"true || x == 'y' && {GUARD}",
+                     # a string with an embedded ${{ }} is always true, whatever follows
+                     f"${{{{ true }}}} && {GUARD}"):
+            with self.subTest(cond=cond):
+                errs, n = self.check(self.with_if(cond))
+                self.assertEqual(n, 1)
+                self.assertTrue(errs, cond)
+
+    def test_conjunct_forms_that_hold_pass(self):
+        for cond in (GUARD, f"${{{{ {GUARD} }}}}", f"({GUARD})", f"{GUARD} && (a == 'x' || b == 'y')",
+                     f"(needs.changes.outputs.run == 'true') && {GUARD} && !cancelled()"):
+            with self.subTest(cond=cond):
+                self.assertEqual(self.check(self.with_if(cond)), ([], 1))
+
+    def test_a_matrix_runs_on_is_resolved(self):
+        m = OK.replace("    runs-on: [self-hosted, windows, unity]\n",
+                       "    strategy:\n      matrix:\n        r: [ubuntu-latest, self-hosted]\n"
+                       "    runs-on: ${{ matrix.r }}\n")
+        self.assertEqual(self.check(m), ([], 1))
+        # the same job without the guard is seen as self-hosted and fails
+        errs, n = self.check(m.replace(f" && {GUARD}", ""))
+        self.assertEqual(n, 1)
+        self.assertTrue(errs)
+
+    def test_an_unresolvable_runs_on_expression_is_a_finding(self):
+        for ro in ("${{ vars.RUNNER }}", "${{ matrix.missing }}", "${{ fromJSON(vars.X) }}"):
+            with self.subTest(ro=ro):
+                errs, _ = self.check(OK.replace("runs-on: [self-hosted, windows, unity]", f"runs-on: {ro}"))
+                self.assertTrue(any("cannot resolve" in e for e in errs), errs)
+
+    def test_this_repository_passes(self):
+        errs, n = g.check(Path(__file__).resolve().parent.parent / ".github" / "workflows")
+        self.assertEqual(errs, [])
+        self.assertGreater(n, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

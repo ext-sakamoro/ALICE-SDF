@@ -538,6 +538,12 @@ jobs:
         run: |
           python scripts/test_changed_paths.py
           python scripts/changed_paths.py sync
+      # every job on the self-hosted runner requires the repository, actor and triggering actor
+      # (the owner's own pushes only), and its workflow has no workflow_dispatch and never cancels
+      - name: Self-hosted job guard (tests, then the workflows)
+        run: |
+          python scripts/test_self_hosted_guard.py
+          python scripts/self_hosted_guard.py
       - name: CI test coverage oracle (検査器自身の試験)
         run: python scripts/test_ci_test_coverage_check.py
       - name: CI test coverage (feature 付き oracle を走らせる cargo test が CI にある)

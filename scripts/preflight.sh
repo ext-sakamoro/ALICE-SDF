@@ -97,6 +97,10 @@ step "changed paths: oracle + trigger lint (no on.push paths off main, pattern f
 python3 scripts/test_changed_paths.py
 python3 scripts/changed_paths.py sync
 
+step "self-hosted job guard: oracle + every self-hosted job requires the owner's push"
+python3 scripts/test_self_hosted_guard.py
+python3 scripts/self_hosted_guard.py
+
 step "wiring-guard: oracle + 新規の未配線 / 理由の無い dead_code が無い"
 python3 scripts/test_wiring_guard.py
 python3 scripts/wiring_guard.py
