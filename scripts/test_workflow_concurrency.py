@@ -2,8 +2,8 @@
 """Oracle for scripts/workflow_concurrency.py: a branch-push workflow without the key fails,
 with it passes, tag-only and push-less workflows are exempt, an empty tree fails.
 
-Kept byte-identical in ALICE-LOL, ALICE-SDF and ALICE-DetMath (this file and
-scripts/workflow_concurrency.py); change every copy together."""
+Shared byte-identical by the ALICE crates that carry it (this file and
+scripts/workflow_concurrency.py, ALICE-Law's shared table); change every copy together."""
 import sys
 import tempfile
 import unittest
@@ -84,8 +84,67 @@ class Concurrency(unittest.TestCase):
         mixed = "jobs:\n  a:\n    runs-on: [self-hosted, windows]\n  b:\n    runs-on: ubuntu-latest\n"
         self.assertEqual(run("name: x\non:\n  push:\n" + self.REASON + self.REF + mixed), 1)
 
+    # a self-hosted workflow that runs on ci/** through scripts/changed_paths.py: its `changes` job
+    # (decide) and its gate job run on a hosted runner, every other job on the self-hosted one
+    CHANGES = ("  changes:\n    runs-on: ubuntu-latest\n    steps:\n"
+               "      - run: python3 scripts/changed_paths.py decide --patterns-file .github/paths/x.txt\n")
+    HOSTED_GATE = ("  gate:\n    runs-on: ubuntu-latest\n    steps:\n"
+                   "      - run: python3 scripts/changed_paths.py gate --needs-json \"$NEEDS\"\n")
+    SH_JOB = "  a:\n    runs-on: [self-hosted, windows]\n"
+
+    def wf(self, jobs: str) -> str:
+        return "name: x\non:\n  push:\n" + self.REASON + self.REF + "jobs:\n" + jobs
+
+    def test_self_hosted_with_the_changes_and_gate_jobs_passes(self):
+        self.assertEqual(run(self.wf(self.CHANGES + self.SH_JOB + self.HOSTED_GATE)), 0)
+
+    def test_a_hosted_job_besides_changes_and_the_gate_is_not_exempt(self):
+        extra = "  b:\n    runs-on: ubuntu-latest\n"
+        self.assertEqual(run(self.wf(self.CHANGES + self.SH_JOB + extra + self.HOSTED_GATE)), 1)
+
+    def test_a_changes_job_that_does_not_decide_is_not_exempt(self):
+        changes = self.CHANGES.replace("changed_paths.py decide", "something_else.py")
+        self.assertEqual(run(self.wf(changes + self.SH_JOB + self.HOSTED_GATE)), 1)
+
+    def test_a_gate_job_that_does_not_gate_is_not_exempt(self):
+        gate = self.HOSTED_GATE.replace("changed_paths.py gate", "changed_paths.py sync")
+        self.assertEqual(run(self.wf(self.CHANGES + self.SH_JOB + gate)), 1)
+
+    POLICY = ("      - name: policy\n        run: |\n"
+              "          if [ \"$DECIDED\" = true ] && [ \"$ALLOWED\" = true ]; then run=true; else run=false; fi\n"
+              "          echo \"decided=$DECIDED allowed=$ALLOWED run=$run\"\n"
+              "          echo \"run=$run\" >> \"$GITHUB_OUTPUT\"\n")
+
+    def test_a_changes_job_with_the_policy_step_is_exempt(self):
+        self.assertEqual(run(self.wf(self.CHANGES + self.POLICY + self.SH_JOB + self.HOSTED_GATE)), 0)
+
+    def test_a_changes_job_with_another_step_is_not_exempt(self):
+        for extra in (self.POLICY.replace("run=false", "run=true"), "      - run: cargo build\n"):
+            with self.subTest(extra=extra):
+                self.assertEqual(run(self.wf(self.CHANGES + extra + self.SH_JOB + self.HOSTED_GATE)), 1)
+
+    def test_a_job_that_only_mentions_the_gate_is_not_exempt(self):
+        gate = self.HOSTED_GATE.replace("      - run: python3", "      - run: echo changed_paths.py gate; python3")
+        self.assertEqual(run(self.wf(self.CHANGES + self.SH_JOB + gate)), 1)
+        two = self.HOSTED_GATE + "      - run: cargo build\n"
+        self.assertEqual(run(self.wf(self.CHANGES + self.SH_JOB + two)), 1)
+
+    def test_a_workflow_outside_the_reader_subset_fails(self):
+        self.assertEqual(run("name: x\non: &t\n  push:\n" + GOOD + JOBS), 1)
+
+    def test_changes_and_gate_without_a_self_hosted_job_are_not_exempt(self):
+        self.assertEqual(run(self.wf(self.CHANGES + self.HOSTED_GATE)), 1)
+
     def test_a_hosted_workflow_with_the_reason_comment_is_not_exempt(self):
         self.assertEqual(run("name: x\non:\n  push:\n" + self.REASON + self.REF + JOBS), 1)
+
+    def test_without_the_reader_the_check_fails(self):
+        # scripts/changed_paths.py missing: no fallback to reading lines
+        saved, wc.cp = wc.cp, None
+        try:
+            self.assertEqual(run("name: x\non:\n  pu" "sh:\n" + GOOD + JOBS), 1)
+        finally:
+            wc.cp = saved
 
     def test_no_workflow_fails(self):
         with tempfile.TemporaryDirectory() as d:
