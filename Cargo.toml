@@ -147,7 +147,9 @@ crc32fast = "1.4"
 sha2 = "0.10"
 
 # Bridge deps (optional, crates.io since 1.12.0; alice-font pending publish)
-alice-physics = { version = "3", optional = true }
+# alice-physics 4.0.0 is not on crates.io yet: pinned to the git commit (the facade crate in that
+# repository); the version requirement stays so the resolved package must be 4.x
+alice-physics = { git = "https://github.com/ext-sakamoro/ALICE-Physics", rev = "dfdea463c654005626e47c5c224caed7ca5933fa", version = "4", optional = true }
 alice-codec = { version = "0.1.2", optional = true }
 libasp = { version = "1.0", optional = true }
 alice-cache = { version = "0.2", optional = true }
