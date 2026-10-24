@@ -13,16 +13,11 @@ name: Fuzz
 
 on:
   push:
+    # no paths here: a branch created at a SHA another ref already has gets an empty
+    # diff from GitHub's filter and the run is skipped; the changes job below compares
+    # with merge-base(origin/main) instead (patterns: .github/paths/fuzz.txt)
     # ci/** runs the gate before a land (max 2 targets at a time off main)
     branches: [main, 'ci/**']
-    paths:
-      - 'src/**'
-      - 'Cargo.toml'
-      - 'fuzz/**'
-      - 'scripts/fuzz_runs.py'
-      - 'scripts/test_fuzz_runs.py'
-      - '.github/workflows/fuzz.yml'
-      - '.github/actions/**'
   schedule:
     # 毎日 03:00 UTC = 12:00 JST (idle 時間帯)
     # 長時間 batch fuzzing の 1 段目、PR 検知漏れの safety net
@@ -50,8 +45,39 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # which files changed: a new or force-pushed branch is compared with merge-base(origin/main),
+  # another push with before..after, a pull request with base...head; schedule and manual
+  # runs always run; any error runs (fail-closed) — scripts/changed_paths.py
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: decide
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after || github.sha }}
+          CREATED: ${{ github.event.created }}
+          FORCED: ${{ github.event.forced }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python3 scripts/changed_paths.py decide --event "$EVENT"
+          --before "$BEFORE" --after "$AFTER" --created "$CREATED" --forced "$FORCED"
+          --base "$PR_BASE" --head "$PR_HEAD"
+          --patterns-file .github/paths/fuzz.txt
+
   fuzz:
     name: Fuzz — ${{ matrix.target }}
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -158,3 +184,17 @@ jobs:
       - name: Report crash
         if: failure() && steps.run.outcome == 'failure'
         run: echo "::error::fuzz target ${{ matrix.target }} found a crash — see fuzz-crash-${{ matrix.target }} artifact"
+
+  # red when the changes job said run and a job was skipped, cancelled or failed
+  gate:
+    name: Gate
+    if: always()
+    needs: [changes, fuzz]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: gate
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/changed_paths.py gate --needs-json "$NEEDS"
