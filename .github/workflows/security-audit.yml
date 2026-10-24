@@ -140,10 +140,23 @@ jobs:
       # semver-checks は baseline を build するので結果的に検出するが、
       # (a) 壊れた版を publish した後にしか分からない
       # (b) 未 publish crate は baseline が無く発火しない ので予防にならない
+      # git の rev に pin した依存 (crates.io に未 publish の版) は `cargo package` が git と rev を
+      # 落とすので、展開した crate は crates.io から解決しようとして落ちる Cargo.toml が pin した
+      # rev の [patch.crates-io] を --config で渡し (この job の中だけ)、解決結果を下で照合する
+      - name: pin した git 依存の patch
+        run: |
+          set -euo pipefail
+          python3 scripts/test_package_git_patches.py
+          python3 scripts/package_git_patches.py args > "$RUNNER_TEMP/git-patches.args"
+          echo "patch arguments: $(grep -c '^--config$' "$RUNNER_TEMP/git-patches.args" || true)"
+
       - name: cargo package (.crate を作る)
         # --no-verify: 未 publish の sibling に path dep がある repo では verify step が
         #   registry 解決で落ちる 展開後の隔離 build が本体なので verify は不要
-        run: cargo package --no-verify --allow-dirty
+        run: |
+          set -euo pipefail
+          mapfile -t patches < "$RUNNER_TEMP/git-patches.args"
+          cargo package --no-verify --allow-dirty "${patches[@]}"
 
       - name: 展開して隔離 build
         run: |
@@ -160,8 +173,12 @@ jobs:
           # a consumer resolves dependencies afresh, not from this repository's lock:
           # drop any shipped lock and check that the newest compatible versions still build
           rm -f Cargo.lock
-          cargo check --all-features
+          mapfile -t patches < "$RUNNER_TEMP/git-patches.args"
+          cargo check --all-features "${patches[@]}"
           grep -q '^name = "alice-det-math"$' Cargo.lock || { echo "::error::lock 無しの check で alice-det-math が解決されていない"; exit 1; }
+          # 解決した Cargo.lock が pin した rev か (patch が効いていない / rev が Cargo.toml と違う /
+          # Cargo.toml が pin しない git source は fail)
+          python3 "$GITHUB_WORKSPACE/scripts/package_git_patches.py" verify Cargo.lock
 
   coverage:
     name: Coverage (cargo-llvm-cov、informational)

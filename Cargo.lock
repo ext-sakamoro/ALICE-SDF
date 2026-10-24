@@ -79,9 +79,16 @@ dependencies = [
 
 [[package]]
 name = "alice-physics"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e318b13f808017a2158003cbf1a50a8ea154b217fdc5d65edf7d9f7c0c30dc0b"
+version = "4.0.0"
+source = "git+https://github.com/ext-sakamoro/ALICE-Physics?rev=4a05357053e6e1e362e5d6ef5c9031d1b0e8ad0d#4a05357053e6e1e362e5d6ef5c9031d1b0e8ad0d"
+dependencies = [
+ "alice-physics-core",
+]
+
+[[package]]
+name = "alice-physics-core"
+version = "4.0.0"
+source = "git+https://github.com/ext-sakamoro/ALICE-Physics?rev=4a05357053e6e1e362e5d6ef5c9031d1b0e8ad0d#4a05357053e6e1e362e5d6ef5c9031d1b0e8ad0d"
 dependencies = [
  "alice-det-math",
  "sha2",

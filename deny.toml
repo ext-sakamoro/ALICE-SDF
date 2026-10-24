@@ -57,15 +57,17 @@ allow = [
 [licenses.private]
 ignore = true
 
-# 個別 crate 単位の license 例外
-# ALICE エコシステム内 sibling crate (physics / codec / sdf-cache feature 有効時
-# のみ、default OFF) は AGPL-3.0-or-later だが distribution 経路が異なる
-# (optional feature、内部利用) 全外部依存を許容するのでなく、この 3 crate に
-# 限定した exception として明示 (1.12.0 で crates.io dep として復帰)
+# 個別 crate 単位の license 例外 (ALICE の sibling crate、physics / codec / sdf-cache feature 有効時のみ、default OFF)
+# 外部依存全体でなく、これらの crate に限った exception
 
 [[licenses.exceptions]]
 name = "alice-physics"
-allow = ["AGPL-3.0", "AGPL-3.0-only", "AGPL-3.0-or-later"]
+allow = ["LicenseRef-Proprietary"]
+
+# alice-physics 4 は窓口 crate で、本体は alice-physics-core (同じ repo)
+[[licenses.exceptions]]
+name = "alice-physics-core"
+allow = ["LicenseRef-Proprietary"]
 
 [[licenses.exceptions]]
 name = "alice-codec"
