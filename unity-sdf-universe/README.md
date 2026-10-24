@@ -292,18 +292,9 @@ ALICE (SoA):        [x0,x1,x2,...], [y0,y1,...], [z0,z1,...]  ← SIMD heaven
 
 ## License
 
-This Unity project is under the **ALICE Community License 1.1**. The full and
-canonical text is [LICENSE](LICENSE) in this folder — a byte-identical copy of
-`LICENSE-COMMUNITY` at the repository root.
+`LicenseRef-Proprietary`. The text is [LICENSE-Proprietary](LICENSE-Proprietary).
 
-| Use Case | License |
-|----------|---------|
-| Personal, educational, open-source use | FREE (everyone) |
-| Game development / VRChat worlds, not a Large Enterprise | FREE |
-| Large Enterprise commercial use (> USD 1M consolidated annual revenue) | Commercial |
-| Infrastructure services (cloud, metaverse platforms, streaming) | Commercial |
-
-Content you create is 100% yours. No royalties.
+Enquiries: https://extoria.co.jp/
 
 ## Credits
 

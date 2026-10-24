@@ -111,4 +111,6 @@ function onXRFrame(_t: number, frame: XRFrame) {
 
 ## License
 
-Apache-2.0
+`LicenseRef-Proprietary`. The text is [LICENSE-Proprietary](LICENSE-Proprietary).
+
+Enquiries: https://extoria.co.jp/

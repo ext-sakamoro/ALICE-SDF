@@ -52,4 +52,6 @@ const wgsl = result.to_wgsl();
 
 ## License
 
-Apache-2.0 - Moroya Sakamoto
+`LicenseRef-Proprietary`. The text is [LICENSE-Proprietary](LICENSE-Proprietary).
+
+Enquiries: https://extoria.co.jp/

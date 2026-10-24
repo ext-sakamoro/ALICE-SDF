@@ -7,9 +7,10 @@ version of `alice-sdf` on crates.io. Older versions are not patched.
 
 ## Reporting a vulnerability
 
-Do not open a public issue for a vulnerability. Report it privately by email
-to <sakamoro@alicelaw.net> with the subject
-`[SECURITY] ALICE-SDF: <short description>`.
+Do not open a public issue for a vulnerability. Report it privately, with the
+subject `[SECURITY] ALICE-SDF: <short description>`.
+
+Reports: https://extoria.co.jp/
 
 Include the version, the enabled features, a way to reproduce the problem (a
 tree or file that triggers it is ideal) and the impact you expect. You will get
