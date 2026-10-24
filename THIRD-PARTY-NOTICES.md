@@ -21,7 +21,7 @@ the mesh BVH, and others).
 - Files that name him in a doc comment: 34 (`grep -rl "Inigo Quilez" src/`)
 - Layer in the architecture: `src/primitives/` (`docs/USAGE.md` §Layer 2)
 - Also used as a convention: `iTime` and the Shadertoy-style `mainImage`
-  wrapper emitted by the GLSL transpiler (`docs/ROADMAP.md` ADR)
+  wrapper emitted by the GLSL transpiler
 
 ## Mercury (hg_sdf) — operator forms
 

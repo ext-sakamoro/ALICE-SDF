@@ -5,7 +5,7 @@
 // "Don't send meshes. Send the law of shape."
 //
 // Author: Moroya Sakamoto
-// License: ALICE Community License
+// License: LicenseRef-Proprietary
 // =============================================================================
 
 #ifndef ALICE_SDF_INCLUDE

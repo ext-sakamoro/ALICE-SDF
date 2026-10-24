@@ -5,8 +5,8 @@ API details are on [docs.rs](https://docs.rs/alice-sdf); test status is in
 [`oracle-status.md`](oracle-status.md).
 
 - **Feature**: the Cargo feature the module needs. Blank means it is always
-  available. **AGPL** marks a feature that links an `AGPL-3.0-or-later` crate
-  (see [License](../README.md#license)).
+  available. **AGPL** marks a feature that links a dependency which is
+  `AGPL-3.0-or-later` at the version `Cargo.lock` pins.
 - **Example**: a program in [`examples/`](../examples/) that uses the module
   (`cargo run --release --example <name>`).
 
