@@ -1,7 +1,0 @@
-This subtree is part of ALICE-SDF and is licensed under Apache-2.0,
-matching the crate. See LICENSE-APACHE at the repository root for the
-full text. Releases up to 5.1.1 remain available under their published
-terms (MIT OR Apache-2.0).
-
-The Unity and VRChat integrations (unity-sdf-universe/, vrchat-package/)
-have their own terms; see LICENSE-COMMUNITY at the repository root.

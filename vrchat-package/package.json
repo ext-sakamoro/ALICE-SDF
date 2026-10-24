@@ -15,7 +15,7 @@
     "udon",
     "shader"
   ],
-  "license": "SEE LICENSE IN LICENSE.md",
+  "license": "LicenseRef-Proprietary",
   "samples": [
     {
       "displayName": "SDF Gallery - Basic",

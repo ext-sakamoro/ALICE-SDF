@@ -29,7 +29,8 @@
     "marching-cubes"
   ],
   "author": "Moroya Sakamoto",
-  "license": "Apache-2.0",
+  "license": "LicenseRef-Proprietary",
+  "private": true,
   "repository": {
     "type": "git",
     "url": "https://github.com/ext-sakamoro/ALICE-SDF"

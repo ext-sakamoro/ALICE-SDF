@@ -580,11 +580,11 @@ jobs:
         run: python scripts/shader_fma_guard.py
       - name: license copy oracle (検査器自身の試験)
         run: python3 scripts/license_copy_check.py --self-test
-      - name: license copy (sub-package の license が root と byte 一致、比較 0 件で fail)
+      - name: license copy (sub-package の LICENSE-Proprietary が root と byte 一致、比較 0 件で fail)
         run: python3 scripts/license_copy_check.py
       - name: license declarations oracle (検査器自身の試験)
         run: python3 scripts/license_check.py --self-test
-      - name: license declarations (全 manifest の license が Apache-2.0、Community subtree は許可リスト、比較 0 件で fail)
+      - name: license declarations (全 manifest の license が LicenseRef-Proprietary、比較 0 件で fail)
         run: python3 scripts/license_check.py
       # G1, libm half: a direct libm dependency must come with the libm:: ban
       # in clippy.toml and scripts/libm_ban_check.py (0 manifests read fails)
@@ -599,9 +599,10 @@ jobs:
       # G13: the library's hash collections are src/unordered.rs's wrappers, which
       # cannot be iterated (tests/test_unordered_no_iteration.rs); the types are
       # banned elsewhere by the library clippy configuration
-      # G10: the default build (the Law path) links permissive crates only; the
-      # optional AGPL bridges (physics / codec / sdf-cache) stay outside it
-      - name: Default-build dependency licences (test, then check)
+      # every dependency of the default build has a licence the crate's declared licence
+      # takes (cargo metadata --locked): permissive only for a permissive declaration,
+      # the deny.toml policy or LicenseRef-Proprietary for LicenseRef-Proprietary
+      - name: Default-build dependency licences (test, then check against the declared licence)
         run: |
           python scripts/test_default_dependency_licenses.py
           python scripts/default_dependency_licenses.py

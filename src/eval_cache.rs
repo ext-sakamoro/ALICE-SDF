@@ -14,7 +14,7 @@
 //! and target.
 //!
 //! This is the cache of the Law path (ALICE-Law G10). `cache_bridge::SdfEvalCache`
-//! (feature `sdf-cache`, the AGPL `alice-cache` crate) quantises points to grid cells and
+//! (feature `sdf-cache`, the `alice-cache` crate) quantises points to grid cells and
 //! evicts by its dependency's hasher; it is outside the Law guarantee.
 
 use glam::Vec3;

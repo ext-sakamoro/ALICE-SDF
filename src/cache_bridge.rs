@@ -6,8 +6,8 @@
 //! **Outside the ALICE-Law guarantee.** Points are quantised to grid cells, so a
 //! hit can return the distance of another point in the same cell, and which
 //! entries survive eviction depends on `alice-cache`'s hasher (and, under
-//! concurrent use, on thread timing). The feature (`sdf-cache`) is not default
-//! and links an AGPL crate. The deterministic, exact-key cache is
+//! concurrent use, on thread timing). The feature (`sdf-cache`) is not default.
+//! The deterministic, exact-key cache is
 //! [`crate::ExactEvalCache`].
 
 use alice_cache::AliceCache;

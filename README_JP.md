@@ -14,7 +14,7 @@ JIT)、GLSL・WGSL・HLSL・Metal に変換し、メッシュや各種ファイ�
 [![docs.rs](https://img.shields.io/docsrs/alice-sdf)](https://docs.rs/alice-sdf)
 [![MSRV](https://img.shields.io/crates/msrv/alice-sdf)](#最小対応-rust-バージョン)
 [![CI](https://github.com/ext-sakamoro/ALICE-SDF/actions/workflows/ci.yml/badge.svg)](https://github.com/ext-sakamoro/ALICE-SDF/actions/workflows/ci.yml)
-[![License](https://img.shields.io/crates/l/alice-sdf.svg)](#ライセンス)
+[![License](https://img.shields.io/badge/license-Proprietary-lightgrey)](LICENSE-Proprietary)
 
 同じ木がすべてのバックエンドを駆動し、CPU の評価器どうしは CI が検証する全
 プラットフォームで同じビット列を返す そのため木を形状の唯一の記述として使える
@@ -184,10 +184,6 @@ feature 付きで実行する CI ステップが無いと CI を失敗させる 
 
 ## Cargo feature
 
-**AGPL** と記した feature は `AGPL-3.0-or-later` の crate をリンクする
-[ライセンス](#ライセンス) を参照 既定を含むそれ以外の feature は、寛容なライセンスの
-crate だけを取り込む
-
 <!-- readme-sync: features -->
 | Feature | 既定 | 説明 |
 |---------|:-------:|-------------|
@@ -217,9 +213,9 @@ crate だけを取り込む
 | `godot` | | Godot 4 GDExtension |
 | `wasm` | | `wasm-bindgen` による WebAssembly バインディング (`wasm32` 向けのみビルド) |
 | `openvdb` | | OpenVDB の float grid の入出力 |
-| `physics` | | **AGPL** [`alice-physics`](https://crates.io/crates/alice-physics) 向けの SDF コライダーとシミュレーションモディファイア、および `LiveSdf` (world のコライダー・world の参加者・chunk 単位の描画 mesh が 1 つの形を共有し、変化が届く chunk だけを再 mesh する `LiveSdf::apply_world_contacts` が直前の step で world が記録した接触を crater に変え、形が変わると world が寝ている body を起こす) |
-| `codec` | | **AGPL** [`alice-codec`](https://crates.io/crates/alice-codec) によるボリューム圧縮 |
-| `sdf-cache` | | **AGPL** [`alice-cache`](https://crates.io/crates/alice-cache) による評価キャッシュ |
+| `physics` | | [`alice-physics`](https://crates.io/crates/alice-physics) 向けの SDF コライダーとシミュレーションモディファイア、および `LiveSdf` (world のコライダー・world の参加者・chunk 単位の描画 mesh が 1 つの形を共有し、変化が届く chunk だけを再 mesh する `LiveSdf::apply_world_contacts` が直前の step で world が記録した接触を crater に変え、形が変わると world が寝ている body を起こす) |
+| `codec` | | [`alice-codec`](https://crates.io/crates/alice-codec) によるボリューム圧縮 |
+| `sdf-cache` | | [`alice-cache`](https://crates.io/crates/alice-cache) による評価キャッシュ |
 | `asp` | | [`libasp`](https://crates.io/crates/libasp) による ALICE Streaming Protocol パケット (既定 feature のみ) |
 | `font` | | `alice-font` のグリフ輪郭 crates.io 版では無効: `--cfg alice_font_bridge` とローカルの `alice-font` も必要 |
 
@@ -363,24 +359,13 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 
 ## ライセンス
 
-crate は `Apache-2.0` ([LICENSE-APACHE](LICENSE-APACHE)) `alice-det-math` 0.5 に合わせる
-5.1.1 までの release は公開時の条件 (`MIT OR Apache-2.0`) のまま
-
-`physics`、`codec`、`sdf-cache` の各 feature は `AGPL-3.0-or-later` の crate を
-リンクする いずれかを有効にしたビルドは全体が AGPL の対象になる 既定の feature と
-それ以外の feature は対象にならない
-
-Unity 統合 ([`unity-sdf-universe/`](unity-sdf-universe/)) と VRChat パッケージ
-([`vrchat-package/`](vrchat-package/)) は ALICE Community License 1.1
-([LICENSE-COMMUNITY](LICENSE-COMMUNITY)): 個人利用・教育・オープンソースは誰でも無償
-ゲーム開発と VRChat ワールド / コンテンツは「大手」以外は無償 インフラサービス
-(クラウド、メタバースプラットフォーム、ストリーミング) と「大手」による商用利用
-(商用ゲーム・出版・商用製品・VRChat ワールド等、有償無償を問わない) には商用ライセンスが
-必要 「大手」= 関連会社を含む連結の年間売上が USD 100 万 (約 1.5 億円) を超える事業者 商用ライセンスの問い合わせ: <contact@extoria.co.jp>
-
-この crate で作ったコンテンツ (木、メッシュ、ワールド) はあなたのもの
+この版から `LicenseRef-Proprietary`: ソースは閲覧用に公開しており、利用・複製・改変・配布には
+著作権者との書面での合意が必要 条文は [LICENSE-Proprietary](LICENSE-Proprietary)
+それより前に公開した版は、公開時のライセンスのまま Unity 統合と VRChat パッケージを
+ALICE Community License 1.1 で受け取った copy は、受け取った分についてそのライセンスのまま
+この版からはすべて `LicenseRef-Proprietary`
 
 多くの距離関数は Inigo Quilez、Mercury (hg_sdf)、Ken Perlin が公開した式に従う
 一覧と範囲は [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) にある
 
-Copyright (C) 2025-2026 Moroya Sakamoto
+ライセンスの問い合わせ: <contact@extoria.co.jp>

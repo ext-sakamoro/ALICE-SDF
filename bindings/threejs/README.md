@@ -111,4 +111,4 @@ function onXRFrame(_t: number, frame: XRFrame) {
 
 ## License
 
-Apache-2.0
+`LicenseRef-Proprietary` ([LICENSE-Proprietary](LICENSE-Proprietary))
