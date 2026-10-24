@@ -1,0 +1,19 @@
+# the paths that run .github/workflows/unreal.yml (scripts/changed_paths.py decide)
+# on.pull_request.paths of the workflow must list the same patterns in the same order
+# (scripts/changed_paths.py sync)
+# every file that can change a job's result is listed: a missing one skips the job on a
+# change that alters it
+src/**
+tests/**
+benches/**
+examples/**
+Cargo.toml
+Cargo.lock
+rust-toolchain.toml
+unreal-plugin/**
+include/alice_sdf.h
+scripts/unreal-*
+.github/workflows/unreal.yml
+.github/actions/**
+scripts/changed_paths.py
+.github/paths/unreal.txt

@@ -20,20 +20,12 @@ name: Unreal
 # おらず、効かなかった時に気付けるのが PR を作った時だけになるため。
 on:
   push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'benches/**'
-      - 'examples/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - 'unreal-plugin/**'
-      - 'include/alice_sdf.h'
-      - 'scripts/unreal-*'
-      - '.github/workflows/unreal.yml'
-      - '.github/actions/**'
+    # no paths here: a branch created at a SHA another ref already has gets an empty
+    # diff from GitHub's filter and the run is skipped; the changes job below compares
+    # with merge-base(origin/main) instead (patterns: .github/paths/unreal.txt)
+    # ci/**: the owner's ci/ commits run here before they land (user decision); the
+    # changes job and its policy step decide, the job's own `if:` repeats the guard
+    branches: [main, 'ci/**']
   # 今日のように engine を入れ直した後で「commit を作らずに検証だけしたい」場合の入口
   # no workflow_dispatch: a job on the self-hosted host may start only from a
   # reviewed push to main (path-filtered), not from a manual run; a manual run
@@ -46,17 +38,56 @@ on:
 # concurrency: single self-hosted runner: one UE5 machine runs 5.7 and 5.8 in about 100 minutes, a group per commit would queue every push on it
 concurrency:
   group: unreal-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # which files changed: a new or force-pushed branch is compared with merge-base(origin/main),
+  # another push with before..after, a pull request with base...head; schedule and manual
+  # runs always run; any error runs (fail-closed) — scripts/changed_paths.py
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.policy.outputs.run }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: decide
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after || github.sha }}
+          CREATED: ${{ github.event.created }}
+          FORCED: ${{ github.event.forced }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python3 scripts/changed_paths.py decide --event "$EVENT"
+          --before "$BEFORE" --after "$AFTER" --created "$CREATED" --forced "$FORCED"
+          --base "$PR_BASE" --head "$PR_HEAD"
+          --patterns-file .github/paths/unreal.txt
+      # the self-hosted host runs only the owner's pushes in this repository (user decision);
+      # a skip by policy is run=false, so the gate expects the job skipped
+      - name: policy
+        id: policy
+        env:
+          DECIDED: ${{ steps.decide.outputs.run }}
+          ALLOWED: ${{ github.repository == 'ext-sakamoro/ALICE-SDF' && github.actor == 'ext-sakamoro' && github.triggering_actor == 'ext-sakamoro' && vars.UE5_RUNNER == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        run: |
+          if [ "$DECIDED" = true ] && [ "$ALLOWED" = true ]; then run=true; else run=false; fi
+          echo "decided=$DECIDED allowed=$ALLOWED run=$run"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   unreal-ue5:
     name: Unreal Engine — BuildPlugin + automation (${{ matrix.engine }})
-    if: >-
-      vars.UE5_RUNNER == 'true'
-      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: changes
+    if: needs.changes.outputs.run == 'true' && github.repository == 'ext-sakamoro/ALICE-SDF' && github.actor == 'ext-sakamoro' && github.triggering_actor == 'ext-sakamoro' && vars.UE5_RUNNER == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     strategy:
       fail-fast: false
       matrix:
@@ -84,3 +115,17 @@ jobs:
         if: always()
         shell: pwsh
         run: if (Test-Path "E:\alice-ci\ue5-${{ github.run_id }}") { Remove-Item -Recurse -Force "E:\alice-ci\ue5-${{ github.run_id }}" }
+
+  # red when the changes job said run and a job was skipped, cancelled or failed
+  gate:
+    name: Gate
+    if: always()
+    needs: [changes, unreal-ue5]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: gate
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/changed_paths.py gate --needs-json "$NEEDS"
