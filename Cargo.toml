@@ -8,7 +8,8 @@ edition = "2021"
 resolver = "3"
 authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
 description = "ALICE-SDF: 3D/Spatial Data Specialist — Store laws, not polygons. GLSL/WGSL/HLSL transpile, SVO, GPU marching cubes, texture-fit, procedural CSG. Optional bridges to alice-physics / alice-codec / libasp / alice-cache behind features."
-license = "Apache-2.0"
+license = "LicenseRef-Proprietary"
+publish = false
 repository = "https://github.com/ext-sakamoro/ALICE-SDF"
 homepage = "https://github.com/ext-sakamoro/ALICE-SDF"
 documentation = "https://docs.rs/alice-sdf"
@@ -36,8 +37,7 @@ include = [
     "/asset/**",
     "/README.md",
     "/README_JP.md",
-    "/LICENSE-APACHE",
-    "/LICENSE-COMMUNITY",
+    "/LICENSE-Proprietary",
     "/TRADEMARK_NOTICE",
     "/THIRD-PARTY-NOTICES.md",
     "/CHANGELOG.md",

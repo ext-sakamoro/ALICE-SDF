@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The default build of alice-sdf links permissively licensed crates only.
 
-alice-sdf is Apache-2.0. Some optional features (`physics`, `codec`, `sdf-cache`)
+alice-sdf itself is LicenseRef-Proprietary and is not checked. Some optional features (`physics`, `codec`, `sdf-cache`)
 link crates under the AGPL or a commercial licence; they are not default and not part
 of the Law path. This reads `cargo metadata` with the default features, walks the
 resolved graph from alice-sdf along normal and build dependencies (not dev), and

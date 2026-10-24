@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
 description = "ALICE-SDF WebAssembly Demo"
-license = "Apache-2.0"
+license = "LicenseRef-Proprietary"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

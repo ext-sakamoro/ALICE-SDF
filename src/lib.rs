@@ -40,9 +40,6 @@
 //!
 //! ## Cargo features
 //!
-//! The `physics`, `codec` and `sdf-cache` features link crates licensed
-//! `AGPL-3.0-or-later`; the default features and all others do not.
-//!
 //! <!-- readme-sync: features -->
 //! | Feature | Default | Description |
 //! |---------|:-------:|-------------|
@@ -72,9 +69,9 @@
 //! | `godot` | | Godot 4 GDExtension. |
 //! | `wasm` | | WebAssembly bindings through `wasm-bindgen` (built for `wasm32` only). |
 //! | `openvdb` | | OpenVDB float grid input and output. |
-//! | `physics` | | **AGPL.** SDF colliders and simulation modifiers for [`alice-physics`](https://crates.io/crates/alice-physics). |
-//! | `codec` | | **AGPL.** Volume compression with [`alice-codec`](https://crates.io/crates/alice-codec). |
-//! | `sdf-cache` | | **AGPL.** Evaluation cache with [`alice-cache`](https://crates.io/crates/alice-cache). |
+//! | `physics` | | SDF colliders and simulation modifiers for [`alice-physics`](https://crates.io/crates/alice-physics). |
+//! | `codec` | | Volume compression with [`alice-codec`](https://crates.io/crates/alice-codec). |
+//! | `sdf-cache` | | Evaluation cache with [`alice-cache`](https://crates.io/crates/alice-cache). |
 //! | `asp` | | ALICE Streaming Protocol packets with [`libasp`](https://crates.io/crates/libasp) (its default features only). |
 //! | `font` | | Glyph outlines from `alice-font`. Inert on crates.io: also needs `--cfg alice_font_bridge` and a local `alice-font`. |
 //!

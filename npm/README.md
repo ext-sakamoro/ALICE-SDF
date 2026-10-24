@@ -52,4 +52,4 @@ const wgsl = result.to_wgsl();
 
 ## License
 
-Apache-2.0 - Moroya Sakamoto
+`LicenseRef-Proprietary` ([LICENSE-Proprietary](LICENSE-Proprietary)) - Moroya Sakamoto

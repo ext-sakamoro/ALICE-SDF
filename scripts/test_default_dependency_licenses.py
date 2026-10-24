@@ -34,12 +34,12 @@ class Licences(unittest.TestCase):
 
 class Graph(unittest.TestCase):
     def test_a_permissive_tree_passes(self):
-        m = meta({"root": "Apache-2.0", "a": "MIT", "b": "Zlib"},
+        m = meta({"root": "LicenseRef-Proprietary", "a": "MIT", "b": "Zlib"},
                  {"root": [("a", None)], "a": [("b", "build")]})
         self.assertEqual(d.check(m), ([], 2))
 
     def test_an_agpl_crate_reached_fails(self):
-        m = meta({"root": "Apache-2.0", "a": "MIT", "c": "AGPL-3.0-or-later"},
+        m = meta({"root": "LicenseRef-Proprietary", "a": "MIT", "c": "AGPL-3.0-or-later"},
                  {"root": [("a", None)], "a": [("c", None)]})
         problems, n = d.check(m)
         self.assertEqual(n, 2)
@@ -47,12 +47,12 @@ class Graph(unittest.TestCase):
         self.assertIn("c 1.0.0", problems[0])
 
     def test_dev_dependencies_and_unreached_packages_do_not_count(self):
-        m = meta({"root": "Apache-2.0", "a": "MIT", "t": "AGPL-3.0-or-later", "x": "GPL-3.0"},
+        m = meta({"root": "LicenseRef-Proprietary", "a": "MIT", "t": "AGPL-3.0-or-later", "x": "GPL-3.0"},
                  {"root": [("a", None), ("t", "dev")]})
         self.assertEqual(d.check(m), ([], 1))
 
     def test_nothing_reached_is_exit_2(self):
-        m = meta({"root": "Apache-2.0"}, {})
+        m = meta({"root": "LicenseRef-Proprietary"}, {})
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
             json.dump(m, f)
         try:

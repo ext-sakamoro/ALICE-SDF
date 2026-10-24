@@ -580,11 +580,11 @@ jobs:
         run: python scripts/shader_fma_guard.py
       - name: license copy oracle (検査器自身の試験)
         run: python3 scripts/license_copy_check.py --self-test
-      - name: license copy (sub-package の license が root と byte 一致、比較 0 件で fail)
+      - name: license copy (sub-package の LICENSE-Proprietary が root と byte 一致、比較 0 件で fail)
         run: python3 scripts/license_copy_check.py
       - name: license declarations oracle (検査器自身の試験)
         run: python3 scripts/license_check.py --self-test
-      - name: license declarations (全 manifest の license が Apache-2.0、Community subtree は許可リスト、比較 0 件で fail)
+      - name: license declarations (全 manifest の license が LicenseRef-Proprietary、比較 0 件で fail)
         run: python3 scripts/license_check.py
       # G1, libm half: a direct libm dependency must come with the libm:: ban
       # in clippy.toml and scripts/libm_ban_check.py (0 manifests read fails)

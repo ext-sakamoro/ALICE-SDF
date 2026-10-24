@@ -97,11 +97,11 @@ step "wiring-guard: oracle + 新規の未配線 / 理由の無い dead_code が�
 python3 scripts/test_wiring_guard.py
 python3 scripts/wiring_guard.py
 
-step "license copies: oracle + sub-package の license が root LICENSE-COMMUNITY と byte 一致 (比較 0 件で fail)"
+step "license copies: oracle + sub-package の license が root LICENSE-Proprietary と byte 一致 (比較 0 件で fail)"
 python3 scripts/license_copy_check.py --self-test
 python3 scripts/license_copy_check.py
 
-step "license declarations: oracle + 全 manifest の license が Apache-2.0 (Community subtree は許可リスト、比較 0 件で fail)"
+step "license declarations: oracle + 全 manifest の license が LicenseRef-Proprietary (比較 0 件で fail)"
 python3 scripts/license_check.py --self-test
 python3 scripts/license_check.py
 
