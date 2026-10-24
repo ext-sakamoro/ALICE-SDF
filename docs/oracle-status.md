@@ -164,11 +164,9 @@ Per-file counts (the test names are in `tests/`):
 
 ---
 
-## How to Contribute
+## Closing an oracle
 
 When an oracle goes green:
 1. Remove `#[ignore]` from the test (and the companion test that pins the old behaviour, if the reason says so)
 2. Implement the corresponding functionality in `src/`
 3. Run `cargo test <test_name>` to verify
-
-For details: [CONTRIBUTING.md](../CONTRIBUTING.md)
