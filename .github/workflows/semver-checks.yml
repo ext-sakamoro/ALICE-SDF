@@ -9,35 +9,13 @@ name: Semver checks
 # version until the next release is cut, and an equal version is checked as the
 # smallest next release (`equal-version` in .github/semver-gate.toml).
 #
-# Not on every push: only on a change to the files listed under paths below (every
-# file the job executes or reads), and weekly (a release on crates.io can change the
-# baseline without a commit here).
+# Dormant: these crates are not published to crates.io or served to outside users,
+# so the check runs only when started by hand (workflow_dispatch). It has no changes
+# job and no gate: no push, pull request or schedule starts it.
 #
 # scripts/preflight.sh (full run) runs the same command.
 
 on:
-  push:
-    # no paths here: a branch created at a SHA another ref already has gets an empty
-    # diff from GitHub's filter and the run is skipped; the changes job below compares
-    # with merge-base(origin/main) instead (patterns: .github/paths/semver-checks.txt)
-    # ci/**: the same checks on a branch before it is fast-forwarded to main
-    branches: [main, 'ci/**']
-  pull_request:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - 'scripts/semver_gate.py'
-      - 'scripts/test_semver_gate.py'
-      - '.github/semver-gate.toml'
-      - '.github/workflows/semver-checks.yml'
-      - 'scripts/changed_paths.py'
-      - '.github/paths/semver-checks.txt'
-  schedule:
-    # every Monday 11:00 UTC (two hours after security-audit.yml)
-    - cron: '0 11 * * 1'
   workflow_dispatch:
 
 # on main each commit has a group of its own and a run there is never
@@ -56,39 +34,8 @@ permissions:
   contents: read
 
 jobs:
-  # which files changed: a new or force-pushed branch is compared with merge-base(origin/main),
-  # another push with before..after, a pull request with base...head; schedule and manual
-  # runs always run; any error runs (fail-closed) — scripts/changed_paths.py
-  changes:
-    name: Changed paths
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      run: ${{ steps.decide.outputs.run }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - name: decide
-        id: decide
-        env:
-          EVENT: ${{ github.event_name }}
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.event.after || github.sha }}
-          CREATED: ${{ github.event.created }}
-          FORCED: ${{ github.event.forced }}
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD: ${{ github.event.pull_request.head.sha }}
-        run: >-
-          python3 scripts/changed_paths.py decide --event "$EVENT"
-          --before "$BEFORE" --after "$AFTER" --created "$CREATED" --forced "$FORCED"
-          --base "$PR_BASE" --head "$PR_HEAD"
-          --patterns-file .github/paths/semver-checks.txt
-
   semver-checks:
     name: cargo-semver-checks (latest crates.io release, consumer feature sets)
-    needs: changes
-    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -114,17 +61,3 @@ jobs:
       # another step; exit 2: crates.io or the configuration could not be read
       - name: semver gate (latest crates.io release, every consumer feature set)
         run: python3 scripts/semver_gate.py --config .github/semver-gate.toml --target-dir target/semver
-
-  # red when the changes job said run and a job was skipped, cancelled or failed
-  gate:
-    name: Gate
-    if: always()
-    needs: [changes, semver-checks]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v5
-      - name: gate
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-        run: python3 scripts/changed_paths.py gate --needs-json "$NEEDS"
