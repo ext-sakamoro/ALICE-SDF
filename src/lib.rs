@@ -40,8 +40,9 @@
 //!
 //! ## Cargo features
 //!
-//! The `physics`, `codec` and `sdf-cache` features link crates licensed
-//! `AGPL-3.0-or-later`; the default features and all others do not.
+//! The `physics`, `codec` and `sdf-cache` features link dependencies that are
+//! `AGPL-3.0-or-later` at the versions `Cargo.lock` pins; the default features and all
+//! others do not.
 //!
 //! <!-- readme-sync: features -->
 //! | Feature | Default | Description |

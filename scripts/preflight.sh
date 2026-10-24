@@ -97,11 +97,11 @@ step "wiring-guard: oracle + 新規の未配線 / 理由の無い dead_code が�
 python3 scripts/test_wiring_guard.py
 python3 scripts/wiring_guard.py
 
-step "license copies: oracle + sub-package の license が root LICENSE-COMMUNITY と byte 一致 (比較 0 件で fail)"
+step "license copies: oracle + sub-package の license が root LICENSE-Proprietary と byte 一致 (比較 0 件で fail)"
 python3 scripts/license_copy_check.py --self-test
 python3 scripts/license_copy_check.py
 
-step "license declarations: oracle + 全 manifest の license が Apache-2.0 (Community subtree は許可リスト、比較 0 件で fail)"
+step "license declarations: oracle + 全 manifest の license が LicenseRef-Proprietary (比較 0 件で fail)"
 python3 scripts/license_check.py --self-test
 python3 scripts/license_check.py
 
@@ -109,7 +109,7 @@ step "libm dependency guard: oracle + libm の直接依存には clippy.toml の
 python3 scripts/test_libm_dependency_guard.py
 python3 scripts/libm_dependency_guard.py
 
-step "default-build dependency licences (G10): oracle + permissive only, nothing reached fails"
+step "default-build dependency licences: oracle + each dependency fits the declared licence (cargo metadata --locked), nothing reached fails"
 python3 scripts/test_default_dependency_licenses.py
 python3 scripts/default_dependency_licenses.py
 
@@ -118,6 +118,10 @@ step "order and entropy guards (G13 / G10 text layer): oracle + every listed lin
 python3 scripts/test_order_guard.py
 python3 scripts/order_guard.py
 python3 scripts/entropy_guard.py
+
+step "entropy dependencies guard (G10 manifest layer): oracle + the default build depends on no crate of .github/entropy-deps.toml (0 members read fails)"
+python3 scripts/test_entropy_deps_guard.py
+python3 scripts/entropy_deps_guard.py
 
 step "build configuration guard (G14, static): oracle + no native / fast-math / x87 flag (nothing read fails)"
 python3 scripts/test_build_config_guard.py

@@ -1,0 +1,24 @@
+# Read by scripts/entropy_deps_guard.py (ALICE-Law G10): the members whose output bears the
+# Law, and the crates their default build may not depend on (normal or build dependencies,
+# any target).
+
+# the crate itself (the Law path is its library)
+members = ["alice-sdf"]
+
+deny = [
+    "rand",         # random numbers, seeded from the OS unless the caller seeds it
+    "rand_*",       # the rand family (rand_core, rand_chacha, ...): generators and OS seeding
+    "getrandom",    # reads OS entropy
+    "uuid",         # v4 identifiers come from OS entropy
+    "fastrand",     # seeds itself from the clock and the thread
+    "chrono",       # reads the wall clock (Utc::now / Local::now)
+    "time",         # reads the wall clock (OffsetDateTime::now_utc)
+    "oorandom",     # random numbers (callers seed it, often from the clock)
+    "nanorand",     # random numbers, seeded from OS entropy
+    "alice-cache",  # seeds its hasher from OS entropy (ahash::RandomState::new), so which entries
+                    # survive eviction differs between runs; feature sdf-cache, outside the Law path
+]
+
+# only what the default features enable counts: the optional bridges (sdf-cache and the
+# others) are outside the Law guarantee and documented so
+features = "default"
