@@ -600,8 +600,7 @@ jobs:
       # every dependency of the default build has a licence the crate's declared licence
       # takes (cargo metadata --locked): permissive only for a permissive declaration,
       # the deny.toml policy or LicenseRef-Proprietary for LicenseRef-Proprietary; the
-      # optional bridges whose dependencies are AGPL at the locked version (physics /
-      # codec / sdf-cache) stay outside the default build
+      # optional bridges (physics / codec / sdf-cache) stay outside the default build
       - name: Default-build dependency licences (test, then check against the declared licence)
         run: |
           python scripts/test_default_dependency_licenses.py

@@ -7,7 +7,7 @@
 //! hit can return the distance of another point in the same cell, and which
 //! entries survive eviction depends on `alice-cache`'s hasher (and, under
 //! concurrent use, on thread timing). The feature (`sdf-cache`) is not default
-//! and links `alice-cache`, which is AGPL-3.0-or-later at the pinned version. The deterministic, exact-key cache is
+//! and links `alice-cache`. The deterministic, exact-key cache is
 //! [`crate::ExactEvalCache`].
 
 use alice_cache::AliceCache;

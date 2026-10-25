@@ -5,8 +5,7 @@ API details are on [docs.rs](https://docs.rs/alice-sdf); test status is in
 [`oracle-status.md`](oracle-status.md).
 
 - **Feature**: the Cargo feature the module needs. Blank means it is always
-  available. **AGPL** marks a feature that links a dependency which is
-  `AGPL-3.0-or-later` at the version `Cargo.lock` pins.
+  available.
 - **Example**: a program in [`examples/`](../examples/) that uses the module
   (`cargo run --release --example <name>`).
 
@@ -111,11 +110,11 @@ this file or listed twice, or when a linked file does not exist.
 
 | Module | Summary | Feature | Example |
 |--------|---------|---------|---------|
-| `physics_bridge` | `CompiledSdf` as an `alice_physics::SdfField`, so a shape can be a collider | `physics` (AGPL) |  |
-| `sim_bridge` | simulation modifiers of `alice-physics` (thermal, pressure, erosion, fracture, phase change) applied to a field | `physics` (AGPL) |  |
-| `live_sdf` | one editable shape shared by a physics collider, a world participant (modifiers advance with the world) and a chunked render mesh that re-meshes only the chunks a change reaches | `physics` (AGPL) |  |
-| `codec_bridge` | voxelises a field and compresses the volume with `alice-codec` | `codec` (AGPL) |  |
-| `cache_bridge` | caches evaluation results with `alice-cache` | `sdf-cache` (AGPL) |  |
+| `physics_bridge` | `CompiledSdf` as an `alice_physics::SdfField`, so a shape can be a collider | `physics` |  |
+| `sim_bridge` | simulation modifiers of `alice-physics` (thermal, pressure, erosion, fracture, phase change) applied to a field | `physics` |  |
+| `live_sdf` | one editable shape shared by a physics collider, a world participant (modifiers advance with the world) and a chunked render mesh that re-meshes only the chunks a change reaches | `physics` |  |
+| `codec_bridge` | voxelises a field and compresses the volume with `alice-codec` | `codec` |  |
+| `cache_bridge` | caches evaluation results with `alice-cache` | `sdf-cache` |  |
 | `asp_bridge` | packs a tree into ALICE Streaming Protocol packets (`libasp`) | `asp` |  |
 | `font_bridge` | glyph outlines from `alice-font` to 2D / 3D fields; also needs `--cfg alice_font_bridge` and a local `alice-font` | `font` | [`text_to_3d_demo`](../examples/text_to_3d_demo.rs) |
 
