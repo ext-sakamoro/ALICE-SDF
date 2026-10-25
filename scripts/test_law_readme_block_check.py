@@ -85,7 +85,13 @@ class Check(unittest.TestCase):
             os.environ["ALICE_LAW_DIR"] = self.saved
         self.tmp.cleanup()
 
-    def crate(self, readme: str | None, workflow: str | None = WORKFLOW) -> None:
+    def crate(self, readme: str | None, workflow: str | None = WORKFLOW, law_pin: str | None = "") -> None:
+        # the repository's ALICE-Law pin: the fixture's own revision unless a test names another
+        # (None writes no pin file)
+        if law_pin is not None:
+            (self.repo / ".github").mkdir(parents=True, exist_ok=True)
+            (self.repo / ".github" / "shared-files-pin").write_text(
+                f"name ALICE-Fixture\nrev {law_pin or self.pin}\ntable-sha256 {'0' * 64}\n", encoding="utf-8")
         if readme is not None:
             (self.repo / "README.md").write_text(readme, encoding="utf-8")
         if workflow is not None:
@@ -159,7 +165,7 @@ class Check(unittest.TestCase):
         self.assertIn("nothing is shown compared", out)
 
     def test_a_pin_the_clone_does_not_have_fails(self):
-        self.crate(self.block(pin="0" * 40))
+        self.crate(self.block(pin="0" * 40), law_pin="0" * 40)
         rc, out = self.check()
         self.assertEqual(rc, 1, out)
         self.assertIn("has no commit", out)
@@ -169,9 +175,40 @@ class Check(unittest.TestCase):
         (self.src / "scripts" / "gen-law-readme-block.py").write_text(FAKE_GEN + "\n# v2\n", encoding="utf-8")
         run("git", "commit", "-q", "-am", "v2", cwd=self.src)
         newer = run("git", "rev-parse", "HEAD", cwd=self.src)
-        self.crate(self.block(pin=newer))
+        self.crate(self.block(pin=newer), law_pin=newer)
         rc, out = self.check()
         self.assertEqual(rc, 0, out)
+
+    def test_a_block_at_another_revision_than_the_repository_pin_fails(self):
+        # the block is up to date at the revision it names, which is not the repository's pin: the
+        # generator alone passes it (it checks the block against its own revision)
+        (self.src / "scripts" / "gen-law-readme-block.py").write_text(FAKE_GEN + "\n# v2\n", encoding="utf-8")
+        run("git", "commit", "-q", "-am", "v2", cwd=self.src)
+        newer = run("git", "rev-parse", "HEAD", cwd=self.src)
+        self.crate(self.block(), law_pin=newer)
+        rc, out = self.check()
+        self.assertEqual(rc, 1, out)
+        self.assertIn(f"README.md: a block names ALICE-Law {self.pin[:12]}, not the repository's pin {newer[:12]}", out)
+
+    def test_a_japanese_block_at_another_revision_fails(self):
+        self.crate(self.block())
+        (self.repo / "README_JP.md").write_text(self.block(pin="1" * 40), encoding="utf-8")
+        rc, out = self.check()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("README_JP.md: a block names ALICE-Law 111111111111", out)
+
+    def test_no_repository_pin_fails(self):
+        self.crate(self.block(), law_pin=None)
+        rc, out = self.check()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("cannot be compared with the repository's ALICE-Law pin", out)
+
+    def test_a_malformed_repository_pin_fails(self):
+        self.crate(self.block())
+        (self.repo / ".github" / "shared-files-pin").write_text("rev abc\n", encoding="utf-8")
+        rc, out = self.check()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("no `rev <40 hex>` line", out)
 
     def test_an_unreadable_workflow_is_an_error(self):
         self.crate(self.block(), workflow="name: ALICE-Law README block\njobs: {}\n")

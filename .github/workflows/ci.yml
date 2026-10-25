@@ -674,6 +674,15 @@ jobs:
         run: |
           python3 scripts/test_shared_files.py
           scripts/shared_files.sh
+      # ALICE-Law G11 (a) / (b): every gate alice-law-conformance.toml declares pass has a row in
+      # conformance/g11.toml (checker, canary, the test that fails on nothing compared, shared rows),
+      # checked by ALICE-Law's checker fetched at .github/g11-table-pin (SHA-256 pinned); a missing
+      # row, an unresolved reference or nothing compared fails
+      - name: G11 table matches the declared gates
+        shell: bash
+        run: |
+          python3 scripts/test_g11_table.py
+          scripts/g11_table.sh
       # cargo / libtest / cargo-semver-checks の出力を読む parser は、CARGO_TERM_COLOR=always
       # (この workflow の env) の色付き出力で試験する。検査器は parser の test に色付き
       # sample が無いと fail し、parser を 1 件も見つけられなくても fail する

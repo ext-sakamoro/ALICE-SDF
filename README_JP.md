@@ -289,16 +289,16 @@ cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
 
 リリース履歴は [`CHANGELOG.md`](CHANGELOG.md) にある
 
-<!-- law-integration:begin law=5c6363312520f9991837e519bab14909ccf6f2b3 -->
+<!-- law-integration:begin law=0a5de013ca1268eac22fe44908138d09a431fce0 -->
 ## ALICE-Law との統合
 
-ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
+ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `0a5de013ca12` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
 
 | | |
 |---|---|
-| release train | alice-sdf 6.0.0 (published)、Law への依存: あり |
-| 算術 | train の alice-det-math 0.5.0、算術の識別子 `135c407d4249c1c200e4d1be79a12e848ce5c355fc3a918da965849e697ef000` この crate の要求は `alice-det-math = "0.5.1"` |
-| end to end 検査 | 対象 (`alice-sdf = "6"`)、digest `966a78784bb4e3341ac6627d519db896f398176b71c2402b188294db6c8e3728`、aarch64 と x86_64 で同じ |
+| release train | alice-sdf 6.1.0 (published)、Law への依存: あり |
+| 算術 | train の alice-det-math 0.5.1、算術の識別子 `85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315` この crate の要求は `alice-det-math = "0.5.1"` |
+| end to end 検査 | 対象 (`alice-sdf = "6"`)、digest `9f7cf676708a272e3817ebbf0727c610f391e1547747af4307ee44d5523267c2`、aarch64 と x86_64 で同じ |
 
 ### 適合 (G1-G14)
 
@@ -314,7 +314,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 | G8 persisted-semantics-id | 未達 | the writers of STL (binary and ASCII), 3MF, FBX (binary and ASCII), OBJ (with its MTL), PLY (binary and ASCII) glTF (.glb, .gltf, meshopt .glb, in … |
 | G9 persisted-meaning-change-is-major | 未達 | there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (`src/lib.rs#pub use … |
 | G10 no-run-varying-artifacts | 適合 | the Law path's cache is ExactEvalCache. cache_bridge::SdfEvalCache (feature sdf-cache, not default) stays outside the Law guarantee and says so in its … |
-| G11 gate-self-tests | 未達 | fail-known on (c), naming the rows: (a) and (b) hold for every pass gate (conformance/g11.toml, 0 findings) and the cross-repository check runs … |
+| G11 gate-self-tests | 未達 | fail-known on (c), naming the rows: (a) and (b) hold for every pass gate (conformance/g11.toml, 0 findings) and both are checked by machine … |
 | G12 public-repo-text-rules | 適合 | the CI job fetches ALICE-Law's own scripts/public_text_check.py at the revision named in .github/public-text-pin and refuses it unless its SHA-256 is the one … |
 | G13 no-unspecified-order | 適合 | the hash collections are used only through the wrappers, whose aggregates do not depend on the order (integer counts and sums, Ord maxima, key-ordered … |
 | G14 float-environment-invariants | 適合 | the Cargo.toml comment that suggests target-cpu=native to users is a comment, which the guard blanks; nothing sets it |

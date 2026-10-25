@@ -5,6 +5,10 @@ Cargo.toml or the README text cannot leave preflight green and turn that job red
 
 Same inputs as the job:
   - the ALICE-Law revision named in README.md (`law-integration:begin law=<40 hex>`, the first one),
+    which must be the repository's ALICE-Law pin (the `rev` of .github/shared-files-pin), as must
+    every block's revision in README.md and README_JP.md: the generator checks a block against the
+    revision the block names, so a block left at an older revision would otherwise pass while
+    stating that revision's facts,
   - ALICE-Law's scripts/gen-law-readme-block.py *of that revision*,
   - the `check` arguments of the job (`--crate`, `--law-main`, `--lint`), read from the workflow
     file of this repository, so this script carries no crate name of its own,
@@ -17,6 +21,7 @@ under ~/.cache/alice-siblings/ (made on first use, as the job makes it).
 Outcomes:
   - neither a workflow nor a block in README.md: prints "n/a" and exits 0 (nothing to check),
   - a workflow and no block, or the generator's check failing, or a pin the clone does not have,
+    or a block whose revision is not the repository's ALICE-Law pin, or no readable pin,
     or a fetch / clone failing: exit 1,
   - the generator reporting 0 blocks compared, or no "<n> blocks compared" line: exit 1 (a check
     that compared nothing is not a pass),
@@ -40,6 +45,10 @@ from pathlib import Path
 WORKFLOW = Path(".github/workflows/law-readme-block.yml")
 LAW_URL = "https://github.com/ext-sakamoro/ALICE-Law.git"
 PIN_RE = re.compile(r"law-integration:begin law=([0-9a-f]{40})")
+ANY_PIN_RE = re.compile(r"law-integration:begin law=(\S*)")
+# the repository's ALICE-Law pin: the revision its shared files, G11 table and README block are checked at
+LAW_PIN = Path(".github/shared-files-pin")
+LAW_PIN_REV_RE = re.compile(r"(?m)^rev ([0-9a-f]{40})$")
 CHECK_RE = re.compile(
     r'gen-law-readme-block\.py"?\s+check\s+--law\s+\S+\s+--crate\s+(?P<crate>\S+)\s*\\?\s*'
     r"--crate-repo\s+\S+\s+--law-main\s+(?P<law_main>\S+)\s+--lint\s+(?P<lint>\S+)"
@@ -102,6 +111,19 @@ def main(argv: list[str]) -> int:
                     f"--law-main .. --lint ..` command to mirror", 2)
     if not pin:
         return fail("README.md has no law-integration block (the job fails the same way)")
+    pin_file = root / LAW_PIN
+    law_pin = LAW_PIN_REV_RE.search(pin_file.read_text(encoding="utf-8")) if pin_file.is_file() else None
+    if law_pin is None:
+        return fail(f"no `rev <40 hex>` line in {LAW_PIN}: the block's revision cannot be compared with "
+                    f"the repository's ALICE-Law pin")
+    for name in ("README.md", "README_JP.md"):
+        f = root / name
+        revs = ANY_PIN_RE.findall(f.read_text(encoding="utf-8")) if f.exists() else []
+        off = [r for r in revs if r != law_pin.group(1)]
+        if off:
+            return fail(f"{name}: a block names ALICE-Law {off[0][:12]}, not the repository's pin "
+                        f"{law_pin.group(1)[:12]} ({LAW_PIN}); regenerate: gen-law-readme-block.py write "
+                        f"--law-ref {law_pin.group(1)[:12]} ...")
     law, why = law_clone()
     if law is None:
         return fail(why)
