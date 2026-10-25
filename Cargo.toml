@@ -15,9 +15,9 @@ homepage = "https://github.com/ext-sakamoro/ALICE-SDF"
 documentation = "https://docs.rs/alice-sdf"
 keywords = ["sdf", "distance-field", "3d", "procedural", "csg"]
 categories = ["graphics", "game-development", "mathematics"]
-# 1.10.3: 1.75 は偽だった (lock の clap_lex 1.1.0 が edition2024 要求、default
-# feature `cli` → clap 必須で manifest parse 段階 fail)。1.85 は default +
-# docs.rs feature set で実測 check 通過、CI `msrv` job が宣言値を検証する。
+# 1.87: 保存形式の意味の識別子に使う alice-zip (law-id v2) が rust-version 1.87 を要求する
+# (それより前は 1.85、clap_lex 1.1.0 の edition2024 が下限) CI の `msrv` job が宣言値で
+# default + docs.rs の feature set を check する
 rust-version = "1.87"
 # crates.io publish から除外する dir / file 群
 # (Rust crate 配布物として本質的に不要、別 channel で配布 or CI 内部専用)

@@ -39,7 +39,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - CI (ALICE-Law G8): `scripts/provenance_writers.py` が `examples/` も数える (利用者が写す書き方なので、手で書く保存形式も対象にする) `src/bin/` と `examples/` の関数は名前や戻り型でなく書き込み先 (sink) か `_with_provenance` / `_with_stamp` で候補にする `examples/` の書き出し関数も `tests/` の表で覆える 見つかった 11 件: `examples/export_mesh` は OBJ を手で書いていたので `io::export_obj` で書く、`examples/bake_assets` の `law.bytecode` と `manifest.json` は識別子を持つ (下の Changed)、生成した shader / source の text を書く 4 件 (`msl_emit` / `rust_transpile` / `shader_export` と、`unreal_corpus_oracle` が plugin に commit する HLSL と manifest header) は未対応の一覧、残り 5 件 (外部の形式の入力・試験用の PNG・覆われた書き出し関数の bytes・plugin の自動試験が同じ実行の中でだけ読む parity corpus の golden・`bake_teeth.sh` 用の破壊) は理由付きで書き出し関数でないとする (書き出し関数は 63 個、覆われた 49)
 
 ### Changed
-- 破壊的変更: rust-version 1.85 → 1.87 CI の MSRV の job と preflight も 1.87 で確かめる 1.87 で使える `const fn` と `is_multiple_of` への書き換え (clippy の `missing_const_for_fn` / `manual_is_multiple_of`、godot の `#[func]` は const にできないので理由付きの allow) は挙動を変えない
+- **破壊的変更**: rust-version 1.85 → 1.87 (保存形式の意味の識別子に使う alice-zip が 1.87 を要求する) CI の MSRV の job と preflight も 1.87 で確かめる 1.87 で使える `const fn` と `is_multiple_of` への書き換え (clippy の `missing_const_for_fn` / `manual_is_multiple_of`、godot の `#[func]` は const にできないので理由付きの allow) は挙動を変えない
 - Licence: `Apache-2.0` → `LicenseRef-Proprietary`
 - `.github/dependabot.yml`、`CONTRIBUTING.md` を削除した
 - Licence of the Unity integration (`unity-sdf-universe/`) and the VRChat package (`vrchat-package/`): ALICE Community License 1.1 → `LicenseRef-Proprietary` `LICENSE-COMMUNITY` is removed, `vrchat-package/LICENSE.md` holds the `LICENSE-Proprietary` text and `vrchat-package/package.json` declares `LicenseRef-Proprietary`
