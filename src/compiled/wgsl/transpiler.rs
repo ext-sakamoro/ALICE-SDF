@@ -859,7 +859,7 @@ const HELPER_SDF_BEZIER: &str = r"fn sdf_bezier(pos: vec3<f32>, A: vec3<f32>, B:
         let qp = d + (c + b * t) * t;
         res = dot(qp, qp);
     } else {
-        let z = sqrt(-p);
+        let z = sqrt(kx * kx - ky);
         let v = acos(q / (p * z * 2.0)) / 3.0;
         let m = cos(v);
         let n = sin(v) * 1.732050808;
@@ -1573,7 +1573,7 @@ const HELPER_BEZIER_DISTANCE_2D: &str = r"fn bezier_distance_2d(q: vec2<f32>, p0
         let e = d + (c + b * t) * t;
         res = dot(e, e);
     } else {
-        let z = sqrt(-p);
+        let z = sqrt(kx * kx - ky);
         let v = acos(clamp(qq / (p * z * 2.0), -1.0, 1.0)) / 3.0;
         let m = cos(v);
         let n = sin(v) * 1.7320508;

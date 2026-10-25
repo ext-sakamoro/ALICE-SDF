@@ -31,7 +31,7 @@ float bezier_distance_2d(float2 q, float2 p0, float2 p1, float2 p2) {
         precise float2 e = d + (c + b * t) * t;
         res = dot(e, e);
     } else {
-        precise float z = sqrt(-p);
+        precise float z = sqrt(kx * kx - ky);
         precise float v = acos(clamp(qq / (p * z * 2.0), -1.0, 1.0)) / 3.0;
         precise float m = cos(v);
         precise float n = sin(v) * 1.7320508;

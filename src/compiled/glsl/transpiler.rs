@@ -887,7 +887,7 @@ const HELPER_SDF_BEZIER: &str = r"float sdf_bezier(vec3 pos, vec3 A, vec3 B, vec
         ALICE_PRECISE float t = clamp(uv.x + uv.y - kx, 0.0, 1.0);
         res = dot(d + (c + b * t) * t, d + (c + b * t) * t);
     } else {
-        ALICE_PRECISE float z = sqrt(-p2);
+        ALICE_PRECISE float z = sqrt(kx * kx - ky);
         ALICE_PRECISE float v2 = acos(q / (p2 * z * 2.0)) / 3.0;
         ALICE_PRECISE float m = cos(v2);
         ALICE_PRECISE float n = sin(v2) * 1.732050808;
@@ -1630,7 +1630,7 @@ const HELPER_BEZIER_DISTANCE_2D: &str = r"float bezier_distance_2d(vec2 q, vec2 
         ALICE_PRECISE vec2 e = d + (c + b * t) * t;
         res = dot(e, e);
     } else {
-        ALICE_PRECISE float z = sqrt(-p);
+        ALICE_PRECISE float z = sqrt(kx * kx - ky);
         ALICE_PRECISE float v = acos(clamp(qq / (p * z * 2.0), -1.0, 1.0)) / 3.0;
         ALICE_PRECISE float m = cos(v);
         ALICE_PRECISE float n = sin(v) * 1.7320508;

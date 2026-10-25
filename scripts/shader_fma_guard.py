@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""ALICE-Law G3 for the shader text this crate emits: no fused multiply-add intrinsic.
+"""ALICE-Law G3 for the shader text this crate emits: no fused multiply-add intrinsic, and no
+negation of a whole multiply-add.
 
 The Rust side is held by clippy (f32 / f64 mul_add in clippy.toml; wide's fused methods and
 cranelift's InstBuilder::fma in .github/clippy-lib/clippy.toml, each with a canary form). The
@@ -9,14 +10,21 @@ a one-rounding multiply-add (and so a negated one) into the GPU path while the C
 twice. This script reads every string literal of the library source (src/, outside
 `#[cfg(test)]` modules) and fails on a contraction-capable intrinsic in one:
 `fma(`, `fmaf(`, `mad(` (HLSL / BlinkScript), also after a namespace (`metal::precise::fma(`),
-with any whitespace before the parenthesis.
+with any whitespace before the parenthesis. It also reads, whole, every tracked shader file the
+repository ships (SHADER_EXTENSIONS: the Unity / VRChat .shader / .cginc / .compute, the Unreal
+.ush / .usf, and any .wgsl / .glsl / .hlsl / .metal), for the same intrinsics and negations.
 
 Shader text that is composed from pieces at run time (`"fm"` + `"a("`) is not seen here;
 tests/test_shader_no_fused_multiply_add.rs transpiles the node corpus through every backend
 and mode and scans the emitted text for the same intrinsics.
 
-Not covered (a stated residual, not a pass): a GPU driver may contract `a * b + c` into an fma
-by itself; no source text shows that.
+A GPU driver may contract `a * b + c` into an fma by itself, so a literal must also not negate a
+whole multiply-add: after a contraction that is the outer fneg of an fma G3 forbids. Flagged: a
+unary minus over a parenthesised expression with a top-level product and a top-level binary
+`+` / `-` (`-(a * b + c)`, `0.0 - (..)`, `-1.0 * (..)`), and a unary minus on a name assigned such
+an expression earlier in the same literal (`p = ky - kx * kx; .. sqrt(-p)`). The operand form
+(`kx * kx - ky`) is what the transpilers write; a contraction turns it into the allowed
+`fma(kx, kx, -ky)`. This sees every helper and template, including ones no corpus node reaches.
 
 Fails on a hit, on 0 files read, and on 0 string literals read (compared nothing).
 
@@ -31,6 +39,76 @@ import sys
 from pathlib import Path
 
 INTRINSIC = re.compile(r"(?<![A-Za-z0-9_])(fma|fmaf|mad)\s*\(")
+UNARY_BEFORE = set("(,=+-*/?:<>!&|[{;")
+ASSIGN = re.compile(r"\b([A-Za-z_]\w*)\s*(?::\s*[\w<>]+)?\s*=(?!=)\s*([^;{}]+);")
+
+
+def group_end(text: str, open_at: int) -> int:
+    """index of the ')' closing the '(' at open_at, or -1"""
+    depth = 0
+    for j in range(open_at, len(text)):
+        if text[j] == "(":
+            depth += 1
+        elif text[j] == ")":
+            depth -= 1
+            if depth == 0:
+                return j
+    return -1
+
+
+def is_multiply_add(expr: str) -> bool:
+    """a top-level '*' and a top-level binary '+' / '-' (not an exponent, not a sign after an operator)"""
+    depth, star, add, prev, prev2 = 0, False, False, "", ""
+    for c in expr:
+        if c in "([":
+            depth += 1
+        elif c in ")]":
+            depth -= 1
+        elif depth == 0 and c == "*":
+            star = True
+        elif depth == 0 and c in "+-":
+            exponent = prev in "eE" and (prev2.isdigit() or prev2 == ".")
+            if prev and prev not in "(,=+-*/?:<>!&|[" and not exponent:
+                add = True
+        if not c.isspace():
+            prev2, prev = prev, c
+    return star and add
+
+
+def unary_at(text: str, at: int) -> bool:
+    before = text[:at].rstrip()
+    return not before or before.endswith("return") or before[-1] in UNARY_BEFORE
+
+
+def negated_multiply_adds(text: str) -> list[str]:
+    """the negations of a whole multiply-add in one literal"""
+    found = []
+    for m in re.finditer(r"-\s*\(", text):
+        if not unary_at(text, m.start()):
+            continue
+        open_at = m.end() - 1
+        end = group_end(text, open_at)
+        if end > 0 and is_multiply_add(text[open_at + 1:end]):
+            found.append(text[m.start():end + 1])
+    for m in re.finditer(r"(?<![A-Za-z0-9_.])(?:0\.0f?\s*-|-1\.0f?\s*\*)\s*\(", text):
+        open_at = m.end() - 1
+        end = group_end(text, open_at)
+        if end > 0 and is_multiply_add(text[open_at + 1:end]):
+            found.append(text[m.start():end + 1])
+    # every assignment of a name, in order: the last one before a use decides
+    # (`h = q * q + p; h = sqrt(h); .. -h` negates a square root, not a multiply-add)
+    assigned: dict[str, list[tuple[int, bool]]] = {}
+    for m in ASSIGN.finditer(text):
+        assigned.setdefault(m.group(1), []).append((m.start(), is_multiply_add(m.group(2))))
+    for m in re.finditer(r"-\s*([A-Za-z_]\w*)", text):
+        name = m.group(1)
+        before = [ma for at, ma in assigned.get(name, []) if at < m.start()]
+        if not before or not before[-1] or not unary_at(text, m.start()):
+            continue
+        if text[m.end():].lstrip()[:1] in ("(", "*", "/", "."):
+            continue  # a call, an operand of a product, a field
+        found.append(f"-{name} (assigned a multiply-add earlier in the literal)")
+    return found
 TEST_MOD = re.compile(r"#\[cfg\(test\)\]\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{")
 
 
@@ -108,6 +186,22 @@ def literals(src: str) -> list[tuple[int, str]]:
     return found
 
 
+SHADER_EXTENSIONS = (".wgsl", ".glsl", ".hlsl", ".hlsli", ".cginc", ".compute", ".shader", ".ush", ".usf",
+                     ".metal", ".gdshader", ".gdshaderinc", ".frag", ".vert", ".comp", ".fx")
+
+
+def scan_shader_files(root: Path, files: list[str]) -> tuple[list[str], int]:
+    """the intrinsics and negations in whole shader files (not Rust: no literal to extract)"""
+    hits = []
+    for rel in files:
+        text = (root / rel).read_text(encoding="utf-8", errors="replace")
+        for m in INTRINSIC.finditer(text):
+            hits.append(f"{rel}:{text.count(chr(10), 0, m.start()) + 1}: `{m.group(0)}`")
+        for neg in negated_multiply_adds(text):
+            hits.append(f"{rel}: negated multiply-add `{neg[:80]}`")
+    return hits, len(files)
+
+
 def scan(root: Path, files: list[str]) -> tuple[list[str], int, int]:
     hits, n_files, n_lits = [], 0, 0
     for rel in files:
@@ -117,6 +211,8 @@ def scan(root: Path, files: list[str]) -> tuple[list[str], int, int]:
             n_lits += 1
             for m in INTRINSIC.finditer(text):
                 hits.append(f"{rel}:{line}: `{m.group(0)}` in a string literal")
+            for neg in negated_multiply_adds(text):
+                hits.append(f"{rel}:{line}: negated multiply-add `{neg[:80]}` in a string literal")
     return hits, n_files, n_lits
 
 
@@ -131,9 +227,16 @@ def main(argv: list[str] | None = None) -> int:
     if n_files == 0 or n_lits == 0:
         print(f"shader_fma_guard: read {n_files} files, {n_lits} string literals (compared nothing)")
         return 2
+    # NUL-separated: shipped sample paths contain spaces ("Samples~/SDF Gallery/...")
+    tracked = subprocess.run(["git", "-C", str(root), "ls-files", "-z"], capture_output=True, text=True,
+                             encoding="utf-8", check=True).stdout.split("\0")
+    shaders = sorted(f for f in tracked if f.lower().endswith(SHADER_EXTENSIONS))
+    shader_hits, n_shaders = scan_shader_files(root, shaders)
+    hits += shader_hits
     for h in hits:
         print(f"shader_fma_guard: {h}")
-    print(f"shader_fma_guard: {n_files} files, {n_lits} string literals, {len(hits)} fused multiply-add intrinsic(s)")
+    print(f"shader_fma_guard: {n_files} files, {n_lits} string literals, {n_shaders} shader files, "
+          f"{len(hits)} fused or negated multiply-add(s)")
     return 1 if hits else 0
 
 

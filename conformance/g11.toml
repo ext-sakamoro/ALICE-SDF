@@ -18,6 +18,20 @@ zero = "scripts/test_clippy_lib_gate.py::Judge.test_no_forms_and_a_clean_exit_ar
 shared = ["scripts/clippy_lib_gate.py", "scripts/test_clippy_lib_gate.py"]
 
 [[row]]
+gate = "G3"
+checker = ".github/workflows/ci.yml#- name: shader fused multiply-add guard (string literals of src/, 0 literals fails)>scripts/shader_fma_guard.py"
+canary = "scripts/test_shader_fma_guard.py::NegatedMultiplyAdd.test_through_a_name"
+zero = "scripts/test_shader_fma_guard.py::ComparedNothing.test_no_literal"
+shared = "n/a: scripts/shader_fma_guard.py is this repository's own"
+
+[[row]]
+gate = "G3"
+checker = "scripts/clippy_lib_gate.py"
+canary = "scripts/test_clippy_lib_gate.py::Judge.test_a_missing_diagnostic_is_red"
+zero = "scripts/test_clippy_lib_gate.py::Judge.test_no_forms_and_a_clean_exit_are_red"
+shared = ["scripts/clippy_lib_gate.py", "scripts/test_clippy_lib_gate.py"]
+
+[[row]]
 gate = "G4"
 checker = ".github/workflows/ci.yml#- name: Test (goldens and the semantics identifier, counted)>scripts/libtest_count.py"
 canary = "tests/test_det_golden.rs::checker_rejects_a_wrong_hash"

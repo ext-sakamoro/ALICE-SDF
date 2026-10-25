@@ -832,7 +832,7 @@ const HELPER_SDF_BEZIER: &str = r"float sdf_bezier(float3 pos, float3 A, float3 
         precise float3 qp = d + (c + b * t) * t;
         res = dot(qp, qp);
     } else {
-        precise float z = sqrt(-p);
+        precise float z = sqrt(kx * kx - ky);
         precise float v = acos(q / (p * z * 2.0)) / 3.0;
         precise float m = cos(v);
         precise float n = sin(v) * 1.732050808;
@@ -1576,7 +1576,7 @@ const HELPER_BEZIER_DISTANCE_2D: &str = r"float bezier_distance_2d(float2 q, flo
         precise float2 e = d + (c + b * t) * t;
         res = dot(e, e);
     } else {
-        precise float z = sqrt(-p);
+        precise float z = sqrt(kx * kx - ky);
         precise float v = acos(clamp(qq / (p * z * 2.0), -1.0, 1.0)) / 3.0;
         precise float m = cos(v);
         precise float n = sin(v) * 1.7320508;

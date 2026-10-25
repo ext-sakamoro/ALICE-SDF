@@ -20,6 +20,7 @@ mod common;
 
 use alice_sdf::compiled::GpuEvaluator;
 use alice_sdf::prelude::*;
+use glam::Vec2;
 
 /// Deterministic LCG points in a ±3 box, plus the cell / sector / base-plane
 /// ties the laws are sensitive to.
@@ -84,6 +85,55 @@ fn assert_gpu_matches_cpu(name: &str, node: &SdfNode, abs_tol: f32) {
     eprintln!(
         "{name}: max |gpu - cpu| = {:.3e} over {} points",
         worst.0,
+        pts.len()
+    );
+}
+
+/// The quadratic Bezier at `p = ky - kx * kx = 0` and just below it (ALICE-Law G3).
+///
+/// The GPU text takes `sqrt(kx * kx - ky)` in the three-root branch where it took
+/// `sqrt(-p)`; at `p = +0` those differ in the sign of zero. That branch runs only for
+/// `h = q * q + 4 * p^3 < 0`, which needs `p < 0`: at `p = ±0`, `h = q * q ± 0 >= 0`
+/// and the one-root branch runs. With `p0 = p1` (so `kx = kz = 0`) and a sample on the
+/// line through `p0` perpendicular to `p2 - p0` (so `ky = 0`), `p` and `q` are exactly
+/// 0; a small step along `p2 - p0` gives a tiny negative `p` in the three-root branch.
+/// oracle: on that line the curve's nearest point is `p0`, so the swept distance is the
+/// child's at `(|z|, y)` (a sphere: `sqrt(z^2 + y^2) - r`), independent of either branch.
+#[test]
+fn bezier_at_p_zero_and_just_below_gpu_matches_cpu() {
+    let r = 0.1_f32;
+    let node = SdfNode::sphere(r).sweep_bezier(Vec2::ZERO, Vec2::ZERO, Vec2::new(1.0, 0.0));
+    let mut pts = Vec::new();
+    for &x in &[0.0_f32, 1e-7, 1e-5, 1e-3] {
+        for &y in &[-0.2_f32, 0.0, 0.15] {
+            for k in -5..=5 {
+                pts.push(Vec3::new(x, y, k as f32 * 0.1));
+            }
+        }
+    }
+    // the CPU reference, against the closed form on the perpendicular line
+    for p in pts.iter().filter(|p| p.x == 0.0) {
+        let want = (p.z * p.z + p.y * p.y).sqrt() - r;
+        let got = eval(&node, *p);
+        assert!(
+            (got - want).abs() <= 1e-6,
+            "cpu at {p:?}: {got} want {want}"
+        );
+    }
+    let Some(gpu) = gpu_or_skip(&node) else {
+        return;
+    };
+    let got = gpu.eval_batch(&pts).expect("gpu eval");
+    assert_eq!(got.len(), pts.len());
+    for (p, g) in pts.iter().zip(&got) {
+        let c = eval(&node, *p);
+        assert!(
+            g.is_finite() && (g - c).abs() <= 1e-5,
+            "{p:?}: cpu={c} gpu={g}"
+        );
+    }
+    eprintln!(
+        "bezier at p = 0 and just below: {} points, GPU = CPU within 1e-5",
         pts.len()
     );
 }

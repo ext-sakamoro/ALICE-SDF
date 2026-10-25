@@ -557,7 +557,7 @@ float sdBezier(float3 pos, float3 a, float3 b, float3 c, float radius)
     }
     else
     {
-        float z = sqrt(-p2);
+        float z = sqrt(kx * kx - ky);
         float v = acos(q2 / (p2 * z * 2.0)) / 3.0;
         float m = cos(v);
         float n = sin(v) * 1.7320508;

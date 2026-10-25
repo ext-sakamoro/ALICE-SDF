@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Tests of scripts/shader_fma_guard.py: a canary per shader language, the forms that must not
-count (comments, test modules, identifiers that only contain the name), and the compared-nothing
-failure."""
+count (comments, test modules, identifiers that only contain the name), the negations of a whole
+multiply-add (direct and through a name) and the operand forms that are not one, and the
+compared-nothing failure."""
 from __future__ import annotations
 
 import subprocess
@@ -78,6 +79,35 @@ class NotCounted(unittest.TestCase):
         self.assertEqual(len(hits('const S: &str = "say \\"hi\\" then fma(a, b, c)";')), 1)
 
 
+class NegatedMultiplyAdd(unittest.TestCase):
+    # a negation of a whole multiply-add: after a driver contracts the sum, the outer fneg of an fma
+    def test_parenthesised(self):
+        self.assertEqual(len(hits('const S: &str = "let d = -(p.x * p.y + p.z);";')), 1)
+
+    def test_zero_minus_and_minus_one_times(self):
+        self.assertEqual(len(hits('const S: &str = "float d = 0.0 - (a * b + c);";')), 1)
+        self.assertEqual(len(hits('const S: &str = "float d = -1.0 * (a * b - c);";')), 1)
+
+    def test_through_a_name(self):
+        src = 'const S: &str = r#"\nlet p = ky - kx * kx;\nlet z = sqrt(-p);\n"#;'
+        self.assertEqual(len(hits(src)), 1)
+
+    def test_through_a_typed_name(self):
+        self.assertEqual(len(hits('const S: &str = "precise float p = ky - kx * kx; float z = sqrt(-p);";')), 1)
+
+    def test_operand_forms_do_not_count(self):
+        for text in ["let d = -p.x * p.y + p.z;", "float d = c - a * b;", "let z = sqrt(kx * kx - ky);",
+                     "float t = a * b + c; return -t * 2.0;", "x = y - (a * b + c);", "float d = -(a * b);",
+                     "float e = -(x + 1e-5);", "float v = clamp(q, -1.0, 1.0);", "float s = -sin(a * b + c);"]:
+            self.assertEqual(hits(f'const S: &str = "{text}";'), [], text)
+
+    def test_a_reassigned_name_is_judged_by_its_last_assignment(self):
+        src = 'const S: &str = "float h = q * q + 4.0 * p3; h = sqrt(h); vec2 x = vec2(h, -h);";'
+        self.assertEqual(hits(src), [])
+        src = 'const S: &str = "float h = sqrt(q); h = q * q + p; float y = -h;";'
+        self.assertEqual(len(hits(src)), 1)
+
+
 class ComparedNothing(unittest.TestCase):
     def _repo(self, d: Path, files: dict[str, str]) -> None:
         subprocess.run(["git", "init", "-q", str(d)], check=True)
@@ -95,6 +125,17 @@ class ComparedNothing(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             self._repo(Path(d), {"src/lib.rs": "pub fn f() {}\n"})
             self.assertEqual(g.main(["--root", d]), 2)
+
+    def test_a_shipped_shader_file_is_read(self):
+        # a whole .cginc / .ush file, at a path with a space, as the shipped samples have
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(Path(d), {"src/lib.rs": 'pub const S: &str = "a * b + c";\n',
+                                 "pkg/Samples~/SDF Gallery/x.cginc": "float p = ky - kx * kx;\nfloat z = sqrt(kx * kx - ky);\n"})
+            self.assertEqual(g.main(["--root", d]), 0)
+            (Path(d) / "pkg/Samples~/SDF Gallery/x.cginc").write_text(
+                "float p = ky - kx * kx;\nfloat z = sqrt(-p);\n", encoding="utf-8")
+            subprocess.run(["git", "-C", d, "add", "-A"], check=True)
+            self.assertEqual(g.main(["--root", d]), 1)
 
     def test_hit_fails_and_clean_passes(self):
         with tempfile.TemporaryDirectory() as d:
