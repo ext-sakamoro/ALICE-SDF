@@ -107,6 +107,9 @@ wide = "0.7"  # Portable SIMD (AVX2/AVX-512/NEON)
 # alice-det-math (cross-platform bit-exact, scalar + f32x8) — the same crate
 # alice-physics uses, which is what makes the SdfField boundary bit-exact.
 alice-det-math = { version = "0.5.1", features = ["simd"] }
+# ALICE-Law G8: the stored forms' meaning identifiers are law-id v2 (alice_zip::law_id::LawIdHasher,
+# the one owner of that encoding)
+alice-zip = { git = "https://github.com/ext-sakamoro/ALICE-Zip", rev = "2a0aafacb9ec6693a3d2270df8c079ff01434bfb", version = "0.11", default-features = false }
 
 # Parallel processing
 rayon = "1.10"
@@ -451,3 +454,7 @@ lto = "thin"
 debug = false
 codegen-units = 1
 
+
+# local base only (not landed): the det-math alice-zip 2a0aafa resolves, so the lock holds one
+[patch.crates-io]
+alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "6384856c8b00f1615e1cd6b5c74d88036c1a8706" }

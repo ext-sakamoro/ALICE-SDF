@@ -33,7 +33,11 @@ pub fn tag_line() -> String {
 /// identifier, another one, or one outside the block), and the errors of the write.
 pub fn write_whole_text(path: &Path, text: &str) -> io::Result<bool> {
     match provenance::from_bytes(text.as_bytes()) {
-        Ok(p) if p == Provenance::sdf() => {}
+        Ok(p)
+            if matches!(
+                p.judge(&Provenance::sdf(), &[]),
+                Ok(provenance::StoredSemantics::Current)
+            ) => {}
         Ok(p) => {
             return Err(io::Error::other(format!(
                 "{}: whole text under {} (this build is {})",

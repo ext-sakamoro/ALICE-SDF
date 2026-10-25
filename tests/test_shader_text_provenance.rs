@@ -88,8 +88,8 @@ fn assert_whole_tagged(what: &str, text: &str) {
         "{what}: the emitter writes the identifier on line 1, or on line 2 after `#version`"
     );
     assert_eq!(
-        provenance::from_bytes(text.as_bytes()).ok(),
-        Some(Provenance::sdf()),
+        provenance::from_bytes(text.as_bytes()).ok().map(|s| s.id),
+        Some(Provenance::sdf().semantics_id),
         "{what}: provenance::from_bytes does not read the identifier"
     );
 }
@@ -231,8 +231,8 @@ fn whole_glsl_is_read_by_the_shader_text_branch() {
         })
     ));
     assert_eq!(
-        provenance::from_bytes(whole.as_bytes()).ok(),
-        Some(Provenance::sdf())
+        provenance::from_bytes(whole.as_bytes()).ok().map(|s| s.id),
+        Some(Provenance::sdf().semantics_id)
     );
 }
 
@@ -266,8 +266,8 @@ fn obj_comments_are_not_a_glsl_header() {
     let obj_tag = format!("# {KEY}={}", Provenance::sdf().hex());
     let obj = format!("#version 2\n{obj_tag}\n{obj_body}");
     assert_eq!(
-        provenance::from_bytes(obj.as_bytes()).ok(),
-        Some(Provenance::sdf())
+        provenance::from_bytes(obj.as_bytes()).ok().map(|s| s.id),
+        Some(Provenance::sdf().semantics_id)
     );
 
     let sdf = tag_line(&Provenance::sdf());
@@ -296,8 +296,8 @@ fn obj_comments_are_not_a_glsl_header() {
         }
         let tagged = format!("{first}\n{sdf}\nvoid main() {{}}\n");
         assert_eq!(
-            provenance::from_bytes(tagged.as_bytes()).ok(),
-            Some(Provenance::sdf()),
+            provenance::from_bytes(tagged.as_bytes()).ok().map(|s| s.id),
+            Some(Provenance::sdf().semantics_id),
             "{first:?}"
         );
     }
@@ -349,8 +349,10 @@ fn the_nanite_header_form_is_read_as_this_crates() {
         untagged(&wgsl)
     );
     assert_eq!(
-        provenance::from_bytes(nanite_form.as_bytes()).ok(),
-        Some(Provenance::sdf())
+        provenance::from_bytes(nanite_form.as_bytes())
+            .ok()
+            .map(|s| s.id),
+        Some(Provenance::sdf().semantics_id)
     );
     assert_eq!(
         MslShader::from_wgsl(&nanite_form).unwrap().semantics(),
@@ -841,6 +843,7 @@ const OTHER: &[(&str, &str, &str)] = &[
     ("src/llm_schema.rs", "schema_summary", NOT_SHADER),
     ("src/provenance.rs", "hex", NOT_SHADER),
     ("src/provenance.rs", "tagged", NOT_SHADER),
+    ("src/provenance.rs", "tagged_for", NOT_SHADER),
     ("src/wasm.rs", "alice_sdf_version", NOT_SHADER),
 ];
 
@@ -1214,7 +1217,10 @@ fn whole_or_fragment_follows_from_the_entry_point() {
                 if has_entry_point(text) { "an" } else { "no" }
             ));
         }
-        if l == "WHOLE" && provenance::from_bytes(text.as_bytes()).ok() != Some(Provenance::sdf()) {
+        if l == "WHOLE"
+            && provenance::from_bytes(text.as_bytes()).ok().map(|s| s.id)
+                != Some(Provenance::sdf().semantics_id)
+        {
             problems.push(format!(
                 "{file}: `{name}` is WHOLE but its output does not carry the identifier"
             ));

@@ -25,9 +25,10 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 779 items (0 Linux-only): 86 handshake, 693 local, 0 pending. Groups (count, decision):
+# 786 items (0 Linux-only): 87 handshake, 699 local, 0 pending. Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
+#      1  handshake: a_file_written_under_another_det_math_is_refused_naming_both_and_the_form
 #      1  handshake: asdf_loaders_check_the_identifier
 #      1  handshake: an_asdf_file_from_6_1_0_is_refused_by_default_and_read_unverified
 #      6  handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified
@@ -37,7 +38,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  handshake: check_reads_this_previous_and_unknown_identifiers
 #      4  local: returns the stored identifier itself for the caller to compare (check, check_sdf and check_producer compare them); no value computed under an arithmetic is returned
 #      1  local: computes the path of the .semantics sidecar from a path
-#      6  local: formats or wraps an identifier the caller holds for a writer to store
+#     12  local: formats or wraps an identifier the caller holds for a writer to store
 #      1  local: maps a linked alice-det-math identifier to this crate's identifier (const table)
 #      1  local: parses the .asdf header and returns its stored identifier as a field; load_asdf does the comparison
 #      1  local: the linked alice-det-math identifier, documented as alice-det-math's, an in-process constant
@@ -151,6 +152,9 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::provenance::check_sdf" = "handshake: an_earlier_published_identifier_reads_as_verified_previous"
 
 # 1 handshake
+"fn::Stored::judge" = "handshake: a_file_written_under_another_det_math_is_refused_naming_both_and_the_form"
+
+# 1 handshake
 "fn::provenance::check_producer" = "handshake: stamped_writers_keep_both_identifiers_in_their_slots"
 
 # 1 handshake
@@ -165,13 +169,19 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 # 1 local
 "fn::provenance::sidecar_path" = "local: computes the path of the .semantics sidecar from a path"
 
-# 6 local
+# 12 local
 "fn::Provenance::hex" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::Provenance::new" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::Provenance::stl_header" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::Provenance::tagged" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::Stamp::stl_header" = "local: formats or wraps an identifier the caller holds for a writer to store"
-"fn::Stamp::tagged" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::Provenance::named_for" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::Provenance::slot_for" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::Provenance::tagged_for" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::Stamp::tagged_for" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::Stored::hex" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::StoredForm::name" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::provenance::meaning_id" = "local: formats or wraps an identifier the caller holds for a writer to store"
 
 # 1 local
 "fn::semantics::sdf_semantics_id_for" = "local: maps a linked alice-det-math identifier to this crate's identifier (const table)"
@@ -1096,6 +1106,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "alice-cache" = "an in-process evaluation cache of this crate's own values"
 "alice-det-math" = "deterministic arithmetic functions and the identifier constants; no input is read"
 "alice-physics" = "physics on values this crate passes in the same process; no input is read"
+"alice-zip" = "the law-id v2 hasher (law_id::LawIdHasher) over bytes this crate already holds; no input is read"
 "bytemuck" = "casts between plain types in memory; the bytes come from this crate's own buffers"
 "clap" = "parses the command-line arguments of the cli binary, not a stored or transmitted form"
 "cranelift-codegen" = "compiles this crate's own IR to machine code (jit)"

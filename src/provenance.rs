@@ -30,6 +30,17 @@
 //! | DDS 3D texture | the header's reserved dwords: tag `ALSD`, version `1`, the 32 identifier bytes |
 //! | raw volume data (no header) | a sidecar file `<path>.semantics`: `alice:semantics_id=<64 hex>` |
 //!
+//! **Meaning identifiers.** The forms of [`StoredForm::writes_meaning`] (binary and ASCII STL, 3MF,
+//! binary and ASCII FBX, OBJ and its MTL, PLY) store [`meaning_id`] of the identifier instead of the
+//! identifier itself: law-id v2 (`alice_zip::law_id::LawIdHasher`) over [`MEANING_KIND`], the
+//! semantics identifier, the form's name and its layout version. It names what the stored bytes
+//! mean and differs from the in-process identifier (ALICE-Law G8). Binary slots keep their place
+//! (the STL header bytes `9..41`); text forms write the key [`MEANING_KEY`]
+//! (`alice:meaning_id=<64 hex>`, the 3MF metadata name `alice:meaning_id`) where they wrote [`KEY`].
+//! [`Stored::judge`] recomputes it for the expected identifier and for the earlier ones; a raw
+//! identifier (a file of 7.0.0 or earlier: under [`KEY`], or raw in a slot) is the earlier stored
+//! generation, `VerifiedPrevious`. The producer identifier of a [`Stamp`] stays raw.
+//!
 //! `<64 hex>` is exactly 64 lower-case hex digits, as [`Provenance::hex`] writes them. In the text
 //! forms (`alice:semantics_id=<64 hex>`) the digits end the value: the end of the text, or a byte
 //! that is not an ASCII letter, digit or `_` (in binary FBX, the end of the string property). A
@@ -72,6 +83,319 @@ pub const STL_HEADER_VERSION_PRODUCER: u8 = 2;
 /// The key under which a producer identifier is stored in text formats
 pub const PRODUCER_KEY: &str = "alice:producer_semantics_id";
 
+/// The key under which the text forms store the meaning identifier ([`meaning_id`])
+///
+/// The earlier key [`KEY`] holds a raw semantics identifier, which the readers still accept as the
+/// earlier stored generation.
+pub const MEANING_KEY: &str = "alice:meaning_id";
+
+/// The kind tag every meaning identifier is computed under (`alice_zip::law_id::LawIdHasher` v2)
+pub const MEANING_KIND: &[u8] = b"alice-sdf/stored-form-meaning";
+
+/// A stored form this crate writes, as the readers tell it apart from the bytes
+///
+/// The meaning identifier of a stored form ([`meaning_id`]) folds the form, its layout version and
+/// the semantics identifier of the arithmetic the stored values were computed under, so it names
+/// what the stored bytes mean and differs from the in-process identifier (ALICE-Law G8). OBJ and its
+/// MTL share one form (their bytes are told apart by neither the readers nor the comment block).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum StoredForm {
+    /// Binary STL (the 80-byte header)
+    StlBinary,
+    /// ASCII STL (the solid name)
+    StlAscii,
+    /// 3MF (`3D/3dmodel.model` metadata)
+    ThreeMf,
+    /// Binary FBX (the `Creator` string)
+    FbxBinary,
+    /// ASCII FBX (the `Creator` string)
+    FbxAscii,
+    /// OBJ and its MTL (a leading comment)
+    ObjText,
+    /// PLY, binary and ASCII (a header comment)
+    Ply,
+    /// glTF binary (`.glb`, `asset.extras`)
+    Glb,
+    /// glTF JSON (`.gltf`, `asset.extras`)
+    Gltf,
+    /// A JSON document of this crate other than glTF (ASDF JSON, the LOD chain sidecar, the UE5 /
+    /// Unity JSON mesh, the Nanite manifest, the texture fit document): the top-level field
+    JsonDocument,
+    /// USD text (`.usda`, `customLayerData`)
+    Usd,
+    /// STEP (`FILE_DESCRIPTION`)
+    Step,
+    /// IGES (the Start section)
+    Iges,
+    /// Alembic (the archive metadata)
+    Alembic,
+    /// ASDF binary tree (`.asdf`)
+    Asdf,
+    /// ABM binary mesh (`.abm`)
+    Abm,
+    /// Nanite (`.nanite`)
+    Nanite,
+    /// UE5 binary mesh (`ALUE`)
+    Ue5Mesh,
+    /// Unity binary mesh (`ALMB`)
+    UnityMesh,
+    /// Neural SDF weights (`NSDF`)
+    Neural,
+    /// ALICE-VDB dense grid
+    Vdb,
+    /// SVO chunk stream (`ASVC`)
+    Svo,
+    /// MagicaVoxel `.vox` (the `ALSD` chunk)
+    Vox,
+    /// DDS 3D texture (the reserved header dwords)
+    Dds,
+    /// PNG (a `tEXt` chunk)
+    Png,
+    /// JPEG (a comment segment)
+    Jpeg,
+    /// Shader text (a leading `//` comment line)
+    ShaderText,
+    /// A sidecar file `<path>.semantics` (raw volume data, `.splat`)
+    Sidecar,
+}
+
+impl StoredForm {
+    /// The form's name in the meaning identifier
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::StlBinary => "stl-binary",
+            Self::StlAscii => "stl-ascii",
+            Self::ThreeMf => "3mf",
+            Self::FbxBinary => "fbx-binary",
+            Self::FbxAscii => "fbx-ascii",
+            Self::ObjText => "obj",
+            Self::Ply => "ply",
+            Self::Glb => "glb",
+            Self::Gltf => "gltf",
+            Self::JsonDocument => "json",
+            Self::Usd => "usda",
+            Self::Step => "step",
+            Self::Iges => "iges",
+            Self::Alembic => "alembic",
+            Self::Asdf => "asdf",
+            Self::Abm => "abm",
+            Self::Nanite => "nanite",
+            Self::Ue5Mesh => "ue5-mesh",
+            Self::UnityMesh => "unity-mesh",
+            Self::Neural => "nsdf",
+            Self::Vdb => "alice-vdb",
+            Self::Svo => "svo",
+            Self::Vox => "vox",
+            Self::Dds => "dds",
+            Self::Png => "png",
+            Self::Jpeg => "jpeg",
+            Self::ShaderText => "shader-text",
+            Self::Sidecar => "sidecar",
+        }
+    }
+
+    /// The layout version of the stored bytes the meaning identifier is computed for: a change
+    /// of what the stored bytes hold moves it, and with it the identifier, even where the format
+    /// itself has no version field
+    #[must_use]
+    pub const fn version(self) -> u32 {
+        1
+    }
+
+    /// Whether this build's writers store the meaning identifier for this form (otherwise they
+    /// still store the raw semantics identifier, and a raw identifier is this form's current
+    /// generation)
+    #[must_use]
+    pub const fn writes_meaning(self) -> bool {
+        matches!(
+            self,
+            Self::StlBinary
+                | Self::StlAscii
+                | Self::ThreeMf
+                | Self::FbxBinary
+                | Self::FbxAscii
+                | Self::ObjText
+                | Self::Ply
+        )
+    }
+}
+
+/// The meaning identifier of `form` written under `semantics`: `alice_zip::law_id::LawIdHasher` v2
+/// over the kind [`MEANING_KIND`], the semantics identifier, the form's name and its layout version
+#[must_use]
+pub fn meaning_id(form: StoredForm, semantics: &Provenance) -> [u8; 32] {
+    alice_zip::law_id::LawIdHasher::new(MEANING_KIND, &semantics.semantics_id)
+        .str(form.name())
+        .u32(form.version())
+        .finish()
+}
+
+/// Lower-case hex of 32 bytes
+fn hex_of(id: &[u8; 32]) -> String {
+    use std::fmt::Write as _;
+    let mut s = String::with_capacity(64);
+    for b in id {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
+
+/// Where a stored identifier was read
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum StoredVia {
+    /// The text key [`MEANING_KEY`]: a meaning identifier
+    MeaningKey,
+    /// The earlier text key [`KEY`]: a raw semantics identifier
+    SemanticsKey,
+    /// A binary slot, which holds a meaning identifier or (an earlier file) a raw one
+    Slot,
+}
+
+/// An identifier read from a stored form, before it is judged
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct Stored {
+    /// The form the bytes were read as
+    pub form: StoredForm,
+    /// The 32 stored bytes
+    pub id: [u8; 32],
+    /// Where they were read
+    pub via: StoredVia,
+}
+
+impl fmt::Display for Stored {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let via = match self.via {
+            StoredVia::MeaningKey => MEANING_KEY,
+            StoredVia::SemanticsKey => KEY,
+            StoredVia::Slot => "slot",
+        };
+        write!(f, "{} ({} {via})", self.hex(), self.form.name())
+    }
+}
+
+/// What a format's reader found: the 32 bytes and where
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Found {
+    id: [u8; 32],
+    via: StoredVia,
+}
+
+impl Found {
+    /// A raw semantics identifier read through the earlier text key
+    const fn key(p: Provenance) -> Self {
+        Self {
+            id: p.semantics_id,
+            via: StoredVia::SemanticsKey,
+        }
+    }
+
+    /// The 32 bytes of a binary slot
+    const fn slot(id: [u8; 32]) -> Self {
+        Self {
+            id,
+            via: StoredVia::Slot,
+        }
+    }
+
+    const fn of(self, form: StoredForm) -> Stored {
+        Stored {
+            form,
+            id: self.id,
+            via: self.via,
+        }
+    }
+}
+
+impl Stored {
+    /// Whether these are the bytes this build's writers store for `p` in this form: the meaning
+    /// identifier of `p` for a form that stores meaning identifiers, `p` itself (through the
+    /// earlier key or a slot) for one that does not yet
+    #[must_use]
+    pub fn is_written_under(&self, p: &Provenance) -> bool {
+        match self.via {
+            StoredVia::MeaningKey => {
+                self.form.writes_meaning() && self.id == meaning_id(self.form, p)
+            }
+            StoredVia::SemanticsKey => !self.form.writes_meaning() && self.id == p.semantics_id,
+            StoredVia::Slot => self.id == p.slot_for(self.form),
+        }
+    }
+
+    /// Lower-case hex of the stored 32 bytes (64 characters)
+    #[must_use]
+    pub fn hex(&self) -> String {
+        hex_of(&self.id)
+    }
+
+    /// What the stored identifier says about the arithmetic, against `expected` and the earlier
+    /// identifiers in `previous` (for this crate, [`crate::PREVIOUS_SDF_SEMANTICS_IDS`], the list of
+    /// G6's check)
+    ///
+    /// A meaning identifier of `expected` is [`StoredSemantics::Current`] and one of an identifier
+    /// in `previous` is `VerifiedPrevious`. A raw semantics identifier (a file written before the
+    /// form stored meaning identifiers) is `VerifiedPrevious` when it is `expected` or in
+    /// `previous`; for a form whose writers still store raw identifiers it is `Current` when it is
+    /// `expected`.
+    ///
+    /// # Errors
+    ///
+    /// [`ProvenanceError::MeaningMismatch`] (the stored identifier, the expected meaning
+    /// identifier, the form and its version) for anything else read as a meaning identifier, and
+    /// [`ProvenanceError::Mismatch`] for a raw identifier read through [`KEY`] that is neither.
+    pub fn judge(
+        &self,
+        expected: &Provenance,
+        previous: &[[u8; 32]],
+    ) -> Result<StoredSemantics, ProvenanceError> {
+        let meaning = self.via != StoredVia::SemanticsKey;
+        if meaning {
+            if self.id == meaning_id(self.form, expected) {
+                return Ok(StoredSemantics::Current);
+            }
+            if let Some(p) = previous
+                .iter()
+                .find(|p| meaning_id(self.form, &Provenance::new(**p)) == self.id)
+            {
+                return Ok(StoredSemantics::VerifiedPrevious(Provenance::new(*p)));
+            }
+        }
+        if self.via != StoredVia::MeaningKey {
+            let raw = Provenance::new(self.id);
+            if raw == *expected {
+                return Ok(if self.form.writes_meaning() {
+                    StoredSemantics::VerifiedPrevious(raw)
+                } else {
+                    StoredSemantics::Current
+                });
+            }
+            if previous.contains(&self.id) {
+                return Ok(StoredSemantics::VerifiedPrevious(raw));
+            }
+        }
+        // a raw identifier (the earlier key, or a slot of a form that still stores raw identifiers)
+        // is named as one; a meaning identifier with its form and version
+        if self.via == StoredVia::SemanticsKey
+            || (self.via == StoredVia::Slot && !self.form.writes_meaning())
+        {
+            Err(ProvenanceError::Mismatch {
+                stored: Provenance::new(self.id),
+                expected: *expected,
+            })
+        } else {
+            Err(ProvenanceError::MeaningMismatch {
+                form: self.form,
+                version: self.form.version(),
+                stored: hex_of(&self.id),
+                expected: hex_of(&meaning_id(self.form, expected)),
+            })
+        }
+    }
+}
+
 /// The identifier of the meaning of the stored bytes
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -106,10 +430,44 @@ impl Provenance {
         s
     }
 
-    /// `alice:semantics_id=<64 hex>`, the form text formats store
+    /// `alice:semantics_id=<64 hex>`, the form the text formats stored before meaning identifiers
     #[must_use]
     pub fn tagged(&self) -> String {
         format!("{KEY}={}", self.hex())
+    }
+
+    /// The text a writer of `form` stores: `alice:meaning_id=<64 hex>` of [`meaning_id`] for a form
+    /// that stores meaning identifiers, [`Self::tagged`] for one that does not yet
+    #[must_use]
+    pub fn tagged_for(&self, form: StoredForm) -> String {
+        if form.writes_meaning() {
+            format!("{MEANING_KEY}={}", hex_of(&meaning_id(form, self)))
+        } else {
+            self.tagged()
+        }
+    }
+
+    /// The key and the 64 hex digits a writer of `form` stores where a format keeps a name and a
+    /// value apart (the 3MF metadata): ([`MEANING_KEY`], [`meaning_id`]) for a form that stores
+    /// meaning identifiers, ([`KEY`], the raw identifier) for one that does not yet
+    #[must_use]
+    pub fn named_for(&self, form: StoredForm) -> (&'static str, String) {
+        if form.writes_meaning() {
+            (MEANING_KEY, hex_of(&meaning_id(form, self)))
+        } else {
+            (KEY, self.hex())
+        }
+    }
+
+    /// The 32 bytes a binary writer of `form` stores in its slot: [`meaning_id`] for a form that
+    /// stores meaning identifiers, the raw identifier for one that does not yet
+    #[must_use]
+    pub fn slot_for(&self, form: StoredForm) -> [u8; 32] {
+        if form.writes_meaning() {
+            meaning_id(form, self)
+        } else {
+            self.semantics_id
+        }
     }
 
     /// The 80-byte binary STL header carrying this identifier
@@ -118,7 +476,7 @@ impl Provenance {
         let mut h = [0u8; 80];
         h[..8].copy_from_slice(STL_MAGIC);
         h[8] = STL_HEADER_VERSION;
-        h[9..41].copy_from_slice(&self.semantics_id);
+        h[9..41].copy_from_slice(&self.slot_for(StoredForm::StlBinary));
         h
     }
 
@@ -192,15 +550,20 @@ impl Stamp {
         h
     }
 
-    /// The text form: `alice:semantics_id=<hex>`, then ` alice:producer_semantics_id=<hex>` when a
-    /// producer is present
+    /// The stamp's text for a writer of `form`: the primary as [`Provenance::tagged_for`] writes it
+    /// (a meaning identifier for a form that stores them), then the producer's raw identifier
     #[must_use]
-    pub fn tagged(&self) -> String {
+    pub fn tagged_for(&self, form: StoredForm) -> String {
         match self.producer {
-            None => self.primary.tagged(),
-            Some(p) => format!("{} {PRODUCER_KEY}={}", self.primary.tagged(), p.hex()),
+            None => self.primary.tagged_for(form),
+            Some(p) => format!(
+                "{} {PRODUCER_KEY}={}",
+                self.primary.tagged_for(form),
+                p.hex()
+            ),
         }
     }
+
 }
 
 impl From<Provenance> for Stamp {
@@ -225,6 +588,19 @@ pub enum ProvenanceError {
     /// The format is not one this module reads, or its identifier cannot be read
     #[error("cannot read an identifier: {0}")]
     Unreadable(String),
+    /// The stored meaning identifier is neither the one of the expected identifier nor of an
+    /// earlier one
+    #[error("{MEANING_KEY} mismatch for {form:?} version {version}: stored {stored}, expected {expected}")]
+    MeaningMismatch {
+        /// The form the identifier was read from
+        form: StoredForm,
+        /// The form's layout version the expected identifier was computed for
+        version: u32,
+        /// The stored identifier (hex)
+        stored: String,
+        /// The meaning identifier of the expected semantics identifier (hex)
+        expected: String,
+    },
     /// The stored identifier is not the expected one
     #[error("{KEY} mismatch: stored {stored}, expected {expected}")]
     Mismatch {
@@ -253,7 +629,7 @@ pub enum ProvenanceError {
 /// [`ProvenanceError::Missing`] when the format is recognised but carries no identifier,
 /// [`ProvenanceError::Unreadable`] when the format is not recognised (or a 3MF entry is
 /// compressed), [`ProvenanceError::Io`] when the file cannot be read.
-pub fn read(path: impl AsRef<Path>) -> Result<Provenance, ProvenanceError> {
+pub fn read(path: impl AsRef<Path>) -> Result<Stored, ProvenanceError> {
     let path = path.as_ref();
     let bytes = std::fs::read(path)?;
     match from_bytes(&bytes) {
@@ -275,14 +651,14 @@ pub fn read(path: impl AsRef<Path>) -> Result<Provenance, ProvenanceError> {
             });
             if !plain || find(&text, CONTENT_SHA256_KEY.as_bytes()).is_some() {
                 match bound_sidecar_id(path, &bytes) {
-                    Ok(Some(id)) => Ok(Provenance::new(id)),
+                    Ok(Some(id)) => Ok(Found::slot(id).of(StoredForm::Sidecar)),
                     Ok(None) => Err(ProvenanceError::Unreadable(
                         "sidecar: removed while reading".into(),
                     )),
                     Err(e) => Err(ProvenanceError::Unreadable(format!("sidecar: {e}"))),
                 }
             } else {
-                tagged_in(&text, "sidecar")
+                tagged_in(&text, "sidecar").map(|f| f.of(StoredForm::Sidecar))
             }
         }
         other => other,
@@ -369,15 +745,19 @@ pub(crate) fn vox_main_children(bytes: &[u8]) -> Result<usize, String> {
 /// # Errors
 ///
 /// As [`read`].
-pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
+pub fn from_bytes(bytes: &[u8]) -> Result<Stored, ProvenanceError> {
+    found_in(bytes).map(|(form, f)| f.of(form))
+}
+
+fn found_in(bytes: &[u8]) -> Result<(StoredForm, Found), ProvenanceError> {
     if bytes.starts_with(b"PK\x03\x04") {
-        return read_3mf(bytes);
+        return read_3mf(bytes).map(|f| (StoredForm::ThreeMf, f));
     }
     if bytes.starts_with(b"Kaydara FBX Binary") {
-        return tagged_in_fbx_binary(bytes);
+        return tagged_in_fbx_binary(bytes).map(|f| (StoredForm::FbxBinary, f));
     }
     if bytes.starts_with(b"; FBX") {
-        return tagged_in(bytes, "FBX");
+        return tagged_in(bytes, "FBX").map(|f| (StoredForm::FbxAscii, f));
     }
     if bytes.starts_with(b"ASDF") {
         // ASDF: version 2 and later carry the identifier after the 16-byte header
@@ -393,13 +773,13 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
             .ok_or_else(|| ProvenanceError::Unreadable("ASDF: truncated header".into()))?
             .try_into()
             .unwrap();
-        return Ok(Provenance::new(id));
+        return Ok((StoredForm::Asdf, Found::slot(id)));
     }
     if bytes.starts_with(PNG_SIGNATURE) {
-        return png_tagged(bytes);
+        return png_tagged(bytes).map(|p| (StoredForm::Png, Found::key(p)));
     }
     if bytes.starts_with(JPEG_SOI) {
-        return jpeg_tagged(bytes);
+        return jpeg_tagged(bytes).map(|p| (StoredForm::Jpeg, Found::key(p)));
     }
     if bytes.starts_with(b"DDS ") {
         // DDS: the identifier block sits in the header's reserved dwords (bytes 32..76)
@@ -411,7 +791,7 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
         }
         let mut id = [0u8; 32];
         id.copy_from_slice(&r[8..40]);
-        return Ok(Provenance::new(id));
+        return Ok((StoredForm::Dds, Found::slot(id)));
     }
     if bytes.starts_with(b"ALICEBM\0") {
         // ABM: version 2 carries the identifier after the 32-byte header; a version this crate
@@ -428,7 +808,7 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
                     .ok_or_else(|| ProvenanceError::Unreadable("ABM: truncated header".into()))?
                     .try_into()
                     .unwrap();
-                Ok(Provenance::new(id))
+                Ok((StoredForm::Abm, Found::slot(id)))
             }
             v => Err(ProvenanceError::Unreadable(format!(
                 "ABM: version {v} is not known"
@@ -450,7 +830,7 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
                     .ok_or_else(|| ProvenanceError::Unreadable("Nanite: truncated header".into()))?
                     .try_into()
                     .unwrap();
-                Ok(Provenance::new(id))
+                Ok((StoredForm::Nanite, Found::slot(id)))
             }
             v => Err(ProvenanceError::Unreadable(format!(
                 "Nanite: version {v} is not known"
@@ -477,7 +857,14 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
                         })?
                         .try_into()
                         .unwrap();
-                    Ok(Provenance::new(id))
+                    Ok((
+                        if format == "UE5" {
+                            StoredForm::Ue5Mesh
+                        } else {
+                            StoredForm::UnityMesh
+                        },
+                        Found::slot(id),
+                    ))
                 }
                 v => Err(ProvenanceError::Unreadable(format!(
                     "{format}: version {v} is not known"
@@ -499,7 +886,7 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
                     .ok_or_else(|| ProvenanceError::Unreadable("NSDF: truncated header".into()))?
                     .try_into()
                     .unwrap();
-                Ok(Provenance::new(id))
+                Ok((StoredForm::Neural, Found::slot(id)))
             }
             v => Err(ProvenanceError::Unreadable(format!(
                 "NSDF: version {v} is not known"
@@ -507,7 +894,7 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
         };
     }
     if bytes.starts_with(b"Ogawa") {
-        return read_alembic(bytes);
+        return read_alembic(bytes).map(|p| (StoredForm::Alembic, Found::key(p)));
     }
     if bytes.starts_with(b"ALICEVDB") {
         // ALICE-VDB dense grid: `ALICEVDB2` carries the identifier after the 9-byte magic
@@ -523,7 +910,7 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
                     })?
                     .try_into()
                     .unwrap();
-                Ok(Provenance::new(id))
+                Ok((StoredForm::Vdb, Found::slot(id)))
             }
             Some(&v) => Err(ProvenanceError::Unreadable(format!(
                 "ALICE-VDB: version {:?} is not known",
@@ -552,12 +939,12 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
                 .get(8..40)
                 .ok_or_else(|| ProvenanceError::Unreadable("SVO chunk: truncated header".into()))?,
         );
-        return Ok(Provenance::new(id));
+        return Ok((StoredForm::Svo, Found::slot(id)));
     }
     if bytes.starts_with(b"VOX ") {
         // MagicaVoxel: the private `ALSD` chunk among MAIN's children
         return match vox_stored_id(bytes) {
-            Ok(Some(id)) => Ok(Provenance::new(id)),
+            Ok(Some(id)) => Ok((StoredForm::Vox, Found::slot(id))),
             Ok(None) => Err(ProvenanceError::Missing { format: "VOX" }),
             Err(e) => Err(ProvenanceError::Unreadable(format!("VOX: {e}"))),
         };
@@ -576,10 +963,17 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
         let json = bytes
             .get(20..20 + len)
             .ok_or_else(|| ProvenanceError::Unreadable("GLB: truncated JSON chunk".into()))?;
-        return json_tagged(json, "GLB");
+        return json_tagged(json, "GLB").map(|(_, p)| (StoredForm::Glb, Found::key(p)));
     }
     if bytes.first() == Some(&b'{') {
-        return json_tagged(bytes, "glTF");
+        return json_tagged(bytes, "glTF").map(|(gltf, p)| {
+            let form = if gltf {
+                StoredForm::Gltf
+            } else {
+                StoredForm::JsonDocument
+            };
+            (form, Found::key(p))
+        });
     }
     if bytes.starts_with(b"#usda") {
         // USDA: the layer metadata (the parenthesised block after the first line) holds
@@ -594,6 +988,7 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
             Some(at) => head
                 .get(at + key.len()..at + key.len() + 64)
                 .and_then(Provenance::from_hex)
+                .map(|p| (StoredForm::Usd, Found::key(p)))
                 .ok_or_else(|| {
                     ProvenanceError::Unreadable(format!("USDA: {KEY} is not 64 hex digits"))
                 }),
@@ -607,7 +1002,7 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
         let len = find(&bytes[start..], b"),").ok_or_else(|| {
             ProvenanceError::Unreadable("STEP: FILE_DESCRIPTION not closed".into())
         })?;
-        return tagged_in(&bytes[start..start + len], "STEP");
+        return tagged_in(&bytes[start..start + len], "STEP").map(|f| (StoredForm::Step, f));
     }
     if is_iges_start(bytes) {
         // IGES: the Start section's text (columns 1-72 of the `S` lines) joined
@@ -624,13 +1019,13 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
                 .map_or(&text[..0], |i| &text[..=i]);
             joined.extend_from_slice(trimmed);
         }
-        return tagged_in(&joined, "IGES");
+        return tagged_in(&joined, "IGES").map(|f| (StoredForm::Iges, f));
     }
     if bytes.starts_with(b"ply\n") || bytes.starts_with(b"ply\r\n") {
         // the header ends at `end_header`; the identifier is one of its comment lines
         let end = find(bytes, b"end_header")
             .ok_or_else(|| ProvenanceError::Unreadable("PLY: no end_header".into()))?;
-        return tagged_in(&bytes[..end], "PLY");
+        return tagged_in(&bytes[..end], "PLY").map(|f| (StoredForm::Ply, f));
     }
     if bytes.starts_with(b"//")
         || (glsl_version_prefix_len(bytes).is_some() && !key_in_leading_hash_block(bytes))
@@ -640,7 +1035,7 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
         // read by the same rule as the readers that compile shader text (one verdict for the same
         // bytes). An OBJ whose first comment only looks like a version line keeps its OBJ-style
         // tag (`# alice:semantics_id=` in its leading `#` lines) through the OBJ branch below
-        return shader_text_tag(bytes);
+        return shader_text_tag(bytes).map(|f| (StoredForm::ShaderText, f));
     }
     if bytes.starts_with(b"#") {
         // OBJ (and MTL): the identifier is one of the leading comment lines
@@ -651,11 +1046,11 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
             }
             end += line.len();
         }
-        return tagged_in(&bytes[..end], "OBJ");
+        return tagged_in(&bytes[..end], "OBJ").map(|f| (StoredForm::ObjText, f));
     }
     if bytes.starts_with(b"solid") {
         let first = bytes.split(|&b| b == b'\n').next().unwrap_or(&[]);
-        return tagged_in(first, "ASCII STL");
+        return tagged_in(first, "ASCII STL").map(|f| (StoredForm::StlAscii, f));
     }
     if bytes.len() >= 84 {
         let count = u32::from_le_bytes([bytes[80], bytes[81], bytes[82], bytes[83]]) as usize;
@@ -668,7 +1063,7 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
                 {
                     let mut id = [0u8; 32];
                     id.copy_from_slice(&bytes[9..41]);
-                    return Ok(Provenance::new(id));
+                    return Ok((StoredForm::StlBinary, Found::slot(id)));
                 }
                 return Err(ProvenanceError::Unreadable(format!(
                     "binary STL: header version {} (with this padding) is not one this crate knows",
@@ -693,7 +1088,7 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
 /// As [`read`], and [`ProvenanceError::Unreadable`] when a producer slot is malformed.
 pub fn read_with_producer(
     path: impl AsRef<Path>,
-) -> Result<(Provenance, Option<Provenance>), ProvenanceError> {
+) -> Result<(Stored, Option<Provenance>), ProvenanceError> {
     let path = path.as_ref();
     let primary = read(path)?;
     let producer = producer_in(&std::fs::read(path)?)?;
@@ -707,7 +1102,7 @@ pub fn read_with_producer(
 /// As [`from_bytes`], and [`ProvenanceError::Unreadable`] when a producer slot is malformed.
 pub fn from_bytes_with_producer(
     bytes: &[u8],
-) -> Result<(Provenance, Option<Provenance>), ProvenanceError> {
+) -> Result<(Stored, Option<Provenance>), ProvenanceError> {
     Ok((from_bytes(bytes)?, producer_in(bytes)?))
 }
 
@@ -887,6 +1282,43 @@ pub(crate) fn sdf_load_verdict(
     }
 }
 
+/// The verdict of this crate's importers on an identifier read from a stored form: [`Stored::judge`]
+/// against this crate's identifier and G6's earlier ones
+///
+/// # Errors
+///
+/// [`crate::io::IoError::MeaningMismatch`] or [`crate::io::IoError::SemanticsMismatch`], naming
+/// what was stored and what was expected.
+pub(crate) fn stored_verdict(
+    stored: &Stored,
+    format: &'static str,
+) -> Result<StoredSemantics, crate::io::IoError> {
+    stored
+        .judge(&Provenance::sdf(), crate::PREVIOUS_SDF_SEMANTICS_IDS)
+        .map_err(|e| match e {
+            ProvenanceError::MeaningMismatch {
+                form,
+                version,
+                stored,
+                expected,
+            } => crate::io::IoError::MeaningMismatch {
+                format,
+                form,
+                version,
+                stored,
+                expected,
+            },
+            ProvenanceError::Mismatch { stored, expected } => {
+                crate::io::IoError::SemanticsMismatch {
+                    format,
+                    stored,
+                    expected,
+                }
+            }
+            other => crate::io::IoError::InvalidFormat(format!("{format}: {other}")),
+        })
+}
+
 /// The verdict of an importer (a mesh or an image) on the bytes of a file of `format`: the
 /// identifier this crate's writers store ([`from_bytes`]), judged as [`sdf_load_verdict`] judges it
 ///
@@ -905,7 +1337,7 @@ pub(crate) fn import_verdict(
     allow_unpinned: bool,
 ) -> Result<StoredSemantics, crate::io::IoError> {
     let stored = match from_bytes(bytes) {
-        Ok(p) => Some(p.semantics_id),
+        Ok(stored) => return stored_verdict(&stored, format),
         Err(ProvenanceError::Missing { .. }) => None,
         // a file that holds the key, or one whose own walk this module owns (this crate's binary
         // STL header, the PNG chunks, the JPEG markers) and failed, is never read as unstamped;
@@ -913,6 +1345,7 @@ pub(crate) fn import_verdict(
         // that from depending on the decoder
         Err(e)
             if find(bytes, KEY.as_bytes()).is_some()
+                || find(bytes, MEANING_KEY.as_bytes()).is_some()
                 || bytes.starts_with(STL_MAGIC)
                 || bytes.starts_with(PNG_SIGNATURE)
                 || bytes.starts_with(JPEG_SOI) =>
@@ -927,22 +1360,26 @@ pub(crate) fn import_verdict(
 /// The identifier of a JSON document: `asset.extras["alice:semantics_id"]` of a glTF document
 /// (one with an `asset` object; `gltf` names it in errors), the top-level `"alice:semantics_id"` of
 /// any other JSON document of this crate (ASDF JSON, the LOD chain sidecar), named `JSON` in errors
-fn json_tagged(bytes: &[u8], gltf: &'static str) -> Result<Provenance, ProvenanceError> {
+fn json_tagged(bytes: &[u8], gltf: &'static str) -> Result<(bool, Provenance), ProvenanceError> {
     #[allow(
         clippy::disallowed_methods,
         reason = "stored form other-type: a serde_json::Value of a glTF or ASDF JSON document, read only for its stored identifier"
     )]
     let doc: serde_json::Value = serde_json::from_slice(bytes)
         .map_err(|e| ProvenanceError::Unreadable(format!("JSON: {e}")))?;
-    let (format, field) = match doc.get("asset") {
-        Some(asset) => (gltf, asset.get("extras").and_then(|x| x.get(KEY))),
-        None => ("JSON", doc.get(KEY)),
+    let (is_gltf, format, field) = match doc.get("asset") {
+        Some(asset) => (true, gltf, asset.get("extras").and_then(|x| x.get(KEY))),
+        None => (false, "JSON", doc.get(KEY)),
     };
     match field {
         None => Err(ProvenanceError::Missing { format }),
-        Some(v) => v.as_str().and_then(Provenance::from_hex).ok_or_else(|| {
-            ProvenanceError::Unreadable(format!("{format}: {KEY} is not 64 hex digits"))
-        }),
+        Some(v) => v
+            .as_str()
+            .and_then(Provenance::from_hex)
+            .map(|p| (is_gltf, p))
+            .ok_or_else(|| {
+                ProvenanceError::Unreadable(format!("{format}: {KEY} is not 64 hex digits"))
+            }),
     }
 }
 
@@ -1221,17 +1658,7 @@ pub fn check(
     expected: &Provenance,
     previous: &[[u8; 32]],
 ) -> Result<StoredSemantics, ProvenanceError> {
-    let stored = read(path)?;
-    if stored == *expected {
-        Ok(StoredSemantics::Current)
-    } else if previous.contains(&stored.semantics_id) {
-        Ok(StoredSemantics::VerifiedPrevious(stored))
-    } else {
-        Err(ProvenanceError::Mismatch {
-            stored,
-            expected: *expected,
-        })
-    }
+    read(path)?.judge(expected, previous)
 }
 
 /// [`check`] against this crate's identifier and the earlier ones it still reproduces
@@ -1320,7 +1747,7 @@ fn shader_leading_block(bytes: &[u8]) -> std::ops::Range<usize> {
 /// ([`shader_text_verdict`]). The key anywhere else in the text (below the block, before a
 /// `#version` line) makes the text unreadable, never unstamped: a tag that is present is never
 /// ignored.
-fn shader_text_tag(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
+fn shader_text_tag(bytes: &[u8]) -> Result<Found, ProvenanceError> {
     let block = shader_leading_block(bytes);
     if find(&bytes[..block.start], KEY.as_bytes()).is_some()
         || find(&bytes[block.end..], KEY.as_bytes()).is_some()
@@ -1376,12 +1803,14 @@ pub(crate) fn shader_text_verdict(
     text: &str,
     allow_unpinned: bool,
 ) -> Result<StoredSemantics, ShaderRefusal> {
-    let stored = match shader_text_tag(text.as_bytes()) {
-        Ok(p) => Some(p.semantics_id),
-        Err(ProvenanceError::Missing { .. }) => None,
+    let verdict = match shader_text_tag(text.as_bytes()) {
+        Ok(found) => stored_verdict(&found.of(StoredForm::ShaderText), "shader text"),
+        Err(ProvenanceError::Missing { .. }) => {
+            sdf_load_verdict(None, "shader text", allow_unpinned)
+        }
         Err(e) => return Err(ShaderRefusal::Invalid(e.to_string())),
     };
-    sdf_load_verdict(stored, "shader text", allow_unpinned).map_err(|e| match e {
+    verdict.map_err(|e| match e {
         crate::io::IoError::Unpinned { .. } => ShaderRefusal::Unpinned,
         crate::io::IoError::SemanticsMismatch {
             stored, expected, ..
@@ -1394,17 +1823,39 @@ pub(crate) fn shader_text_verdict(
 /// value is exactly 64 lower-case hex digits and ends there (the end of the text, or a byte that
 /// is not an ASCII letter, digit or `_`): a key with any other value makes the identifier
 /// unreadable, never absent
-fn tagged_in(bytes: &[u8], format: &'static str) -> Result<Provenance, ProvenanceError> {
-    tagged_in_with(bytes, format, |b, _, end| {
+fn tagged_in(bytes: &[u8], format: &'static str) -> Result<Found, ProvenanceError> {
+    both_keys_in(bytes, format, |b, _, end| {
         b.get(end)
             .is_none_or(|&c| !(c.is_ascii_alphanumeric() || c == b'_'))
     })
 }
 
+/// The identifier under [`MEANING_KEY`] (a meaning identifier) or under the earlier [`KEY`] (a raw
+/// semantics identifier); a text holding both is an error, never read as either
+fn both_keys_in(
+    bytes: &[u8],
+    format: &'static str,
+    ends: impl Fn(&[u8], usize, usize) -> bool,
+) -> Result<Found, ProvenanceError> {
+    let meaning = tagged_in_with(bytes, format, MEANING_KEY, &ends)?;
+    let raw = tagged_in_with(bytes, format, KEY, &ends)?;
+    match (meaning, raw) {
+        (Some(m), None) => Ok(Found {
+            id: m.semantics_id,
+            via: StoredVia::MeaningKey,
+        }),
+        (None, Some(r)) => Ok(Found::key(r)),
+        (None, None) => Err(ProvenanceError::Missing { format }),
+        (Some(_), Some(_)) => Err(ProvenanceError::Unreadable(format!(
+            "{format}: both {MEANING_KEY} and {KEY}"
+        ))),
+    }
+}
+
 /// [`tagged_in`] for binary FBX, where the value is followed by the bytes of the next record: the
 /// value ends the length-prefixed string property (`S`, `u32` length, bytes) that holds the key
-fn tagged_in_fbx_binary(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
-    tagged_in_with(bytes, "FBX", |b, key_at, end| {
+fn tagged_in_fbx_binary(bytes: &[u8]) -> Result<Found, ProvenanceError> {
+    both_keys_in(bytes, "FBX", |b, key_at, end| {
         // the string starts at most a short prefix (`ALICE-SDF `) before the key
         (key_at.saturating_sub(256)..key_at).any(|s| {
             b[s] == b'S'
@@ -1422,9 +1873,10 @@ fn tagged_in_fbx_binary(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
 fn tagged_in_with(
     bytes: &[u8],
     format: &'static str,
+    name: &str,
     ends: impl Fn(&[u8], usize, usize) -> bool,
-) -> Result<Provenance, ProvenanceError> {
-    let key = format!("{KEY}=");
+) -> Result<Option<Provenance>, ProvenanceError> {
+    let key = format!("{name}=");
     let key = key.as_bytes();
     let mut found: Option<Provenance> = None;
     let mut from = 0;
@@ -1439,20 +1891,20 @@ fn tagged_in_with(
             .and_then(Provenance::from_hex)
             .ok_or_else(|| {
                 ProvenanceError::Unreadable(format!(
-                    "{format}: {KEY} is not 64 lower-case hex digits ending the value"
+                    "{format}: {name} is not 64 lower-case hex digits ending the value"
                 ))
             })?;
         match found {
             Some(q) if q != p => {
                 return Err(ProvenanceError::Unreadable(format!(
-                    "{format}: two different {KEY} values"
+                    "{format}: two different {name} values"
                 )))
             }
             _ => found = Some(p),
         }
         from = end;
     }
-    found.ok_or(ProvenanceError::Missing { format })
+    Ok(found)
 }
 
 /// The identifier in the archive metadata of an Alembic (Ogawa) archive, as
@@ -1523,26 +1975,39 @@ fn read_alembic(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
 }
 
 /// The `alice:semantics_id` metadata of `3D/3dmodel.model` in a 3MF (zip) archive
-fn read_3mf(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
+fn read_3mf(bytes: &[u8]) -> Result<Found, ProvenanceError> {
     let model = zip_entry(bytes, "3D/3dmodel.model")?
         .ok_or_else(|| ProvenanceError::Unreadable("3MF: no 3D/3dmodel.model".into()))?;
-    let open = format!("<metadata name=\"{KEY}\">");
     let text = std::str::from_utf8(model)
         .map_err(|_| ProvenanceError::Unreadable("3MF: model is not UTF-8".into()))?;
-    let mut values = text.match_indices(&open).map(|(at, _)| {
-        let start = at + open.len();
-        text.get(start..start + 64)
-            .and_then(Provenance::from_hex)
-            .filter(|_| text[start + 64..].starts_with("</metadata>"))
-    });
-    match (values.next(), values.next()) {
-        (None, _) => Err(ProvenanceError::Missing { format: "3MF" }),
-        (Some(Some(p)), None) => Ok(p),
-        (Some(None), _) => Err(ProvenanceError::Unreadable(format!(
-            "3MF: {KEY} is not 64 hex digits"
-        ))),
-        (Some(Some(_)), Some(_)) => Err(ProvenanceError::Unreadable(format!(
-            "3MF: more than one {KEY}"
+    let one = |name: &str| -> Result<Option<Provenance>, ProvenanceError> {
+        let open = format!("<metadata name=\"{name}\">");
+        let mut values = text.match_indices(&open).map(|(at, _)| {
+            let start = at + open.len();
+            text.get(start..start + 64)
+                .and_then(Provenance::from_hex)
+                .filter(|_| text[start + 64..].starts_with("</metadata>"))
+        });
+        match (values.next(), values.next()) {
+            (None, _) => Ok(None),
+            (Some(Some(p)), None) => Ok(Some(p)),
+            (Some(None), _) => Err(ProvenanceError::Unreadable(format!(
+                "3MF: {name} is not 64 hex digits"
+            ))),
+            (Some(Some(_)), Some(_)) => Err(ProvenanceError::Unreadable(format!(
+                "3MF: more than one {name}"
+            ))),
+        }
+    };
+    match (one(MEANING_KEY)?, one(KEY)?) {
+        (Some(m), None) => Ok(Found {
+            id: m.semantics_id,
+            via: StoredVia::MeaningKey,
+        }),
+        (None, Some(r)) => Ok(Found::key(r)),
+        (None, None) => Err(ProvenanceError::Missing { format: "3MF" }),
+        (Some(_), Some(_)) => Err(ProvenanceError::Unreadable(format!(
+            "3MF: both {MEANING_KEY} and {KEY}"
         ))),
     }
 }
@@ -1638,7 +2103,7 @@ mod tests {
         let ours = format!("// {KEY}={}", Provenance::sdf().hex());
         let other = format!("// {KEY}={}", Provenance::new([0x5a; 32]).hex());
         let stored = |bytes: &[u8]| match from_bytes(bytes) {
-            Ok(p) if p == Provenance::sdf() => "current",
+            Ok(p) if p.id == Provenance::sdf().semantics_id => "current",
             Ok(_) => "mismatch",
             Err(ProvenanceError::Missing { .. }) => "unpinned",
             Err(ProvenanceError::Unreadable(_)) => "invalid",
@@ -1730,8 +2195,10 @@ mod tests {
             "fn f() {}\n",
         ] {
             assert_eq!(
-                from_bytes(tagged_shader(body).as_bytes()).ok(),
-                Some(Provenance::sdf()),
+                from_bytes(tagged_shader(body).as_bytes())
+                    .ok()
+                    .map(|s| s.id),
+                Some(Provenance::sdf().semantics_id),
                 "{body:?}"
             );
         }
@@ -1793,7 +2260,7 @@ mod tests {
             Err(ProvenanceError::Unreadable(_))
         ));
         let same = format!("{} {}", id(1).tagged(), id(1).tagged());
-        assert_eq!(tagged_in(same.as_bytes(), "t").unwrap(), id(1));
+        assert_eq!(tagged_in(same.as_bytes(), "t").unwrap(), Found::key(id(1)));
     }
 
     #[test]

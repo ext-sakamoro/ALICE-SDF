@@ -83,7 +83,11 @@ pub fn export_obj_with_stamp(
 
     // Header
     writeln!(w, "# ALICE-SDF OBJ Export")?;
-    writeln!(w, "# {}", stamp.tagged())?;
+    writeln!(
+        w,
+        "# {}",
+        stamp.tagged_for(crate::provenance::StoredForm::ObjText)
+    )?;
     writeln!(w, "# Vertices: {}", mesh.vertices.len())?;
     writeln!(w, "# Triangles: {}", mesh.indices.len() / 3)?;
 
@@ -191,7 +195,11 @@ fn export_mtl(
     let mut w = std::io::BufWriter::new(file);
 
     writeln!(w, "# ALICE-SDF MTL Export")?;
-    writeln!(w, "# {}", stamp.tagged())?;
+    writeln!(
+        w,
+        "# {}",
+        stamp.tagged_for(crate::provenance::StoredForm::ObjText)
+    )?;
 
     for (_, mat) in mat_lib.iter() {
         writeln!(w, "\nnewmtl {}", mat.name)?;

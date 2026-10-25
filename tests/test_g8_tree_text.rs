@@ -59,7 +59,10 @@ fn asdf_json_carries_and_checks_the_identifier() {
     let path = temp("stamped.asdf.json");
     io::save_asdf_json(&t, &path).unwrap();
     // the stored field, read by the format-independent reader and by the loaders
-    assert_eq!(provenance::read(&path).unwrap(), Provenance::sdf());
+    assert_eq!(
+        provenance::read(&path).unwrap().id,
+        Provenance::sdf().semantics_id
+    );
     assert_eq!(
         io::load_asdf_json(&path).unwrap().node_count(),
         t.node_count()

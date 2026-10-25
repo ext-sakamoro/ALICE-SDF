@@ -511,7 +511,9 @@ fn texture_fit_writer_stores_and_loaders_check_the_identifier() {
     let fit = sample_fit();
     let own = fit_path("own.json");
     save_texture_fit(&fit, &own).unwrap();
-    assert_eq!(provenance::read(&own).unwrap(), Provenance::sdf());
+    assert!(provenance::read(&own)
+        .unwrap()
+        .is_written_under(&Provenance::sdf()));
     let back = load_texture_fit(&own).unwrap();
     assert_eq!(back, fit);
     let bits = |r: &TextureFitResult| -> Vec<u32> {
@@ -544,7 +546,9 @@ fn texture_fit_writer_stores_and_loaders_check_the_identifier() {
     let other_id = Provenance::new([0xA5; 32]);
     let other = fit_path("other.json");
     save_texture_fit_with_provenance(&fit, &other, &other_id).unwrap();
-    assert_eq!(provenance::read(&other).unwrap(), other_id);
+    assert!(provenance::read(&other)
+        .unwrap()
+        .is_written_under(&other_id));
     for err in [
         load_texture_fit(&other).unwrap_err(),
         load_texture_fit_unverified(&other).unwrap_err(),

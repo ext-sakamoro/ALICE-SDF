@@ -62,11 +62,10 @@ pub fn export_3mf_with_stamp(
         "<model unit=\"millimeter\" xmlns=\"http://schemas.microsoft.com/3dmanufacturing/core/2015/02\" xmlns:alice=\"{}\">\n",
         crate::provenance::NAMESPACE_3MF
     ));
-    model.push_str(&format!(
-        "  <metadata name=\"{}\">{}</metadata>\n",
-        crate::provenance::KEY,
-        stamp.primary.hex()
-    ));
+    let (name, value) = stamp
+        .primary
+        .named_for(crate::provenance::StoredForm::ThreeMf);
+    model.push_str(&format!("  <metadata name=\"{name}\">{value}</metadata>\n"));
     if let Some(producer) = stamp.producer {
         model.push_str(&format!(
             "  <metadata name=\"{}\">{}</metadata>\n",

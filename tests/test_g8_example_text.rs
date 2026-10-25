@@ -170,7 +170,7 @@ fn every_file_the_examples_write_follows_the_shader_rule() {
             if is_whole(&path, &text) {
                 whole += 1;
                 assert_eq!(
-                    provenance::read(&path).map(|p| p.semantics_id).ok(),
+                    provenance::read(&path).map(|p| p.id).ok(),
                     Some(SDF_SEMANTICS_ID),
                     "{example}: {} is whole and must carry the identifier",
                     path.display()
@@ -252,9 +252,7 @@ fn a_whole_text_without_the_identifier_is_written_neither_way() {
 fn the_generated_rust_names_the_current_semantics_identifier() {
     let src = RustSource::transpile(&shape()).unwrap();
     assert_eq!(
-        provenance::from_bytes(src.source().as_bytes())
-            .unwrap()
-            .semantics_id,
+        provenance::from_bytes(src.source().as_bytes()).unwrap().id,
         SDF_SEMANTICS_ID
     );
     // in the leading block, before the first item

@@ -61,7 +61,11 @@ pub fn export_ply_with_provenance(
     writeln!(w, "ply")?;
     writeln!(w, "format {}", format)?;
     writeln!(w, "comment ALICE-SDF PLY Export")?;
-    writeln!(w, "comment {}", provenance.tagged())?;
+    writeln!(
+        w,
+        "comment {}",
+        provenance.tagged_for(crate::provenance::StoredForm::Ply)
+    )?;
     writeln!(w, "element vertex {}", vert_count)?;
     writeln!(w, "property float x")?;
     writeln!(w, "property float y")?;

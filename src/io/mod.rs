@@ -121,6 +121,23 @@ pub enum IoError {
     #[error("Unsupported version: {0}")]
     UnsupportedVersion(u16),
 
+    /// A stored meaning identifier that is neither this crate's nor one of an earlier identifier
+    #[error(
+        "{format}: {}: stored {stored}, expected {expected} ({form:?} version {version})",
+        crate::provenance::MEANING_KEY
+    )]
+    MeaningMismatch {
+        /// The format read
+        format: &'static str,
+        /// The stored form the expected identifier was computed for
+        form: crate::provenance::StoredForm,
+        /// Its layout version
+        version: u32,
+        /// The stored identifier (hex)
+        stored: String,
+        /// The meaning identifier of this crate's identifier (hex)
+        expected: String,
+    },
     /// The file carries a semantics identifier that is neither this crate's nor one it still
     /// reproduces (see [`crate::provenance`])
     #[error("{format}: semantics identifier mismatch: stored {stored}, expected {expected}")]

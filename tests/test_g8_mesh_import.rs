@@ -16,10 +16,41 @@ mod temp;
 use alice_sdf::io::{self, IoError};
 use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig, Mesh};
 use alice_sdf::prelude::*;
-use alice_sdf::provenance::{Provenance, StoredSemantics};
+use alice_sdf::provenance::{meaning_id, Provenance, StoredForm, StoredSemantics};
 use std::path::{Path, PathBuf};
 
 const V1_TRIANGLES: usize = 56;
+
+/// The forms whose meaning identifier a writer may store
+const FORMS: [StoredForm; 7] = [
+    StoredForm::StlBinary,
+    StoredForm::StlAscii,
+    StoredForm::ThreeMf,
+    StoredForm::FbxBinary,
+    StoredForm::FbxAscii,
+    StoredForm::ObjText,
+    StoredForm::Ply,
+];
+
+fn hex(id: &[u8; 32]) -> String {
+    id.iter().fold(String::with_capacity(64), |mut s, b| {
+        use std::fmt::Write as _;
+        write!(s, "{b:02x}").expect("writing to a String");
+        s
+    })
+}
+
+/// The 64 hex digits a writer stored for `p` in `bytes`: its meaning identifier for the file's form
+/// (a form that stores meaning identifiers), or the raw identifier
+fn stored_hex_in(bytes: &[u8], p: &Provenance) -> String {
+    let found = |h: &String| bytes.windows(64).any(|w| w == h.as_bytes());
+    FORMS
+        .iter()
+        .map(|f| hex(&meaning_id(*f, p)))
+        .chain(std::iter::once(p.hex()))
+        .find(found)
+        .expect("the written file holds this identifier, raw or as a meaning identifier")
+}
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -270,6 +301,25 @@ fn another_identifier_is_refused_by_both_importers() {
         (f.write)(&m, &path, &other());
         for result in [(f.read)(&path).map(|r| r.0), (f.read_pinned)(&path)] {
             match result {
+                // a form that stores meaning identifiers names the stored one, this crate's and the form
+                Err(IoError::MeaningMismatch {
+                    form,
+                    version,
+                    stored,
+                    expected,
+                    ..
+                }) => {
+                    assert_eq!(version, form.version(), "{}", f.name);
+                    assert_eq!(
+                        (stored, expected),
+                        (
+                            hex(&meaning_id(form, &other())),
+                            hex(&meaning_id(form, &Provenance::sdf()))
+                        ),
+                        "{}",
+                        f.name
+                    );
+                }
                 Err(IoError::SemanticsMismatch {
                     stored, expected, ..
                 }) => {
@@ -280,7 +330,7 @@ fn another_identifier_is_refused_by_both_importers() {
                         f.name
                     );
                 }
-                r => panic!("{}: expected SemanticsMismatch, got {r:?}", f.name),
+                r => panic!("{}: expected a mismatch, got {r:?}", f.name),
             }
         }
     }
@@ -330,8 +380,11 @@ fn a_malformed_identifier_in_an_ascii_stl_is_an_error() {
     let path = temp("bad_ascii.stl");
     io::export_stl_ascii_with_provenance(&m, &path, &Provenance::sdf()).unwrap();
     let text = std::fs::read_to_string(&path).unwrap();
-    let hex = Provenance::sdf().hex();
-    assert!(text.contains(&hex));
+    let hex = stored_hex_in(text.as_bytes(), &Provenance::sdf());
+    assert_eq!(
+        hex,
+        self::hex(&meaning_id(StoredForm::StlAscii, &Provenance::sdf()))
+    );
     std::fs::write(&path, text.replace(&hex, &"z".repeat(64))).unwrap();
     match io::import_stl(&path) {
         Err(IoError::InvalidFormat(why)) => assert!(why.contains("STL"), "{why}"),
@@ -351,7 +404,7 @@ fn a_malformed_identifier_is_an_error_not_unstamped() {
         let path = temp(&format!("bad_{}.{}", f.name, ext(&f)));
         (f.write)(&m, &path, &Provenance::sdf());
         let bytes = std::fs::read(&path).unwrap();
-        let hex = Provenance::sdf().hex();
+        let hex = stored_hex_in(&bytes, &Provenance::sdf());
         let at = bytes
             .windows(64)
             .position(|w| w == hex.as_bytes())

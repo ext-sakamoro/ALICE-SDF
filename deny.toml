@@ -69,6 +69,11 @@ allow = ["LicenseRef-Proprietary"]
 name = "alice-physics-core"
 allow = ["LicenseRef-Proprietary"]
 
+# the stored forms' meaning identifiers use alice-zip's law-id v2 (default build)
+[[licenses.exceptions]]
+name = "alice-zip"
+allow = ["LicenseRef-Proprietary"]
+
 [[licenses.exceptions]]
 name = "alice-codec"
 allow = ["AGPL-3.0-or-later"]
@@ -123,7 +128,10 @@ skip-tree = []
 unknown-registry = "warn"
 unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = []
+allow-git = [
+    "https://github.com/ext-sakamoro/ALICE-Zip",
+    "https://github.com/ext-sakamoro/ALICE-DetMath",
+]
 
 [sources.allow-org]
 # github org からの git dep を allow したい場合はここに追加

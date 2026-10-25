@@ -100,7 +100,7 @@ pub fn export_stl_ascii_with_stamp(
     let file = std::fs::File::create(path)?;
     let mut w = BufWriter::new(file);
 
-    let name = stamp.tagged();
+    let name = stamp.tagged_for(crate::provenance::StoredForm::StlAscii);
     writeln!(w, "solid {name}")?;
 
     let tri_count = mesh.indices.len() / 3;

@@ -116,5 +116,5 @@ pub fn write_manifest_with_provenance(
 /// identifier are refused
 pub fn manifest_semantics(path: &Path) -> Result<StoredSemantics, String> {
     let stored = provenance::read(path).map_err(|e| format!("manifest.json: {e}"))?;
-    judge(stored.semantics_id, "manifest.json")
+    judge(stored.id, "manifest.json")
 }

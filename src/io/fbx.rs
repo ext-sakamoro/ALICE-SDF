@@ -167,7 +167,11 @@ pub fn export_fbx_with_stamp(
     materials: Option<&MaterialLibrary>,
     stamp: &Stamp,
 ) -> Result<(), IoError> {
-    let creator = format!("ALICE-SDF {}", stamp.primary.tagged());
+    let form = match config.format {
+        FbxFormat::Ascii => crate::provenance::StoredForm::FbxAscii,
+        FbxFormat::Binary => crate::provenance::StoredForm::FbxBinary,
+    };
+    let creator = format!("ALICE-SDF {}", stamp.primary.tagged_for(form));
     let producer = stamp
         .producer
         .map(|p| format!("{}={}", crate::provenance::PRODUCER_KEY, p.hex()));

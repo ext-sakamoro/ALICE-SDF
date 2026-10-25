@@ -14,8 +14,17 @@ use alice_sdf::io;
 use alice_sdf::io::meshopt_gltf as meshopt;
 use alice_sdf::mesh::lod_persist::{self, LodChainConfig, LodChainPersist};
 use alice_sdf::prelude::*;
-use alice_sdf::provenance::{self, Provenance, ProvenanceError, StoredSemantics};
+use alice_sdf::provenance::{self, Provenance, ProvenanceError, StoredForm, StoredSemantics};
 use std::path::{Path, PathBuf};
+
+/// Lower-case hex of 32 bytes
+fn hex_of(id: &[u8; 32]) -> String {
+    id.iter().fold(String::with_capacity(64), |mut s, b| {
+        use std::fmt::Write as _;
+        write!(s, "{b:02x}").expect("writing to a String");
+        s
+    })
+}
 
 fn temp(name: &str) -> temp::TempPath {
     temp::TempPath::new("alice_sdf_provenance", name)
@@ -474,9 +483,10 @@ fn every_writer_stores_the_identifier_and_it_reads_back() {
     for &(name, file, write) in WRITERS {
         let path = temp(file);
         write(&m, &path, None);
-        assert_eq!(
-            provenance::read(&path).unwrap_or_else(|e| panic!("{name}: {e}")),
-            Provenance::sdf(),
+        assert!(
+            provenance::read(&path)
+                .unwrap_or_else(|e| panic!("{name}: {e}"))
+                .is_written_under(&Provenance::sdf()),
             "{name}: the plain writer stores this crate's identifier"
         );
         assert_eq!(
@@ -485,9 +495,10 @@ fn every_writer_stores_the_identifier_and_it_reads_back() {
         );
 
         write(&m, &path, Some(&caller_id()));
-        assert_eq!(
-            provenance::read(&path).unwrap(),
-            caller_id(),
+        assert!(
+            provenance::read(&path)
+                .unwrap()
+                .is_written_under(&caller_id()),
             "{name}: the caller's identifier"
         );
         assert_eq!(
@@ -503,6 +514,37 @@ fn every_writer_stores_the_identifier_and_it_reads_back() {
                 assert!(
                     text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
                     "{name}: the mismatch names both identifiers: {text}"
+                );
+            }
+            // a form that stores meaning identifiers: both meaning identifiers, the form and its version
+            Err(e @ ProvenanceError::MeaningMismatch { .. }) => {
+                let ProvenanceError::MeaningMismatch {
+                    form,
+                    version,
+                    ref stored,
+                    ref expected,
+                } = e
+                else {
+                    unreachable!()
+                };
+                assert!(form.writes_meaning(), "{name}");
+                assert_eq!(version, form.version(), "{name}");
+                assert_eq!(
+                    *stored,
+                    hex_of(&provenance::meaning_id(form, &caller_id())),
+                    "{name}"
+                );
+                assert_eq!(
+                    *expected,
+                    hex_of(&provenance::meaning_id(form, &Provenance::sdf())),
+                    "{name}"
+                );
+                let text = e.to_string();
+                assert!(
+                    text.contains(stored.as_str())
+                        && text.contains(expected.as_str())
+                        && text.contains(&format!("{form:?}")),
+                    "{name}: the mismatch names both identifiers and the form: {text}"
                 );
             }
             other => panic!("{name}: expected a mismatch, got {other:?}"),
@@ -586,8 +628,18 @@ fn the_obj_material_file_carries_the_identifier_too() {
     )
     .unwrap();
     let mtl = path.with_extension("mtl");
-    assert_eq!(provenance::read(&path).unwrap(), caller_id(), "obj");
-    assert_eq!(provenance::read(&mtl).unwrap(), caller_id(), "mtl");
+    assert!(
+        provenance::read(&path)
+            .unwrap()
+            .is_written_under(&caller_id()),
+        "obj"
+    );
+    assert!(
+        provenance::read(&mtl)
+            .unwrap()
+            .is_written_under(&caller_id()),
+        "mtl"
+    );
     std::fs::remove_file(&path).ok();
     std::fs::remove_file(&mtl).ok();
 }
@@ -761,13 +813,19 @@ fn volume_writers_store_the_identifier() {
         let path = temp(file);
         let p = path.to_str().unwrap();
         write(p, None);
-        assert_eq!(
-            provenance::read(&path).unwrap(),
-            Provenance::sdf(),
+        assert!(
+            provenance::read(&path)
+                .unwrap()
+                .is_written_under(&Provenance::sdf()),
             "{name}"
         );
         write(p, Some(&caller_id()));
-        assert_eq!(provenance::read(&path).unwrap(), caller_id(), "{name}");
+        assert!(
+            provenance::read(&path)
+                .unwrap()
+                .is_written_under(&caller_id()),
+            "{name}"
+        );
         assert!(matches!(
             provenance::check_sdf(&path),
             Err(ProvenanceError::Mismatch { .. })
@@ -906,7 +964,13 @@ fn an_independent_fbx_parser_reads_the_binary_fbx() {
         .expect("FBXHeaderExtension/Creator");
     match creator.attributes() {
         [fbxcel::low::v7400::AttributeValue::String(s)] => {
-            assert_eq!(*s, format!("ALICE-SDF {}", caller_id().tagged()));
+            assert_eq!(
+                *s,
+                format!(
+                    "ALICE-SDF {}",
+                    caller_id().tagged_for(StoredForm::FbxBinary)
+                )
+            );
         }
         other => panic!("Creator attributes: {other:?}"),
     }
@@ -941,7 +1005,9 @@ fn the_3mf_metadata_is_declared_and_placed_before_resources() {
         text[model..model_end].contains(&decl),
         "namespace declared on <model>"
     );
-    let meta = text.find("<metadata name=\"alice:semantics_id\">").unwrap();
+    let meta = text
+        .find(&format!("<metadata name=\"{}\">", provenance::MEANING_KEY))
+        .unwrap();
     let resources = text.find("<resources>").unwrap();
     assert!(model_end < meta && meta < resources);
     std::fs::remove_file(&path).ok();
@@ -1064,12 +1130,15 @@ fn a_stamped_obj_writes_both_identifiers_into_its_mtl() {
     )
     .unwrap();
     for p in [path.to_path_buf(), path.with_extension("mtl")] {
-        assert_eq!(
-            provenance::read_with_producer(&p).unwrap(),
-            (Provenance::sdf(), Some(producer_id())),
-            "{}",
-            p.display()
-        );
+        {
+            let (stored, producer) = provenance::read_with_producer(&p).unwrap();
+            assert!(
+                stored.is_written_under(&Provenance::sdf()),
+                "{}",
+                p.display()
+            );
+            assert_eq!(producer, Some(producer_id()), "{}", p.display());
+        }
     }
 }
 
@@ -1084,14 +1153,15 @@ fn stamped_writers_keep_both_identifiers_in_their_slots() {
         let path = temp(file);
         // this crate's identifier as primary, the caller's as producer
         stamped(&m, &path, &Stamp::sdf_with_producer(producer_id()));
-        assert_eq!(
-            provenance::read_with_producer(&path).unwrap(),
-            (Provenance::sdf(), Some(producer_id())),
-            "{name}"
-        );
-        assert_eq!(
-            provenance::read(&path).unwrap(),
-            Provenance::sdf(),
+        {
+            let (stored, producer) = provenance::read_with_producer(&path).unwrap();
+            assert!(stored.is_written_under(&Provenance::sdf()), "{name}");
+            assert_eq!(producer, Some(producer_id()), "{name}");
+        }
+        assert!(
+            provenance::read(&path)
+                .unwrap()
+                .is_written_under(&Provenance::sdf()),
             "{name}"
         );
         assert_eq!(
@@ -1112,11 +1182,18 @@ fn stamped_writers_keep_both_identifiers_in_their_slots() {
             &path,
             &Stamp::new(producer_id(), Some(Provenance::sdf())),
         );
-        assert_eq!(
-            provenance::read_with_producer(&path).unwrap(),
-            (producer_id(), Some(Provenance::sdf())),
-            "{name}: swapped assignment"
-        );
+        {
+            let (stored, producer) = provenance::read_with_producer(&path).unwrap();
+            assert!(
+                stored.is_written_under(&producer_id()),
+                "{name}: swapped assignment"
+            );
+            assert_eq!(
+                producer,
+                Some(Provenance::sdf()),
+                "{name}: swapped assignment"
+            );
+        }
         // no producer: the same bytes as the provenance writer, and no producer read back
         stamped(&m, &path, &Stamp::from(caller_id()));
         let with_stamp = std::fs::read(&path).unwrap();
@@ -1126,11 +1203,11 @@ fn stamped_writers_keep_both_identifiers_in_their_slots() {
             with_stamp,
             "{name}: no producer"
         );
-        assert_eq!(
-            provenance::read_with_producer(&path).unwrap(),
-            (caller_id(), None),
-            "{name}"
-        );
+        {
+            let (stored, producer) = provenance::read_with_producer(&path).unwrap();
+            assert!(stored.is_written_under(&caller_id()), "{name}");
+            assert_eq!(producer, None, "{name}");
+        }
         assert!(
             matches!(
                 provenance::check_producer(&path, &producer_id()),
@@ -1155,7 +1232,10 @@ fn the_binary_stl_header_with_a_producer_has_the_documented_layout() {
     let bytes = std::fs::read(&path).unwrap();
     assert_eq!(&bytes[..8], provenance::STL_MAGIC);
     assert_eq!(bytes[8], provenance::STL_HEADER_VERSION_PRODUCER);
-    assert_eq!(&bytes[9..41], &Provenance::sdf().semantics_id);
+    assert_eq!(
+        &bytes[9..41],
+        &provenance::meaning_id(StoredForm::StlBinary, &Provenance::sdf())
+    );
     assert_eq!(&bytes[41..48], &[0u8; 7]);
     assert_eq!(&bytes[48..80], &producer_id().semantics_id);
     assert!(!bytes.starts_with(b"solid"));
@@ -1171,10 +1251,11 @@ fn the_binary_stl_header_with_a_producer_has_the_documented_layout() {
         &Stamp::sdf_with_producer(Provenance::new([0; 32])),
     )
     .unwrap();
-    assert_eq!(
-        provenance::read_with_producer(&path).unwrap(),
-        (Provenance::sdf(), Some(Provenance::new([0; 32])))
-    );
+    {
+        let (stored, producer) = provenance::read_with_producer(&path).unwrap();
+        assert!(stored.is_written_under(&Provenance::sdf()));
+        assert_eq!(producer, Some(Provenance::new([0; 32])));
+    }
     // a version 2 header with a non-zero reserved byte carries this crate's magic but is not a
     // layout it writes: refused, never read as a file without an identifier
     let mut bad = std::fs::read(&path).unwrap();
@@ -1200,12 +1281,16 @@ fn ascii_stl_reads_each_identifier_from_its_own_key() {
         first,
         format!(
             "solid {} {}={}",
-            Provenance::sdf().tagged(),
+            Provenance::sdf().tagged_for(StoredForm::StlAscii),
             provenance::PRODUCER_KEY,
             producer_id().hex()
         )
     );
-    let only_producer = text.replacen(&format!("{} ", Provenance::sdf().tagged()), "", 1);
+    let only_producer = text.replacen(
+        &format!("{} ", Provenance::sdf().tagged_for(StoredForm::StlAscii)),
+        "",
+        1,
+    );
     std::fs::write(&path, only_producer).unwrap();
     assert!(matches!(
         provenance::read(&path),
@@ -1256,7 +1341,10 @@ fn independent_parsers_read_the_stamped_files() {
     };
     assert_eq!(
         string_of("Creator"),
-        format!("ALICE-SDF {}", Provenance::sdf().tagged())
+        format!(
+            "ALICE-SDF {}",
+            Provenance::sdf().tagged_for(StoredForm::FbxBinary)
+        )
     );
     assert_eq!(
         string_of("ProducerSemanticsId"),
@@ -1268,7 +1356,9 @@ fn independent_parsers_read_the_stamped_files() {
     io::export_3mf_with_stamp(&m, &tmf, &stamp).unwrap();
     let bytes = std::fs::read(&tmf).unwrap();
     let text = String::from_utf8_lossy(&bytes);
-    let primary = text.find("<metadata name=\"alice:semantics_id\">").unwrap();
+    let primary = text
+        .find(&format!("<metadata name=\"{}\">", provenance::MEANING_KEY))
+        .unwrap();
     let producer = text
         .find("<metadata name=\"alice:producer_semantics_id\">")
         .unwrap();
@@ -1759,7 +1849,9 @@ fn nsdf_writers_store_and_loaders_check_the_identifier() {
         .any(|(w, _)| *w == "src/neural.rs::save"));
     let own = nsdf_bytes(None);
     assert_eq!(&own[4..8], &2u32.to_le_bytes());
-    assert_eq!(provenance::from_bytes(&own).unwrap(), Provenance::sdf());
+    assert!(provenance::from_bytes(&own)
+        .unwrap()
+        .is_written_under(&Provenance::sdf()));
     let back = NeuralSdf::load(&mut own.as_slice()).unwrap();
     assert_eq!(net_bits(&back), net_bits(&small_net()));
     assert_eq!(
@@ -1771,7 +1863,9 @@ fn nsdf_writers_store_and_loaders_check_the_identifier() {
 
     let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
     let prev = nsdf_bytes(Some(&earlier));
-    assert_eq!(provenance::from_bytes(&prev).unwrap(), earlier);
+    assert!(provenance::from_bytes(&prev)
+        .unwrap()
+        .is_written_under(&earlier));
     assert!(NeuralSdf::load(&mut prev.as_slice()).is_ok());
     assert_eq!(
         NeuralSdf::load_unverified(&mut prev.as_slice())
@@ -1781,7 +1875,9 @@ fn nsdf_writers_store_and_loaders_check_the_identifier() {
     );
 
     let other = nsdf_bytes(Some(&caller_id()));
-    assert_eq!(provenance::from_bytes(&other).unwrap(), caller_id());
+    assert!(provenance::from_bytes(&other)
+        .unwrap()
+        .is_written_under(&caller_id()));
     for result in [
         NeuralSdf::load(&mut other.as_slice()).map(|_| ()),
         NeuralSdf::load_unverified(&mut other.as_slice()).map(|_| ()),
@@ -1908,7 +2004,9 @@ fn alice_vdb_writers_store_and_loaders_check_the_identifier() {
         .any(|(w, _)| *w == "src/io/vdb.rs::bake_to_vdb"));
     let own = vdb_bytes(None);
     assert_eq!(&own[..9], b"ALICEVDB2");
-    assert_eq!(provenance::from_bytes(&own).unwrap(), Provenance::sdf());
+    assert!(provenance::from_bytes(&own)
+        .unwrap()
+        .is_written_under(&Provenance::sdf()));
     assert_eq!(
         vdb::load_dense_grid_from_vdb_unverified(&own)
             .unwrap()
@@ -1918,7 +2016,9 @@ fn alice_vdb_writers_store_and_loaders_check_the_identifier() {
 
     let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
     let prev = vdb_bytes(Some(&earlier));
-    assert_eq!(provenance::from_bytes(&prev).unwrap(), earlier);
+    assert!(provenance::from_bytes(&prev)
+        .unwrap()
+        .is_written_under(&earlier));
     assert!(vdb::load_dense_grid_from_vdb(&prev).is_ok());
     assert_eq!(
         vdb::load_dense_grid_from_vdb_unverified(&prev)
@@ -1928,7 +2028,9 @@ fn alice_vdb_writers_store_and_loaders_check_the_identifier() {
     );
 
     let other = vdb_bytes(Some(&caller_id()));
-    assert_eq!(provenance::from_bytes(&other).unwrap(), caller_id());
+    assert!(provenance::from_bytes(&other)
+        .unwrap()
+        .is_written_under(&caller_id()));
     for result in [
         vdb::load_dense_grid_from_vdb(&other).map(|_| ()),
         vdb::load_dense_grid_from_vdb_unverified(&other).map(|_| ()),
@@ -2071,10 +2173,13 @@ fn svo_chunk_writers_store_and_readers_check_the_identifier() {
     let own = svo_chunk().to_bytes();
     assert_eq!(&own[..4], b"ASVC");
     assert_eq!(&own[8..40], &alice_sdf::SDF_SEMANTICS_ID);
-    assert_eq!(provenance::from_bytes(&own).unwrap(), Provenance::sdf());
-    assert_eq!(
-        provenance::from_bytes(&svo_chunk().to_bytes_with_provenance(&caller_id())).unwrap(),
-        caller_id()
+    assert!(provenance::from_bytes(&own)
+        .unwrap()
+        .is_written_under(&Provenance::sdf()));
+    assert!(
+        provenance::from_bytes(&svo_chunk().to_bytes_with_provenance(&caller_id()))
+            .unwrap()
+            .is_written_under(&caller_id())
     );
     assert_eq!(SvoChunk::from_bytes(&own).unwrap().to_bytes(), own);
     assert_eq!(
@@ -2330,7 +2435,9 @@ fn vox_writers_store_and_loaders_check_the_identifier() {
     let own_path = temp("own.vox");
     save_vox(&own_path, &vox_model()).unwrap();
     let own = std::fs::read(&own_path).unwrap();
-    assert_eq!(provenance::from_bytes(&own).unwrap(), Provenance::sdf());
+    assert!(provenance::from_bytes(&own)
+        .unwrap()
+        .is_written_under(&Provenance::sdf()));
     assert_eq!(
         load_vox(&own_path).unwrap().semantics(),
         StoredSemantics::Current
@@ -2355,10 +2462,9 @@ fn vox_writers_store_and_loaders_check_the_identifier() {
 
     let other_path = temp("other.vox");
     save_vox_with_provenance(&other_path, &vox_model(), &caller_id()).unwrap();
-    assert_eq!(
-        provenance::from_bytes(&std::fs::read(&other_path).unwrap()).unwrap(),
-        caller_id()
-    );
+    assert!(provenance::from_bytes(&std::fs::read(&other_path).unwrap())
+        .unwrap()
+        .is_written_under(&caller_id()));
     for result in [
         load_vox(&other_path).map(|_| ()),
         load_vox_pinned(&other_path).map(|_| ()),
@@ -2576,7 +2682,9 @@ fn splat_writers_store_and_loaders_check_the_identifier() {
     assert_eq!(std::fs::read(&own).unwrap(), splat_bytes(&splats()));
     assert_eq!(RECORD_CODECS.len(), 1);
     assert!(RECORD_CODECS[0].2.contains("server/src/main.rs"));
-    assert_eq!(provenance::read(&own).unwrap(), Provenance::sdf());
+    assert!(provenance::read(&own)
+        .unwrap()
+        .is_written_under(&Provenance::sdf()));
     assert_eq!(
         load_splat(&own).unwrap().semantics(),
         StoredSemantics::Current
@@ -2597,7 +2705,9 @@ fn splat_writers_store_and_loaders_check_the_identifier() {
 
     let other = temp("other.splat");
     save_splat_with_provenance(&other, &splats(), &caller_id()).unwrap();
-    assert_eq!(provenance::read(&other).unwrap(), caller_id());
+    assert!(provenance::read(&other)
+        .unwrap()
+        .is_written_under(&caller_id()));
     for result in [
         load_splat(&other).map(|_| ()),
         load_splat_pinned(&other).map(|_| ()),
@@ -3093,9 +3203,10 @@ fn io_save_stores_the_identifier_for_both_extensions() {
     for file in ["t_io_save.asdf", "t_io_save.asdf.json"] {
         let path = temp(file);
         io::save(&tree, &path).unwrap();
-        assert_eq!(
-            provenance::read(&path).unwrap(),
-            Provenance::sdf(),
+        assert!(
+            provenance::read(&path)
+                .unwrap()
+                .is_written_under(&Provenance::sdf()),
             "{file}"
         );
         std::fs::remove_file(&path).ok();
@@ -3131,7 +3242,9 @@ fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
     io::export_alembic(&mesh(), &path, &io::AlembicConfig::default()).unwrap();
     let bytes = std::fs::read(&path).unwrap();
     std::fs::remove_file(&path).ok();
-    assert_eq!(provenance::from_bytes(&bytes).unwrap(), Provenance::sdf());
+    assert!(provenance::from_bytes(&bytes)
+        .unwrap()
+        .is_written_under(&Provenance::sdf()));
 
     let foreign = std::fs::read(fixture("alembic_foreign.abc")).unwrap();
     assert!(matches!(
@@ -3155,7 +3268,7 @@ fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
         edit(&|b| b[at + 5] = b'X'),
         Err(ProvenanceError::Missing { format: "Alembic" })
     ));
-    let unreadable = |r: Result<Provenance, ProvenanceError>, what: &str| {
+    let unreadable = |r: Result<provenance::Stored, ProvenanceError>, what: &str| {
         assert!(
             matches!(r, Err(ProvenanceError::Unreadable(_))),
             "{what}: {r:?}"
@@ -3173,9 +3286,10 @@ fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
     unreadable(provenance::from_bytes(&bytes[..20]), "a cut archive");
     // the same key twice, in an archive built from the Ogawa layout (see `ogawa_with_metadata`)
     let hex = Provenance::sdf().hex();
-    assert_eq!(
-        provenance::from_bytes(&ogawa_with_metadata(&format!("{key}{hex}"))).unwrap(),
-        Provenance::sdf()
+    assert!(
+        provenance::from_bytes(&ogawa_with_metadata(&format!("{key}{hex}")))
+            .unwrap()
+            .is_written_under(&Provenance::sdf())
     );
     unreadable(
         provenance::from_bytes(&ogawa_with_metadata(&format!("{key}{hex};{key}{hex}"))),
@@ -3310,7 +3424,9 @@ fn heightmap_images_carry_and_check_the_identifier() {
         key_at < idat_at,
         "the identifier is written before the image data"
     );
-    assert_eq!(provenance::from_bytes(&stamped).unwrap(), Provenance::sdf());
+    assert!(provenance::from_bytes(&stamped)
+        .unwrap()
+        .is_written_under(&Provenance::sdf()));
     let (back, status) = Heightmap::from_image_bytes(&stamped, &cfg)
         .unwrap()
         .into_parts();
@@ -3433,14 +3549,18 @@ fn heightmap_images_carry_and_check_the_identifier() {
     // fill bytes (0xFF) before the comment's marker, and markers without a length (RST0, TEM)
     // before it: skipped, the identifier is still read
     let filled = [&jpeg_stamped[..2], &[0xFF, 0xFF][..], &jpeg_stamped[2..]].concat();
-    assert_eq!(provenance::from_bytes(&filled).unwrap(), Provenance::sdf());
+    assert!(provenance::from_bytes(&filled)
+        .unwrap()
+        .is_written_under(&Provenance::sdf()));
     let markers = [
         &jpeg_stamped[..2],
         &[0xFF, 0xD0, 0xFF, 0x01][..],
         &jpeg_stamped[2..],
     ]
     .concat();
-    assert_eq!(provenance::from_bytes(&markers).unwrap(), Provenance::sdf());
+    assert!(provenance::from_bytes(&markers)
+        .unwrap()
+        .is_written_under(&Provenance::sdf()));
     // the end of image before the start of scan, even when the bytes after it would walk on to
     // the identifier (read as a 2-byte segment, they would)
     invalid(
@@ -3534,7 +3654,9 @@ fn nanite_binary_versions_without_the_identifier_are_missing() {
     assert_eq!(&b[..4], io::nanite::NANITE_MAGIC);
     assert_eq!(b[4..8], 4u32.to_le_bytes());
     assert_eq!(b[32..64], alice_sdf::SDF_SEMANTICS_ID);
-    assert_eq!(provenance::from_bytes(&b).unwrap(), Provenance::sdf());
+    assert!(provenance::from_bytes(&b)
+        .unwrap()
+        .is_written_under(&Provenance::sdf()));
     let mut compared = 0;
     for version in [1u32, 2, 3] {
         // the layout of versions 1-3: the same header and body without the identifier
@@ -3591,7 +3713,9 @@ fn nanite_hlsl_material_carries_the_identifier() {
     let node = SdfNode::sphere(1.0);
     let path = temp("material.usf");
     export_nanite_hlsl_material(&node, &path).unwrap();
-    assert_eq!(provenance::read(&path).unwrap(), Provenance::sdf());
+    assert!(provenance::read(&path)
+        .unwrap()
+        .is_written_under(&Provenance::sdf()));
     let text = std::fs::read_to_string(&path).unwrap();
     let tag = format!("// {}={}", provenance::KEY, Provenance::sdf().hex());
     let at = text
@@ -3603,7 +3727,9 @@ fn nanite_hlsl_material_carries_the_identifier() {
         "the identifier is in the leading comment block"
     );
     export_nanite_hlsl_material_with_provenance(&node, &path, &caller_id()).unwrap();
-    assert_eq!(provenance::read(&path).unwrap(), caller_id());
+    assert!(provenance::read(&path)
+        .unwrap()
+        .is_written_under(&caller_id()));
     std::fs::remove_file(&path).ok();
 
     let without: String = text
@@ -3664,7 +3790,9 @@ fn engine_binary_meshes_of_version_1_are_missing() {
         assert_eq!(&b[..4], magic);
         assert_eq!(b[4..6], 2u16.to_le_bytes(), "{format}");
         assert_eq!(b[16..48], alice_sdf::SDF_SEMANTICS_ID, "{format}");
-        assert_eq!(provenance::from_bytes(&b).unwrap(), Provenance::sdf());
+        assert!(provenance::from_bytes(&b)
+            .unwrap()
+            .is_written_under(&Provenance::sdf()));
         // version 1: the same header and body without the identifier
         let mut old = [&b[..16], &b[48..]].concat();
         old[4..6].copy_from_slice(&1u16.to_le_bytes());
@@ -3730,8 +3858,10 @@ fn only_64_lower_case_hex_digits_ending_the_value_are_read() {
     let mut checked = 0;
     for (format, make) in forms {
         assert_eq!(
-            provenance::from_bytes(make(&hex).as_bytes()).ok(),
-            Some(Provenance::sdf()),
+            provenance::from_bytes(make(&hex).as_bytes())
+                .ok()
+                .map(|s| s.id),
+            Some(Provenance::sdf().semantics_id),
             "{format}: the valid tag"
         );
         for (what, value) in [
@@ -3760,11 +3890,16 @@ fn only_64_lower_case_hex_digits_ending_the_value_are_read() {
     io::export_fbx(&m, &path, &c, None).unwrap();
     let bytes = std::fs::read(&path).unwrap();
     std::fs::remove_file(&path).ok();
-    assert_eq!(
-        provenance::from_bytes(&bytes).ok(),
-        Some(Provenance::sdf()),
+    assert!(
+        provenance::from_bytes(&bytes).is_ok_and(|s| s.is_written_under(&Provenance::sdf())),
         "binary FBX: the valid tag"
     );
+    // the binary FBX writer stores the meaning identifier under its key
+    let key = provenance::MEANING_KEY;
+    let hex = hex_of(&provenance::meaning_id(
+        StoredForm::FbxBinary,
+        &Provenance::sdf(),
+    ));
     let at = bytes
         .windows(key.len())
         .position(|w| w == key.as_bytes())

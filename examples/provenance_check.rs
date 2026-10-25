@@ -51,10 +51,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stamped = dir.join("sphere_stamped.stl");
     io::export_stl_with_stamp(&mesh, &stamped, &stamp)?;
     let (primary, stored_producer) = provenance::read_with_producer(&stamped)?;
+    // the primary slot holds this crate's meaning identifier for binary STL, the producer its raw one
     assert_eq!(
-        (primary, stored_producer),
-        (Provenance::sdf(), Some(producer))
+        primary.judge(&Provenance::sdf(), &[])?,
+        StoredSemantics::Current
     );
+    assert_eq!(stored_producer, Some(producer));
+    // what this build's writers store for binary STL under this crate's identifier
+    assert!(primary.is_written_under(&Provenance::sdf()));
     assert_eq!(
         provenance::from_bytes_with_producer(&std::fs::read(&stamped)?)?,
         (primary, stored_producer)
@@ -64,11 +68,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // the same in a text format: an OBJ keeps both on its header comment line
     let stamped_obj = dir.join("sphere_stamped.obj");
     io::export_obj_with_stamp(&mesh, &stamped_obj, &io::ObjConfig::default(), None, &stamp)?;
+    let (obj_primary, obj_producer) = provenance::read_with_producer(&stamped_obj)?;
     assert_eq!(
-        provenance::read_with_producer(&stamped_obj)?,
-        (Provenance::sdf(), Some(producer))
+        obj_primary.judge(&Provenance::sdf(), &[])?,
+        StoredSemantics::Current
     );
-    println!("{}: {primary}, producer {producer}", stamped_obj.display());
+    assert_eq!(obj_producer, Some(producer));
+    println!(
+        "{}: {obj_primary}, producer {producer}",
+        stamped_obj.display()
+    );
 
     // every format stamps the same identifier: STEP from the tree, meshopt-compressed glTF
     // written to a file and to bytes
@@ -200,7 +209,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     assert_eq!(provenance::check_sdf(&ue5)?, StoredSemantics::Current);
     io::export_ue5_mesh_with_provenance(&mesh, &ue5, &ue5_config, &foreign)?;
-    assert_eq!(provenance::read(&ue5)?, foreign);
+    assert_eq!(provenance::read(&ue5)?.id, foreign.semantics_id);
     println!(
         "{}: written under {}",
         ue5.display(),
