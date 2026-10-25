@@ -9,6 +9,8 @@ scip_reach.py turns exactly that case red.
 
 from __future__ import annotations
 
+import atexit
+import shutil
 import json
 import os
 import subprocess
@@ -24,6 +26,14 @@ P = "rust-analyzer cargo demo 0.1.0 "
 
 
 # --- tiny SCIP encoder ---------------------------------------------------------
+
+
+def _mkdtemp(**kwargs) -> str:
+    """tempfile.mkdtemp, removed when the interpreter exits (after a failing test too)"""
+    d = tempfile.mkdtemp(**kwargs)
+    atexit.register(shutil.rmtree, d, True)
+    return d
+
 
 def _v(n: int) -> bytes:
     out = bytearray()
@@ -97,7 +107,7 @@ def build(docs: list[Doc]) -> Path:
     """Sources plus every index. A Doc under another crate's directory (fuzz/,
     server/, ...) goes to that crate's index with the prefix removed, as
     rust-analyzer indexes each of those crates from its own root."""
-    d = Path(tempfile.mkdtemp())
+    d = Path(_mkdtemp())
     for doc in docs:
         p = d / doc.path
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -523,7 +533,7 @@ class MacroGenerated(unittest.TestCase):
 
 class Main(unittest.TestCase):
     def test_missing_index_fails(self):
-        d = Path(tempfile.mkdtemp())
+        d = Path(_mkdtemp())
         self.assertEqual(sr.main(["--root", str(d)]), 1)
 
     # each zero-count guard is tested with the other two conditions satisfied,
@@ -830,7 +840,7 @@ class IndexConfigs(unittest.TestCase):
 
     def test_macos_config_is_the_native_one_on_aarch64_apple_darwin(self):
         root = Path(__file__).resolve().parent.parent
-        out = Path(tempfile.mkdtemp())
+        out = Path(_mkdtemp())
         subprocess.run(["bash", str(root / "scripts" / "scip_index.sh"), "--configs-only", str(out)],
                        check=True, capture_output=True)
         native = json.loads((out / "native.json").read_text())["cargo"]

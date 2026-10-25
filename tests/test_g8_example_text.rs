@@ -54,6 +54,9 @@ mod shader_export;
 #[path = "../examples/unreal_corpus_oracle.rs"]
 mod unreal_corpus_oracle;
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::compiled::rust::RustSource;
 use alice_sdf::prelude::*;
 use alice_sdf::provenance::{self, Provenance, StoredSemantics, KEY};
@@ -67,14 +70,8 @@ const WRITERS: &[(&str, &str)] = &[(
     "whole shader text and generated Rust",
 )];
 
-fn dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "alice_sdf_g8_example_text_{}_{tag}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
+fn dir(tag: &str) -> temp::TempDir {
+    temp::TempDir::new(&format!("alice_sdf_g8_example_text_{tag}"))
 }
 
 fn files_under(root: &Path) -> Vec<PathBuf> {

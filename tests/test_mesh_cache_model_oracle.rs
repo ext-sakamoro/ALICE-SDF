@@ -16,6 +16,9 @@
 //!
 //! Every comparison loop counts and fails on zero.
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -156,10 +159,8 @@ fn cache_key_quantizes_bounds_to_thousandths() {
     assert_eq!((a.resolution, a.sdf_hash), (c.resolution, c.sdf_hash));
 }
 
-fn temp_dir(name: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("alice_sdf_{name}_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    d
+fn temp_dir(name: &str) -> temp::TempDir {
+    temp::TempDir::new(&format!("alice_sdf_{name}"))
 }
 
 #[test]
@@ -169,7 +170,7 @@ fn chunked_cache_follows_the_fifo_and_dirty_model() {
     let cache = ChunkedMeshCache::new(ChunkedCacheConfig {
         chunk_size: 0.5,
         max_cached_chunks: cap,
-        cache_dir: Some(dir.clone()),
+        cache_dir: Some(dir.to_path_buf()),
         ..ChunkedCacheConfig::default()
     });
     let coord = |i: usize| ChunkCoord::new(i as i32 - 4, (i % 3) as i32, -(i as i32 % 2));
@@ -318,7 +319,6 @@ fn chunked_cache_follows_the_fifo_and_dirty_model() {
 
     cache.clear();
     assert_eq!(cache.chunk_count(), 0);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -350,7 +350,7 @@ fn chunk_coordinates_are_floor_of_position_over_size() {
 fn persisted_chunks_reload_with_identical_geometry() {
     let dir = temp_dir("chunked_persist");
     let config = ChunkedCacheConfig {
-        cache_dir: Some(dir.clone()),
+        cache_dir: Some(dir.to_path_buf()),
         ..ChunkedCacheConfig::default()
     };
     let writer = ChunkedMeshCache::new(config.clone());
@@ -386,7 +386,6 @@ fn persisted_chunks_reload_with_identical_geometry() {
     }
     assert_eq!(compared, mesh.vertices.len());
     assert!(reader.dirty_chunks().is_empty());
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// `merge_all` concatenates chunks in ascending `(x, y, z)` coordinate order

@@ -10,6 +10,8 @@ run: python3 scripts/test_gen_status.py
 """
 from __future__ import annotations
 
+import atexit
+import shutil
 import importlib.util
 import tempfile
 import textwrap
@@ -17,6 +19,13 @@ import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+
+
+def _mkdtemp(**kwargs) -> str:
+    """tempfile.mkdtemp, removed when the interpreter exits (after a failing test too)"""
+    d = tempfile.mkdtemp(**kwargs)
+    atexit.register(shutil.rmtree, d, True)
+    return d
 
 
 def load(name: str, file: str):
@@ -116,7 +125,7 @@ class WiringReport(unittest.TestCase):
 
 
 def fixture_tests(body: str) -> Path:
-    root = Path(tempfile.mkdtemp(prefix="oracle-fixture-"))
+    root = Path(_mkdtemp(prefix="oracle-fixture-"))
     (root / "tests").mkdir()
     (root / "tests" / "t.rs").write_text(textwrap.dedent(body), encoding="utf-8")
     return root / "tests" / "t.rs"

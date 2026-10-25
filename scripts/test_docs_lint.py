@@ -8,6 +8,8 @@ against this repository.
 
 from __future__ import annotations
 
+import atexit
+import shutil
 import os
 import sys
 import tempfile
@@ -45,13 +47,20 @@ CHANGELOG = """# Changelog
 
 
 
+def _mkdtemp(**kwargs) -> str:
+    """tempfile.mkdtemp, removed when the interpreter exits (after a failing test too)"""
+    d = tempfile.mkdtemp(**kwargs)
+    atexit.register(shutil.rmtree, d, True)
+    return d
+
+
 def tree(overrides: dict[str, str] | None = None, drop: tuple[str, ...] = ()) -> str:
     files = {
         "Cargo.toml": CARGO,
         "CHANGELOG.md": CHANGELOG,
     }
     files.update(overrides or {})
-    d = tempfile.mkdtemp()
+    d = _mkdtemp()
     for rel, text in files.items():
         if rel in drop:
             continue

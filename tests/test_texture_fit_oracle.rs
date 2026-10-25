@@ -11,6 +11,9 @@
 )]
 #![cfg(feature = "texture-fit")]
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::io::IoError;
 use alice_sdf::provenance::{self, Provenance, StoredSemantics};
 use alice_sdf::texture::{
@@ -19,15 +22,9 @@ use alice_sdf::texture::{
     save_texture_fit_with_provenance, FittedOctave, ShaderLanguage, TextureFitConfig,
     TextureFitResult,
 };
-use std::path::PathBuf;
 
-fn temp_png(name: &str, width: u32, height: u32, pixels: &[f32]) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "alice_sdf_texture_fit_oracle_{}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join(name);
+fn temp_png(name: &str, width: u32, height: u32, pixels: &[f32]) -> temp::TempPath {
+    let path = temp::TempPath::new("alice_sdf_texture_fit_oracle", name);
     let bytes: Vec<u8> = pixels
         .iter()
         .map(|&p| (p.clamp(0.0, 1.0) * 255.0).round() as u8)
@@ -500,13 +497,8 @@ fn sample_fit() -> TextureFitResult {
     }
 }
 
-fn fit_path(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "alice_sdf_texture_fit_provenance_{}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join(name)
+fn fit_path(name: &str) -> temp::TempPath {
+    temp::TempPath::new("alice_sdf_texture_fit_provenance", name)
 }
 
 /// `save_texture_fit` stores this crate's identifier, `save_texture_fit_with_provenance` the

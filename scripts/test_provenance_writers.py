@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import atexit
+import shutil
 import os
 import re
 import sys
@@ -29,6 +31,13 @@ TEST = (
 )
 
 
+def _mkdtemp(**kwargs) -> str:
+    """tempfile.mkdtemp, removed when the interpreter exits (after a failing test too)"""
+    d = tempfile.mkdtemp(**kwargs)
+    atexit.register(shutil.rmtree, d, True)
+    return d
+
+
 def tree(
     src: str = SRC,
     test: str = TEST,
@@ -36,7 +45,7 @@ def tree(
     not_writers: str | None = None,
     extra: dict[str, str] | None = None,
 ) -> str:
-    root = tempfile.mkdtemp()
+    root = _mkdtemp()
     os.makedirs(os.path.join(root, "src/io"))
     os.makedirs(os.path.join(root, "tests"))
     os.makedirs(os.path.join(root, "scripts"))

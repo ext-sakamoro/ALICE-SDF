@@ -6,16 +6,15 @@
 //! Author: Moroya Sakamoto
 
 mod common;
+#[path = "common/temp.rs"]
+mod temp;
 
 use alice_sdf::io;
 use alice_sdf::prelude::*;
 use common::*;
-use std::path::PathBuf;
 
-fn temp_dir() -> PathBuf {
-    let dir = std::env::temp_dir().join("alice_sdf_test_io");
-    std::fs::create_dir_all(&dir).ok();
-    dir
+fn temp(name: &str) -> temp::TempPath {
+    temp::TempPath::new("alice_sdf_test_io", name)
 }
 
 // ============================================================================
@@ -25,7 +24,7 @@ fn temp_dir() -> PathBuf {
 #[test]
 fn asdf_binary_round_trip_sphere() {
     let tree = SdfTree::new(test_sphere());
-    let path = temp_dir().join("sphere.asdf");
+    let path = temp("sphere.asdf");
 
     save_asdf(&tree, &path).expect("save_asdf failed");
     let loaded = load_asdf(&path).expect("load_asdf failed");
@@ -48,7 +47,7 @@ fn asdf_binary_round_trip_sphere() {
 #[test]
 fn asdf_binary_round_trip_complex() {
     let tree = SdfTree::new(test_complex_shape());
-    let path = temp_dir().join("complex.asdf");
+    let path = temp("complex.asdf");
 
     save_asdf(&tree, &path).expect("save_asdf failed");
     let loaded = load_asdf(&path).expect("load_asdf failed");
@@ -77,7 +76,7 @@ fn asdf_binary_preserves_metadata() {
     };
 
     let tree = SdfTree::with_metadata(test_sphere(), metadata);
-    let path = temp_dir().join("metadata.asdf");
+    let path = temp("metadata.asdf");
 
     save_asdf(&tree, &path).expect("save_asdf failed");
     let loaded = load_asdf(&path).expect("load_asdf failed");
@@ -96,7 +95,7 @@ fn asdf_binary_preserves_metadata() {
 #[test]
 fn asdf_json_round_trip() {
     let tree = SdfTree::new(test_csg());
-    let path = temp_dir().join("csg.asdf.json");
+    let path = temp("csg.asdf.json");
 
     save_asdf_json(&tree, &path).expect("save_asdf_json failed");
     let loaded = load_asdf_json(&path).expect("load_asdf_json failed");
@@ -139,7 +138,7 @@ fn abm_mesh_round_trip() {
         ..Default::default()
     };
     let mesh = sdf_to_mesh(&shape, Vec3::splat(-1.5), Vec3::splat(1.5), &config);
-    let path = temp_dir().join("sphere.abm");
+    let path = temp("sphere.abm");
 
     alice_sdf::io::save_abm(&mesh, &path).expect("save_abm failed");
     let loaded = alice_sdf::io::load_abm(&path).expect("load_abm failed");
@@ -207,7 +206,7 @@ fn abm_with_lods_round_trip() {
         .map(|w| w[0].max_distance)
         .collect();
 
-    let path = temp_dir().join("sphere_lods.abm");
+    let path = temp("sphere_lods.abm");
     alice_sdf::io::save_abm_with_lods(&meshes, &distances, &path)
         .expect("save_abm_with_lods failed");
     let (loaded_meshes, loaded_distances) =
@@ -235,7 +234,7 @@ fn obj_export_creates_valid_file() {
         ..Default::default()
     };
     let mesh = sdf_to_mesh(&shape, Vec3::splat(-1.0), Vec3::splat(1.0), &config);
-    let path = temp_dir().join("box.obj");
+    let path = temp("box.obj");
 
     let obj_config = ObjConfig::default();
     export_obj(&mesh, &path, &obj_config, None).expect("export_obj failed");
@@ -265,7 +264,7 @@ fn test_mesh_sphere() -> Mesh {
 #[test]
 fn stl_binary_round_trip() {
     let mesh = test_mesh_sphere();
-    let path = temp_dir().join("rt_sphere.stl");
+    let path = temp("rt_sphere.stl");
 
     io::export_stl(&mesh, &path).expect("export_stl failed");
     let loaded = io::import_stl_pinned(&path).expect("import_stl failed");
@@ -287,7 +286,7 @@ fn stl_binary_round_trip() {
 #[test]
 fn stl_ascii_export_valid() {
     let mesh = test_mesh_sphere();
-    let path = temp_dir().join("rt_sphere_ascii.stl");
+    let path = temp("rt_sphere_ascii.stl");
 
     io::export_stl_ascii(&mesh, &path).expect("export_stl_ascii failed");
 
@@ -311,7 +310,7 @@ fn stl_ascii_export_valid() {
 #[test]
 fn glb_round_trip() {
     let mesh = test_mesh_sphere();
-    let path = temp_dir().join("rt_sphere.glb");
+    let path = temp("rt_sphere.glb");
 
     let config = GltfConfig::default();
     export_glb(&mesh, &path, &config, None).expect("export_glb failed");
@@ -334,7 +333,7 @@ fn glb_round_trip() {
 #[test]
 fn ply_round_trip() {
     let mesh = test_mesh_sphere();
-    let path = temp_dir().join("rt_sphere.ply");
+    let path = temp("rt_sphere.ply");
 
     let config = io::PlyConfig {
         binary: true,
@@ -355,7 +354,7 @@ fn ply_round_trip() {
 #[test]
 fn fbx_ascii_round_trip() {
     let mesh = test_mesh_sphere();
-    let path = temp_dir().join("rt_sphere.fbx");
+    let path = temp("rt_sphere.fbx");
 
     let config = FbxConfig {
         format: FbxFormat::Ascii,
@@ -376,7 +375,7 @@ fn fbx_ascii_round_trip() {
 #[test]
 fn usda_round_trip() {
     let mesh = test_mesh_sphere();
-    let path = temp_dir().join("rt_sphere.usda");
+    let path = temp("rt_sphere.usda");
 
     let config = UsdConfig::default();
     export_usda(&mesh, &path, &config, None).expect("export_usda failed");
@@ -394,7 +393,7 @@ fn usda_round_trip() {
 #[test]
 fn obj_round_trip() {
     let mesh = test_mesh_sphere();
-    let path = temp_dir().join("rt_sphere.obj");
+    let path = temp("rt_sphere.obj");
 
     let config = ObjConfig::default();
     export_obj(&mesh, &path, &config, None).expect("export_obj failed");

@@ -10,6 +10,9 @@
 //! overhang は `asin(-n · b)` の閉形式なので、法線が既知になる三角形を手で組んで
 //! 角度を直接突き合わせる。
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::io::step::StepConfig;
 use alice_sdf::mesh::{Mesh, Vertex};
 use alice_sdf::types::SdfNode;
@@ -21,12 +24,8 @@ use glam::Vec3;
 
 /// STEP を書く test は **file 名を test ごとに固有**にする (同 file を 2 test が
 /// 並列に書くと内容が混ざる — 2026-09-27 に `test_step_export_oracle` で起きた)
-fn step_path(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join("alice-sdf-validity-oracle");
-    std::fs::create_dir_all(&dir).expect("temp dir");
-    let path = dir.join(format!("{tag}.step"));
-    let _ = std::fs::remove_file(&path);
-    path
+fn step_path(tag: &str) -> temp::TempPath {
+    temp::TempPath::new("alice-sdf-validity-oracle", format!("{tag}.step"))
 }
 
 /// 頂点 3 個の mesh (法線は `cross(b − a, c − a)` で決まる)

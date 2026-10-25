@@ -13,6 +13,9 @@
 //! Author: Moroya Sakamoto
 #![cfg(feature = "terrain")]
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::eval::eval;
 use alice_sdf::terrain::caves::generate_chamber;
 use alice_sdf::terrain::{generate_cave_sdf, CaveConfig, ClipmapTerrain, Heightmap, Splatmap};
@@ -185,7 +188,7 @@ mod image_oracle {
             .unwrap()
             .into_parts();
         assert_eq!(status, alice_sdf::provenance::StoredSemantics::Unpinned);
-        let path = std::env::temp_dir().join(format!("alice_sdf_hm_{}.png", std::process::id()));
+        let path = crate::temp::TempPath::new("alice_sdf_hm", "hm.png");
         std::fs::write(&path, &bytes).unwrap();
         let from_file = Heightmap::from_image(&path, &cfg).unwrap().into_parts().0;
         std::fs::remove_file(&path).ok();

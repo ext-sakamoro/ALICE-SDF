@@ -16,6 +16,9 @@
 //!
 //! Author: Moroya Sakamoto
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::io::abm::{read_abm_header, save_abm, ABM_FLAG_HAS_NORMALS, ABM_MAGIC, ABM_VERSION};
 use alice_sdf::io::fbx::{
     export_fbx, fbx_animation_to_timeline, import_fbx, import_fbx_full, import_fbx_full_pinned,
@@ -40,13 +43,9 @@ use alice_sdf::mesh::{Mesh, Vertex};
 use alice_sdf::types::SdfNode;
 use glam::{Vec2, Vec3};
 use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
 
-fn tmp(name: &str) -> PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("alice_sdf_io_format_oracle_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("temp dir");
-    dir.join(name)
+fn tmp(name: &str) -> temp::TempPath {
+    temp::TempPath::new("alice_sdf_io_format_oracle", name)
 }
 
 /// A closed tetrahedron, outward winding, coordinates exact in decimal.

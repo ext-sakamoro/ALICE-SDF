@@ -19,6 +19,9 @@
 )]
 #![cfg(feature = "volume")]
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::compiled::CompiledSdf;
 use alice_sdf::types::SdfNode;
 use alice_sdf::volume::bake::{bake_volume, bake_volume_compiled, bake_volume_with_normals};
@@ -28,7 +31,6 @@ use alice_sdf::volume::export::{
 use alice_sdf::volume::mipchain::{generate_mip_chain, generate_mip_chain_distgrad};
 use alice_sdf::volume::{BakeConfig, Volume3D, VoxelDistGrad};
 use glam::Vec3;
-use std::path::PathBuf;
 
 fn config(res: u32, mips: bool) -> BakeConfig {
     BakeConfig {
@@ -51,11 +53,8 @@ fn node_pos(cfg: &BakeConfig, x: u32, y: u32, z: u32) -> Vec3 {
         )
 }
 
-fn tmp(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "alice_sdf_volume_api_{}_{name}",
-        std::process::id()
-    ))
+fn tmp(name: &str) -> temp::TempPath {
+    temp::TempPath::new("alice_sdf_volume_api", name)
 }
 
 #[test]

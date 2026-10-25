@@ -23,6 +23,9 @@
 
 mod common;
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::compiled::{eval_compiled, CompiledSdf};
 use alice_sdf::mesh::{dual_contouring, sdf_to_mesh, DualContouringConfig, MarchingCubesConfig};
 use alice_sdf::prelude::*;
@@ -1326,8 +1329,7 @@ fn file_importers_never_panic_on_truncated_or_corrupted_files() {
             ..Default::default()
         },
     );
-    let dir = std::env::temp_dir().join(format!("sdf_degenerate_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("temp dir");
+    let dir = temp::TempDir::new("sdf_degenerate");
     type Importer = Box<dyn Fn(&std::path::Path)>;
     let mut cases: Vec<(&str, std::path::PathBuf, Importer)> = Vec::new();
     let tree = SdfTree::new(SdfNode::sphere(1.0).smooth_union(SdfNode::box3d(1.0, 1.0, 1.0), 0.2));
@@ -1397,7 +1399,6 @@ fn file_importers_never_panic_on_truncated_or_corrupted_files() {
             p.run(|| format!("{format_name}: {what}"), || import(&work));
         }
     }
-    let _ = std::fs::remove_dir_all(&dir);
     p.assert_none("file importers");
 }
 

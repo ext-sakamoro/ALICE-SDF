@@ -12,6 +12,7 @@ usage: python3 scripts/test_release_artifact_audit.py
 """
 from __future__ import annotations
 
+import atexit
 import hashlib
 import io
 import os
@@ -38,6 +39,13 @@ INTERNAL_WORD = "sub" + "agent"
 TOKEN = "gh" + "p_" + "Q7" * 18
 
 
+def _mkdtemp(**kwargs) -> str:
+    """tempfile.mkdtemp, removed when the interpreter exits (after a failing test too)"""
+    d = tempfile.mkdtemp(**kwargs)
+    atexit.register(shutil.rmtree, d, True)
+    return d
+
+
 class Checker:
     module = None
     path: Path | None = None
@@ -51,7 +59,7 @@ class Checker:
             if given:
                 cls.path = Path(given)
             else:
-                cls.tmp = Path(tempfile.mkdtemp(prefix="rea-checker-"))
+                cls.tmp = Path(_mkdtemp(prefix="rea-checker-"))
                 cls.path = rea.fetch_checker(rea.read_pin()[0], cls.tmp)
             cls.module = rea.load_checker(cls.path, sha)
         return cls.module
@@ -68,7 +76,7 @@ class Built(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.tmp = Path(tempfile.mkdtemp(prefix="rea-build-"))
+        cls.tmp = Path(_mkdtemp(prefix="rea-build-"))
         src = cls.tmp / "src"
         src.mkdir()
         (src / "main.rs").write_text(PROGRAM)
@@ -231,7 +239,7 @@ class RemapFlags(unittest.TestCase):
 
     def setUp(self) -> None:
         # a cargo home in the native form of the OS (C:\... on Windows), as CARGO_HOME is set there
-        self.tmp = Path(tempfile.mkdtemp(prefix="rea-remap-"))
+        self.tmp = Path(_mkdtemp(prefix="rea-remap-"))
         self.addCleanup(shutil.rmtree, self.tmp, True)
 
     def flags(self, cargo_home: Path) -> subprocess.CompletedProcess:
@@ -254,7 +262,7 @@ class RemapFlags(unittest.TestCase):
 
 class NothingCompared(unittest.TestCase):
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="rea-empty-"))
+        self.tmp = Path(_mkdtemp(prefix="rea-empty-"))
         self.addCleanup(shutil.rmtree, self.tmp, True)
 
     def test_no_artifact_exits_2(self) -> None:

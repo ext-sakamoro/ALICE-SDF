@@ -11,6 +11,8 @@ run: python3 scripts/test_wiring_guard.py
 """
 from __future__ import annotations
 
+import atexit
+import shutil
 import sys
 import tempfile
 import textwrap
@@ -21,8 +23,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import wiring_guard as wg  # noqa: E402
 
 
+def _mkdtemp(**kwargs) -> str:
+    """tempfile.mkdtemp, removed when the interpreter exits (after a failing test too)"""
+    d = tempfile.mkdtemp(**kwargs)
+    atexit.register(shutil.rmtree, d, True)
+    return d
+
+
 def crate(files: dict[str, str]) -> Path:
-    root = Path(tempfile.mkdtemp(prefix="wiring-fixture-"))
+    root = Path(_mkdtemp(prefix="wiring-fixture-"))
     for rel, body in files.items():
         p = root / rel
         p.parent.mkdir(parents=True, exist_ok=True)

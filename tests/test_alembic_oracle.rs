@@ -13,6 +13,9 @@
 //!
 //! Author: Moroya Sakamoto
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::io::{export_alembic, export_alembic_with_provenance, AlembicConfig};
 use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig, Mesh, Vertex};
 use alice_sdf::prelude::*;
@@ -20,10 +23,8 @@ use alice_sdf::provenance::Provenance;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-fn dir() -> PathBuf {
-    let d = std::env::temp_dir().join(format!("alice_sdf_alembic_oracle_{}", std::process::id()));
-    std::fs::create_dir_all(&d).unwrap();
-    d
+fn temp(name: impl AsRef<Path>) -> temp::TempPath {
+    temp::TempPath::new("alice_sdf_alembic_oracle", name)
 }
 
 fn program(var: &str) -> PathBuf {
@@ -155,7 +156,7 @@ fn the_alembic_library_reads_the_mesh_and_the_identifier_bit_for_bit() {
             export_uvs: uvs,
             ..AlembicConfig::default()
         };
-        let path = dir().join(format!("m_{normals}_{uvs}.abc"));
+        let path = temp(format!("m_{normals}_{uvs}.abc"));
         export_alembic(&m, &path, &config).unwrap();
         let got =
             read(&path).unwrap_or_else(|e| panic!("the Alembic library does not open it: {e}"));
@@ -199,19 +200,19 @@ fn this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh() {
             export_uvs: uvs,
             ..AlembicConfig::default()
         };
-        let ours = dir().join(format!("ours_{name}_{normals}_{uvs}.abc"));
+        let ours = temp(format!("ours_{name}_{normals}_{uvs}.abc"));
         export_alembic_with_provenance(m, &ours, &config, &id).unwrap();
-        let input = dir().join(format!("in_{name}_{normals}_{uvs}.txt"));
+        let input = temp(format!("in_{name}_{normals}_{uvs}.txt"));
         let mut text = format!("meta alice:semantics_id {}\n", id.hex());
         for l in expected(m, &config) {
             text.push_str(&l);
             text.push('\n');
         }
         std::fs::write(&input, text).unwrap();
-        let theirs = dir().join(format!("lib_{name}_{normals}_{uvs}.abc"));
+        let theirs = temp(format!("lib_{name}_{normals}_{uvs}.abc"));
         let st = Command::new(program("ALICE_SDF_ALEMBIC_REFWRITER"))
-            .arg(&input)
-            .arg(&theirs)
+            .arg(&*input)
+            .arg(&*theirs)
             .status()
             .unwrap();
         assert!(st.success(), "the reference writer failed");
@@ -231,7 +232,7 @@ fn this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh() {
 #[test]
 #[ignore = "needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)"]
 fn the_alembic_library_refuses_a_broken_header() {
-    let path = dir().join("good.abc");
+    let path = temp("good.abc");
     export_alembic(&mesh(), &path, &AlembicConfig::default()).unwrap();
     let good = std::fs::read(&path).unwrap();
     read(&path).unwrap_or_else(|e| panic!("the unbroken file must open: {e}"));
@@ -239,7 +240,7 @@ fn the_alembic_library_refuses_a_broken_header() {
     for (at, value) in [(5usize, 0x00u8), (7, 0x02)] {
         let mut b = good.clone();
         b[at] = value;
-        let p = dir().join(format!("broken_{at}.abc"));
+        let p = temp(format!("broken_{at}.abc"));
         std::fs::write(&p, &b).unwrap();
         assert!(read(&p).is_err(), "byte {at} = {value:#04x} still opens");
     }

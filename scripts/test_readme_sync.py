@@ -9,6 +9,8 @@ disagree with the code fails here as well as in the CI step.
 
 from __future__ import annotations
 
+import atexit
+import shutil
 import os
 import sys
 import tempfile
@@ -81,6 +83,13 @@ MODULES = """# Modules
 """
 
 
+def _mkdtemp(**kwargs) -> str:
+    """tempfile.mkdtemp, removed when the interpreter exits (after a failing test too)"""
+    d = tempfile.mkdtemp(**kwargs)
+    atexit.register(shutil.rmtree, d, True)
+    return d
+
+
 def crate(overrides: dict[str, str] | None = None) -> str:
     files = {
         "Cargo.toml": CARGO,
@@ -90,7 +99,7 @@ def crate(overrides: dict[str, str] | None = None) -> str:
         "docs/MODULES.md": MODULES,
     }
     files.update(overrides or {})
-    d = tempfile.mkdtemp()
+    d = _mkdtemp()
     for rel, text in files.items():
         p = os.path.join(d, rel)
         os.makedirs(os.path.dirname(p), exist_ok=True)

@@ -10,6 +10,9 @@
 //! The files without an identifier are the bytes the published alice-sdf 6.1.0 wrote
 //! (`tests/fixtures/provenance/mesh_v1.*`, a sphere meshed at resolution 4: 56 triangles).
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::io::{self, IoError};
 use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig, Mesh};
 use alice_sdf::prelude::*;
@@ -24,10 +27,8 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn temp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("alice_sdf_g8_mesh_import_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join(name)
+fn temp(name: &str) -> temp::TempPath {
+    temp::TempPath::new("alice_sdf_g8_mesh_import", name)
 }
 
 fn mesh() -> Mesh {

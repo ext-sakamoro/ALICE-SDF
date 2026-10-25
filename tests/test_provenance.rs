@@ -7,6 +7,9 @@
 //! `scripts/provenance_writers.py` checks that every public writer appears in [`WRITERS`] or in
 //! its list of writers still to do.
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::io;
 use alice_sdf::io::meshopt_gltf as meshopt;
 use alice_sdf::mesh::lod_persist::{self, LodChainConfig, LodChainPersist};
@@ -14,10 +17,8 @@ use alice_sdf::prelude::*;
 use alice_sdf::provenance::{self, Provenance, ProvenanceError, StoredSemantics};
 use std::path::{Path, PathBuf};
 
-fn temp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("alice_sdf_provenance_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join(name)
+fn temp(name: &str) -> temp::TempPath {
+    temp::TempPath::new("alice_sdf_provenance", name)
 }
 
 fn mesh() -> Mesh {
@@ -1062,7 +1063,7 @@ fn a_stamped_obj_writes_both_identifiers_into_its_mtl() {
         &Stamp::sdf_with_producer(producer_id()),
     )
     .unwrap();
-    for p in [path.clone(), path.with_extension("mtl")] {
+    for p in [path.to_path_buf(), path.with_extension("mtl")] {
         assert_eq!(
             provenance::read_with_producer(&p).unwrap(),
             (Provenance::sdf(), Some(producer_id())),
@@ -3320,7 +3321,7 @@ fn heightmap_images_carry_and_check_the_identifier() {
     }
     // heights read from such a PNG are written back to the same bytes
     assert_eq!(back.to_png(&cfg).unwrap(), stamped);
-    let path = std::env::temp_dir().join(format!("alice_sdf_g8_image_{}.png", std::process::id()));
+    let path = temp("g8_image.png");
     std::fs::write(&path, &stamped).unwrap();
     let pinned = Heightmap::from_image_pinned(&path, &cfg).unwrap();
     assert_eq!(
@@ -3483,8 +3484,7 @@ fn texture_fit_checks_the_image_identifier() {
         .unwrap()
         .into_parts()
         .0;
-    let dir = std::env::temp_dir();
-    let current = dir.join(format!("alice_sdf_g8_image_fit_{}.png", std::process::id()));
+    let current = temp("g8_image_fit.png");
     std::fs::write(&current, hm.to_png(&cfg).unwrap()).unwrap();
     assert_eq!(
         fit_texture(&current, &config).unwrap().semantics(),

@@ -38,6 +38,9 @@
 
 mod common;
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::animation::AnimationParams;
 use alice_sdf::compiled::{eval_compiled, CompiledSdf};
 use alice_sdf::ffi::{BatchResult, CompiledHandle, MeshHandle, SdfHandle, SdfResult};
@@ -650,8 +653,7 @@ fn ffi_constructors_build_the_documented_node() {
 /// difference seen here is the FFI's.
 #[test]
 fn ffi_eval_paths_are_bit_identical_to_the_native_evaluators() {
-    let dir = std::env::temp_dir().join(format!("alice_sdf_ffi_oracle_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("temp dir");
+    let dir = temp::TempDir::new("alice_sdf_ffi_oracle");
     let pts = sample_points(80);
     let mut failures = Vec::new();
     let mut compared = 0usize;
@@ -735,7 +737,6 @@ fn ffi_eval_paths_are_bit_identical_to_the_native_evaluators() {
             alice_sdf_free(handle);
         }
     }
-    let _ = std::fs::remove_dir_all(&dir);
 
     assert!(
         failures.is_empty(),
@@ -762,8 +763,7 @@ fn ffi_batch_paths_agree_at_every_threshold() {
         .union(SdfNode::sphere(0.5).translate(0.8, 0.0, 0.0))
         .twist(0.9);
     let compiled = CompiledSdf::compile(&node);
-    let dir = std::env::temp_dir().join(format!("alice_sdf_ffi_thresh_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("temp dir");
+    let dir = temp::TempDir::new("alice_sdf_ffi_thresh");
     let path = dir.join("node.asdf");
     alice_sdf::save(&SdfTree::new(node), &path).expect("save");
     let c_path = CString::new(path.to_string_lossy().as_ref()).expect("path has no NUL");
@@ -803,7 +803,6 @@ fn ffi_batch_paths_agree_at_every_threshold() {
         alice_sdf_free_compiled(compiled_handle);
         alice_sdf_free(handle);
     }
-    let _ = std::fs::remove_dir_all(&dir);
     assert!(
         failures.is_empty(),
         "{} threshold difference(s):\n{}",
@@ -1271,8 +1270,7 @@ fn exact_size_buffers_survive_and_agree() {
         scale: 1.0,
         ..Default::default()
     };
-    let dir = std::env::temp_dir().join(format!("alice_sdf_ffi_exact_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("temp dir");
+    let dir = temp::TempDir::new("alice_sdf_ffi_exact");
     let path = dir.join("node.asdf");
     alice_sdf::save(&SdfTree::new(node), &path).expect("save");
     let c_path = CString::new(path.to_string_lossy().as_ref()).expect("path has no NUL");
@@ -1342,7 +1340,6 @@ fn exact_size_buffers_survive_and_agree() {
         alice_sdf_free_compiled(compiled_handle);
         alice_sdf_free(handle);
     }
-    let _ = std::fs::remove_dir_all(&dir);
     assert!(
         failures.is_empty(),
         "{} exact-size difference(s):\n{}",
@@ -1356,8 +1353,7 @@ fn exact_size_buffers_survive_and_agree() {
 /// (no identifier) give the null handle
 #[test]
 fn ffi_load_abm_checks_the_identifier() {
-    let dir = std::env::temp_dir().join(format!("alice_sdf_ffi_abm_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = temp::TempDir::new("alice_sdf_ffi_abm");
     let mesh = alice_sdf::mesh::sdf_to_mesh(
         &SdfNode::sphere(1.0),
         Vec3::splat(-1.5),
@@ -1393,7 +1389,6 @@ fn ffi_load_abm_checks_the_identifier() {
             "a version 1 file without an identifier is refused"
         );
     }
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// `alice_sdf_load_lod_chain` goes through the checking loader: a chain written by this crate
@@ -1402,8 +1397,7 @@ fn ffi_load_abm_checks_the_identifier() {
 #[test]
 fn ffi_load_lod_chain_checks_both_parts() {
     use alice_sdf::mesh::lod_persist::{self, LodChainConfig, LodChainPersist};
-    let dir = std::env::temp_dir().join(format!("alice_sdf_ffi_lod_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = temp::TempDir::new("alice_sdf_ffi_lod");
     let mesh = alice_sdf::mesh::sdf_to_mesh(
         &SdfNode::sphere(1.0),
         Vec3::splat(-1.5),
@@ -1466,5 +1460,4 @@ fn ffi_load_lod_chain_checks_both_parts() {
             assert_eq!(n, 0, "{what} is refused");
         }
     }
-    std::fs::remove_dir_all(&dir).ok();
 }

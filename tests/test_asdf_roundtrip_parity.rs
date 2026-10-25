@@ -13,6 +13,9 @@
 
 mod common;
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::compiled::{eval_compiled, CompiledSdf};
 use alice_sdf::eval::eval;
 use alice_sdf::prelude::*;
@@ -41,8 +44,7 @@ fn points(n: usize) -> Vec<Vec3> {
 
 #[test]
 fn asdf_round_trip_keeps_every_evaluator_bit_identical() {
-    let dir = std::env::temp_dir().join(format!("alice_sdf_asdf_parity_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("temp dir");
+    let dir = temp::TempDir::new("alice_sdf_asdf_parity");
     let pts = points(512);
     let mut failures = Vec::new();
 
@@ -93,7 +95,6 @@ fn asdf_round_trip_keeps_every_evaluator_bit_identical() {
         }
     }
 
-    let _ = std::fs::remove_dir_all(&dir);
     assert!(
         failures.is_empty(),
         "{} node(s) changed across the .asdf round trip:\n{}",

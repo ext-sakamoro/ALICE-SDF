@@ -7,6 +7,9 @@
 //! `compile_fail` doctests of the public module check the error code only). The control
 //! uses the allowed methods and must compile.
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -14,8 +17,7 @@ fn compile(case: &str) -> (bool, String) {
     let module = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/unordered.rs");
     static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("unordered-case-{}-{n}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = temp::TempDir::new(&format!("unordered-case-{n}"));
     let lib: PathBuf = dir.join("lib.rs");
     // a Rust string literal of the path (quoted and escaped, also on Windows)
     let module = format!("{:?}", module.to_string_lossy());
@@ -38,7 +40,6 @@ fn compile(case: &str) -> (bool, String) {
         .arg(&lib)
         .output()
         .expect("run rustc");
-    let _ = std::fs::remove_dir_all(&dir);
     (
         out.status.success(),
         String::from_utf8_lossy(&out.stderr).into_owned(),

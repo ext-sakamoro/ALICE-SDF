@@ -14,6 +14,9 @@
 //! (`tests/fixtures/provenance/tree_v1.asdf.json`, `i_packet_v1.json`, a sphere unioned with a
 //! translated box: 4 nodes).
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::io::{self, IoError};
 use alice_sdf::llm_schema::validate_sdf_json;
 use alice_sdf::prelude::*;
@@ -25,10 +28,8 @@ fn tree() -> SdfTree {
     SdfTree::new(SdfNode::sphere(1.0).union(SdfNode::box3d(0.5, 0.5, 0.5).translate(1.0, 0.0, 0.0)))
 }
 
-fn temp(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("alice_sdf_g8_tree_text_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join(name)
+fn temp(name: &str) -> temp::TempPath {
+    temp::TempPath::new("alice_sdf_g8_tree_text", name)
 }
 
 const fn other() -> Provenance {

@@ -11,10 +11,13 @@
 #[path = "../examples/bake_assets/stored.rs"]
 mod stored;
 
+#[path = "common/temp.rs"]
+mod temp;
+
 use alice_sdf::prelude::*;
 use alice_sdf::provenance::{Provenance, StoredSemantics};
 use alice_sdf::{PREVIOUS_SDF_SEMANTICS_IDS, SDF_SEMANTICS_ID};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 type Write = fn(&Path, &CompiledSdf, &serde_json::Value, &Provenance) -> Result<(), String>;
 
@@ -32,10 +35,8 @@ const WRITERS: &[(&str, &str, Write)] = &[
     ),
 ];
 
-fn dir() -> PathBuf {
-    let d = std::env::temp_dir().join(format!("alice_sdf_bake_stored_{}", std::process::id()));
-    std::fs::create_dir_all(&d).unwrap();
-    d
+fn temp(name: &str) -> temp::TempPath {
+    temp::TempPath::new("alice_sdf_bake_stored", name)
 }
 
 fn compiled() -> CompiledSdf {
@@ -76,7 +77,7 @@ fn bake_writers_store_the_identifier_and_readers_check_it() {
     let (c, m) = (compiled(), manifest());
     let other = Provenance::new([0xAB; 32]);
     for (key, name, write) in WRITERS {
-        let path = dir().join(format!("current_{name}"));
+        let path = temp(&format!("current_{name}"));
         // the plain writer stores this crate's identifier
         if *name == "law.bytecode" {
             stored::write_bytecode(&path, &c).unwrap();
@@ -128,7 +129,7 @@ fn bake_forms_without_the_identifier_or_cut_are_refused() {
     );
 
     // a manifest without the identifier
-    let path = dir().join("unpinned_manifest.json");
+    let path = temp("unpinned_manifest.json");
     std::fs::write(&path, serde_json::to_string(&manifest()).unwrap()).unwrap();
     assert!(stored::manifest_semantics(&path).is_err());
 }
