@@ -9,6 +9,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ## [Unreleased]
 
 ### Added
+- ALICE-Law G11: `alice-law-conformance.toml` の G11 を pass にした (この crate に載る共有 file はすべて持ち、ALICE-Law の表の bytes、保留の行は目標の bytes、`scripts/g11_table.sh` と `scripts/shared_files.sh` で指摘 0) `scripts/test_g11_table.py` に行が 1 つも無い表は比べたものが無く失敗する試験を足した
 - CI (ALICE-Law G11 (a) / (b)): `scripts/g11_table.sh` が ALICE-Law の `scripts/g11_table_check.py` を `.github/g11-table-pin` の版で取得し (SHA-256 を照合)、`conformance/g11.toml` が manifest の pass の gate ごとに行を持つかを確かめる (ci.yml の wiring-guard と preflight) pass の gate の行が無い・checker の SHA-256 が違う・pin が壊れている時は失敗する 試験 `scripts/test_g11_table.py` ALICE-Law の pin (`.github/shared-files-pin`・`.github/g11-table-pin`) と README の block の版を `0a5de013` に揃えた
 - CI: `scripts/law_readme_block_check.py` は README.md と README_JP.md の ALICE-Law の block が名指す版が、この repo の ALICE-Law の pin (`.github/shared-files-pin` の `rev`) と同じことを確かめる (pin が無い・読めない時も失敗する、試験 4 件を追加)
 - ALICE-Law G11: `conformance/g11.toml` (ALICE-Law の `scripts/g11_table_gen.py` が `conformance/g11-shared-rows.toml` と この repo の `conformance/g11-own.toml` から生成) が pass の gate ごとに checker・canary・比較 0 件の試験を挙げる (`scripts/g11_table_check.py`: 12 行、pass の gate は 10 個、指摘は 0 件) G4 / G5 の canary は `tests/test_det_golden.rs` の `checker_rejects_a_wrong_hash` (golden の比較を helper に分け、hash を 1 桁変えた表と 行の無い表でそれぞれ失敗することを確かめる、全 hash を受け入れる比較にすると red)、G6 の canary は `tests/sdf_semantics_id.rs` の `the_identifier_moves_with_each_entry`
@@ -39,6 +40,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - CI (ALICE-Law G8): `scripts/provenance_writers.py` が `examples/` も数える (利用者が写す書き方なので、手で書く保存形式も対象にする) `src/bin/` と `examples/` の関数は名前や戻り型でなく書き込み先 (sink) か `_with_provenance` / `_with_stamp` で候補にする `examples/` の書き出し関数も `tests/` の表で覆える 見つかった 11 件: `examples/export_mesh` は OBJ を手で書いていたので `io::export_obj` で書く、`examples/bake_assets` の `law.bytecode` と `manifest.json` は識別子を持つ (下の Changed)、生成した shader / source の text を書く 4 件 (`msl_emit` / `rust_transpile` / `shader_export` と、`unreal_corpus_oracle` が plugin に commit する HLSL と manifest header) は未対応の一覧、残り 5 件 (外部の形式の入力・試験用の PNG・覆われた書き出し関数の bytes・plugin の自動試験が同じ実行の中でだけ読む parity corpus の golden・`bake_teeth.sh` 用の破壊) は理由付きで書き出し関数でないとする (書き出し関数は 63 個、覆われた 49)
 
 ### Changed
+- CI (ALICE-Law G11 (c)): ALICE-Law の pin (`.github/shared-files-pin`・`.github/g11-table-pin`) と README の block の版を `0e8c14ec` にし、`scripts/id_move_check.py` とその試験 (表の目標の bytes) を置いた
 - **破壊的変更**: rust-version 1.85 → 1.87 (保存形式の意味の識別子に使う alice-zip が 1.87 を要求する) CI の MSRV の job と preflight も 1.87 で確かめる 1.87 で使える `const fn` と `is_multiple_of` への書き換え (clippy の `missing_const_for_fn` / `manual_is_multiple_of`、godot の `#[func]` は const にできないので理由付きの allow) は挙動を変えない
 - Licence: `Apache-2.0` → `LicenseRef-Proprietary`
 - `.github/dependabot.yml`、`CONTRIBUTING.md` を削除した

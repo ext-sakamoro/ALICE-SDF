@@ -3,8 +3,8 @@
 
 The script fetches ALICE-Law's scripts/g11_table_check.py at the revision .github/g11-table-pin
 names. In an export of HEAD it passes; with one row of conformance/g11.toml removed it fails (a pass
-gate without its row); a pin with a wrong SHA-256 or a malformed pin fails before anything is
-compared."""
+gate without its row); with no row at all it compared nothing and fails; a pin with a wrong SHA-256
+or a malformed pin fails before anything is compared."""
 import os
 import re
 import shutil
@@ -64,6 +64,12 @@ class G11Table(unittest.TestCase):
         r = self.run_script()
         self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("G6", r.stdout + r.stderr)
+
+    def test_a_table_with_no_row_compares_nothing_and_fails(self):
+        (self.tree / "conformance" / "g11.toml").write_text("# no rows\n", encoding="utf-8", newline="\n")
+        r = self.run_script()
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("compared nothing", r.stderr)
 
     def test_a_wrong_checker_sha256_fails(self):
         pin = self.tree / ".github" / "g11-table-pin"

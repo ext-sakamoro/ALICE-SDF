@@ -289,10 +289,10 @@ cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
 
 リリース履歴は [`CHANGELOG.md`](CHANGELOG.md) にある
 
-<!-- law-integration:begin law=0a5de013ca1268eac22fe44908138d09a431fce0 -->
+<!-- law-integration:begin law=0e8c14ec16779a5927fc70b466725456ab2f7b24 -->
 ## ALICE-Law との統合
 
-ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `0a5de013ca12` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
+ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `0e8c14ec1677` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
 
 | | |
 |---|---|
@@ -314,7 +314,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `0a5de013ca12` と
 | G8 persisted-semantics-id | 未達 | the writers of STL (binary and ASCII), 3MF, FBX (binary and ASCII), OBJ (with its MTL), PLY (binary and ASCII) glTF (.glb, .gltf, meshopt .glb, in … |
 | G9 persisted-meaning-change-is-major | 未達 | there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (`src/lib.rs#pub use … |
 | G10 no-run-varying-artifacts | 適合 | the Law path's cache is ExactEvalCache. cache_bridge::SdfEvalCache (feature sdf-cache, not default) stays outside the Law guarantee and says so in its … |
-| G11 gate-self-tests | 未達 | fail-known on (c), naming the rows: (a) and (b) hold for every pass gate (conformance/g11.toml, 0 findings) and both are checked by machine … |
+| G11 gate-self-tests | 適合 | pass: (a) and (b) hold for every pass gate and are checked by machine (conformance/g11.toml, scripts/g11_table.sh: 0 findings), and (c) every shared file … |
 | G12 public-repo-text-rules | 適合 | the CI job fetches ALICE-Law's own scripts/public_text_check.py at the revision named in .github/public-text-pin and refuses it unless its SHA-256 is the one … |
 | G13 no-unspecified-order | 適合 | the hash collections are used only through the wrappers, whose aggregates do not depend on the order (integer counts and sums, Ord maxima, key-ordered … |
 | G14 float-environment-invariants | 適合 | the Cargo.toml comment that suggests target-cpu=native to users is a comment, which the guard blanks; nothing sets it |
