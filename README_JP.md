@@ -184,10 +184,6 @@ feature 付きで実行する CI ステップが無いと CI を失敗させる 
 
 ## Cargo feature
 
-**AGPL** と記した feature は、`Cargo.lock` が pin する版で `AGPL-3.0-or-later` の依存をリンクする
-(`alice-physics`: `AGPL-3.0-or-later OR LicenseRef-Commercial`、`alice-codec`・`alice-cache`: `AGPL-3.0-or-later`)
-既定を含むそれ以外の feature は、寛容なライセンスの crate だけを取り込む
-
 <!-- readme-sync: features -->
 | Feature | 既定 | 説明 |
 |---------|:-------:|-------------|
@@ -217,9 +213,9 @@ feature 付きで実行する CI ステップが無いと CI を失敗させる 
 | `godot` | | Godot 4 GDExtension |
 | `wasm` | | `wasm-bindgen` による WebAssembly バインディング (`wasm32` 向けのみビルド) |
 | `openvdb` | | OpenVDB の float grid の入出力 |
-| `physics` | | **AGPL** [`alice-physics`](https://crates.io/crates/alice-physics) 向けの SDF コライダーとシミュレーションモディファイア、および `LiveSdf` (world のコライダー・world の参加者・chunk 単位の描画 mesh が 1 つの形を共有し、変化が届く chunk だけを再 mesh する `LiveSdf::apply_world_contacts` が直前の step で world が記録した接触を crater に変え、形が変わると world が寝ている body を起こす) |
-| `codec` | | **AGPL** [`alice-codec`](https://crates.io/crates/alice-codec) によるボリューム圧縮 |
-| `sdf-cache` | | **AGPL** [`alice-cache`](https://crates.io/crates/alice-cache) による評価キャッシュ |
+| `physics` | | [`alice-physics`](https://crates.io/crates/alice-physics) 向けの SDF コライダーとシミュレーションモディファイア、および `LiveSdf` (world のコライダー・world の参加者・chunk 単位の描画 mesh が 1 つの形を共有し、変化が届く chunk だけを再 mesh する `LiveSdf::apply_world_contacts` が直前の step で world が記録した接触を crater に変え、形が変わると world が寝ている body を起こす) |
+| `codec` | | [`alice-codec`](https://crates.io/crates/alice-codec) によるボリューム圧縮 |
+| `sdf-cache` | | [`alice-cache`](https://crates.io/crates/alice-cache) による評価キャッシュ |
 | `asp` | | [`libasp`](https://crates.io/crates/libasp) による ALICE Streaming Protocol パケット (既定 feature のみ) |
 | `font` | | `alice-font` のグリフ輪郭 crates.io 版では無効: `--cfg alice_font_bridge` とローカルの `alice-font` も必要 |
 

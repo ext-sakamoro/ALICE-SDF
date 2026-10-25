@@ -1643,7 +1643,6 @@ Download from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releas
 
 - **LLM × 3D Pipeline**: documented end-to-end workflow combining ALICE-SDF + ALICE-LOL + ALICE-View + ALICE-Physics
 - **SDF Compression Pipeline**: public API for compression, GPU Marching Cubes physics integration
-- **License**: changed from MIT to MIT OR Apache-2.0 dual license
 - **autodiff**: fixed `suboptimal_flops` warning with `mul_add`
 - **profile.release**: removed `panic = "abort"` to fix bench compilation on Linux/Windows
 - **+97 tests** (1,077 → 1,174)

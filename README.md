@@ -194,11 +194,6 @@ volume and inertia) and keeps them as a workflow artifact.
 
 ## Cargo features
 
-Features marked **AGPL** link a dependency that is `AGPL-3.0-or-later` at the version
-`Cargo.lock` pins (`alice-physics`: `AGPL-3.0-or-later OR LicenseRef-Commercial`;
-`alice-codec`, `alice-cache`: `AGPL-3.0-or-later`). All other features, including the
-defaults, pull in only permissively licensed crates.
-
 <!-- readme-sync: features -->
 | Feature | Default | Description |
 |---------|:-------:|-------------|
@@ -228,9 +223,9 @@ defaults, pull in only permissively licensed crates.
 | `godot` | | Godot 4 GDExtension. |
 | `wasm` | | WebAssembly bindings through `wasm-bindgen` (built for `wasm32` only). |
 | `openvdb` | | OpenVDB float grid input and output. |
-| `physics` | | **AGPL.** SDF colliders and simulation modifiers for [`alice-physics`](https://crates.io/crates/alice-physics), and `LiveSdf`: one editable shape shared by the world's collider, a world participant and a chunked render mesh that re-meshes only the chunks a change reaches. `LiveSdf::apply_world_contacts` turns the contacts the world recorded in the last step into craters, and the world wakes resting bodies when the shape changes. |
-| `codec` | | **AGPL.** Volume compression with [`alice-codec`](https://crates.io/crates/alice-codec). |
-| `sdf-cache` | | **AGPL.** Evaluation cache with [`alice-cache`](https://crates.io/crates/alice-cache). |
+| `physics` | | SDF colliders and simulation modifiers for [`alice-physics`](https://crates.io/crates/alice-physics), and `LiveSdf`: one editable shape shared by the world's collider, a world participant and a chunked render mesh that re-meshes only the chunks a change reaches. `LiveSdf::apply_world_contacts` turns the contacts the world recorded in the last step into craters, and the world wakes resting bodies when the shape changes. |
+| `codec` | | Volume compression with [`alice-codec`](https://crates.io/crates/alice-codec). |
+| `sdf-cache` | | Evaluation cache with [`alice-cache`](https://crates.io/crates/alice-cache). |
 | `asp` | | ALICE Streaming Protocol packets with [`libasp`](https://crates.io/crates/libasp) (its default features only). |
 | `font` | | Glyph outlines from `alice-font`. Inert on crates.io: also needs `--cfg alice_font_bridge` and a local `alice-font`. |
 
