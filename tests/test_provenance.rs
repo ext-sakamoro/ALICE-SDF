@@ -672,10 +672,11 @@ fn gltf_files_with_the_identifier_stay_valid() {
     .unwrap();
     let len = u32::from_le_bytes([mo[12], mo[13], mo[14], mo[15]]) as usize;
     let json: serde_json::Value = serde_json::from_slice(&mo[20..20 + len]).unwrap();
-    assert_eq!(
-        json["asset"]["extras"][provenance::KEY].as_str(),
-        Some(caller_id().hex().as_str())
-    );
+    // GLB stores the meaning identifier of the caller's identifier, and not the earlier key
+    let (key, id) = caller_id().named_for(StoredForm::Glb);
+    assert_eq!(key, provenance::MEANING_KEY);
+    assert_eq!(json["asset"]["extras"][key].as_str(), Some(id.as_str()));
+    assert!(json["asset"]["extras"].get(provenance::KEY).is_none());
 }
 
 /// USD reads back in this crate's importer; STEP keeps its ISO header and trailer; every IGES line
@@ -3253,7 +3254,7 @@ fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
     ));
 
     // edits in place keep every length and position
-    let key = format!("{}=", provenance::KEY);
+    let key = format!("{}=", provenance::MEANING_KEY);
     let at = bytes
         .windows(key.len())
         .position(|w| w == key.as_bytes())
@@ -3285,7 +3286,7 @@ fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
     unreadable(edit(&|b| b[7] = 0x02), "another Ogawa version");
     unreadable(provenance::from_bytes(&bytes[..20]), "a cut archive");
     // the same key twice, in an archive built from the Ogawa layout (see `ogawa_with_metadata`)
-    let hex = Provenance::sdf().hex();
+    let (_, hex) = Provenance::sdf().named_for(StoredForm::Alembic);
     assert!(
         provenance::from_bytes(&ogawa_with_metadata(&format!("{key}{hex}")))
             .unwrap()
@@ -3294,6 +3295,21 @@ fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
     unreadable(
         provenance::from_bytes(&ogawa_with_metadata(&format!("{key}{hex};{key}{hex}"))),
         "two identifiers",
+    );
+    // an archive of 7.0.0 holds the raw identifier under the earlier key: the earlier generation
+    let raw = format!("{}={}", provenance::KEY, Provenance::sdf().hex());
+    let earlier = provenance::from_bytes(&ogawa_with_metadata(&raw)).unwrap();
+    assert!(!earlier.is_written_under(&Provenance::sdf()));
+    assert_eq!(
+        earlier
+            .judge(&Provenance::sdf(), alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS)
+            .unwrap(),
+        StoredSemantics::VerifiedPrevious(Provenance::sdf())
+    );
+    // both keys in one archive: unreadable, never read as either
+    unreadable(
+        provenance::from_bytes(&ogawa_with_metadata(&format!("{key}{hex};{raw}"))),
+        "the meaning key and the earlier key",
     );
     // the layout this crate wrote up to 7.0.0: magic, version 1.0 in three bytes, a group tag
     let mut old = b"Ogawa\x00\x01\x00\xFF".to_vec();

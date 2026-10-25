@@ -31,12 +31,15 @@
 //! | raw volume data (no header) | a sidecar file `<path>.semantics`: `alice:semantics_id=<64 hex>` |
 //!
 //! **Meaning identifiers.** The forms of [`StoredForm::writes_meaning`] (binary and ASCII STL, 3MF,
-//! binary and ASCII FBX, OBJ and its MTL, PLY) store [`meaning_id`] of the identifier instead of the
+//! binary and ASCII FBX, OBJ and its MTL, PLY, GLB (plain and meshopt-compressed) and glTF JSON,
+//! USD, STEP, IGES, Alembic) store [`meaning_id`] of the identifier instead of the
 //! identifier itself: law-id v2 (`alice_zip::law_id::LawIdHasher`) over [`MEANING_KIND`], the
 //! semantics identifier, the form's name and its layout version. It names what the stored bytes
 //! mean and differs from the in-process identifier (ALICE-Law G8). Binary slots keep their place
 //! (the STL header bytes `9..41`); text forms write the key [`MEANING_KEY`]
-//! (`alice:meaning_id=<64 hex>`, the 3MF metadata name `alice:meaning_id`) where they wrote [`KEY`].
+//! (`alice:meaning_id=<64 hex>`; the 3MF metadata name, the glTF `asset.extras` field, the USD
+//! `customLayerData` entry and the Alembic metadata key `alice:meaning_id`) where they wrote [`KEY`].
+//! A text holding both keys is [`ProvenanceError::Unreadable`].
 //! [`Stored::judge`] recomputes it for the expected identifier and for the earlier ones; a raw
 //! identifier (a file of 7.0.0 or earlier: under [`KEY`], or raw in a slot) is the earlier stored
 //! generation, `VerifiedPrevious`. The producer identifier of a [`Stamp`] stays raw.
@@ -218,6 +221,12 @@ impl StoredForm {
                 | Self::FbxAscii
                 | Self::ObjText
                 | Self::Ply
+                | Self::Glb
+                | Self::Gltf
+                | Self::Usd
+                | Self::Step
+                | Self::Iges
+                | Self::Alembic
         )
     }
 }
@@ -563,7 +572,6 @@ impl Stamp {
             ),
         }
     }
-
 }
 
 impl From<Provenance> for Stamp {
@@ -894,7 +902,7 @@ fn found_in(bytes: &[u8]) -> Result<(StoredForm, Found), ProvenanceError> {
         };
     }
     if bytes.starts_with(b"Ogawa") {
-        return read_alembic(bytes).map(|p| (StoredForm::Alembic, Found::key(p)));
+        return read_alembic(bytes).map(|f| (StoredForm::Alembic, f));
     }
     if bytes.starts_with(b"ALICEVDB") {
         // ALICE-VDB dense grid: `ALICEVDB2` carries the identifier after the 9-byte magic
@@ -963,36 +971,41 @@ fn found_in(bytes: &[u8]) -> Result<(StoredForm, Found), ProvenanceError> {
         let json = bytes
             .get(20..20 + len)
             .ok_or_else(|| ProvenanceError::Unreadable("GLB: truncated JSON chunk".into()))?;
-        return json_tagged(json, "GLB").map(|(_, p)| (StoredForm::Glb, Found::key(p)));
+        return json_tagged(json, "GLB").map(|(_, f)| (StoredForm::Glb, f));
     }
     if bytes.first() == Some(&b'{') {
-        return json_tagged(bytes, "glTF").map(|(gltf, p)| {
+        return json_tagged(bytes, "glTF").map(|(gltf, f)| {
             let form = if gltf {
                 StoredForm::Gltf
             } else {
                 StoredForm::JsonDocument
             };
-            (form, Found::key(p))
+            (form, f)
         });
     }
     if bytes.starts_with(b"#usda") {
         // USDA: the layer metadata (the parenthesised block after the first line) holds
-        // `customLayerData = { string "alice:semantics_id" = "<hex>" }`
+        // `customLayerData = { string "alice:meaning_id" = "<hex>" }` (`alice:semantics_id` in
+        // files written before the form stored meaning identifiers)
         let end = find(bytes, b"\n)")
             .ok_or_else(|| ProvenanceError::Unreadable("USDA: no layer metadata block".into()))?;
         let head = std::str::from_utf8(&bytes[..end])
             .map_err(|_| ProvenanceError::Unreadable("USDA: header is not UTF-8".into()))?;
-        let key = format!("string \"{KEY}\" = \"");
-        return match head.find(&key) {
-            None => Err(ProvenanceError::Missing { format: "USDA" }),
-            Some(at) => head
-                .get(at + key.len()..at + key.len() + 64)
-                .and_then(Provenance::from_hex)
-                .map(|p| (StoredForm::Usd, Found::key(p)))
-                .ok_or_else(|| {
-                    ProvenanceError::Unreadable(format!("USDA: {KEY} is not 64 hex digits"))
-                }),
+        let one = |name: &str| -> Result<Option<Provenance>, ProvenanceError> {
+            let key = format!("string \"{name}\" = \"");
+            match head.find(&key) {
+                None => Ok(None),
+                Some(at) => head
+                    .get(at + key.len()..at + key.len() + 64)
+                    .and_then(Provenance::from_hex)
+                    .map(Some)
+                    .ok_or_else(|| {
+                        ProvenanceError::Unreadable(format!("USDA: {name} is not 64 hex digits"))
+                    }),
+            }
         };
+        return one_of_both_keys(one(MEANING_KEY)?, one(KEY)?, "USDA")
+            .map(|f| (StoredForm::Usd, f));
     }
     if bytes.starts_with(b"ISO-10303-21;") {
         // STEP: the identifier is one of the strings of FILE_DESCRIPTION's description list
@@ -1360,27 +1373,30 @@ pub(crate) fn import_verdict(
 /// The identifier of a JSON document: `asset.extras["alice:semantics_id"]` of a glTF document
 /// (one with an `asset` object; `gltf` names it in errors), the top-level `"alice:semantics_id"` of
 /// any other JSON document of this crate (ASDF JSON, the LOD chain sidecar), named `JSON` in errors
-fn json_tagged(bytes: &[u8], gltf: &'static str) -> Result<(bool, Provenance), ProvenanceError> {
+fn json_tagged(bytes: &[u8], gltf: &'static str) -> Result<(bool, Found), ProvenanceError> {
     #[allow(
         clippy::disallowed_methods,
         reason = "stored form other-type: a serde_json::Value of a glTF or ASDF JSON document, read only for its stored identifier"
     )]
     let doc: serde_json::Value = serde_json::from_slice(bytes)
         .map_err(|e| ProvenanceError::Unreadable(format!("JSON: {e}")))?;
-    let (is_gltf, format, field) = match doc.get("asset") {
-        Some(asset) => (true, gltf, asset.get("extras").and_then(|x| x.get(KEY))),
-        None => (false, "JSON", doc.get(KEY)),
+    let (is_gltf, format, holder) = match doc.get("asset") {
+        Some(asset) => (true, gltf, asset.get("extras")),
+        None => (false, "JSON", Some(&doc)),
     };
-    match field {
-        None => Err(ProvenanceError::Missing { format }),
-        Some(v) => v
-            .as_str()
-            .and_then(Provenance::from_hex)
-            .map(|p| (is_gltf, p))
-            .ok_or_else(|| {
-                ProvenanceError::Unreadable(format!("{format}: {KEY} is not 64 hex digits"))
-            }),
-    }
+    let one = |name: &str| -> Result<Option<Provenance>, ProvenanceError> {
+        match holder.and_then(|h| h.get(name)) {
+            None => Ok(None),
+            Some(v) => v
+                .as_str()
+                .and_then(Provenance::from_hex)
+                .map(Some)
+                .ok_or_else(|| {
+                    ProvenanceError::Unreadable(format!("{format}: {name} is not 64 hex digits"))
+                }),
+        }
+    };
+    one_of_both_keys(one(MEANING_KEY)?, one(KEY)?, format).map(|f| (is_gltf, f))
 }
 
 /// An IGES file starts with a Start-section line: 80 columns, `S` in column 73, sequence 1
@@ -1839,6 +1855,16 @@ fn both_keys_in(
 ) -> Result<Found, ProvenanceError> {
     let meaning = tagged_in_with(bytes, format, MEANING_KEY, &ends)?;
     let raw = tagged_in_with(bytes, format, KEY, &ends)?;
+    one_of_both_keys(meaning, raw, format)
+}
+
+/// The identifier read under [`MEANING_KEY`] (`meaning`) or under the earlier [`KEY`] (`raw`); both
+/// present is an error, never read as either
+fn one_of_both_keys(
+    meaning: Option<Provenance>,
+    raw: Option<Provenance>,
+    format: &'static str,
+) -> Result<Found, ProvenanceError> {
     match (meaning, raw) {
         (Some(m), None) => Ok(Found {
             id: m.semantics_id,
@@ -1913,7 +1939,7 @@ fn tagged_in_with(
 /// block, the metadata `key=value;key=value`) and in it `alice:semantics_id=<64 hex>`. An archive
 /// of another program without that key has none (Missing); the layout this crate wrote up to
 /// 7.0.0 (`Ogawa` `00 01 00`, which no Alembic reader opens) is unreadable.
-fn read_alembic(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
+fn read_alembic(bytes: &[u8]) -> Result<Found, ProvenanceError> {
     let bad = |why: &str| ProvenanceError::Unreadable(format!("Alembic: {why}"));
     let u64_at = |at: usize| -> Result<u64, ProvenanceError> {
         let w: [u8; 8] = bytes
@@ -1961,17 +1987,20 @@ fn read_alembic(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
             .ok_or_else(|| bad("truncated archive"))?
     };
     let meta = std::str::from_utf8(meta).map_err(|_| bad("archive metadata is not UTF-8"))?;
-    let mut values = meta
-        .split(';')
-        .filter_map(|kv| kv.split_once('='))
-        .filter(|(k, _)| *k == KEY)
-        .map(|(_, v)| Provenance::from_hex(v));
-    match (values.next(), values.next()) {
-        (None, _) => Err(ProvenanceError::Missing { format: "Alembic" }),
-        (Some(Some(p)), None) => Ok(p),
-        (Some(None), _) => Err(bad(&format!("{KEY} is not 64 hex digits"))),
-        (Some(Some(_)), Some(_)) => Err(bad(&format!("more than one {KEY}"))),
-    }
+    let one = |name: &str| -> Result<Option<Provenance>, ProvenanceError> {
+        let mut values = meta
+            .split(';')
+            .filter_map(|kv| kv.split_once('='))
+            .filter(|(k, _)| *k == name)
+            .map(|(_, v)| Provenance::from_hex(v));
+        match (values.next(), values.next()) {
+            (None, _) => Ok(None),
+            (Some(Some(p)), None) => Ok(Some(p)),
+            (Some(None), _) => Err(bad(&format!("{name} is not 64 hex digits"))),
+            (Some(Some(_)), Some(_)) => Err(bad(&format!("more than one {name}"))),
+        }
+    };
+    one_of_both_keys(one(MEANING_KEY)?, one(KEY)?, "Alembic")
 }
 
 /// The `alice:semantics_id` metadata of `3D/3dmodel.model` in a 3MF (zip) archive

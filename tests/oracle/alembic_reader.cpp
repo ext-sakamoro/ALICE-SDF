@@ -3,7 +3,7 @@
 // the mesh bit for bit
 //
 //   archive_valid 1
-//   meta alice:semantics_id <value>          (every archive metadata key)
+//   meta alice:meaning_id <value>            (every archive metadata key)
 //   polymesh <full name>
 //   P <count> <hex bits of each float>
 //   faceIndices <count> <each index>

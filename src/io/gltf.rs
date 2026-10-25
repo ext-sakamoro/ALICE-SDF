@@ -14,8 +14,8 @@ use crate::compiled::real::LawMinMax;
 use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
-use crate::provenance::Provenance;
 use crate::provenance::{import_verdict, Checked};
+use crate::provenance::{Provenance, StoredForm};
 use std::io::Write;
 use std::path::Path;
 
@@ -318,7 +318,7 @@ pub fn export_gltf_json_with_provenance(
     materials: Option<&MaterialLibrary>,
     provenance: &Provenance,
 ) -> Result<(), IoError> {
-    let (json_bytes, bin) = build_glb_data(mesh, config, materials, provenance)?;
+    let (json_bytes, bin) = build_gltf_data(mesh, config, materials, provenance, StoredForm::Gltf)?;
 
     // A .gltf has no BIN chunk: the buffer must carry its bytes in `uri`
     // (glTF 2.0 §3.6.1.1), here as a base64 data URI
@@ -380,11 +380,24 @@ fn base64_encode(bytes: &[u8]) -> String {
     out
 }
 
+/// [`build_gltf_data`] for a GLB
 fn build_glb_data(
     mesh: &Mesh,
     config: &GltfConfig,
     materials: Option<&MaterialLibrary>,
     provenance: &Provenance,
+) -> Result<(Vec<u8>, Vec<u8>), IoError> {
+    build_gltf_data(mesh, config, materials, provenance, StoredForm::Glb)
+}
+
+/// The JSON and the binary buffer of a glTF asset stored as `form` (GLB or glTF JSON, whose
+/// meaning identifiers differ)
+fn build_gltf_data(
+    mesh: &Mesh,
+    config: &GltfConfig,
+    materials: Option<&MaterialLibrary>,
+    provenance: &Provenance,
+    form: StoredForm,
 ) -> Result<(Vec<u8>, Vec<u8>), IoError> {
     let vert_count = mesh.vertices.len();
     let use_u16 = vert_count <= 65535;
@@ -1008,10 +1021,9 @@ fn build_glb_data(
     }
 
     // Build JSON
+    let (key, id) = provenance.named_for(form);
     let mut json = format!(
-        r#"{{"asset":{{"version":"2.0","generator":"ALICE-SDF","extras":{{"{}":"{}"}}}}"#,
-        crate::provenance::KEY,
-        provenance.hex()
+        r#"{{"asset":{{"version":"2.0","generator":"ALICE-SDF","extras":{{"{key}":"{id}"}}}}"#
     );
 
     // Extensions
@@ -1218,7 +1230,8 @@ fn accessor_layout<'a>(
 /// Import a mesh from in-memory GLB bytes, with what is known about the arithmetic they were
 /// written under
 ///
-/// `asset.extras["alice:semantics_id"]` of the JSON chunk is read: bytes of this crate are
+/// `asset.extras["alice:meaning_id"]` of the JSON chunk is read (`alice:semantics_id` in bytes
+/// written before GLB stored meaning identifiers, the earlier generation): bytes of this crate are
 /// [`crate::provenance::StoredSemantics::Current`] (or `VerifiedPrevious`), bytes from another program (no
 /// identifier) are read and marked [`crate::provenance::StoredSemantics::Unpinned`], and bytes stamped by another
 /// SDF arithmetic are refused. [`import_glb_bytes_pinned`] also refuses unstamped bytes.

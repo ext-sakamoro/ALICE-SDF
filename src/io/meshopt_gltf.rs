@@ -510,10 +510,9 @@ pub fn export_glb_meshopt_bytes_skinned_with_provenance(
     };
 
     // Build final JSON
+    let (key, id) = provenance.named_for(crate::provenance::StoredForm::Glb);
     let json = format!(
         r#"{{"asset":{{"version":"2.0","generator":"ALICE-SDF meshopt-gltf","extras":{{"{key}":"{id}"}}}},"extensionsUsed":["EXT_meshopt_compression"],"extensionsRequired":["EXT_meshopt_compression"],"buffers":[{{"byteLength":{buffer_len}}}],"bufferViews":[{buffer_views_json}],"accessors":[{accessors_json}],"materials":[{mat_json}],"meshes":[{{"primitives":[{{"attributes":{{{attributes_json}}},"indices":{idx_accessor},"material":0}}]}}],"nodes":[{{"mesh":0}}],"scenes":[{{"nodes":[0]}}],"scene":0}}"#,
-        key = crate::provenance::KEY,
-        id = provenance.hex(),
         buffer_len = bin.len(),
         buffer_views_json = buffer_views.join(","),
         accessors_json = accessors.join(","),

@@ -19,7 +19,7 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 /// The forms whose writers store meaning identifiers in this build
-const MEANING_FORMS: [StoredForm; 7] = [
+const MEANING_FORMS: [StoredForm; 13] = [
     StoredForm::StlBinary,
     StoredForm::StlAscii,
     StoredForm::ThreeMf,
@@ -27,6 +27,12 @@ const MEANING_FORMS: [StoredForm; 7] = [
     StoredForm::FbxAscii,
     StoredForm::ObjText,
     StoredForm::Ply,
+    StoredForm::Glb,
+    StoredForm::Gltf,
+    StoredForm::Usd,
+    StoredForm::Step,
+    StoredForm::Iges,
+    StoredForm::Alembic,
 ];
 
 fn temp(name: &str) -> PathBuf {
@@ -77,6 +83,34 @@ fn write(form: StoredForm, m: &Mesh, path: &Path, p: &Provenance) {
         StoredForm::Ply => {
             io::export_ply_with_provenance(m, path, &io::PlyConfig::default(), p).unwrap();
         }
+        StoredForm::Glb => {
+            io::export_glb_with_provenance(m, path, &io::GltfConfig::default(), None, p).unwrap();
+        }
+        StoredForm::Gltf => {
+            io::export_gltf_json_with_provenance(m, path, &io::GltfConfig::default(), None, p)
+                .unwrap();
+        }
+        StoredForm::Usd => {
+            io::export_usda_with_provenance(m, path, &io::UsdConfig::default(), None, p).unwrap();
+        }
+        StoredForm::Alembic => {
+            io::export_alembic_with_provenance(m, path, &io::AlembicConfig::default(), p).unwrap();
+        }
+        // STEP and IGES tessellate the SDF themselves: the sphere `mesh` is built from
+        StoredForm::Step => {
+            let cfg = io::step::StepConfig {
+                resolution: 4,
+                ..Default::default()
+            };
+            io::step::export_step_with_provenance(path, &SdfNode::sphere(1.0), &cfg, p).unwrap();
+        }
+        StoredForm::Iges => {
+            let cfg = io::iges::IgesConfig {
+                resolution: 4,
+                ..Default::default()
+            };
+            io::iges::export_iges_with_provenance(path, &SdfNode::sphere(1.0), &cfg, p).unwrap();
+        }
         other => panic!("no writer for {other:?} in this test"),
     }
 }
@@ -88,6 +122,12 @@ const fn ext(form: StoredForm) -> &'static str {
         StoredForm::FbxBinary | StoredForm::FbxAscii => "fbx",
         StoredForm::ObjText => "obj",
         StoredForm::Ply => "ply",
+        StoredForm::Glb => "glb",
+        StoredForm::Gltf => "gltf",
+        StoredForm::Usd => "usda",
+        StoredForm::Step => "step",
+        StoredForm::Iges => "igs",
+        StoredForm::Alembic => "abc",
         _ => "bin",
     }
 }
@@ -158,9 +198,10 @@ fn every_meaning_form_writes_the_meaning_identifier_and_it_is_current() {
     assert_eq!(compared, MEANING_FORMS.len());
 }
 
-/// The files alice-sdf 7.0.0 (main 115240f) wrote for the meaning forms: the raw identifier, under
-/// the earlier key or in the slot
-const RAW_V2: [(StoredForm, &str); 7] = [
+/// The files alice-sdf 7.0.0 wrote for the meaning forms: the raw identifier, under the earlier key
+/// or in the slot (the mesh forms of the first set from main 115240f, glTF / GLB / USD / STEP / IGES
+/// / Alembic from main 7f22542, each from the sphere of `mesh()` at resolution 4)
+const RAW_V2: [(StoredForm, &str); 13] = [
     (StoredForm::StlBinary, "mesh_raw_v2.stl"),
     (StoredForm::StlAscii, "mesh_raw_v2_ascii.stl"),
     (StoredForm::ThreeMf, "mesh_raw_v2.3mf"),
@@ -168,6 +209,12 @@ const RAW_V2: [(StoredForm, &str); 7] = [
     (StoredForm::FbxAscii, "mesh_raw_v2_ascii.fbx"),
     (StoredForm::ObjText, "mesh_raw_v2.obj"),
     (StoredForm::Ply, "mesh_raw_v2.ply"),
+    (StoredForm::Glb, "mesh_raw_v2.glb"),
+    (StoredForm::Gltf, "mesh_raw_v2.gltf"),
+    (StoredForm::Usd, "mesh_raw_v2.usda"),
+    (StoredForm::Step, "sphere_raw_v2.step"),
+    (StoredForm::Iges, "sphere_raw_v2.igs"),
+    (StoredForm::Alembic, "mesh_raw_v2.abc"),
 ];
 
 fn fixture(name: &str) -> PathBuf {
@@ -219,6 +266,18 @@ fn a_raw_identifier_of_a_meaning_form_reads_as_the_earlier_generation() {
     );
     assert_eq!(
         io::import_fbx(fixture("mesh_raw_v2_ascii.fbx"))
+            .unwrap()
+            .semantics(),
+        earlier
+    );
+    assert_eq!(
+        io::import_glb(fixture("mesh_raw_v2.glb"))
+            .unwrap()
+            .semantics(),
+        earlier
+    );
+    assert_eq!(
+        io::import_usda(fixture("mesh_raw_v2.usda"))
             .unwrap()
             .semantics(),
         earlier
@@ -301,4 +360,61 @@ fn the_meaning_identifier_is_law_id_v2_as_its_byte_layout_reads() {
         let want: [u8; 32] = h.finalize().into();
         assert_eq!(meaning_id(form, &Provenance::sdf()), want, "{form:?}");
     }
+}
+
+#[test]
+fn the_meshopt_glb_writer_stores_the_glb_meaning_identifier() {
+    // the meshopt path of the GLB writer builds its own JSON: it stores the same identifier as the
+    // plain path, read back as Current and imported as Current
+    let path = temp("own_meshopt.glb");
+    let cfg = io::GltfConfig {
+        meshopt_compress: true,
+        ..Default::default()
+    };
+    io::export_glb_with_provenance(&mesh(), &path, &cfg, None, &Provenance::sdf()).unwrap();
+    let stored = provenance::read(&path).unwrap();
+    assert_eq!(stored.form, StoredForm::Glb);
+    assert_eq!(stored.id, meaning_id(StoredForm::Glb, &Provenance::sdf()));
+    assert_eq!(
+        provenance::check_sdf(&path).unwrap(),
+        StoredSemantics::Current
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn a_document_holding_both_keys_is_refused_never_read_as_either() {
+    // glTF JSON and USDA read the identifier through their own walk (not the text-key scan of the
+    // other text forms): a document carrying both the meaning key and the earlier key is
+    // unreadable, as it is for the text forms (Alembic, whose metadata block is length framed, is
+    // covered in test_provenance.rs through an archive built with both keys)
+    let m = mesh();
+    let mut compared = 0;
+    for form in [StoredForm::Gltf, StoredForm::Usd] {
+        let path = temp(&format!("both_{}.{}", form.name(), ext(form)));
+        write(form, &m, &path, &Provenance::sdf());
+        let text = String::from_utf8(std::fs::read(&path).unwrap()).unwrap();
+        let raw = hex(&SDF_SEMANTICS_ID);
+        let both = if form == StoredForm::Gltf {
+            let extra = format!(r#""extras":{{"{}":"{raw}","#, provenance::KEY);
+            text.replacen(r#""extras":{"#, &extra, 1)
+        } else {
+            let extra = format!(
+                "customLayerData = {{ string \"{}\" = \"{raw}\", ",
+                provenance::KEY
+            );
+            text.replacen("customLayerData = { ", &extra, 1)
+        };
+        assert_ne!(both, text, "{form:?}: the earlier key was added");
+        std::fs::write(&path, both.as_bytes()).unwrap();
+        match provenance::read(&path) {
+            Err(ProvenanceError::Unreadable(why)) => {
+                assert!(why.contains(provenance::MEANING_KEY), "{form:?}: {why}");
+            }
+            r => panic!("{form:?}: expected Unreadable, got {r:?}"),
+        }
+        std::fs::remove_file(&path).ok();
+        compared += 1;
+    }
+    assert_eq!(compared, 2);
 }

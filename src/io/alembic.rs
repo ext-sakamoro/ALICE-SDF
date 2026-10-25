@@ -9,7 +9,8 @@
 //!
 //! Faces are stored clockwise, as Alembic stores them: each triangle `(a, b, c)` of the mesh is
 //! written as `(a, c, b)`. The archive metadata holds `_ai_Application`, `_ai_DCC_FPS` and the
-//! semantics identifier as `alice:semantics_id=<64 hex>` ([`crate::provenance`]).
+//! meaning identifier of the semantics identifier as `alice:meaning_id=<64 hex>`
+//! ([`crate::provenance::meaning_id`] for [`crate::provenance::StoredForm::Alembic`]).
 //!
 //! The layout written here: the Ogawa header (`Ogawa`, the frozen byte `0xFF`, version `00 01`,
 //! the `u64` position of the root group); a group is a `u64` child count and the `u64` child
@@ -22,7 +23,7 @@
 
 use crate::io::IoError;
 use crate::mesh::Mesh;
-use crate::provenance::{Provenance, KEY};
+use crate::provenance::{Provenance, StoredForm};
 use std::path::Path;
 
 /// Configuration for Alembic export
@@ -415,11 +416,11 @@ fn archive_bytes(mesh: &Mesh, config: &AlembicConfig, provenance: &Provenance) -
     let top_data = out.data(&[&top_headers, &top_hashes]);
     let top = out.group(&[EMPTY_GROUP, mesh_group, top_data]);
 
+    let (key, id) = provenance.named_for(StoredForm::Alembic);
     let meta = format!(
-        "_ai_Application=ALICE-SDF {};_ai_DCC_FPS={};{KEY}={}",
+        "_ai_Application=ALICE-SDF {};_ai_DCC_FPS={};{key}={id}",
         env!("CARGO_PKG_VERSION"),
         config.fps,
-        provenance.hex()
     );
     let archive_meta = out.data(&[meta.as_bytes()]);
     // one time sampling (identity), its largest sample count 1

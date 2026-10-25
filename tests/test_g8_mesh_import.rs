@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 const V1_TRIANGLES: usize = 56;
 
 /// The forms whose meaning identifier a writer may store
-const FORMS: [StoredForm; 7] = [
+const FORMS: [StoredForm; 13] = [
     StoredForm::StlBinary,
     StoredForm::StlAscii,
     StoredForm::ThreeMf,
@@ -30,6 +30,12 @@ const FORMS: [StoredForm; 7] = [
     StoredForm::FbxAscii,
     StoredForm::ObjText,
     StoredForm::Ply,
+    StoredForm::Glb,
+    StoredForm::Gltf,
+    StoredForm::Usd,
+    StoredForm::Step,
+    StoredForm::Iges,
+    StoredForm::Alembic,
 ];
 
 fn hex(id: &[u8; 32]) -> String {

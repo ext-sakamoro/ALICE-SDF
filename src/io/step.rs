@@ -133,7 +133,11 @@ pub fn export_step(
 }
 
 /// [`export_step`] with the caller's semantics identifier as the second string of
-/// `FILE_DESCRIPTION` (`'alice:semantics_id=<hex>'`, see [`crate::provenance`])
+/// `FILE_DESCRIPTION`
+///
+/// The string is its meaning identifier, `'alice:meaning_id=<hex>'` of
+/// [`crate::provenance::meaning_id`] for [`crate::provenance::StoredForm::Step`] (see
+/// [`crate::provenance`]).
 pub fn export_step_with_provenance(
     path: impl AsRef<Path>,
     node: &SdfNode,
@@ -181,7 +185,7 @@ fn write_step<W: Write>(
     writeln!(
         w,
         "FILE_DESCRIPTION(('ALICE-SDF faceted BREP','{}'),'2;1');",
-        provenance.tagged()
+        provenance.tagged_for(crate::provenance::StoredForm::Step)
     )?;
     writeln!(
         w,

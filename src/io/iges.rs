@@ -76,8 +76,9 @@ pub fn export_iges(
 
 /// [`export_iges`] with the caller's semantics identifier in the Start section
 ///
-/// One line holds `alice:semantics_id=` and the next the 64 hex digits (a Start line holds 72
-/// characters; joined they read `alice:semantics_id=<hex>`, see [`crate::provenance`]).
+/// One line holds `alice:meaning_id=` and the next the 64 hex digits of the meaning identifier
+/// ([`crate::provenance::meaning_id`] for [`crate::provenance::StoredForm::Iges`]; a Start line
+/// holds 72 characters; joined they read `alice:meaning_id=<hex>`, see [`crate::provenance`]).
 pub fn export_iges_with_provenance(
     path: impl AsRef<Path>,
     node: &SdfNode,
@@ -128,7 +129,8 @@ fn write_iges<W: Write>(
         )
     )?;
     sseq += 1;
-    for part in [format!("{}=", crate::provenance::KEY), provenance.hex()] {
+    let (key, id) = provenance.named_for(crate::provenance::StoredForm::Iges);
+    for part in [format!("{key}="), id] {
         writeln!(w, "{}", iges_line(&part, 'S', sseq))?;
         sseq += 1;
     }

@@ -19,7 +19,7 @@ mod temp;
 use alice_sdf::io::{export_alembic, export_alembic_with_provenance, AlembicConfig};
 use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig, Mesh, Vertex};
 use alice_sdf::prelude::*;
-use alice_sdf::provenance::Provenance;
+use alice_sdf::provenance::{Provenance, StoredForm};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -161,13 +161,14 @@ fn the_alembic_library_reads_the_mesh_and_the_identifier_bit_for_bit() {
         let got =
             read(&path).unwrap_or_else(|e| panic!("the Alembic library does not open it: {e}"));
         assert_eq!(line(&got, "archive_valid"), vec!["archive_valid 1"]);
+        // the archive metadata holds the meaning identifier for Alembic (ALICE-Law G8), and not
+        // the earlier key
+        let (key, id) = Provenance::sdf().named_for(StoredForm::Alembic);
         assert_eq!(
-            line(&got, "meta alice:semantics_id"),
-            vec![&format!(
-                "meta alice:semantics_id {}",
-                Provenance::sdf().hex()
-            )]
+            line(&got, &format!("meta {key}")),
+            vec![&format!("meta {key} {id}")]
         );
+        assert!(line(&got, "meta alice:semantics_id").is_empty());
         assert_eq!(line(&got, "polymesh"), vec!["polymesh /mesh"]);
         for want in expected(&m, &config) {
             let tag = want.split(' ').next().unwrap();
@@ -203,7 +204,8 @@ fn this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh() {
         let ours = temp(format!("ours_{name}_{normals}_{uvs}.abc"));
         export_alembic_with_provenance(m, &ours, &config, &id).unwrap();
         let input = temp(format!("in_{name}_{normals}_{uvs}.txt"));
-        let mut text = format!("meta alice:semantics_id {}\n", id.hex());
+        let (key, meaning) = id.named_for(StoredForm::Alembic);
+        let mut text = format!("meta {key} {meaning}\n");
         for l in expected(m, &config) {
             text.push_str(&l);
             text.push('\n');
