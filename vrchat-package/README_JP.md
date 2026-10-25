@@ -512,7 +512,7 @@ grep できる文字列と理由付きの一覧は [`AGENTS.md`](AGENTS.md) §5
 
 ## ライセンス
 
-`LicenseRef-Proprietary` 条文は [LICENSE-Proprietary](LICENSE.md)
+`LicenseRef-Proprietary` 条文は [LICENSE-Proprietary](LICENSE-Proprietary)
 
 Enquiries: https://extoria.co.jp/
 

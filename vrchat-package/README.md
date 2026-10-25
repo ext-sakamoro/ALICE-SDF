@@ -484,7 +484,7 @@ More (with `grep`-able strings and the reasoning) in [`AGENTS.md`](AGENTS.md) §
 
 ## License
 
-`LicenseRef-Proprietary`. The text is [LICENSE-Proprietary](LICENSE.md).
+`LicenseRef-Proprietary`. The text is [LICENSE-Proprietary](LICENSE-Proprietary).
 
 Enquiries: https://extoria.co.jp/
 

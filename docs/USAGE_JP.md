@@ -1650,7 +1650,6 @@ if let Some(dist) = cache.get(1.0, 2.0, 3.0) {
 
 - **LLM × 3Dパイプライン**: ALICE-SDF + ALICE-LOL + ALICE-View + ALICE-Physics を組み合わせたエンドツーエンドワークフローをドキュメント化
 - **SDF圧縮パイプライン**: API公開、GPU Marching Cubes物理統合
-- **ライセンス**: MIT → MIT OR Apache-2.0 デュアルライセンスに変更
 - **autodiff**: `suboptimal_flops` 警告を `mul_add` に修正
 - **profile.release**: `panic = "abort"` 削除（Linux/Windowsベンチコンパイルエラー修正）
 - **+97テスト**（1,077 → 1,174）

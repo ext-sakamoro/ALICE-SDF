@@ -89,6 +89,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - CI: ci.yml の変更検出に `lint` (clippy.toml / `.github/clippy-lib/` / `scripts/clippy_lib_gate.*` / `scripts/clippy-lib-canary/`) を足し、clippy job がそれでも走るようにした これまでは lint の設定や gate だけを変えた commit では clippy job (canary を走らせる job) が飛んでいた
 
 ### Fixed
+- 文書: `vrchat-package/README.md` と `README_JP.md` のライセンスの link を同梱の `vrchat-package/LICENSE-Proprietary` に向けた (存在しない `LICENSE.md` を指していた) `docs/USAGE_JP.md` の v1.3.0 の変更点から以前のライセンス名の行を外した
 - CI: `tests/test_metal_library_from_source_only.rs` は `cargo metadata --locked --offline` を読み、全 platform の依存を解決するので、cache に無い crate (Windows だけの `anstyle-wincon` 等) があると落ちていた main でも潜在しており、cache が温かい時だけ通っていた test job (全 OS) と mobile job は `cargo test` の前に `cargo fetch --locked` を走らせ、preflight にも同じ step を足した Linux の test job は空の cargo home で offline の lookup が失敗し、fetch の後に成功することを確かめる
 - CI: `scripts/test_public_text.py` の `Planted` は、pin が設定 (`.public-text.toml`) を承認する 3 行目 `config-sha256` を持つ repo で 4 件失敗していた (pin を写したが設定を写さず、検査器が「config-sha256 が合わない」と報告した) `Planted` は pin から検査器 (`rev` と `sha256`) だけを取り、repo の設定は写さない (設定は repo 自身の file の行を名指すので、別の tree では成り立たない) 新しい `SettingsApproval` が 3 行の pin と自前の設定を置き、承認された設定は 0 件、承認と違う設定・無い設定は finding、`Planted` の形は検査器だけを残すことを確かめる (設定の有無によらずどの repo でも走る)
 - `io::vdb` の密 grid の読み込みで、file の解像度から求める cell 数と byte 長を桁あふれ検査付きで計算する 解像度が約 1.6e6 を超える header は debug で panic、release で長さが巻き戻って大きさの検査を通り buffer の外を読んでいた 今は `IoError::InvalidFormat`
