@@ -49,8 +49,11 @@ jobs:
 
 
 def run(*args: str, cwd: Path) -> str:
+    # the fixtures' git reads no system or global configuration (a host's commit.gpgsign or
+    # init.defaultBranch would otherwise decide the outcome)
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env.update(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+    env.update(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t",
+               GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
     return subprocess.run(list(args), cwd=cwd, env=env, check=True, capture_output=True, text=True).stdout.strip()
 
 
@@ -67,7 +70,7 @@ class Check(unittest.TestCase):
         run("git", "add", "-A", cwd=src)
         run("git", "commit", "-q", "-m", "gen", cwd=src)
         self.pin = run("git", "rev-parse", "HEAD", cwd=src)
-        run("git", "clone", "-q", str(src), str(t / "law"), cwd=t)
+        run("git", "clone", "-q", "--branch", "main", str(src), str(t / "law"), cwd=t)
         self.law = t / "law"
         self.src = src
         self.repo = t / "crate"
@@ -109,7 +112,7 @@ class Check(unittest.TestCase):
 
     def test_a_pass_names_uncommitted_inputs(self):
         self.crate(self.block())
-        run("git", "init", "-q", cwd=self.repo)
+        run("git", "init", "-q", "-b", "main", cwd=self.repo)
         run("git", "add", "-A", cwd=self.repo)
         run("git", "commit", "-q", "-m", "c", cwd=self.repo)
         rc, out = self.check()

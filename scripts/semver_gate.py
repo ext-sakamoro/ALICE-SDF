@@ -118,6 +118,10 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
+# the shared base of a crate under a publication freeze (scripts/release_baseline.py, next to this file)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import release_baseline  # noqa: E402
+
 API = "https://crates.io/api/v1/crates"
 USER_AGENT = "semver-gate (https://github.com/ext-sakamoro)"
 
@@ -370,6 +374,22 @@ def previous_release(fetch: Fetch, crate: str) -> str | None:
 
 
 EQUAL_VERSION_MODES = ("refuse", "next-smallest-step")
+#: where the base comes from: the latest crates.io release, the commit before main's newest version bump
+#: (release_baseline, for a crate whose releases are not published), or the newer of the two
+BASELINE_MODES = ("registry", "bump", "auto")
+
+
+def bump_base(repo: Path, manifest_path: str, crate: str, main_ref: str,
+              base_package: str | None = None) -> release_baseline.Baseline:
+    """release_baseline.bump_baseline for the manifest `manifest_path` under `repo` (the git top is found here);
+    `base_package` is the crate's name before a rename (the config's `base-package`)"""
+    top = subprocess.run(["git", "-C", str(repo), "rev-parse", "--show-toplevel"], capture_output=True, text=True,
+                         env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")})
+    if top.returncode != 0:
+        raise release_baseline.BaselineError(f"{repo} is not in a git repository")
+    root = Path(top.stdout.strip())
+    rel = (Path(repo).resolve() / manifest_path).relative_to(root.resolve()).as_posix()
+    return release_baseline.bump_baseline(root, rel, crate, base_package=base_package, main_ref=main_ref)
 
 
 def next_patch(version: str) -> str:
@@ -391,12 +411,38 @@ def smallest_next_release(previous: str, version: str) -> tuple[str, str] | None
 
 def semver_problems(repo: Path, manifest_path: str, crate: str, version: str, manifest: dict, entry: dict | None,
                     fetch: Fetch, run=run_semver_checks, target_dir: Path | None = None,
-                    equal_version: str = "refuse", universe: list[str] | None = None) -> tuple[list[str], int, str]:
-    """(problems, runs compared, what was compared) of cargo semver-checks against the latest
-    release, once per feature set of the consumer build"""
+                    equal_version: str = "refuse", universe: list[str] | None = None,
+                    baseline: str = "registry", main_ref: str = "origin/main") -> tuple[list[str], int, str]:
+    """(problems, runs compared, what was compared) of cargo semver-checks against the base, once per feature
+    set of the consumer build; the base is the latest release (`baseline = "registry"`), the commit before
+    main's newest version bump (`"bump"`, compared by rev), or the newer of the two (`"auto"`)"""
     if equal_version not in EQUAL_VERSION_MODES:
         raise ValueError(f"equal_version must be one of {EQUAL_VERSION_MODES}, not {equal_version!r}")
-    previous = previous_release(fetch, crate)
+    if baseline not in BASELINE_MODES:
+        raise ValueError(f"baseline must be one of {BASELINE_MODES}, not {baseline!r}")
+    bump = None
+    if baseline in ("bump", "auto"):
+        try:
+            bump = bump_base(repo, manifest_path, crate, main_ref, (entry or {}).get("base-package"))
+        except release_baseline.BaselineError as e:
+            return [f"{crate}: the bump base cannot be read: {e}"], 0, ""
+    previous = previous_release(fetch, crate) if baseline in ("registry", "auto") else None
+    if baseline == "auto" and bump is not None and not bump.introduced and (
+            previous is None or version_precedence(previous) < version_precedence(bump.version)):
+        baseline = "bump"
+    if baseline == "bump":
+        if bump.introduced:
+            return [], 0, f"{crate} is introduced since the bump base (absent before it): nothing to compare"
+        previous = bump.version
+        step = version_step(previous, version)
+        note = f"bump base {bump.sha[:12]} ({previous}); "
+        if version_precedence(previous) >= version_precedence(version):
+            return [f"{crate}: the bump base version {previous} is not older than {version}"], 0, ""
+        if step == "major":
+            return [], 0, note + f"{previous} -> {version} is a major step: any change is allowed, not compared"
+        return _compare(repo, manifest_path, crate, version, manifest, entry, run, target_dir, universe,
+                        ["--baseline-rev", bump.sha, "--release-type", step], step,
+                        note + f"{previous} -> {version} ({step})")
     if previous is None:
         return [], 0, f"{crate} has no release on crates.io: nothing to compare"
     baseline = ["--baseline-version", previous]
@@ -417,6 +463,12 @@ def semver_problems(repo: Path, manifest_path: str, crate: str, version: str, ma
             return [f"{crate}: the latest release {previous} is not older than {version}"], 0, ""
         if step == "major":
             return [], 0, f"{previous} -> {version} is a major step: any change is allowed, not compared"
+    return _compare(repo, manifest_path, crate, version, manifest, entry, run, target_dir, universe, baseline, step,
+                    note + f"{previous} -> {version} ({step})")
+
+
+def _compare(repo, manifest_path, crate, version, manifest, entry, run, target_dir, universe, baseline, step,
+             what) -> tuple[list[str], int, str]:
     problems, compared = [], 0
     with tempfile.TemporaryDirectory() as tmp:
         for label, _, features, _ in feature_specs(manifest, entry, universe):
@@ -426,13 +478,13 @@ def semver_problems(repo: Path, manifest_path: str, crate: str, version: str, ma
                 problems.append(p)
             compared += n
     # every run either counts or is a problem (a run that compared 0 checks is refused above)
-    return problems, compared, note + f"{previous} -> {version} ({step}), {compared} feature set(s) compared"
+    return problems, compared, what + f", {compared} feature set(s) compared"
 
 
 # ---------------------------------------------------------------- the CLI
 
 CONFIG_KEYS = {"consumer-features", "consumer-check-features", "consumer-features-why", "exclude-features",
-               "equal-version"}
+               "equal-version", "baseline", "base-package"}
 
 
 def load_config(text: str) -> dict:
@@ -468,6 +520,14 @@ def load_config(text: str) -> dict:
             raise ConfigError(f"{both} are both in `exclude-features` and in a declared set")
     if c.get("equal-version", "refuse") not in EQUAL_VERSION_MODES:
         raise ConfigError(f"`equal-version` must be one of {EQUAL_VERSION_MODES}")
+    if c.get("baseline", "registry") not in BASELINE_MODES:
+        raise ConfigError(f"`baseline` must be one of {BASELINE_MODES}")
+    if "base-package" in c:
+        bp = c["base-package"]
+        if not isinstance(bp, str) or not bp.strip():
+            raise ConfigError("`base-package` must be the crate's name before a rename (a non-empty string)")
+        if c.get("baseline", "registry") == "registry":
+            raise ConfigError("`base-package` is read only by `baseline = \"bump\"` or `\"auto\"`")
     return c
 
 
@@ -554,8 +614,12 @@ def main(argv: list[str] | None = None, fetch: Fetch = http_fetch, run=run_semve
         if path not in answers:
             answers[path] = fetch(path)
         return answers[path]
+    base_mode = entry.get("baseline", "registry")
+    print(f"  baseline: {base_mode}" + {"registry": " (the latest crates.io release)",
+                                         "bump": " (the commit before main's newest version bump, by rev)",
+                                         "auto": " (the newer of the crates.io release and the bump base)"}[base_mode])
     try:
-        previous = previous_release(fetch_once, crate)
+        previous = previous_release(fetch_once, crate) if base_mode != "bump" else None
         target = smallest_next_release(previous, version) if previous and mode == "next-smallest-step" else None
         if target:
             print(f"semver gate: {crate} {version} equals the latest release {previous}: "
@@ -563,7 +627,7 @@ def main(argv: list[str] | None = None, fetch: Fetch = http_fetch, run=run_semve
         problems, compared, note = semver_problems(
             manifest_path.parent, manifest_path.name, crate, version, manifest, entry, fetch_once,
             run=echo_run(run), target_dir=Path(a.target_dir).resolve() if a.target_dir else None,
-            equal_version=mode, universe=universe)
+            equal_version=mode, universe=universe, baseline=base_mode)
     except (urllib.error.URLError, TimeoutError, RegistryError, json.JSONDecodeError) as e:
         print(f"error: the latest release of {crate} could not be read from crates.io: {e}", file=sys.stderr)
         return 2

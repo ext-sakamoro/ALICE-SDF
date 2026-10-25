@@ -314,7 +314,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5c6363312520` と
 | G8 persisted-semantics-id | 未達 | the writers of STL (binary and ASCII), 3MF, FBX (binary and ASCII), OBJ (with its MTL), PLY (binary and ASCII) glTF (.glb, .gltf, meshopt .glb, in … |
 | G9 persisted-meaning-change-is-major | 未達 | there is no G8 identifier (see G8), so there is no identifier history to audit; the re-exported in-process SEMANTICS_ID (`src/lib.rs#pub use … |
 | G10 no-run-varying-artifacts | 適合 | the Law path's cache is ExactEvalCache. cache_bridge::SdfEvalCache (feature sdf-cache, not default) stays outside the Law guarantee and says so in its … |
-| G11 gate-self-tests | 未達 | fail-known on (c): the checkers' own canary and zero-compared tests are in place ((a) and (b), evidence above), and the cross-repository identity check runs: … |
+| G11 gate-self-tests | 未達 | fail-known on (c), naming the rows: (a) and (b) hold for every pass gate (conformance/g11.toml, 0 findings) and the cross-repository check runs … |
 | G12 public-repo-text-rules | 適合 | the CI job fetches ALICE-Law's own scripts/public_text_check.py at the revision named in .github/public-text-pin and refuses it unless its SHA-256 is the one … |
 | G13 no-unspecified-order | 適合 | the hash collections are used only through the wrappers, whose aggregates do not depend on the order (integer counts and sums, Ord maxima, key-ordered … |
 | G14 float-environment-invariants | 適合 | the Cargo.toml comment that suggests target-cpu=native to users is a comment, which the guard blanks; nothing sets it |

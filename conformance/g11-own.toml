@@ -1,0 +1,31 @@
+# ALICE-Law G11: this repository's own rows of conformance/g11.toml (the rows of the checkers the ALICE
+# crates share are generated from ALICE-Law). ALICE-Law's scripts/g11_table_gen.py writes conformance/g11.toml
+# from both (python3 scripts/g11_table_gen.py --repo <this repository> --name ALICE-SDF --write, run in an
+# ALICE-Law checkout); the table is committed with the regeneration of ALICE-Law's shared-files table that
+# lists this repository, not before.
+#
+# The golden suites and the semantics identifier tests are run by steps that read each log back with
+# scripts/libtest_count.py, which fails the step when a suite ran fewer tests than its minimum; its zero
+# test is therefore the compared-nothing test of each leg, and each canary is a test of a suite the step
+# names.
+
+[[row]]
+gate = "G4"
+checker = ".github/workflows/ci.yml#- name: Test (goldens and the semantics identifier, counted)>scripts/libtest_count.py"
+canary = "tests/test_det_golden.rs::checker_rejects_a_wrong_hash"
+zero = "scripts/test_libtest_count.py::Main.test_zero_tests_fails"
+shared = "n/a: scripts/libtest_count.py is this repository's own"
+
+[[row]]
+gate = "G5"
+checker = ".github/workflows/release-profile.yml#- name: Bit-exact goldens and the float environment (cargo test --release)>scripts/libtest_count.py"
+canary = "tests/test_det_golden.rs::checker_rejects_a_wrong_hash"
+zero = "scripts/test_libtest_count.py::Main.test_zero_tests_fails"
+shared = "n/a: scripts/libtest_count.py is this repository's own"
+
+[[row]]
+gate = "G6"
+checker = ".github/workflows/ci.yml#- name: Test (goldens and the semantics identifier, counted)>scripts/libtest_count.py"
+canary = "tests/sdf_semantics_id.rs::the_identifier_moves_with_each_entry"
+zero = "scripts/test_libtest_count.py::Main.test_zero_tests_fails"
+shared = "n/a: scripts/libtest_count.py is this repository's own"

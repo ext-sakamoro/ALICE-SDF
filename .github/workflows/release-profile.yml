@@ -44,7 +44,7 @@ jobs:
       - name: Bit-exact goldens and the float environment (cargo test --release)
         run: |
           set -euo pipefail
-          for spec in test_det_golden:3: test_det_parity:1:jit test_det_near_zero_parity:2:jit test_det_near_zero_probe:3:jit float_environment:2:; do
+          for spec in test_det_golden:4: test_det_parity:1:jit test_det_near_zero_parity:2:jit test_det_near_zero_probe:3:jit float_environment:2:; do
             name=${spec%%:*}
             rest=${spec#*:}
             min=${rest%%:*}

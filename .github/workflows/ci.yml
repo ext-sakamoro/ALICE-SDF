@@ -241,6 +241,18 @@ jobs:
       - name: Test (integration)
         run: cargo test --tests
 
+      # ALICE-Law G4 / G6: the bit-exact goldens and the semantics identifier, counted so a
+      # renamed test, an #[ignore] or a filter that stops matching cannot pass with 0 tests
+      - name: Test (goldens and the semantics identifier, counted)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for spec in test_det_golden:4 sdf_semantics_id:4; do
+            name=${spec%%:*}
+            cargo test --test "$name" 2>&1 | tee "counted-$name.log"
+            python3 scripts/libtest_count.py "counted-$name.log" --min "${spec#*:}" --what "$name"
+          done
+
       # feature-gated integration oracles (svo: tests/test_svo_query_oracle.rs)
       - name: Test (integration, feature-gated oracles — svo / texture-fit)
         run: cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle

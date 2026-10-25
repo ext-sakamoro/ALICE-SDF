@@ -6,11 +6,11 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 973 |
+| 🟢 Not ignored | 974 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **977** |
+| **Total** | **978** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -25,7 +25,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (973)
+## 🟢 Not ignored (974)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -116,6 +116,7 @@ Per-file counts (the test names are in `tests/`):
 | `sdf_semantics_id.rs` | 4 |
 | `test_bake_mass_oracle.rs` | 4 |
 | `test_constraint_oracle.rs` | 4 |
+| `test_det_golden.rs` | 4 |
 | `test_dual_contouring_invariants.rs` | 4 |
 | `test_eval_grid_oracle.rs` | 4 |
 | `test_exact_eval_cache.rs` | 4 |
@@ -132,7 +133,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_svo_query_oracle.rs` | 4 |
 | `npr_bytecode_wgsl_validate.rs` | 3 |
 | `test_csg_multi_oracle.rs` | 3 |
-| `test_det_golden.rs` | 3 |
 | `test_det_near_zero_probe.rs` | 3 |
 | `test_glsl_glslang_precise.rs` | 3 |
 | `test_gpu_noise_parity.rs` | 3 |

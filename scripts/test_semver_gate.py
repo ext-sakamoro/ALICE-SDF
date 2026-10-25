@@ -256,6 +256,175 @@ class EqualVersion(unittest.TestCase):
             problems("0.5.1", "0.5.1", lambda *a: self.fail("ran"), "skip")
 
 
+class BumpBaseline(unittest.TestCase):
+    """`baseline = "bump"`: under a publication freeze the base is the commit before main's newest version bump
+    (scripts/release_baseline.py), compared with `cargo semver-checks --baseline-rev <that commit>`, the step judged
+    from that commit's version; `auto` takes the registry release when it is not older than that version"""
+
+    def setUp(self) -> None:
+        self.repo = Path(tempfile.mkdtemp(prefix="semver-bump-test-"))
+        self.addCleanup(shutil.rmtree, self.repo, True)
+        self.env = {k: v for k, v in __import__("os").environ.items() if not k.startswith("GIT_")}
+        self.git("init", "-q", "-b", "main")
+
+    def git(self, *args: str) -> str:
+        import subprocess
+        return subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@example.invalid", *args],
+                              cwd=self.repo, check=True, capture_output=True, text=True, env=self.env).stdout.strip()
+
+    def at(self, version: str) -> str:
+        (self.repo / "Cargo.toml").write_text(f'[package]\nname = "x"\nversion = "{version}"\n', encoding="utf-8")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", version)
+        return self.git("rev-parse", "HEAD")
+
+    def check(self, version: str, run, latest_v: str | None = None, baseline: str = "bump", entry: dict | None = None):
+        self.args = []
+
+        def capture(repo, manifest_path, base, features, target_dir):
+            self.args.append(list(base))
+            return run(repo, manifest_path, base, features, target_dir)
+        return sg.semver_problems(self.repo, "Cargo.toml", "x", version, {}, entry, latest_fixture("x", latest_v),
+                                  run=capture, universe=[], baseline=baseline, main_ref="main")
+
+    def named(self, name: str, version: str) -> str:
+        (self.repo / "Cargo.toml").write_text(f'[package]\nname = "{name}"\nversion = "{version}"\n', encoding="utf-8")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", f"{name} {version}")
+        return self.git("rev-parse", "HEAD")
+
+    def test_a_head_version_not_newer_than_the_bump_base_is_refused(self):
+        # SG6: the base is the parent of the newest bump; a HEAD version at or below that base's version is a
+        # mistake (a version that went back), refused before anything runs
+        self.at("1.0.0")
+        self.at("1.1.0")
+        for version in ("1.0.0", "0.9.0"):
+            p, n, _ = self.check(version, lambda *a: self.fail("ran"))
+            self.assertEqual(n, 0)
+            self.assertEqual(len(p), 1, p)
+            self.assertIn("is not older than", p[0])
+
+    def test_auto_compares_with_the_bump_base_when_the_registry_is_older(self):
+        # SG7: crates.io has 0.4.0 (frozen), main bumped 0.5.0 -> 0.5.1: the newer base, the 0.5.0 commit, is the
+        # one compared, by rev, as a minor step (0.x: the second number is the compatibility line)
+        base = self.at("0.5.0")
+        self.at("0.5.1")
+        p, n, note = self.check("0.5.1", lambda *a: (0, semver_output("minor", 9, 0)), latest_v="0.4.0", baseline="auto")
+        self.assertEqual(p, [])
+        self.assertTrue(n > 0)
+        self.assertTrue(self.args and all(a == ["--baseline-rev", base, "--release-type", "minor"] for a in self.args),
+                        self.args)
+        self.assertIn("0.5.0 -> 0.5.1 (minor)", note)
+
+    def test_a_renamed_crate_is_followed_through_base_package(self):
+        # F3: the config's `base-package` (the crate's name before a rename) reaches the bump base
+        before = self.named("old", "1.0.0")
+        self.named("x", "1.1.0")
+        p, n, note = self.check("1.1.0", lambda *a: (0, semver_output("minor", 9, 0)), entry={"base-package": "old"})
+        self.assertEqual(p, [])
+        self.assertTrue(self.args and all(a[:2] == ["--baseline-rev", before] for a in self.args), self.args)
+        # without it the rename is an error, not "introduced"
+        p, n, _ = self.check("1.1.0", lambda *a: self.fail("ran"))
+        self.assertEqual(n, 0)
+        self.assertEqual(len(p), 1, p)
+        self.assertIn("base_package", p[0])
+
+    def test_the_parent_of_the_bump_is_compared_by_rev(self):
+        before = self.at("1.0.0")
+        self.at("1.1.0")
+        p, n, note = self.check("1.1.0", lambda *a: (0, semver_output("minor", 9, 0)))
+        self.assertEqual((p, n), ([], len(sg.feature_specs({}, None, []))))
+        self.assertTrue(self.args and all(a == ["--baseline-rev", before, "--release-type", "minor"] for a in self.args),
+                        self.args)
+        self.assertIn(f"bump base {before[:12]} (1.0.0)", note)
+        self.assertIn("1.0.0 -> 1.1.0 (minor)", note)
+
+    def test_a_break_under_a_minor_step_is_refused(self):
+        self.at("1.0.0")
+        self.at("1.1.0")
+        p, n, _ = self.check("1.1.0", lambda *a: (1, semver_output("minor", 9, 1, lints=["enum_variant_added"])))
+        self.assertEqual(len(p), len(sg.feature_specs({}, None, [])))
+        self.assertIn("enum_variant_added", p[0])
+
+    def test_a_major_step_from_the_base_is_not_compared(self):
+        self.at("1.0.0")
+        self.at("2.0.0")
+        p, n, note = self.check("2.0.0", lambda *a: self.fail("ran"))
+        self.assertEqual((p, n), ([], 0))
+        self.assertIn("1.0.0 -> 2.0.0 is a major step", note)
+
+    def test_a_run_that_checked_nothing_is_refused(self):
+        self.at("1.0.0")
+        self.at("1.1.0")
+        p, _, _ = self.check("1.1.0", lambda *a: (0, semver_output("minor", 0, 0)))
+        self.assertEqual(len(p), len(sg.feature_specs({}, None, [])))
+
+    def test_an_introduced_crate_has_nothing_to_compare(self):
+        self.at("0.1.0")
+        p, n, note = self.check("0.1.0", lambda *a: self.fail("ran"))
+        self.assertEqual((p, n), ([], 0))
+        self.assertIn("introduced", note)
+
+    def test_no_history_is_refused_not_passed(self):
+        shutil.rmtree(self.repo / ".git")
+        (self.repo / "Cargo.toml").write_text('[package]\nname = "x"\nversion = "1.0.0"\n', encoding="utf-8")
+        p, n, _ = self.check("1.0.0", lambda *a: self.fail("ran"))
+        self.assertEqual(n, 0)
+        self.assertEqual(len(p), 1)
+        self.assertIn("bump base", p[0])
+
+    def test_auto_takes_the_registry_when_it_is_not_older_than_the_bump_base(self):
+        # history 1.0.0 -> 1.1.0 -> 1.2.0: the bump base is the 1.1.0 commit; every case below is a minor step
+        # whichever base is taken, so a run happens and shows which base was passed
+        self.at("1.0.0")
+        base = self.at("1.1.0")
+        self.at("1.2.0")
+        ok = lambda *a: (0, semver_output("minor", 9, 0, from_v="1.1.0", to_v="1.2.0"))
+        self.check("1.2.0", ok, latest_v="1.1.0", baseline="auto")
+        self.assertTrue(self.args and all(a[:2] == ["--baseline-version", "1.1.0"] for a in self.args), self.args)
+        self.check("1.2.0", lambda *a: (0, semver_output("minor", 9, 0, from_v="1.0.0", to_v="1.2.0")),
+                   latest_v="1.0.0", baseline="auto")
+        self.assertTrue(self.args and all(a[:2] == ["--baseline-rev", base] for a in self.args), self.args)
+        self.check("1.2.0", ok, latest_v=None, baseline="auto")
+        self.assertTrue(self.args and all(a[:2] == ["--baseline-rev", base] for a in self.args), self.args)
+
+    def test_the_cli_reads_the_baseline_and_asks_no_registry_for_bump(self):
+        (self.repo / "src").mkdir()
+        (self.repo / "src" / "lib.rs").write_text("", encoding="utf-8")
+        self.at("1.0.0")
+        self.at("1.1.0")
+        (self.repo / "c.toml").write_text('baseline = "bump"\n', encoding="utf-8")
+
+        def no_registry(path):
+            raise AssertionError("the registry was asked")
+        out = io.StringIO()
+        import os
+        cwd = os.getcwd()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            try:
+                os.chdir(self.repo)
+                code = sg.main(["--manifest", str(self.repo / "Cargo.toml"), "--config", str(self.repo / "c.toml")],
+                               fetch=no_registry, run=lambda *a: (0, semver_output("minor", 9, 0)))
+            finally:
+                os.chdir(cwd)
+        self.assertNotEqual(code, 0, out.getvalue())  # main_ref is origin/main, absent here: refused, not passed
+        self.assertIn("baseline: bump", out.getvalue())
+        self.assertIn("the bump base cannot be read", out.getvalue())
+
+    def test_the_config_names_the_baseline(self):
+        self.assertEqual(sg.load_config('baseline = "bump"\n').get("baseline"), "bump")
+        with self.assertRaises(sg.ConfigError):
+            sg.load_config('baseline = "tag"\n')
+
+    def test_the_config_names_the_crate_before_a_rename(self):
+        c = sg.load_config('baseline = "bump"\nbase-package = "alice-old"\n')
+        self.assertEqual(c["base-package"], "alice-old")
+        self.assertEqual(sg.load_config('baseline = "auto"\nbase-package = "o"\n')["base-package"], "o")
+        for bad in ('baseline = "bump"\nbase-package = ""\n', 'base-package = "alice-old"\n'):
+            with self.assertRaises(sg.ConfigError, msg=bad):
+                sg.load_config(bad)
+
+
 class Cli(unittest.TestCase):
     MANIFEST = '[package]\nname = "x"\nversion = "0.5.1"\n\n[features]\ndefault = ["a"]\na = []\npy = []\n'
 

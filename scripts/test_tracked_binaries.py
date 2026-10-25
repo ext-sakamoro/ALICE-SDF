@@ -21,6 +21,11 @@ sys.path.insert(0, str(HERE))
 import tracked_binaries as tb  # noqa: E402
 
 
+# the fixtures' git and the checker's git read no system or global configuration (a host's init.defaultBranch
+# or commit.gpgsign would otherwise decide the outcome)
+os.environ.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+
+
 def git(*args: str, cwd: Path) -> None:
     subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@example.invalid", *args], cwd=cwd, check=True,
                    capture_output=True)
@@ -37,7 +42,7 @@ class TrackedBinaries(unittest.TestCase):
     def setUp(self) -> None:
         self.r = Path(tempfile.mkdtemp(prefix="tracked-binaries-test-"))
         self.addCleanup(shutil.rmtree, self.r, True)
-        git("init", "-q", cwd=self.r)
+        git("init", "-q", "-b", "main", cwd=self.r)
         self.add("src/lib.rs", b"pub fn f() {}\n")
 
     def add(self, path: str, data: bytes) -> None:
@@ -125,7 +130,7 @@ class TrackedBinaries(unittest.TestCase):
         # a submodule is a directory in the work tree (its own repository checks its own files)
         sub = self.r / "vendor" / "sub"
         sub.mkdir(parents=True)
-        git("init", "-q", cwd=sub)
+        git("init", "-q", "-b", "main", cwd=sub)
         (sub / "a.txt").write_bytes(b"a\n")
         git("add", "a.txt", cwd=sub)
         git("commit", "-qm", "a", cwd=sub)

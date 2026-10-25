@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import check_eol  # noqa: E402
+
+# the fixtures' git and the checker's git read no system or global configuration (a host's init.defaultBranch
+# or commit.gpgsign would otherwise decide the outcome)
+os.environ.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
 
 ENV_GIT = ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false"]
 
@@ -32,7 +37,7 @@ class Eol(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.d = Path(self.tmp.name)
-        git(self.d, "init", "-q")
+        git(self.d, "init", "-q", "-b", "main")
 
     def tearDown(self):
         self.tmp.cleanup()

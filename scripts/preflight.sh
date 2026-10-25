@@ -361,6 +361,13 @@ cargo fetch --locked
 step "test: cargo test --tests (integration)"
 cargo test --tests
 
+step "test: goldens and the semantics identifier, counted (G4 / G6)"
+for spec in test_det_golden:4 sdf_semantics_id:4; do
+  name=${spec%%:*}
+  cargo test --test "$name" 2>&1 | tee "${CARGO_TARGET_DIR:-target}/counted-$name.log"
+  python3 scripts/libtest_count.py "${CARGO_TARGET_DIR:-target}/counted-$name.log" --min "${spec#*:}" --what "$name"
+done
+
 step "test: feature-gated oracles (svo / texture-fit)"
 cargo test --features "svo,texture-fit" --test test_svo_query_oracle --test test_texture_fit_oracle
 
@@ -582,7 +589,7 @@ step "scip: L0 ratchet + docs/integration-status.md (rust-analyzer SCIP、約 4 
 scip_reach_step 0
 
 step "release-profile.yml: goldens and the float environment in the release profile (G4 / G5)"
-for spec in test_det_golden:3: test_det_parity:1:jit test_det_near_zero_parity:2:jit test_det_near_zero_probe:3:jit float_environment:2:; do
+for spec in test_det_golden:4: test_det_parity:1:jit test_det_near_zero_parity:2:jit test_det_near_zero_probe:3:jit float_environment:2:; do
   name=${spec%%:*}
   rest=${spec#*:}
   min=${rest%%:*}

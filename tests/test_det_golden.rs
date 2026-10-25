@@ -67,27 +67,42 @@ fn nan_scenes() -> Vec<(&'static str, SdfNode)> {
     ]
 }
 
-#[test]
-fn tree_evaluator_bits_match_recorded_hashes() {
-    let pts = grid();
-    let print = std::env::var_os("ALICE_SDF_PRINT_DET_GOLDEN").is_some();
+/// Compares each `(name, hash)` with its entry in `golden`: returns the names with no
+/// entry and the entries whose hash differs. The test below and its canary share it, so
+/// the canary checks the comparison the golden test really makes
+fn compare(got: &[(&str, String)], golden: &[(&str, &str)]) -> (Vec<String>, Vec<String>) {
     let mut mismatches = Vec::new();
     let mut missing = Vec::new();
-    for (name, node) in corpus().into_iter().chain(nan_scenes()) {
-        let got = hash_node(&node, &pts);
-        if print {
-            println!("    (\"{name}\", \"{got}\"),");
-            continue;
-        }
-        match GOLDEN.iter().find(|(n, _)| *n == name) {
-            Some((_, want)) if *want == got => {}
-            Some((_, want)) => mismatches.push(format!("{name}: got {got} want {want}")),
-            None => missing.push(name.to_string()),
+    for (name, hash) in got {
+        match golden.iter().find(|(n, _)| n == name) {
+            Some((_, want)) if want == hash => {}
+            Some((_, want)) => mismatches.push(format!("{name}: got {hash} want {want}")),
+            None => missing.push((*name).to_string()),
         }
     }
-    if print {
+    (missing, mismatches)
+}
+
+fn corpus_hashes() -> Vec<(&'static str, String)> {
+    let pts = grid();
+    corpus()
+        .into_iter()
+        .chain(nan_scenes())
+        .map(|(name, node)| (name, hash_node(&node, &pts)))
+        .collect()
+}
+
+#[test]
+fn tree_evaluator_bits_match_recorded_hashes() {
+    let got = corpus_hashes();
+    if std::env::var_os("ALICE_SDF_PRINT_DET_GOLDEN").is_some() {
+        for (name, hash) in &got {
+            println!("    (\"{name}\", \"{hash}\"),");
+        }
         return;
     }
+    assert!(!got.is_empty(), "the corpus is empty: nothing was compared");
+    let (missing, mismatches) = compare(&got, GOLDEN);
     assert!(
         missing.is_empty(),
         "corpus nodes without a golden entry (re-pin): {}",
@@ -99,6 +114,44 @@ fn tree_evaluator_bits_match_recorded_hashes() {
         mismatches.len(),
         mismatches.join("\n")
     );
+}
+
+/// ALICE-Law G11 canary: the comparison above fails when one recorded hash is wrong
+/// (its first hex digit changed) and when a node has no entry, so a comparison that
+/// accepted any hash could not pass the golden test
+#[test]
+fn checker_rejects_a_wrong_hash() {
+    let got = corpus_hashes();
+    let (missing, mismatches) = compare(&got, GOLDEN);
+    assert!(missing.is_empty() && mismatches.is_empty());
+    let (name, hash) = &got[0];
+    let flipped: String = hash
+        .chars()
+        .enumerate()
+        .map(|(i, c)| match (i, c) {
+            (0, '0') => '1',
+            (0, _) => '0',
+            _ => c,
+        })
+        .collect();
+    let wrong: Vec<(&str, &str)> = GOLDEN
+        .iter()
+        .map(|&(n, h)| {
+            if n == *name {
+                (n, flipped.as_str())
+            } else {
+                (n, h)
+            }
+        })
+        .collect();
+    let (missing, mismatches) = compare(&got, &wrong);
+    assert!(missing.is_empty());
+    assert_eq!(mismatches.len(), 1, "{mismatches:?}");
+    assert!(mismatches[0].starts_with(name));
+    let without: Vec<(&str, &str)> = GOLDEN.iter().copied().filter(|(n, _)| n != name).collect();
+    let (missing, mismatches) = compare(&got, &without);
+    assert_eq!(missing, vec![(*name).to_string()]);
+    assert!(mismatches.is_empty());
 }
 
 /// `alice_sdf::SEMANTICS_ID`, the identifier of the arithmetic the hashes

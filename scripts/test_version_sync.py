@@ -12,6 +12,10 @@ import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# the fixtures' git and the checker's git read no system or global configuration (a host's
+# init.defaultBranch or commit.gpgsign would otherwise decide the outcome)
+os.environ.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+
 spec = importlib.util.spec_from_file_location("version_sync", os.path.join(HERE, "version_sync.py"))
 vs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(vs)
@@ -27,7 +31,7 @@ def tree(files: dict[str, str]) -> str:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(text)
-    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
     subprocess.run(["git", "add", "-A"], cwd=root, check=True)
     return root
 
