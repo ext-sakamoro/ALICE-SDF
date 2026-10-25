@@ -260,7 +260,7 @@ fn extract_params_is_the_dynamic_layout_of_the_tree() {
     // constant array in place of the uniform block: the addressing
     // `params[i / 4].{x,y,z,w}` is what is under test.
     let mut padded = lb;
-    while padded.len() % 4 != 0 {
+    while !padded.len().is_multiple_of(4) {
         padded.push(0.0);
     }
     let consts: Vec<String> = padded
@@ -436,7 +436,7 @@ fn vulkan_compute_shader_validates_as_emitted_and_runs() {
         .expect("params block at binding 3");
     let end = start + vk_dyn[start..].find("};").unwrap() + 2;
     let mut padded = GlslShader::extract_params(&B.node());
-    while padded.len() % 4 != 0 {
+    while !padded.len().is_multiple_of(4) {
         padded.push(0.0);
     }
     let consts: Vec<String> = padded

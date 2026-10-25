@@ -423,13 +423,13 @@ impl MaterialLibrary {
 
     /// Number of materials in the library
     #[inline]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.materials.len()
     }
 
     /// Check if the library is empty
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.materials.is_empty()
     }
 

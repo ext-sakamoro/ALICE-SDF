@@ -604,7 +604,7 @@ impl NeuralSdf {
     }
 
     /// Number of hidden layers.
-    pub fn hidden_layer_count(&self) -> usize {
+    pub const fn hidden_layer_count(&self) -> usize {
         self.layers.len().saturating_sub(1)
     }
 

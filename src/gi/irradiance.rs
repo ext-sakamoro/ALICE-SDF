@@ -269,12 +269,12 @@ impl IrradianceGrid {
     }
 
     /// Total number of probes
-    pub fn probe_count(&self) -> usize {
+    pub const fn probe_count(&self) -> usize {
         self.probes.len()
     }
 
     /// Memory size in bytes
-    pub fn memory_bytes(&self) -> usize {
+    pub const fn memory_bytes(&self) -> usize {
         self.probes.len() * std::mem::size_of::<IrradianceProbe>()
     }
 }

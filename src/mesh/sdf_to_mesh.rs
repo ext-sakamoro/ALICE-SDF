@@ -218,12 +218,12 @@ impl Mesh {
     }
 
     /// Get the number of vertices
-    pub fn vertex_count(&self) -> usize {
+    pub const fn vertex_count(&self) -> usize {
         self.vertices.len()
     }
 
     /// Get the number of triangles
-    pub fn triangle_count(&self) -> usize {
+    pub const fn triangle_count(&self) -> usize {
         self.indices.len() / 3
     }
 }

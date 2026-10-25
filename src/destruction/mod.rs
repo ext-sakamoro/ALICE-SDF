@@ -230,7 +230,11 @@ impl MutableVoxelGrid {
         let axis = |v: u32| {
             let c = v / cs;
             // the chunk below also reads this voxel when it sits on the seam
-            let lo = if v > 0 && v % cs == 0 { c - 1 } else { c };
+            let lo = if v > 0 && v.is_multiple_of(cs) {
+                c - 1
+            } else {
+                c
+            };
             lo..=c
         };
         let [cpx, cpy, _] = self.chunks_per_axis;
@@ -289,7 +293,7 @@ impl MutableVoxelGrid {
     }
 
     /// Memory usage in bytes
-    pub fn memory_bytes(&self) -> usize {
+    pub const fn memory_bytes(&self) -> usize {
         self.distances.len() * std::mem::size_of::<f32>()
             + self.materials.len() * std::mem::size_of::<u16>()
             + self.dirty_chunks.len()

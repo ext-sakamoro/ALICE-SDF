@@ -861,7 +861,7 @@ impl WgpuEngine {
 
         // Create parameter buffer with initial values
         let mut param_data = shader.param_layout.clone();
-        while param_data.len() % 4 != 0 {
+        while !param_data.len().is_multiple_of(4) {
             param_data.push(0.0);
         }
         // Ensure minimum size for the uniform buffer
@@ -933,7 +933,7 @@ impl WgpuEngine {
     pub fn update_params(&self, node: &SdfNode) {
         let params = WgslShader::extract_params(node);
         let mut padded = params;
-        while padded.len() % 4 != 0 {
+        while !padded.len().is_multiple_of(4) {
             padded.push(0.0);
         }
         padded.resize(PARAM_BUFFER_SIZE as usize / 4, 0.0);

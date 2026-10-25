@@ -30,13 +30,13 @@ pub struct LinearizedSvo {
 impl LinearizedSvo {
     /// Total node count
     #[inline]
-    pub fn node_count(&self) -> usize {
+    pub const fn node_count(&self) -> usize {
         self.nodes.len()
     }
 
     /// Memory size in bytes (nodes only)
     #[inline]
-    pub fn memory_bytes(&self) -> usize {
+    pub const fn memory_bytes(&self) -> usize {
         self.nodes.len() * std::mem::size_of::<SvoNode>()
     }
 
@@ -45,7 +45,7 @@ impl LinearizedSvo {
     /// Returns the node array as a byte slice, suitable for
     /// creating a wgpu storage buffer.
     #[inline]
-    pub fn as_bytes(&self) -> &[u8] {
+    pub const fn as_bytes(&self) -> &[u8] {
         // SAFETY: `self.nodes` is a contiguous Vec<SvoNode>. SvoNode is #[repr(C)]
         // and contains only primitive fields (u32, f32) with no padding, totaling
         // 32 bytes per node. Reinterpreting as &[u8] with byte length =

@@ -1484,7 +1484,7 @@ impl GpuColorProgram {
 
     /// Total byte length of the stream (`words.len() * 4`)
     #[must_use]
-    pub fn byte_len(&self) -> usize {
+    pub const fn byte_len(&self) -> usize {
         self.words.len() * core::mem::size_of::<u32>()
     }
 

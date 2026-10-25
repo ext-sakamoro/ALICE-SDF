@@ -407,7 +407,7 @@ fn quantize_f32(value: f32) -> i32 {
 
 /// Estimate the memory footprint of a mesh in bytes.
 #[inline(always)]
-fn estimate_mesh_size(mesh: &Mesh) -> usize {
+const fn estimate_mesh_size(mesh: &Mesh) -> usize {
     let vertex_size = std::mem::size_of::<crate::mesh::Vertex>();
     mesh.vertices.len() * vertex_size + mesh.indices.len() * std::mem::size_of::<u32>()
 }

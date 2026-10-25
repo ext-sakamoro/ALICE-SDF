@@ -327,7 +327,7 @@ fn params_global(layout: &[f32]) -> String {
         return String::new();
     }
     let mut padded = layout.to_vec();
-    while padded.len() % 4 != 0 {
+    while !padded.len().is_multiple_of(4) {
         padded.push(0.0);
     }
     let vecs: Vec<String> = padded

@@ -113,7 +113,7 @@ impl SdfVolume {
 
     /// Check if volume is empty.
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 

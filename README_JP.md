@@ -255,7 +255,7 @@ cargo bench --bench gpu_vs_cpu --features gpu
 
 ## 最小対応 Rust バージョン
 
-最小対応 Rust バージョン: **1.85** (`Cargo.toml` の `rust-version`) <!-- readme-sync: msrv -->
+最小対応 Rust バージョン: **1.87** (`Cargo.toml` の `rust-version`) <!-- readme-sync: msrv -->
 
 CI のジョブが、ちょうどこのバージョンで既定 feature と docs.rs の feature 組で
 ライブラリを検査する MSRV の引き上げはマイナーバージョンの変更として扱い、

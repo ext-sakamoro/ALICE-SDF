@@ -969,7 +969,10 @@ pub fn encode_vertex_buffer_level_raw(
         vertex_size > 0 && vertex_size <= 256,
         "vertex_size must be in (0, 256]"
     );
-    assert!(vertex_size % 4 == 0, "vertex_size must be multiple of 4");
+    assert!(
+        vertex_size.is_multiple_of(4),
+        "vertex_size must be multiple of 4"
+    );
     assert_eq!(
         vertex_data.len() % vertex_size,
         0,
@@ -1137,7 +1140,10 @@ fn decode_vertex_bytes(
         vertex_size > 0 && vertex_size <= 256,
         "vertex_size must be in (0, 256]"
     );
-    assert!(vertex_size % 4 == 0, "vertex_size must be multiple of 4");
+    assert!(
+        vertex_size.is_multiple_of(4),
+        "vertex_size must be multiple of 4"
+    );
 
     if buffer.is_empty() {
         return Err(CodecError::UnexpectedEof);

@@ -478,7 +478,7 @@ impl MeshBvh {
     }
 
     /// Get total triangle count
-    pub fn triangle_count(&self) -> usize {
+    pub const fn triangle_count(&self) -> usize {
         self.triangles.len()
     }
 

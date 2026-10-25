@@ -123,13 +123,13 @@ impl CompiledSdfBvh {
 
     /// Get the number of instructions
     #[inline]
-    pub fn instruction_count(&self) -> usize {
+    pub const fn instruction_count(&self) -> usize {
         self.instructions.len()
     }
 
     /// Get memory usage in bytes
     #[inline]
-    pub fn memory_size(&self) -> usize {
+    pub const fn memory_size(&self) -> usize {
         self.instructions.len() * std::mem::size_of::<Instruction>()
             + self.aabbs.len() * std::mem::size_of::<AabbPacked>()
             + self.aux_data.len() * std::mem::size_of::<f32>()

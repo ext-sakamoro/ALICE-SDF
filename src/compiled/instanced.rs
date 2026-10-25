@@ -139,7 +139,7 @@ impl InstanceDataSoA {
     }
 
     #[inline]
-    fn chunk_count(&self) -> usize {
+    const fn chunk_count(&self) -> usize {
         self.translate_x.len()
     }
 }

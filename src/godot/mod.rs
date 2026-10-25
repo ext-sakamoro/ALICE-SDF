@@ -1410,6 +1410,10 @@ impl AliceSdfLodManager {
 
     /// Get the number of generated LOD levels
     #[func]
+    #[allow(
+        clippy::missing_const_for_fn,
+        reason = "godot's #[func] macro refuses a const fn (fn qualifiers are not allowed)"
+    )]
     fn get_lod_count(&self) -> i32 {
         self.lod_meshes.len() as i32
     }

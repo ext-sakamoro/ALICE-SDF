@@ -113,7 +113,7 @@ pub fn try_stripify(
     vertex_count: usize,
     restart_index: Option<u32>,
 ) -> Result<Vec<u32>, MeshInputError> {
-    if indices.len() % 3 != 0 {
+    if !indices.len().is_multiple_of(3) {
         return Err(MeshInputError {
             reason: "index count must be a multiple of 3",
         });

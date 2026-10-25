@@ -332,12 +332,12 @@ pub fn merge_patches(
 /// Count the number of operations in a patch.
 impl TreePatch {
     /// Number of operations.
-    pub fn op_count(&self) -> usize {
+    pub const fn op_count(&self) -> usize {
         self.ops.len()
     }
 
     /// Whether this patch is a no-op (identity).
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.ops.is_empty()
     }
 }

@@ -221,7 +221,7 @@ fn compile_and_run(cxx: &str, name: &str, src: &str, pts: &[Vec3], per: usize) -
 /// `layout` as the `static const float4 params[]` the Dynamic emit reads.
 fn params_global(layout: &[f32]) -> String {
     let mut padded = layout.to_vec();
-    while padded.len() % 4 != 0 {
+    while !padded.len().is_multiple_of(4) {
         padded.push(0.0);
     }
     let v: Vec<String> = padded

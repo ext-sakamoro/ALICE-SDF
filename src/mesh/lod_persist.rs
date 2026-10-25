@@ -211,7 +211,7 @@ impl LodChainPersist {
     }
 
     /// Number of LOD levels
-    pub fn level_count(&self) -> usize {
+    pub const fn level_count(&self) -> usize {
         self.meshes.len()
     }
 

@@ -66,7 +66,7 @@ impl SvoChunk {
     }
 
     /// Memory usage in bytes
-    pub fn memory_bytes(&self) -> usize {
+    pub const fn memory_bytes(&self) -> usize {
         self.nodes.len() * std::mem::size_of::<SvoNode>()
     }
 

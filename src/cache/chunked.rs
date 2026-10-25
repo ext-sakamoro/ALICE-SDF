@@ -453,7 +453,7 @@ impl ChunkedMeshCache {
 
 /// Estimate mesh memory footprint in bytes.
 #[inline(always)]
-fn estimate_mesh_bytes(mesh: &Mesh) -> usize {
+const fn estimate_mesh_bytes(mesh: &Mesh) -> usize {
     let vertex_size = std::mem::size_of::<Vertex>();
     mesh.vertices.len() * vertex_size + mesh.indices.len() * std::mem::size_of::<u32>()
 }

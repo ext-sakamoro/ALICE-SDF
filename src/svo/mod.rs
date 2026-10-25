@@ -211,13 +211,13 @@ impl SparseVoxelOctree {
 
     /// Total number of nodes
     #[inline]
-    pub fn node_count(&self) -> usize {
+    pub const fn node_count(&self) -> usize {
         self.nodes.len()
     }
 
     /// Memory usage in bytes
     #[inline]
-    pub fn memory_bytes(&self) -> usize {
+    pub const fn memory_bytes(&self) -> usize {
         self.nodes.len() * std::mem::size_of::<SvoNode>()
     }
 

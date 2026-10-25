@@ -298,7 +298,7 @@ impl PointCloudSdf {
 
     /// Get the number of points in the cloud
     #[inline]
-    pub fn point_count(&self) -> usize {
+    pub const fn point_count(&self) -> usize {
         self.points.len()
     }
 }

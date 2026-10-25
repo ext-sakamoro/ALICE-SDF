@@ -171,7 +171,7 @@ impl Splatmap {
     }
 
     /// Number of layers
-    pub fn layer_count(&self) -> usize {
+    pub const fn layer_count(&self) -> usize {
         self.layers.len()
     }
 }

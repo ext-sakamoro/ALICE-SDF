@@ -58,7 +58,7 @@ fn tie_points() -> Vec<Vec3> {
     pts.push(Vec3::new(0.7, 0.25, 0.0));
     pts.push(Vec3::new(0.7, 0.75, 0.0));
     // pad to a multiple of 8 so the SIMD batch path uses the 8-lane kernel
-    while pts.len() % 8 != 0 {
+    while !pts.len().is_multiple_of(8) {
         pts.push(Vec3::new(0.25, 0.0, 0.0));
     }
     pts

@@ -68,13 +68,13 @@ pub struct Meshlet {
 impl Meshlet {
     /// Triangle 数
     #[must_use]
-    pub fn triangle_count(&self) -> usize {
+    pub const fn triangle_count(&self) -> usize {
         self.triangles.len() / 3
     }
 
     /// Vertex 数
     #[must_use]
-    pub fn vertex_count(&self) -> usize {
+    pub const fn vertex_count(&self) -> usize {
         self.vertices.len()
     }
 }

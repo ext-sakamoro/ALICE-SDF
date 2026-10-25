@@ -65,7 +65,7 @@ impl PyCompiledSdf {
     }
 
     /// Get instruction count
-    fn instruction_count(&self) -> usize {
+    const fn instruction_count(&self) -> usize {
         self.compiled.instruction_count()
     }
 

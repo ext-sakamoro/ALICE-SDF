@@ -185,7 +185,7 @@ pub fn export_glb_meshopt_bytes_skinned_with_provenance(
     if mesh.vertices.is_empty() {
         return Err(IoError::InvalidFormat("empty mesh".into()));
     }
-    if mesh.indices.is_empty() || mesh.indices.len() % 3 != 0 {
+    if mesh.indices.is_empty() || !mesh.indices.len().is_multiple_of(3) {
         return Err(IoError::InvalidFormat(
             "mesh indices must be non-empty triangles".into(),
         ));

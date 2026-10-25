@@ -227,12 +227,12 @@ impl ConstraintSolver {
     }
 
     /// Number of parameters.
-    pub fn param_count(&self) -> usize {
+    pub const fn param_count(&self) -> usize {
         self.params.len()
     }
 
     /// Number of constraints.
-    pub fn constraint_count(&self) -> usize {
+    pub const fn constraint_count(&self) -> usize {
         self.constraints.len()
     }
 

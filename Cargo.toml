@@ -18,7 +18,7 @@ categories = ["graphics", "game-development", "mathematics"]
 # 1.10.3: 1.75 は偽だった (lock の clap_lex 1.1.0 が edition2024 要求、default
 # feature `cli` → clap 必須で manifest parse 段階 fail)。1.85 は default +
 # docs.rs feature set で実測 check 通過、CI `msrv` job が宣言値を検証する。
-rust-version = "1.85"
+rust-version = "1.87"
 # crates.io publish から除外する dir / file 群
 # (Rust crate 配布物として本質的に不要、別 channel で配布 or CI 内部専用)
 # - vrchat-package / unreal-plugin / mobile / unity-sdf-universe: 他 engine 統合成果物

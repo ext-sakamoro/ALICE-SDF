@@ -64,7 +64,7 @@ LINUX_ALL='glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,g
 LINT_FEATURES='aaa,all-shaders,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume'
 DOCSRS='glsl,hlsl,jit,svo,terrain,destruction,gi,ffi,rust'
 BRIDGES='physics,codec,asp,sdf-cache'
-MSRV=1.85
+MSRV=1.87
 
 step() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
 # `cargo clippy` reuses fresh `cargo check` artifacts and then lints nothing

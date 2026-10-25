@@ -977,7 +977,7 @@ fn edit_glb_json(glb: &[u8], edit: impl FnOnce(&mut serde_json::Value)) -> Vec<u
     let mut root: serde_json::Value = serde_json::from_slice(&glb[20..json_end]).expect("json");
     edit(&mut root);
     let mut json = serde_json::to_vec(&root).expect("json out");
-    while json.len() % 4 != 0 {
+    while !json.len().is_multiple_of(4) {
         json.push(b' ');
     }
     let bin = &glb[json_end..];

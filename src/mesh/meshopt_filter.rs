@@ -126,7 +126,7 @@ pub fn decode_filter_oct_i16_in_place(data: &mut [i16]) {
 ///
 /// `data.len() % 4 != 0` (nothing is modified).
 pub fn try_decode_filter_oct_i16_in_place(data: &mut [i16]) -> Result<(), MeshInputError> {
-    if data.len() % 4 != 0 {
+    if !data.len().is_multiple_of(4) {
         return Err(MeshInputError {
             reason: "oct filter data length must be a multiple of 4",
         });

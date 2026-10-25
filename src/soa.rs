@@ -462,7 +462,7 @@ impl std::fmt::Debug for AlignedVec {
         f.debug_struct("AlignedVec")
             .field("len", &self.len)
             .field("capacity", &self.capacity)
-            .field("aligned", &(self.ptr as usize % Self::ALIGN == 0))
+            .field("aligned", &(self.ptr as usize).is_multiple_of(Self::ALIGN))
             .finish()
     }
 }
@@ -657,7 +657,7 @@ mod tests {
     fn test_aligned_vec_32byte_alignment() {
         let v = AlignedVec::with_capacity(16);
         assert!(
-            v.as_ptr() as usize % 32 == 0,
+            (v.as_ptr() as usize).is_multiple_of(32),
             "AlignedVec pointer must be 32-byte aligned, got {:p}",
             v.as_ptr()
         );
@@ -668,7 +668,7 @@ mod tests {
             v2.push(i as f32);
         }
         assert!(
-            v2.as_ptr() as usize % 32 == 0,
+            (v2.as_ptr() as usize).is_multiple_of(32),
             "AlignedVec pointer must remain 32-byte aligned after grow, got {:p}",
             v2.as_ptr()
         );
@@ -720,15 +720,15 @@ mod tests {
         let soa = SoAPoints::from_vec3_slice(&points);
 
         assert!(
-            soa.x.as_ptr() as usize % 32 == 0,
+            (soa.x.as_ptr() as usize).is_multiple_of(32),
             "SoA x must be 32-byte aligned"
         );
         assert!(
-            soa.y.as_ptr() as usize % 32 == 0,
+            (soa.y.as_ptr() as usize).is_multiple_of(32),
             "SoA y must be 32-byte aligned"
         );
         assert!(
-            soa.z.as_ptr() as usize % 32 == 0,
+            (soa.z.as_ptr() as usize).is_multiple_of(32),
             "SoA z must be 32-byte aligned"
         );
     }

@@ -272,7 +272,7 @@ pub fn try_encode_index_buffer(indices: &[u32]) -> Result<Vec<u8>, MeshInputErro
 ///
 /// `indices.len() % 3 != 0`.
 pub fn try_encode_index_buffer_raw(indices: &[u32]) -> Result<Vec<u8>, MeshInputError> {
-    if indices.len() % 3 != 0 {
+    if !indices.len().is_multiple_of(3) {
         return Err(MeshInputError {
             reason: "index count must be multiple of 3",
         });

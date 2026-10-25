@@ -266,7 +266,7 @@ before quoting a number.
 
 ## Minimum supported Rust version
 
-Minimum supported Rust version: **1.85** (the `rust-version` in `Cargo.toml`). <!-- readme-sync: msrv -->
+Minimum supported Rust version: **1.87** (the `rust-version` in `Cargo.toml`). <!-- readme-sync: msrv -->
 
 A CI job checks the library with exactly this version for the default features
 and the docs.rs feature set. Raising the MSRV is a minor-version change, never

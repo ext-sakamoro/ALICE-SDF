@@ -64,7 +64,7 @@ struct Format {
     read_pinned: ReadPinned,
 }
 
-fn tris(m: &Mesh) -> usize {
+const fn tris(m: &Mesh) -> usize {
     m.indices.len() / 3
 }
 

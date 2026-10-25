@@ -90,7 +90,7 @@ impl SubsampleGrid {
         }
     }
 
-    fn padded_len(&self) -> usize {
+    const fn padded_len(&self) -> usize {
         self.u.len()
     }
 }

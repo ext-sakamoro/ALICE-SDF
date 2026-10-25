@@ -316,7 +316,7 @@ impl PySvo {
     }
 
     /// Get node count
-    fn node_count(&self) -> usize {
+    const fn node_count(&self) -> usize {
         self.inner.node_count()
     }
 
@@ -326,7 +326,7 @@ impl PySvo {
     }
 
     /// Get memory usage in bytes
-    fn memory_bytes(&self) -> usize {
+    const fn memory_bytes(&self) -> usize {
         self.inner.memory_bytes()
     }
 
@@ -509,7 +509,7 @@ impl PyVoxelGrid {
     }
 
     /// Get memory usage in bytes
-    fn memory_bytes(&self) -> usize {
+    const fn memory_bytes(&self) -> usize {
         self.inner.memory_bytes()
     }
 

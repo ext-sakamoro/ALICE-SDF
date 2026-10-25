@@ -1178,7 +1178,7 @@ jobs:
         run: cargo fmt --check
 
   msrv:
-    name: MSRV (rust-version = 1.85)
+    name: MSRV (rust-version = 1.87)
     needs: changes
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
@@ -1187,7 +1187,7 @@ jobs:
       # Cargo.toml `rust-version` を実証する。
       # 宣言値と同じ toolchain を pin し、default feature + docs.rs feature set
       # で `cargo check` が通ることを確認する。宣言を上げる時はここも上げる。
-      - uses: dtolnay/rust-toolchain@1.85
+      - uses: dtolnay/rust-toolchain@1.87
       - uses: Swatinem/rust-cache@v2
 
       - name: Check (default features)

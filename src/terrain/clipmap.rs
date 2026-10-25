@@ -114,12 +114,12 @@ impl ClipmapTerrain {
     }
 
     /// Number of LOD levels
-    pub fn level_count(&self) -> usize {
+    pub const fn level_count(&self) -> usize {
         self.levels.len()
     }
 
     /// Total vertex count across all levels
-    pub fn total_vertices(&self) -> usize {
+    pub const fn total_vertices(&self) -> usize {
         self.levels.len() * (self.grid_resolution * self.grid_resolution) as usize
     }
 }

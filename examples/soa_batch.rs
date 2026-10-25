@@ -111,7 +111,7 @@ fn main() {
         "AlignedVec: {} values, {}-byte aligned: {}",
         v.len(),
         SIMD_ALIGNMENT,
-        v.as_ptr() as usize % SIMD_ALIGNMENT == 0
+        (v.as_ptr() as usize).is_multiple_of(SIMD_ALIGNMENT)
     );
     assert_eq!(v.as_ptr() as usize % SIMD_ALIGNMENT, 0);
     assert_eq!(&v.as_slice()[..3], &[-1.0, -2.0, 2.0]);

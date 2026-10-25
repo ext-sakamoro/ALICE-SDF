@@ -180,7 +180,7 @@ impl<T: Copy + Default> Volume3D<T> {
     }
 
     /// Number of mip levels
-    pub fn mip_count(&self) -> usize {
+    pub const fn mip_count(&self) -> usize {
         self.mips.len() + 1 // +1 for level 0 (self.data)
     }
 }

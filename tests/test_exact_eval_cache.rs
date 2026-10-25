@@ -65,7 +65,7 @@ fn run_sequence(capacity: usize) -> (u64, u64, String) {
     for i in 0..5_000u32 {
         let p = point(next());
         let k = bits(p);
-        if next() % 3 == 0 {
+        if next().is_multiple_of(3) {
             let got = c.get(p);
             assert_eq!(got, values.get(&k).copied(), "step {i}");
         } else {
