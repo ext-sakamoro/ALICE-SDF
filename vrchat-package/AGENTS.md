@@ -1,6 +1,6 @@
 # AGENTS.md — ALICE-SDF for VRChat (`com.alice.sdf`)
 
-This file is for coding agents (Claude Code, Codex, Cursor, …) that a user has
+This file is for coding agents (Codex, Cursor, …) that a user has
 asked to install, verify, debug or adapt this package. It states what is true
 about the package, what can be checked without Unity, what only the user can
 check, and which parts of the Mochi sample are portable law versus
