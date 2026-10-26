@@ -38,6 +38,19 @@ use alice_sdf::prelude::*;
 const FLAGS_OFFSET: usize = 4 * 3 + 4 * 3 + 4 + 4 + 1;
 const FLAG_LOSSLESS_WAVELET: u8 = 0x01;
 const FLAG_RANS: u8 = 0x02;
+/// Where the quantizer step (i32 LE) starts in an encoded stream: after the header, the per-axis
+/// voxel sizes and the semantics identifier, each when its flag says it is there
+const fn quantizer_step_at(bytes: &[u8]) -> usize {
+    let flags = bytes[FLAGS_OFFSET];
+    let mut at = HEADER_LEN;
+    if flags & FLAG_ANISOTROPIC_VOXEL != 0 {
+        at += 8;
+    }
+    if flags & FLAG_SEMANTICS_ID != 0 {
+        at += 32;
+    }
+    at
+}
 const FLAG_WIDE: u8 = 0x04;
 const FLAG_ANISOTROPIC_VOXEL: u8 = 0x08;
 /// The stream carries the 32-byte semantics identifier after the header (and after the per-axis
@@ -192,8 +205,17 @@ fn lossy_round_trip_stays_within_the_quantizer_bound_and_keeps_the_sign() {
         assert!(!config.lossless_wavelet);
         let bytes = encode_sdf_volume(&vol, &config);
         assert_eq!(bytes[FLAGS_OFFSET] & FLAG_LOSSLESS_WAVELET, 0);
-        // Quantizer step as written after the 38-byte header.
-        let step = i32::from_le_bytes(bytes[38..42].try_into().unwrap());
+        // the quantizer step, after the header and the semantics identifier the encoder writes on
+        // every stream (this grid is cubic, so no per-axis voxel sizes)
+        assert_eq!(bytes[FLAGS_OFFSET] & FLAG_ANISOTROPIC_VOXEL, 0);
+        assert_ne!(bytes[FLAGS_OFFSET] & FLAG_SEMANTICS_ID, 0);
+        let at = quantizer_step_at(&bytes);
+        assert_eq!(
+            &bytes[HEADER_LEN..at],
+            &alice_sdf::SDF_SEMANTICS_ID[..],
+            "the identifier sits between the header and the quantizer step"
+        );
+        let step = i32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
         assert!(step >= 1);
         let back = decompress_sdf(&bytes);
         assert_eq!(back.data.len(), vol.data.len());

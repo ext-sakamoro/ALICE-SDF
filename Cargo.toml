@@ -106,10 +106,10 @@ wide = "0.7"  # Portable SIMD (AVX2/AVX-512/NEON)
 # 3.1.0: every transcendental in the evaluator and the laws goes through
 # alice-det-math (cross-platform bit-exact, scalar + f32x8) — the same crate
 # alice-physics uses, which is what makes the SdfField boundary bit-exact.
-alice-det-math = { version = "0.5.1", features = ["simd"] }
+alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "39507d1b99960f260a0b760b3fba6cb60823340d", version = "0.5.2", features = ["simd"] }
 # ALICE-Law G8: the stored forms' meaning identifiers are law-id v2 (alice_zip::law_id::LawIdHasher,
 # the one owner of that encoding)
-alice-zip = { git = "https://github.com/ext-sakamoro/ALICE-Zip", rev = "2a0aafacb9ec6693a3d2270df8c079ff01434bfb", version = "0.11", default-features = false }
+alice-zip = { git = "https://github.com/ext-sakamoro/ALICE-Zip", rev = "8065587c8b0c3da6537091146b1a9517f27e25d8", version = "0.11", default-features = false }
 
 # Parallel processing
 rayon = "1.10"
@@ -152,7 +152,7 @@ sha2 = "0.10"
 # Bridge deps (optional, crates.io since 1.12.0; alice-font pending publish)
 # pinned to a git commit of ALICE-Physics (the facade crate in that repository); the version
 # requirement keeps the resolved package at 4.x
-alice-physics = { git = "https://github.com/ext-sakamoro/ALICE-Physics", rev = "4a05357053e6e1e362e5d6ef5c9031d1b0e8ad0d", version = "4", optional = true }
+alice-physics = { git = "https://github.com/ext-sakamoro/ALICE-Physics", rev = "e09295ea212d0b56e764c8236a4397f86c04df8b", version = "4", optional = true }
 alice-codec = { version = "0.1.2", optional = true }
 libasp = { version = "1.0", optional = true }
 alice-cache = { version = "0.2", optional = true }
@@ -454,7 +454,3 @@ lto = "thin"
 debug = false
 codegen-units = 1
 
-
-# local base only (not landed): the det-math alice-zip 2a0aafa resolves, so the lock holds one
-[patch.crates-io]
-alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "6384856c8b00f1615e1cd6b5c74d88036c1a8706" }
