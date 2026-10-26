@@ -187,6 +187,17 @@ step "ci.yml / wiring-guard: G11 table matches the declared gates"
 python3 scripts/test_g11_table.py
 scripts/g11_table.sh
 
+step "ci.yml / wiring-guard: ALICE-Law G11 self-check (the four G11 checks at the pinned revision)"
+(
+  set -euo pipefail
+  rev=$(awk '$1 == "rev" { print $2 }' .github/shared-files-pin)
+  law=$(mktemp -d)
+  trap 'rm -rf "$law"' EXIT
+  git -c core.autocrlf=false clone --quiet --filter=blob:none https://github.com/ext-sakamoro/ALICE-Law.git "$law/alice-law"
+  git -C "$law/alice-law" checkout --quiet --detach "$rev"
+  python3 "$law/alice-law/scripts/g11_self_check.py" --repo . --name ALICE-SDF
+)
+
 # ci.yml の env と同じ CARGO_TERM_COLOR=always で回す (cargo の出力を読む parser の試験)
 step "cargo output parsers: oracle (色付き出力) + test に色付き sample がある、対象 0 件で fail"
 CARGO_TERM_COLOR=always python3 scripts/test_ansi.py

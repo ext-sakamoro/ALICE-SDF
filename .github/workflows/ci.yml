@@ -683,6 +683,16 @@ jobs:
         run: |
           python3 scripts/test_g11_table.py
           scripts/g11_table.sh
+      # ALICE-Law G11: ALICE-Law's own self-check at the pinned revision (table, rows, shared copies, own copies
+      # at their targets, manifest), on every OS of the matrix
+      - name: ALICE-Law G11 self-check (the four G11 checks at the pinned revision)
+        shell: bash
+        run: |
+          rev=$(awk '$1 == "rev" { print $2 }' .github/shared-files-pin)
+          git -c core.autocrlf=false clone --quiet --filter=blob:none https://github.com/ext-sakamoro/ALICE-Law.git "$RUNNER_TEMP/alice-law"
+          git -C "$RUNNER_TEMP/alice-law" checkout --quiet --detach "$rev"
+          PY=$(command -v python3 || command -v python)
+          "$PY" "$RUNNER_TEMP/alice-law/scripts/g11_self_check.py" --repo . --name ALICE-SDF
       # cargo / libtest / cargo-semver-checks の出力を読む parser は、CARGO_TERM_COLOR=always
       # (この workflow の env) の色付き出力で試験する。検査器は parser の test に色付き
       # sample が無いと fail し、parser を 1 件も見つけられなくても fail する
