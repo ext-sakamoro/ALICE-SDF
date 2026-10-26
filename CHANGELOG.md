@@ -41,6 +41,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Changed
 - CI (ALICE-Law G11): `.github/shared-files-pin` と `.github/g11-table-pin` を ALICE-Law 9cb423c9 に上げ、ALICE-Law の `scripts/g11_self_check.py` を pin の revision で wiring-guard job (ubuntu / macOS / Windows) と preflight で走らせる README の ALICE-Law の節を 9cb423c9 から作り直した 共有の写しの bytes は同じ
+- 試験 `tests/test_g8_example_text.rs`: examples が書いた file を読み終えるまで一時 directory を保つ (一時 directory を drop で消すようにした変更の後、file の一覧を返した時点で directory が消え、読む時に NotFound になっていた)
 - CI (ALICE-Law G11 (c)): ALICE-Law の pin (`.github/shared-files-pin`・`.github/g11-table-pin`) と README の block の版を `0e8c14ec` にし、`scripts/id_move_check.py` とその試験 (表の目標の bytes) を置いた
 - **破壊的変更**: rust-version 1.85 → 1.87 (保存形式の意味の識別子に使う alice-zip が 1.87 を要求する) CI の MSRV の job と preflight も 1.87 で確かめる 1.87 で使える `const fn` と `is_multiple_of` への書き換え (clippy の `missing_const_for_fn` / `manual_is_multiple_of`、godot の `#[func]` は const にできないので理由付きの allow) は挙動を変えない
 - Licence: `Apache-2.0` → `LicenseRef-Proprietary`

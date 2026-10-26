@@ -98,7 +98,9 @@ fn shape() -> SdfNode {
 }
 
 /// Runs every example's writer, each into its own directory: (example, files it wrote)
-fn written_by_the_examples(tag: &str) -> Vec<(&'static str, Vec<PathBuf>)> {
+/// What each example wrote, with the directories that hold it (dropping them removes the files, so the
+/// caller keeps them while it reads)
+fn written_by_the_examples(tag: &str) -> (Vec<(&'static str, Vec<PathBuf>)>, Vec<temp::TempDir>) {
     let shaders = dir(&format!("{tag}_shader_export"));
     let mut listed = shader_export::run(Some(&shaders));
     let msl = dir(&format!("{tag}_msl_emit"));
@@ -123,7 +125,7 @@ fn written_by_the_examples(tag: &str) -> Vec<(&'static str, Vec<PathBuf>)> {
     assert_eq!(listed, out[0].1);
     // one .ush per shader-capable node, the .usf and the manifest header
     assert_eq!(out[3].1.len(), files.shader_nodes + 2);
-    out
+    (out, vec![shaders, msl, rust, plugin])
 }
 
 /// Whether the file at `path` is whole by the rule: generated Rust is, shader text is when it has
@@ -135,7 +137,8 @@ fn is_whole(path: &Path, text: &str) -> bool {
 /// The whole texts the examples wrote: (example and file name, text)
 fn whole_texts(tag: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    for (example, files) in written_by_the_examples(tag) {
+    let (written, _dirs) = written_by_the_examples(tag);
+    for (example, files) in written {
         for path in files {
             let text = std::fs::read_to_string(&path).unwrap();
             if is_whole(&path, &text) {
@@ -159,7 +162,8 @@ fn the_writer_table_names_the_example_writer() {
 #[test]
 fn every_file_the_examples_write_follows_the_shader_rule() {
     let (mut whole, mut fragments) = (0, 0);
-    for (example, files) in written_by_the_examples("rule") {
+    let (written, _dirs) = written_by_the_examples("rule");
+    for (example, files) in written {
         assert!(!files.is_empty(), "{example} wrote nothing");
         for path in files {
             let text = std::fs::read_to_string(&path).unwrap();
