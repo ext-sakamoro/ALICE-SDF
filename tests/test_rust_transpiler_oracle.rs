@@ -228,7 +228,32 @@ fn det_math_rlib(deps: &Path) -> PathBuf {
             })
             .expect("alice-det-math in Cargo.lock"),
     };
-    let needle = format!("alice-det-math-{version}");
+    // the dep-info file names the source directory: `alice-det-math-<version>/` for a registry
+    // source, `checkouts/<repo>-<hash>/<first 7 of the rev>/` for a git one (no version in it)
+    let source = blocks
+        .iter()
+        .find(|b| {
+            b.contains("name = \"alice-det-math\"")
+                && b.contains(&format!("version = \"{version}\""))
+        })
+        .and_then(|b| b.lines().find(|l| l.starts_with("source = ")))
+        .map(|l| {
+            l.trim_start_matches("source = ")
+                .trim_matches('"')
+                .to_string()
+        })
+        .expect("the locked alice-det-math has a source");
+    // the checkout directory, with either path separator (the dep-info uses `\\` on Windows)
+    let needles: Vec<String> = match source.strip_prefix("git+") {
+        Some(git) => {
+            let rev = git
+                .rsplit_once('#')
+                .map(|(_, r)| r)
+                .expect("a locked git source ends in #<rev>");
+            vec![format!("/{}/", &rev[..7]), format!("\\{}\\", &rev[..7])]
+        }
+        None => vec![format!("alice-det-math-{version}")],
+    };
     let mut found: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(deps)
         .expect("deps dir")
         .filter_map(Result::ok)
@@ -241,7 +266,7 @@ fn det_math_rlib(deps: &Path) -> PathBuf {
             // the dep-info file names the source directory, hence the version
             let stem = p.file_stem().unwrap().to_string_lossy().to_string();
             let d = deps.join(format!("{}.d", stem.trim_start_matches("lib")));
-            std::fs::read_to_string(d).is_ok_and(|s| s.contains(&needle))
+            std::fs::read_to_string(d).is_ok_and(|s| needles.iter().any(|n| s.contains(n.as_str())))
         })
         .map(|p| (std::fs::metadata(&p).unwrap().modified().unwrap(), p))
         .collect();
