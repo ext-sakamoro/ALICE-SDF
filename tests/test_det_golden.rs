@@ -163,7 +163,8 @@ fn checker_rejects_a_wrong_hash() {
 /// evaluator path calls, and every hash below stayed put). A failure here is a
 /// dependency move: re-check the table, then re-pin both with the CHANGELOG
 /// saying which `alice-det-math` the crate now evaluates with.
-const SEMANTICS_ID_HEX: &str = "85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315";
+// alice-det-math 0.5.2 at 39507d1b (85e08846… with 0.5.1)
+const SEMANTICS_ID_HEX: &str = "a2e46794a49b62730d8eb75d10e6dbfdd59d6562a985ae94c716fc637a57e3cf";
 
 /// The identifier `alice-det-math` 0.5.0 published (re-pinned to 0.5.1 above): 0.5.1 moved
 /// the identifier but kept every kernel the corpus reaches, so the per-node hashes in
@@ -196,11 +197,13 @@ fn previous_semantics_id_is_still_recognised() {
             s
         })
     };
+    // alice-det-math's own previous list no longer has 0.5.0's identifier (its clamp changed);
+    // this crate keeps it, the identifier 6.0 exposed as its own
     assert!(
-        alice_det_math::PREVIOUS_SEMANTICS_IDS
+        alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS
             .iter()
             .any(|id| hex(id) == PREVIOUS_SEMANTICS_ID_HEX),
-        "alice-det-math no longer lists 0.5.0's identifier as a previous one"
+        "alice-sdf no longer lists alice-det-math 0.5.0's identifier as a previous one"
     );
     assert_ne!(hex(&alice_sdf::SEMANTICS_ID), PREVIOUS_SEMANTICS_ID_HEX);
 }

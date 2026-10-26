@@ -13,7 +13,8 @@ use alice_sdf::{
 use sha2::{Digest, Sha256};
 
 const GOLDEN_SOURCE: &str = include_str!("test_det_golden.rs");
-const RECORDED_HEX: &str = "151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69";
+// with alice-det-math 0.5.2 at 39507d1b; 151079595… (with 0.5.1) is a previous identifier
+const RECORDED_HEX: &str = "6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37";
 
 fn sha(b: &[u8]) -> [u8; 32] {
     Sha256::digest(b).into()
@@ -126,7 +127,78 @@ fn check_reads_this_previous_and_unknown_identifiers() {
     for p in PREVIOUS_SDF_SEMANTICS_IDS {
         assert_eq!(check_sdf_semantics(p), SemanticsCheck::VerifiedPrevious(*p));
     }
-    // the identifier 6.1 exposed as its own is a previous one
-    assert!(PREVIOUS_SDF_SEMANTICS_IDS.contains(&alice_det_math::SEMANTICS_ID));
+    // the identifier 7.0.0 stamped (SDF_SEMANTICS_ID with alice-det-math 0.5.1) and the one 6.1
+    // exposed as its own (alice-det-math 0.5.1's) are previous ones
+    for previous in [
+        "151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69",
+        "85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315",
+    ] {
+        assert!(
+            PREVIOUS_SDF_SEMANTICS_IDS
+                .iter()
+                .any(|p| hex(p) == previous),
+            "{previous} is not a previous identifier"
+        );
+    }
     assert_eq!(check_sdf_semantics(&[0u8; 32]), SemanticsCheck::Mismatch);
+}
+
+/// The oracle that shows this build reproduces what each earlier identifier stamped:
+/// `(identifier, test file, test function)`. The earlier generations differ from this build's
+/// alice-det-math (0.5.2 at 39507d1b) only in `metric::clamp`; the oracle shows the one path
+/// to it from this crate (`metric::smoothstep`) gives the same bits under both clamps, and the
+/// golden table entry (`every_row_is_the_fold_of_the_pins_and_this_build_uses_its_row`) shows no
+/// golden moved
+const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[
+    (
+        // SDF_SEMANTICS_ID with alice-det-math 0.5.1 (7.0.0)
+        "151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69",
+        "tests/test_det_math_clamp_generation.rs",
+        "smoothstep_gives_the_same_bits_under_both_clamps",
+    ),
+    (
+        // alice-det-math 0.5.1's identifier, exposed as alice-sdf's own by 6.0 / 6.1
+        "85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315",
+        "tests/test_det_math_clamp_generation.rs",
+        "smoothstep_gives_the_same_bits_under_both_clamps",
+    ),
+    (
+        // alice-det-math 0.5.0's
+        "135c407d4249c1c200e4d1be79a12e848ce5c355fc3a918da965849e697ef000",
+        "tests/test_det_math_clamp_generation.rs",
+        "smoothstep_gives_the_same_bits_under_both_clamps",
+    ),
+];
+
+/// Every previous identifier has an oracle that exists as a test (the file holds `#[test]` and
+/// that function), and every oracle names a previous identifier: an identifier without one, or an
+/// oracle removed from its file, fails here
+#[test]
+fn every_previous_identifier_has_an_oracle_that_exists() {
+    let previous: Vec<String> = PREVIOUS_SDF_SEMANTICS_IDS.iter().map(hex).collect();
+    let listed: Vec<&str> = PREVIOUS_ORACLES.iter().map(|(id, _, _)| *id).collect();
+    let mut a = previous;
+    a.sort();
+    let mut b: Vec<String> = listed.iter().map(|s| (*s).to_owned()).collect();
+    b.sort();
+    assert_eq!(
+        a, b,
+        "PREVIOUS_SDF_SEMANTICS_IDS and the identifiers with an oracle"
+    );
+    let mut compared = 0;
+    for (id, file, test) in PREVIOUS_ORACLES {
+        let src =
+            std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(file))
+                .unwrap_or_else(|e| panic!("{id}: {file}: {e}"));
+        let at = src
+            .find(&format!("fn {test}()"))
+            .unwrap_or_else(|| panic!("{id}: {file} has no fn {test}"));
+        assert!(
+            src[..at].trim_end().ends_with("#[test]"),
+            "{id}: {file}::{test} is not a #[test]"
+        );
+        compared += 1;
+    }
+    assert!(compared > 0, "compared nothing");
+    assert!(!PREVIOUS_SDF_SEMANTICS_IDS.contains(&SDF_SEMANTICS_ID));
 }
