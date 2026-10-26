@@ -4,7 +4,7 @@
 
 [Japanese / 日本語版](README_JP.md)
 
-Using a coding agent (Claude Code, Codex, Cursor) to set this up? Point it at [`AGENTS.md`](AGENTS.md): one install path with a check per step, what it can verify without Unity, the Mochi law / binding split for re-use on avatars or props, and known errors with fixes.
+Using a coding agent (Codex, Cursor) to set this up? Point it at [`AGENTS.md`](AGENTS.md): one install path with a check per step, what it can verify without Unity, the Mochi law / binding split for re-use on avatars or props, and known errors with fixes.
 
 ## Install
 
