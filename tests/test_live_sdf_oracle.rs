@@ -675,10 +675,32 @@ fn a_version_2_payload_is_refused() {
     assert_eq!(b.check_state(&relabelled), Err(StateError::InvalidValue));
 }
 
+/// A payload under an identifier alice-physics lists as previous restores bit for bit; the 3.x
+/// identifiers alice-physics no longer lists (its det-math 0.5.2 step emptied the list) are refused
 #[test]
 fn a_payload_under_a_previous_physics_identifier_restores_bit_for_bit() {
     let (a, payload) = stepped_payload();
-    assert!(!alice_physics::PREVIOUS_PHYSICS_SEMANTICS_IDS.is_empty());
+    let mut refused = 0;
+    for dropped in [
+        // 3.1.0 and 3.0.x
+        "79ca52976f404dfb453908970ebe45f584970ff9344a56a06aae3fc9c3c38108",
+        "cd9aa3b89257fc8b3e5d6714362ce4e52d4ff142baf30de2f80324e44bdd3469",
+    ] {
+        let id: [u8; 32] = core::array::from_fn(|i| {
+            u8::from_str_radix(&dropped[2 * i..2 * i + 2], 16).expect("hex")
+        });
+        if alice_physics::PREVIOUS_PHYSICS_SEMANTICS_IDS.contains(&id) {
+            continue;
+        }
+        let mut stale = payload.clone();
+        stale[36..68].copy_from_slice(&id);
+        assert_eq!(
+            target().check_state(&stale),
+            Err(StateError::InvalidValue),
+            "{dropped} is not a previous identifier of alice-physics"
+        );
+        refused += 1;
+    }
     let mut restored = 0;
     for id in alice_physics::PREVIOUS_PHYSICS_SEMANTICS_IDS {
         assert_ne!(id, &alice_physics::PHYSICS_SEMANTICS_ID);
@@ -699,6 +721,7 @@ fn a_payload_under_a_previous_physics_identifier_restores_bit_for_bit() {
         restored,
         alice_physics::PREVIOUS_PHYSICS_SEMANTICS_IDS.len()
     );
+    assert!(restored + refused > 0, "compared nothing");
 }
 
 #[test]

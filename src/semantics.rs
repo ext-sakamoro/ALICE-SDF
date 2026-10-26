@@ -12,10 +12,10 @@
 //! The identifier moves only when one of those moves (a golden re-recorded, a rule
 //! changed, a det-math generation), not with the crate's version.
 //!
-//! # Hex form (with `alice-det-math` 0.5.1; other generations in [`SDF_SEMANTICS_BY_DET_MATH`])
+//! # Hex form (with `alice-det-math` 0.5.2 at 39507d1b; other generations in [`SDF_SEMANTICS_BY_DET_MATH`])
 //!
 //! ```text
-//! 151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69
+//! 6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37
 //! ```
 //!
 //! # Fold
@@ -95,6 +95,11 @@ pub const SDF_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
         hex32("85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315"),
         hex32("151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69"),
     ),
+    // alice-det-math 0.5.2 at 39507d1b (its clamp follows the G2 order; no golden moved)
+    (
+        hex32("a2e46794a49b62730d8eb75d10e6dbfdd59d6562a985ae94c716fc637a57e3cf"),
+        hex32("6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37"),
+    ),
 ];
 
 /// The identifier of a build that resolved the `alice-det-math` with identifier `det_math`
@@ -130,11 +135,17 @@ const fn same32(a: &[u8; 32], b: &[u8; 32]) -> bool {
 /// The identifier of what alice-sdf computes, in this build
 pub const SDF_SEMANTICS_ID: [u8; 32] = sdf_semantics_id_for(&alice_det_math::SEMANTICS_ID);
 
-/// Identifiers this crate published as its own before [`SDF_SEMANTICS_ID`] existed
+/// Earlier identifiers whose distances this build still computes to the same bits, newest first
 ///
-/// 6.1.0 and earlier exposed `alice-det-math`'s identifier as their own; this build still
-/// computes their distances to the same bits (the goldens did not move between them).
+/// `151079595…` is [`SDF_SEMANTICS_ID`] with `alice-det-math` 0.5.1 (7.0.0): the move to 0.5.2
+/// at 39507d1b changed only det-math's clamp, which this crate reaches only through
+/// `metric::smoothstep` with the bounds 0 and 1, where the one input the two clamps treat
+/// differently (`-0`) gives `+0` from `t * t * (3 - 2 t)` either way; no golden moved. 6.1.0 and
+/// earlier exposed `alice-det-math`'s identifier as their own; this build still computes their
+/// distances to the same bits (the goldens did not move between them).
 pub const PREVIOUS_SDF_SEMANTICS_IDS: &[[u8; 32]] = &[
+    // SDF_SEMANTICS_ID with alice-det-math 0.5.1 (7.0.0)
+    hex32("151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69"),
     // alice-det-math 0.5.1's identifier, exposed as alice_sdf::SEMANTICS_ID by 6.0 / 6.1
     hex32("85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315"),
     // alice-det-math 0.5.0's

@@ -217,6 +217,13 @@ const RAW_V2: [(StoredForm, &str); 13] = [
     (StoredForm::Alembic, "mesh_raw_v2.abc"),
 ];
 
+/// The raw identifier 7.0.0 wrote: `SDF_SEMANTICS_ID` with alice-det-math 0.5.1, a previous
+/// identifier of this build
+const SDF_SEMANTICS_ID_7_0_0: [u8; 32] = [
+    0x15, 0x10, 0x79, 0x59, 0x5c, 0x1e, 0x8d, 0x8f, 0xc6, 0x61, 0x90, 0x9b, 0xac, 0x7e, 0xa0, 0xdd,
+    0xe0, 0xba, 0x5a, 0x8b, 0x3e, 0xf5, 0x00, 0x01, 0x9d, 0x01, 0xc6, 0xaf, 0x64, 0xde, 0xfb, 0x69,
+];
+
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/provenance")
@@ -231,15 +238,18 @@ fn a_raw_identifier_of_a_meaning_form_reads_as_the_earlier_generation() {
         let path = fixture(name);
         let stored = provenance::read(&path).unwrap();
         assert_eq!(stored.form, form, "{name}");
-        assert_eq!(stored.id, SDF_SEMANTICS_ID, "{name}: the raw identifier");
+        assert_eq!(
+            stored.id, SDF_SEMANTICS_ID_7_0_0,
+            "{name}: the raw identifier"
+        );
         assert!(!stored.is_written_under(&Provenance::sdf()), "{name}");
         assert_eq!(
             provenance::check_sdf(&path).unwrap(),
-            StoredSemantics::VerifiedPrevious(Provenance::sdf()),
+            StoredSemantics::VerifiedPrevious(Provenance::new(SDF_SEMANTICS_ID_7_0_0)),
             "{name}: a raw identifier is the earlier generation"
         );
     }
-    let earlier = StoredSemantics::VerifiedPrevious(Provenance::sdf());
+    let earlier = StoredSemantics::VerifiedPrevious(Provenance::new(SDF_SEMANTICS_ID_7_0_0));
     assert_eq!(
         io::import_stl(fixture("mesh_raw_v2.stl"))
             .unwrap()

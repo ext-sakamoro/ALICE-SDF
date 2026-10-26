@@ -228,7 +228,31 @@ fn det_math_rlib(deps: &Path) -> PathBuf {
             })
             .expect("alice-det-math in Cargo.lock"),
     };
-    let needle = format!("alice-det-math-{version}");
+    // the dep-info file names the source directory: `alice-det-math-<version>/` for a registry
+    // source, `checkouts/<repo>-<hash>/<first 7 of the rev>/` for a git one (no version in it)
+    let source = blocks
+        .iter()
+        .find(|b| {
+            b.contains("name = \"alice-det-math\"")
+                && b.contains(&format!("version = \"{version}\""))
+        })
+        .and_then(|b| b.lines().find(|l| l.starts_with("source = ")))
+        .map(|l| {
+            l.trim_start_matches("source = ")
+                .trim_matches('"')
+                .to_string()
+        })
+        .expect("the locked alice-det-math has a source");
+    let needle = match source.strip_prefix("git+") {
+        Some(git) => {
+            let rev = git
+                .rsplit_once('#')
+                .map(|(_, r)| r)
+                .expect("a locked git source ends in #<rev>");
+            format!("/{}/", &rev[..7])
+        }
+        None => format!("alice-det-math-{version}"),
+    };
     let mut found: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(deps)
         .expect("deps dir")
         .filter_map(Result::ok)

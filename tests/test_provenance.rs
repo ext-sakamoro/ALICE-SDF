@@ -3327,7 +3327,7 @@ fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
 // paint tool would write it (no identifier), and the heightmap writer's output for it:
 //   heightmap_plain.png    34151b0d0efbd9f7fa65ccc76299d474e00ad48ddfe2b40ecfed7916f0db8098
 //   heightmap_plain.jpg    3b8303187e7a141798d8c3a8c72b26da9795da077b87fcc00856a717afc7dbcd
-//   heightmap_stamped.png  96750b1ece756198e57729d1728d1de77667954f0393663b61eaece9efef42fa
+//   heightmap_stamped.png  57d25e68c966186f7fdb8f4667874c6ef196fe998ef315ba327eeeef95e63b71
 //                          Heightmap::from_image_bytes(plain.png, &HeightmapImageConfig::new(
 //                          40.0, 16.0, 12.0)).to_png(..) (16-bit grey, the identifier in tEXt)
 // ---------------------------------------------------------------------------------------------
