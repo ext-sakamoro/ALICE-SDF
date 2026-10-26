@@ -76,7 +76,7 @@ maturin develop --features python
 pip install -r server/requirements.txt
 
 # 3. APIキーを設定
-export ANTHROPIC_API_KEY="sk-..."   # Claude用
+export ANTHROPIC_API_KEY="sk-..."
 export GOOGLE_API_KEY="AI..."       # Gemini用
 
 # 4. サーバー起動
