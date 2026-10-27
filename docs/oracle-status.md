@@ -6,11 +6,11 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 986 |
+| 🟢 Not ignored | 988 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **990** |
+| **Total** | **992** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -25,7 +25,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (986)
+## 🟢 Not ignored (988)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -90,6 +90,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_sim_bridge_oracle.rs` | 7 |
 | `test_terrain_api_oracle.rs` | 7 |
 | `deep_tree_drop.rs` | 6 |
+| `sdf_semantics_id.rs` | 6 |
 | `test_autodiff_oracle.rs` | 6 |
 | `test_diff_oracle.rs` | 6 |
 | `test_hlsl_export_oracle.rs` | 6 |
@@ -104,7 +105,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_round_tie_parity.rs` | 6 |
 | `test_sdf2d_oracle.rs` | 6 |
 | `test_shader_precise_temporaries.rs` | 6 |
-| `sdf_semantics_id.rs` | 5 |
 | `test_asp_bridge_oracle.rs` | 5 |
 | `test_collision_oracle.rs` | 5 |
 | `test_g8_example_text.rs` | 5 |
@@ -133,6 +133,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_soa_oracle.rs` | 4 |
 | `test_svo_query_oracle.rs` | 4 |
 | `npr_bytecode_wgsl_validate.rs` | 3 |
+| `test_bake_stored_forms.rs` | 3 |
 | `test_csg_multi_oracle.rs` | 3 |
 | `test_det_near_zero_probe.rs` | 3 |
 | `test_glsl_glslang_precise.rs` | 3 |
@@ -147,7 +148,6 @@ Per-file counts (the test names are in `tests/`):
 | `float_environment.rs` | 2 |
 | `noise_shader_validate.rs` | 2 |
 | `test_aabb_unified_oracle.rs` | 2 |
-| `test_bake_stored_forms.rs` | 2 |
 | `test_det_math_clamp_generation.rs` | 2 |
 | `test_det_near_zero_parity.rs` | 2 |
 | `test_instanced_wgsl_gpu_parity.rs` | 2 |
