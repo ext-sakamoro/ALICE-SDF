@@ -4,6 +4,8 @@ name: Release profile
 # profile too, on x86_64 and aarch64. Optimisation is where a reassociation, an
 # FMA contraction or a folded signed zero would change the bits, and the CI
 # workflow runs every test in the debug profile only (ALICE-Law G4 / G5).
+# The dual contouring topology suite runs here too: its 40 limb meshes take
+# about 13 minutes unoptimised, so the debug lanes skip that one test.
 # Mirrored in scripts/preflight.sh.
 #
 # Each suite's log is read back by scripts/libtest_count.py, which fails the
@@ -44,7 +46,7 @@ jobs:
       - name: Bit-exact goldens and the float environment (cargo test --release)
         run: |
           set -euo pipefail
-          for spec in test_det_golden:4: test_det_parity:1:jit test_det_near_zero_parity:2:jit test_det_near_zero_probe:3:jit float_environment:2:; do
+          for spec in test_det_golden:4: test_det_parity:1:jit test_det_near_zero_parity:2:jit test_det_near_zero_probe:3:jit float_environment:2: test_dual_contouring_manifold:6:; do
             name=${spec%%:*}
             rest=${spec#*:}
             min=${rest%%:*}

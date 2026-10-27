@@ -604,7 +604,7 @@ step "scip: L0 ratchet + docs/integration-status.md (rust-analyzer SCIP、約 4 
 scip_reach_step 0
 
 step "release-profile.yml: goldens and the float environment in the release profile (G4 / G5)"
-for spec in test_det_golden:4: test_det_parity:1:jit test_det_near_zero_parity:2:jit test_det_near_zero_probe:3:jit float_environment:2:; do
+for spec in test_det_golden:4: test_det_parity:1:jit test_det_near_zero_parity:2:jit test_det_near_zero_probe:3:jit float_environment:2: test_dual_contouring_manifold:6:; do
   name=${spec%%:*}
   rest=${spec#*:}
   min=${rest%%:*}
