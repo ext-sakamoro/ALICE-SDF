@@ -36,6 +36,7 @@ this file or listed twice, or when a linked file does not exist.
 | `shell` | variable-thickness offset surface (shell) |  |  |
 | `morphology` | opening and closing of a field (removing thin features and filling small gaps) |  |  |
 | `sdf2d` | 2D distance functions (circle, rectangle, Bézier, glyph outlines) with bilinear sampling |  |  |
+| `surface` | the appearance of a flat surface: value noise that repeats with a period, grid and Voronoi cells that tile, the normal of a height field by central difference, and a plate drawn from straight above (Lambert plus GGX) |  | [`surface_plate`](../examples/surface_plate.rs) |
 | `eval_cache` | `ExactEvalCache`, a bounded cache of distances keyed by the exact point, with first-in-first-out eviction and no hasher (the cache of the Law path) |  | [`exact_eval_cache`](../examples/exact_eval_cache.rs) |
 | `semantics` | `SDF_SEMANTICS_ID`, the identifier of what the evaluators compute (the golden table, the max / min and `mul_add` rules, the `alice-det-math` identifier), and `check_sdf_semantics` |  |  |
 | `optimize` | tree simplification: identity transforms and modifiers removed, nested transforms merged |  |  |
