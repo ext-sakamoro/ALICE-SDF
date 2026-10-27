@@ -319,7 +319,7 @@ const FACES: [([usize; 4], [usize; 4]); 6] = [
 /// (the smallest edge index on the loop; uncrossed edges keep their own)
 fn sheet_of_edges(corners: &[f32; 8]) -> [usize; 12] {
     let mut parent: [usize; 12] = core::array::from_fn(|i| i);
-    fn root(parent: &mut [usize; 12], mut i: usize) -> usize {
+    const fn root(parent: &mut [usize; 12], mut i: usize) -> usize {
         while parent[i] != i {
             parent[i] = parent[parent[i]];
             i = parent[i];

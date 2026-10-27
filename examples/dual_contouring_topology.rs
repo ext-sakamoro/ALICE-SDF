@@ -18,12 +18,11 @@ use alice_sdf::mesh::{validate_mesh, DualContouringConfig};
 use alice_sdf::prelude::*;
 
 fn main() {
-    let bend = 45f32.to_radians();
     let joint = Vec3::new(0.0, 0.3, 0.0);
     let limb = SdfNode::capsule(Vec3::ZERO, joint, 0.05).smooth_union(
         SdfNode::capsule(
             joint,
-            joint + Vec3::new(0.0, bend.cos(), bend.sin()) * 0.3,
+            joint + Vec3::new(0.0, 1.0, 1.0).normalize() * 0.3, // bent 45°
             0.05,
         ),
         0.04,

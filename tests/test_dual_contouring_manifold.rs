@@ -136,7 +136,7 @@ fn bad_edges(m: &Mesh) -> (usize, usize) {
 /// the number of connected pieces
 fn topology(m: &Mesh) -> (i64, usize) {
     let mut parent: HashMap<u32, u32> = HashMap::new();
-    fn root(p: &mut HashMap<u32, u32>, mut i: u32) -> u32 {
+    fn root(p: &HashMap<u32, u32>, mut i: u32) -> u32 {
         while let Some(&j) = p.get(&i) {
             if j == i {
                 break;
@@ -152,7 +152,7 @@ fn topology(m: &Mesh) -> (i64, usize) {
         }
         for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
             edges.insert((a.min(b), a.max(b)));
-            let (ra, rb) = (root(&mut parent, a), root(&mut parent, b));
+            let (ra, rb) = (root(&parent, a), root(&parent, b));
             if ra != rb {
                 parent.insert(ra.max(rb), ra.min(rb));
             }
@@ -160,7 +160,7 @@ fn topology(m: &Mesh) -> (i64, usize) {
     }
     let v = parent.len() as i64;
     let keys: Vec<u32> = parent.keys().copied().collect();
-    let pieces = keys.iter().filter(|&&k| root(&mut parent, k) == k).count();
+    let pieces = keys.iter().filter(|&&k| root(&parent, k) == k).count();
     (
         v - edges.len() as i64 + (m.indices.len() / 3) as i64,
         pieces,
@@ -218,7 +218,7 @@ fn winding(m: &Mesh, x: DVec3) -> f64 {
         let (la, lb, lc) = (a.length(), b.length(), c.length());
         let num = a.dot(b.cross(c));
         let den = la * lb * lc + a.dot(b) * lc + b.dot(c) * la + c.dot(a) * lb;
-        total += 2.0 * num.atan2(den);
+        total += 2.0 * alice_det_math::atan2_64(num, den);
     }
     total / (4.0 * std::f64::consts::PI)
 }
@@ -323,7 +323,7 @@ impl Limb {
             (x - (a + ab * u)).length() - r
         };
         let j = DVec3::new(0.0, self.l[0], 0.0);
-        let (s, c) = self.bend.sin_cos();
+        let (s, c) = alice_det_math::sin_cos64(self.bend);
         let a = cap(DVec3::ZERO, j, self.r[0]);
         let b = cap(j, j + DVec3::new(0.0, c, s) * self.l[1], self.r[1]);
         let hh = (self.k - (a - b).abs()).max(0.0) / self.k;
@@ -563,7 +563,8 @@ fn asymptotic_decider_gives_the_saddles_connectivity() {
 fn degenerate_inputs_give_an_empty_mesh() {
     let sphere = |p: Vec3| p.length() - 0.5;
     let (lo, hi) = (Vec3::splat(-1.0), Vec3::splat(1.0));
-    let cases: [(&str, usize, Vec3, &(dyn Fn(Vec3) -> f32 + Sync)); 6] = [
+    type Case<'a> = (&'a str, usize, Vec3, &'a (dyn Fn(Vec3) -> f32 + Sync));
+    let cases: [Case; 6] = [
         ("resolution 0", 0, hi, &sphere),
         ("resolution 1", 1, hi, &sphere),
         ("outside everywhere", 8, hi, &|_| 1.0),
