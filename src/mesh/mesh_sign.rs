@@ -65,10 +65,21 @@ pub enum MeshSignMode {
     NearestFaceNormal,
     /// Sign taken from a volumetric flood fill seeded outside the bounding box.
     ///
-    /// Independent of winding, of whether the surface is closed, and of how many
-    /// connected components it has. See the module docs for the resolution
-    /// caveat.
+    /// For watertight meshes: independent of winding and of how many closed
+    /// components there are, but a hole, a slit or a gap wider than about a cell
+    /// lets the fill in, and the whole inside then reads as outside. See the
+    /// module docs for the resolution caveat; use [`Self::WindingNumber`] for a
+    /// mesh that is not watertight.
     ExteriorFloodFill,
+    /// Sign taken from the generalized winding number ([`crate::mesh::winding`]):
+    /// inside where `w ≥ ½`.
+    ///
+    /// Tolerates holes, slits, fold gaps and parts that touch, but needs a
+    /// consistently wound mesh: [`crate::mesh::MeshSdf::try_new`] refuses one
+    /// with an inconsistently wound edge
+    /// ([`crate::mesh::winding::WindingReport::inconsistent_edges`]). Each
+    /// evaluation sums every triangle (O(triangles) per point).
+    WindingNumber,
 }
 
 /// Voxelised "is this point outside the mesh" classifier.
