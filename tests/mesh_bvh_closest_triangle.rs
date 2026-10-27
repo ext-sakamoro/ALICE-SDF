@@ -235,6 +235,31 @@ fn a_tie_in_the_second_subtree_still_wins() {
     );
 }
 
+/// A tie whose box distance rounds above the tied distance: triangle 1 is the
+/// mirror image of triangle 0 across x = 0.86330026, and both are nearest at
+/// their vertex v2. The left box's computed distance comes out a few ulp above
+/// the tied distance, so a walk that prunes on the bare box distance answers
+/// triangle 1 (found by a random search over mirrored pairs).
+#[test]
+fn a_rounded_box_distance_does_not_lose_a_tie() {
+    let v = [
+        Vec3::new(2.753103, 1.4901774, 1.360981),
+        Vec3::new(2.6968179, 1.7402129, 1.6204355),
+        Vec3::new(2.603341, 1.0192674, 1.0668589),
+        Vec3::new(-1.0265025, 1.4901774, 1.360981),
+        Vec3::new(-0.97021735, 1.7402129, 1.6204355),
+        Vec3::new(-0.8767406, 1.0192674, 1.0668589),
+    ];
+    let bvh = MeshBvh::build(&v, &[0, 1, 2, 3, 4, 5], 1);
+    let q = Vec3::new(0.86330026, 0.95373714, 0.4978857);
+    // both triangles answer their v2 at the same distance (the mirror is exact)
+    assert_eq!(
+        (q - bvh.triangles[0].closest_point(q)).length_squared(),
+        (q - bvh.triangles[1].closest_point(q)).length_squared()
+    );
+    check(&bvh, q, 0, Vec3::Z, v[2]);
+}
+
 #[test]
 fn empty_mesh_and_non_finite_query_answer_none() {
     let empty = MeshBvh::build(&[], &[], 4);
