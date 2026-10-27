@@ -31,8 +31,7 @@ fn hash3(i: Vec3, seed: u32) -> f32 {
 }
 
 /// The lattice-corner hash as three floats (for the texture module's SIMD
-/// lanes); same law as the private `hash3`.
-#[cfg(feature = "texture-fit")]
+/// lanes and the periodic noise of `surface`); same law as the private `hash3`.
 #[inline(always)]
 pub fn hash3_xyz(x: f32, y: f32, z: f32, seed: u32) -> f32 {
     hash3(Vec3::new(x, y, z), seed)

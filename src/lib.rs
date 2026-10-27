@@ -149,6 +149,7 @@ pub mod provenance;
 mod raw_minmax;
 pub mod raycast;
 pub mod soa;
+pub mod surface;
 pub mod tight_aabb;
 pub mod transforms;
 pub mod types;
