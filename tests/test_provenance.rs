@@ -3228,13 +3228,8 @@ fn codec_volume_stream_checks_the_identifier() {
         Err(refused.clone())
     );
     assert_eq!(try_decode_sdf_volume(&prev).map(|_| ()), Err(refused));
-    assert_eq!(
-        provenance::from_bytes(&prev)
-            .unwrap()
-            .judge(&Provenance::sdf(), &[EARLIER])
-            .unwrap(),
-        StoredSemantics::VerifiedPrevious(earlier)
-    );
+    // the stream is not a form provenance::from_bytes reads; the mapping of a listed earlier
+    // identifier is sdf_load_verdict's, tested in the crate
 
     let other = encode_sdf_volume_with_provenance(&volume, &config, &caller_id());
     let mismatch = DecodeError::SemanticsMismatch {
