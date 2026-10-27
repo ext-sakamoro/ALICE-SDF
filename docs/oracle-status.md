@@ -6,11 +6,11 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 997 |
+| 🟢 Not ignored | 998 |
 | 🔴 Red by design | 0 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **1001** |
+| **Total** | **1002** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -25,7 +25,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (997)
+## 🟢 Not ignored (998)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -64,6 +64,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_mc_shared_vertex_oracle.rs` | 9 |
 | `test_mesh_fidelity.rs` | 9 |
 | `test_mesh_query_oracle.rs` | 9 |
+| `test_mesh_winding.rs` | 9 |
 | `test_new_transforms.rs` | 9 |
 | `test_physics_bridge_determinism.rs` | 9 |
 | `test_relaxed_tracing.rs` | 9 |
@@ -73,7 +74,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_g8_tree_text.rs` | 8 |
 | `test_glsl_export_oracle.rs` | 8 |
 | `test_mesh_reorder_oracle.rs` | 8 |
-| `test_mesh_winding.rs` | 8 |
 | `test_node_backend_matrix.rs` | 8 |
 | `test_npr_analytic.rs` | 8 |
 | `test_point_transform_oracle.rs` | 8 |

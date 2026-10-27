@@ -261,6 +261,40 @@ fn interpenetrating_solids_read_two_in_the_overlap_and_stay_inside() {
     assert!(face.eval(Vec3::new(0.4, 0.0, 0.0)) > 0.0);
 }
 
+/// A degenerate triangle (a repeated index) has no edges in the report: counting them would
+/// make an edge it shares with a real triangle look non-manifold or inconsistently wound, and
+/// `try_new` would refuse a valid mesh
+#[test]
+fn degenerate_triangles_do_not_add_edges_to_the_report() {
+    let r = winding_report(&[0, 1, 2, 0, 1, 1]);
+    assert_eq!(
+        (
+            r.degenerate_triangles,
+            r.boundary_edges,
+            r.inconsistent_edges,
+            r.non_manifold_edges
+        ),
+        (1, 3, 0, 0),
+        "{r:?}"
+    );
+    // a closed sphere with degenerate triangles on existing edges, in both directions
+    let (v, mut idx) = uv_sphere(12, 24, |_, _| true);
+    let (a, b) = (idx[3 * 40], idx[3 * 40 + 1]);
+    idx.extend([a, b, b, b, a, a, a, a, a]);
+    let r = winding_report(&idx);
+    assert_eq!(
+        (
+            r.degenerate_triangles,
+            r.boundary_edges,
+            r.inconsistent_edges,
+            r.non_manifold_edges
+        ),
+        (3, 0, 0, 0),
+        "{r:?}"
+    );
+    MeshSdf::try_new(&v, &idx, &winding_config()).unwrap();
+}
+
 #[test]
 fn a_flipped_triangle_is_detected_and_refused() {
     let (v, mut idx) = uv_sphere(12, 24, |_, _| true);
