@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1328 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1330 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1070 |
-| | **total** | **2407** |
+| | **total** | **2409** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1328)
+## L1 — example-only (1330)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -140,7 +140,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/llm_schema.rs`: `schema_summary`, `validate_sdf_json`
 - `src/material.rs`: `Material::dielectric`, `Material::emissive`, `Material::glass`, `Material::metal`, `Material::new`, `Material::to_particle`, `Material::with_albedo_map`, `Material::with_anisotropy`, `Material::with_ao_map`, `Material::with_clearcoat`, `Material::with_color`, `Material::with_emission`, `Material::with_emissive_map`, `Material::with_metallic`, `Material::with_metallic_roughness_map`, `Material::with_normal_map`, `Material::with_roughness`, `Material::with_sheen`, `Material::with_subsurface`, `Material::with_transmission`, `Material::with_volume`, `MaterialLibrary::add`, `MaterialLibrary::default_material`, `MaterialLibrary::find_by_name`, `MaterialLibrary::is_empty`, `MaterialLibrary::new`, `ParticleMaterial`, `ParticleMaterial::from_material`, `ParticleMaterial::glow`, `ParticleMaterial::solid`, `StandardMaterials`, `StandardMaterials::aluminum`, `StandardMaterials::chrome`, `StandardMaterials::concrete`, `StandardMaterials::copper`, `StandardMaterials::diamond`, `StandardMaterials::glass`, `StandardMaterials::gold`, `StandardMaterials::marble`, `StandardMaterials::plastic_red`, `StandardMaterials::plastic_white`, `StandardMaterials::rubber`, `StandardMaterials::skin`, `StandardMaterials::velvet`, `StandardMaterials::water`, `StandardMaterials::wet_asphalt`, `TextureSlot::new`, `TextureSlot::with_tiling`, `TextureSlot::with_uv_channel`, `material_lerp`
 - `src/measure.rs`: `AreaEstimate`, `CenterOfMass`, `TensionEstimate`, `TensionEstimate::tears`, `TensionEstimate::tension`, `VolumeEstimate`, `estimate_center_of_mass`, `estimate_surface_area`, `estimate_volume`, `measure_tension`
-- `src/mesh/bvh.rs`: `BvhNode`, `BvhNode::aabb`, `BvhTriangle`, `BvhTriangle::closest_point`, `BvhTriangle::new`, `BvhTriangle::signed_distance`, `BvhTriangle::unsigned_distance`, `MeshBvh`, `MeshBvh::bounds`, `MeshBvh::build`, `MeshBvh::closest_point`, `MeshBvh::signed_distance`, `MeshBvh::signed_distance_batch`, `MeshBvh::triangle_count`, `MeshBvh::unsigned_distance`, `MeshBvh::unsigned_distance_batch`
+- `src/mesh/bvh.rs`: `BvhNode`, `BvhNode::aabb`, `BvhTriangle`, `BvhTriangle::closest_point`, `BvhTriangle::closest_point_barycentric`, `BvhTriangle::new`, `BvhTriangle::signed_distance`, `BvhTriangle::unsigned_distance`, `MeshBvh`, `MeshBvh::bounds`, `MeshBvh::build`, `MeshBvh::closest_point`, `MeshBvh::closest_triangle`, `MeshBvh::signed_distance`, `MeshBvh::signed_distance_batch`, `MeshBvh::triangle_count`, `MeshBvh::unsigned_distance`, `MeshBvh::unsigned_distance_batch`
 - `src/mesh/collision.rs`: `BoundingSphere`, `BoundingSphere::contains`, `CollisionAabb`, `CollisionAabb::center`, `CollisionAabb::contains`, `CollisionAabb::half_extents`, `CollisionAabb::volume`, `CollisionMesh`, `ConvexDecomposition`, `ConvexDecomposition::total_triangles`, `ConvexDecomposition::total_vertices`, `ConvexHull`, `VhacdConfig`, `VhacdConfig::fast`, `VhacdConfig::high_quality`, `compute_aabb`, `compute_bounding_sphere`, `compute_convex_hull`, `convex_decomposition`, `convex_hull_from_points`, `simplify_collision`
 - `src/mesh/decimate.rs`: `DecimateConfig::aggressive`, `DecimateConfig::conservative`
 - `src/mesh/dual_contouring.rs`: `DualContouringConfig::aaa`, `dual_contouring_compiled`
