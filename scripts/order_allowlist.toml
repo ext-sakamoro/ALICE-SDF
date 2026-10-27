@@ -109,8 +109,9 @@
     "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
     "d31830b757bd9edc6c0b954c2afbb630e0530f077e5ceedc26a9ece07104d7b0", # .into_par_iter()
 ], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
-"src/mesh/mesh_to_sdf.rs::parallel" = { count = 2, lines = [
+"src/mesh/mesh_to_sdf.rs::parallel" = { count = 3, lines = [
     "bbef5897b670253dbae5f0572a5fbcd6a96df7a626792cd336705a6031f28990", # use rayon::prelude::*;
+    "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
     "0f38d06567533df0f87d70197380733dea9a244cd493458362fa1e96bd6a2cdd", # .par_iter()
 ], reason = "each item is computed on its own and an indexed parallel map collects the results in input order; nothing is combined across items" }
 "src/mesh/nanite.rs::parallel" = { count = 4, lines = [
