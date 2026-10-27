@@ -33,9 +33,9 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  handshake: an_asdf_file_from_6_1_0_is_refused_by_default_and_read_unverified
 #      6  handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified
 #      2  handshake: an_i_packet_from_6_1_0_is_refused_by_default_and_read_unverified
-#      2  handshake: an_earlier_published_identifier_reads_as_verified_previous
+#      2  handshake: an_earlier_published_identifier_is_refused_and_judged_previous_when_listed
 #      1  handshake: stamped_writers_keep_both_identifiers_in_their_slots
-#      1  handshake: check_reads_this_previous_and_unknown_identifiers
+#      1  handshake: check_reads_this_identifier_and_refuses_the_earlier_ones
 #      4  local: returns the stored identifier itself for the caller to compare (check, check_sdf and check_producer compare them); no value computed under an arithmetic is returned
 #      1  local: computes the path of the .semantics sidecar from a path
 #     12  local: formats or wraps an identifier the caller holds for a writer to store
@@ -148,8 +148,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::asp_bridge::decode_sdf_i_packet" = "handshake: an_i_packet_from_6_1_0_is_refused_by_default_and_read_unverified"
 
 # 2 handshake
-"fn::provenance::check" = "handshake: an_earlier_published_identifier_reads_as_verified_previous"
-"fn::provenance::check_sdf" = "handshake: an_earlier_published_identifier_reads_as_verified_previous"
+"fn::provenance::check" = "handshake: an_earlier_published_identifier_is_refused_and_judged_previous_when_listed"
+"fn::provenance::check_sdf" = "handshake: an_earlier_published_identifier_is_refused_and_judged_previous_when_listed"
 
 # 1 handshake
 "fn::Stored::judge" = "handshake: a_file_written_under_another_det_math_is_refused_naming_both_and_the_form"
@@ -158,7 +158,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::provenance::check_producer" = "handshake: stamped_writers_keep_both_identifiers_in_their_slots"
 
 # 1 handshake
-"fn::semantics::check_sdf_semantics" = "handshake: check_reads_this_previous_and_unknown_identifiers"
+"fn::semantics::check_sdf_semantics" = "handshake: check_reads_this_identifier_and_refuses_the_earlier_ones"
 
 # 4 local
 "fn::provenance::from_bytes" = "local: returns the stored identifier itself for the caller to compare (check, check_sdf and check_producer compare them); no value computed under an arithmetic is returned"
