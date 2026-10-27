@@ -166,7 +166,10 @@ impl MeshSdf {
     /// [`MeshSignMode::ExteriorFloodFill`] — a degenerate extent or a
     /// `sign_flood_fill_resolution` over the cell budget, or — for
     /// [`MeshSignMode::WindingNumber`] — an inconsistently wound edge
-    /// ([`crate::mesh::winding::winding_report`] counts them).
+    /// ([`crate::mesh::winding::winding_report`] counts them), a closed
+    /// component wound inward with no shell around it, or one whose
+    /// orientation is undetermined
+    /// ([`crate::mesh::winding::orientation_report`] counts them).
     pub fn try_new(
         vertices: &[Vec3],
         indices: &[u32],
@@ -189,6 +192,19 @@ impl MeshSdf {
             return Err(MeshInputError {
                 reason: "the winding-number sign needs a consistently wound mesh: an edge is run the same way by two triangles (mesh::winding::winding_report counts them)",
             });
+        }
+        if config.sign_mode == MeshSignMode::WindingNumber {
+            let o = crate::mesh::winding::orientation_report(vertices, indices);
+            if o.inward_components > 0 {
+                return Err(MeshInputError {
+                    reason: "the winding-number sign needs outward closed components: a closed component is wound inward with no shell around it, so the winding number is -1 inside it (mesh::winding::orientation_report counts them)",
+                });
+            }
+            if o.undetermined_components > 0 {
+                return Err(MeshInputError {
+                    reason: "the winding-number sign could not decide the orientation of a closed component: no volume, or no sample away from the other shells (mesh::winding::orientation_report counts them)",
+                });
+            }
         }
 
         let exterior = match config.sign_mode {
