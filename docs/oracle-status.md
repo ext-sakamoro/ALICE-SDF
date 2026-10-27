@@ -6,21 +6,20 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 995 |
-| 🔴 Red by design | 2 |
+| 🟢 Not ignored | 997 |
+| 🔴 Red by design | 1 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **1001** |
+| **Total** | **1002** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🔴 Red by design (2)
+## 🔴 Red by design (1)
 
 Oracles kept red on purpose: the implementation is not there yet, and a companion test pins
 today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected value is never loosened.
 
-- `shapes_near_the_max_bound_are_closed` (test_dual_contouring_manifold.rs) — known defect: DC-LAST-LAYER-001: the quad loop in dual_contouring_impl skips the grid edges of the last layer …
 - `torus_on_a_grid_plane_has_no_crossings` (test_dual_contouring_manifold.rs) — known defect: DC-TORUS-CROSS-001: torus(1.0, 0.5) at resolution 32 over ±1.6 has 1 crossing triangle pair in b…
 
 ## ⏱ Gated (4)
@@ -33,7 +32,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (995)
+## 🟢 Not ignored (997)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -78,6 +77,7 @@ Per-file counts (the test names are in `tests/`):
 | `meshopt_reference_vectors.rs` | 8 |
 | `test_batch_operations.rs` | 8 |
 | `test_destruction_api_oracle.rs` | 8 |
+| `test_dual_contouring_manifold.rs` | 8 |
 | `test_g8_tree_text.rs` | 8 |
 | `test_glsl_export_oracle.rs` | 8 |
 | `test_mesh_reorder_oracle.rs` | 8 |
@@ -101,7 +101,6 @@ Per-file counts (the test names are in `tests/`):
 | `sdf_semantics_id.rs` | 6 |
 | `test_autodiff_oracle.rs` | 6 |
 | `test_diff_oracle.rs` | 6 |
-| `test_dual_contouring_manifold.rs` | 6 |
 | `test_hlsl_export_oracle.rs` | 6 |
 | `test_jit_dynamic_oracle.rs` | 6 |
 | `test_live_sdf_closed_loop.rs` | 6 |

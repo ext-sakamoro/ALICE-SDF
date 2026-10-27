@@ -119,6 +119,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - CI: 着地の可否を決める `oracle-status.yml` / `wiring-status.yml` / `security-audit.yml` を `ci/**` でも走らせる (main だけだったので、ci/ の commit は着地の前にこれらを通っていなかった) on.push の paths を外して changes job と gate job に移し、oracle-status / wiring-status には workflow_dispatch を足した security-audit の coverage は continue-on-error を job から step に移し、失敗を warning の注釈で出す self-hosted の runner で走る `unity-sdf-universe.yml` / `unity-vrchat.yml` / `unreal.yml` も `ci/**` で走らせるが、この repository への持ち主自身の送信だけに限る (changes job の判定と各 job の `if:` が repository / actor / triggering actor を要求する、workflow_dispatch は置かない、concurrency は workflow と ref ごとで走行中の run を打ち切らない) `scripts/self_hosted_guard.py` (試験 `scripts/test_self_hosted_guard.py`) が self-hosted の全 job にこの条件があることを CI と preflight で確かめる `scripts/workflow_concurrency.py` の self-hosted の例外は、changed_paths.py の changes job と gate job が hosted runner でも認める
 - CI: `unity-vrchat.yml` / `unity-sdf-universe.yml` の changes job と gate job の shell を bash にした (workflow の既定の shell が pwsh で、changes job の判定の step が動かなかった)
 - CI: `semver-checks.yml` を手動起動 (workflow_dispatch) だけにした changes job と gate を外し、`.github/paths/semver-checks.txt` を消した preflight の full 実行は同じ command を走らせる
+- `mesh::dual_contouring` (全 topology): max 側の最後の格子の層の辺 (`x = res - 1` など、4 つの cell がそろう辺) の quad を作っていなかったので、max の境界から 1 cell 以内に来る形に穴が開いていた (半径 0.75 の球を (0.2, 0.2, 0.2) に置き ±1 / 解像度 8 で開いた辺 48) min 側と同じく作るようにした (DC-LAST-LAYER-001)
 
 ## [7.0.0] - 2026-10-17
 

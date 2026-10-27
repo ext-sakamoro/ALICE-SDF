@@ -271,7 +271,11 @@ pub enum DcTopology {
     /// edges; a quad takes from each of its four cells the vertex owning its
     /// edge. A sheet narrower than a cell that passes a face twice in both of
     /// its cells (a tube thinner than the grid) still joins one vertex pair
-    /// twice: the grid does not resolve it.
+    /// twice: the grid does not resolve it. Loops are grouped by the faces
+    /// only: where the trilinear interpolant joins two loops of one cell
+    /// through its interior (a tunnel), they stay two sheets, so the mesh is
+    /// manifold but its topology inside that cell can differ from the
+    /// trilinear surface's.
     Manifold,
 }
 
@@ -561,13 +565,17 @@ fn dual_contouring_impl(
 
     // X-edges: edge along X between grid vertices (x, y, z) and (x+1, y, z)
     // Shared by cells: (x, y-1, z-1), (x, y, z-1), (x, y-1, z), (x, y, z)
+    // The loops run x, y, z over 0..res, so an edge's own axis reaches the last
+    // grid line (x + 1 = res) and the other two stay inside (1..res): every edge
+    // with four cells. The edges of the last layer (x = res - 1 and the like) used
+    // to be skipped, and a surface within a cell of the max bound had holes.
     for z in 0..res {
         for y in 0..res {
             for x in 0..res {
                 let d0 = values[idx(x, y, z)];
 
                 // X-edge: (x,y,z) → (x+1,y,z), shared by 4 cells if y>0 and z>0
-                if x < res - 1 && y > 0 && z > 0 {
+                if y > 0 && z > 0 {
                     let d1 = values[idx(x + 1, y, z)];
                     if (d0 < 0.0) != (d1 < 0.0) {
                         let v0 = vertex_of(cell_idx(x, y - 1, z - 1), 5);
@@ -586,7 +594,7 @@ fn dual_contouring_impl(
                 }
 
                 // Y-edge: (x,y,z) → (x,y+1,z), shared by 4 cells if x>0 and z>0
-                if y < res - 1 && x > 0 && z > 0 {
+                if x > 0 && z > 0 {
                     let d1 = values[idx(x, y + 1, z)];
                     if (d0 < 0.0) != (d1 < 0.0) {
                         let v0 = vertex_of(cell_idx(x - 1, y, z - 1), 7);
@@ -605,7 +613,7 @@ fn dual_contouring_impl(
                 }
 
                 // Z-edge: (x,y,z) → (x,y,z+1), shared by 4 cells if x>0 and y>0
-                if z < res - 1 && x > 0 && y > 0 {
+                if x > 0 && y > 0 {
                     let d1 = values[idx(x, y, z + 1)];
                     if (d0 < 0.0) != (d1 < 0.0) {
                         let v0 = vertex_of(cell_idx(x - 1, y - 1, z), 11);

@@ -591,23 +591,88 @@ fn degenerate_inputs_give_an_empty_mesh() {
     }
 }
 
-/// Known defect, in both topologies: the quads of the grid edges in the last
-/// layer before the max bound are never emitted (`x < res - 1` and the like
-/// in the quad loop, although all four cells of such an edge exist), so a
-/// shape within a cell of the max bound gets a hole there. A sphere of
-/// radius 0.75 centred at 0.2 over [−1, 1] at resolution 8 (cell 0.25)
-/// reaches 0.95, inside the last cell layer on all three axes.
+/// A shape within a cell of the max bound is closed, as one within a cell of
+/// the min bound is: a sphere of radius 0.75 centred at (0.2, 0.2, 0.2) over
+/// [−1, 1] at resolution 8 (cell 0.25) reaches 0.95, inside the last cell layer
+/// on all three axes, and its mirror image at −0.2 reaches −0.95. Both are
+/// closed and manifold in both topologies, with the same vertex and triangle
+/// counts (the grid treats its two ends alike). Until the quad loop took the
+/// last layer's edges (DC-LAST-LAYER-001) the shape near the max bound had 48
+/// open edges.
 #[test]
-#[ignore = "known defect: DC-LAST-LAYER-001: the quad loop in dual_contouring_impl skips the grid edges of the last layer before the max bound (x < res - 1 / y < res - 1 / z < res - 1), so a sphere of radius 0.75 at (0.2, 0.2, 0.2) over [-1, 1] at resolution 8 has open edges in both topologies"]
 fn shapes_near_the_max_bound_are_closed() {
     let cfg = DualContouringConfig {
         resolution: 8,
         ..Default::default()
     };
-    let f = |p: Vec3| (p - Vec3::splat(0.2)).length() - 0.75;
     for topo in [DcTopology::OneVertexPerCell, DcTopology::Manifold] {
-        let m = dual_contouring_field(&f, Vec3::splat(-1.0), Vec3::splat(1.0), &cfg, topo);
-        assert!(!m.indices.is_empty(), "{topo:?}: empty mesh");
-        assert_eq!(bad_edges(&m), (0, 0), "{topo:?}: non-manifold / open edges");
+        let mut counts = Vec::new();
+        for c in [0.2f32, -0.2] {
+            let f = move |p: Vec3| (p - Vec3::splat(c)).length() - 0.75;
+            let m = dual_contouring_field(&f, Vec3::splat(-1.0), Vec3::splat(1.0), &cfg, topo);
+            assert!(!m.indices.is_empty(), "{topo:?} centre {c}: empty mesh");
+            assert_eq!(
+                bad_edges(&m),
+                (0, 0),
+                "{topo:?} centre {c}: non-manifold / open edges"
+            );
+            assert_eq!(
+                topology(&m),
+                (2, 1),
+                "{topo:?} centre {c}: Euler characteristic / pieces"
+            );
+            counts.extend([(m.vertices.len(), m.indices.len())]);
+        }
+        assert_eq!(
+            counts[0], counts[1],
+            "{topo:?}: the two ends of the grid differ"
+        );
+    }
+}
+
+/// Non-finite field values (NaN, ±∞) in part of the grid: no panic, and the
+/// same output on a second run in both topologies. NaN < 0 is false, so a NaN
+/// corner counts as outside; −∞ is inside and +∞ outside.
+#[test]
+fn non_finite_corner_values_are_deterministic() {
+    let cfg = DualContouringConfig {
+        resolution: 12,
+        ..Default::default()
+    };
+    let fields: [(&str, &(dyn Fn(Vec3) -> f32 + Sync)); 3] = [
+        ("NaN for x > 0.3", &|p: Vec3| {
+            if p.x > 0.3 {
+                f32::NAN
+            } else {
+                p.length() - 0.7
+            }
+        }),
+        ("-inf for y < -0.4", &|p: Vec3| {
+            if p.y < -0.4 {
+                f32::NEG_INFINITY
+            } else {
+                p.length() - 0.7
+            }
+        }),
+        ("+inf for z > 0.5", &|p: Vec3| {
+            if p.z > 0.5 {
+                f32::INFINITY
+            } else {
+                p.length() - 0.7
+            }
+        }),
+    ];
+    for topo in [DcTopology::OneVertexPerCell, DcTopology::Manifold] {
+        for (name, f) in fields {
+            let run = || {
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    dual_contouring_field(f, Vec3::splat(-1.0), Vec3::splat(1.0), &cfg, topo)
+                }))
+                .unwrap_or_else(|_| panic!("{topo:?} {name}: panicked"))
+            };
+            let (a, b) = (run(), run());
+            assert!(!a.indices.is_empty(), "{topo:?} {name}: empty mesh");
+            assert_eq!(digest(&a), digest(&b), "{topo:?} {name}: not deterministic");
+        }
     }
 }
