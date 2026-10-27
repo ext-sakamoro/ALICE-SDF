@@ -145,9 +145,19 @@ pub const PREVIOUS_SDF_SEMANTICS_IDS: &[[u8; 32]] = &[];
 /// [`SDF_SEMANTICS_ID`] is `Verified`, one of [`PREVIOUS_SDF_SEMANTICS_IDS`] is
 /// `VerifiedPrevious`, anything else `Mismatch`.
 pub fn check_sdf_semantics(stored: &[u8; 32]) -> alice_det_math::SemanticsCheck {
+    check_sdf_semantics_against(stored, PREVIOUS_SDF_SEMANTICS_IDS)
+}
+
+/// [`check_sdf_semantics`] against the earlier identifiers `previous` instead of
+/// [`PREVIOUS_SDF_SEMANTICS_IDS`]: the one copy of the rule, which the crate's loaders map, so the
+/// `VerifiedPrevious` branch stays tested while the list is empty
+pub(crate) fn check_sdf_semantics_against(
+    stored: &[u8; 32],
+    previous: &[[u8; 32]],
+) -> alice_det_math::SemanticsCheck {
     if *stored == SDF_SEMANTICS_ID {
         alice_det_math::SemanticsCheck::Verified
-    } else if PREVIOUS_SDF_SEMANTICS_IDS.contains(stored) {
+    } else if previous.contains(stored) {
         alice_det_math::SemanticsCheck::VerifiedPrevious(*stored)
     } else {
         alice_det_math::SemanticsCheck::Mismatch

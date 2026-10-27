@@ -767,7 +767,7 @@ fn a_version_1_payload_is_refused() {
 }
 
 #[test]
-fn a_payload_under_a_previous_identifier_restores_bit_for_bit() {
+fn a_payload_under_an_earlier_sdf_identifier_is_refused_and_a_listed_one_restores() {
     let (a, payload) = stepped_payload();
     // the identifiers earlier releases stamped, which this build no longer reproduces (0.5.2 at
     // 39507d1b, 0.5.1 by 7.0.0, the det-math identifiers 6.0 / 6.1 exposed): refused

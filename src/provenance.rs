@@ -1297,15 +1297,17 @@ fn sdf_load_verdict_against(
     match stored {
         None if allow_unpinned => Ok(StoredSemantics::Unpinned),
         None => Err(crate::io::IoError::Unpinned { format }),
-        Some(id) if id == crate::SDF_SEMANTICS_ID => Ok(StoredSemantics::Current),
-        Some(id) if previous.contains(&id) => {
-            Ok(StoredSemantics::VerifiedPrevious(Provenance::new(id)))
-        }
-        Some(id) => Err(crate::io::IoError::SemanticsMismatch {
-            format,
-            stored: Provenance::new(id),
-            expected: Provenance::sdf(),
-        }),
+        Some(id) => match crate::semantics::check_sdf_semantics_against(&id, previous) {
+            alice_det_math::SemanticsCheck::Verified => Ok(StoredSemantics::Current),
+            alice_det_math::SemanticsCheck::VerifiedPrevious(p) => {
+                Ok(StoredSemantics::VerifiedPrevious(Provenance::new(p)))
+            }
+            _ => Err(crate::io::IoError::SemanticsMismatch {
+                format,
+                stored: Provenance::new(id),
+                expected: Provenance::sdf(),
+            }),
+        },
     }
 }
 
@@ -2134,6 +2136,7 @@ mod tests {
             (other, &[earlier][..], None),
         ] {
             let got = sdf_load_verdict_against(Some(id), "T", false, previous);
+            let read = got.is_ok();
             match want {
                 Some(w) => assert_eq!(got.unwrap(), w),
                 None => assert!(matches!(
@@ -2142,11 +2145,11 @@ mod tests {
                         if stored == Provenance::new(id) && expected == Provenance::sdf()
                 )),
             }
-            // the production verdict is the one against G6's list
+            // the injected rule is the public one: the same verdict as check_sdf_semantics
+            // against the same list (check_sdf_semantics_against is the one copy of the rule)
             assert_eq!(
-                sdf_load_verdict(Some(id), "T", false).ok(),
-                sdf_load_verdict_against(Some(id), "T", false, crate::PREVIOUS_SDF_SEMANTICS_IDS)
-                    .ok()
+                read,
+                crate::semantics::check_sdf_semantics_against(&id, previous).is_reproducible()
             );
         }
 

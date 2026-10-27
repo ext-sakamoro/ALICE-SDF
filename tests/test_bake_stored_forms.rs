@@ -114,6 +114,27 @@ fn bake_writers_store_the_identifier_and_readers_check_it() {
     }
 }
 
+/// The bake's readers judge by `check_sdf_semantics` and keep no rule of their own: on this
+/// build's identifier, an identifier an earlier release stamped, an all-zero one and an unknown
+/// one, each reader is Ok exactly where `check_sdf_semantics` is reproducible
+#[test]
+fn bake_readers_agree_with_check_sdf_semantics() {
+    let (c, m) = (compiled(), manifest());
+    let earlier: [u8; 32] =
+        core::array::from_fn(|i| u8::from_str_radix(&EARLIER_HEX[2 * i..2 * i + 2], 16).unwrap());
+    let mut compared = 0;
+    for id in [SDF_SEMANTICS_ID, earlier, [0u8; 32], [0xAB; 32]] {
+        let want = alice_sdf::check_sdf_semantics(&id).is_reproducible();
+        for (key, name, write) in WRITERS {
+            let path = temp(&format!("agree_{name}"));
+            write(&path, &c, &m, &Provenance::new(id)).unwrap();
+            assert_eq!(status(name, &path).is_ok(), want, "{key}");
+            compared += 1;
+        }
+    }
+    assert_eq!(compared, 4 * WRITERS.len());
+}
+
 #[test]
 fn bake_forms_without_the_identifier_or_cut_are_refused() {
     let c = compiled();
