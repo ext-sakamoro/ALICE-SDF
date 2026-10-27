@@ -17,7 +17,7 @@
 
 use std::f64::consts::PI;
 
-use alice_det_math::{cos64, sin64, sqrt64};
+use alice_det_math::{cos64, max64, min64, sin64, sqrt64};
 use glam::Vec3;
 
 use crate::modifiers::{surface_roughness_hash3, surface_roughness_pcg};
@@ -170,7 +170,7 @@ pub fn grid_cell(
     let wrap_shift = (rows as f64 * shift).round() as i64;
     let c = c + r.div_euclid(rows) * wrap_shift;
     let id = [c.rem_euclid(cols), r.rem_euclid(rows)];
-    let edge = fu.min(pu - fu).min(fv).min(pv - fv);
+    let edge = min64(min64(min64(fu, pu - fu), fv), pv - fv);
     Cell {
         id,
         edge,
@@ -243,7 +243,7 @@ pub fn voronoi_cell(
         }
         let mid = [f64::midpoint(a[0], b[0]), f64::midpoint(a[1], b[1])];
         let dist = ((mid[0] - u) * d[0] + (mid[1] - v) * d[1]) / len;
-        edge = edge.min(dist);
+        edge = min64(edge, dist);
     }
     Cell {
         id,
@@ -302,13 +302,13 @@ fn shade(s: &SurfaceSample, n: [f64; 3], l: [f64; 3], irradiance: f64) -> [f64; 
         return [0.0; 3];
     }
     let view = [0.0, 0.0, 1.0];
-    let ndv = n[2].max(1e-6);
+    let ndv = max64(n[2], 1e-6);
     let hv = [l[0] + view[0], l[1] + view[1], l[2] + view[2]];
     let hl = sqrt64(dot(hv, hv));
     let hn = [hv[0] / hl, hv[1] / hl, hv[2] / hl];
-    let ndh = dot(n, hn).max(0.0);
-    let vdh = dot(view, hn).max(0.0);
-    let alpha = (s.roughness * s.roughness).max(1e-4);
+    let ndh = max64(dot(n, hn), 0.0);
+    let vdh = max64(dot(view, hn), 0.0);
+    let alpha = max64(s.roughness * s.roughness, 1e-4);
     let a2 = alpha * alpha;
     let den = ndh * ndh * (a2 - 1.0) + 1.0;
     let d = a2 / (PI * den * den);
