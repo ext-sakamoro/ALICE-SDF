@@ -22,12 +22,12 @@
 //!
 //! Author: Moroya Sakamoto
 
-mod platform;
+pub(super) mod platform;
 
 use super::law_ops::{law_fmax, law_fmin};
 use crate::compiled::real::LawMinMax;
 use cranelift_codegen::ir::condcodes::FloatCC;
-use cranelift_codegen::ir::{types, AbiParam, FuncRef, InstBuilder, MemFlags, Value};
+use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags, SigRef, Value};
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_jit::{JITBuilder, JITModule};
@@ -57,73 +57,49 @@ extern "C" fn det_math_cos(x: f32) -> f32 {
     alice_det_math::cos(x)
 }
 
-const DET_SIN_SYMBOL: &str = "alice_sdf_jit_det_math_sin";
-const DET_COS_SYMBOL: &str = "alice_sdf_jit_det_math_cos";
-
 /// The scalar det-math `sin` / `cos` the emitted code calls for the far lanes
 /// (`|x| >= 2^13`, finite), where alice-det-math reduces the argument in
 /// double precision (`sin64` / `cos64`); see [`simd_sincos_det`]
+///
+/// The code calls [`det_math_sin`] / [`det_math_cos`] through their addresses
+/// (`call_indirect`), so no module needs a symbol for them: a caller's own
+/// `JITModule` handed to `JitCompiler` works as it is
 #[derive(Clone, Copy)]
-struct FarTrig {
-    sin: FuncRef,
-    cos: FuncRef,
+pub(super) struct FarTrig {
+    sig: SigRef,
+    ptr_type: types::Type,
 }
 
-/// A JIT builder that resolves the far-lane callouts to [`det_math_sin`] /
-/// [`det_math_cos`]
-fn jit_builder_with_far_trig(isa: cranelift_codegen::isa::OwnedTargetIsa) -> JITBuilder {
-    let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
-    builder.symbol(DET_SIN_SYMBOL, det_math_sin as *const u8);
-    builder.symbol(DET_COS_SYMBOL, det_math_cos as *const u8);
-    builder
-}
+impl FarTrig {
+    /// Imports the `extern "C" fn(f32) -> f32` signature into `func`
+    /// (`call_conv` and `ptr_type` of the module that compiles it)
+    pub(super) fn import(
+        func: &mut cranelift_codegen::ir::Function,
+        call_conv: cranelift_codegen::isa::CallConv,
+        ptr_type: types::Type,
+    ) -> Self {
+        let mut sig = cranelift_codegen::ir::Signature::new(call_conv);
+        sig.params.push(AbiParam::new(types::F32));
+        sig.returns.push(AbiParam::new(types::F32));
+        Self {
+            sig: func.import_signature(sig),
+            ptr_type,
+        }
+    }
 
-/// `f32 -> f32` in the module's calling convention
-fn f32_unary_signature(module: &JITModule) -> cranelift_codegen::ir::Signature {
-    let mut sig = module.make_signature();
-    sig.params.push(AbiParam::new(types::F32));
-    sig.returns.push(AbiParam::new(types::F32));
-    sig
-}
+    /// For a module: its calling convention and pointer type
+    pub(super) fn for_module(
+        module: &JITModule,
+        func: &mut cranelift_codegen::ir::Function,
+    ) -> Self {
+        let config = module.target_config();
+        Self::import(func, config.default_call_conv, config.pointer_type())
+    }
 
-/// Declares the far-lane callouts in `module` and imports them into `func`
-fn declare_far_trig(
-    module: &mut JITModule,
-    func: &mut cranelift_codegen::ir::Function,
-) -> Result<FarTrig, String> {
-    let sig = f32_unary_signature(module);
-    let sin_id = module
-        .declare_function(DET_SIN_SYMBOL, Linkage::Import, &sig)
-        .map_err(|e| e.to_string())?;
-    let cos_id = module
-        .declare_function(DET_COS_SYMBOL, Linkage::Import, &sig)
-        .map_err(|e| e.to_string())?;
-    Ok(FarTrig {
-        sin: module.declare_func_in_func(sin_id, func),
-        cos: module.declare_func_in_func(cos_id, func),
-    })
-}
-
-/// Imports placeholder callouts into a scratch function that is never
-/// compiled (the parameter layout of [`extract_simd_params`] does not depend on
-/// them)
-fn scratch_far_trig(func: &mut cranelift_codegen::ir::Function) -> FarTrig {
-    use cranelift_codegen::ir::{ExtFuncData, ExternalName, Signature, UserExternalName};
-    let mut sig = Signature::new(cranelift_codegen::isa::CallConv::SystemV);
-    sig.params.push(AbiParam::new(types::F32));
-    sig.returns.push(AbiParam::new(types::F32));
-    let sig = func.import_signature(sig);
-    let mut import = |index: u32| {
-        let name = func.declare_imported_user_function(UserExternalName::new(0, index));
-        func.import_function(ExtFuncData {
-            name: ExternalName::User(name),
-            signature: sig,
-            colocated: false,
-        })
-    };
-    FarTrig {
-        sin: import(0),
-        cos: import(1),
+    fn call(self, builder: &mut FunctionBuilder, f: extern "C" fn(f32) -> f32, x: Value) -> Value {
+        let addr = builder.ins().iconst(self.ptr_type, f as usize as i64);
+        let call = builder.ins().call_indirect(self.sig, addr, &[x]);
+        builder.inst_results(call)[0]
     }
 }
 
@@ -225,7 +201,7 @@ fn simd_select_neg(
 /// 2d01c63f) and its `simd::sin_cos` recomputes them with the scalar functions.
 /// When any lane is that far, the emitted code calls `alice_det_math::sin` /
 /// `cos` for each lane (`far`) and blends them in for those lanes only.
-fn simd_sincos_det(
+pub(super) fn simd_sincos_det(
     builder: &mut FunctionBuilder,
     angle: Value,
     vec_type: types::Type,
@@ -380,11 +356,9 @@ fn simd_sincos_det(
     let (mut law_s, mut law_c) = (sv, cv);
     for lane in 0..4u8 {
         let x = builder.ins().extractlane(angle, lane);
-        let call = builder.ins().call(far.sin, &[x]);
-        let s = builder.inst_results(call)[0];
+        let s = far.call(builder, det_math_sin, x);
         law_s = builder.ins().insertlane(law_s, s, lane);
-        let call = builder.ins().call(far.cos, &[x]);
-        let c = builder.inst_results(call)[0];
+        let c = far.call(builder, det_math_cos, x);
         law_c = builder.ins().insertlane(law_c, c, lane);
     }
     let far_s = blend(builder, big, law_s, sv);
@@ -654,7 +628,7 @@ impl JitSimdSdf {
             .finish(settings::Flags::new(flag_builder))
             .map_err(|e| e.to_string())?;
 
-        let builder = jit_builder_with_far_trig(isa);
+        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
         let mut module = JITModule::new(builder);
         let mut ctx = module.make_context();
         let mut func_ctx = FunctionBuilderContext::new();
@@ -672,7 +646,7 @@ impl JitSimdSdf {
                 &ctx.func.signature,
             )
             .map_err(|e| e.to_string())?;
-        let far = declare_far_trig(&mut module, &mut ctx.func)?;
+        let far = FarTrig::for_module(&module, &mut ctx.func);
 
         // Opcodes without a native SIMD codegen arm. Recorded during codegen and
         // surfaced as `Err` after the builder block: never a silent MAX distance.
@@ -2664,7 +2638,7 @@ impl JitSimdSdfDynamic {
             .finish(settings::Flags::new(flag_builder))
             .map_err(|e| e.to_string())?;
 
-        let builder = jit_builder_with_far_trig(isa);
+        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
         let mut module = JITModule::new(builder);
         let mut ctx = module.make_context();
         let mut func_ctx = FunctionBuilderContext::new();
@@ -2686,7 +2660,7 @@ impl JitSimdSdfDynamic {
 
         // Opcodes without a native SIMD codegen arm are recorded during codegen
         // and surfaced as `Err` below: never a silent MAX distance.
-        let far = declare_far_trig(&mut module, &mut ctx.func)?;
+        let far = FarTrig::for_module(&module, &mut ctx.func);
         let (initial_params, unsupported) =
             build_dynamic_simd_body(&mut ctx.func, &mut func_ctx, sdf, far);
 
@@ -2873,7 +2847,11 @@ pub fn extract_simd_params(sdf: &CompiledSdf) -> Vec<f32> {
         func.signature.params.push(AbiParam::new(ptr_type));
     }
     let mut func_ctx = FunctionBuilderContext::new();
-    let far = scratch_far_trig(&mut func);
+    let far = FarTrig::import(
+        &mut func,
+        cranelift_codegen::isa::CallConv::SystemV,
+        ptr_type,
+    );
     build_dynamic_simd_body(&mut func, &mut func_ctx, sdf, far).0
 }
 

@@ -8,6 +8,7 @@
 //! Author: Moroya Sakamoto
 
 use super::law_ops::{law_fmax, law_fmin};
+use super::simd::{simd_sincos_det, FarTrig};
 use crate::compiled::real::LawMinMax;
 use cranelift_codegen::ir::condcodes::FloatCC;
 use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags, UserFuncName, Value};
@@ -50,22 +51,26 @@ struct JitParamEmitter {
     params_ptr: Option<Value>,
     param_index: usize,
     params: Vec<f32>,
+    /// The far-lane `sin` / `cos` callouts of the shared det-math emitter
+    far: FarTrig,
 }
 
 impl JitParamEmitter {
-    const fn hardcoded() -> Self {
+    const fn hardcoded(far: FarTrig) -> Self {
         Self {
             params_ptr: None,
             param_index: 0,
             params: Vec::new(),
+            far,
         }
     }
 
-    const fn dynamic(params_ptr: Value) -> Self {
+    const fn dynamic(params_ptr: Value, far: FarTrig) -> Self {
         Self {
             params_ptr: Some(params_ptr),
             param_index: 0,
             params: Vec::new(),
+            far,
         }
     }
 
@@ -126,6 +131,7 @@ impl<'a> JitCompiler<'a> {
 
         self.ctx.func.signature = sig;
         self.ctx.func.name = UserFuncName::user(0, func_id.as_u32());
+        let far = FarTrig::for_module(self.module, &mut self.ctx.func);
 
         {
             let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.func_ctx);
@@ -138,7 +144,7 @@ impl<'a> JitCompiler<'a> {
             let y = builder.block_params(entry_block)[1];
             let z = builder.block_params(entry_block)[2];
 
-            let mut emitter = JitParamEmitter::hardcoded();
+            let mut emitter = JitParamEmitter::hardcoded(far);
             let result = compile_node(&mut builder, node, x, y, z, &mut emitter)?;
             builder.ins().return_(&[result]);
             builder.finalize();
@@ -171,9 +177,10 @@ impl<'a> JitCompiler<'a> {
 
         self.ctx.func.signature = sig;
         self.ctx.func.name = UserFuncName::user(0, func_id.as_u32());
+        let far = FarTrig::for_module(self.module, &mut self.ctx.func);
 
-        let params =
-            build_dynamic_body(&mut self.ctx.func, &mut self.func_ctx, node).map_err(|(e, _)| e)?;
+        let params = build_dynamic_body(&mut self.ctx.func, &mut self.func_ctx, node, far)
+            .map_err(|(e, _)| e)?;
 
         self.module
             .define_function(func_id, &mut self.ctx)
@@ -846,7 +853,7 @@ fn compile_node(
             let k = emitter.emit(builder, *strength);
             let angle = builder.ins().fmul(k, y);
 
-            let (cos_a, sin_a) = emit_sincos_approx(builder, angle);
+            let (cos_a, sin_a) = emit_sincos_det(builder, angle, emitter.far);
 
             let cos_x = builder.ins().fmul(cos_a, x);
             let sin_z = builder.ins().fmul(sin_a, z);
@@ -863,7 +870,7 @@ fn compile_node(
             let k = emitter.emit(builder, *curvature);
             let angle = builder.ins().fmul(k, x);
 
-            let (cos_a, sin_a) = emit_sincos_approx(builder, angle);
+            let (cos_a, sin_a) = emit_sincos_det(builder, angle, emitter.far);
 
             // modifier_bend law: x' = c*x - s*y, y' = s*x + c*y
             let cos_x = builder.ins().fmul(cos_a, x);
@@ -1400,78 +1407,18 @@ fn emit_quat_rotate(
     (rx, ry, rz)
 }
 
-/// Emit sin/cos with range reduction + degree-9/8 Taylor on [-π/2, π/2].
-///
-/// Max abs error ≈ 4e-6 (sin) / 3e-5 (cos). Before 1.9.2 this was an
-/// unreduced degree-5 series, which was >10% off for |x| > 2 (Twist / Bend /
-/// PolarRepeat with moderate strengths).
-fn emit_sincos_approx(builder: &mut FunctionBuilder, angle: Value) -> (Value, Value) {
-    let two_pi = builder.ins().f32const(std::f32::consts::TAU);
-    let inv_two_pi = builder.ins().f32const(1.0 / std::f32::consts::TAU);
-    let pi = builder.ins().f32const(std::f32::consts::PI);
-    let neg_pi = builder.ins().f32const(-std::f32::consts::PI);
-    let half_pi = builder.ins().f32const(std::f32::consts::FRAC_PI_2);
-    let zero = builder.ins().f32const(0.0);
-    let one = builder.ins().f32const(1.0);
-    let neg_one = builder.ins().f32const(-1.0);
-
-    // x1 = x - 2π·round(x / 2π)  ∈ [-π, π]
-    // (`nearest` is fine here: a tie flips k by one, and sin / cos are
-    // 2π-periodic so the reduced polynomial input differs by a full period)
-    let k = builder.ins().fmul(angle, inv_two_pi);
-    let k = builder.ins().nearest(k);
-    let k2pi = builder.ins().fmul(k, two_pi);
-    let x1 = builder.ins().fsub(angle, k2pi);
-
-    // fold |x1| > π/2 onto [-π/2, π/2]: x2 = ±π - x1, cos flips sign
-    let ax = builder.ins().fabs(x1);
-    let big = builder.ins().fcmp(FloatCC::GreaterThan, ax, half_pi);
-    let pos = builder.ins().fcmp(FloatCC::GreaterThan, x1, zero);
-    let pi_signed = builder.ins().select(pos, pi, neg_pi);
-    let folded = builder.ins().fsub(pi_signed, x1);
-    let x2 = builder.ins().select(big, folded, x1);
-    let cos_sign = builder.ins().select(big, neg_one, one);
-
-    let c3 = builder.ins().f32const(1.0 / 6.0);
-    let c5 = builder.ins().f32const(1.0 / 120.0);
-    let c7 = builder.ins().f32const(1.0 / 5040.0);
-    let c9 = builder.ins().f32const(1.0 / 362_880.0);
-    let d2 = builder.ins().f32const(0.5);
-    let d4 = builder.ins().f32const(1.0 / 24.0);
-    let d6 = builder.ins().f32const(1.0 / 720.0);
-    let d8 = builder.ins().f32const(1.0 / 40_320.0);
-
-    let x2sq = builder.ins().fmul(x2, x2);
-    let x3 = builder.ins().fmul(x2sq, x2);
-    let x4 = builder.ins().fmul(x2sq, x2sq);
-    let x5 = builder.ins().fmul(x4, x2);
-    let x6 = builder.ins().fmul(x4, x2sq);
-    let x7 = builder.ins().fmul(x6, x2);
-    let x8 = builder.ins().fmul(x4, x4);
-    let x9 = builder.ins().fmul(x8, x2);
-
-    // sin = x - x³/6 + x⁵/120 - x⁷/5040 + x⁹/362880
-    let t3 = builder.ins().fmul(x3, c3);
-    let t5 = builder.ins().fmul(x5, c5);
-    let t7 = builder.ins().fmul(x7, c7);
-    let t9 = builder.ins().fmul(x9, c9);
-    let sin_r = builder.ins().fsub(x2, t3);
-    let sin_r = builder.ins().fadd(sin_r, t5);
-    let sin_r = builder.ins().fsub(sin_r, t7);
-    let sin_r = builder.ins().fadd(sin_r, t9);
-
-    // cos = 1 - x²/2 + x⁴/24 - x⁶/720 + x⁸/40320
-    let u2 = builder.ins().fmul(x2sq, d2);
-    let u4 = builder.ins().fmul(x4, d4);
-    let u6 = builder.ins().fmul(x6, d6);
-    let u8 = builder.ins().fmul(x8, d8);
-    let cos_r = builder.ins().fsub(one, u2);
-    let cos_r = builder.ins().fadd(cos_r, u4);
-    let cos_r = builder.ins().fsub(cos_r, u6);
-    let cos_r = builder.ins().fadd(cos_r, u8);
-    let cos_r = builder.ins().fmul(cos_r, cos_sign);
-
-    (cos_r, sin_r)
+/// `alice_det_math::sin_cos` of a scalar angle, to the bit: the SIMD JIT's
+/// emitter of the law ([`simd_sincos_det`], the far lanes `|x| >= 2^13` call
+/// the scalar law) on a splat of the angle, lane 0. Before this, the scalar JIT
+/// emitted a degree-9/8 Taylor series after a `nearest` 2π reduction (max abs
+/// error 4e-6 / 3e-5), never the law's bits.
+fn emit_sincos_det(builder: &mut FunctionBuilder, angle: Value, far: FarTrig) -> (Value, Value) {
+    let v = builder.ins().splat(types::F32X4, angle);
+    let (c, s) = simd_sincos_det(builder, v, types::F32X4, far);
+    (
+        builder.ins().extractlane(c, 0),
+        builder.ins().extractlane(s, 0),
+    )
 }
 
 /// Emit modulo with Division Exorcism: a mod b = a - b * floor(a * inv_b)
@@ -1494,6 +1441,7 @@ fn build_dynamic_body(
     func: &mut cranelift_codegen::ir::Function,
     func_ctx: &mut FunctionBuilderContext,
     node: &SdfNode,
+    far: FarTrig,
 ) -> Result<Vec<f32>, (JitError, Vec<f32>)> {
     let mut builder = FunctionBuilder::new(func, func_ctx);
     let entry_block = builder.create_block();
@@ -1506,7 +1454,7 @@ fn build_dynamic_body(
     let z = builder.block_params(entry_block)[2];
     let params_ptr = builder.block_params(entry_block)[3];
 
-    let mut emitter = JitParamEmitter::dynamic(params_ptr);
+    let mut emitter = JitParamEmitter::dynamic(params_ptr, far);
     match compile_node(&mut builder, node, x, y, z, &mut emitter) {
         Ok(result) => {
             builder.ins().return_(&[result]);
@@ -1537,7 +1485,12 @@ pub fn extract_jit_params(node: &SdfNode) -> Vec<f32> {
     func.signature.params.push(AbiParam::new(ptr_type)); // params_ptr
     func.signature.returns.push(AbiParam::new(types::F32)); // distance
     let mut func_ctx = FunctionBuilderContext::new();
-    match build_dynamic_body(&mut func, &mut func_ctx, node) {
+    let far = FarTrig::import(
+        &mut func,
+        cranelift_codegen::isa::CallConv::SystemV,
+        ptr_type,
+    );
+    match build_dynamic_body(&mut func, &mut func_ctx, node, far) {
         Ok(params) | Err((_, params)) => params,
     }
 }

@@ -14,7 +14,9 @@
 //! Author: Moroya Sakamoto
 #![cfg(feature = "jit")]
 
-use alice_sdf::compiled::jit::{JitSimdSdf, JitSimdSdfDynamic};
+use alice_sdf::compiled::jit::{
+    JitCompiledSdf, JitCompiledSdfDynamic, JitSimdSdf, JitSimdSdfDynamic,
+};
 use alice_sdf::compiled::CompiledSdf;
 use alice_sdf::prelude::*;
 
@@ -134,6 +136,66 @@ fn the_simd_jits_emit_det_math_sin_cos_bit_for_bit() {
     checked += bend_pts.len();
 
     assert!(checked > 10_000, "compared only {checked} points");
+    assert!(
+        failures.is_empty(),
+        "{} mismatches (first 40):\n{}",
+        failures.len(),
+        failures[..failures.len().min(40)].join("\n")
+    );
+}
+
+/// The scalar JITs (`JitCompiledSdf` baked and with a parameter buffer) emit
+/// the law too: twist / bend through the SIMD JIT's emitter of
+/// `alice_det_math::sin_cos` (its far lanes call the scalar law), to the bit,
+/// on the same near and far angles. Before, the scalar JIT emitted a Taylor
+/// approximation that was never the law's bits.
+#[test]
+fn the_scalar_jits_emit_det_math_sin_cos_bit_for_bit() {
+    let a = angles();
+    let mut failures = Vec::new();
+    let mut checked = 0usize;
+    let mut far = 0usize;
+    let twist = SdfNode::plane(Vec3::X, 0.0).twist(1.0);
+    let bend = SdfNode::plane(Vec3::Y, 0.0).bend(1.0);
+    for (name, node, pts) in [
+        (
+            "twist",
+            &twist,
+            a.iter()
+                .flat_map(|&y| [Vec3::new(1.0, y, 0.0), Vec3::new(0.0, y, 1.0)])
+                .collect::<Vec<_>>(),
+        ),
+        (
+            "bend",
+            &bend,
+            a.iter()
+                .flat_map(|&x| [Vec3::new(x, 0.0, 0.0), Vec3::new(x, 1.0, 0.0)])
+                .collect::<Vec<_>>(),
+        ),
+    ] {
+        let baked = JitCompiledSdf::compile(node).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let dynamic =
+            JitCompiledSdfDynamic::compile(node).unwrap_or_else(|e| panic!("{name}: {e}"));
+        for p in &pts {
+            let t = eval(node, *p);
+            for (path, v) in [("jit", baked.eval(*p)), ("jit_dynamic", dynamic.eval(*p))] {
+                if !same(v, t) {
+                    failures.push(format!(
+                        "{name} {path} @ {p:?}: tree={t:e} ({:#010x}) jit={v:e} ({:#010x})",
+                        t.to_bits(),
+                        v.to_bits()
+                    ));
+                }
+            }
+            let angle = if name == "twist" { p.y } else { p.x };
+            if angle.is_finite() && angle.abs() >= 8192.0 {
+                far += 1;
+            }
+            checked += 1;
+        }
+    }
+    assert!(checked > 10_000, "compared only {checked} points");
+    assert!(far > 0, "no angle at or above 2^13 was compared");
     assert!(
         failures.is_empty(),
         "{} mismatches (first 40):\n{}",

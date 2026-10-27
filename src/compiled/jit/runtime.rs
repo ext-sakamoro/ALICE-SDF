@@ -86,6 +86,9 @@ impl JitCompiledSdf {
             .set("opt_level", "speed")
             .map_err(|e| JitError::ModuleError(e.to_string()))?;
 
+        // the shared det-math sin / cos emitter works on F32X4
+        super::simd::platform::configure_simd_flags(&mut flag_builder);
+
         let isa_builder =
             cranelift_native::builder().map_err(|e| JitError::ModuleError(e.to_string()))?;
 
@@ -244,6 +247,9 @@ impl JitCompiledSdfDynamic {
         flag_builder
             .set("opt_level", "speed")
             .map_err(|e| JitError::ModuleError(e.to_string()))?;
+
+        // the shared det-math sin / cos emitter works on F32X4
+        super::simd::platform::configure_simd_flags(&mut flag_builder);
 
         let isa_builder =
             cranelift_native::builder().map_err(|e| JitError::ModuleError(e.to_string()))?;
