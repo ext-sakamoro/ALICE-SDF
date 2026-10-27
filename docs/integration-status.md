@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1328 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1070 |
-| | **total** | **2407** |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1330 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1071 |
+| | **total** | **2410** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1328)
+## L1 — example-only (1330)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -143,7 +143,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/bvh.rs`: `BvhNode`, `BvhNode::aabb`, `BvhTriangle`, `BvhTriangle::closest_point`, `BvhTriangle::new`, `BvhTriangle::signed_distance`, `BvhTriangle::unsigned_distance`, `MeshBvh`, `MeshBvh::bounds`, `MeshBvh::build`, `MeshBvh::closest_point`, `MeshBvh::signed_distance`, `MeshBvh::signed_distance_batch`, `MeshBvh::triangle_count`, `MeshBvh::unsigned_distance`, `MeshBvh::unsigned_distance_batch`
 - `src/mesh/collision.rs`: `BoundingSphere`, `BoundingSphere::contains`, `CollisionAabb`, `CollisionAabb::center`, `CollisionAabb::contains`, `CollisionAabb::half_extents`, `CollisionAabb::volume`, `CollisionMesh`, `ConvexDecomposition`, `ConvexDecomposition::total_triangles`, `ConvexDecomposition::total_vertices`, `ConvexHull`, `VhacdConfig`, `VhacdConfig::fast`, `VhacdConfig::high_quality`, `compute_aabb`, `compute_bounding_sphere`, `compute_convex_hull`, `convex_decomposition`, `convex_hull_from_points`, `simplify_collision`
 - `src/mesh/decimate.rs`: `DecimateConfig::aggressive`, `DecimateConfig::conservative`
-- `src/mesh/dual_contouring.rs`: `DualContouringConfig::aaa`, `dual_contouring_compiled`
+- `src/mesh/dual_contouring.rs`: `DualContouringConfig::aaa`, `dual_contouring_compiled`, `dual_contouring_field`, `dual_contouring_with_topology`
 - `src/mesh/hermite.rs`: `EdgeCrossing`, `EdgeCrossing::t`, `HermiteConfig`, `HermiteExtractor`, `HermiteExtractor::extract_edge_crossings`, `HermiteExtractor::extract_surface_points`, `HermiteExtractor::new`, `HermitePoint`, `HermitePoint::new`, `extract_edge_crossings`, `extract_hermite`
 - `src/mesh/lightmap.rs`: `generate_lightmap_uvs`, `generate_lightmap_uvs_fast`
 - `src/mesh/lod.rs`: `ContinuousLod`, `ContinuousLod::get_render_meshes`, `ContinuousLod::new`, `ContinuousLod::update`, `DecimationLodConfig`, `DecimationLodConfig::distance_range`, `DecimationLodConfig::fast`, `DecimationLodConfig::high_quality`, `LodChain`, `LodChain::base_triangle_count`, `LodChain::get_blend_pair`, `LodChain::get_level`, `LodChain::get_lod`, `LodChain::memory_usage`, `LodChain::select_by_error`, `LodConfig`, `LodConfig::balanced`, `LodConfig::distance_range`, `LodConfig::fast`, `LodConfig::high_quality`, `LodConfig::resolution_at_level`, `LodMesh`, `LodMesh::blend_factor`, `LodMesh::is_active`, `LodSelector`, `LodSelector::high_res`, `LodSelector::is_acceptable`, `LodSelector::screen_error`, `LodSelector::select`, `generate_lod_chain`, `generate_lod_chain_decimated`
