@@ -359,4 +359,25 @@ fn point_agrees_with_closest_point() {
         assert_eq!(Some(p), bvh.closest_point(q));
         assert_eq!((q - p).length(), bvh.unsigned_distance(q));
     }
+
+    // an exact tie between two subtrees: closest_point answers the same tied
+    // triangle (the lower index) as closest_triangle, not whichever the walk
+    // meets first
+    let v = [
+        Vec3::new(2.753103, 1.4901774, 1.360981),
+        Vec3::new(2.6968179, 1.7402129, 1.6204355),
+        Vec3::new(2.603341, 1.0192674, 1.0668589),
+        Vec3::new(-1.0265025, 1.4901774, 1.360981),
+        Vec3::new(-0.97021735, 1.7402129, 1.6204355),
+        Vec3::new(-0.8767406, 1.0192674, 1.0668589),
+    ];
+    let bvh = MeshBvh::build(&v, &[0, 1, 2, 3, 4, 5], 1);
+    for q in [
+        Vec3::new(0.86330026, 0.95373714, 0.4978857),
+        Vec3::new(0.86330026, 0.4272502, 0.6176987),
+    ] {
+        let (i, _, p) = bvh.closest_triangle(q).unwrap();
+        assert_eq!((i, bvh.closest_point(q)), (0, Some(p)), "query {q:?}");
+        assert_eq!((q - p).length(), bvh.unsigned_distance(q));
+    }
 }
