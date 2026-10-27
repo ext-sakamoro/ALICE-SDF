@@ -63,87 +63,17 @@ impl BvhTriangle {
     /// across targets.
     #[inline]
     pub fn closest_point(&self, point: Vec3) -> Vec3 {
-        let (a, b, c) = (self.v0, self.v1, self.v2);
-        let ab = b - a;
-        let ac = c - a;
+        self.closest_point_barycentric(point).0
+    }
 
-        // vertex region A
-        let ap = point - a;
-        let d1 = ab.dot(ap);
-        let d2 = ac.dot(ap);
-        if d1 <= 0.0 && d2 <= 0.0 {
-            return a;
-        }
-
-        // vertex region B
-        let bp = point - b;
-        let d3 = ab.dot(bp);
-        let d4 = ac.dot(bp);
-        if d3 >= 0.0 && d4 <= d3 {
-            return b;
-        }
-
-        // edge region AB
-        let vc = d1 * d4 - d3 * d2;
-        if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
-            let denom = d1 - d3;
-            if denom != 0.0 {
-                return a + ab * (d1 / denom);
-            }
-            return a;
-        }
-
-        // vertex region C
-        let cp = point - c;
-        let d5 = ab.dot(cp);
-        let d6 = ac.dot(cp);
-        if d6 >= 0.0 && d5 <= d6 {
-            return c;
-        }
-
-        // edge region AC
-        let vb = d5 * d2 - d1 * d6;
-        if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
-            let denom = d2 - d6;
-            if denom != 0.0 {
-                return a + ac * (d2 / denom);
-            }
-            return a;
-        }
-
-        // edge region BC
-        let va = d3 * d6 - d5 * d4;
-        let bc_num = d4 - d3;
-        let bc_den = d5 - d6;
-        if va <= 0.0 && bc_num >= 0.0 && bc_den >= 0.0 {
-            let denom = bc_num + bc_den;
-            if denom != 0.0 {
-                return b + (c - b) * (bc_num / denom);
-            }
-            return b;
-        }
-
-        // face region — barycentric interior
-        let denom = va + vb + vc;
-        if denom == 0.0 {
-            // Degenerate (zero-area) triangle: the Voronoi regions above do not
-            // partition the plane, so answer the best of the three segments.
-            return closest_on_segment(point, a, b)
-                .into_iter()
-                .chain(closest_on_segment(point, b, c))
-                .chain(closest_on_segment(point, c, a))
-                .fold((f32::INFINITY, a), |(best, q), cand| {
-                    let d = (point - cand).length_squared();
-                    if d < best {
-                        (d, cand)
-                    } else {
-                        (best, q)
-                    }
-                })
-                .1;
-        }
-        let inv = 1.0 / denom;
-        a + ab * (vb * inv) + ac * (vc * inv)
+    /// [`Self::closest_point`] and its barycentric weights `(u, v, w)` over
+    /// `(v0, v1, v2)`: each in `[0, 1]` and summing to 1 (in the face region
+    /// `u = 1 - v - w`, which can round to a few ulp below 0). A
+    /// zero-area triangle answers the nearest point of its edges `v0v1`,
+    /// `v1v2`, `v2v0` (the first on a tie), weighted on that edge's vertices.
+    #[inline]
+    pub fn closest_point_barycentric(&self, point: Vec3) -> (Vec3, Vec3) {
+        closest_point_barycentric(point, self.v0, self.v1, self.v2)
     }
 
     /// Signed distance to triangle.
@@ -173,16 +103,128 @@ impl BvhTriangle {
     }
 }
 
-/// Closest point on the segment `a`..`b`, as a one-element iterator so the
-/// degenerate branch above can chain the three edges without allocating.
+// Closest point on a triangle with its barycentric weights (Ericson, *Real-Time
+// Collision Detection* §5.1.5). The point is computed with exactly the
+// expressions of the region it falls in (`a + ab * t`, `b + bc * t`,
+// `a + ab * v + ac * w`); the weights are the parameters of that expression.
+
+/// Closest point on triangle `(a, b, c)` to `p`, and weights `(u, v, w)` with
+/// `point ≈ u·a + v·b + w·c`, `u + v + w ≈ 1`, each in `[0, 1]`.
+///
+/// A zero-area triangle has no face region: the answer is the nearest point
+/// of its edges `ab`, `bc`, `ca` (the first of them on a tie), with the edge
+/// parameter on that edge's two vertices.
 #[inline]
-fn closest_on_segment(point: Vec3, a: Vec3, b: Vec3) -> [Vec3; 1] {
+fn closest_point_barycentric(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> (Vec3, Vec3) {
+    let ab = b - a;
+    let ac = c - a;
+
+    // vertex region A
+    let ap = p - a;
+    let d1 = ab.dot(ap);
+    let d2 = ac.dot(ap);
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return (a, Vec3::X);
+    }
+
+    // vertex region B
+    let bp = p - b;
+    let d3 = ab.dot(bp);
+    let d4 = ac.dot(bp);
+    if d3 >= 0.0 && d4 <= d3 {
+        return (b, Vec3::Y);
+    }
+
+    // edge region AB
+    let vc = d1 * d4 - d3 * d2;
+    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+        let denom = d1 - d3;
+        if denom != 0.0 {
+            let t = d1 / denom;
+            return (a + ab * t, Vec3::new(1.0 - t, t, 0.0));
+        }
+        return (a, Vec3::X);
+    }
+
+    // vertex region C
+    let cp = p - c;
+    let d5 = ab.dot(cp);
+    let d6 = ac.dot(cp);
+    if d6 >= 0.0 && d5 <= d6 {
+        return (c, Vec3::Z);
+    }
+
+    // edge region AC
+    let vb = d5 * d2 - d1 * d6;
+    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+        let denom = d2 - d6;
+        if denom != 0.0 {
+            let t = d2 / denom;
+            return (a + ac * t, Vec3::new(1.0 - t, 0.0, t));
+        }
+        return (a, Vec3::X);
+    }
+
+    // edge region BC
+    let va = d3 * d6 - d5 * d4;
+    let bc_num = d4 - d3;
+    let bc_den = d5 - d6;
+    if va <= 0.0 && bc_num >= 0.0 && bc_den >= 0.0 {
+        let denom = bc_num + bc_den;
+        if denom != 0.0 {
+            let t = bc_num / denom;
+            return (b + (c - b) * t, Vec3::new(0.0, 1.0 - t, t));
+        }
+        return (b, Vec3::Y);
+    }
+
+    // face region — barycentric interior
+    let denom = va + vb + vc;
+    if denom == 0.0 {
+        return degenerate(p, a, b, c);
+    }
+    let inv = 1.0 / denom;
+    let v = vb * inv;
+    let w = vc * inv;
+    (a + ab * v + ac * w, Vec3::new(1.0 - v - w, v, w))
+}
+
+/// Zero-area triangle: the Voronoi regions above do not partition the plane,
+/// so answer the best of the three segments (strict `<`: `ab` wins a tie,
+/// then `bc`).
+fn degenerate(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> (Vec3, Vec3) {
+    let (q_ab, t_ab) = closest_on_segment(p, a, b);
+    let (q_bc, t_bc) = closest_on_segment(p, b, c);
+    let (q_ca, t_ca) = closest_on_segment(p, c, a);
+    // starts from `a` at infinity, as the original fold did, so a NaN query
+    // still answers `a`
+    let mut best = (f32::INFINITY, a, Vec3::X);
+    let d_ab = (p - q_ab).length_squared();
+    if d_ab < best.0 {
+        best = (d_ab, q_ab, Vec3::new(1.0 - t_ab, t_ab, 0.0));
+    }
+    let d_bc = (p - q_bc).length_squared();
+    if d_bc < best.0 {
+        best = (d_bc, q_bc, Vec3::new(0.0, 1.0 - t_bc, t_bc));
+    }
+    let d_ca = (p - q_ca).length_squared();
+    if d_ca < best.0 {
+        best = (d_ca, q_ca, Vec3::new(t_ca, 0.0, 1.0 - t_ca));
+    }
+    (best.1, best.2)
+}
+
+/// Closest point on the segment `a`..`b` and its parameter `t` (point
+/// `a + (b - a) * t`, or `a` itself when the segment is a point).
+#[inline]
+fn closest_on_segment(p: Vec3, a: Vec3, b: Vec3) -> (Vec3, f32) {
     let ab = b - a;
     let len_sq = ab.length_squared();
     if len_sq == 0.0 {
-        return [a];
+        return (a, 0.0);
     }
-    [a + ab * (ab.dot(point - a) / len_sq).clamp(0.0, 1.0)]
+    let t = (ab.dot(p - a) / len_sq).clamp(0.0, 1.0);
+    (a + ab * t, t)
 }
 
 /// BVH Node
@@ -215,6 +257,14 @@ impl BvhNode {
             Self::Internal { aabb, .. } => aabb,
         }
     }
+}
+
+/// Best candidate of [`MeshBvh::closest_triangle`].
+struct Nearest {
+    d_sq: f32,
+    index: usize,
+    bary: Vec3,
+    point: Vec3,
 }
 
 /// BVH for triangle mesh
@@ -456,6 +506,76 @@ impl MeshBvh {
                 }
                 if second_bound < best.1 {
                     Self::closest_recursive(triangles, second, point, best);
+                }
+            }
+        }
+    }
+
+    /// The input triangle nearest to `point`: `(index, weights, closest
+    /// point)`. `index` is the triangle's position in the `indices` given to
+    /// [`Self::build`] (`indices[3 * index..3 * index + 3]`), and the closest
+    /// point is `weights.x * v0 + weights.y * v1 + weights.z * v2` up to
+    /// rounding, bit-identical to [`Self::closest_point`]. Of triangles at the
+    /// same distance the lowest index wins, wherever the tree holds them.
+    ///
+    /// `None` for an empty mesh or a non-finite `point`.
+    pub fn closest_triangle(&self, point: Vec3) -> Option<(usize, Vec3, Vec3)> {
+        if !point.is_finite() {
+            return None;
+        }
+        let root = self.root.as_ref()?;
+        let mut best = Nearest {
+            d_sq: f32::INFINITY,
+            index: usize::MAX,
+            bary: Vec3::ZERO,
+            point: Vec3::ZERO,
+        };
+        Self::nearest_recursive(&self.triangles, root, point, &mut best);
+        (best.index != usize::MAX).then_some((best.index, best.bary, best.point))
+    }
+
+    /// Like [`Self::closest_recursive`], but keeps the `(distance², index)`
+    /// minimum: a child whose bound equals the best distance is still visited,
+    /// since it may hold a tie with a lower index.
+    fn nearest_recursive(
+        triangles: &[BvhTriangle],
+        node: &BvhNode,
+        point: Vec3,
+        best: &mut Nearest,
+    ) {
+        match node {
+            BvhNode::Leaf {
+                triangles: idxs, ..
+            } => {
+                for &idx in idxs {
+                    let (q, bary) = triangles[idx].closest_point_barycentric(point);
+                    let d_sq = (point - q).length_squared();
+                    if d_sq < best.d_sq || (d_sq == best.d_sq && idx < best.index) {
+                        *best = Nearest {
+                            d_sq,
+                            index: idx,
+                            bary,
+                            point: q,
+                        };
+                    }
+                }
+            }
+            BvhNode::Internal { left, right, .. } => {
+                let bound = |n: &BvhNode| {
+                    let d = n.aabb().signed_distance(point).law_max(0.0);
+                    d * d
+                };
+                let (l_bound, r_bound) = (bound(left), bound(right));
+                let (first, first_bound, second, second_bound) = if l_bound <= r_bound {
+                    (left, l_bound, right, r_bound)
+                } else {
+                    (right, r_bound, left, l_bound)
+                };
+                if first_bound <= best.d_sq {
+                    Self::nearest_recursive(triangles, first, point, best);
+                }
+                if second_bound <= best.d_sq {
+                    Self::nearest_recursive(triangles, second, point, best);
                 }
             }
         }
