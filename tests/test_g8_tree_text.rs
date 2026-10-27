@@ -36,8 +36,14 @@ const fn other() -> Provenance {
     Provenance::new([0x5a; 32])
 }
 
-const fn earlier() -> Provenance {
-    Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0])
+/// The identifier alice-sdf stamped with alice-det-math 0.5.2 at 39507d1b (`6e98f0be…`), which
+/// this build no longer reproduces
+fn earlier() -> Provenance {
+    let hex = "6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37";
+    let id: [u8; 32] =
+        core::array::from_fn(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap());
+    assert!(!alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS.contains(&id));
+    Provenance::new(id)
 }
 
 /// (writer as scripts/provenance_writers.py names it, what it writes): the text and packet forms
@@ -127,11 +133,24 @@ fn asdf_json_with_another_identifier_is_refused_even_unverified() {
 }
 
 #[test]
-fn asdf_json_with_an_earlier_published_identifier_reads_as_verified_previous() {
+fn asdf_json_with_an_earlier_published_identifier_is_refused_and_judged_previous_when_listed() {
     let json = io::to_json_string_with_provenance(&tree(), &earlier()).unwrap();
-    assert!(io::from_json_string(&json).is_ok());
+    for result in [
+        io::from_json_string(&json).map(|_| ()),
+        io::from_json_string_unverified(&json).map(|_| ()),
+    ] {
+        match result {
+            Err(io::IoError::SemanticsMismatch {
+                stored, expected, ..
+            }) => assert_eq!((stored, expected), (earlier(), Provenance::sdf())),
+            other => panic!("the earlier identifier was not refused: {other:?}"),
+        }
+    }
     assert_eq!(
-        io::from_json_string_unverified(&json).unwrap().semantics(),
+        alice_sdf::provenance::from_bytes(json.as_bytes())
+            .unwrap()
+            .judge(&Provenance::sdf(), &[earlier().semantics_id])
+            .unwrap(),
         StoredSemantics::VerifiedPrevious(earlier())
     );
 }
@@ -193,13 +212,19 @@ mod packet {
             decode_sdf_i_packet_unverified(&packet).unwrap().semantics(),
             StoredSemantics::Current
         );
+        // an identifier an earlier release stamped, no longer reproduced: refused, naming both
         let previous = create_sdf_i_packet_with_provenance(&t, 1, &earlier()).unwrap();
-        assert_eq!(
+        for err in [
+            decode_sdf_i_packet(&previous).map(|_| ()).unwrap_err(),
             decode_sdf_i_packet_unverified(&previous)
-                .unwrap()
-                .semantics(),
-            StoredSemantics::VerifiedPrevious(earlier())
-        );
+                .map(|_| ())
+                .unwrap_err(),
+        ] {
+            assert!(
+                err.contains(&earlier().hex()) && err.contains(&Provenance::sdf().hex()),
+                "{err}"
+            );
+        }
         let foreign = create_sdf_i_packet_with_provenance(&t, 1, &other()).unwrap();
         assert!(decode_sdf_i_packet(&foreign).is_err());
         assert!(decode_sdf_i_packet_unverified(&foreign).is_err());

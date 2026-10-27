@@ -106,10 +106,10 @@ wide = "0.7"  # Portable SIMD (AVX2/AVX-512/NEON)
 # 3.1.0: every transcendental in the evaluator and the laws goes through
 # alice-det-math (cross-platform bit-exact, scalar + f32x8) — the same crate
 # alice-physics uses, which is what makes the SdfField boundary bit-exact.
-alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "39507d1b99960f260a0b760b3fba6cb60823340d", version = "0.5.2", features = ["simd"] }
+alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "2d01c63ff0849cf0ab82eafb89f87f1b729bd2a8", version = "0.5.2", features = ["simd"] }
 # ALICE-Law G8: the stored forms' meaning identifiers are law-id v2 (alice_zip::law_id::LawIdHasher,
 # the one owner of that encoding)
-alice-zip = { git = "https://github.com/ext-sakamoro/ALICE-Zip", rev = "8065587c8b0c3da6537091146b1a9517f27e25d8", version = "0.11", default-features = false }
+alice-zip = { git = "https://github.com/ext-sakamoro/ALICE-Zip", rev = "19f6f2c1ff5537642cefca006e37e2f00570d6ba", version = "0.11", default-features = false }
 
 # Parallel processing
 rayon = "1.10"
@@ -152,7 +152,7 @@ sha2 = "0.10"
 # Bridge deps (optional, crates.io since 1.12.0; alice-font pending publish)
 # pinned to a git commit of ALICE-Physics (the facade crate in that repository); the version
 # requirement keeps the resolved package at 4.x
-alice-physics = { git = "https://github.com/ext-sakamoro/ALICE-Physics", rev = "e09295ea212d0b56e764c8236a4397f86c04df8b", version = "4", optional = true }
+alice-physics = { git = "https://github.com/ext-sakamoro/ALICE-Physics", rev = "10315aa5d26789ba93b133c553eb53a60edc62db", version = "4", optional = true }
 alice-codec = { version = "0.1.2", optional = true }
 libasp = { version = "1.0", optional = true }
 alice-cache = { version = "0.2", optional = true }

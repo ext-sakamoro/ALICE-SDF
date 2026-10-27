@@ -132,16 +132,17 @@ const fn ext(form: StoredForm) -> &'static str {
     }
 }
 
-/// An identifier of another arithmetic: alice-sdf's identifier for `alice-det-math` 0.5.0, a
-/// generation this build does not compute with (its row in SDF_SEMANTICS_BY_DET_MATH)
+/// An identifier of another arithmetic: alice-sdf's identifier for `alice-det-math` 0.5.2 at
+/// 39507d1b (`6e98f0be…`), a generation this build does not compute with (its row left
+/// SDF_SEMANTICS_BY_DET_MATH with 2d01c63f; `tests/sdf_semantics_id.rs` freezes its pins)
 fn other_det_math() -> Provenance {
-    let det_050 = SDF_SEMANTICS_BY_DET_MATH
-        .iter()
-        .find(|(dm, _)| *dm != alice_det_math::SEMANTICS_ID)
-        .expect("a row of another alice-det-math generation");
-    assert_ne!(det_050.1, SDF_SEMANTICS_ID);
-    assert!(!PREVIOUS_SDF_SEMANTICS_IDS.contains(&det_050.1));
-    Provenance::new(det_050.1)
+    let hex = "6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37";
+    let id: [u8; 32] =
+        core::array::from_fn(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap());
+    assert_ne!(id, SDF_SEMANTICS_ID);
+    assert!(!PREVIOUS_SDF_SEMANTICS_IDS.contains(&id));
+    assert!(SDF_SEMANTICS_BY_DET_MATH.iter().all(|(_, sdf)| *sdf != id));
+    Provenance::new(id)
 }
 
 #[test]
@@ -184,11 +185,23 @@ fn every_meaning_form_writes_the_meaning_identifier_and_it_is_current() {
             StoredSemantics::Current,
             "{form:?}"
         );
-        // written under one of G6's earlier identifiers: its meaning identifier, VerifiedPrevious
-        let previous = Provenance::new(PREVIOUS_SDF_SEMANTICS_IDS[0]);
+        // written under an identifier an earlier release stamped: its meaning identifier, refused
+        // by check_sdf (G6's list is empty) and VerifiedPrevious when the judge is given it
+        let previous = other_det_math();
         write(form, &m, &path, &previous);
         assert_eq!(
-            provenance::check_sdf(&path).unwrap(),
+            provenance::read(&path).unwrap().id,
+            meaning_id(form, &previous)
+        );
+        assert!(
+            matches!(
+                provenance::check_sdf(&path),
+                Err(ProvenanceError::MeaningMismatch { .. })
+            ),
+            "{form:?}"
+        );
+        assert_eq!(
+            provenance::check(&path, &Provenance::sdf(), &[previous.semantics_id]).unwrap(),
             StoredSemantics::VerifiedPrevious(previous),
             "{form:?}"
         );
@@ -217,8 +230,8 @@ const RAW_V2: [(StoredForm, &str); 13] = [
     (StoredForm::Alembic, "mesh_raw_v2.abc"),
 ];
 
-/// The raw identifier 7.0.0 wrote: `SDF_SEMANTICS_ID` with alice-det-math 0.5.1, a previous
-/// identifier of this build
+/// The raw identifier 7.0.0 wrote: `SDF_SEMANTICS_ID` with alice-det-math 0.5.1, which this build
+/// no longer reproduces (not in `PREVIOUS_SDF_SEMANTICS_IDS`)
 const SDF_SEMANTICS_ID_7_0_0: [u8; 32] = [
     0x15, 0x10, 0x79, 0x59, 0x5c, 0x1e, 0x8d, 0x8f, 0xc6, 0x61, 0x90, 0x9b, 0xac, 0x7e, 0xa0, 0xdd,
     0xe0, 0xba, 0x5a, 0x8b, 0x3e, 0xf5, 0x00, 0x01, 0x9d, 0x01, 0xc6, 0xaf, 0x64, 0xde, 0xfb, 0x69,
@@ -231,9 +244,12 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 #[test]
-fn a_raw_identifier_of_a_meaning_form_reads_as_the_earlier_generation() {
-    // a file written before the form stored meaning identifiers holds the raw identifier: it is
-    // VerifiedPrevious, never Current, and the importers read it the same way
+fn a_raw_identifier_of_a_meaning_form_is_the_earlier_generation_refused_unless_listed() {
+    // a file written before the form stored meaning identifiers holds the raw identifier: read as
+    // the raw identifier, refused by check_sdf and the importers (7.0.0's identifier is not in
+    // G6's list), and VerifiedPrevious, never Current, when the judge is given it
+    let raw_7_0_0 = Provenance::new(SDF_SEMANTICS_ID_7_0_0);
+    assert!(!PREVIOUS_SDF_SEMANTICS_IDS.contains(&SDF_SEMANTICS_ID_7_0_0));
     for (form, name) in RAW_V2 {
         let path = fixture(name);
         let stored = provenance::read(&path).unwrap();
@@ -243,66 +259,24 @@ fn a_raw_identifier_of_a_meaning_form_reads_as_the_earlier_generation() {
             "{name}: the raw identifier"
         );
         assert!(!stored.is_written_under(&Provenance::sdf()), "{name}");
+        assert!(provenance::check_sdf(&path).is_err(), "{name}");
         assert_eq!(
-            provenance::check_sdf(&path).unwrap(),
-            StoredSemantics::VerifiedPrevious(Provenance::new(SDF_SEMANTICS_ID_7_0_0)),
+            provenance::check(&path, &Provenance::sdf(), &[SDF_SEMANTICS_ID_7_0_0]).unwrap(),
+            StoredSemantics::VerifiedPrevious(raw_7_0_0),
             "{name}: a raw identifier is the earlier generation"
         );
     }
-    let earlier = StoredSemantics::VerifiedPrevious(Provenance::new(SDF_SEMANTICS_ID_7_0_0));
-    assert_eq!(
-        io::import_stl(fixture("mesh_raw_v2.stl"))
-            .unwrap()
-            .semantics(),
-        earlier
-    );
-    assert_eq!(
-        io::import_stl(fixture("mesh_raw_v2_ascii.stl"))
-            .unwrap()
-            .semantics(),
-        earlier
-    );
-    assert_eq!(
-        io::import_obj(fixture("mesh_raw_v2.obj"))
-            .unwrap()
-            .semantics(),
-        earlier
-    );
-    assert_eq!(
-        io::import_ply(fixture("mesh_raw_v2.ply"))
-            .unwrap()
-            .semantics(),
-        earlier
-    );
-    assert_eq!(
-        io::import_fbx(fixture("mesh_raw_v2_ascii.fbx"))
-            .unwrap()
-            .semantics(),
-        earlier
-    );
-    assert_eq!(
-        io::import_glb(fixture("mesh_raw_v2.glb"))
-            .unwrap()
-            .semantics(),
-        earlier
-    );
-    assert_eq!(
-        io::import_usda(fixture("mesh_raw_v2.usda"))
-            .unwrap()
-            .semantics(),
-        earlier
-    );
-
-    // one of G6's earlier identifiers in a binary slot is VerifiedPrevious as well
-    let mut b = std::fs::read(fixture("mesh_raw_v2.stl")).unwrap();
-    b[9..41].copy_from_slice(&PREVIOUS_SDF_SEMANTICS_IDS[0]);
-    let path = temp("raw_previous.stl");
-    std::fs::write(&path, &b).unwrap();
-    assert_eq!(
-        provenance::check_sdf(&path).unwrap(),
-        StoredSemantics::VerifiedPrevious(Provenance::new(PREVIOUS_SDF_SEMANTICS_IDS[0]))
-    );
-    std::fs::remove_file(&path).ok();
+    let named = |e: io::IoError| {
+        let text = e.to_string();
+        assert!(text.contains(&raw_7_0_0.hex()), "{text}");
+    };
+    named(io::import_stl(fixture("mesh_raw_v2.stl")).unwrap_err());
+    named(io::import_stl(fixture("mesh_raw_v2_ascii.stl")).unwrap_err());
+    named(io::import_obj(fixture("mesh_raw_v2.obj")).unwrap_err());
+    named(io::import_ply(fixture("mesh_raw_v2.ply")).unwrap_err());
+    named(io::import_fbx(fixture("mesh_raw_v2_ascii.fbx")).unwrap_err());
+    named(io::import_glb(fixture("mesh_raw_v2.glb")).unwrap_err());
+    named(io::import_usda(fixture("mesh_raw_v2.usda")).unwrap_err());
 }
 
 #[test]

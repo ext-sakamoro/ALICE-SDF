@@ -12,10 +12,10 @@
 //! The identifier moves only when one of those moves (a golden re-recorded, a rule
 //! changed, a det-math generation), not with the crate's version.
 //!
-//! # Hex form (with `alice-det-math` 0.5.2 at 39507d1b; other generations in [`SDF_SEMANTICS_BY_DET_MATH`])
+//! # Hex form (with `alice-det-math` 0.5.2 at 2d01c63f; other generations in [`SDF_SEMANTICS_BY_DET_MATH`])
 //!
 //! ```text
-//! 6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37
+//! ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f642257da4938
 //! ```
 //!
 //! # Fold
@@ -64,7 +64,7 @@ pub const MUL_ADD_RULE: &str = "alice-sdf: Real::mul_add is a * b + c with two r
 pub const SDF_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
     (
         "golden tests/test_det_golden.rs GOLDEN",
-        hex32("f13e0794beaee9943112db526bfe522eca30e77272647ebe20bea589d2484cf3"),
+        hex32("84831086d072608aa773445b0a838e5aa530c32d936fc1d6bf62ff02325b709d"),
     ),
     (
         "tag max / min rule",
@@ -85,20 +85,14 @@ pub const SDF_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
 /// A build against a generation with no row does not compile ([`sdf_semantics_id_for`]
 /// panics in a const context), rather than reporting an identifier of another generation.
 pub const SDF_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
-    // alice-det-math 0.5.0
+    // alice-det-math 0.5.2 at 2d01c63f (sin / cos at |x| >= 2^13 through sin64 / cos64, powf of a
+    // negative base, powf64 as fdlibm e_pow, hypot of two subnormals; erf added). The rows of the
+    // earlier generations are not folds of these pins any more (the golden table gained the
+    // windows that show what moved); their identifiers are in the frozen table of
+    // `tests/sdf_semantics_id.rs`
     (
-        hex32("135c407d4249c1c200e4d1be79a12e848ce5c355fc3a918da965849e697ef000"),
-        hex32("d44898f9c186c9811b8ca760d0f53da66a25580012218047dd897c8e013cc3a2"),
-    ),
-    // alice-det-math 0.5.1
-    (
-        hex32("85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315"),
-        hex32("151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69"),
-    ),
-    // alice-det-math 0.5.2 at 39507d1b (its clamp follows the G2 order; no golden moved)
-    (
-        hex32("a2e46794a49b62730d8eb75d10e6dbfdd59d6562a985ae94c716fc637a57e3cf"),
-        hex32("6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37"),
+        hex32("a2a11b9b826227fa7a9ed8ab2c1ce63dbb07ad4c39aa2c46a363ddea6b47dbe9"),
+        hex32("ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f642257da4938"),
     ),
 ];
 
@@ -137,20 +131,14 @@ pub const SDF_SEMANTICS_ID: [u8; 32] = sdf_semantics_id_for(&alice_det_math::SEM
 
 /// Earlier identifiers whose distances this build still computes to the same bits, newest first
 ///
-/// `151079595…` is [`SDF_SEMANTICS_ID`] with `alice-det-math` 0.5.1 (7.0.0): the move to 0.5.2
-/// at 39507d1b changed only det-math's clamp, which this crate reaches only through
-/// `metric::smoothstep` with the bounds 0 and 1, where the one input the two clamps treat
-/// differently (`-0`) gives `+0` from `t * t * (3 - 2 t)` either way; no golden moved. 6.1.0 and
-/// earlier exposed `alice-det-math`'s identifier as their own; this build still computes their
-/// distances to the same bits (the goldens did not move between them).
-pub const PREVIOUS_SDF_SEMANTICS_IDS: &[[u8; 32]] = &[
-    // SDF_SEMANTICS_ID with alice-det-math 0.5.1 (7.0.0)
-    hex32("151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69"),
-    // alice-det-math 0.5.1's identifier, exposed as alice_sdf::SEMANTICS_ID by 6.0 / 6.1
-    hex32("85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315"),
-    // alice-det-math 0.5.0's
-    hex32("135c407d4249c1c200e4d1be79a12e848ce5c355fc3a918da965849e697ef000"),
-];
+/// Empty: alice-det-math at 2d01c63f reduces `sin` / `cos` / `sin_cos` arguments from `2^13` on
+/// in double precision and evaluates `hypot` of two subnormals in `f64`, and this crate calls
+/// them on the caller's coordinates (twist, bend, noise, the cylinder and cone families), so a
+/// distance at such a point has other bits than under any earlier generation. `6e98f0be…` (0.5.2
+/// at 39507d1b), `151079595…` (0.5.1, 7.0.0) and the det-math identifiers 6.0 / 6.1 exposed
+/// (`85e08846…`, `135c407d…`) therefore read as a mismatch; `tests/sdf_semantics_id.rs` shows
+/// which golden windows moved.
+pub const PREVIOUS_SDF_SEMANTICS_IDS: &[[u8; 32]] = &[];
 
 /// Whether a stored identifier names what this build computes
 ///

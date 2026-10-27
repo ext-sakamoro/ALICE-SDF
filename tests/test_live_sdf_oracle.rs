@@ -769,7 +769,30 @@ fn a_version_1_payload_is_refused() {
 #[test]
 fn a_payload_under_a_previous_identifier_restores_bit_for_bit() {
     let (a, payload) = stepped_payload();
-    assert!(!alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS.is_empty());
+    // the identifiers earlier releases stamped, which this build no longer reproduces (0.5.2 at
+    // 39507d1b, 0.5.1 by 7.0.0, the det-math identifiers 6.0 / 6.1 exposed): refused
+    let mut refused = 0;
+    for dropped in [
+        "6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37",
+        "151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69",
+        "85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315",
+        "135c407d4249c1c200e4d1be79a12e848ce5c355fc3a918da965849e697ef000",
+    ] {
+        let id: [u8; 32] = core::array::from_fn(|i| {
+            u8::from_str_radix(&dropped[2 * i..2 * i + 2], 16).expect("hex")
+        });
+        assert!(!alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS.contains(&id));
+        let mut stale = payload.clone();
+        stale[4..36].copy_from_slice(&id);
+        assert_eq!(
+            target().check_state(&stale),
+            Err(StateError::InvalidValue),
+            "{dropped} is not a previous identifier of alice-sdf"
+        );
+        refused += 1;
+    }
+    assert_eq!(refused, 4);
+    // every listed earlier identifier (none in this build) restores bit for bit
     for id in alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS {
         let mut previous = payload.clone();
         previous[4..36].copy_from_slice(id);

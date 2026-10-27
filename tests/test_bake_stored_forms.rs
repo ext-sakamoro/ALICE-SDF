@@ -2,8 +2,9 @@
 //! `manifest.json`) store the semantics identifier, and their readers check it
 //!
 //! oracle: the identifier is the 32 bytes `alice_sdf::SDF_SEMANTICS_ID`; a reader accepts it and
-//! the earlier `PREVIOUS_SDF_SEMANTICS_IDS` and refuses another one, a form without one and a cut
-//! header (the rule of `provenance::check_sdf`). The bytecode identifier sits at bytes 8..40 after
+//! the earlier `PREVIOUS_SDF_SEMANTICS_IDS` (empty in this build, so an identifier an earlier
+//! release stamped is refused) and refuses another one, a form without one and a cut header (the
+//! rule of `provenance::check_sdf`). The bytecode identifier sits at bytes 8..40 after
 //! the magic `ASDFBC02`, read here by slicing, not by the module's reader.
 //!
 //! Author: Moroya Sakamoto
@@ -17,6 +18,10 @@ mod temp;
 use alice_sdf::prelude::*;
 use alice_sdf::provenance::{Provenance, StoredSemantics};
 use alice_sdf::{PREVIOUS_SDF_SEMANTICS_IDS, SDF_SEMANTICS_ID};
+
+/// The identifier alice-sdf stamped with alice-det-math 0.5.2 at 39507d1b, which this build no
+/// longer reproduces
+const EARLIER_HEX: &str = "6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37";
 use std::path::Path;
 
 type Write = fn(&Path, &CompiledSdf, &serde_json::Value, &Provenance) -> Result<(), String>;
@@ -86,14 +91,18 @@ fn bake_writers_store_the_identifier_and_readers_check_it() {
         }
         assert_eq!(stored_id(name, &path), SDF_SEMANTICS_ID, "{key}");
         assert_eq!(status(name, &path), Ok(StoredSemantics::Current), "{key}");
-        // an earlier identifier this build still reproduces
-        let prev = Provenance::new(PREVIOUS_SDF_SEMANTICS_IDS[0]);
+        // an identifier an earlier release stamped, which this build no longer reproduces: stored
+        // as given and refused, naming both
+        let prev = Provenance::new(core::array::from_fn(|i| {
+            u8::from_str_radix(&EARLIER_HEX[2 * i..2 * i + 2], 16).unwrap()
+        }));
+        assert!(!PREVIOUS_SDF_SEMANTICS_IDS.contains(&prev.semantics_id));
         write(&path, &c, &m, &prev).unwrap();
         assert_eq!(stored_id(name, &path), prev.semantics_id, "{key}");
-        assert_eq!(
-            status(name, &path),
-            Ok(StoredSemantics::VerifiedPrevious(prev)),
-            "{key}"
+        let e = status(name, &path).unwrap_err();
+        assert!(
+            e.contains(EARLIER_HEX) && e.contains(&Provenance::sdf().hex()),
+            "{key}: {e}"
         );
         // another identifier is refused, naming both
         write(&path, &c, &m, &other).unwrap();

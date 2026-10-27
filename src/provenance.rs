@@ -1278,20 +1278,34 @@ pub(crate) fn sdf_load_verdict(
     format: &'static str,
     allow_unpinned: bool,
 ) -> Result<StoredSemantics, crate::io::IoError> {
+    sdf_load_verdict_against(
+        stored,
+        format,
+        allow_unpinned,
+        crate::PREVIOUS_SDF_SEMANTICS_IDS,
+    )
+}
+
+/// [`sdf_load_verdict`] against the earlier identifiers `previous` instead of G6's list, so the
+/// mapping of a reproduced earlier identifier stays tested while the list is empty
+fn sdf_load_verdict_against(
+    stored: Option<[u8; 32]>,
+    format: &'static str,
+    allow_unpinned: bool,
+    previous: &[[u8; 32]],
+) -> Result<StoredSemantics, crate::io::IoError> {
     match stored {
         None if allow_unpinned => Ok(StoredSemantics::Unpinned),
         None => Err(crate::io::IoError::Unpinned { format }),
-        Some(id) => match crate::check_sdf_semantics(&id) {
-            alice_det_math::SemanticsCheck::Verified => Ok(StoredSemantics::Current),
-            alice_det_math::SemanticsCheck::VerifiedPrevious(p) => {
-                Ok(StoredSemantics::VerifiedPrevious(Provenance::new(p)))
-            }
-            _ => Err(crate::io::IoError::SemanticsMismatch {
-                format,
-                stored: Provenance::new(id),
-                expected: Provenance::sdf(),
-            }),
-        },
+        Some(id) if id == crate::SDF_SEMANTICS_ID => Ok(StoredSemantics::Current),
+        Some(id) if previous.contains(&id) => {
+            Ok(StoredSemantics::VerifiedPrevious(Provenance::new(id)))
+        }
+        Some(id) => Err(crate::io::IoError::SemanticsMismatch {
+            format,
+            stored: Provenance::new(id),
+            expected: Provenance::sdf(),
+        }),
     }
 }
 
@@ -1306,8 +1320,18 @@ pub(crate) fn stored_verdict(
     stored: &Stored,
     format: &'static str,
 ) -> Result<StoredSemantics, crate::io::IoError> {
+    stored_verdict_against(stored, format, crate::PREVIOUS_SDF_SEMANTICS_IDS)
+}
+
+/// [`stored_verdict`] against the earlier identifiers `previous` instead of G6's list, so the
+/// mapping of a reproduced earlier identifier stays tested while the list is empty
+fn stored_verdict_against(
+    stored: &Stored,
+    format: &'static str,
+    previous: &[[u8; 32]],
+) -> Result<StoredSemantics, crate::io::IoError> {
     stored
-        .judge(&Provenance::sdf(), crate::PREVIOUS_SDF_SEMANTICS_IDS)
+        .judge(&Provenance::sdf(), previous)
         .map_err(|e| match e {
             ProvenanceError::MeaningMismatch {
                 form,
@@ -2086,6 +2110,112 @@ fn zip_entry<'a>(bytes: &'a [u8], name: &str) -> Result<Option<&'a [u8]>, Proven
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The importers' verdicts map a reproduced earlier identifier to `VerifiedPrevious` and every
+    /// other one to a mismatch naming both; G6's list is empty in this build, so the mapping is
+    /// shown with an injected list
+    #[test]
+    fn verdicts_read_an_injected_earlier_identifier_and_refuse_others() {
+        let earlier = [0x6e; 32];
+        let other = [0x5a; 32];
+        assert!(crate::PREVIOUS_SDF_SEMANTICS_IDS.is_empty());
+        for (id, previous, want) in [
+            (
+                crate::SDF_SEMANTICS_ID,
+                &[][..],
+                Some(StoredSemantics::Current),
+            ),
+            (
+                earlier,
+                &[earlier][..],
+                Some(StoredSemantics::VerifiedPrevious(Provenance::new(earlier))),
+            ),
+            (earlier, &[][..], None),
+            (other, &[earlier][..], None),
+        ] {
+            let got = sdf_load_verdict_against(Some(id), "T", false, previous);
+            match want {
+                Some(w) => assert_eq!(got.unwrap(), w),
+                None => assert!(matches!(
+                    got,
+                    Err(crate::io::IoError::SemanticsMismatch { format: "T", stored, expected })
+                        if stored == Provenance::new(id) && expected == Provenance::sdf()
+                )),
+            }
+            // the production verdict is the one against G6's list
+            assert_eq!(
+                sdf_load_verdict(Some(id), "T", false).ok(),
+                sdf_load_verdict_against(Some(id), "T", false, crate::PREVIOUS_SDF_SEMANTICS_IDS)
+                    .ok()
+            );
+        }
+
+        // a stored form that writes meaning identifiers: the meaning of an earlier identifier in
+        // the list reads as VerifiedPrevious, the raw earlier identifier in a slot as well, and
+        // without the list both are refused
+        let form = StoredForm::Ply;
+        assert!(form.writes_meaning());
+        for (stored, previous, ok) in [
+            (
+                Stored {
+                    form,
+                    id: meaning_id(form, &Provenance::new(earlier)),
+                    via: StoredVia::MeaningKey,
+                },
+                &[earlier][..],
+                true,
+            ),
+            (
+                Stored {
+                    form,
+                    id: earlier,
+                    via: StoredVia::Slot,
+                },
+                &[earlier][..],
+                true,
+            ),
+            (
+                Stored {
+                    form,
+                    id: meaning_id(form, &Provenance::new(earlier)),
+                    via: StoredVia::MeaningKey,
+                },
+                &[][..],
+                false,
+            ),
+            (
+                Stored {
+                    form,
+                    id: earlier,
+                    via: StoredVia::Slot,
+                },
+                &[][..],
+                false,
+            ),
+        ] {
+            let got = stored_verdict_against(&stored, "PLY", previous);
+            if ok {
+                assert_eq!(
+                    got.unwrap(),
+                    StoredSemantics::VerifiedPrevious(Provenance::new(earlier)),
+                    "{stored}"
+                );
+            } else {
+                assert!(
+                    matches!(
+                        got,
+                        Err(crate::io::IoError::MeaningMismatch { format: "PLY", .. }
+                            | crate::io::IoError::SemanticsMismatch { format: "PLY", .. })
+                    ),
+                    "{stored}: {got:?}"
+                );
+            }
+            assert_eq!(
+                stored_verdict(&stored, "PLY").ok(),
+                stored_verdict_against(&stored, "PLY", crate::PREVIOUS_SDF_SEMANTICS_IDS).ok()
+            );
+        }
+    }
 
     /// The reader takes a version line with a byte order mark, blank lines and white space around
     /// it; anything else on the line (or another word) is no version line

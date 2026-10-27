@@ -4,8 +4,9 @@
 //! `metric::smoothstep`, whose clamp has the bounds `0` and `1`. This test shows that
 //! `smoothstep` gives the same bits under both clamps for every input of a lattice of special
 //! values, so the distances this crate computes did not move: the reason the identifiers of the
-//! earlier generations stay in `PREVIOUS_SDF_SEMANTICS_IDS` (`tests/sdf_semantics_id.rs` names
-//! this test for each of them).
+//! earlier generations stayed in `PREVIOUS_SDF_SEMANTICS_IDS` until alice-det-math 2d01c63f,
+//! which moved `sin` / `cos` from `2^13` on and `hypot` of two subnormals and emptied the list
+//! (`tests/sdf_semantics_id.rs` shows the golden windows that moved).
 //!
 //! oracle: `clamp_0_5_1` is alice-det-math 0.5.1's clamp, copied from its source (6384856), and
 //! `smoothstep_0_5_1` is `smoothstep` built on it the way alice-det-math writes it; neither calls

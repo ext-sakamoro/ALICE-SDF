@@ -84,8 +84,14 @@ const fn other() -> Provenance {
     Provenance::new([0x5a; 32])
 }
 
-const fn earlier() -> Provenance {
-    Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0])
+/// The identifier alice-sdf stamped with alice-det-math 0.5.2 at 39507d1b (`6e98f0be…`), which
+/// this build no longer reproduces
+fn earlier() -> Provenance {
+    let hex = "6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37";
+    let id: [u8; 32] =
+        core::array::from_fn(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap());
+    assert!(!alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS.contains(&id));
+    Provenance::new(id)
 }
 
 type Write = fn(&Mesh, &Path, &Provenance);
@@ -276,8 +282,12 @@ fn this_crates_file_reads_as_current_and_through_the_pinned_importer() {
 }
 
 #[test]
-fn an_earlier_published_identifier_reads_as_verified_previous() {
+/// An identifier an earlier release stamped and this build no longer reproduces is refused by
+/// both importers, naming it; the shared judge given it as an earlier identifier reads the file
+/// as `VerifiedPrevious`, so the importers' mapping of a listed earlier identifier is the judge's
+fn an_earlier_published_identifier_is_refused_and_judged_previous_when_listed() {
     let m = mesh();
+    let mut compared = 0;
     for f in formats() {
         let path = temp(&format!(
             "earlier_{}.{}",
@@ -285,14 +295,46 @@ fn an_earlier_published_identifier_reads_as_verified_previous() {
             ext(&f)
         ));
         (f.write)(&m, &path, &earlier());
+        for result in [(f.read)(&path).map(|r| r.0), (f.read_pinned)(&path)] {
+            match result {
+                Err(IoError::MeaningMismatch {
+                    form,
+                    stored,
+                    expected,
+                    ..
+                }) => assert_eq!(
+                    (stored, expected),
+                    (
+                        hex(&meaning_id(form, &earlier())),
+                        hex(&meaning_id(form, &Provenance::sdf()))
+                    ),
+                    "{}",
+                    f.name
+                ),
+                Err(IoError::SemanticsMismatch {
+                    stored, expected, ..
+                }) => assert_eq!(
+                    (stored, expected),
+                    (earlier(), Provenance::sdf()),
+                    "{}",
+                    f.name
+                ),
+                other => panic!(
+                    "{}: the earlier identifier was not refused: {other:?}",
+                    f.name
+                ),
+            }
+        }
         assert_eq!(
-            (f.read)(&path).unwrap().1,
+            alice_sdf::provenance::check(&path, &Provenance::sdf(), &[earlier().semantics_id])
+                .unwrap(),
             StoredSemantics::VerifiedPrevious(earlier()),
             "{}",
             f.name
         );
-        assert!((f.read_pinned)(&path).is_ok(), "{}", f.name);
+        compared += 1;
     }
+    assert!(compared > 0);
 }
 
 #[test]

@@ -532,14 +532,30 @@ fn texture_fit_writer_stores_and_loaders_check_the_identifier() {
         StoredSemantics::Current
     );
 
-    // an identifier this crate published before reads as a verified earlier one, by both loaders
-    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    // an identifier this crate published before and no longer reproduces (`6e98f0be…`,
+    // alice-det-math 0.5.2 at 39507d1b) is refused by both loaders, naming both; the shared judge
+    // given it as an earlier identifier reads the document as VerifiedPrevious
+    let hex = "6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37";
+    let earlier = Provenance::new(core::array::from_fn(|i| {
+        u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap()
+    }));
     assert_ne!(earlier, Provenance::sdf());
+    assert!(!alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS.contains(&earlier.semantics_id));
     let prev = fit_path("earlier.json");
     save_texture_fit_with_provenance(&fit, &prev, &earlier).unwrap();
-    assert_eq!(load_texture_fit(&prev).unwrap(), fit);
+    for err in [
+        load_texture_fit(&prev).map(|_| ()).unwrap_err(),
+        load_texture_fit_unverified(&prev).map(|_| ()).unwrap_err(),
+    ] {
+        match err {
+            IoError::SemanticsMismatch {
+                stored, expected, ..
+            } => assert_eq!((stored, expected), (earlier, Provenance::sdf())),
+            other => panic!("the earlier identifier was not refused: {other:?}"),
+        }
+    }
     assert_eq!(
-        load_texture_fit_unverified(&prev).unwrap().semantics(),
+        provenance::check(&prev, &Provenance::sdf(), &[earlier.semantics_id]).unwrap(),
         StoredSemantics::VerifiedPrevious(earlier)
     );
 

@@ -9,11 +9,11 @@
 //! refused. `manifest.json` holds the identifier as its top-level `alice:semantics_id`.
 //!
 //! The readers accept this crate's identifier and the earlier ones it still reproduces
-//! (`PREVIOUS_SDF_SEMANTICS_IDS`), the rule of `provenance::check_sdf`.
+//! (`PREVIOUS_SDF_SEMANTICS_IDS`), judged by `alice_sdf::check_sdf_semantics`, the rule of
+//! `provenance::check_sdf`.
 
 use alice_sdf::prelude::CompiledSdf;
 use alice_sdf::provenance::{self, Provenance, StoredSemantics, KEY};
-use alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS;
 use serde_json::Value;
 use std::path::Path;
 
@@ -61,19 +61,19 @@ pub fn write_bytecode_with_provenance(
     std::fs::write(path, bytecode_bytes(c, id)).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// The status of a stored identifier under the rule of `provenance::check_sdf`
+/// The status of a stored identifier under the rule of `provenance::check_sdf`: the crate's
+/// `check_sdf_semantics`, not a copy of it
 fn judge(stored: [u8; 32], what: &str) -> Result<StoredSemantics, String> {
-    let stored = Provenance::new(stored);
-    if stored == Provenance::sdf() {
-        Ok(StoredSemantics::Current)
-    } else if PREVIOUS_SDF_SEMANTICS_IDS.contains(&stored.semantics_id) {
-        Ok(StoredSemantics::VerifiedPrevious(stored))
-    } else {
-        Err(format!(
+    match alice_sdf::check_sdf_semantics(&stored) {
+        alice_det_math::SemanticsCheck::Verified => Ok(StoredSemantics::Current),
+        alice_det_math::SemanticsCheck::VerifiedPrevious(p) => {
+            Ok(StoredSemantics::VerifiedPrevious(Provenance::new(p)))
+        }
+        _ => Err(format!(
             "{what}: semantics identifier {} is not this build's {}",
-            stored.hex(),
+            Provenance::new(stored).hex(),
             Provenance::sdf().hex()
-        ))
+        )),
     }
 }
 

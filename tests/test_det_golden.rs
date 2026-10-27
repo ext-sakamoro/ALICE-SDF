@@ -83,12 +83,57 @@ fn compare(got: &[(&str, String)], golden: &[(&str, &str)]) -> (Vec<String>, Vec
     (missing, mismatches)
 }
 
+/// Scenes whose arithmetic alice-det-math 2d01c63f changed, each with its own points, in pairs:
+/// the window just below the change (same bits as before) and the window where it applies.
+///
+/// * `twist_plane_*`: the plane `x = 0` twisted with strength 1, so the rotation angle is the
+///   point's `y` and the distance is the rotated `x`, which reads `sin_cos(y)` directly; `y` is
+///   every integer in `8128..8192` (below `2^13`, the single-precision reduction) or in
+///   `8192..8256` (from `2^13`, reduced in double precision since 2d01c63f).
+/// * `infinite_cylinder_r0_*`: radius 0, so the distance is `hypot(x, z)`; `x` and `z` are the
+///   64 smallest normal values from `2^-126` up, or 64 subnormals (two subnormal operands are
+///   evaluated in `f64` since 2d01c63f, where the result was `+0` before).
+fn far_scenes() -> Vec<(&'static str, SdfNode, Vec<Vec3>)> {
+    let twist = || SdfNode::plane(Vec3::X, 0.0).twist(1.0);
+    let heights = |from: i32| -> Vec<Vec3> {
+        (from..from + 64)
+            .map(|y| Vec3::new(0.75, y as f32, 0.25))
+            .collect()
+    };
+    let tiny = |first_bits: u32| -> Vec<Vec3> {
+        (0..64u32)
+            .map(|i| {
+                Vec3::new(
+                    f32::from_bits(first_bits + 3 * i),
+                    0.5,
+                    f32::from_bits(first_bits + 5 * i + 1),
+                )
+            })
+            .collect()
+    };
+    let cylinder = || SdfNode::infinite_cylinder(0.0);
+    vec![
+        ("twist_plane_below_2_13", twist(), heights(8128)),
+        ("twist_plane_from_2_13", twist(), heights(8192)),
+        ("infinite_cylinder_r0_normal", cylinder(), tiny(0x0080_0000)),
+        ("infinite_cylinder_r0_subnormal", cylinder(), tiny(1)),
+    ]
+}
+
+fn far_hashes() -> Vec<(&'static str, String)> {
+    far_scenes()
+        .into_iter()
+        .map(|(name, node, pts)| (name, hash_node(&node, &pts)))
+        .collect()
+}
+
 fn corpus_hashes() -> Vec<(&'static str, String)> {
     let pts = grid();
     corpus()
         .into_iter()
         .chain(nan_scenes())
         .map(|(name, node)| (name, hash_node(&node, &pts)))
+        .chain(far_hashes())
         .collect()
 }
 
@@ -163,12 +208,12 @@ fn checker_rejects_a_wrong_hash() {
 /// evaluator path calls, and every hash below stayed put). A failure here is a
 /// dependency move: re-check the table, then re-pin both with the CHANGELOG
 /// saying which `alice-det-math` the crate now evaluates with.
-// alice-det-math 0.5.2 at 39507d1b (85e08846… with 0.5.1)
-const SEMANTICS_ID_HEX: &str = "a2e46794a49b62730d8eb75d10e6dbfdd59d6562a985ae94c716fc637a57e3cf";
+// alice-det-math 0.5.2 at 2d01c63f (a2e46794… at 39507d1b, 85e08846… with 0.5.1)
+const SEMANTICS_ID_HEX: &str = "a2a11b9b826227fa7a9ed8ab2c1ce63dbb07ad4c39aa2c46a363ddea6b47dbe9";
 
-/// The identifier `alice-det-math` 0.5.0 published (re-pinned to 0.5.1 above): 0.5.1 moved
-/// the identifier but kept every kernel the corpus reaches, so the per-node hashes in
-/// `GOLDEN` did not move, and 0.5.0's identifier is still a recognised previous one
+/// The identifier `alice-det-math` 0.5.0 published, which 6.0 exposed as this crate's own: no
+/// longer a recognised previous one (2d01c63f moved `sin` / `cos` from `2^13` on and `hypot` of
+/// two subnormals, which the far-scene rows of `GOLDEN` show), so data stamped with it is refused
 const PREVIOUS_SEMANTICS_ID_HEX: &str =
     "135c407d4249c1c200e4d1be79a12e848ce5c355fc3a918da965849e697ef000";
 
@@ -189,23 +234,19 @@ fn semantics_id_matches_recorded_hex() {
 }
 
 #[test]
-fn previous_semantics_id_is_still_recognised() {
-    let hex = |id: &[u8; 32]| {
-        id.iter().fold(String::with_capacity(64), |mut s, b| {
-            use std::fmt::Write;
-            write!(s, "{b:02x}").expect("writing to a String cannot fail");
-            s
-        })
-    };
-    // alice-det-math's own previous list no longer has 0.5.0's identifier (its clamp changed);
-    // this crate keeps it, the identifier 6.0 exposed as its own
+fn the_det_math_0_5_0_identifier_is_refused() {
+    let id: [u8; 32] = core::array::from_fn(|i| {
+        u8::from_str_radix(&PREVIOUS_SEMANTICS_ID_HEX[2 * i..2 * i + 2], 16).expect("hex")
+    });
     assert!(
-        alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS
-            .iter()
-            .any(|id| hex(id) == PREVIOUS_SEMANTICS_ID_HEX),
-        "alice-sdf no longer lists alice-det-math 0.5.0's identifier as a previous one"
+        !alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS.contains(&id),
+        "alice-sdf lists alice-det-math 0.5.0's identifier as a previous one"
     );
-    assert_ne!(hex(&alice_sdf::SEMANTICS_ID), PREVIOUS_SEMANTICS_ID_HEX);
+    assert_eq!(
+        alice_sdf::check_sdf_semantics(&id),
+        alice_det_math::SemanticsCheck::Mismatch
+    );
+    assert_ne!(alice_sdf::SEMANTICS_ID, id);
 }
 
 const GOLDEN: &[(&str, &str)] = &[
@@ -828,5 +869,21 @@ const GOLDEN: &[(&str, &str)] = &[
     (
         "nan_pair_intersection",
         "93c0bc9f17a70ce2700ec245a89580ae6622ee59ab5e72cdf35a2bbc48fdda7c",
+    ),
+    (
+        "twist_plane_below_2_13",
+        "7fd43fd5396e0bf562926b6705a47427baa60913aa30025f9b5d0dc5a9d832e0",
+    ),
+    (
+        "twist_plane_from_2_13",
+        "c452dd9cad2cf1eef7585b3644f50d63fbfdf91bdbfd09287d18c331a76f2cb4",
+    ),
+    (
+        "infinite_cylinder_r0_normal",
+        "a46ef0bdb3b688dfdf62392950f9a1b421e7f38bacd4f7c7db94bf8d9a9bb760",
+    ),
+    (
+        "infinite_cylinder_r0_subnormal",
+        "9f648ada5d9fdfc89282d8e4f9cd659b6df83ece847148c3ae83fa33bc31f1c9",
     ),
 ];

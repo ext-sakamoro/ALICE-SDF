@@ -52,6 +52,58 @@ fn caller_id() -> Provenance {
     Provenance::new(id)
 }
 
+/// The identifier alice-sdf stamped with alice-det-math 0.5.2 at 39507d1b (`6e98f0be…`); this
+/// build no longer reproduces it (`PREVIOUS_SDF_SEMANTICS_IDS` is empty), so the loaders refuse
+/// it, while the shared judge given it as an earlier identifier reads it as `VerifiedPrevious`
+const EARLIER: [u8; 32] = {
+    let hex = *b"6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37";
+    let mut id = [0u8; 32];
+    let mut i = 0;
+    while i < 32 {
+        id[i] = hex_digit(hex[2 * i]) << 4 | hex_digit(hex[2 * i + 1]);
+        i += 1;
+    }
+    id
+};
+
+const fn hex_digit(c: u8) -> u8 {
+    if c <= b'9' {
+        c - b'0'
+    } else {
+        c - b'a' + 10
+    }
+}
+
+const fn earlier_id() -> Provenance {
+    Provenance::new(EARLIER)
+}
+
+/// A loader refused [`EARLIER`], naming it and this crate's identifier (as meaning identifiers
+/// for a form that stores them)
+fn refused_as_earlier<T>(result: Result<T, io::IoError>) {
+    match result.err() {
+        Some(io::IoError::SemanticsMismatch {
+            stored, expected, ..
+        }) => assert_eq!((stored, expected), (earlier_id(), Provenance::sdf())),
+        Some(io::IoError::MeaningMismatch {
+            form,
+            stored,
+            expected,
+            ..
+        }) => {
+            let hex = |id: [u8; 32]| Provenance::new(id).hex();
+            assert_eq!(
+                (stored, expected),
+                (
+                    hex(provenance::meaning_id(form, &earlier_id())),
+                    hex(provenance::meaning_id(form, &Provenance::sdf()))
+                )
+            );
+        }
+        other => panic!("the earlier identifier was not refused: {other:?}"),
+    }
+}
+
 type Write = fn(&Mesh, &Path, Option<&Provenance>);
 
 /// (writer name as the scanner reads it, file name, write with the default / with the caller's id)
@@ -738,23 +790,31 @@ fn usd_step_iges_with_the_identifier_stay_well_formed() {
     std::fs::remove_file(&path).ok();
 }
 
-/// A file stamped with an identifier this crate published before (6.1's, `alice-det-math` 0.5.1's)
-/// reads as a verified earlier identifier, the same verdict as `check_sdf_semantics`
+/// A file stamped with an identifier this crate published before and no longer reproduces
+/// (`6e98f0be…`) is refused by `check_sdf` and the importer, the same verdict as
+/// `check_sdf_semantics`; the shared judge given it as an earlier identifier reads it as a
+/// verified earlier one
 #[test]
-fn an_earlier_published_identifier_reads_as_verified_previous() {
+fn an_earlier_published_identifier_is_refused_and_judged_previous_when_listed() {
     let m = mesh();
-    let earlier = alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0];
+    let earlier = EARLIER;
     assert_ne!(earlier, alice_sdf::SDF_SEMANTICS_ID);
+    assert!(!alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS.contains(&earlier));
     let path = temp("earlier.stl");
     io::export_stl_with_provenance(&m, &path, &Provenance::new(earlier)).unwrap();
+    assert!(matches!(
+        provenance::check_sdf(&path),
+        Err(ProvenanceError::MeaningMismatch { .. } | ProvenanceError::Mismatch { .. })
+    ));
+    refused_as_earlier(io::import_stl(&path));
     assert_eq!(
-        provenance::check_sdf(&path).unwrap(),
+        provenance::check(&path, &Provenance::sdf(), &[earlier]).unwrap(),
         provenance::StoredSemantics::VerifiedPrevious(Provenance::new(earlier))
     );
-    assert!(matches!(
+    assert_eq!(
         alice_sdf::check_sdf_semantics(&earlier),
-        alice_det_math::SemanticsCheck::VerifiedPrevious(_)
-    ));
+        alice_det_math::SemanticsCheck::Mismatch
+    );
     assert_eq!(Provenance::sdf().semantics_id, alice_sdf::SDF_SEMANTICS_ID);
     std::fs::remove_file(&path).ok();
 }
@@ -914,11 +974,12 @@ fn asdf_loaders_check_the_identifier() {
         StoredSemantics::Current
     );
 
-    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let earlier = earlier_id();
     io::save_asdf_with_provenance(&tree, &path, &earlier).unwrap();
-    assert!(io::load_asdf(&path).is_ok());
+    refused_as_earlier(io::load_asdf(&path));
+    refused_as_earlier(io::load_asdf_unverified(&path));
     assert_eq!(
-        io::load_asdf_unverified(&path).unwrap().semantics(),
+        provenance::check(&path, &Provenance::sdf(), &[EARLIER]).unwrap(),
         StoredSemantics::VerifiedPrevious(earlier)
     );
 
@@ -1473,20 +1534,18 @@ fn abm_loaders_check_the_identifier() {
         StoredSemantics::Current
     );
 
-    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let earlier = earlier_id();
     write(&earlier);
-    assert!(io::load_abm(&single).is_ok());
-    assert!(io::load_abm_with_lods(&lods).is_ok());
-    assert_eq!(
-        io::load_abm_unverified(&single).unwrap().semantics(),
-        StoredSemantics::VerifiedPrevious(earlier)
-    );
-    assert_eq!(
-        io::load_abm_with_lods_unverified(&lods)
-            .unwrap()
-            .semantics(),
-        StoredSemantics::VerifiedPrevious(earlier)
-    );
+    refused_as_earlier(io::load_abm(&single));
+    refused_as_earlier(io::load_abm_with_lods(&lods));
+    refused_as_earlier(io::load_abm_unverified(&single));
+    refused_as_earlier(io::load_abm_with_lods_unverified(&lods));
+    for path in [&single, &lods] {
+        assert_eq!(
+            provenance::check(path, &Provenance::sdf(), &[EARLIER]).unwrap(),
+            StoredSemantics::VerifiedPrevious(earlier)
+        );
+    }
 
     write(&caller_id());
     for result in [
@@ -1611,16 +1670,17 @@ fn a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// Both parts of a chain carry the identifier: this crate's reads as `Current`, an earlier
-/// verified one as `VerifiedPrevious`, another one in either part is refused naming both, and
-/// the unverified loader reports the weaker of the two parts
+/// Both parts of a chain carry the identifier: this crate's reads as `Current`, an earlier one
+/// this build no longer reproduces in either part is refused (the shared judge given it reads
+/// that part as `VerifiedPrevious`), another one in either part is refused naming both, and the
+/// unverified loader reports the weaker of the two parts
 #[test]
 fn lod_chain_loaders_check_both_parts() {
     let m = abm_fixture_mesh(1.0);
     let chain = lod_chain(&m);
     let path = temp("check_chain.abm");
     let meta = path.with_file_name("check_chain.abm.meta.json");
-    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let earlier = earlier_id();
 
     lod_persist::save_lod_chain(&chain, &path).unwrap();
     assert_eq!(lod_persist::load_lod_chain(&path).unwrap().meshes.len(), 2);
@@ -1637,25 +1697,24 @@ fn lod_chain_loaders_check_both_parts() {
         StoredSemantics::Current
     );
 
-    // the sidecar written under an earlier identifier: the chain reads as the weaker part
+    // the sidecar written under the earlier identifier: the chain is refused, the sidecar alone
+    // judged against it is VerifiedPrevious
     lod_persist::save_lod_chain_metadata_with_provenance(&chain, &path, &earlier).unwrap();
-    assert!(lod_persist::load_lod_chain(&path).is_ok());
+    refused_as_earlier(lod_persist::load_lod_chain(&path));
+    refused_as_earlier(lod_persist::load_lod_chain_unverified(&path));
     assert_eq!(
-        lod_persist::load_lod_chain_unverified(&path)
-            .unwrap()
-            .semantics(),
+        provenance::check(&meta, &Provenance::sdf(), &[EARLIER]).unwrap(),
         StoredSemantics::VerifiedPrevious(earlier)
     );
 
-    // the mesh file under the earlier identifier, the sidecar current: the weaker part is the
-    // mesh file, so the chain is VerifiedPrevious, not Current
+    // the mesh file under the earlier identifier, the sidecar current: refused through the mesh
+    // file, never read as Current
     lod_persist::save_lod_chain_with_provenance(&chain, &path, &earlier).unwrap();
     lod_persist::save_lod_chain_metadata(&chain, &path).unwrap();
-    assert!(lod_persist::load_lod_chain(&path).is_ok());
+    refused_as_earlier(lod_persist::load_lod_chain(&path));
+    refused_as_earlier(lod_persist::load_lod_chain_unverified(&path));
     assert_eq!(
-        lod_persist::load_lod_chain_unverified(&path)
-            .unwrap()
-            .semantics(),
+        provenance::check(&path, &Provenance::sdf(), &[EARLIER]).unwrap(),
         StoredSemantics::VerifiedPrevious(earlier)
     );
 
@@ -1862,16 +1921,18 @@ fn nsdf_writers_store_and_loaders_check_the_identifier() {
         StoredSemantics::Current
     );
 
-    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let earlier = earlier_id();
     let prev = nsdf_bytes(Some(&earlier));
     assert!(provenance::from_bytes(&prev)
         .unwrap()
         .is_written_under(&earlier));
-    assert!(NeuralSdf::load(&mut prev.as_slice()).is_ok());
+    refused_as_earlier(NeuralSdf::load(&mut prev.as_slice()));
+    refused_as_earlier(NeuralSdf::load_unverified(&mut prev.as_slice()));
     assert_eq!(
-        NeuralSdf::load_unverified(&mut prev.as_slice())
+        provenance::from_bytes(&prev)
             .unwrap()
-            .semantics(),
+            .judge(&Provenance::sdf(), &[EARLIER])
+            .unwrap(),
         StoredSemantics::VerifiedPrevious(earlier)
     );
 
@@ -2015,16 +2076,18 @@ fn alice_vdb_writers_store_and_loaders_check_the_identifier() {
         StoredSemantics::Current
     );
 
-    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let earlier = earlier_id();
     let prev = vdb_bytes(Some(&earlier));
     assert!(provenance::from_bytes(&prev)
         .unwrap()
         .is_written_under(&earlier));
-    assert!(vdb::load_dense_grid_from_vdb(&prev).is_ok());
+    refused_as_earlier(vdb::load_dense_grid_from_vdb(&prev));
+    refused_as_earlier(vdb::load_dense_grid_from_vdb_unverified(&prev));
     assert_eq!(
-        vdb::load_dense_grid_from_vdb_unverified(&prev)
+        provenance::from_bytes(&prev)
             .unwrap()
-            .semantics(),
+            .judge(&Provenance::sdf(), &[EARLIER])
+            .unwrap(),
         StoredSemantics::VerifiedPrevious(earlier)
     );
 
@@ -2188,11 +2251,15 @@ fn svo_chunk_writers_store_and_readers_check_the_identifier() {
         StoredSemantics::Current
     );
 
-    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let earlier = earlier_id();
     let prev = svo_chunk().to_bytes_with_provenance(&earlier);
-    assert!(SvoChunk::from_bytes(&prev).is_ok());
+    refused_as_earlier(SvoChunk::from_bytes(&prev));
+    refused_as_earlier(SvoChunk::from_bytes_unverified(&prev));
     assert_eq!(
-        SvoChunk::from_bytes_unverified(&prev).unwrap().semantics(),
+        provenance::from_bytes(&prev)
+            .unwrap()
+            .judge(&Provenance::sdf(), &[EARLIER])
+            .unwrap(),
         StoredSemantics::VerifiedPrevious(earlier)
     );
 
@@ -2452,12 +2519,13 @@ fn vox_writers_store_and_loaders_check_the_identifier() {
         ((4, 4, 4), vox_voxels(&vox_model()))
     );
 
-    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let earlier = earlier_id();
     let prev_path = temp("prev.vox");
     save_vox_with_provenance(&prev_path, &vox_model(), &earlier).unwrap();
-    assert!(load_vox_pinned(&prev_path).is_ok());
+    refused_as_earlier(load_vox_pinned(&prev_path));
+    refused_as_earlier(load_vox(&prev_path));
     assert_eq!(
-        load_vox(&prev_path).unwrap().semantics(),
+        provenance::check(&prev_path, &Provenance::sdf(), &[EARLIER]).unwrap(),
         StoredSemantics::VerifiedPrevious(earlier)
     );
 
@@ -2695,12 +2763,13 @@ fn splat_writers_store_and_loaders_check_the_identifier() {
         splat_bytes(&splats())
     );
 
-    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let earlier = earlier_id();
     let prev = temp("prev.splat");
     save_splat_with_provenance(&prev, &splats(), &earlier).unwrap();
-    assert!(load_splat_pinned(&prev).is_ok());
+    refused_as_earlier(load_splat_pinned(&prev));
+    refused_as_earlier(load_splat(&prev));
     assert_eq!(
-        load_splat(&prev).unwrap().semantics(),
+        provenance::check(&prev, &Provenance::sdf(), &[EARLIER]).unwrap(),
         StoredSemantics::VerifiedPrevious(earlier)
     );
 
@@ -2951,15 +3020,19 @@ fn mesh_codec_decoders_check_the_identifier() {
         StoredSemantics::Current
     );
 
-    // a reproduced earlier identifier: read, VerifiedPrevious
-    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    // an earlier identifier this build no longer reproduces: refused by both decoders (the
+    // mapping of a listed earlier identifier is sdf_load_verdict's, tested in the crate)
+    let earlier = earlier_id();
     let ib = encode_indices_with_provenance(&idx, &earlier);
     let pb = encode_positions_with_provenance(&pos, &earlier);
-    assert_eq!(decode_indices(&ib).unwrap(), idx);
-    assert_eq!(
-        decode_positions_unverified(&pb).unwrap().semantics(),
-        StoredSemantics::VerifiedPrevious(earlier)
-    );
+    let refused = CodecError::SemanticsMismatch {
+        stored: earlier,
+        expected: Provenance::sdf(),
+    };
+    assert_eq!(decode_indices(&ib), Err(refused));
+    assert_eq!(decode_indices_unverified(&ib).map(|_| ()), Err(refused));
+    assert_eq!(decode_positions(&pb).map(|_| ()), Err(refused));
+    assert_eq!(decode_positions_unverified(&pb).map(|_| ()), Err(refused));
 
     // another identifier: refused by both decoders, the error names both
     let ib = encode_indices_with_provenance(&idx, &caller_id());
@@ -3050,17 +3123,18 @@ fn meshopt_codecs_read_the_stamped_form_and_raw_bytes_by_name() {
     let vb_level = encode_vertex_buffer_level(&verts, 12, 0);
     assert_eq!(&vb_level[8..40], &alice_sdf::SDF_SEMANTICS_ID);
     assert_eq!(decode_vertex_buffer(&vb_level, 4, 12).unwrap(), verts);
-    // a reproduced earlier identifier is read
-    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    // an earlier identifier this build no longer reproduces is stored and refused (the mapping
+    // of a listed earlier identifier is sdf_load_verdict's, tested in the crate)
+    let earlier = earlier_id();
+    let prev = encode_vertex_buffer_with_provenance(&verts, 12, &earlier);
     assert_eq!(
-        decode_vertex_buffer(
-            &encode_vertex_buffer_with_provenance(&verts, 12, &earlier),
-            4,
-            12
-        )
-        .unwrap(),
-        verts
+        decode_vertex_buffer(&prev, 4, 12),
+        Err(CodecError::SemanticsMismatch {
+            stored: earlier,
+            expected: Provenance::sdf(),
+        })
     );
+    assert_eq!(&prev[8..40], &EARLIER);
     // another identifier is refused, naming both
     let mismatch = CodecError::SemanticsMismatch {
         stored: caller_id(),
@@ -3143,17 +3217,23 @@ fn codec_volume_stream_checks_the_identifier() {
             .semantics(),
         StoredSemantics::Current
     );
-    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    let earlier = earlier_id();
     let prev = encode_sdf_volume_with_provenance(&volume, &config, &earlier);
+    let refused = DecodeError::SemanticsMismatch {
+        stored: earlier,
+        expected: Provenance::sdf(),
+    };
     assert_eq!(
-        try_decode_sdf_volume_unverified(&prev).unwrap().semantics(),
-        StoredSemantics::VerifiedPrevious(earlier)
+        try_decode_sdf_volume_unverified(&prev).map(|_| ()),
+        Err(refused.clone())
     );
-    // the identifier does not change the values
-    let bits = |v: &[f32]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+    assert_eq!(try_decode_sdf_volume(&prev).map(|_| ()), Err(refused));
     assert_eq!(
-        bits(&try_decode_sdf_volume(&prev).unwrap().data),
-        bits(&ok.data)
+        provenance::from_bytes(&prev)
+            .unwrap()
+            .judge(&Provenance::sdf(), &[EARLIER])
+            .unwrap(),
+        StoredSemantics::VerifiedPrevious(earlier)
     );
 
     let other = encode_sdf_volume_with_provenance(&volume, &config, &caller_id());
@@ -3463,13 +3543,17 @@ fn heightmap_images_carry_and_check_the_identifier() {
     std::fs::remove_file(&path).ok();
     assert_eq!(pinned.heights, back.heights);
 
-    // a reproduced earlier identifier is read; another is refused, naming both
-    let earlier = Provenance::new(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]);
+    // an earlier identifier this build no longer reproduces is refused (the shared judge given
+    // it reads it as VerifiedPrevious); another is refused, naming both
+    let earlier = earlier_id();
     let prev = hm.to_png_with_provenance(&cfg, &earlier).unwrap();
+    refused_as_earlier(Heightmap::from_image_bytes(&prev, &cfg));
+    refused_as_earlier(Heightmap::from_image_bytes_pinned(&prev, &cfg));
     assert_eq!(
-        Heightmap::from_image_bytes(&prev, &cfg)
+        provenance::from_bytes(&prev)
             .unwrap()
-            .semantics(),
+            .judge(&Provenance::sdf(), &[EARLIER])
+            .unwrap(),
         StoredSemantics::VerifiedPrevious(earlier)
     );
     let foreign = hm.to_png_with_provenance(&cfg, &caller_id()).unwrap();
