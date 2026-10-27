@@ -25,7 +25,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 786 items (0 Linux-only): 87 handshake, 699 local, 0 pending. Groups (count, decision):
+# 788 items (0 Linux-only): 89 handshake, 699 local, 0 pending. Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: a_file_written_under_another_det_math_is_refused_naming_both_and_the_form
@@ -36,6 +36,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      2  handshake: an_earlier_published_identifier_is_refused_and_judged_previous_when_listed
 #      1  handshake: stamped_writers_keep_both_identifiers_in_their_slots
 #      1  handshake: check_reads_this_identifier_and_refuses_the_earlier_ones
+#      1  handshake: the_simd_jits_emit_det_math_sin_cos_bit_for_bit
+#      1  handshake: the_scalar_jits_emit_det_math_sin_cos_bit_for_bit
 #      4  local: returns the stored identifier itself for the caller to compare (check, check_sdf and check_producer compare them); no value computed under an arithmetic is returned
 #      1  local: computes the path of the .semantics sidecar from a path
 #     12  local: formats or wraps an identifier the caller holds for a writer to store
@@ -558,6 +560,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "binding::pyo3::voxel_fracture" = "local: Python numbers, arrays and this module's own objects passed as inputs to this build's evaluation; no stored or transmitted form is decoded (the readers are the binding entries decided handshake)"
 
 # 7 local
+"abi::compiled::jit::simd::det_math_cos" = "handshake: the_scalar_jits_emit_det_math_sin_cos_bit_for_bit"
+"abi::compiled::jit::simd::det_math_sin" = "handshake: the_simd_jits_emit_det_math_sin_cos_bit_for_bit"
 "abi::ffi::io_ffi::alice_sdf_export_ue5" = "local: writes this library's own tree or mesh to a path the caller gives"
 "abi::ffi::io_ffi::alice_sdf_export_ue5_binary" = "local: writes this library's own tree or mesh to a path the caller gives"
 "abi::ffi::io_ffi::alice_sdf_export_unity" = "local: writes this library's own tree or mesh to a path the caller gives"
