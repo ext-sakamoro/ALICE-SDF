@@ -21,7 +21,10 @@ use alice_sdf::compiled::CompiledSdf;
 use alice_sdf::prelude::*;
 
 /// Angles (radians) with their f32 neighbours: the multiples of π/2 out to
-/// k = 5000, the quadrant ties, ±0, tiny / subnormal, huge and non-finite.
+/// k = 5000, the quadrant ties, ±0, tiny / subnormal, huge and non-finite, and
+/// every f32 in `[2^13, 2^13 + 1)` with its negative (where the far-lane
+/// reduction starts: a far boundary moved even by one unit leaves angles there
+/// on the single-precision reduction, which differs from the law)
 fn angles() -> Vec<f32> {
     let mut out = vec![
         0.0,
@@ -49,6 +52,10 @@ fn angles() -> Vec<f32> {
             out.push(f32::from_bits(b.wrapping_sub(d)));
         }
     };
+    for bits in 8192.0f32.to_bits()..8193.0f32.to_bits() {
+        out.push(f32::from_bits(bits));
+        out.push(-f32::from_bits(bits));
+    }
     for k in (1..=5000i32).filter(|k| *k <= 64 || k % 7 == 0) {
         let x = f64::from(k) * std::f64::consts::FRAC_PI_2;
         around(&mut out, x);
