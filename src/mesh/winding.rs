@@ -37,6 +37,7 @@
 //! Author: Moroya Sakamoto
 
 use super::bvh::BvhTriangle;
+use crate::compiled::real::{law_max_f64, law_min_f64};
 use glam::Vec3;
 
 /// `4π`, the solid angle of the whole sphere
@@ -290,12 +291,12 @@ pub fn orientation_report(vertices: &[Vec3], indices: &[u32]) -> OrientationRepo
             six_v += dot(sub(a, o), cross(sub(b, o), sub(c, o)));
             for p in [a, b, c] {
                 for d in 0..3 {
-                    lo[d] = lo[d].min(p[d]);
-                    hi[d] = hi[d].max(p[d]);
+                    lo[d] = law_min_f64(lo[d], p[d]);
+                    hi[d] = law_max_f64(hi[d], p[d]);
                 }
             }
         }
-        let extent = (hi[0] - lo[0]).max(hi[1] - lo[1]).max(hi[2] - lo[2]);
+        let extent = law_max_f64(law_max_f64(hi[0] - lo[0], hi[1] - lo[1]), hi[2] - lo[2]);
         let volume = six_v / 6.0;
         if volume.abs() <= VOLUME_TOLERANCE * extent * extent * extent {
             report.undetermined_components += 1;
