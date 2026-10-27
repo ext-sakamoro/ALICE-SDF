@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1328 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1337 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1070 |
-| | **total** | **2407** |
+| | **total** | **2416** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1328)
+## L1 — example-only (1337)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -211,6 +211,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/shell.rs`: `ShellConfig`, `ShellConfig::new`, `ShellConfig::uniform`, `ShellConfig::wall_thickness`, `eval_shell`, `eval_shell_batch`, `eval_shell_batch_parallel`, `eval_shell_compiled`, `eval_shell_compiled_batch_parallel`, `eval_shell_gradient`, `shell_node`
 - `src/sim_bridge.rs`: `GpuPhysicsBundle`, `SimulatedSdf`, `SimulatedSdf::add_erosion`, `SimulatedSdf::add_fracture`, `SimulatedSdf::add_modifier`, `SimulatedSdf::add_phase_change`, `SimulatedSdf::add_pressure`, `SimulatedSdf::add_thermal`, `SimulatedSdf::bounds`, `SimulatedSdf::clear_modifiers`, `SimulatedSdf::compiled`, `SimulatedSdf::distance`, `SimulatedSdf::from_arc`, `SimulatedSdf::modifier_count`, `SimulatedSdf::modifier_mut`, `SimulatedSdf::new`, `SimulatedSdf::normal`, `SimulatedSdf::update`, `SimulatedSdf::with_bounds`, `attach_physics`, `gpu_mesh_with_physics`, `simulate_sdf`
 - `src/soa.rs`: `AlignedVec::as_mut_ptr`, `AlignedVec::as_ptr`, `AlignedVec::clear`, `AlignedVec::is_empty`, `SIMD_ALIGNMENT`, `SoADistances::as_slice`, `SoADistances::is_empty`, `SoADistances::len`, `SoADistances::store_simd_unchecked`, `SoAPoints::as_ptrs`, `SoAPoints::clear`, `SoAPoints::get`, `SoAPoints::iter`, `SoAPoints::load_simd_unchecked`
+- `src/surface/mod.rs`: `Cell`, `Light`, `PlateView`, `SurfaceSample`, `grid_cell`, `hash_noise_2d_periodic`, `normal_from_height`, `render_plate`, `voronoi_cell`
 - `src/svo/build.rs`: `build_svo`
 - `src/svo/linearize.rs`: `LinearizedSvo`, `LinearizedSvo::as_bytes`, `LinearizedSvo::memory_bytes`, `LinearizedSvo::node_count`, `LinearizedSvo::nodes_at_level`, `compact_svo`, `linearize_svo`, `validate_linearized`
 - `src/svo/mod.rs`: `SparseVoxelOctree::build`, `SparseVoxelOctree::linearize`, `SparseVoxelOctree::nearest_surface`, `SparseVoxelOctree::ray_query`, `SvoNode::child_count`, `SvoNode::normal`
