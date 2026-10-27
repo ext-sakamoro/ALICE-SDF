@@ -18,6 +18,11 @@
 //! - a flat plate of albedo ρ lit by a directional light of irradiance E at elevation θ and seen
 //!   from above gives the Lambert radiance ρ·E·sin θ/π (the plate's specular term is weighted by
 //!   1 − roughness, so roughness 1 is Lambert alone), the same bits on every render
+//! - the specular term: at normal incidence spec = F0·(1 − r)/(4π·α²) (G = 1, F = F0); at an oblique
+//!   light D, F and G are written from their definitions, and each of four altered forms is shown to
+//!   move the pixel far beyond the tolerance
+//! - jittered voronoi cells: the nearest feature point and the nearest bisector over ±6 squares,
+//!   including points where a feature two squares away gives the edge
 #![allow(clippy::unwrap_used, clippy::float_cmp)]
 
 use std::f64::consts::PI;
@@ -281,4 +286,207 @@ fn a_rough_and_a_glossy_plate_differ_only_in_the_specular() {
     let g = render_plate(&view, &light, &glossy, 1e-4)[0][0];
     assert!((r - 0.2 / PI).abs() < 1e-12, "{r}");
     assert!(g > r * 1.5, "glossy {g} vs rough {r}");
+}
+
+// ── the specular term, by its closed form ─────────────────────────────────────────────────────
+//
+// oracle: GGX (Trowbridge-Reitz) D = α²/(π·(n·h²(α² − 1) + 1)²), Schlick F = F0 + (1 − F0)(1 − v·h)⁵
+// with F0 = 0.04, Smith-Schlick G1(x) = x/(x(1 − k) + k) with k = α/2, α = max(r², 1e-4); the
+// specular radiance is D·F·G1(n·l)·G1(n·v)/(4·n·l·n·v), weighted by 1 − r. Written here from those
+// definitions; the plate is flat (n = +z) and seen from +z.
+
+const F0: f64 = 0.04;
+
+fn ggx(ndl: f64, ndv: f64, ndh: f64, vdh: f64, r: f64, form: Form) -> f64 {
+    let alpha = (r * r).max(1e-4);
+    let a2 = alpha * alpha;
+    let den = ndh * ndh * (a2 - 1.0) + 1.0;
+    let pi = if form == Form::DWithoutPi { 1.0 } else { PI };
+    let d = a2 / (pi * den * den);
+    let m = 1.0 - vdh;
+    let schlick = if form == Form::FresnelPower4 {
+        m * m * m * m
+    } else {
+        m * m * m * m * m
+    };
+    let f = F0 + (1.0 - F0) * schlick;
+    let k = if form == Form::SmithKAlpha {
+        alpha
+    } else {
+        alpha / 2.0
+    };
+    let g1 = |x: f64| x / (x * (1.0 - k) + k);
+    let four = if form == Form::NoFour { 1.0 } else { 4.0 };
+    d * f * g1(ndl) * g1(ndv) / (four * ndl * ndv) * (1.0 - r)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Form {
+    Exact,
+    NoFour,
+    SmithKAlpha,
+    FresnelPower4,
+    DWithoutPi,
+}
+
+/// One pixel of a flat plate lit at `elevation` (azimuth 0), as (render, expected) for each channel
+fn flat_pixel(albedo: f64, roughness: f64, elevation: f64) -> (f64, [f64; 3]) {
+    let flat = |_u: f64, _v: f64| SurfaceSample {
+        height: 0.0,
+        albedo: [albedo; 3],
+        roughness,
+    };
+    let view = PlateView {
+        width: 1,
+        height: 1,
+        extent: [1.0, 1.0],
+    };
+    let light = Light {
+        elevation,
+        azimuth: 0.0,
+        irradiance: 2.0,
+    };
+    let px = render_plate(&view, &light, &flat, 1e-4)[0];
+    (px[0], [px[0], px[1], px[2]])
+}
+
+/// the half vector's dot products for a light at `elevation` seen from +z on a +z normal
+fn flat_dots(elevation: f64) -> (f64, f64, f64, f64) {
+    let l = [cos64(elevation), 0.0, sin64(elevation)];
+    let h = [l[0], l[1], l[2] + 1.0];
+    let hl = (h[0] * h[0] + h[1] * h[1] + h[2] * h[2]).sqrt();
+    let hz = h[2] / hl;
+    (l[2], 1.0, hz, hz)
+}
+
+#[test]
+fn the_specular_at_normal_incidence_is_the_closed_form() {
+    // n = l = v: G = 1 and F = F0, so spec = F0·(1 − r)/(4π·α²)
+    for r in [0.2f64, 0.5, 0.8] {
+        let alpha = (r * r).max(1e-4);
+        let spec = F0 * (1.0 - r) / (4.0 * PI * alpha * alpha);
+        let want = (0.5 / PI + spec) * 2.0;
+        let (got, rgb) = flat_pixel(0.5, r, PI / 2.0);
+        assert!((got - want).abs() <= 1e-12 * want, "r {r}: {got} vs {want}");
+        assert!(
+            rgb.iter().all(|c| c.to_bits() == got.to_bits()),
+            "a grey albedo is grey"
+        );
+    }
+}
+
+#[test]
+fn an_oblique_light_pins_d_f_and_g() {
+    let (r, elevation) = (0.5f64, 0.6f64);
+    let (ndl, ndv, ndh, vdh) = flat_dots(elevation);
+    let exact = ggx(ndl, ndv, ndh, vdh, r, Form::Exact);
+    let want = (0.5 / PI + exact) * 2.0 * ndl;
+    let (got, _) = flat_pixel(0.5, r, elevation);
+    let tol = 1e-12 * want;
+    assert!((got - want).abs() <= tol, "{got} vs {want}");
+    // each term moves the pixel here by far more than the tolerance (the point has teeth)
+    for form in [
+        Form::NoFour,
+        Form::SmithKAlpha,
+        Form::FresnelPower4,
+        Form::DWithoutPi,
+    ] {
+        let other = (0.5 / PI + ggx(ndl, ndv, ndh, vdh, r, form)) * 2.0 * ndl;
+        assert!(
+            (other - want).abs() > 1e6 * tol,
+            "{form:?} does not move the pixel"
+        );
+    }
+}
+
+// ── jittered voronoi cells, by brute force ────────────────────────────────────────────────────
+//
+// oracle: the feature point of square (a, b) is ((a + 0.5 + j·(x − 0.5))·P, (b + 0.5 + j·(y − 0.5))·P)
+// with (x, y) the cell's two jitter numbers; the cell of a point is its nearest feature point over a
+// wide neighbourhood (±6 squares), and the edge distance is the smallest distance to a bisector
+// with another feature point. The cell numbers are the PCG hash (Jarzynski & Olano) of the wrapped
+// id, the seed and a salt, rebuilt here from that definition.
+
+const fn pcg(v: u32) -> u32 {
+    let v = v.wrapping_mul(747_796_405).wrapping_add(2_891_336_453);
+    let w = ((v >> ((v >> 28) + 4)) ^ v).wrapping_mul(277_803_737);
+    (w >> 22) ^ w
+}
+
+fn numbers(id: [i64; 2], seed: u32, salt: u32) -> [f64; 3] {
+    let (a, b) = (id[0] as u32, id[1] as u32);
+    let base = pcg(a ^ pcg(b ^ pcg(seed ^ salt)));
+    let mut out = [0.0; 3];
+    for (k, o) in out.iter_mut().enumerate() {
+        *o = f64::from(pcg(base ^ (k as u32).wrapping_mul(0x9e37_79b9))) / 4_294_967_296.0;
+    }
+    out
+}
+
+#[test]
+fn jittered_voronoi_is_its_brute_force() {
+    let (period, tile, seed) = (0.25f64, [4u32, 3u32], 7u32);
+    for jitter in [0.25f64, 0.7, 1.0] {
+        let feature = |a: i64, b: i64| {
+            let id = [
+                a.rem_euclid(i64::from(tile[0])),
+                b.rem_euclid(i64::from(tile[1])),
+            ];
+            let j = numbers(id, seed, 0x6a69_7474);
+            let p = [
+                (a as f64 + 0.5 + jitter * (j[0] - 0.5)) * period,
+                (b as f64 + 0.5 + jitter * (j[1] - 0.5)) * period,
+            ];
+            (p, id)
+        };
+        // a sweep, then points where a feature two squares away gives the nearest bisector at jitter 1
+        // (found by the brute force: a 3 × 3 search returns the right cell there but a wrong edge)
+        let near_far = [
+            (-0.7199109026842474, 0.9283394744753761),
+            (-1.7486356708135156, -2.0496957526470494),
+            (0.2620302327008166, -2.812478806895566),
+            (-2.7446922886817946, -2.791386633464936),
+        ];
+        let sweep = (0..240).map(|n| (-1.3 + 0.0137 * f64::from(n), 0.9 - 0.0091 * f64::from(n)));
+        for (u, v) in sweep.chain(near_far) {
+            let (si, sj) = ((u / period).floor() as i64, (v / period).floor() as i64);
+            let pts: Vec<_> = (-6..=6)
+                .flat_map(|db| (-6..=6).map(move |da| (da, db)))
+                .map(|(da, db)| feature(si + da, sj + db))
+                .collect();
+            let d2 = |p: [f64; 2]| (p[0] - u) * (p[0] - u) + (p[1] - v) * (p[1] - v);
+            let (k, _) = pts
+                .iter()
+                .enumerate()
+                .map(|(k, (p, _))| (k, d2(*p)))
+                .fold((0, f64::INFINITY), |b, x| if x.1 < b.1 { x } else { b });
+            let (a, id) = pts[k];
+            let edge = pts
+                .iter()
+                .enumerate()
+                .filter(|(m, (b, _))| *m != k && (b[0] - a[0], b[1] - a[1]) != (0.0, 0.0))
+                .map(|(_, (b, _))| {
+                    let d = [b[0] - a[0], b[1] - a[1]];
+                    let len = (d[0] * d[0] + d[1] * d[1]).sqrt();
+                    let mid = [f64::midpoint(a[0], b[0]), f64::midpoint(a[1], b[1])];
+                    ((mid[0] - u) * d[0] + (mid[1] - v) * d[1]) / len
+                })
+                .fold(f64::INFINITY, f64::min);
+            let c = voronoi_cell(u, v, period, jitter, tile, seed);
+            assert_eq!(c.id, id, "jitter {jitter} at ({u}, {v})");
+            assert!(
+                (c.edge - edge).abs() <= 1e-12,
+                "jitter {jitter} at ({u}, {v}): {} vs {edge}",
+                c.edge
+            );
+            assert!(c.edge >= 0.0, "the point is inside its own cell");
+        }
+    }
+}
+
+#[test]
+#[should_panic(expected = "whole number of cells")]
+fn a_tile_shift_that_is_not_whole_cells_is_refused() {
+    // 3 rows shifted by 0.5 of a cell each: the tile would move the columns by 1.5 cells
+    let _ = grid_cell(0.1, 0.1, [0.5, 0.5], 0.5, [2, 3], 1);
 }

@@ -136,7 +136,8 @@ fn cell_numbers(id: [i64; 2], seed: u32, salt: u32) -> [f64; 3] {
 ///
 /// # Panics
 ///
-/// If a period is not positive and finite, the shift is outside `0..1`, or a cell count is 0
+/// If a period is not positive and finite, the shift is outside `0..1`, a cell count is 0, or the tile's
+/// rows times the shift is not a whole number of cells (the pattern would not repeat with the tile)
 #[must_use]
 pub fn grid_cell(
     u: f64,
@@ -165,9 +166,15 @@ pub fn grid_cell(
     // the cell coordinates are integer valued
     #[allow(clippy::cast_possible_truncation)]
     let (r, c) = (row as i64, col as i64);
-    // a whole tile of rows moves the columns by rows · shift cells
-    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-    let wrap_shift = (rows as f64 * shift).round() as i64;
+    // a whole tile of rows moves the columns by rows · shift cells, a whole number for the tile to repeat
+    #[allow(clippy::cast_precision_loss)]
+    let tile_shift = rows as f64 * shift;
+    assert!(
+        tile_shift == tile_shift.floor(),
+        "a tile's rows times the row shift is a whole number of cells"
+    );
+    #[allow(clippy::cast_possible_truncation)]
+    let wrap_shift = tile_shift as i64;
     let c = c + r.div_euclid(rows) * wrap_shift;
     let id = [c.rem_euclid(cols), r.rem_euclid(rows)];
     let edge = min64(min64(min64(fu, pu - fu), fv), pv - fv);
