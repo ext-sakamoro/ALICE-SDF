@@ -27,7 +27,7 @@ mod platform;
 use super::law_ops::{law_fmax, law_fmin};
 use crate::compiled::real::LawMinMax;
 use cranelift_codegen::ir::condcodes::FloatCC;
-use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlags, Value};
+use cranelift_codegen::ir::{types, AbiParam, FuncRef, InstBuilder, MemFlags, Value};
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_jit::{JITBuilder, JITModule};
@@ -45,6 +45,86 @@ use super::super::CompiledSdf;
 fn mul_add_2r(builder: &mut FunctionBuilder, a: Value, b: Value, c: Value) -> Value {
     let t = builder.ins().fmul(a, b);
     builder.ins().fadd(t, c)
+}
+
+/// `alice_det_math::sin` for the JIT to call: the law itself, not a copy of it
+extern "C" fn det_math_sin(x: f32) -> f32 {
+    alice_det_math::sin(x)
+}
+
+/// `alice_det_math::cos` for the JIT to call: the law itself, not a copy of it
+extern "C" fn det_math_cos(x: f32) -> f32 {
+    alice_det_math::cos(x)
+}
+
+const DET_SIN_SYMBOL: &str = "alice_sdf_jit_det_math_sin";
+const DET_COS_SYMBOL: &str = "alice_sdf_jit_det_math_cos";
+
+/// The scalar det-math `sin` / `cos` the emitted code calls for the far lanes
+/// (`|x| >= 2^13`, finite), where alice-det-math reduces the argument in
+/// double precision (`sin64` / `cos64`); see [`simd_sincos_det`]
+#[derive(Clone, Copy)]
+struct FarTrig {
+    sin: FuncRef,
+    cos: FuncRef,
+}
+
+/// A JIT builder that resolves the far-lane callouts to [`det_math_sin`] /
+/// [`det_math_cos`]
+fn jit_builder_with_far_trig(isa: cranelift_codegen::isa::OwnedTargetIsa) -> JITBuilder {
+    let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+    builder.symbol(DET_SIN_SYMBOL, det_math_sin as *const u8);
+    builder.symbol(DET_COS_SYMBOL, det_math_cos as *const u8);
+    builder
+}
+
+/// `f32 -> f32` in the module's calling convention
+fn f32_unary_signature(module: &JITModule) -> cranelift_codegen::ir::Signature {
+    let mut sig = module.make_signature();
+    sig.params.push(AbiParam::new(types::F32));
+    sig.returns.push(AbiParam::new(types::F32));
+    sig
+}
+
+/// Declares the far-lane callouts in `module` and imports them into `func`
+fn declare_far_trig(
+    module: &mut JITModule,
+    func: &mut cranelift_codegen::ir::Function,
+) -> Result<FarTrig, String> {
+    let sig = f32_unary_signature(module);
+    let sin_id = module
+        .declare_function(DET_SIN_SYMBOL, Linkage::Import, &sig)
+        .map_err(|e| e.to_string())?;
+    let cos_id = module
+        .declare_function(DET_COS_SYMBOL, Linkage::Import, &sig)
+        .map_err(|e| e.to_string())?;
+    Ok(FarTrig {
+        sin: module.declare_func_in_func(sin_id, func),
+        cos: module.declare_func_in_func(cos_id, func),
+    })
+}
+
+/// Imports placeholder callouts into a scratch function that is never
+/// compiled (the parameter layout of [`extract_simd_params`] does not depend on
+/// them)
+fn scratch_far_trig(func: &mut cranelift_codegen::ir::Function) -> FarTrig {
+    use cranelift_codegen::ir::{ExtFuncData, ExternalName, Signature, UserExternalName};
+    let mut sig = Signature::new(cranelift_codegen::isa::CallConv::SystemV);
+    sig.params.push(AbiParam::new(types::F32));
+    sig.returns.push(AbiParam::new(types::F32));
+    let sig = func.import_signature(sig);
+    let mut import = |index: u32| {
+        let name = func.declare_imported_user_function(UserExternalName::new(0, index));
+        func.import_function(ExtFuncData {
+            name: ExternalName::User(name),
+            signature: sig,
+            colocated: false,
+        })
+    };
+    FarTrig {
+        sin: import(0),
+        cos: import(1),
+    }
 }
 
 /// Function signature for SIMD JIT: processes 8 points at once
@@ -139,10 +219,17 @@ fn simd_select_neg(
 /// Before 3.1.0 this was an unreduced degree-9/8 Taylor series (max abs error
 /// 4e-6 / 3e-5) whose `bitselect` masks were never bitcast to the value type,
 /// so twist / bend did not compile on Cranelift 0.113 (verifier error).
+///
+/// The finite lanes with `|x| >= 2^13` are the scalar law's: alice-det-math
+/// reduces those arguments in double precision (`sin64` / `cos64`, from
+/// 2d01c63f) and its `simd::sin_cos` recomputes them with the scalar functions.
+/// When any lane is that far, the emitted code calls `alice_det_math::sin` /
+/// `cos` for each lane (`far`) and blends them in for those lanes only.
 fn simd_sincos_det(
     builder: &mut FunctionBuilder,
     angle: Value,
     vec_type: types::Type,
+    far: FarTrig,
 ) -> (Value, Value) {
     use alice_det_math::consts::{
         COS_P, FRAC_2_PI, PIO2_1, PIO2_2, PIO2_3, PIO2_4, SIN_P, SPLIT_MASK,
@@ -274,7 +361,39 @@ fn simd_sincos_det(
     let sv = blend(builder, s_bad, nan, sv);
     let cv = blend(builder, c_bad, nan, cv);
 
-    (cv, sv)
+    // --- the far lanes: the scalar law (det-math `f64_trig_lanes`) --------
+    // `|x| >= 2^13` and `|x| <= MAX` (finite); 2^13 is det-math's
+    // `TRIG_F64_FROM`, which tests/test_jit_sincos_det.rs pins from both sides
+    let from = splat(builder, 8192.0);
+    let max = splat(builder, f32::MAX);
+    let ge_from = builder.ins().fcmp(FloatCC::GreaterThanOrEqual, ax, from);
+    let le_max = builder.ins().fcmp(FloatCC::LessThanOrEqual, ax, max);
+    let big = builder.ins().band(ge_from, le_max);
+    let any_big = builder.ins().vany_true(big);
+    let far_block = builder.create_block();
+    let done = builder.create_block();
+    builder.append_block_param(done, vec_type);
+    builder.append_block_param(done, vec_type);
+    builder.ins().brif(any_big, far_block, &[], done, &[cv, sv]);
+    builder.switch_to_block(far_block);
+    builder.seal_block(far_block);
+    let (mut law_s, mut law_c) = (sv, cv);
+    for lane in 0..4u8 {
+        let x = builder.ins().extractlane(angle, lane);
+        let call = builder.ins().call(far.sin, &[x]);
+        let s = builder.inst_results(call)[0];
+        law_s = builder.ins().insertlane(law_s, s, lane);
+        let call = builder.ins().call(far.cos, &[x]);
+        let c = builder.inst_results(call)[0];
+        law_c = builder.ins().insertlane(law_c, c, lane);
+    }
+    let far_s = blend(builder, big, law_s, sv);
+    let far_c = blend(builder, big, law_c, cv);
+    builder.ins().jump(done, &[far_c, far_s]);
+    builder.switch_to_block(done);
+    builder.seal_block(done);
+    let params = builder.block_params(done);
+    (params[0], params[1])
 }
 
 /// `Real::rotate_inverse` (`p + 2w (qv × p) + 2 qv × (qv × p)`, `qv = -q.xyz`)
@@ -535,7 +654,7 @@ impl JitSimdSdf {
             .finish(settings::Flags::new(flag_builder))
             .map_err(|e| e.to_string())?;
 
-        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let builder = jit_builder_with_far_trig(isa);
         let mut module = JITModule::new(builder);
         let mut ctx = module.make_context();
         let mut func_ctx = FunctionBuilderContext::new();
@@ -553,6 +672,7 @@ impl JitSimdSdf {
                 &ctx.func.signature,
             )
             .map_err(|e| e.to_string())?;
+        let far = declare_far_trig(&mut module, &mut ctx.func)?;
 
         // Opcodes without a native SIMD codegen arm. Recorded during codegen and
         // surfaced as `Err` after the builder block: never a silent MAX distance.
@@ -1821,7 +1941,7 @@ impl JitSimdSdf {
 
                         // Lane 0: angle = y * k, (cos, sin) = approx(angle)
                         let angle0 = builder.ins().fmul(curr_y.0, k_v);
-                        let (cos0, sin0) = simd_sincos_det(&mut builder, angle0, vec_type);
+                        let (cos0, sin0) = simd_sincos_det(&mut builder, angle0, vec_type, far);
                         let cx0 = builder.ins().fmul(cos0, curr_x.0);
                         let sz0 = builder.ins().fmul(sin0, curr_z.0);
                         let nx0 = builder.ins().fsub(cx0, sz0);
@@ -1831,7 +1951,7 @@ impl JitSimdSdf {
 
                         // Lane 1
                         let angle1 = builder.ins().fmul(curr_y.1, k_v);
-                        let (cos1, sin1) = simd_sincos_det(&mut builder, angle1, vec_type);
+                        let (cos1, sin1) = simd_sincos_det(&mut builder, angle1, vec_type, far);
                         let cx1 = builder.ins().fmul(cos1, curr_x.1);
                         let sz1 = builder.ins().fmul(sin1, curr_z.1);
                         let nx1 = builder.ins().fsub(cx1, sz1);
@@ -1875,7 +1995,7 @@ impl JitSimdSdf {
                         // Lane 0: angle = k * x, rotate XY
                         // x' = cos*x - sin*y, y' = sin*x + cos*y
                         let angle0 = builder.ins().fmul(k_v, curr_x.0);
-                        let (cos0, sin0) = simd_sincos_det(&mut builder, angle0, vec_type);
+                        let (cos0, sin0) = simd_sincos_det(&mut builder, angle0, vec_type, far);
                         let cx0 = builder.ins().fmul(cos0, curr_x.0);
                         let sy0 = builder.ins().fmul(sin0, curr_y.0);
                         let nx0 = builder.ins().fsub(cx0, sy0);
@@ -1885,7 +2005,7 @@ impl JitSimdSdf {
 
                         // Lane 1
                         let angle1 = builder.ins().fmul(k_v, curr_x.1);
-                        let (cos1, sin1) = simd_sincos_det(&mut builder, angle1, vec_type);
+                        let (cos1, sin1) = simd_sincos_det(&mut builder, angle1, vec_type, far);
                         let cx1 = builder.ins().fmul(cos1, curr_x.1);
                         let sy1 = builder.ins().fmul(sin1, curr_y.1);
                         let nx1 = builder.ins().fsub(cx1, sy1);
@@ -2544,7 +2664,7 @@ impl JitSimdSdfDynamic {
             .finish(settings::Flags::new(flag_builder))
             .map_err(|e| e.to_string())?;
 
-        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let builder = jit_builder_with_far_trig(isa);
         let mut module = JITModule::new(builder);
         let mut ctx = module.make_context();
         let mut func_ctx = FunctionBuilderContext::new();
@@ -2566,8 +2686,9 @@ impl JitSimdSdfDynamic {
 
         // Opcodes without a native SIMD codegen arm are recorded during codegen
         // and surfaced as `Err` below: never a silent MAX distance.
+        let far = declare_far_trig(&mut module, &mut ctx.func)?;
         let (initial_params, unsupported) =
-            build_dynamic_simd_body(&mut ctx.func, &mut func_ctx, sdf);
+            build_dynamic_simd_body(&mut ctx.func, &mut func_ctx, sdf, far);
 
         if let Some(op) = unsupported {
             return Err(format!(
@@ -2752,7 +2873,8 @@ pub fn extract_simd_params(sdf: &CompiledSdf) -> Vec<f32> {
         func.signature.params.push(AbiParam::new(ptr_type));
     }
     let mut func_ctx = FunctionBuilderContext::new();
-    build_dynamic_simd_body(&mut func, &mut func_ctx, sdf).0
+    let far = scratch_far_trig(&mut func);
+    build_dynamic_simd_body(&mut func, &mut func_ctx, sdf, far).0
 }
 
 /// Emit the body of the dynamic SIMD evaluator
@@ -2763,6 +2885,7 @@ fn build_dynamic_simd_body(
     func: &mut cranelift_codegen::ir::Function,
     func_ctx: &mut FunctionBuilderContext,
     sdf: &CompiledSdf,
+    far: FarTrig,
 ) -> (Vec<f32>, Option<OpCode>) {
     let mut unsupported: Option<OpCode> = None;
     let mut builder = FunctionBuilder::new(func, func_ctx);
@@ -3873,7 +3996,7 @@ fn build_dynamic_simd_body(
 
                 // Lane 0
                 let angle0 = builder.ins().fmul(curr_y.0, k_v);
-                let (cos0, sin0) = simd_sincos_det(&mut builder, angle0, vec_type);
+                let (cos0, sin0) = simd_sincos_det(&mut builder, angle0, vec_type, far);
                 let cx0 = builder.ins().fmul(cos0, curr_x.0);
                 let sz0 = builder.ins().fmul(sin0, curr_z.0);
                 let nx0 = builder.ins().fsub(cx0, sz0);
@@ -3883,7 +4006,7 @@ fn build_dynamic_simd_body(
 
                 // Lane 1
                 let angle1 = builder.ins().fmul(curr_y.1, k_v);
-                let (cos1, sin1) = simd_sincos_det(&mut builder, angle1, vec_type);
+                let (cos1, sin1) = simd_sincos_det(&mut builder, angle1, vec_type, far);
                 let cx1 = builder.ins().fmul(cos1, curr_x.1);
                 let sz1 = builder.ins().fmul(sin1, curr_z.1);
                 let nx1 = builder.ins().fsub(cx1, sz1);
@@ -3910,7 +4033,7 @@ fn build_dynamic_simd_body(
 
                 // Lane 0: x' = cos*x - sin*y, y' = sin*x + cos*y
                 let angle0 = builder.ins().fmul(k_v, curr_x.0);
-                let (cos0, sin0) = simd_sincos_det(&mut builder, angle0, vec_type);
+                let (cos0, sin0) = simd_sincos_det(&mut builder, angle0, vec_type, far);
                 let cx0 = builder.ins().fmul(cos0, curr_x.0);
                 let sy0 = builder.ins().fmul(sin0, curr_y.0);
                 let nx0 = builder.ins().fsub(cx0, sy0);
@@ -3920,7 +4043,7 @@ fn build_dynamic_simd_body(
 
                 // Lane 1
                 let angle1 = builder.ins().fmul(k_v, curr_x.1);
-                let (cos1, sin1) = simd_sincos_det(&mut builder, angle1, vec_type);
+                let (cos1, sin1) = simd_sincos_det(&mut builder, angle1, vec_type, far);
                 let cx1 = builder.ins().fmul(cos1, curr_x.1);
                 let sy1 = builder.ins().fmul(sin1, curr_y.1);
                 let nx1 = builder.ins().fsub(cx1, sy1);
