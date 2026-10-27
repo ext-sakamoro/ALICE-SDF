@@ -155,3 +155,184 @@ pub fn winding_report(indices: &[u32]) -> WindingReport {
     }
     report
 }
+
+/// How the closed components of a triangle mesh are oriented
+///
+/// A consistently wound closed component is either outward (positive signed volume, winding
+/// number +1 inside it) or inward (−1 inside it). An inward component is a cavity when the rest
+/// of the mesh encloses it (the winding number of the other components at it is at least 1, so
+/// the total stays at 0 in the hole); otherwise the winding number goes negative inside it and
+/// the sign `w ≥ ½` reads that inside as outside. [`MeshSdf`](crate::mesh::MeshSdf) with the
+/// winding sign refuses a mesh with an inward or undetermined component.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OrientationReport {
+    /// Components (triangles joined through shared index edges) whose every edge has exactly two
+    /// triangles
+    pub closed_components: usize,
+    /// Components with a boundary or non-manifold edge: no volume, not judged
+    pub open_components: usize,
+    /// Closed components wound inward that nothing encloses: the winding number is −1 inside
+    pub inward_components: usize,
+    /// Closed components wound inward inside another shell: holes in a solid
+    pub cavities: usize,
+    /// Closed components whose orientation could not be decided: a signed volume within
+    /// [`VOLUME_TOLERANCE`] of 0 (relative to the cube of the component's extent), or an inward
+    /// component at which no sample gave the others' winding number within ¼ of an integer
+    pub undetermined_components: usize,
+}
+
+/// The relative tolerance of a closed component's signed volume: `|V| ≤ VOLUME_TOLERANCE · L³`
+/// (`L` the largest side of the component's bounding box) is undetermined
+pub const VOLUME_TOLERANCE: f64 = 1e-9;
+
+/// How many of an inward component's triangles (in index order) are tried as the sample point of
+/// the others' winding number
+pub const ORIENTATION_SAMPLES: usize = 16;
+
+/// Classify the closed components of `vertices` / `indices` by orientation
+///
+/// Components are the triangles (degenerate ones excluded, as in [`winding_report`]) joined
+/// through shared index edges, numbered by their first triangle. A component is closed when
+/// every edge it has belongs to exactly two of its triangles.
+///
+/// For a closed component the signed volume `Σ (a − o) · ((b − o) × (c − o)) / 6` is summed in
+/// `f64` in triangle index order, relative to the component's first vertex `o` (so the terms are
+/// of the size of the component, not of its distance from the origin); the operations are plain
+/// `f64` multiplications and additions in a fixed order with no fused multiply-add, so the value
+/// is the same on every target. A volume within [`VOLUME_TOLERANCE`] is undetermined.
+///
+/// For a closed component with a negative volume, the winding number of all other triangles is
+/// taken at the centroid of its triangles in index order, up to [`ORIENTATION_SAMPLES`] of them,
+/// until one is within ¼ of an integer (a centroid on another shell reads about ½ and is skipped).
+/// An integer of at least 1 makes the component a cavity, below 1 inward; no usable sample leaves
+/// it undetermined.
+///
+/// A triangle with an index out of range of `vertices` belongs to no component.
+#[must_use]
+pub fn orientation_report(vertices: &[Vec3], indices: &[u32]) -> OrientationReport {
+    const fn root(parent: &mut [usize], mut i: usize) -> usize {
+        while parent[i] != i {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        i
+    }
+
+    let mut report = OrientationReport::default();
+    let tris: Vec<[u32; 3]> = indices
+        .chunks_exact(3)
+        .map(|t| [t[0], t[1], t[2]])
+        .filter(|t| {
+            t[0] != t[1]
+                && t[1] != t[2]
+                && t[2] != t[0]
+                && t.iter().all(|&i| (i as usize) < vertices.len())
+        })
+        .collect();
+
+    // triangles sharing an edge, through the sorted edge list; an edge without exactly two
+    // triangles opens every triangle on it
+    let mut parent: Vec<usize> = (0..tris.len()).collect();
+    let mut edges: Vec<(u32, u32, usize)> = Vec::with_capacity(3 * tris.len());
+    for (k, t) in tris.iter().enumerate() {
+        for (u, v) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+            edges.extend([(u.min(v), u.max(v), k)]);
+        }
+    }
+    edges.sort_unstable();
+    let mut open_edge = vec![false; tris.len()];
+    let mut i = 0;
+    while i < edges.len() {
+        let mut j = i + 1;
+        while j < edges.len() && edges[j].0 == edges[i].0 && edges[j].1 == edges[i].1 {
+            j += 1;
+        }
+        if j - i != 2 {
+            for e in &edges[i..j] {
+                open_edge[e.2] = true;
+            }
+        }
+        for e in &edges[i + 1..j] {
+            let (a, b) = (root(&mut parent, edges[i].2), root(&mut parent, e.2));
+            if a != b {
+                let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+                parent[hi] = lo;
+            }
+        }
+        i = j;
+    }
+
+    // components in the order of their first triangle
+    let label: Vec<usize> = (0..tris.len()).map(|k| root(&mut parent, k)).collect();
+    let mut members: Vec<Vec<usize>> = Vec::new();
+    let mut slot = vec![usize::MAX; tris.len()];
+    for (k, &l) in label.iter().enumerate() {
+        if slot[l] == usize::MAX {
+            slot[l] = members.len();
+            members.extend([Vec::new()]);
+        }
+        members[slot[l]].extend([k]);
+    }
+
+    let pos = |i: u32| d3(vertices[i as usize]);
+    for m in &members {
+        if m.iter().any(|&k| open_edge[k]) {
+            report.open_components += 1;
+            continue;
+        }
+        report.closed_components += 1;
+        let o = pos(tris[m[0]][0]);
+        let (mut lo, mut hi) = (o, o);
+        let mut six_v = 0.0f64;
+        for &k in m {
+            let t = tris[k];
+            let (a, b, c) = (pos(t[0]), pos(t[1]), pos(t[2]));
+            six_v += dot(sub(a, o), cross(sub(b, o), sub(c, o)));
+            for p in [a, b, c] {
+                for d in 0..3 {
+                    lo[d] = lo[d].min(p[d]);
+                    hi[d] = hi[d].max(p[d]);
+                }
+            }
+        }
+        let extent = (hi[0] - lo[0]).max(hi[1] - lo[1]).max(hi[2] - lo[2]);
+        let volume = six_v / 6.0;
+        if volume.abs() <= VOLUME_TOLERANCE * extent * extent * extent {
+            report.undetermined_components += 1;
+            continue;
+        }
+        if volume > 0.0 {
+            continue;
+        }
+        let own = label[m[0]];
+        let mut enclosing = None;
+        for &k in m.iter().take(ORIENTATION_SAMPLES) {
+            let t = tris[k];
+            let p =
+                (vertices[t[0] as usize] + vertices[t[1] as usize] + vertices[t[2] as usize]) / 3.0;
+            let mut sum = 0.0f64;
+            for (q, s) in tris.iter().enumerate() {
+                if label[q] != own {
+                    sum += solid_angle(
+                        vertices[s[0] as usize],
+                        vertices[s[1] as usize],
+                        vertices[s[2] as usize],
+                        p,
+                    );
+                }
+            }
+            let w = sum / FOUR_PI;
+            let r = w.round();
+            if (w - r).abs() < 0.25 {
+                enclosing = Some(r);
+                break;
+            }
+        }
+        match enclosing {
+            Some(r) if r >= 1.0 => report.cavities += 1,
+            Some(_) => report.inward_components += 1,
+            None => report.undetermined_components += 1,
+        }
+    }
+    report
+}

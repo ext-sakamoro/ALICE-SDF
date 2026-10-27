@@ -15,7 +15,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use alice_sdf::mesh::winding::{winding_number, winding_report};
+use alice_sdf::mesh::winding::{orientation_report, winding_number, winding_report, WindingReport};
 use alice_sdf::mesh::{BvhTriangle, MeshSdf, MeshSignMode, MeshToSdfConfig};
 use glam::Vec3;
 
@@ -372,3 +372,243 @@ const PINNED: [u64; 4] = [
     0x3fe7_0935_b8de_20b6,
     0xbf55_382f_d0fd_4e2c,
 ];
+
+// ── Orientation of closed components ────────────────────────────────
+
+/// `(v, idx)` with every triangle of `extra` (triples) wound the other way and appended
+fn append_flipped(idx: &mut Vec<u32>, extra: &[u32]) {
+    for t in extra.chunks_exact(3) {
+        idx.extend([t[0], t[2], t[1]]);
+    }
+}
+
+/// An inward-wound box `[lo, hi]` appended to `(v, idx)`, its faces in the order `faces` (the
+/// face numbers of [`add_box`]: 0 −z, 1 +z, 2 −y, 3 +y, 4 −x, 5 +x), so a test chooses which
+/// triangle comes first
+fn add_inward_box(v: &mut Vec<Vec3>, idx: &mut Vec<u32>, lo: Vec3, hi: Vec3, faces: [usize; 6]) {
+    let mut tmp = Vec::new();
+    add_box(v, &mut tmp, lo, hi);
+    for f in faces {
+        append_flipped(idx, &tmp[6 * f..6 * f + 6]);
+    }
+}
+
+/// A sphere wound inward (every triangle flipped): its winding number is −1 inside, which the
+/// sign reads as outside. The edges are consistent, so `winding_report` sees nothing; the
+/// orientation check (signed volume < 0 with no enclosing shell) refuses it
+#[test]
+fn an_inside_out_sphere_is_refused() {
+    let (v, idx) = uv_sphere(12, 24, |_, _| true);
+    let mut flipped = Vec::new();
+    append_flipped(&mut flipped, &idx);
+    assert_eq!(winding_report(&flipped), WindingReport::default());
+    let r = orientation_report(&v, &flipped);
+    assert_eq!(
+        (
+            r.closed_components,
+            r.inward_components,
+            r.cavities,
+            r.undetermined_components
+        ),
+        (1, 1, 0, 0),
+        "{r:?}"
+    );
+    assert!(MeshSdf::try_new(&v, &flipped, &winding_config()).is_err());
+    // the outward sphere is accepted, with the same counts otherwise
+    let r = orientation_report(&v, &idx);
+    assert_eq!(
+        (
+            r.closed_components,
+            r.inward_components,
+            r.cavities,
+            r.undetermined_components
+        ),
+        (1, 0, 0, 0),
+        "{r:?}"
+    );
+    MeshSdf::try_new(&v, &idx, &winding_config()).unwrap();
+}
+
+/// An outward sphere holding an inward one is a hollow solid (w = 1 in the shell, 0 in the
+/// cavity): accepted, the inner sphere counted as a cavity. An inward sphere outside the shell
+/// is refused
+#[test]
+fn a_cavity_is_accepted_and_an_inward_stray_is_refused() {
+    let (v, idx) = uv_sphere(12, 24, |_, _| true);
+    let n = u32::try_from(v.len()).unwrap();
+    let mut v2 = v.clone();
+    let mut i2 = idx.clone();
+    v2.extend(v.iter().map(|p| *p * 0.5));
+    let inner: Vec<u32> = idx.iter().map(|i| i + n).collect();
+    append_flipped(&mut i2, &inner);
+    let r = orientation_report(&v2, &i2);
+    assert_eq!(
+        (
+            r.closed_components,
+            r.inward_components,
+            r.cavities,
+            r.undetermined_components
+        ),
+        (2, 0, 1, 0),
+        "{r:?}"
+    );
+    let s = MeshSdf::try_new(&v2, &i2, &winding_config()).unwrap();
+    assert!(s.eval(Vec3::ZERO) > 0.0, "cavity reads outside");
+    assert!(
+        s.eval(Vec3::new(0.75, 0.0, 0.0)) < 0.0,
+        "shell reads inside"
+    );
+
+    // the same inner sphere moved outside the shell
+    let mut v3 = v.clone();
+    v3.extend(v.iter().map(|p| *p * 0.5 + Vec3::new(3.0, 0.0, 0.0)));
+    let r = orientation_report(&v3, &i2);
+    assert_eq!(
+        (
+            r.closed_components,
+            r.inward_components,
+            r.cavities,
+            r.undetermined_components
+        ),
+        (2, 1, 0, 0),
+        "{r:?}"
+    );
+    assert!(MeshSdf::try_new(&v3, &i2, &winding_config()).is_err());
+}
+
+/// Interpenetrating outward boxes stay accepted (the overlap reads 2, never negative)
+#[test]
+fn interpenetrating_outward_boxes_are_accepted_by_the_orientation_check() {
+    let (mut v, mut idx) = (Vec::new(), Vec::new());
+    add_box(&mut v, &mut idx, Vec3::splat(-1.0), Vec3::splat(1.0));
+    add_box(&mut v, &mut idx, Vec3::splat(0.0), Vec3::splat(2.0));
+    let r = orientation_report(&v, &idx);
+    assert_eq!(
+        (
+            r.closed_components,
+            r.inward_components,
+            r.cavities,
+            r.undetermined_components
+        ),
+        (2, 0, 0, 0),
+        "{r:?}"
+    );
+    MeshSdf::try_new(&v, &idx, &winding_config()).unwrap();
+}
+
+/// The first sample of an inward component lying on another shell reads w ≈ ½ from the other
+/// components, which says nothing: the check moves to the next triangle's centroid. A stray
+/// inward box under the shell, touching its −z face with its first triangle, is refused (taking
+/// that ½ as "enclosed" would accept it); a cavity touching the same face is accepted
+#[test]
+fn a_first_sample_on_another_shell_is_skipped() {
+    let outer = |v: &mut Vec<Vec3>, idx: &mut Vec<u32>| {
+        add_box(v, idx, Vec3::splat(-1.0), Vec3::splat(1.0));
+    };
+    // stray: below the shell, its +z face (first) on z = −1
+    let (mut v, mut idx) = (Vec::new(), Vec::new());
+    outer(&mut v, &mut idx);
+    add_inward_box(
+        &mut v,
+        &mut idx,
+        Vec3::new(-0.5, -0.5, -2.0),
+        Vec3::new(0.5, 0.5, -1.0),
+        [1, 0, 2, 3, 4, 5],
+    );
+    let r = orientation_report(&v, &idx);
+    assert_eq!(
+        (
+            r.closed_components,
+            r.inward_components,
+            r.cavities,
+            r.undetermined_components
+        ),
+        (2, 1, 0, 0),
+        "{r:?}"
+    );
+    assert!(MeshSdf::try_new(&v, &idx, &winding_config()).is_err());
+
+    // cavity: inside the shell, its −z face (first two triangles) on z = −1
+    let (mut v, mut idx) = (Vec::new(), Vec::new());
+    outer(&mut v, &mut idx);
+    add_inward_box(
+        &mut v,
+        &mut idx,
+        Vec3::new(-0.5, -0.5, -1.0),
+        Vec3::new(0.5, 0.5, 0.5),
+        [0, 1, 2, 3, 4, 5],
+    );
+    let r = orientation_report(&v, &idx);
+    assert_eq!(
+        (
+            r.closed_components,
+            r.inward_components,
+            r.cavities,
+            r.undetermined_components
+        ),
+        (2, 0, 1, 0),
+        "{r:?}"
+    );
+    MeshSdf::try_new(&v, &idx, &winding_config()).unwrap();
+}
+
+/// Undetermined components are refused, not passed: an inward copy of a box lying exactly on the
+/// outward box (every sample on the other shell), and a closed component with no volume (two
+/// triangles back to back)
+#[test]
+fn undetermined_components_are_refused() {
+    let (mut v, mut idx) = (Vec::new(), Vec::new());
+    add_box(&mut v, &mut idx, Vec3::splat(-1.0), Vec3::splat(1.0));
+    add_inward_box(
+        &mut v,
+        &mut idx,
+        Vec3::splat(-1.0),
+        Vec3::splat(1.0),
+        [0, 1, 2, 3, 4, 5],
+    );
+    let r = orientation_report(&v, &idx);
+    assert_eq!(
+        (
+            r.closed_components,
+            r.inward_components,
+            r.cavities,
+            r.undetermined_components
+        ),
+        (2, 0, 0, 1),
+        "{r:?}"
+    );
+    assert!(MeshSdf::try_new(&v, &idx, &winding_config()).is_err());
+
+    let v = vec![Vec3::ZERO, Vec3::X, Vec3::Y];
+    let idx = vec![0, 1, 2, 0, 2, 1];
+    let r = orientation_report(&v, &idx);
+    assert_eq!(
+        (
+            r.closed_components,
+            r.inward_components,
+            r.cavities,
+            r.undetermined_components
+        ),
+        (1, 0, 0, 1),
+        "{r:?}"
+    );
+    assert!(MeshSdf::try_new(&v, &idx, &winding_config()).is_err());
+}
+
+/// Open components (a sphere with a hole) are counted and not judged: they have no volume
+#[test]
+fn open_components_are_counted_not_judged() {
+    let (v, idx) = uv_sphere(12, 24, |i, j| !(i == 0 && j == 0));
+    let r = orientation_report(&v, &idx);
+    assert_eq!(
+        (
+            r.closed_components,
+            r.open_components,
+            r.inward_components,
+            r.undetermined_components
+        ),
+        (0, 1, 0, 0),
+        "{r:?}"
+    );
+    MeshSdf::try_new(&v, &idx, &winding_config()).unwrap();
+}
