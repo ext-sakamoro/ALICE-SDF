@@ -96,7 +96,10 @@ impl MeshToSdfConfig {
     /// geometry rather than of the triangle winding: an open surface reports no
     /// interior, reversing the winding changes nothing, and each closed component
     /// gets its own interior. Pair with [`Self::sign_flood_fill_resolution`] when
-    /// the mesh has features thinner than a few grid cells.
+    /// the mesh has features thinner than a few grid cells. The flood fill needs a
+    /// watertight mesh: a hole or a slit lets it in and the inside reads as outside.
+    /// For a mesh with openings, folds or self-intersections that is consistently
+    /// wound, set `sign_mode` to [`MeshSignMode::WindingNumber`].
     ///
     /// For the pre-4.0 behaviour, set `sign_mode` back to
     /// [`MeshSignMode::NearestFaceNormal`].
@@ -159,9 +162,11 @@ impl MeshSdf {
     ///
     /// # Errors
     ///
-    /// Empty input, a mesh with no bounding box, or — for
+    /// Empty input, a mesh with no bounding box, — for
     /// [`MeshSignMode::ExteriorFloodFill`] — a degenerate extent or a
-    /// `sign_flood_fill_resolution` over the cell budget.
+    /// `sign_flood_fill_resolution` over the cell budget, or — for
+    /// [`MeshSignMode::WindingNumber`] — an inconsistently wound edge
+    /// ([`crate::mesh::winding::winding_report`] counts them).
     pub fn try_new(
         vertices: &[Vec3],
         indices: &[u32],
@@ -177,6 +182,14 @@ impl MeshSdf {
         let bounds = bvh.bounds().ok_or(MeshInputError {
             reason: "mesh has no bounding box",
         })?;
+
+        if config.sign_mode == MeshSignMode::WindingNumber
+            && crate::mesh::winding::winding_report(indices).inconsistent_edges > 0
+        {
+            return Err(MeshInputError {
+                reason: "the winding-number sign needs a consistently wound mesh: an edge is run the same way by two triangles (mesh::winding::winding_report counts them)",
+            });
+        }
 
         let exterior = match config.sign_mode {
             MeshSignMode::ExteriorFloodFill => Some(Arc::new(ExteriorField::build(
@@ -203,10 +216,23 @@ impl MeshSdf {
     /// Evaluate signed distance at a point
     #[inline]
     pub fn eval(&self, point: Vec3) -> f32 {
+        if self.sign_mode == MeshSignMode::WindingNumber {
+            return self.winding_signed_distance(point);
+        }
         self.exterior.as_ref().map_or_else(
             || self.bvh.signed_distance(point),
             |field| field.signed_distance(&self.bvh, point),
         )
+    }
+
+    /// The unsigned distance, negative where the winding number is at least ½
+    fn winding_signed_distance(&self, point: Vec3) -> f32 {
+        let d = self.bvh.unsigned_distance(point);
+        if crate::mesh::winding::winding_number(&self.bvh.triangles, point) >= 0.5 {
+            -d
+        } else {
+            d
+        }
     }
 
     /// Evaluate unsigned distance at a point
@@ -217,6 +243,12 @@ impl MeshSdf {
 
     /// Batch evaluate signed distances (parallel)
     pub fn eval_batch(&self, points: &[Vec3]) -> Vec<f32> {
+        if self.sign_mode == MeshSignMode::WindingNumber {
+            return points
+                .par_iter()
+                .map(|&p| self.winding_signed_distance(p))
+                .collect();
+        }
         self.exterior.as_ref().map_or_else(
             || self.bvh.signed_distance_batch(points),
             |field| {
