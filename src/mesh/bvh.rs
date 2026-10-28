@@ -119,6 +119,13 @@ fn closest_point_barycentric(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> (Vec3, Vec3)
     let ab = b - a;
     let ac = c - a;
 
+    // A zero-area triangle has no face, and the region tests below would
+    // answer it through whichever edge region they meet first; it takes the
+    // nearest-edge rule instead.
+    if ab.cross(ac) == Vec3::ZERO {
+        return degenerate(p, a, b, c);
+    }
+
     // vertex region A
     let ap = p - a;
     let d1 = ab.dot(ap);
@@ -181,6 +188,7 @@ fn closest_point_barycentric(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> (Vec3, Vec3)
     // face region — barycentric interior
     let denom = va + vb + vc;
     if denom == 0.0 {
+        // non-zero area whose region terms cancel in rounding: the same rule
         return degenerate(p, a, b, c);
     }
     let inv = 1.0 / denom;
@@ -520,6 +528,9 @@ impl MeshBvh {
     ///
     /// `None` for an empty mesh or a non-finite `point`.
     pub fn closest_triangle(&self, point: Vec3) -> Option<(usize, Vec3, Vec3)> {
+        // A non-finite point is `None` by contract. The walk alone would also
+        // answer `None` (a NaN or infinite d² never beats the initial infinity),
+        // so removing this check is an equivalent change; it states the rule.
         if !point.is_finite() {
             return None;
         }
@@ -535,8 +546,11 @@ impl MeshBvh {
     }
 
     /// Like [`Self::closest_recursive`], but keeps the `(distance², index)`
-    /// minimum: a child whose bound equals the best distance is still visited,
-    /// since it may hold a tie with a lower index.
+    /// minimum. A child is skipped only when its box is farther than the best
+    /// distance by more than the slack of [`Self::may_hold`]: the box distance
+    /// and a triangle's distance are rounded differently, so a triangle that
+    /// ties the best exactly can lie in a box whose computed distance is a few
+    /// ulp above it. Visiting such a child costs time, never the answer.
     fn nearest_recursive(
         triangles: &[BvhTriangle],
         node: &BvhNode,
@@ -561,24 +575,37 @@ impl MeshBvh {
                 }
             }
             BvhNode::Internal { left, right, .. } => {
-                let bound = |n: &BvhNode| {
-                    let d = n.aabb().signed_distance(point).law_max(0.0);
-                    d * d
-                };
+                // distance from the point to the box (0 inside)
+                let bound = |n: &BvhNode| n.aabb().signed_distance(point).law_max(0.0);
                 let (l_bound, r_bound) = (bound(left), bound(right));
                 let (first, first_bound, second, second_bound) = if l_bound <= r_bound {
                     (left, l_bound, right, r_bound)
                 } else {
                     (right, r_bound, left, l_bound)
                 };
-                if first_bound <= best.d_sq {
+                if Self::may_hold(first, first_bound, point, best) {
                     Self::nearest_recursive(triangles, first, point, best);
                 }
-                if second_bound <= best.d_sq {
+                if Self::may_hold(second, second_bound, point, best) {
                     Self::nearest_recursive(triangles, second, point, best);
                 }
             }
         }
+    }
+
+    /// Whether `node`, at box distance `bound`, may hold a triangle at most as
+    /// far as `best`. The slack is 16 ulp of the largest coordinate involved:
+    /// a computed closest point is within a few ulp of its exact value per
+    /// coordinate, which moves its distance by at most that much.
+    fn may_hold(node: &BvhNode, bound: f32, point: Vec3, best: &Nearest) -> bool {
+        let aabb = node.aabb();
+        let scale = point
+            .abs()
+            .max_element()
+            .law_max(aabb.min.abs().max_element())
+            .law_max(aabb.max.abs().max_element());
+        let slack = 16.0 * f32::EPSILON * scale;
+        bound <= best.d_sq.sqrt() + slack
     }
 
     /// Batch query signed distances (parallel)
