@@ -16,7 +16,7 @@
 use alice_sdf::mesh::MeshBvh;
 use glam::Vec3;
 
-fn v(bits: [u32; 3]) -> Vec3 {
+const fn v(bits: [u32; 3]) -> Vec3 {
     Vec3::new(
         f32::from_bits(bits[0]),
         f32::from_bits(bits[1]),
@@ -76,7 +76,10 @@ fn the_worst_slivers_answer_no_farther_than_the_nearest_edge() {
         assert_ne!((b - a).cross(c - a), Vec3::ZERO, "a sliver, not zero area");
         let got = answered_d2(p, a, b, c);
         let edge = nearest_edge_d2(p, a, b, c);
-        assert!(got <= edge, "p {p:?}: answered d² {got} > nearest edge d² {edge}");
+        assert!(
+            got <= edge,
+            "p {p:?}: answered d² {got} > nearest edge d² {edge}"
+        );
     }
 }
 
@@ -149,9 +152,11 @@ fn every_aspect_ratio_stays_within_the_bound() {
         for t in [-0.3_f32, 0.0, 0.25, 0.5, 0.967, 1.0, 1.4] {
             let (a, b, c) = (Vec3::ZERO, Vec3::X, Vec3::new(t, h, 0.0));
             for i in -4..=4 {
-                for j in -4..=4 {
+                // below, on, inside (0.25 … 0.75 of the height) and above the
+                // thin triangle
+                for fy in [-8.0_f32, -2.0, 0.0, 0.25, 0.5, 0.75, 2.0, 8.0] {
                     for z in [0.0_f32, 0.3] {
-                        let p = Vec3::new(0.5 + 0.3 * i as f32, h * 2.0 * j as f32, z);
+                        let p = Vec3::new(0.5 + 0.3 * i as f32, h * fy, z);
                         tris.extend([(a, b, c, p)]);
                     }
                 }
@@ -160,5 +165,44 @@ fn every_aspect_ratio_stays_within_the_bound() {
     }
     let (compared, beyond) = beyond_bound(&tris);
     assert!(compared > 10_000, "compared {compared}");
+    assert_eq!(beyond, 0, "{beyond} of {compared} beyond the bound");
+}
+
+/// Queries that project inside thin triangles (height 2^-6 … 2^-22 of the
+/// length, all weights 0.05 … 0.9, a small offset along the normal): the
+/// region signs are certain there, but the face weights divide by a small
+/// determinant sum, so the face answer is the one that can be off. Without
+/// the face-weight test 809 of these 100,000 answered beyond the bound.
+#[test]
+fn interior_queries_of_thin_triangles_stay_within_the_bound() {
+    let mut x: u64 = 23;
+    let mut r = || {
+        x = x
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        ((x >> 33) % 1_000_001) as f32 / 1e6
+    };
+    let mut tris = Vec::new();
+    for n in 0..100_000_u32 {
+        let k = 6 + n % 17;
+        let h = f32::from_bits((127 - k) << 23);
+        let a = Vec3::new(r() - 0.5, r() - 0.5, r() - 0.5);
+        let b = Vec3::new(r() + 0.5, r() - 0.5, r() - 0.5);
+        let ab = b - a;
+        let side = ab
+            .cross(Vec3::new(r() - 0.5, r() - 0.5, r() - 0.5))
+            .normalize();
+        let c = a + ab * (0.1 + 0.8 * r()) + side * (h * ab.length());
+        let (mut v, mut w) = (0.05 + 0.85 * r(), 0.05 + 0.85 * r());
+        if v + w > 0.95 {
+            v *= 0.5;
+            w *= 0.5;
+        }
+        let normal = (b - a).cross(c - a).normalize_or_zero();
+        let foot = a + (b - a) * v + (c - a) * w;
+        tris.extend([(a, b, c, foot + normal * ((r() - 0.5) * 0.2))]);
+    }
+    let (compared, beyond) = beyond_bound(&tris);
+    assert!(compared > 90_000, "compared {compared}");
     assert_eq!(beyond, 0, "{beyond} of {compared} beyond the bound");
 }
