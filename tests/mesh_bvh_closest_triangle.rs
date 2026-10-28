@@ -116,6 +116,21 @@ fn degenerate_triangle_answers_the_nearest_edge() {
     // (-1, 0, 0): only the a end is nearest; ab reaches it first
     check(&bvh, Vec3::new(-1.0, 0.0, 0.0), 0, Vec3::X, Vec3::ZERO);
 
+    // c beyond b: the region tests alone would answer through edge ac with
+    // weights (0.25, 0, 0.75); the rule ties bc and ca at d² = 1, and bc wins
+    let v = [
+        Vec3::ZERO,
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(2.0, 0.0, 0.0),
+    ];
+    let bvh = MeshBvh::build(&v, &[0, 1, 2], 4);
+    check(
+        &bvh,
+        Vec3::new(1.5, 1.0, 0.0),
+        0,
+        Vec3::new(0.0, 0.5, 0.5),
+        Vec3::new(1.5, 0.0, 0.0),
+    );
     // all three vertices on one point
     let p = Vec3::new(3.0, -2.0, 1.0);
     let bvh = MeshBvh::build(&[p, p, p], &[0, 1, 2], 4);
@@ -193,6 +208,31 @@ fn ties_go_to_the_lower_input_index() {
     let got = bvh.closest_triangle(Vec3::new(0.5, 0.5, 1.0)).unwrap();
     assert_eq!(got.0, 0);
     assert_eq!(got.2, Vec3::new(0.5, 0.5, 0.0));
+}
+
+/// A tie between two subtrees: the lower index lies in the subtree visited
+/// second, at a box distance equal to the best distance.
+#[test]
+fn a_tie_in_the_second_subtree_still_wins() {
+    let v = [
+        // input 0, right of the query: edge x = 1 nearest
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(2.0, 0.0, 0.0),
+        Vec3::new(1.0, 1.0, 0.0),
+        // input 1, the mirror image, left of the query (the left child)
+        Vec3::new(-1.0, 0.0, 0.0),
+        Vec3::new(-2.0, 0.0, 0.0),
+        Vec3::new(-1.0, 1.0, 0.0),
+    ];
+    let bvh = MeshBvh::build(&v, &[0, 1, 2, 3, 4, 5], 1);
+    // both at d² = 2; the boxes' distances are √2 as well
+    check(
+        &bvh,
+        Vec3::new(0.0, 0.5, 1.0),
+        0,
+        Vec3::new(0.5, 0.0, 0.5),
+        Vec3::new(1.0, 0.5, 0.0),
+    );
 }
 
 #[test]
