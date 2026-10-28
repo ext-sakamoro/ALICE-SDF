@@ -79,3 +79,86 @@ fn the_worst_slivers_answer_no_farther_than_the_nearest_edge() {
         assert!(got <= edge, "p {p:?}: answered d² {got} > nearest edge d² {edge}");
     }
 }
+
+/// The bound of the answer outside the ill-conditioned path: an edge or
+/// vertex expression moves its point by at most `2^-19·(|ap|₁ + |bp|₁ + |cp|₁)`
+/// (the factor and its derivation are `REGION_DET_ERR` in `src/mesh/bvh.rs`;
+/// a face answer that could move farther is sent to the ill-conditioned
+/// path). On that path the answer is never farther than the nearest edge.
+/// Either way the answered distance is at most the nearest edge's distance
+/// plus that bound.
+fn bound(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> f32 {
+    let l1 = |x: Vec3| x.x.abs() + x.y.abs() + x.z.abs();
+    (l1(p - a) + l1(p - b) + l1(p - c)) / 524_288.0
+}
+
+/// `(compared, beyond)`: how many non-degenerate triangles were compared and
+/// how many answered farther than the nearest edge beyond [`bound`].
+fn beyond_bound(tris: &[(Vec3, Vec3, Vec3, Vec3)]) -> (usize, usize) {
+    let (mut compared, mut beyond) = (0, 0);
+    for &(a, b, c, p) in tris {
+        if (b - a).cross(c - a) == Vec3::ZERO {
+            continue;
+        }
+        compared += 1;
+        let got = answered_d2(p, a, b, c).sqrt();
+        let edge = nearest_edge_d2(p, a, b, c).sqrt();
+        if got > edge + bound(p, a, b, c) {
+            beyond += 1;
+        }
+    }
+    (compared, beyond)
+}
+
+/// The 200,000 draws the three worst cases above come from:
+/// `c = a + (b − a)·0.967` rounded in f32, so `c` lies within rounding of the
+/// line `ab`, and `p = 2·v` for a fresh draw `v`.
+#[test]
+fn slivers_never_answer_farther_than_an_edge() {
+    let mut x: u64 = 11;
+    let mut f = || {
+        x = x
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        ((x >> 33) % 2_000_001) as f32 / 1e6 - 1.0
+    };
+    let mut v = || Vec3::new(f(), f(), f());
+    let tris: Vec<_> = (0..200_000)
+        .map(|_| {
+            let a = v();
+            let b = v();
+            let c = a + (b - a) * 0.967;
+            let p = v() * 2.0;
+            (a, b, c, p)
+        })
+        .collect();
+    let (compared, beyond) = beyond_bound(&tris);
+    assert!(compared > 150_000, "compared {compared}");
+    assert_eq!(beyond, 0, "{beyond} of {compared} beyond the bound");
+}
+
+/// Thin triangles from well conditioned to a few ulp off a line:
+/// a = (0, 0, 0), b = (1, 0, 0), c = (t, h, 0) with h = 2^-1 … 2^-40 and the
+/// query on a grid around the triangle, so the gate is crossed on both sides.
+#[test]
+fn every_aspect_ratio_stays_within_the_bound() {
+    let mut tris = Vec::new();
+    for k in 1_u32..=40 {
+        // 2^-k, exact
+        let h = f32::from_bits((127 - k) << 23);
+        for t in [-0.3_f32, 0.0, 0.25, 0.5, 0.967, 1.0, 1.4] {
+            let (a, b, c) = (Vec3::ZERO, Vec3::X, Vec3::new(t, h, 0.0));
+            for i in -4..=4 {
+                for j in -4..=4 {
+                    for z in [0.0_f32, 0.3] {
+                        let p = Vec3::new(0.5 + 0.3 * i as f32, h * 2.0 * j as f32, z);
+                        tris.extend([(a, b, c, p)]);
+                    }
+                }
+            }
+        }
+    }
+    let (compared, beyond) = beyond_bound(&tris);
+    assert!(compared > 10_000, "compared {compared}");
+    assert_eq!(beyond, 0, "{beyond} of {compared} beyond the bound");
+}
