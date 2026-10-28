@@ -608,6 +608,36 @@ fn every_writer_stores_the_identifier_and_it_reads_back() {
     assert!(compared > 0, "compared no writer");
 }
 
+/// ALICE-Law G8: every public writer stores the meaning identifier of its stored form (law-id v2
+/// over the form, its layout version and the semantics identifier), not the raw semantics
+/// identifier, which is G6's in-process one
+#[test]
+fn every_writer_stores_the_meaning_identifier_of_its_form() {
+    let m = mesh();
+    let mut raw = Vec::new();
+    let mut compared = 0;
+    for &(name, file, write) in WRITERS {
+        let path = temp(file);
+        write(&m, &path, None);
+        let s = provenance::read(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
+        compared += 1;
+        let meaning = s.form.writes_meaning()
+            && s.via != provenance::StoredVia::SemanticsKey
+            && s.id == provenance::meaning_id(s.form, &Provenance::sdf());
+        if !meaning {
+            raw.push(format!("{name} ({:?})", s.form));
+        }
+        std::fs::remove_file(&path).ok();
+    }
+    assert_eq!(compared, WRITERS.len());
+    assert!(compared > 0, "compared no writer");
+    assert!(
+        raw.is_empty(),
+        "{} of {compared} writers store a raw identifier: {raw:#?}",
+        raw.len()
+    );
+}
+
 #[test]
 fn files_with_the_identifier_still_open_in_this_crates_importers() {
     let m = mesh();
