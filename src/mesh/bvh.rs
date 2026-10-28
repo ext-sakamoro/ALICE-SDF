@@ -114,6 +114,14 @@ impl BvhTriangle {
 /// A zero-area triangle has no face region: the answer is the nearest point
 /// of its edges `ab`, `bc`, `ca` (the first of them on a tie), with the edge
 /// parameter on that edge's two vertices.
+///
+/// A region is decided by the sign of a 2×2 determinant (`va`, `vb`, `vc`).
+/// When a determinant is not larger than its own rounding-error bound
+/// ([`REGION_DET_ERR`]), its sign is not known, and when the face weights
+/// carry more error than the edge expressions do, the face answer is not
+/// known: in both cases the answer is the nearest of the face point (if its
+/// weights are all non-negative) and the three edge points
+/// ([`ill_conditioned`]), so it is never farther than the nearest edge.
 #[inline]
 fn closest_point_barycentric(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> (Vec3, Vec3) {
     let ab = b - a;
@@ -144,8 +152,21 @@ fn closest_point_barycentric(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> (Vec3, Vec3)
         return (b, Vec3::Y);
     }
 
+    // the sums of |terms| of each dot product, for the determinants' bounds
+    let (abs_ab, abs_ac, abs_ap, abs_bp) = (ab.abs(), ac.abs(), ap.abs(), bp.abs());
+    let (s1, s2, s3, s4) = (
+        abs_ab.dot(abs_ap),
+        abs_ac.dot(abs_ap),
+        abs_ab.dot(abs_bp),
+        abs_ac.dot(abs_bp),
+    );
+
     // edge region AB
     let vc = d1 * d4 - d3 * d2;
+    let err_c = REGION_DET_ERR * (s1 * s4 + s3 * s2);
+    if vc.abs() <= err_c {
+        return ill_conditioned(p, a, b, c);
+    }
     if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
         let denom = d1 - d3;
         if denom != 0.0 {
@@ -162,9 +183,15 @@ fn closest_point_barycentric(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> (Vec3, Vec3)
     if d6 >= 0.0 && d5 <= d6 {
         return (c, Vec3::Z);
     }
+    let abs_cp = cp.abs();
+    let (s5, s6) = (abs_ab.dot(abs_cp), abs_ac.dot(abs_cp));
 
     // edge region AC
     let vb = d5 * d2 - d1 * d6;
+    let err_b = REGION_DET_ERR * (s5 * s2 + s1 * s6);
+    if vb.abs() <= err_b {
+        return ill_conditioned(p, a, b, c);
+    }
     if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
         let denom = d2 - d6;
         if denom != 0.0 {
@@ -176,6 +203,10 @@ fn closest_point_barycentric(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> (Vec3, Vec3)
 
     // edge region BC
     let va = d3 * d6 - d5 * d4;
+    let err_a = REGION_DET_ERR * (s3 * s6 + s5 * s4);
+    if va.abs() <= err_a {
+        return ill_conditioned(p, a, b, c);
+    }
     let bc_num = d4 - d3;
     let bc_den = d5 - d6;
     if va <= 0.0 && bc_num >= 0.0 && bc_den >= 0.0 {
@@ -193,10 +224,64 @@ fn closest_point_barycentric(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> (Vec3, Vec3)
         // non-zero area whose region terms cancel in rounding: the same rule
         return degenerate(p, a, b, c);
     }
+    // The face point moves by at most (|ab| + |ac|)·(2·Σerr / denom) (each
+    // weight's error is at most 2·Σerr / denom); an edge expression moves its
+    // point by at most REGION_DET_ERR·(|ap| + |bp| + |cp|). A face answer less
+    // certain than that is compared with the edges.
+    let l1 = |x: Vec3| x.x.abs() + x.y.abs() + x.z.abs();
+    let face_err = 2.0 * (l1(ab) + l1(ac)) * (err_a + err_b + err_c);
+    if face_err > denom * REGION_DET_ERR * (l1(ap) + l1(bp) + l1(cp)) {
+        return ill_conditioned(p, a, b, c);
+    }
     let inv = 1.0 / denom;
     let v = vb * inv;
     let w = vc * inv;
     (a + ab * v + ac * w, Vec3::new(1.0 - v - w, v, w))
+}
+
+/// Bound factor of the rounding error of a region determinant, relative to
+/// the sum of |terms| of its products.
+///
+/// With `u = 2^-24` (f32) and `γn = n·u / (1 − n·u)`: each difference
+/// (`b − a`, `p − a`, …) is rounded once (≤ u of each component), each dot
+/// product of three terms adds γ3, so a computed `d` is within γ5·S of the `d`
+/// of the exact inputs, where S is the dot product of the absolute values
+/// (`s1` … `s6`, and |d| ≤ S). A determinant `d·d' − d''·d'''` then is within
+/// (2γ5 + γ5² + 2u)·(S·S' + S''·S''') ≤ γ13·(…) of the exact one, and the
+/// bound itself, computed in f32 from the computed S, is low by at most γ5.
+/// γ13·(1 + γ5) < 2^-19, so a determinant larger in magnitude than
+/// `2^-19·(S·S' + S''·S''')` has the sign of the exact determinant.
+/// The products and sums are not fused (no `mul_add`), as everywhere here.
+const REGION_DET_ERR: f32 = 1.0 / 524_288.0; // 2^-19
+
+/// The answer when a region sign or the face weights are not certain: the
+/// nearest of the face point (when its weights are all non-negative, so it is
+/// a point of the triangle) and the three edge points, the face point first
+/// on a tie and then `ab`, `bc`, `ca`. Every candidate is a point of the
+/// triangle, so the answer is never farther than the nearest edge.
+#[cold]
+fn ill_conditioned(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> (Vec3, Vec3) {
+    let edge = degenerate(p, a, b, c);
+    let ab = b - a;
+    let ac = c - a;
+    let (ap, bp, cp) = (p - a, p - b, p - c);
+    let (d1, d2) = (ab.dot(ap), ac.dot(ap));
+    let (d3, d4) = (ab.dot(bp), ac.dot(bp));
+    let (d5, d6) = (ab.dot(cp), ac.dot(cp));
+    let va = d3 * d6 - d5 * d4;
+    let vb = d5 * d2 - d1 * d6;
+    let vc = d1 * d4 - d3 * d2;
+    let denom = va + vb + vc;
+    if va >= 0.0 && vb >= 0.0 && vc >= 0.0 && denom > 0.0 {
+        let inv = 1.0 / denom;
+        let v = vb * inv;
+        let w = vc * inv;
+        let q = a + ab * v + ac * w;
+        if (p - q).length_squared() <= (p - edge.0).length_squared() {
+            return (q, Vec3::new(1.0 - v - w, v, w));
+        }
+    }
+    edge
 }
 
 /// Zero-area triangle: the Voronoi regions above do not partition the plane,
