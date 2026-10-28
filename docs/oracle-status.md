@@ -6,11 +6,11 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 997 |
+| 🟢 Not ignored | 1008 |
 | 🔴 Red by design | 1 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **1002** |
+| **Total** | **1013** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -32,7 +32,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (997)
+## 🟢 Not ignored (1008)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -57,6 +57,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_io_format_oracle.rs` | 13 |
 | `test_texture_fit_oracle.rs` | 13 |
 | `test_validity_oracle.rs` | 12 |
+| `mesh_bvh_closest_triangle.rs` | 11 |
 | `test_binding_oracle.rs` | 11 |
 | `test_cache_correctness.rs` | 11 |
 | `test_hlsl_blinkscript_parity.rs` | 11 |
