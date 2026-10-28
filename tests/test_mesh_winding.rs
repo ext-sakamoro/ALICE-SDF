@@ -181,6 +181,54 @@ fn a_sphere_with_a_hole_or_a_slit_keeps_its_inside() {
     assert!(compared > 2000);
 }
 
+/// The sign is `w ≥ ½`, pinned from both sides on the sphere with the polar hole: points just
+/// above the hole have 0.1 < w < ½ and are outside (|p| > 1), points on the axis just below the
+/// hole's rim have ½ ≤ w < 0.9 and are inside (below the rim, |p| < 0.98). A threshold of 0.1 or 0.9
+/// signs one of the two groups wrongly.
+#[test]
+fn the_half_winding_threshold_is_pinned_from_both_sides() {
+    let (v, idx) = uv_sphere(18, 36, |i, _| i != 0);
+    let tris = triangles(&v, &idx);
+    let sdf = MeshSdf::try_new(&v, &idx, &winding_config()).unwrap();
+    // the rim of the hole: the first ring of the sphere, at y = cos(π / 18), the same expression
+    // uv_sphere places its vertices with
+    let rim = alice_det_math::cos(std::f32::consts::PI * 1.0 / 18.0);
+
+    // above the hole: outside, 0.1 < w < ½
+    let mut above = 0;
+    for k in 0..60 {
+        let y = 1.0025 + 0.0025 * k as f32;
+        for x in [0.0f32, 0.05, 0.1] {
+            let p = Vec3::new(x, y, 0.0);
+            assert!(p.length() > 1.0);
+            let w = winding_number(&tris, p);
+            assert!(w > 0.1 && w < 0.5, "{p}: w = {w}");
+            assert!(sdf.eval(p) > 0.0, "{p}: w = {w}, d = {}", sdf.eval(p));
+            above += 1;
+        }
+    }
+    assert_eq!(above, 180);
+
+    // on the axis below the rim: inside, the points with ½ ≤ w < 0.9
+    let mut below = 0;
+    let mut nearest_half = f64::INFINITY;
+    for k in 0..200 {
+        let p = Vec3::new(0.0, rim - 0.001 - 0.004 * k as f32, 0.0);
+        assert!(p.length() < rim, "{p} is inside the sphere, below the rim");
+        let w = winding_number(&tris, p);
+        if (0.5..0.9).contains(&w) {
+            assert!(sdf.eval(p) < 0.0, "{p}: w = {w}, d = {}", sdf.eval(p));
+            nearest_half = nearest_half.min(w - 0.5);
+            below += 1;
+        }
+    }
+    assert!(below > 10, "points with ½ ≤ w < 0.9 below the rim: {below}");
+    assert!(
+        nearest_half < 0.05,
+        "no point with w just above ½: {nearest_half}"
+    );
+}
+
 #[test]
 fn touching_boxes_and_a_one_millimetre_gap_are_signed_by_geometry() {
     // two boxes that touch on x = 0, and two boxes 1 mm apart on x = 0 / 0.001
