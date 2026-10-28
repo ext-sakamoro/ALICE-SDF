@@ -10,7 +10,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::compiled::real::LawMinMax;
+use crate::compiled::real::{LawMinMax, LawVec};
 use glam::Vec3;
 use rayon::prelude::*;
 use wide::f32x8;
@@ -601,9 +601,9 @@ impl MeshBvh {
         let aabb = node.aabb();
         let scale = point
             .abs()
-            .max_element()
-            .law_max(aabb.min.abs().max_element())
-            .law_max(aabb.max.abs().max_element());
+            .law_max_element()
+            .law_max(aabb.min.abs().law_max_element())
+            .law_max(aabb.max.abs().law_max_element());
         let slack = 16.0 * f32::EPSILON * scale;
         bound <= best.d_sq.sqrt() + slack
     }
