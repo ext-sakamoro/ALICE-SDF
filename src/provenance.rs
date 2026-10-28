@@ -227,6 +227,16 @@ impl StoredForm {
                 | Self::Step
                 | Self::Iges
                 | Self::Alembic
+                | Self::Asdf
+                | Self::Abm
+                | Self::Nanite
+                | Self::Ue5Mesh
+                | Self::UnityMesh
+                | Self::Neural
+                | Self::Vdb
+                | Self::Svo
+                | Self::Vox
+                | Self::Dds
         )
     }
 }
@@ -1286,6 +1296,28 @@ pub(crate) fn sdf_load_verdict(
     )
 }
 
+/// The verdict of this crate's loaders on the 32 bytes of `form`'s binary slot (`None`: a file of a
+/// version without the slot): [`Stored::judge`] through [`stored_verdict`], so a meaning identifier
+/// of this crate's identifier is current and a raw one (a file written before the form stored
+/// meaning identifiers) is a reproduced earlier generation
+///
+/// # Errors
+///
+/// [`crate::io::IoError::Unpinned`] for `None` unless `allow_unpinned`, and the errors of
+/// [`stored_verdict`].
+pub(crate) fn sdf_slot_verdict(
+    stored: Option<[u8; 32]>,
+    form: StoredForm,
+    format: &'static str,
+    allow_unpinned: bool,
+) -> Result<StoredSemantics, crate::io::IoError> {
+    match stored {
+        None if allow_unpinned => Ok(StoredSemantics::Unpinned),
+        None => Err(crate::io::IoError::Unpinned { format }),
+        Some(id) => stored_verdict(&Found::slot(id).of(form), format),
+    }
+}
+
 /// [`sdf_load_verdict`] against the earlier identifiers `previous` instead of G6's list, so the
 /// mapping of a reproduced earlier identifier stays tested while the list is empty
 fn sdf_load_verdict_against(
@@ -1442,7 +1474,7 @@ pub(crate) fn dds_reserved(p: &Provenance) -> [u32; 11] {
     let mut r = [0u32; 11];
     r[0] = u32::from_le_bytes(*DDS_TAG);
     r[1] = 1;
-    for (i, c) in p.semantics_id.chunks_exact(4).enumerate() {
+    for (i, c) in p.slot_for(StoredForm::Dds).chunks_exact(4).enumerate() {
         r[2 + i] = u32::from_le_bytes([c[0], c[1], c[2], c[3]]);
     }
     r

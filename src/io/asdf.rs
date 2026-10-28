@@ -61,7 +61,10 @@ pub struct AsdfHeader {
     pub node_count: u32,
     /// CRC32 checksum
     pub crc32: u32,
-    /// The semantics identifier the data was written under (`None` in a version 1 file)
+    /// The identifier slot (`None` in a version 1 file): the meaning identifier of the semantics
+    /// identifier the data was written under ([`crate::provenance::meaning_id`] of
+    /// [`crate::provenance::StoredForm::Asdf`]), or a raw semantics identifier in a file of 7.0.0
+    /// or earlier
     pub semantics_id: Option<[u8; 32]>,
 }
 
@@ -79,7 +82,7 @@ impl AsdfHeader {
             flags: 0,
             node_count: tree.node_count(),
             crc32: body_crc,
-            semantics_id: Some(provenance.semantics_id),
+            semantics_id: Some(provenance.slot_for(crate::provenance::StoredForm::Asdf)),
         }
     }
 
@@ -245,7 +248,7 @@ pub fn save_asdf_with_provenance(
         flags: 0,
         node_count: tree.node_count(),
         crc32: 0,
-        semantics_id: Some(provenance.semantics_id),
+        semantics_id: Some(provenance.slot_for(crate::provenance::StoredForm::Asdf)),
     };
     writer.write_all(&placeholder.to_bytes())?;
 
@@ -283,7 +286,8 @@ pub fn save_asdf_with_provenance(
 /// # Errors
 ///
 /// [`IoError::Unpinned`] for a version 1 file (no identifier; [`load_asdf_unverified`] reads
-/// it), [`IoError::SemanticsMismatch`] for another identifier, and the format errors below.
+/// it), [`IoError::MeaningMismatch`] for another identifier (a meaning identifier of another one; [`IoError::SemanticsMismatch`] for a raw identifier, in a file of 7.0.0 or earlier), and the format
+/// errors below.
 pub fn load_asdf(path: impl AsRef<Path>) -> Result<SdfTree, IoError> {
     load_asdf_checked(path, false).map(|c| c.into_parts().0)
 }
@@ -312,8 +316,12 @@ fn load_asdf_checked(
         reader.read_exact(&mut header_bytes[16..])?;
     }
     let header = AsdfHeader::from_bytes(&header_bytes)?;
-    let semantics =
-        crate::provenance::sdf_load_verdict(header.semantics_id, "ASDF", allow_unpinned)?;
+    let semantics = crate::provenance::sdf_slot_verdict(
+        header.semantics_id,
+        crate::provenance::StoredForm::Asdf,
+        "ASDF",
+        allow_unpinned,
+    )?;
 
     // 2. Read entire body into buffer (necessary for CRC validation before deserialize)
     let mut body = Vec::new();

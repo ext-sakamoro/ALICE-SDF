@@ -101,7 +101,7 @@ pub fn bake_to_vdb_with_provenance(
     // 将来 vdb-rs が write API を整備したら差し替え予定。
     let mut buf = Vec::new();
     buf.extend_from_slice(ALICE_VDB_MAGIC_V2); // magic (9 bytes)
-    buf.extend_from_slice(&provenance.semantics_id);
+    buf.extend_from_slice(&provenance.slot_for(crate::provenance::StoredForm::Vdb));
     buf.extend_from_slice(&resolution.to_le_bytes());
     buf.extend_from_slice(&bounds.0.to_le_bytes());
     buf.extend_from_slice(&bounds.1.to_le_bytes());
@@ -119,7 +119,9 @@ pub type DenseGrid = (Vec<f32>, u32, (f32, f32));
 /// # Errors
 ///
 /// [`crate::io::IoError::Unpinned`] for a version 1 grid (no identifier; read it with
-/// [`load_dense_grid_from_vdb_unverified`]), [`crate::io::IoError::SemanticsMismatch`] for an
+/// [`load_dense_grid_from_vdb_unverified`]), [`crate::io::IoError::MeaningMismatch`] (or
+/// [`crate::io::IoError::SemanticsMismatch`] for a raw identifier, in a file of 7.0.0 or
+/// earlier) for an
 /// identifier that is neither this crate's nor one it still reproduces, and
 /// [`crate::io::IoError::InvalidFormat`] for bytes that are not an ALICE-VDB grid, a version this
 /// crate does not know, or a header or grid cut short.
@@ -175,7 +177,12 @@ fn load_checked(
         }
         None => return Err(IoError::InvalidFormat("ALICE-VDB: truncated header".into())),
     };
-    let semantics = crate::provenance::sdf_load_verdict(stored, "ALICE-VDB", allow_unpinned)?;
+    let semantics = crate::provenance::sdf_slot_verdict(
+        stored,
+        crate::provenance::StoredForm::Vdb,
+        "ALICE-VDB",
+        allow_unpinned,
+    )?;
     let grid = read_grid(body).map_err(|e| IoError::InvalidFormat(format!("ALICE-VDB: {e}")))?;
     Ok(crate::provenance::Checked::new(grid, semantics))
 }

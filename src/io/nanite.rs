@@ -137,7 +137,7 @@ pub fn export_nanite_with_provenance(
         | ((config.quantize_positions as u32) << 2);
     w.write_all(&flags.to_le_bytes())?;
     // the semantics identifier (version 4)
-    w.write_all(&provenance.semantics_id)?;
+    w.write_all(&provenance.slot_for(crate::provenance::StoredForm::Nanite))?;
 
     // LOD levels
     for lod in &nanite.lod_levels {

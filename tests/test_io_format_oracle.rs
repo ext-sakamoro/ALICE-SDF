@@ -517,10 +517,13 @@ fn vox_follows_the_magicavoxel_chunk_layout() {
     assert_eq!(u32_at(48), 4 + 2 * 4);
     assert_eq!(u32_at(56), 2);
     assert_eq!(&b[60..68], &[0, 1, 2, 7, 3, 4, 5, 255]);
-    // ALSD: layout version 1 and the 32-byte semantics identifier, no children
+    // ALSD: layout version 1 and the 32-byte identifier slot (the meaning identifier), no children
     assert_eq!(&b[68..72], b"ALSD");
     assert_eq!((u32_at(72), u32_at(76), u32_at(80)), (36, 0, 1));
-    assert_eq!(&b[84..116], &alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(
+        b[84..116],
+        alice_sdf::provenance::Provenance::sdf().slot_for(alice_sdf::provenance::StoredForm::Vox)
+    );
     assert_eq!(b.len(), 116);
 
     let back = load_vox_pinned(&path).unwrap();

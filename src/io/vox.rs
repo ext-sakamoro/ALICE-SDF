@@ -161,7 +161,7 @@ fn encode_vox(model: &VoxModel, provenance: &crate::provenance::Provenance) -> V
     buf.extend_from_slice(&36u32.to_le_bytes());
     buf.extend_from_slice(&0u32.to_le_bytes()); // no children
     buf.extend_from_slice(&1u32.to_le_bytes());
-    buf.extend_from_slice(&provenance.semantics_id);
+    buf.extend_from_slice(&provenance.slot_for(crate::provenance::StoredForm::Vox));
 
     // Patch MAIN children size
     let children_end = buf.len();
@@ -177,7 +177,8 @@ fn encode_vox(model: &VoxModel, provenance: &crate::provenance::Provenance) -> V
 ///
 /// # Errors
 ///
-/// An I/O error reading the file, [`IoError::SemanticsMismatch`] for an identifier that is
+/// An I/O error reading the file, [`IoError::MeaningMismatch`] (or [`IoError::SemanticsMismatch`]
+/// for a raw identifier, in a file of 7.0.0 or earlier) for an identifier that is
 /// neither this crate's nor one it still reproduces, and [`IoError::InvalidFormat`] for bytes that
 /// are not a VOX file or an `ALSD` chunk that is cut short, has another length or layout version,
 /// or occurs twice.
@@ -199,7 +200,12 @@ fn load_vox_with(path: &Path, allow_unpinned: bool) -> Result<Checked<VoxModel>,
     // a present but unreadable ALSD chunk is an error, never a file without an identifier
     let stored = crate::provenance::vox_stored_id(&bytes)
         .map_err(|e| IoError::InvalidFormat(format!("VOX: {e}")))?;
-    let semantics = crate::provenance::sdf_load_verdict(stored, "VOX", allow_unpinned)?;
+    let semantics = crate::provenance::sdf_slot_verdict(
+        stored,
+        crate::provenance::StoredForm::Vox,
+        "VOX",
+        allow_unpinned,
+    )?;
     let model = parse_vox(&bytes).map_err(|e| IoError::InvalidFormat(format!("VOX: {e}")))?;
     Ok(Checked::new(model, semantics))
 }

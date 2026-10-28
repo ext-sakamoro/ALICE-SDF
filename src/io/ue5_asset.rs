@@ -243,7 +243,7 @@ pub fn export_ue5_mesh_binary_with_provenance(
     w.write_all(&ic.to_le_bytes())?;
     w.write_all(&flags.to_le_bytes())?;
     // the semantics identifier (version 2)
-    w.write_all(&provenance.semantics_id)?;
+    w.write_all(&provenance.slot_for(crate::provenance::StoredForm::Ue5Mesh))?;
 
     // Interleaved vertex data
     for v in &mesh.vertices {

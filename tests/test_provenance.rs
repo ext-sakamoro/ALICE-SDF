@@ -104,6 +104,34 @@ fn refused_as_earlier<T>(result: Result<T, io::IoError>) {
     }
 }
 
+/// A loader's refusal of a file written under [`caller_id`] in a form that stores meaning
+/// identifiers: [`io::IoError::MeaningMismatch`] naming the form, both meaning identifiers and
+/// the form in its text
+fn meaning_refused(e: &io::IoError, form: StoredForm) {
+    let io::IoError::MeaningMismatch {
+        form: f,
+        version,
+        stored,
+        expected,
+        ..
+    } = e
+    else {
+        panic!("expected MeaningMismatch, got {e:?}");
+    };
+    assert_eq!(*f, form);
+    assert_eq!(*version, form.version());
+    assert_eq!(*stored, hex_of(&provenance::meaning_id(form, &caller_id())));
+    assert_eq!(
+        *expected,
+        hex_of(&provenance::meaning_id(form, &Provenance::sdf()))
+    );
+    let text = e.to_string();
+    assert!(
+        text.contains(stored.as_str()) && text.contains(expected.as_str()),
+        "{text}"
+    );
+}
+
 type Write = fn(&Mesh, &Path, Option<&Provenance>);
 
 /// (writer name as the scanner reads it, file name, write with the default / with the caller's id)
@@ -521,7 +549,7 @@ const WRITERS: &[(&str, &str, Write)] = &[
             lod_count: 0,
             _reserved: [0; 7],
             crc32: 0,
-            semantics_id: Some(id.map_or(alice_sdf::SDF_SEMANTICS_ID, |id| id.semantics_id)),
+            semantics_id: Some(id.unwrap_or(&Provenance::sdf()).slot_for(StoredForm::Abm)),
         };
         std::fs::write(p, header.to_bytes()).unwrap();
     }),
@@ -887,10 +915,14 @@ fn volume_writers_store_the_identifier() {
                 .is_written_under(&caller_id()),
             "{name}"
         );
-        assert!(matches!(
-            provenance::check_sdf(&path),
-            Err(ProvenanceError::Mismatch { .. })
-        ));
+        match provenance::check_sdf(&path) {
+            Err(ProvenanceError::MeaningMismatch {
+                form: StoredForm::Dds,
+                ..
+            }) if file.ends_with(".dds") => {}
+            Err(ProvenanceError::Mismatch { .. }) if !file.ends_with(".dds") => {}
+            other => panic!("{name}: {other:?}"),
+        }
         let bytes = std::fs::read(&path).unwrap();
         if file.ends_with(".dds") {
             assert_eq!(&bytes[..4], b"DDS ", "{name}: magic");
@@ -989,13 +1021,10 @@ fn asdf_loaders_check_the_identifier() {
         io::load_asdf_unverified(&path).map(|_| ()),
     ] {
         match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex())
-                );
+            Err(e @ io::IoError::MeaningMismatch { .. }) => {
+                meaning_refused(&e, StoredForm::Asdf);
             }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
+            other => panic!("expected MeaningMismatch, got {other:?}"),
         }
     }
     std::fs::remove_file(&path).ok();
@@ -1555,14 +1584,10 @@ fn abm_loaders_check_the_identifier() {
         io::load_abm_with_lods_unverified(&lods).map(|_| ()),
     ] {
         match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
+            Err(e @ io::IoError::MeaningMismatch { .. }) => {
+                meaning_refused(&e, StoredForm::Abm);
             }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
+            other => panic!("expected MeaningMismatch, got {other:?}"),
         }
     }
     std::fs::remove_file(&single).ok();
@@ -1755,7 +1780,10 @@ fn lod_chain_loaders_check_both_parts() {
     lod_persist::save_lod_chain_metadata(&chain, &path).unwrap();
     assert!(matches!(
         lod_persist::load_lod_chain(&path),
-        Err(io::IoError::SemanticsMismatch { .. })
+        Err(io::IoError::MeaningMismatch {
+            form: StoredForm::Abm,
+            ..
+        })
     ));
 
     // the mesh file current, the sidecar without an identifier (format 1): default refuses,
@@ -1945,14 +1973,10 @@ fn nsdf_writers_store_and_loaders_check_the_identifier() {
         NeuralSdf::load_unverified(&mut other.as_slice()).map(|_| ()),
     ] {
         match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
+            Err(e @ io::IoError::MeaningMismatch { .. }) => {
+                meaning_refused(&e, StoredForm::Neural);
             }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
+            other => panic!("expected MeaningMismatch, got {other:?}"),
         }
     }
 }
@@ -2100,14 +2124,10 @@ fn alice_vdb_writers_store_and_loaders_check_the_identifier() {
         vdb::load_dense_grid_from_vdb_unverified(&other).map(|_| ()),
     ] {
         match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
+            Err(e @ io::IoError::MeaningMismatch { .. }) => {
+                meaning_refused(&e, StoredForm::Vdb);
             }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
+            other => panic!("expected MeaningMismatch, got {other:?}"),
         }
     }
 }
@@ -2236,7 +2256,7 @@ fn svo_chunk_writers_store_and_readers_check_the_identifier() {
         .any(|(w, _)| *w == "src/svo/streaming.rs::to_bytes"));
     let own = svo_chunk().to_bytes();
     assert_eq!(&own[..4], b"ASVC");
-    assert_eq!(&own[8..40], &alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(own[8..40], Provenance::sdf().slot_for(StoredForm::Svo));
     assert!(provenance::from_bytes(&own)
         .unwrap()
         .is_written_under(&Provenance::sdf()));
@@ -2269,14 +2289,10 @@ fn svo_chunk_writers_store_and_readers_check_the_identifier() {
         SvoChunk::from_bytes_unverified(&other).map(|_| ()),
     ] {
         match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
+            Err(e @ io::IoError::MeaningMismatch { .. }) => {
+                meaning_refused(&e, StoredForm::Svo);
             }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
+            other => panic!("expected MeaningMismatch, got {other:?}"),
         }
     }
 }
@@ -2377,7 +2393,7 @@ fn svo_chunk_headers_are_read_by_their_exact_version_and_never_as_version_1() {
         assert!(
             matches!(
                 result,
-                Err(io::IoError::SemanticsMismatch { .. } | io::IoError::InvalidFormat(_))
+                Err(io::IoError::MeaningMismatch { .. } | io::IoError::InvalidFormat(_))
             ),
             "{result:?}"
         );
@@ -2539,14 +2555,10 @@ fn vox_writers_store_and_loaders_check_the_identifier() {
         load_vox_pinned(&other_path).map(|_| ()),
     ] {
         match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
+            Err(e @ io::IoError::MeaningMismatch { .. }) => {
+                meaning_refused(&e, StoredForm::Vox);
             }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
+            other => panic!("expected MeaningMismatch, got {other:?}"),
         }
     }
 
@@ -3748,7 +3760,7 @@ fn nanite_binary_versions_without_the_identifier_are_missing() {
     std::fs::remove_file(&path).ok();
     assert_eq!(&b[..4], io::nanite::NANITE_MAGIC);
     assert_eq!(b[4..8], 4u32.to_le_bytes());
-    assert_eq!(b[32..64], alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(b[32..64], Provenance::sdf().slot_for(StoredForm::Nanite));
     assert!(provenance::from_bytes(&b)
         .unwrap()
         .is_written_under(&Provenance::sdf()));
@@ -3867,24 +3879,24 @@ fn nanite_hlsl_material_carries_the_identifier() {
 #[test]
 fn engine_binary_meshes_of_version_1_are_missing() {
     type Bin = fn(&Mesh, &Path);
-    let writers: [(&str, &[u8; 4], Bin); 2] = [
-        ("UE5", b"ALUE", |m, p| {
+    let writers: [(&str, &[u8; 4], StoredForm, Bin); 2] = [
+        ("UE5", b"ALUE", StoredForm::Ue5Mesh, |m, p| {
             io::export_ue5_mesh_binary(m, p, &io::Ue5MeshConfig::default()).unwrap();
         }),
-        ("Unity", b"ALMB", |m, p| {
+        ("Unity", b"ALMB", StoredForm::UnityMesh, |m, p| {
             io::export_unity_mesh_binary(m, p, &io::UnityMeshConfig::default()).unwrap();
         }),
     ];
     let m = mesh();
     let mut compared = 0;
-    for (format, magic, write) in writers {
+    for (format, magic, form, write) in writers {
         let path = temp(&format!("versions_{format}.bin"));
         write(&m, &path);
         let b = std::fs::read(&path).unwrap();
         std::fs::remove_file(&path).ok();
         assert_eq!(&b[..4], magic);
         assert_eq!(b[4..6], 2u16.to_le_bytes(), "{format}");
-        assert_eq!(b[16..48], alice_sdf::SDF_SEMANTICS_ID, "{format}");
+        assert_eq!(b[16..48], Provenance::sdf().slot_for(form), "{format}");
         assert!(provenance::from_bytes(&b)
             .unwrap()
             .is_written_under(&Provenance::sdf()));

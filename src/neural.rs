@@ -422,7 +422,7 @@ impl NeuralSdf {
     ) -> std::io::Result<()> {
         w.write_all(NSDF_MAGIC)?;
         w.write_all(&NSDF_VERSION.to_le_bytes())?;
-        w.write_all(&provenance.semantics_id)?;
+        w.write_all(&provenance.slot_for(crate::provenance::StoredForm::Neural))?;
         w.write_all(&(self.pos_freqs as u32).to_le_bytes())?;
         w.write_all(&(self.layers.len() as u32).to_le_bytes())?;
 
@@ -445,7 +445,9 @@ impl NeuralSdf {
     /// # Errors
     ///
     /// [`crate::io::IoError::Unpinned`] for a version 1 file (no identifier; read it with
-    /// [`NeuralSdf::load_unverified`]), [`crate::io::IoError::SemanticsMismatch`] for an identifier
+    /// [`NeuralSdf::load_unverified`]), [`crate::io::IoError::MeaningMismatch`] (or
+    /// [`crate::io::IoError::SemanticsMismatch`] for a raw identifier, in a file of 7.0.0 or
+    /// earlier) for an identifier
     /// that is neither this crate's nor one it still reproduces,
     /// [`crate::io::IoError::UnsupportedVersion`] for a version this crate does not know,
     /// [`crate::io::IoError::InvalidFormat`] for a file that is not NSDF or whose header or weights
@@ -503,7 +505,12 @@ impl NeuralSdf {
                 });
             }
         };
-        let semantics = crate::provenance::sdf_load_verdict(stored, "NSDF", allow_unpinned)?;
+        let semantics = crate::provenance::sdf_slot_verdict(
+            stored,
+            crate::provenance::StoredForm::Neural,
+            "NSDF",
+            allow_unpinned,
+        )?;
         let net = Self::read_body(r).map_err(|e| {
             if e.kind() == std::io::ErrorKind::UnexpectedEof {
                 IoError::InvalidFormat("NSDF: truncated body".into())
