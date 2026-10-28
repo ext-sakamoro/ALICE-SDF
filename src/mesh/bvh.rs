@@ -121,7 +121,9 @@ fn closest_point_barycentric(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> (Vec3, Vec3)
 
     // A zero-area triangle has no face, and the region tests below would
     // answer it through whichever edge region they meet first; it takes the
-    // nearest-edge rule instead.
+    // nearest-edge rule instead. The computed cross product is also 0 for a
+    // triangle so small (sides near 1e-23) that it underflows: the answer
+    // still lies on the triangle.
     if ab.cross(ac) == Vec3::ZERO {
         return degenerate(p, a, b, c);
     }
@@ -465,69 +467,26 @@ impl MeshBvh {
     }
 
     fn closest_point_and_dist_sq(&self, point: Vec3) -> Option<(Vec3, f32)> {
-        let root = self.root.as_ref()?;
-        let mut best = (Vec3::ZERO, f32::INFINITY);
-        Self::closest_recursive(&self.triangles, root, point, &mut best);
-        if best.1.is_finite() {
-            Some(best)
-        } else {
-            None
-        }
-    }
-
-    /// Nearest-child-first traversal with an exact lower bound (the AABB
-    /// distance) as the pruning test.
-    fn closest_recursive(
-        triangles: &[BvhTriangle],
-        node: &BvhNode,
-        point: Vec3,
-        best: &mut (Vec3, f32),
-    ) {
-        match node {
-            BvhNode::Leaf {
-                triangles: idxs, ..
-            } => {
-                for &idx in idxs {
-                    let q = triangles[idx].closest_point(point);
-                    let d_sq = (point - q).length_squared();
-                    if d_sq < best.1 {
-                        *best = (q, d_sq);
-                    }
-                }
-            }
-            BvhNode::Internal { left, right, .. } => {
-                // `Aabb::signed_distance` is negative inside, so clamping at 0
-                // turns it into a lower bound on the distance to any triangle
-                // held below this node.
-                let bound = |n: &BvhNode| {
-                    let d = n.aabb().signed_distance(point).law_max(0.0);
-                    d * d
-                };
-                let (l_bound, r_bound) = (bound(left), bound(right));
-                let (first, first_bound, second, second_bound) = if l_bound <= r_bound {
-                    (left, l_bound, right, r_bound)
-                } else {
-                    (right, r_bound, left, l_bound)
-                };
-                if first_bound < best.1 {
-                    Self::closest_recursive(triangles, first, point, best);
-                }
-                if second_bound < best.1 {
-                    Self::closest_recursive(triangles, second, point, best);
-                }
-            }
-        }
+        self.nearest(point).map(|n| (n.point, n.d_sq))
     }
 
     /// The input triangle nearest to `point`: `(index, weights, closest
     /// point)`. `index` is the triangle's position in the `indices` given to
     /// [`Self::build`] (`indices[3 * index..3 * index + 3]`), and the closest
     /// point is `weights.x * v0 + weights.y * v1 + weights.z * v2` up to
-    /// rounding, bit-identical to [`Self::closest_point`]. Of triangles at the
-    /// same distance the lowest index wins, wherever the tree holds them.
+    /// rounding. Of triangles at the same distance the lowest index wins,
+    /// wherever the tree holds them. [`Self::closest_point`] and
+    /// [`Self::unsigned_distance`] take the same walk, so they answer this
+    /// triangle's point and distance.
     ///
     /// `None` for an empty mesh or a non-finite `point`.
     pub fn closest_triangle(&self, point: Vec3) -> Option<(usize, Vec3, Vec3)> {
+        self.nearest(point).map(|n| (n.index, n.bary, n.point))
+    }
+
+    /// The `(distance², index)` minimum over the triangles, or `None` for an
+    /// empty mesh, a non-finite point or no finite distance.
+    fn nearest(&self, point: Vec3) -> Option<Nearest> {
         // A non-finite point is `None` by contract. The walk alone would also
         // answer `None` (a NaN or infinite d² never beats the initial infinity),
         // so removing this check is an equivalent change; it states the rule.
@@ -542,10 +501,10 @@ impl MeshBvh {
             point: Vec3::ZERO,
         };
         Self::nearest_recursive(&self.triangles, root, point, &mut best);
-        (best.index != usize::MAX).then_some((best.index, best.bary, best.point))
+        (best.index != usize::MAX).then_some(best)
     }
 
-    /// Like [`Self::closest_recursive`], but keeps the `(distance², index)`
+    /// Nearest-child-first traversal keeping the `(distance², index)`
     /// minimum. A child is skipped only when its box is farther than the best
     /// distance by more than the slack of [`Self::may_hold`]: the box distance
     /// and a triangle's distance are rounded differently, so a triangle that
@@ -594,9 +553,11 @@ impl MeshBvh {
     }
 
     /// Whether `node`, at box distance `bound`, may hold a triangle at most as
-    /// far as `best`. The slack is 16 ulp of the largest coordinate involved:
-    /// a computed closest point is within a few ulp of its exact value per
-    /// coordinate, which moves its distance by at most that much.
+    /// far as `best`. A computed closest point lies in its triangle's bounding
+    /// box up to a few ulp of the coordinates' scale (the face weights are in
+    /// (0, 1), an edge parameter in [0, 1], a degenerate one clamped), so its
+    /// distance is at least the box distance less that much; the slack is 16
+    /// ulp of the largest coordinate involved.
     fn may_hold(node: &BvhNode, bound: f32, point: Vec3, best: &Nearest) -> bool {
         let aabb = node.aabb();
         let scale = point
