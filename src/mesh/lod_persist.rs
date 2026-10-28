@@ -8,7 +8,9 @@
 //!
 //! Both stored parts carry the semantics identifier the chain was written under: the `.abm`
 //! (version 2 header) and the `.abm.meta.json` sidecar (format 2, top-level
-//! `"alice:semantics_id"`), which holds computed values (AABB bounds, reduction ratios).
+//! `"alice:meaning_id"`, the meaning identifier of the JSON document form; a sidecar written before
+//! the form stored meaning identifiers holds the raw `"alice:semantics_id"`), which holds computed
+//! values (AABB bounds, reduction ratios).
 //! [`load_lod_chain`] accepts this crate's identifier or one it still reproduces in both and
 //! refuses another one or a part without one; [`load_lod_chain_unverified`] returns the chain
 //! with the weaker of the two statuses ([`StoredSemantics::weaker`]).
@@ -19,7 +21,7 @@ use crate::compiled::real::LawMinMax;
 use crate::io::abm::{load_abm_with_lods_unverified, save_abm_with_lods_with_provenance};
 use crate::io::IoError;
 use crate::mesh::Mesh;
-use crate::provenance::{Checked, Provenance, StoredSemantics, KEY};
+use crate::provenance::{Checked, Provenance, StoredForm, StoredSemantics, KEY, MEANING_KEY};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -258,7 +260,15 @@ struct LodChainMetadata {
     /// Sidecar format (1 when absent: written by 7.0.0 or earlier)
     #[serde(default = "metadata_format_1")]
     format: u32,
-    /// The semantics identifier the computed values were written under (format 2)
+    /// The meaning identifier of the JSON document form under the arithmetic the computed values
+    /// were written under (format 2)
+    #[serde(
+        rename = "alice:meaning_id",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    meaning_id: Option<String>,
+    /// The raw semantics identifier (format 2, written before the form stored meaning identifiers)
     #[serde(
         rename = "alice:semantics_id",
         default,
@@ -480,7 +490,8 @@ pub fn save_lod_chain_metadata_with_provenance(
 
     let metadata = LodChainMetadata {
         format: METADATA_FORMAT,
-        semantics_id: Some(provenance.hex()),
+        meaning_id: Some(provenance.named_for(StoredForm::JsonDocument).1),
+        semantics_id: None,
         sdf_hash: chain.sdf_hash,
         config: chain.config.clone(),
         levels,
@@ -523,18 +534,17 @@ fn metadata_verdict(
     metadata: &LodChainMetadata,
     allow_unpinned: bool,
 ) -> Result<StoredSemantics, IoError> {
-    let stored = match (metadata.format, &metadata.semantics_id) {
-        (1, None) => None,
-        (2, Some(hex)) => Some(
-            Provenance::from_hex(hex)
-                .ok_or_else(|| {
-                    IoError::InvalidFormat(format!("LOD metadata: {KEY} is not 64 hex digits"))
-                })?
-                .semantics_id,
-        ),
-        (2, None) => {
+    let stored = crate::provenance::json_fields_stored(
+        metadata.meaning_id.as_deref(),
+        metadata.semantics_id.as_deref(),
+        StoredForm::JsonDocument,
+        "LOD metadata",
+    )?;
+    match (metadata.format, stored.is_some()) {
+        (1, false) | (2, true) => {}
+        (2, false) => {
             return Err(IoError::InvalidFormat(format!(
-                "LOD metadata: format 2 without {KEY}"
+                "LOD metadata: format 2 without {MEANING_KEY} or {KEY}"
             )))
         }
         (f, _) => {
@@ -542,8 +552,8 @@ fn metadata_verdict(
                 u16::try_from(f).unwrap_or(u16::MAX),
             ))
         }
-    };
-    crate::provenance::sdf_load_verdict(stored, "LOD metadata", allow_unpinned)
+    }
+    crate::provenance::sdf_stored_load_verdict(stored, "LOD metadata", allow_unpinned)
 }
 
 // ---------------------------------------------------------------------------
@@ -564,7 +574,7 @@ fn sidecar_path(abm_path: &Path) -> std::path::PathBuf {
 /// Read sidecar metadata from JSON file
 #[allow(
     clippy::disallowed_methods,
-    reason = "stored form checked: the sidecar's format and alice:semantics_id go through metadata_verdict (sdf_load_verdict) in load_lod_chain and load_lod_chain_metadata before any value is returned"
+    reason = "stored form checked: the sidecar's format and its identifier field go through metadata_verdict (sdf_stored_load_verdict) in load_lod_chain and load_lod_chain_metadata before any value is returned"
 )]
 fn read_sidecar_metadata(path: impl AsRef<Path>) -> Result<LodChainMetadata, IoError> {
     let file = std::fs::File::open(path.as_ref())?;

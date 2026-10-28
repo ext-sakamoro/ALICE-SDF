@@ -79,7 +79,7 @@ impl AsdfHeader {
             flags: 0,
             node_count: tree.node_count(),
             crc32: body_crc,
-            semantics_id: Some(provenance.semantics_id),
+            semantics_id: Some(provenance.slot_for(crate::provenance::StoredForm::Asdf)),
         }
     }
 
@@ -245,7 +245,7 @@ pub fn save_asdf_with_provenance(
         flags: 0,
         node_count: tree.node_count(),
         crc32: 0,
-        semantics_id: Some(provenance.semantics_id),
+        semantics_id: Some(provenance.slot_for(crate::provenance::StoredForm::Asdf)),
     };
     writer.write_all(&placeholder.to_bytes())?;
 
@@ -312,8 +312,11 @@ fn load_asdf_checked(
         reader.read_exact(&mut header_bytes[16..])?;
     }
     let header = AsdfHeader::from_bytes(&header_bytes)?;
-    let semantics =
-        crate::provenance::sdf_load_verdict(header.semantics_id, "ASDF", allow_unpinned)?;
+    let semantics = crate::provenance::sdf_stored_load_verdict(
+        crate::provenance::slot(crate::provenance::StoredForm::Asdf, header.semantics_id),
+        "ASDF",
+        allow_unpinned,
+    )?;
 
     // 2. Read entire body into buffer (necessary for CRC validation before deserialize)
     let mut body = Vec::new();

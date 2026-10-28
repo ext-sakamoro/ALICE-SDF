@@ -227,6 +227,12 @@ impl StoredForm {
                 | Self::Step
                 | Self::Iges
                 | Self::Alembic
+                | Self::JsonDocument
+                | Self::Asdf
+                | Self::Abm
+                | Self::Nanite
+                | Self::Ue5Mesh
+                | Self::UnityMesh
         )
     }
 }
@@ -1356,6 +1362,135 @@ fn stored_verdict_against(
             }
             other => crate::io::IoError::InvalidFormat(format!("{format}: {other}")),
         })
+}
+
+/// The verdict of this crate's loaders on the identifier read from a stored form (`None`: the
+/// format version predates identifiers): [`stored_verdict`] for one that is there, so a slot or a
+/// field holds the meaning identifier of its form or (a file written before the form stored
+/// meaning identifiers) the raw one
+///
+/// # Errors
+///
+/// As [`stored_verdict`]; with `allow_unpinned == false`, [`crate::io::IoError::Unpinned`] for data
+/// without an identifier.
+pub(crate) fn sdf_stored_load_verdict(
+    stored: Option<Stored>,
+    format: &'static str,
+    allow_unpinned: bool,
+) -> Result<StoredSemantics, crate::io::IoError> {
+    match stored {
+        None if allow_unpinned => Ok(StoredSemantics::Unpinned),
+        None => Err(crate::io::IoError::Unpinned { format }),
+        Some(s) => stored_verdict(&s, format),
+    }
+}
+
+/// The 32 bytes of `form`'s binary slot as its loader read them
+#[must_use]
+pub(crate) const fn slot(form: StoredForm, id: Option<[u8; 32]>) -> Option<Stored> {
+    match id {
+        Some(id) => Some(Found::slot(id).of(form)),
+        None => None,
+    }
+}
+
+/// Inserts into the top-level object of a JSON document of this crate the field a writer of
+/// `form` stores: [`MEANING_KEY`] and the meaning identifier, or [`KEY`] and the raw identifier for
+/// a form that does not store meaning identifiers yet
+pub(crate) fn insert_json_id(
+    object: &mut serde_json::Map<String, serde_json::Value>,
+    form: StoredForm,
+    p: &Provenance,
+) {
+    let (key, id) = p.named_for(form);
+    object.insert(key.to_string(), serde_json::Value::String(id));
+}
+
+/// What the two identifier fields of a JSON document of this crate held (as its own struct read
+/// them): [`MEANING_KEY`] (a meaning identifier), the earlier [`KEY`] (a raw one), or neither
+///
+/// # Errors
+///
+/// [`crate::io::IoError::InvalidFormat`] for both, or a field that is not 64 hex digits.
+pub(crate) fn json_fields_stored(
+    meaning: Option<&str>,
+    raw: Option<&str>,
+    form: StoredForm,
+    format: &'static str,
+) -> Result<Option<Stored>, crate::io::IoError> {
+    let parse = |hex: &str, key: &'static str| {
+        Provenance::from_hex(hex)
+            .map(|p| p.semantics_id)
+            .ok_or_else(|| {
+                crate::io::IoError::InvalidFormat(format!("{format}: {key} is not 64 hex digits"))
+            })
+    };
+    match (meaning, raw) {
+        (Some(_), Some(_)) => Err(crate::io::IoError::InvalidFormat(format!(
+            "{format}: holds both {MEANING_KEY} and {KEY}"
+        ))),
+        (Some(hex), None) => Ok(Some(Stored {
+            form,
+            id: parse(hex, MEANING_KEY)?,
+            via: StoredVia::MeaningKey,
+        })),
+        (None, Some(hex)) => Ok(Some(Stored {
+            form,
+            id: parse(hex, KEY)?,
+            via: StoredVia::SemanticsKey,
+        })),
+        (None, None) => Ok(None),
+    }
+}
+
+/// Removes the identifier field from the top-level object of a JSON document of this crate and
+/// returns what it held: [`MEANING_KEY`] (a meaning identifier) or the earlier [`KEY`] (a raw one),
+/// `None` for neither
+///
+/// # Errors
+///
+/// [`crate::io::IoError::InvalidFormat`] for a document holding both keys (never read as either),
+/// or a field that is not 64 hex digits.
+pub(crate) fn take_json_id(
+    object: &mut serde_json::Map<String, serde_json::Value>,
+    form: StoredForm,
+    format: &'static str,
+) -> Result<Option<Stored>, crate::io::IoError> {
+    let take = |o: &mut serde_json::Map<String, serde_json::Value>,
+                key: &'static str|
+     -> Result<Option<[u8; 32]>, crate::io::IoError> {
+        match o.remove(key) {
+            None => Ok(None),
+            Some(serde_json::Value::String(hex)) => Provenance::from_hex(&hex)
+                .map(|p| Some(p.semantics_id))
+                .ok_or_else(|| {
+                    crate::io::IoError::InvalidFormat(format!(
+                        "{format}: {key} is not 64 hex digits"
+                    ))
+                }),
+            Some(_) => Err(crate::io::IoError::InvalidFormat(format!(
+                "{format}: {key} is not a string"
+            ))),
+        }
+    };
+    let meaning = take(object, MEANING_KEY)?;
+    let raw = take(object, KEY)?;
+    match (meaning, raw) {
+        (Some(_), Some(_)) => Err(crate::io::IoError::InvalidFormat(format!(
+            "{format}: holds both {MEANING_KEY} and {KEY}"
+        ))),
+        (Some(id), None) => Ok(Some(Stored {
+            form,
+            id,
+            via: StoredVia::MeaningKey,
+        })),
+        (None, Some(id)) => Ok(Some(Stored {
+            form,
+            id,
+            via: StoredVia::SemanticsKey,
+        })),
+        (None, None) => Ok(None),
+    }
 }
 
 /// The verdict of an importer (a mesh or an image) on the bytes of a file of `format`: the

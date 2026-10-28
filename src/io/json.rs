@@ -5,11 +5,15 @@
 //! # Semantics identifier (ALICE-Law G8)
 //!
 //! A `.asdf.json` document is the tree's JSON object with one more top-level field,
-//! `"alice:semantics_id"` ([`crate::provenance::KEY`]): the 64 hex digits of the identifier
-//! of the arithmetic the tree was written under (this crate's `SDF_SEMANTICS_ID` unless a
-//! `*_with_provenance` writer is given another). The readers check it: [`load_asdf_json`] and
-//! [`from_json_string`] refuse a document without one ([`IoError::Unpinned`], a document
-//! written by 7.0.0 or earlier) and one with another identifier ([`IoError::SemanticsMismatch`]);
+//! `"alice:meaning_id"` ([`crate::provenance::MEANING_KEY`]): the 64 hex digits of the meaning
+//! identifier of the JSON document form ([`crate::provenance::meaning_id`]) under the arithmetic the
+//! tree was written under (this crate's `SDF_SEMANTICS_ID` unless a `*_with_provenance` writer is
+//! given another). A document written before the form stored meaning identifiers holds the raw
+//! identifier under `"alice:semantics_id"` ([`crate::provenance::KEY`]) and reads as the earlier
+//! generation; a document holding both keys is refused. The readers check it: [`load_asdf_json`]
+//! and [`from_json_string`] refuse a document without one ([`IoError::Unpinned`], a document
+//! written by 7.0.0 or earlier) and one with another identifier ([`IoError::MeaningMismatch`] /
+//! [`IoError::SemanticsMismatch`]);
 //! [`load_asdf_json_unverified`] and [`from_json_string_unverified`] also read a document
 //! without one and return the tree with what is known about it ([`Checked`]).
 //!
@@ -20,7 +24,9 @@
 //! Author: Moroya Sakamoto
 
 use crate::io::IoError;
-use crate::provenance::{sdf_load_verdict, Checked, Provenance, KEY};
+use crate::provenance::{
+    insert_json_id, sdf_stored_load_verdict, take_json_id, Checked, Provenance, Stored, StoredForm,
+};
 use crate::types::SdfTree;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -35,30 +41,26 @@ fn stamped(tree: &SdfTree, provenance: &Provenance) -> Result<serde_json::Value,
     let object = value
         .as_object_mut()
         .ok_or_else(|| IoError::Serialization("an SDF tree is not a JSON object".to_string()))?;
-    object.insert(KEY.to_string(), serde_json::Value::String(provenance.hex()));
+    insert_json_id(object, StoredForm::JsonDocument, provenance);
     Ok(value)
 }
 
-/// The tree and the identifier a document carries (`None`: no identifier field)
-pub fn split(mut value: serde_json::Value) -> Result<(SdfTree, Option<[u8; 32]>), IoError> {
-    let stored = match value.as_object_mut().and_then(|o| o.remove(KEY)) {
+/// The tree and the identifier a document carries (`None`: no identifier field): the meaning
+/// identifier under [`crate::provenance::MEANING_KEY`], or the raw one under the earlier
+/// [`crate::provenance::KEY`]
+///
+/// # Errors
+///
+/// [`IoError::InvalidFormat`] for a document holding both keys or a field that is not 64 hex digits,
+/// and the JSON errors.
+pub fn split(mut value: serde_json::Value) -> Result<(SdfTree, Option<Stored>), IoError> {
+    let stored = match value.as_object_mut() {
+        Some(object) => take_json_id(object, StoredForm::JsonDocument, FORMAT)?,
         None => None,
-        Some(serde_json::Value::String(hex)) => Some(
-            Provenance::from_hex(&hex)
-                .ok_or_else(|| {
-                    IoError::InvalidFormat(format!("{FORMAT}: {KEY} is not 64 hex digits"))
-                })?
-                .semantics_id,
-        ),
-        Some(_) => {
-            return Err(IoError::InvalidFormat(format!(
-                "{FORMAT}: {KEY} is not a string"
-            )));
-        }
     };
     #[allow(
         clippy::disallowed_methods,
-        reason = "stored form checked: split returns the stored identifier with the tree; checked() and validate_sdf_json apply sdf_load_verdict"
+        reason = "stored form checked: split returns the stored identifier with the tree; checked() and validate_sdf_json apply sdf_stored_load_verdict"
     )]
     let tree: SdfTree =
         serde_json::from_value(value).map_err(|e| IoError::Serialization(e.to_string()))?;
@@ -67,7 +69,7 @@ pub fn split(mut value: serde_json::Value) -> Result<(SdfTree, Option<[u8; 32]>)
 
 fn checked(value: serde_json::Value, allow_unpinned: bool) -> Result<Checked<SdfTree>, IoError> {
     let (tree, stored) = split(value)?;
-    let verdict = sdf_load_verdict(stored, FORMAT, allow_unpinned)?;
+    let verdict = sdf_stored_load_verdict(stored, FORMAT, allow_unpinned)?;
     Ok(Checked::new(tree, verdict))
 }
 

@@ -30,7 +30,9 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::io::IoError;
-use crate::provenance::{Checked, Provenance, StoredSemantics, KEY};
+use crate::provenance::{
+    Checked, Provenance, Stored, StoredForm, StoredSemantics, KEY, MEANING_KEY,
+};
 
 /// Why [`fit_texture`] failed
 #[derive(Debug, thiserror::Error)]
@@ -121,11 +123,18 @@ impl Default for TextureFitConfig {
 const FIT_FORMAT: u32 = 1;
 
 /// The JSON document of a stored fit: the fields of [`TextureFitResult`] next to `format` and
-/// `alice:semantics_id`
+/// `alice:meaning_id` (the meaning identifier of the JSON document form; a document written before
+/// the form stored meaning identifiers holds the raw `alice:semantics_id`)
 #[derive(Serialize, Deserialize)]
 struct FitDocument {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     format: Option<u32>,
+    #[serde(
+        rename = "alice:meaning_id",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    meaning_id: Option<String>,
     #[serde(
         rename = "alice:semantics_id",
         default,
@@ -155,7 +164,8 @@ impl FitDocument {
     fn new(result: &TextureFitResult, provenance: &Provenance) -> Self {
         Self {
             format: Some(FIT_FORMAT),
-            semantics_id: Some(provenance.hex()),
+            meaning_id: Some(provenance.named_for(StoredForm::JsonDocument).1),
+            semantics_id: None,
             width: result.width,
             height: result.height,
             channels: result.channels,
@@ -181,16 +191,17 @@ impl FitDocument {
     }
 
     /// The stored identifier (`None` for a document written before `format` 1)
-    fn stored_id(&self) -> Result<Option<[u8; 32]>, IoError> {
-        match (self.format, &self.semantics_id) {
-            (None, None) => Ok(None),
-            (Some(FIT_FORMAT), Some(hex)) => Provenance::from_hex(hex)
-                .map(|p| Some(p.semantics_id))
-                .ok_or_else(|| {
-                    IoError::InvalidFormat(format!("texture fit: {KEY} is not 64 hex digits"))
-                }),
-            (Some(FIT_FORMAT), None) | (None, Some(_)) => Err(IoError::InvalidFormat(format!(
-                "texture fit: `format` and {KEY} must be both present or both absent"
+    fn stored_id(&self) -> Result<Option<Stored>, IoError> {
+        let stored = crate::provenance::json_fields_stored(
+            self.meaning_id.as_deref(),
+            self.semantics_id.as_deref(),
+            StoredForm::JsonDocument,
+            "texture fit",
+        )?;
+        match (self.format, stored.is_some()) {
+            (None, false) | (Some(FIT_FORMAT), true) => Ok(stored),
+            (Some(FIT_FORMAT), false) | (None, true) => Err(IoError::InvalidFormat(format!(
+                "texture fit: `format` and {MEANING_KEY} (or {KEY}) must be both present or both absent"
             ))),
             (Some(f), _) => Err(IoError::UnsupportedVersion(
                 u16::try_from(f).unwrap_or(u16::MAX),
@@ -228,7 +239,8 @@ impl FitDocument {
 /// Write a fit as JSON with this crate's semantics identifier
 ///
 /// The document holds the fields of [`TextureFitResult`] next to `"format": 1` and
-/// `"alice:semantics_id"`; [`load_texture_fit`] reads it back and checks the identifier.
+/// `"alice:meaning_id"` (the meaning identifier of the JSON document form); [`load_texture_fit`]
+/// reads it back and checks the identifier.
 ///
 /// # Errors
 ///
@@ -283,14 +295,17 @@ pub fn load_texture_fit_unverified(
 
 fn load_fit(path: &Path, allow_unpinned: bool) -> Result<Checked<TextureFitResult>, IoError> {
     let doc = read_fit_document(path)?;
-    let semantics: StoredSemantics =
-        crate::provenance::sdf_load_verdict(doc.stored_id()?, "texture fit", allow_unpinned)?;
+    let semantics: StoredSemantics = crate::provenance::sdf_stored_load_verdict(
+        doc.stored_id()?,
+        "texture fit",
+        allow_unpinned,
+    )?;
     Ok(Checked::new(doc.into_result(), semantics))
 }
 
 #[allow(
     clippy::disallowed_methods,
-    reason = "stored form checked: the document's format and alice:semantics_id go through sdf_load_verdict in load_fit before any value is returned"
+    reason = "stored form checked: the document's format and its identifier field go through sdf_stored_load_verdict in load_fit before any value is returned"
 )]
 fn read_fit_document(path: &Path) -> Result<FitDocument, IoError> {
     let text = std::fs::read_to_string(path)?;

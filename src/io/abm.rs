@@ -579,7 +579,7 @@ pub fn save_abm_with_provenance(
         lod_count: 0,
         _reserved: [0u8; 7],
         crc32: 0,
-        semantics_id: Some(provenance.semantics_id),
+        semantics_id: Some(provenance.slot_for(crate::provenance::StoredForm::Abm)),
     };
     writer.write_all(&placeholder.to_bytes())?;
 
@@ -636,8 +636,11 @@ fn read_checked(
 
     // 1. Read the header and judge its identifier before the payload
     let header = read_header(&mut reader)?;
-    let semantics =
-        crate::provenance::sdf_load_verdict(header.semantics_id, "ABM", allow_unpinned)?;
+    let semantics = crate::provenance::sdf_stored_load_verdict(
+        crate::provenance::slot(crate::provenance::StoredForm::Abm, header.semantics_id),
+        "ABM",
+        allow_unpinned,
+    )?;
 
     // 2. Read entire payload
     let payload_capacity = file_len.saturating_sub(header.byte_len());
@@ -743,7 +746,7 @@ pub fn save_abm_with_lods_with_provenance(
         lod_count,
         _reserved: [0u8; 7],
         crc32: 0,
-        semantics_id: Some(provenance.semantics_id),
+        semantics_id: Some(provenance.slot_for(crate::provenance::StoredForm::Abm)),
     };
     writer.write_all(&placeholder.to_bytes())?;
 
@@ -1117,7 +1120,13 @@ mod tests {
         let path = temp_path("header_id.abm");
         save_abm(&make_triangle_mesh(), &path).unwrap();
         let header = read_abm_header(&path).unwrap();
-        assert_eq!(header.semantics_id, Some(crate::SDF_SEMANTICS_ID));
+        assert_eq!(
+            header.semantics_id,
+            Some(crate::provenance::meaning_id(
+                crate::provenance::StoredForm::Abm,
+                &crate::provenance::Provenance::sdf()
+            ))
+        );
         assert_eq!(header.byte_len(), ABM_HEADER_LEN);
         fs::remove_file(&path).ok();
     }

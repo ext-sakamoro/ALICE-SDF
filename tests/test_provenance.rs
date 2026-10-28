@@ -81,10 +81,16 @@ const fn earlier_id() -> Provenance {
 /// A loader refused [`EARLIER`], naming it and this crate's identifier (as meaning identifiers
 /// for a form that stores them)
 fn refused_as_earlier<T>(result: Result<T, io::IoError>) {
+    refused_naming(result, &earlier_id());
+}
+
+/// A loader refused `written` (the identifier the file was written under), naming it and this
+/// crate's identifier (as meaning identifiers for a form that stores them)
+fn refused_naming<T>(result: Result<T, io::IoError>, written: &Provenance) {
     match result.err() {
         Some(io::IoError::SemanticsMismatch {
             stored, expected, ..
-        }) => assert_eq!((stored, expected), (earlier_id(), Provenance::sdf())),
+        }) => assert_eq!((stored, expected), (*written, Provenance::sdf())),
         Some(io::IoError::MeaningMismatch {
             form,
             stored,
@@ -95,12 +101,15 @@ fn refused_as_earlier<T>(result: Result<T, io::IoError>) {
             assert_eq!(
                 (stored, expected),
                 (
-                    hex(provenance::meaning_id(form, &earlier_id())),
+                    hex(provenance::meaning_id(form, written)),
                     hex(provenance::meaning_id(form, &Provenance::sdf()))
                 )
             );
         }
-        other => panic!("the earlier identifier was not refused: {other:?}"),
+        other => panic!(
+            "the identifier {} was not refused: {other:?}",
+            written.hex()
+        ),
     }
 }
 
@@ -521,7 +530,10 @@ const WRITERS: &[(&str, &str, Write)] = &[
             lod_count: 0,
             _reserved: [0; 7],
             crc32: 0,
-            semantics_id: Some(id.map_or(alice_sdf::SDF_SEMANTICS_ID, |id| id.semantics_id)),
+            semantics_id: Some(
+                id.unwrap_or(&Provenance::sdf())
+                    .slot_for(provenance::StoredForm::Abm),
+            ),
         };
         std::fs::write(p, header.to_bytes()).unwrap();
     }),
@@ -1018,15 +1030,7 @@ fn asdf_loaders_check_the_identifier() {
         io::load_asdf(&path).map(|_| ()),
         io::load_asdf_unverified(&path).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex())
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_naming(result, &caller_id());
     }
     std::fs::remove_file(&path).ok();
 }
@@ -1584,16 +1588,7 @@ fn abm_loaders_check_the_identifier() {
         io::load_abm_with_lods(&lods).map(|_| ()),
         io::load_abm_with_lods_unverified(&lods).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_naming(result, &caller_id());
     }
     std::fs::remove_file(&single).ok();
     std::fs::remove_file(&lods).ok();
@@ -1771,22 +1766,11 @@ fn lod_chain_loaders_check_both_parts() {
         lod_persist::load_lod_chain_unverified(&path).map(|_| ()),
         lod_persist::load_lod_chain_metadata(&meta).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex())
-                );
-            }
-            other => panic!("sidecar: expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_naming(result, &caller_id());
     }
     lod_persist::save_lod_chain_with_provenance(&chain, &path, &caller_id()).unwrap();
     lod_persist::save_lod_chain_metadata(&chain, &path).unwrap();
-    assert!(matches!(
-        lod_persist::load_lod_chain(&path),
-        Err(io::IoError::SemanticsMismatch { .. })
-    ));
+    refused_naming(lod_persist::load_lod_chain(&path), &caller_id());
 
     // the mesh file current, the sidecar without an identifier (format 1): default refuses,
     // unverified reads it as Unpinned
@@ -1816,22 +1800,45 @@ fn lod_metadata_is_read_by_its_exact_format() {
     lod_persist::save_lod_chain(&chain, &path).unwrap();
     let good: serde_json::Value = serde_json::from_slice(&std::fs::read(&meta).unwrap()).unwrap();
     assert_eq!(good["format"], 2);
-    assert_eq!(good[provenance::KEY], Provenance::sdf().hex());
+    assert_eq!(
+        good[provenance::MEANING_KEY],
+        Provenance::sdf()
+            .named_for(provenance::StoredForm::JsonDocument)
+            .1
+    );
 
     let mut cases = Vec::new();
     let mut v = good.clone();
-    v.as_object_mut().unwrap().remove(provenance::KEY);
+    v.as_object_mut().unwrap().remove(provenance::MEANING_KEY);
     cases.push(("format 2 without the identifier", v));
     let mut v = good.clone();
-    v[provenance::KEY] = serde_json::Value::from("abc");
+    v[provenance::MEANING_KEY] = serde_json::Value::from("abc");
     cases.push(("a short identifier", v));
+    let mut v = good.clone();
+    v[provenance::KEY] = serde_json::Value::from(Provenance::sdf().hex());
+    cases.push(("both keys", v));
     for f in [0, 3, 1000] {
         let mut v = good.clone();
         v["format"] = serde_json::Value::from(f);
         cases.push(("an unknown format", v.clone()));
-        v.as_object_mut().unwrap().remove(provenance::KEY);
+        v.as_object_mut().unwrap().remove(provenance::MEANING_KEY);
         cases.push(("an unknown format without the identifier", v));
     }
+    // a sidecar written before the form stored meaning identifiers (the raw identifier under the
+    // earlier key) reads as the earlier generation
+    let mut earlier = good;
+    earlier
+        .as_object_mut()
+        .unwrap()
+        .remove(provenance::MEANING_KEY);
+    earlier[provenance::KEY] = serde_json::Value::from(Provenance::sdf().hex());
+    std::fs::write(&meta, serde_json::to_vec(&earlier).unwrap()).unwrap();
+    assert_eq!(
+        lod_persist::load_lod_chain_unverified(&path)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::VerifiedPrevious(Provenance::sdf())
+    );
     for (what, v) in cases {
         std::fs::write(&meta, serde_json::to_vec(&v).unwrap()).unwrap();
         assert!(
@@ -1974,16 +1981,7 @@ fn nsdf_writers_store_and_loaders_check_the_identifier() {
         NeuralSdf::load(&mut other.as_slice()).map(|_| ()),
         NeuralSdf::load_unverified(&mut other.as_slice()).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_naming(result, &caller_id());
     }
 }
 
@@ -2129,16 +2127,7 @@ fn alice_vdb_writers_store_and_loaders_check_the_identifier() {
         vdb::load_dense_grid_from_vdb(&other).map(|_| ()),
         vdb::load_dense_grid_from_vdb_unverified(&other).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_naming(result, &caller_id());
     }
 }
 
@@ -2298,16 +2287,7 @@ fn svo_chunk_writers_store_and_readers_check_the_identifier() {
         SvoChunk::from_bytes(&other).map(|_| ()),
         SvoChunk::from_bytes_unverified(&other).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_naming(result, &caller_id());
     }
 }
 
@@ -2568,16 +2548,7 @@ fn vox_writers_store_and_loaders_check_the_identifier() {
         load_vox(&other_path).map(|_| ()),
         load_vox_pinned(&other_path).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_naming(result, &caller_id());
     }
 
     // the same file with the ALSD chunk cut out (and MAIN's children size fixed up)
@@ -2812,16 +2783,7 @@ fn splat_writers_store_and_loaders_check_the_identifier() {
         load_splat(&other).map(|_| ()),
         load_splat_pinned(&other).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_naming(result, &caller_id());
     }
 
     // the .splat rewritten by another program after its sidecar: provenance::read refuses the
@@ -3778,7 +3740,10 @@ fn nanite_binary_versions_without_the_identifier_are_missing() {
     std::fs::remove_file(&path).ok();
     assert_eq!(&b[..4], io::nanite::NANITE_MAGIC);
     assert_eq!(b[4..8], 4u32.to_le_bytes());
-    assert_eq!(b[32..64], alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(
+        b[32..64],
+        provenance::meaning_id(provenance::StoredForm::Nanite, &Provenance::sdf())
+    );
     assert!(provenance::from_bytes(&b)
         .unwrap()
         .is_written_under(&Provenance::sdf()));
@@ -3914,7 +3879,16 @@ fn engine_binary_meshes_of_version_1_are_missing() {
         std::fs::remove_file(&path).ok();
         assert_eq!(&b[..4], magic);
         assert_eq!(b[4..6], 2u16.to_le_bytes(), "{format}");
-        assert_eq!(b[16..48], alice_sdf::SDF_SEMANTICS_ID, "{format}");
+        let form = if format == "UE5" {
+            provenance::StoredForm::Ue5Mesh
+        } else {
+            provenance::StoredForm::UnityMesh
+        };
+        assert_eq!(
+            b[16..48],
+            provenance::meaning_id(form, &Provenance::sdf()),
+            "{format}"
+        );
         assert!(provenance::from_bytes(&b)
             .unwrap()
             .is_written_under(&Provenance::sdf()));
