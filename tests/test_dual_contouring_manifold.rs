@@ -630,49 +630,64 @@ fn shapes_near_the_max_bound_are_closed() {
     }
 }
 
-/// Non-finite field values (NaN, ±∞) in part of the grid: no panic, and the
-/// same output on a second run in both topologies. NaN < 0 is false, so a NaN
-/// corner counts as outside; −∞ is inside and +∞ outside.
+/// Non-finite field values (NaN, ±∞) in part of the grid: no panic, the same
+/// output on a second run, and the classification the comparisons give: NaN < 0
+/// is false, so a NaN corner counts as outside, −∞ as inside and +∞ as outside.
+/// The vertices (one per sheet of each crossed cell) depend only on the corners'
+/// signs, so each field has as many vertices as the same field with its
+/// non-finite region replaced by +1 (outside) or −1 (inside).
 #[test]
 fn non_finite_corner_values_are_deterministic() {
     let cfg = DualContouringConfig {
         resolution: 12,
         ..Default::default()
     };
-    let fields: [(&str, &(dyn Fn(Vec3) -> f32 + Sync)); 3] = [
-        ("NaN for x > 0.3", &|p: Vec3| {
-            if p.x > 0.3 {
-                f32::NAN
-            } else {
-                p.length() - 0.7
-            }
-        }),
-        ("-inf for y < -0.4", &|p: Vec3| {
-            if p.y < -0.4 {
-                f32::NEG_INFINITY
-            } else {
-                p.length() - 0.7
-            }
-        }),
-        ("+inf for z > 0.5", &|p: Vec3| {
-            if p.z > 0.5 {
-                f32::INFINITY
-            } else {
-                p.length() - 0.7
-            }
-        }),
+    let sphere = |p: Vec3| p.length() - 0.7;
+    type Case<'a> = (
+        &'a str,
+        &'a (dyn Fn(Vec3) -> f32 + Sync),
+        &'a (dyn Fn(Vec3) -> f32 + Sync),
+    );
+    let cases: [Case; 3] = [
+        (
+            "NaN for x > 0.3",
+            &|p: Vec3| if p.x > 0.3 { f32::NAN } else { sphere(p) },
+            &|p: Vec3| if p.x > 0.3 { 1.0 } else { sphere(p) },
+        ),
+        (
+            "-inf for y < -0.4",
+            &|p: Vec3| {
+                if p.y < -0.4 {
+                    f32::NEG_INFINITY
+                } else {
+                    sphere(p)
+                }
+            },
+            &|p: Vec3| if p.y < -0.4 { -1.0 } else { sphere(p) },
+        ),
+        (
+            "+inf for z > 0.5",
+            &|p: Vec3| if p.z > 0.5 { f32::INFINITY } else { sphere(p) },
+            &|p: Vec3| if p.z > 0.5 { 1.0 } else { sphere(p) },
+        ),
     ];
     for topo in [DcTopology::OneVertexPerCell, DcTopology::Manifold] {
-        for (name, f) in fields {
-            let run = || {
+        for (name, f, same_signs) in cases {
+            let run = |field: &(dyn Fn(Vec3) -> f32 + Sync)| {
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    dual_contouring_field(f, Vec3::splat(-1.0), Vec3::splat(1.0), &cfg, topo)
+                    dual_contouring_field(field, Vec3::splat(-1.0), Vec3::splat(1.0), &cfg, topo)
                 }))
                 .unwrap_or_else(|_| panic!("{topo:?} {name}: panicked"))
             };
-            let (a, b) = (run(), run());
+            let (a, b) = (run(f), run(f));
             assert!(!a.indices.is_empty(), "{topo:?} {name}: empty mesh");
             assert_eq!(digest(&a), digest(&b), "{topo:?} {name}: not deterministic");
+            let reference = run(same_signs);
+            assert_eq!(
+                a.vertices.len(),
+                reference.vertices.len(),
+                "{topo:?} {name}: classified unlike the finite field with the same signs"
+            );
         }
     }
 }
