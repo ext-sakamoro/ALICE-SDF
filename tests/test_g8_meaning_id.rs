@@ -18,7 +18,8 @@ use alice_sdf::{PREVIOUS_SDF_SEMANTICS_IDS, SDF_SEMANTICS_BY_DET_MATH, SDF_SEMAN
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
-/// The forms whose writers store meaning identifiers in this build
+/// The forms whose writers store meaning identifiers in this build (the mesh and text forms; the
+/// binary slot forms are in [`meaning_forms`])
 const MEANING_FORMS: [StoredForm; 13] = [
     StoredForm::StlBinary,
     StoredForm::StlAscii,
@@ -51,6 +52,28 @@ fn mesh() -> Mesh {
             ..Default::default()
         },
     )
+}
+
+/// [`MEANING_FORMS`] and the binary slot forms whose writers this build compiles (SVO with `svo`,
+/// ALICE-VDB with `openvdb`, DDS with `volume`)
+fn meaning_forms() -> Vec<StoredForm> {
+    let mut forms = MEANING_FORMS.to_vec();
+    forms.extend([
+        StoredForm::Asdf,
+        StoredForm::Abm,
+        StoredForm::Nanite,
+        StoredForm::Ue5Mesh,
+        StoredForm::UnityMesh,
+        StoredForm::Neural,
+        StoredForm::Vox,
+    ]);
+    #[cfg(feature = "svo")]
+    forms.extend([StoredForm::Svo]);
+    #[cfg(feature = "openvdb")]
+    forms.extend([StoredForm::Vdb]);
+    #[cfg(feature = "volume")]
+    forms.extend([StoredForm::Dds]);
+    forms
 }
 
 fn hex(id: &[u8; 32]) -> String {
@@ -111,6 +134,106 @@ fn write(form: StoredForm, m: &Mesh, path: &Path, p: &Provenance) {
             };
             io::iges::export_iges_with_provenance(path, &SdfNode::sphere(1.0), &cfg, p).unwrap();
         }
+        StoredForm::Asdf => {
+            let tree = SdfTree::new(SdfNode::sphere(1.0));
+            io::save_asdf_with_provenance(&tree, path, p).unwrap();
+        }
+        StoredForm::Abm => io::save_abm_with_provenance(m, path, p).unwrap(),
+        StoredForm::Nanite => {
+            let n = alice_sdf::mesh::generate_nanite_mesh(
+                &SdfNode::sphere(1.0),
+                Vec3::splat(-1.5),
+                Vec3::splat(1.5),
+                &alice_sdf::mesh::NaniteConfig {
+                    lod_levels: 2,
+                    base_resolution: 8,
+                    ..alice_sdf::mesh::NaniteConfig::default()
+                },
+            );
+            io::nanite::export_nanite_with_provenance(
+                &n,
+                path,
+                &io::NaniteExportConfig::default(),
+                p,
+            )
+            .unwrap();
+        }
+        StoredForm::Ue5Mesh => io::ue5_asset::export_ue5_mesh_binary_with_provenance(
+            m,
+            path,
+            &io::Ue5MeshConfig::default(),
+            p,
+        )
+        .unwrap(),
+        StoredForm::UnityMesh => io::unity_mesh::export_unity_mesh_binary_with_provenance(
+            m,
+            path,
+            &io::UnityMeshConfig::default(),
+            p,
+        )
+        .unwrap(),
+        StoredForm::Neural => {
+            let net = alice_sdf::neural::NeuralSdf::new(&alice_sdf::neural::NeuralSdfConfig {
+                hidden_layers: 1,
+                hidden_width: 4,
+                pos_encoding_freqs: 1,
+                ..Default::default()
+            });
+            let mut b = Vec::new();
+            net.save_with_provenance(&mut b, p).unwrap();
+            std::fs::write(path, b).unwrap();
+        }
+        StoredForm::Vox => {
+            let model = io::vox::VoxModel {
+                size: (4, 4, 4),
+                voxels: vec![io::vox::Voxel {
+                    x: 1,
+                    y: 2,
+                    z: 3,
+                    color: 79,
+                }],
+            };
+            io::vox::save_vox_with_provenance(path, &model, p).unwrap();
+        }
+        #[cfg(feature = "svo")]
+        StoredForm::Svo => {
+            let node = alice_sdf::svo::SvoNode {
+                distance: 0.25,
+                nx: 0.0,
+                ny: 1.0,
+                nz: 0.0,
+                child_mask: 0,
+                is_leaf: 1,
+                material_id: 3,
+                first_child: 0,
+                _pad: [0.0, 0.0],
+            };
+            let bounds = alice_sdf::compiled::AabbPacked::new(Vec3::splat(-1.0), Vec3::splat(1.0));
+            let chunk = alice_sdf::svo::SvoChunk::new(7, vec![node, node], bounds, 2);
+            std::fs::write(path, chunk.to_bytes_with_provenance(p)).unwrap();
+        }
+        #[cfg(feature = "openvdb")]
+        StoredForm::Vdb => {
+            let b = io::vdb::bake_to_vdb_with_provenance(&SdfNode::sphere(1.0), (-1.5, 1.5), 4, p)
+                .unwrap();
+            std::fs::write(path, b).unwrap();
+        }
+        #[cfg(feature = "volume")]
+        StoredForm::Dds => {
+            use alice_sdf::volume::export as vx;
+            let v = alice_sdf::volume::Volume3D::<f32>::new(
+                [4, 4, 4],
+                Vec3::splat(-1.0),
+                Vec3::splat(1.0),
+            );
+            vx::export_dds_3d_with_provenance(
+                &v,
+                path.to_str().unwrap(),
+                vx::DdsFormat::R32Float,
+                p,
+            )
+            .unwrap();
+        }
         other => panic!("no writer for {other:?} in this test"),
     }
 }
@@ -128,6 +251,12 @@ const fn ext(form: StoredForm) -> &'static str {
         StoredForm::Step => "step",
         StoredForm::Iges => "igs",
         StoredForm::Alembic => "abc",
+        StoredForm::Asdf => "asdf",
+        StoredForm::Abm => "abm",
+        StoredForm::Nanite => "nanite",
+        StoredForm::Neural => "nsdf",
+        StoredForm::Vox => "vox",
+        StoredForm::Dds => "dds",
         _ => "bin",
     }
 }
@@ -150,7 +279,8 @@ fn every_meaning_form_writes_the_meaning_identifier_and_it_is_current() {
     let m = mesh();
     let caller = Provenance::new([0x5a; 32]);
     let mut compared = 0;
-    for form in MEANING_FORMS {
+    let forms = meaning_forms();
+    for &form in &forms {
         assert!(form.writes_meaning(), "{form:?}");
         let path = temp(&format!("own_{}.{}", form.name(), ext(form)));
         write(form, &m, &path, &Provenance::sdf());
@@ -208,7 +338,8 @@ fn every_meaning_form_writes_the_meaning_identifier_and_it_is_current() {
         std::fs::remove_file(&path).ok();
         compared += 1;
     }
-    assert_eq!(compared, MEANING_FORMS.len());
+    assert_eq!(compared, forms.len());
+    assert!(compared >= 20, "compared {compared} forms");
 }
 
 /// The files alice-sdf 7.0.0 wrote for the meaning forms: the raw identifier, under the earlier key
