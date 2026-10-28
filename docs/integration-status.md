@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1332 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1340 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1071 |
-| | **total** | **2412** |
+| | **total** | **2420** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1332)
+## L1 — example-only (1340)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -167,6 +167,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/spatial_order.rs`: `morton_3d`, `optimize_spatial_order`
 - `src/mesh/stripifier.rs`: `stripify`, `stripify_bound`, `try_stripify`, `unstripify`, `unstripify_bound`
 - `src/mesh/uv_unwrap.rs`: `UvDensityReport`, `UvDensityReport::RECOMMENDED_MIN_TEXELS_PER_FACE`, `UvDensityReport::WARN_LOW_DENSITY_RATIO`, `UvDensityReport::has_warning`, `compute_uv_density`
+- `src/mesh/winding.rs`: `ORIENTATION_SAMPLES`, `OrientationReport`, `VOLUME_TOLERANCE`, `WindingReport`, `orientation_report`, `solid_angle`, `winding_number`, `winding_report`
 - `src/modifiers/bend.rs`: `modifier_bend_cheap`, `modifier_bend_x`, `modifier_bend_z`
 - `src/modifiers/ifs.rs`: `ifs_fold`
 - `src/modifiers/mirror.rs`: `modifier_mirror_x`, `modifier_mirror_y`, `modifier_mirror_z`
