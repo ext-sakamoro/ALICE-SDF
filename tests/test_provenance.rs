@@ -80,6 +80,41 @@ const fn earlier_id() -> Provenance {
 
 /// A loader refused [`EARLIER`], naming it and this crate's identifier (as meaning identifiers
 /// for a form that stores them)
+/// The loader refuses a file written under [`caller_id`]: the meaning identifier of the form
+/// (ALICE-Law G8) under the caller's identifier, named with the one this build expects
+/// The meaning identifier of `form` under `p`, as an identifier (the codecs' errors name them so)
+fn meaning_of(form: StoredForm, p: &Provenance) -> Provenance {
+    Provenance::new(provenance::meaning_id(form, p))
+}
+
+fn refused_as_caller<T: std::fmt::Debug>(result: Result<T, io::IoError>) {
+    match result {
+        Err(e @ io::IoError::MeaningMismatch { .. }) => {
+            let io::IoError::MeaningMismatch {
+                form,
+                ref stored,
+                ref expected,
+                ..
+            } = e
+            else {
+                unreachable!()
+            };
+            let hex = |id: [u8; 32]| Provenance::new(id).hex();
+            assert_eq!(*stored, hex(provenance::meaning_id(form, &caller_id())));
+            assert_eq!(
+                *expected,
+                hex(provenance::meaning_id(form, &Provenance::sdf()))
+            );
+            let text = e.to_string();
+            assert!(
+                text.contains(stored.as_str()) && text.contains(expected.as_str()),
+                "{text}"
+            );
+        }
+        other => panic!("expected MeaningMismatch, got {other:?}"),
+    }
+}
+
 fn refused_as_earlier<T>(result: Result<T, io::IoError>) {
     match result.err() {
         Some(io::IoError::SemanticsMismatch {
@@ -521,11 +556,33 @@ const WRITERS: &[(&str, &str, Write)] = &[
             lod_count: 0,
             _reserved: [0; 7],
             crc32: 0,
-            semantics_id: Some(id.map_or(alice_sdf::SDF_SEMANTICS_ID, |id| id.semantics_id)),
+            // the header's slot holds what a writer of the ABM form stores: the meaning identifier
+            semantics_id: Some(id.unwrap_or(&Provenance::sdf()).slot_for(StoredForm::Abm)),
         };
         std::fs::write(p, header.to_bytes()).unwrap();
     }),
 ];
+
+/// Every writer stores the meaning identifier of its form under this crate's identifier, never the
+/// raw one (ALICE-Law G8): through the meaning key or in a binary slot
+fn stores_the_meaning_identifier(name: &str, stored: &provenance::Stored) {
+    assert_eq!(
+        stored.id,
+        provenance::meaning_id(stored.form, &Provenance::sdf()),
+        "{name}: the meaning identifier of {:?}",
+        stored.form
+    );
+    assert_ne!(
+        stored.id,
+        alice_sdf::SDF_SEMANTICS_ID,
+        "{name}: not the raw identifier"
+    );
+    assert_ne!(
+        stored.via,
+        provenance::StoredVia::SemanticsKey,
+        "{name}: not under the earlier key"
+    );
+}
 
 #[test]
 fn every_writer_stores_the_identifier_and_it_reads_back() {
@@ -535,6 +592,7 @@ fn every_writer_stores_the_identifier_and_it_reads_back() {
     for &(name, file, write) in WRITERS {
         let path = temp(file);
         write(&m, &path, None);
+        stores_the_meaning_identifier(name, &provenance::read(&path).unwrap());
         assert!(
             provenance::read(&path)
                 .unwrap_or_else(|e| panic!("{name}: {e}"))
@@ -874,6 +932,7 @@ fn volume_writers_store_the_identifier() {
         let path = temp(file);
         let p = path.to_str().unwrap();
         write(p, None);
+        stores_the_meaning_identifier(name, &provenance::read(&path).unwrap());
         assert!(
             provenance::read(&path)
                 .unwrap()
@@ -887,9 +946,10 @@ fn volume_writers_store_the_identifier() {
                 .is_written_under(&caller_id()),
             "{name}"
         );
+        // a slot or the meaning key holds the caller's meaning identifier: refused naming the form
         assert!(matches!(
             provenance::check_sdf(&path),
-            Err(ProvenanceError::Mismatch { .. })
+            Err(ProvenanceError::MeaningMismatch { .. })
         ));
         let bytes = std::fs::read(&path).unwrap();
         if file.ends_with(".dds") {
@@ -906,7 +966,9 @@ fn volume_writers_store_the_identifier() {
         } else {
             assert_eq!(bytes.len() % 4, 0, "{name}: raw stays f32 voxels");
             assert!(
-                !bytes.windows(8).any(|w| w == b"semantic"),
+                !bytes
+                    .windows(8)
+                    .any(|w| w == b"semantic" || w == b"meaning_"),
                 "{name}: no tag in the raw bytes"
             );
             std::fs::remove_file(provenance::sidecar_path(&path)).ok();
@@ -988,15 +1050,7 @@ fn asdf_loaders_check_the_identifier() {
         io::load_asdf(&path).map(|_| ()),
         io::load_asdf_unverified(&path).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex())
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_as_caller(result);
     }
     std::fs::remove_file(&path).ok();
 }
@@ -1554,16 +1608,7 @@ fn abm_loaders_check_the_identifier() {
         io::load_abm_with_lods(&lods).map(|_| ()),
         io::load_abm_with_lods_unverified(&lods).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_as_caller(result);
     }
     std::fs::remove_file(&single).ok();
     std::fs::remove_file(&lods).ok();
@@ -1741,21 +1786,13 @@ fn lod_chain_loaders_check_both_parts() {
         lod_persist::load_lod_chain_unverified(&path).map(|_| ()),
         lod_persist::load_lod_chain_metadata(&meta).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex())
-                );
-            }
-            other => panic!("sidecar: expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_as_caller(result);
     }
     lod_persist::save_lod_chain_with_provenance(&chain, &path, &caller_id()).unwrap();
     lod_persist::save_lod_chain_metadata(&chain, &path).unwrap();
     assert!(matches!(
         lod_persist::load_lod_chain(&path),
-        Err(io::IoError::SemanticsMismatch { .. })
+        Err(io::IoError::MeaningMismatch { .. })
     ));
 
     // the mesh file current, the sidecar without an identifier (format 1): default refuses,
@@ -1786,20 +1823,29 @@ fn lod_metadata_is_read_by_its_exact_format() {
     lod_persist::save_lod_chain(&chain, &path).unwrap();
     let good: serde_json::Value = serde_json::from_slice(&std::fs::read(&meta).unwrap()).unwrap();
     assert_eq!(good["format"], 2);
-    assert_eq!(good[provenance::KEY], Provenance::sdf().hex());
+    // this build writes the meaning identifier of a JSON document, never the raw key
+    assert_eq!(
+        good[provenance::MEANING_KEY],
+        Provenance::sdf().named_for(StoredForm::JsonDocument).1
+    );
+    assert!(good.get(provenance::KEY).is_none());
 
     let mut cases = Vec::new();
     let mut v = good.clone();
-    v.as_object_mut().unwrap().remove(provenance::KEY);
+    v.as_object_mut().unwrap().remove(provenance::MEANING_KEY);
     cases.push(("format 2 without the identifier", v));
     let mut v = good.clone();
-    v[provenance::KEY] = serde_json::Value::from("abc");
+    v[provenance::MEANING_KEY] = serde_json::Value::from("abc");
     cases.push(("a short identifier", v));
+    // both keys: read as neither
+    let mut v = good.clone();
+    v[provenance::KEY] = serde_json::Value::from(Provenance::sdf().hex());
+    cases.push(("both keys", v));
     for f in [0, 3, 1000] {
         let mut v = good.clone();
         v["format"] = serde_json::Value::from(f);
         cases.push(("an unknown format", v.clone()));
-        v.as_object_mut().unwrap().remove(provenance::KEY);
+        v.as_object_mut().unwrap().remove(provenance::MEANING_KEY);
         cases.push(("an unknown format without the identifier", v));
     }
     for (what, v) in cases {
@@ -1944,16 +1990,7 @@ fn nsdf_writers_store_and_loaders_check_the_identifier() {
         NeuralSdf::load(&mut other.as_slice()).map(|_| ()),
         NeuralSdf::load_unverified(&mut other.as_slice()).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_as_caller(result);
     }
 }
 
@@ -2099,16 +2136,7 @@ fn alice_vdb_writers_store_and_loaders_check_the_identifier() {
         vdb::load_dense_grid_from_vdb(&other).map(|_| ()),
         vdb::load_dense_grid_from_vdb_unverified(&other).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_as_caller(result);
     }
 }
 
@@ -2236,7 +2264,7 @@ fn svo_chunk_writers_store_and_readers_check_the_identifier() {
         .any(|(w, _)| *w == "src/svo/streaming.rs::to_bytes"));
     let own = svo_chunk().to_bytes();
     assert_eq!(&own[..4], b"ASVC");
-    assert_eq!(&own[8..40], &alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(&own[8..40], &Provenance::sdf().slot_for(StoredForm::Svo));
     assert!(provenance::from_bytes(&own)
         .unwrap()
         .is_written_under(&Provenance::sdf()));
@@ -2268,16 +2296,7 @@ fn svo_chunk_writers_store_and_readers_check_the_identifier() {
         SvoChunk::from_bytes(&other).map(|_| ()),
         SvoChunk::from_bytes_unverified(&other).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_as_caller(result);
     }
 }
 
@@ -2373,11 +2392,12 @@ fn svo_chunk_headers_are_read_by_their_exact_version_and_never_as_version_1() {
         SvoChunk::from_bytes_unverified(&colliding).map(|_| ()),
     ] {
         // its node_count (2) lands on the version field, so the next 32 bytes are read as an
-        // identifier: refused as a mismatch (or, for another node_count, an unknown version)
+        // identifier: refused as a meaning mismatch of the SVO form (or, for another
+        // node_count, an unknown version)
         assert!(
             matches!(
                 result,
-                Err(io::IoError::SemanticsMismatch { .. } | io::IoError::InvalidFormat(_))
+                Err(io::IoError::MeaningMismatch { .. } | io::IoError::InvalidFormat(_))
             ),
             "{result:?}"
         );
@@ -2538,16 +2558,7 @@ fn vox_writers_store_and_loaders_check_the_identifier() {
         load_vox(&other_path).map(|_| ()),
         load_vox_pinned(&other_path).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_as_caller(result);
     }
 
     // the same file with the ALSD chunk cut out (and MAIN's children size fixed up)
@@ -2727,8 +2738,8 @@ fn a_splat_from_6_1_0_reads_as_unpinned_and_is_refused_when_pinned() {
     assert_eq!(
         sidecar,
         format!(
-            "alice:semantics_id={}\nalice:content_sha256={}\n",
-            Provenance::sdf().hex(),
+            "{}\nalice:content_sha256={}\n",
+            Provenance::sdf().tagged_for(StoredForm::Sidecar),
             Provenance::new(Sha256::digest(&old).into()).hex()
         )
     );
@@ -2782,16 +2793,7 @@ fn splat_writers_store_and_loaders_check_the_identifier() {
         load_splat(&other).map(|_| ()),
         load_splat_pinned(&other).map(|_| ()),
     ] {
-        match result {
-            Err(e @ io::IoError::SemanticsMismatch { .. }) => {
-                let text = e.to_string();
-                assert!(
-                    text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
-                    "{text}"
-                );
-            }
-            other => panic!("expected SemanticsMismatch, got {other:?}"),
-        }
+        refused_as_caller(result);
     }
 
     // the .splat rewritten by another program after its sidecar: provenance::read refuses the
@@ -2860,7 +2862,7 @@ fn splat_sidecars_that_cannot_be_read_or_describe_other_bytes_are_errors_never_u
     let good = std::fs::read_to_string(provenance::sidecar_path(&base)).unwrap();
     let (id_line, sha_line) = good.split_once('\n').unwrap();
     let sha_line = sha_line.trim_end();
-    let id_hex = Provenance::sdf().hex();
+    let id_hex = Provenance::sdf().named_for(StoredForm::Sidecar).1;
 
     let mut cases: Vec<(&str, Vec<u8>, String, &str)> = vec![
         (
@@ -2873,7 +2875,7 @@ fn splat_sidecars_that_cannot_be_read_or_describe_other_bytes_are_errors_never_u
             "no id",
             splat_bytes(&splats()),
             format!("{sha_line}\n"),
-            "has no alice:semantics_id",
+            "has no alice:meaning_id",
         ),
         (
             "no sha",
@@ -2885,7 +2887,7 @@ fn splat_sidecars_that_cannot_be_read_or_describe_other_bytes_are_errors_never_u
             "id twice",
             splat_bytes(&splats()),
             format!("{id_line}\n{good}"),
-            "alice:semantics_id twice",
+            "alice:meaning_id twice",
         ),
         (
             "unknown key",
@@ -2903,7 +2905,16 @@ fn splat_sidecars_that_cannot_be_read_or_describe_other_bytes_are_errors_never_u
             "short id",
             splat_bytes(&splats()),
             good.replace(&id_hex, &id_hex[..63]),
-            "alice:semantics_id is not 64 hex",
+            "alice:meaning_id is not 64 hex",
+        ),
+        (
+            "both keys",
+            splat_bytes(&splats()),
+            format!(
+                "{id_line}\nalice:semantics_id={}\n{sha_line}\n",
+                Provenance::sdf().hex()
+            ),
+            "has both alice:meaning_id and alice:semantics_id",
         ),
     ];
     cases.extend([(
@@ -2912,7 +2923,7 @@ fn splat_sidecars_that_cannot_be_read_or_describe_other_bytes_are_errors_never_u
         String::new(),
         "is not UTF-8",
     )]);
-    assert_eq!(cases.len(), 8);
+    assert_eq!(cases.len(), 9);
 
     for (name, bytes, sidecar, why) in cases {
         let p = temp("bad.splat");
@@ -3008,7 +3019,10 @@ fn mesh_codec_decoders_check_the_identifier() {
         indices: idx.to_vec(),
     };
     let (ib, pb) = encode_mesh(&mesh);
-    assert_eq!(&ib[8..40], &alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(
+        &ib[8..40],
+        &Provenance::sdf().slot_for(StoredForm::MeshCodec)
+    );
     assert_eq!(
         (encode_indices(&idx), encode_positions(&pos)),
         (ib.clone(), pb.clone())
@@ -3025,9 +3039,10 @@ fn mesh_codec_decoders_check_the_identifier() {
     let earlier = earlier_id();
     let ib = encode_indices_with_provenance(&idx, &earlier);
     let pb = encode_positions_with_provenance(&pos, &earlier);
-    let refused = CodecError::SemanticsMismatch {
-        stored: earlier,
-        expected: Provenance::sdf(),
+    let refused = CodecError::MeaningMismatch {
+        form: StoredForm::MeshCodec,
+        stored: meaning_of(StoredForm::MeshCodec, &earlier),
+        expected: meaning_of(StoredForm::MeshCodec, &Provenance::sdf()),
     };
     assert_eq!(decode_indices(&ib), Err(refused));
     assert_eq!(decode_indices_unverified(&ib).map(|_| ()), Err(refused));
@@ -3041,16 +3056,20 @@ fn mesh_codec_decoders_check_the_identifier() {
         encode_mesh_with_provenance(&mesh, &caller_id()),
         (ib.clone(), pb.clone())
     );
-    let mismatch = CodecError::SemanticsMismatch {
-        stored: caller_id(),
-        expected: Provenance::sdf(),
+    let mismatch = CodecError::MeaningMismatch {
+        form: StoredForm::MeshCodec,
+        stored: meaning_of(StoredForm::MeshCodec, &caller_id()),
+        expected: meaning_of(StoredForm::MeshCodec, &Provenance::sdf()),
     };
     assert_eq!(decode_indices(&ib), Err(mismatch));
     assert_eq!(decode_indices_unverified(&ib).map(|_| ()), Err(mismatch));
     assert_eq!(decode_positions(&pb), Err(mismatch));
     assert_eq!(decode_positions_unverified(&pb).map(|_| ()), Err(mismatch));
     let text = mismatch.to_string();
-    assert!(text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()));
+    assert!(
+        text.contains(&meaning_of(StoredForm::MeshCodec, &caller_id()).hex())
+            && text.contains(&meaning_of(StoredForm::MeshCodec, &Provenance::sdf()).hex())
+    );
 
     // version 1 buffers written by alice-sdf 6.1.0 (crates.io): refused by default, read
     // unverified as Unpinned with the same values
@@ -3115,13 +3134,19 @@ fn meshopt_codecs_read_the_stamped_form_and_raw_bytes_by_name() {
     let vb = encode_vertex_buffer(&verts, 12);
     let ib = encode_index_buffer(&idx);
     assert_eq!(&vb[..4], b"ASMO");
-    assert_eq!(&vb[8..40], &alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(
+        &vb[8..40],
+        &Provenance::sdf().slot_for(StoredForm::MeshoptStamp)
+    );
     assert_eq!(&vb[40..], encode_vertex_buffer_raw(&verts, 12).as_slice());
     assert_eq!(decode_vertex_buffer(&vb, 4, 12).unwrap(), verts);
     assert!(same_tris(&idx, &decode_index_buffer(&ib, 6).unwrap()));
     assert_eq!(try_encode_index_buffer(&idx).unwrap(), ib);
     let vb_level = encode_vertex_buffer_level(&verts, 12, 0);
-    assert_eq!(&vb_level[8..40], &alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(
+        &vb_level[8..40],
+        &Provenance::sdf().slot_for(StoredForm::MeshoptStamp)
+    );
     assert_eq!(decode_vertex_buffer(&vb_level, 4, 12).unwrap(), verts);
     // an earlier identifier this build no longer reproduces is stored and refused (the mapping
     // of a listed earlier identifier is sdf_load_verdict's, tested in the crate)
@@ -3129,16 +3154,21 @@ fn meshopt_codecs_read_the_stamped_form_and_raw_bytes_by_name() {
     let prev = encode_vertex_buffer_with_provenance(&verts, 12, &earlier);
     assert_eq!(
         decode_vertex_buffer(&prev, 4, 12),
-        Err(CodecError::SemanticsMismatch {
-            stored: earlier,
-            expected: Provenance::sdf(),
+        Err(CodecError::MeaningMismatch {
+            form: StoredForm::MeshoptStamp,
+            stored: meaning_of(StoredForm::MeshoptStamp, &earlier),
+            expected: meaning_of(StoredForm::MeshoptStamp, &Provenance::sdf()),
         })
     );
-    assert_eq!(&prev[8..40], &EARLIER);
+    assert_eq!(
+        &prev[8..40],
+        &meaning_of(StoredForm::MeshoptStamp, &earlier).semantics_id
+    );
     // another identifier is refused, naming both
-    let mismatch = CodecError::SemanticsMismatch {
-        stored: caller_id(),
-        expected: Provenance::sdf(),
+    let mismatch = CodecError::MeaningMismatch {
+        form: StoredForm::MeshoptStamp,
+        stored: meaning_of(StoredForm::MeshoptStamp, &caller_id()),
+        expected: meaning_of(StoredForm::MeshoptStamp, &Provenance::sdf()),
     };
     assert_eq!(
         decode_vertex_buffer(
@@ -3219,9 +3249,9 @@ fn codec_volume_stream_checks_the_identifier() {
     );
     let earlier = earlier_id();
     let prev = encode_sdf_volume_with_provenance(&volume, &config, &earlier);
-    let refused = DecodeError::SemanticsMismatch {
-        stored: earlier,
-        expected: Provenance::sdf(),
+    let refused = DecodeError::MeaningMismatch {
+        stored: meaning_of(StoredForm::EncodedVolume, &earlier),
+        expected: meaning_of(StoredForm::EncodedVolume, &Provenance::sdf()),
     };
     assert_eq!(
         try_decode_sdf_volume_unverified(&prev).map(|_| ()),
@@ -3232,9 +3262,9 @@ fn codec_volume_stream_checks_the_identifier() {
     // identifier is sdf_load_verdict's, tested in the crate
 
     let other = encode_sdf_volume_with_provenance(&volume, &config, &caller_id());
-    let mismatch = DecodeError::SemanticsMismatch {
-        stored: caller_id(),
-        expected: Provenance::sdf(),
+    let mismatch = DecodeError::MeaningMismatch {
+        stored: meaning_of(StoredForm::EncodedVolume, &caller_id()),
+        expected: meaning_of(StoredForm::EncodedVolume, &Provenance::sdf()),
     };
     assert_eq!(
         try_decode_sdf_volume(&other).map(|_| ()),
@@ -3248,7 +3278,8 @@ fn codec_volume_stream_checks_the_identifier() {
         let panic = std::panic::catch_unwind(|| decode(&other)).unwrap_err();
         let text = panic.downcast_ref::<String>().cloned().unwrap_or_default();
         assert!(
-            text.contains(&caller_id().hex()) && text.contains(&Provenance::sdf().hex()),
+            text.contains(&meaning_of(StoredForm::EncodedVolume, &caller_id()).hex())
+                && text.contains(&meaning_of(StoredForm::EncodedVolume, &Provenance::sdf()).hex()),
             "{text}"
         );
     }
@@ -3402,9 +3433,14 @@ fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
 // paint tool would write it (no identifier), and the heightmap writer's output for it:
 //   heightmap_plain.png    34151b0d0efbd9f7fa65ccc76299d474e00ad48ddfe2b40ecfed7916f0db8098
 //   heightmap_plain.jpg    3b8303187e7a141798d8c3a8c72b26da9795da077b87fcc00856a717afc7dbcd
-//   heightmap_stamped.png  e13af87f802f9dde3dbb1af755b841ee15f3eb2946cf02c05bdd362a179b2308
+//   heightmap_stamped.png  e0514a7706ecf2b7831f63f78b8cfcf4c39c988c17ba2426ce5eaa7dfc1cfedd
 //                          Heightmap::from_image_bytes(plain.png, &HeightmapImageConfig::new(
-//                          40.0, 16.0, 12.0)).to_png(..) (16-bit grey, the identifier in tEXt)
+//                          40.0, 16.0, 12.0)).to_png(..) (16-bit grey, the meaning identifier in
+//                          tEXt); built outside the writer: the earlier file's tEXt chunk
+//                          replaced by `alice:meaning_id` and the PNG meaning identifier of
+//                          python/tests/meaning_id.py, its CRC recomputed
+//   heightmap_raw_main.png e13af87f802f9dde3dbb1af755b841ee15f3eb2946cf02c05bdd362a179b2308
+//                          the same writer before meaning identifiers (`alice:semantics_id`)
 // ---------------------------------------------------------------------------------------------
 
 /// The CRC-32 of a PNG chunk (its type and data), for building malformed images in the tests
@@ -3507,8 +3543,8 @@ fn heightmap_images_carry_and_check_the_identifier() {
         std::fs::read(fixture("heightmap_stamped.png")).unwrap()
     );
     let key_at = stamped
-        .windows(provenance::KEY.len())
-        .position(|w| w == provenance::KEY.as_bytes())
+        .windows(provenance::MEANING_KEY.len())
+        .position(|w| w == provenance::MEANING_KEY.as_bytes())
         .unwrap();
     let idat_at = stamped.windows(4).position(|w| w == b"IDAT").unwrap();
     assert!(
@@ -3556,16 +3592,7 @@ fn heightmap_images_carry_and_check_the_identifier() {
         Heightmap::from_image_bytes(&foreign, &cfg).map(|_| ()),
         Heightmap::from_image_bytes_pinned(&foreign, &cfg).map(|_| ()),
     ] {
-        match result {
-            Err(io::IoError::SemanticsMismatch {
-                format: "PNG",
-                stored,
-                expected,
-            }) => {
-                assert_eq!((stored, expected), (caller_id(), Provenance::sdf()));
-            }
-            other => panic!("another identifier was read: {other:?}"),
-        }
+        refused_as_caller(result);
     }
 
     // malformed PNGs: a changed digit (the CRC no longer matches), a value that is not 64 hex
@@ -3618,8 +3645,10 @@ fn heightmap_images_carry_and_check_the_identifier() {
         StoredSemantics::Unpinned
     );
 
-    // JPEG: the comment segment before the start of scan
-    let tag = format!("{}={}", provenance::KEY, Provenance::sdf().hex());
+    // JPEG: the comment segment before the start of scan; this build's meaning identifier is
+    // current, a raw identifier of this crate (a file stamped before meaning identifiers) the
+    // previous generation
+    let tag = Provenance::sdf().tagged_for(StoredForm::Jpeg);
     let jpeg_stamped = with_jpeg_comment(&jpeg, tag.as_bytes());
     assert_eq!(
         Heightmap::from_image_bytes(&jpeg_stamped, &cfg)
@@ -3627,18 +3656,28 @@ fn heightmap_images_carry_and_check_the_identifier() {
             .semantics(),
         StoredSemantics::Current
     );
-    let jpeg_foreign = with_jpeg_comment(
+    let jpeg_raw = with_jpeg_comment(
         &jpeg,
-        format!("{}={}", provenance::KEY, caller_id().hex()).as_bytes(),
+        format!("{}={}", provenance::KEY, Provenance::sdf().hex()).as_bytes(),
     );
+    assert_eq!(
+        Heightmap::from_image_bytes(&jpeg_raw, &cfg)
+            .unwrap()
+            .semantics(),
+        StoredSemantics::VerifiedPrevious(Provenance::sdf())
+    );
+    // both keys: read as neither
+    invalid(&with_jpeg_comment(&jpeg_raw, tag.as_bytes()));
+    let jpeg_foreign =
+        with_jpeg_comment(&jpeg, caller_id().tagged_for(StoredForm::Jpeg).as_bytes());
     assert!(matches!(
         Heightmap::from_image_bytes(&jpeg_foreign, &cfg).map(|_| ()),
-        Err(io::IoError::SemanticsMismatch { format: "JPEG", .. })
+        Err(io::IoError::MeaningMismatch { format: "JPEG", .. })
     ));
     invalid(&with_jpeg_comment(&jpeg_stamped, tag.as_bytes()));
     invalid(&with_jpeg_comment(
         &jpeg,
-        format!("{}=zz", provenance::KEY).as_bytes(),
+        format!("{}=zz", provenance::MEANING_KEY).as_bytes(),
     ));
     invalid(&with_jpeg_comment(&jpeg, format!("{} ", tag).as_bytes()));
     // fill bytes (0xFF) before the comment's marker, and markers without a length (RST0, TEM)
@@ -3714,10 +3753,21 @@ fn texture_fit_checks_the_image_identifier() {
     let refused = fit_texture(&current, &config).map(|_| ());
     std::fs::remove_file(&current).ok();
     match refused {
-        Err(TextureFitError::Io(io::IoError::SemanticsMismatch {
-            stored, expected, ..
+        Err(TextureFitError::Io(io::IoError::MeaningMismatch {
+            form,
+            stored,
+            expected,
+            ..
         })) => {
-            assert_eq!((stored, expected), (caller_id(), Provenance::sdf()));
+            let hex = |id: [u8; 32]| Provenance::new(id).hex();
+            assert_eq!(form, StoredForm::Png);
+            assert_eq!(
+                (stored, expected),
+                (
+                    hex(provenance::meaning_id(form, &caller_id())),
+                    hex(provenance::meaning_id(form, &Provenance::sdf()))
+                )
+            );
         }
         other => panic!("another identifier was read: {other:?}"),
     }
@@ -3748,7 +3798,7 @@ fn nanite_binary_versions_without_the_identifier_are_missing() {
     std::fs::remove_file(&path).ok();
     assert_eq!(&b[..4], io::nanite::NANITE_MAGIC);
     assert_eq!(b[4..8], 4u32.to_le_bytes());
-    assert_eq!(b[32..64], alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(b[32..64], Provenance::sdf().slot_for(StoredForm::Nanite));
     assert!(provenance::from_bytes(&b)
         .unwrap()
         .is_written_under(&Provenance::sdf()));
@@ -3812,7 +3862,10 @@ fn nanite_hlsl_material_carries_the_identifier() {
         .unwrap()
         .is_written_under(&Provenance::sdf()));
     let text = std::fs::read_to_string(&path).unwrap();
-    let tag = format!("// {}={}", provenance::KEY, Provenance::sdf().hex());
+    let tag = format!(
+        "// {}",
+        Provenance::sdf().tagged_for(StoredForm::ShaderText)
+    );
     let at = text
         .lines()
         .position(|l| l == tag)
@@ -3845,14 +3898,20 @@ fn nanite_hlsl_material_carries_the_identifier() {
         provenance::from_bytes(below.as_bytes()),
         Err(ProvenanceError::Unreadable(_))
     ));
-    let not_hex = text.replace(&Provenance::sdf().hex(), &"g".repeat(64));
+    let not_hex = text.replace(
+        &Provenance::sdf().named_for(StoredForm::ShaderText).1,
+        &"g".repeat(64),
+    );
     assert!(matches!(
         provenance::from_bytes(not_hex.as_bytes()),
         Err(ProvenanceError::Unreadable(_))
     ));
     let two = text.replacen(
         &tag,
-        &format!("{tag}\n// {}={}", provenance::KEY, caller_id().hex()),
+        &format!(
+            "{tag}\n// {}",
+            caller_id().tagged_for(StoredForm::ShaderText)
+        ),
         1,
     );
     assert!(matches!(
@@ -3884,7 +3943,12 @@ fn engine_binary_meshes_of_version_1_are_missing() {
         std::fs::remove_file(&path).ok();
         assert_eq!(&b[..4], magic);
         assert_eq!(b[4..6], 2u16.to_le_bytes(), "{format}");
-        assert_eq!(b[16..48], alice_sdf::SDF_SEMANTICS_ID, "{format}");
+        let form = if format == "UE5" {
+            StoredForm::Ue5Mesh
+        } else {
+            StoredForm::UnityMesh
+        };
+        assert_eq!(b[16..48], Provenance::sdf().slot_for(form), "{format}");
         assert!(provenance::from_bytes(&b)
             .unwrap()
             .is_written_under(&Provenance::sdf()));

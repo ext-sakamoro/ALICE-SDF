@@ -265,7 +265,7 @@ impl Heightmap {
     ///
     /// # Errors
     ///
-    /// [`IoError::SemanticsMismatch`] (naming both identifiers) for an image stamped under another
+    /// [`IoError::MeaningMismatch`] (or [`IoError::SemanticsMismatch`] for an earlier file's raw identifier) (naming both identifiers) for an image stamped under another
     /// identifier, [`IoError::InvalidFormat`] when the identifier is present but malformed or the
     /// PNG / JPEG structure cannot be walked, or when the pixels cannot be decoded.
     #[cfg(feature = "image")]
@@ -368,8 +368,9 @@ impl Heightmap {
         let mut encoder = png::Encoder::new(&mut out, self.width, self.depth);
         encoder.set_color(png::ColorType::Grayscale);
         encoder.set_depth(png::BitDepth::Sixteen);
+        let (key, id) = provenance.named_for(crate::provenance::StoredForm::Png);
         encoder
-            .add_text_chunk(crate::provenance::KEY.to_string(), provenance.hex())
+            .add_text_chunk(key.to_string(), id)
             .map_err(encode_error)?;
         let mut writer = encoder.write_header().map_err(encode_error)?;
         writer.write_image_data(&data).map_err(encode_error)?;

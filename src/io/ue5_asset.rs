@@ -25,7 +25,7 @@
 use crate::compiled::real::LawMinMax;
 use crate::io::IoError;
 use crate::mesh::Mesh;
-use crate::provenance::{Provenance, KEY};
+use crate::provenance::Provenance;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -243,7 +243,7 @@ pub fn export_ue5_mesh_binary_with_provenance(
     w.write_all(&ic.to_le_bytes())?;
     w.write_all(&flags.to_le_bytes())?;
     // the semantics identifier (version 2)
-    w.write_all(&provenance.semantics_id)?;
+    w.write_all(&provenance.slot_for(crate::provenance::StoredForm::Ue5Mesh))?;
 
     // Interleaved vertex data
     for v in &mesh.vertices {
@@ -352,7 +352,8 @@ pub fn export_ue5_mesh_with_lods_with_provenance(
     // Compute global bounds from LOD 0
     let (origin, extent) = compute_bounds(&meshes[0], config.scale);
 
-    writeln!(w, "{{\n  \"{KEY}\": \"{}\",", provenance.hex())?;
+    let (key, id) = provenance.named_for(crate::provenance::StoredForm::JsonDocument);
+    writeln!(w, "{{\n  \"{key}\": \"{id}\",")?;
     writeln!(w, "  \"alice_sdf_static_mesh\": {{")?;
     writeln!(w, "    \"version\": {},", UE5_JSON_VERSION)?;
     writeln!(w, "    \"name\": \"{}\",", config.name)?;

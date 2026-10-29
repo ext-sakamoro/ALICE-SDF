@@ -2,11 +2,12 @@
 binding with the `openvdb` feature.
 
 `alice_sdf.bake_to_vdb` returns the bytes of the Rust `io::vdb::bake_to_vdb`: `ALICEVDB2`, the
-32-byte semantics identifier, then the grid. This test reads them with an independent parser and
+32-byte meaning identifier, then the grid. This test reads them with an independent parser and
 checks every distance of a unit sphere against the closed form |p| - 1 at the sample positions
-`min + i * (max - min) / (res - 1)` (both ends included, x fastest; one sample at `min` for res 1). The identifier must equal the
-one the binding's own JSON writer stamps. A binding built without the feature fails here, it is
-not skipped.
+`min + i * (max - min) / (res - 1)` (both ends included, x fastest; one sample at `min` for res 1). The identifier must be
+the meaning identifier of the ALICE-VDB form computed independently (meaning_id.py) from the
+build's semantics identifier, and the binding's JSON writer must stamp the JSON form's one. A
+binding built without the feature fails here, it is not skipped.
 
 Author: Moroya Sakamoto
 """
@@ -19,6 +20,7 @@ import struct
 import sys
 
 import alice_sdf as sdf
+from meaning_id import meaning_id
 
 TOL = 1e-5
 
@@ -42,11 +44,16 @@ def parse(data: bytes) -> tuple[bytes, int, float, float, list[float]]:
 def main() -> int:
     check(hasattr(sdf, "bake_to_vdb"), "alice_sdf.bake_to_vdb is missing: build with --features python,openvdb")
     node = sdf.sphere(1.0)
-    stamp = json.loads(sdf.to_json(node))["alice:semantics_id"]
+    semantics = sdf.semantics_id()
+    doc = json.loads(sdf.to_json(node))
+    check("alice:semantics_id" not in doc, "the JSON writer still stamps the raw identifier")
+    check(doc["alice:meaning_id"] == meaning_id("json", semantics), "the JSON meaning identifier")
+    stamp = meaning_id("alice-vdb", semantics)
+    check(stamp != doc["alice:meaning_id"], "two forms share a meaning identifier")
     compared = 0
     for res, bounds in [(5, (-1.5, 1.5)), (9, (-2.0, 2.0)), (2, (-1.0, 1.0)), (1, (-1.0, 1.0))]:
         ident, r, bmin, bmax, values = parse(sdf.bake_to_vdb(node, bounds, res))
-        check(ident.hex() == stamp, f"identifier {ident.hex()} != the JSON stamp {stamp}")
+        check(ident.hex() == stamp, f"identifier {ident.hex()} != the ALICE-VDB meaning identifier {stamp}")
         check((r, bmin, bmax) == (res, bounds[0], bounds[1]), f"grid header {(r, bmin, bmax)}")
         step = (bounds[1] - bounds[0]) / max(res - 1, 1)
         for k in range(res):

@@ -204,7 +204,7 @@ pub fn save_splat_with_provenance(
 ///
 /// # Errors
 ///
-/// An I/O error reading the file, [`IoError::SemanticsMismatch`] for an identifier in the sidecar
+/// An I/O error reading the file, [`IoError::MeaningMismatch`] (or [`IoError::SemanticsMismatch`] for an earlier file's raw identifier) for an identifier in the sidecar
 /// that is neither this crate's nor one it still reproduces, and [`IoError::InvalidFormat`] for a
 /// size that is not a multiple of 32 bytes or a sidecar that cannot be read or whose SHA-256 is
 /// not the file's.

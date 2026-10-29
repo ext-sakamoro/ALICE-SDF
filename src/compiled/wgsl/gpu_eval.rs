@@ -1770,7 +1770,7 @@ mod tests {
             crate::compiled::wgsl::TranspileMode::Hardcoded,
         )
         .to_compute_shader();
-        let key = format!("// {}=", crate::provenance::KEY);
+        let key = format!("// {}=", crate::provenance::MEANING_KEY);
         let untagged: String = own
             .lines()
             .filter(|l| !l.starts_with(&key))

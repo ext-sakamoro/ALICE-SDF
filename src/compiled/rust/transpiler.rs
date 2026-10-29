@@ -254,7 +254,8 @@ impl RustSource {
              // Bit-identical to alice_sdf::compiled::eval_compiled for this scene.\n\
              // {}",
             env!("CARGO_PKG_VERSION"),
-            crate::provenance::Provenance::sdf().tagged()
+            crate::provenance::Provenance::sdf()
+                .tagged_for(crate::provenance::StoredForm::ShaderText)
         );
         source.push_str(
             "\n/// Signed distance of the scene at `(x, y, z)`.\n\

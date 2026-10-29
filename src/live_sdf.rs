@@ -64,9 +64,10 @@
 //!
 //! # Snapshots
 //!
-//! As a participant the shape writes (payload version 3, little endian):
-//! `version: u32`, the identifier of what this crate computes
-//! ([`crate::SDF_SEMANTICS_ID`], 32 bytes), the identifier of the
+//! As a participant the shape writes (payload version 4, little endian):
+//! `version: u32`, the meaning identifier of this payload under what this crate computes
+//! ([`crate::provenance::meaning_id`] of [`crate::provenance::StoredForm::LiveSdfPayload`] and
+//! [`crate::SDF_SEMANTICS_ID`], 32 bytes, ALICE-Law G8), the identifier of the
 //! `alice-physics` stepping the modifiers ran under
 //! ([`alice_physics::PHYSICS_SEMANTICS_ID`], 32 bytes), the craters (`count: u64`, then `cx, cy, cz, r` as `f32`
 //! bits), the modifiers (`count: u64`, then per modifier `kind: u32`,
@@ -75,14 +76,17 @@
 //! with modifiers of the same kinds in the same order. A restore raises the
 //! generation and records the whole space as changed.
 //!
-//! `check_state` refuses a payload whose SDF identifier [`crate::check_sdf_semantics`]
-//! does not accept (a build that computes other distances would continue the
+//! `check_state` reads a version 4 payload's SDF identifier as a meaning identifier (this build's,
+//! or one of [`crate::PREVIOUS_SDF_SEMANTICS_IDS`]') and a version 3 payload's as the raw
+//! identifier earlier versions wrote (read as the previous generation when it is this build's or a
+//! previous one), and refuses any other (a build that computes other distances would continue the
 //! shape on other bits), one whose Physics identifier is neither this build's
 //! [`alice_physics::PHYSICS_SEMANTICS_ID`] nor one of
 //! [`alice_physics::PREVIOUS_PHYSICS_SEMANTICS_IDS`] (the modifiers' own
 //! payloads, written by `alice-physics`, carry none, so this is the identifier
 //! that names the arithmetic they were stepped under; the same rule as the
-//! header of an `alice-physics` world snapshot), a version 2 payload, which
+//! header of an `alice-physics` world snapshot; it stays the raw identifier, compared by Physics'
+//! own constants), a version 2 payload, which
 //! carries no Physics identifier, and a version 1 payload, which carries
 //! neither.
 //!
@@ -119,8 +123,12 @@ use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 /// Payload version written by [`LiveSdf`]'s `write_state`.
 ///
 /// Version 2 added the semantics identifier after the version; version 3
-/// added the `alice-physics` identifier after it.
-const STATE_VERSION: u32 = 3;
+/// added the `alice-physics` identifier after it; version 4 stores the meaning identifier of
+/// [`crate::provenance::StoredForm::LiveSdfPayload`] in place of the raw SDF identifier.
+const STATE_VERSION: u32 = 4;
+
+/// The previous payload version, read with its raw SDF identifier as the previous generation
+const STATE_VERSION_RAW: u32 = 3;
 
 /// Number of change records kept; a consumer further behind is told
 /// [`DirtyRegion::Everywhere`].
@@ -802,14 +810,25 @@ type DecodedState<'a> = (Vec<Crater>, Vec<(u32, &'a [u8])>);
 
 fn decode_state(bytes: &[u8]) -> Result<DecodedState<'_>, StateError> {
     let mut r = Reader::new(bytes);
-    if r.u32()? != STATE_VERSION {
+    let version = r.u32()?;
+    if version != STATE_VERSION && version != STATE_VERSION_RAW {
         return Err(StateError::InvalidValue);
     }
     let mut id = [0u8; 32];
     id.copy_from_slice(r.take(32)?);
-    if !crate::check_sdf_semantics(&id).is_reproducible() {
-        return Err(StateError::InvalidValue);
-    }
+    // version 4 holds a meaning identifier, version 3 the raw identifier: each is judged only as
+    // what its version stores, so a raw identifier in a version 4 payload is refused
+    let stored = crate::provenance::Stored::under_key(
+        crate::provenance::StoredForm::LiveSdfPayload,
+        id,
+        version == STATE_VERSION,
+    );
+    stored
+        .judge(
+            &crate::provenance::Provenance::sdf(),
+            crate::PREVIOUS_SDF_SEMANTICS_IDS,
+        )
+        .map_err(|_| StateError::InvalidValue)?;
     let mut physics = [0u8; 32];
     physics.copy_from_slice(r.take(32)?);
     if physics != PHYSICS_SEMANTICS_ID && !PREVIOUS_PHYSICS_SEMANTICS_IDS.contains(&physics) {
@@ -868,7 +887,12 @@ impl Participant for LiveSdf {
     fn write_state(&self, out: &mut Vec<u8>) {
         let s = self.read();
         out.extend_from_slice(&STATE_VERSION.to_le_bytes());
-        out.extend_from_slice(&crate::SDF_SEMANTICS_ID);
+        out.extend_from_slice(
+            &crate::provenance::Provenance::sdf()
+                .slot_for(crate::provenance::StoredForm::LiveSdfPayload),
+        );
+        // Physics' own identifier, raw: the arithmetic the modifiers were stepped under, which
+        // Physics' constants compare (as in the header of its world snapshot)
         out.extend_from_slice(&PHYSICS_SEMANTICS_ID);
         out.extend_from_slice(&(s.craters.len() as u64).to_le_bytes());
         for c in &s.craters {
