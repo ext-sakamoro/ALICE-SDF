@@ -11,7 +11,7 @@
 # A missing source is not an error (the step runs with if: always(), also when the job failed
 # before writing a log); it says so and exits 0.
 #
-#   pwsh scripts/ci-log-retain.ps1 -Path E:\alice-ci\ue5-1\logs -Root E:\alice-ci-logs -Run 1-1 -Job ue5-0
+#   pwsh scripts/ci-log-retain.ps1 -Path E:\ci-work\ue5-1\logs -Root E:\ci-logs -Run 1-1 -Job ue5-0
 
 [CmdletBinding()]
 param(

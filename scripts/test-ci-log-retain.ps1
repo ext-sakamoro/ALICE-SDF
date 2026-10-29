@@ -34,7 +34,7 @@ $planted = @(
     @('Using C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe', @('Program Files', 'Visual Studio', 'Community', 'Current\Bin')),
     @('Unreal Engine (D:\UE_9.9)	Running: D:\UE_9.9\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.dll', @('UE_9.9', 'Engine\Binaries', 'DotNET')),
     @('"path": "E:\\actions-runner\\_work\\R\\R\\ci-unity"', @('actions-runner', '_work', 'ci-unity')),
-    @('lib E:/alice-ci/ue5-123/plugin-out/HostProject/Plugins/X/x.lib built', @('alice-ci', 'plugin-out', 'HostProject')),
+    @('lib E:/ci-work/ue5-123/plugin-out/HostProject/Plugins/X/x.lib built', @('ci-work', 'plugin-out', 'HostProject')),
     @('cache at \\buildhost\share\ddc\cache.bin', @('buildhost', 'share\ddc')),
     @($homeLine, @('hanako', 'Library/Logs', '.cache')),
     @('[Licensing::Module] Serial number assigned to: "F4-ABCD-EFGH-IJKL-MNOP-XXXX"', @('ABCD', 'MNOP')),
@@ -55,7 +55,7 @@ $kept = @(
     @("Expecting to find a type to be declared in a module rules named 'SampleToolset' in 'UE5Rules, Version=0.0.0.0'", @('SampleToolset', 'UE5Rules', 'module rules')),
     @('Result: Failed (RulesError)', @('Result: Failed (RulesError)')),
     @('see https://github.com/example-org/example-repo/actions for the run', @('https://github.com/example-org/example-repo/actions')),
-    @('FAIL: BuildPlugin failed (see E:\alice-ci\ue5-9\logs\buildplugin.log)', @('FAIL: BuildPlugin failed', 'buildplugin.log')),
+    @('FAIL: BuildPlugin failed (see E:\ci-work\ue5-9\logs\buildplugin.log)', @('FAIL: BuildPlugin failed', 'buildplugin.log')),
     @('cache at \\buildhost\share\ddc\cache.bin', @('cache at', 'cache.bin')),
     @($homeLine, @('home', 'x.log', ' and '))
 )

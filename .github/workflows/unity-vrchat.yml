@@ -145,11 +145,11 @@ jobs:
           if-no-files-found: error
 
       # the Unity logs name the machine (paths, account, licence serial, machine id), so they are
-      # not uploaded: they stay on the runner for 14 days (E:\alice-ci-logs\<run>-<attempt>\unity-vrchat)
+      # not uploaded: they stay on the runner for 14 days (E:\ci-logs\<run>-<attempt>\unity-vrchat)
       # and the job log gets a sanitized summary (scripts/ci-log-retain.ps1)
       - name: Keep Unity logs on the runner + sanitized summary
         if: always()
-        run: pwsh -NoProfile -File scripts/ci-log-retain.ps1 -Path "$env:GITHUB_WORKSPACE\target\unity-preflight" -Root "E:\alice-ci-logs" -Run "${{ github.run_id }}-${{ github.run_attempt }}" -Job "unity-vrchat"
+        run: pwsh -NoProfile -File scripts/ci-log-retain.ps1 -Path "$env:GITHUB_WORKSPACE\target\unity-preflight" -Root "E:\ci-logs" -Run "${{ github.run_id }}-${{ github.run_attempt }}" -Job "unity-vrchat"
 
   # red when the changes job said run and a job was skipped, cancelled or failed
   gate:

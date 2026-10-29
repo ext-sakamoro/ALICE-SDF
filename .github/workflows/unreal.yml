@@ -99,6 +99,8 @@ jobs:
       # ASCII, short: UE / UBT and the editor's DDC choke on the non-ASCII
       # user profile path; E:\ is the engine drive.
       CARGO_TARGET_DIR: E:\alice-ci\target-sdf
+      # the run's work directory (removed by the last step) and the root of the kept logs
+      CI_WORK: E:\ci-work\ue5-${{ github.run_id }}
       CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v5
@@ -109,19 +111,19 @@ jobs:
         # and the install roots
         run: |
           Import-Module ./scripts/ci-log-sanitize.psm1
-          pwsh -NoProfile -File scripts/unreal-ue5-ci.ps1 -EngineRoot "${{ matrix.engine }}" -WorkDir "E:\alice-ci\ue5-${{ github.run_id }}" 2>&1 | ForEach-Object { Protect-CiLine "$_" }
+          pwsh -NoProfile -File scripts/unreal-ue5-ci.ps1 -EngineRoot "${{ matrix.engine }}" -WorkDir "$env:CI_WORK" 2>&1 | ForEach-Object { Protect-CiLine "$_" }
           exit $LASTEXITCODE
       # the editor / UAT logs name the machine, so they are not uploaded: they stay on the runner
-      # for 14 days (E:\alice-ci-logs\<run>-<attempt>\ue5-<index>) and the job log gets a
+      # for 14 days (E:\ci-logs\<run>-<attempt>\ue5-<index>) and the job log gets a
       # sanitized summary (scripts/ci-log-retain.ps1)
       - name: Keep logs on the runner + sanitized summary
         if: always()
         shell: pwsh
-        run: pwsh -NoProfile -File scripts/ci-log-retain.ps1 -Path "E:\alice-ci\ue5-${{ github.run_id }}\logs" -Root "E:\alice-ci-logs" -Run "${{ github.run_id }}-${{ github.run_attempt }}" -Job "ue5-${{ strategy.job-index }}"
+        run: pwsh -NoProfile -File scripts/ci-log-retain.ps1 -Path "$env:CI_WORK\logs" -Root "E:\ci-logs" -Run "${{ github.run_id }}-${{ github.run_attempt }}" -Job "ue5-${{ strategy.job-index }}"
       - name: Clean work dir
         if: always()
         shell: pwsh
-        run: if (Test-Path "E:\alice-ci\ue5-${{ github.run_id }}") { Remove-Item -Recurse -Force "E:\alice-ci\ue5-${{ github.run_id }}" }
+        run: if (Test-Path $env:CI_WORK) { Remove-Item -Recurse -Force $env:CI_WORK }
 
   # red when the changes job said run and a job was skipped, cancelled or failed
   gate:

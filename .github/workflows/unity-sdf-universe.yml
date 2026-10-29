@@ -146,11 +146,11 @@ jobs:
           }
 
       # the Unity log names the machine (paths, account, licence serial, machine id), so it is not
-      # uploaded: it stays on the runner for 14 days (E:\alice-ci-logs\<run>-<attempt>\unity-sdf-universe)
+      # uploaded: it stays on the runner for 14 days (E:\ci-logs\<run>-<attempt>\unity-sdf-universe)
       # and the job log gets a sanitized summary (scripts/ci-log-retain.ps1)
       - name: Keep the Unity log on the runner + sanitized summary
         if: always()
-        run: pwsh -NoProfile -File scripts/ci-log-retain.ps1 -Path "$env:GITHUB_WORKSPACE\unity-sdf-universe-ci.log" -Root "E:\alice-ci-logs" -Run "${{ github.run_id }}-${{ github.run_attempt }}" -Job "unity-sdf-universe"
+        run: pwsh -NoProfile -File scripts/ci-log-retain.ps1 -Path "$env:GITHUB_WORKSPACE\unity-sdf-universe-ci.log" -Root "E:\ci-logs" -Run "${{ github.run_id }}-${{ github.run_attempt }}" -Job "unity-sdf-universe"
 
   # red when the changes job said run and a job was skipped, cancelled or failed
   gate:
