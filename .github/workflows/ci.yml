@@ -554,6 +554,12 @@ jobs:
         run: |
           python scripts/test_self_hosted_guard.py
           python scripts/self_hosted_guard.py
+      # the self-hosted jobs print through Protect-CiLine and keep their logs on the runner:
+      # the sanitizer strips the planted account name, profile path, drive / install roots and
+      # licence fields, and the retention copies and prunes (pwsh is on all three images)
+      - name: Self-hosted log sanitizer + retention (tests)
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/test-ci-log-retain.ps1
       - name: CI test coverage oracle (検査器自身の試験)
         run: python scripts/test_ci_test_coverage_check.py
       - name: CI test coverage (feature 付き oracle を走らせる cargo test が CI にある)

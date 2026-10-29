@@ -15,5 +15,6 @@ include/alice_sdf.h
 scripts/unreal-*
 .github/workflows/unreal.yml
 .github/actions/**
+scripts/ci-log-*
 scripts/changed_paths.py
 .github/paths/unreal.txt

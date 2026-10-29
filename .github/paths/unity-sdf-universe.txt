@@ -11,5 +11,6 @@ Cargo.toml
 Cargo.lock
 rust-toolchain.toml
 .github/workflows/unity-sdf-universe.yml
+scripts/ci-log-*
 scripts/changed_paths.py
 .github/paths/unity-sdf-universe.txt

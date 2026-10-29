@@ -85,7 +85,8 @@ jobs:
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
   unreal-ue5:
-    name: Unreal Engine — BuildPlugin + automation (${{ matrix.engine }})
+    # the name carries the engine version, not its install path (the job log is public)
+    name: Unreal Engine — BuildPlugin + automation (${{ contains(matrix.engine, '5.8') && 'UE 5.8' || contains(matrix.engine, '5.7') && 'UE 5.7' || format('engine {0}', strategy.job-index) }})
     needs: changes
     if: needs.changes.outputs.run == 'true' && github.repository == 'ext-sakamoro/ALICE-SDF' && github.actor == 'ext-sakamoro' && github.triggering_actor == 'ext-sakamoro' && vars.UE5_RUNNER == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     strategy:
@@ -103,14 +104,20 @@ jobs:
       - uses: actions/checkout@v5
       - name: BuildPlugin + shaders + automation tests
         shell: pwsh
-        run: pwsh -File scripts/unreal-ue5-ci.ps1 -EngineRoot "${{ matrix.engine }}" -WorkDir "E:\alice-ci\ue5-${{ github.run_id }}"
-      - name: Upload editor / UAT logs
+        # everything the script prints goes through Protect-CiLine (scripts/ci-log-sanitize.psm1):
+        # the job log is public, and UAT / the editor print drive paths, the profile directory
+        # and the install roots
+        run: |
+          Import-Module ./scripts/ci-log-sanitize.psm1
+          pwsh -NoProfile -File scripts/unreal-ue5-ci.ps1 -EngineRoot "${{ matrix.engine }}" -WorkDir "E:\alice-ci\ue5-${{ github.run_id }}" 2>&1 | ForEach-Object { Protect-CiLine "$_" }
+          exit $LASTEXITCODE
+      # the editor / UAT logs name the machine, so they are not uploaded: they stay on the runner
+      # for 14 days (E:\alice-ci-logs\<run>-<attempt>\ue5-<index>) and the job log gets a
+      # sanitized summary (scripts/ci-log-retain.ps1)
+      - name: Keep logs on the runner + sanitized summary
         if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: unreal-ue5-logs-${{ strategy.job-index }}
-          path: E:\alice-ci\ue5-${{ github.run_id }}\logs
-          if-no-files-found: ignore
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/ci-log-retain.ps1 -Path "E:\alice-ci\ue5-${{ github.run_id }}\logs" -Root "E:\alice-ci-logs" -Run "${{ github.run_id }}-${{ github.run_attempt }}" -Job "ue5-${{ strategy.job-index }}"
       - name: Clean work dir
         if: always()
         shell: pwsh
