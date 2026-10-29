@@ -1,5 +1,9 @@
 //! `ExteriorField::is_exterior` near slivers.
 //!
+//! A sign guard, not a test of the sliver fix in `MeshBvh`: it passes before that fix too (a wrong
+//! closest point on a sliver lying on the local surface keeps the walk's normal component, so the
+//! sign holds). It keeps the sign from regressing near slivers.
+//!
 //! Inside the blocked band the classification walks away from
 //! `MeshBvh::closest_point`, so a closest point taken from the wrong Voronoi
 //! region of a sliver walks in the wrong direction.

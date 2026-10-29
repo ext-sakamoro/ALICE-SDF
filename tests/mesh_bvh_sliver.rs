@@ -95,19 +95,131 @@ fn bound(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> f32 {
     (l1(p - a) + l1(p - b) + l1(p - c)) / 524_288.0
 }
 
-/// `(compared, beyond)`: how many non-degenerate triangles were compared and
-/// how many answered farther than the nearest edge beyond [`bound`].
+type D3 = [f64; 3];
+
+fn d3(v: Vec3) -> D3 {
+    [f64::from(v.x), f64::from(v.y), f64::from(v.z)]
+}
+
+fn sub(a: D3, b: D3) -> D3 {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn dot(a: D3, b: D3) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn cross(a: D3, b: D3) -> D3 {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn seg_dist(p: D3, a: D3, b: D3) -> f64 {
+    let ab = sub(b, a);
+    let len_sq = dot(ab, ab);
+    let t = if len_sq == 0.0 {
+        0.0
+    } else {
+        (dot(sub(p, a), ab) / len_sq).clamp(0.0, 1.0)
+    };
+    let q = [a[0] + ab[0] * t, a[1] + ab[1] * t, a[2] + ab[2] * t];
+    dot(sub(p, q), sub(p, q)).sqrt()
+}
+
+/// The distance from `p` to the triangle, computed independently in f64 on the exact f32 inputs
+/// (29 more bits than the code under test): the foot of the perpendicular when it lies inside
+/// (the three edge-side cross products agree with the normal), else the nearest of the three
+/// edges
+fn true_distance(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> f64 {
+    let (p, a, b, c) = (d3(p), d3(a), d3(b), d3(c));
+    let n = cross(sub(b, a), sub(c, a));
+    let nn = dot(n, n);
+    let edges = seg_dist(p, a, b)
+        .min(seg_dist(p, b, c))
+        .min(seg_dist(p, c, a));
+    if nn == 0.0 {
+        return edges;
+    }
+    let h = dot(sub(p, a), n) / nn;
+    let q = [p[0] - n[0] * h, p[1] - n[1] * h, p[2] - n[2] * h];
+    let inside = [(a, b), (b, c), (c, a)]
+        .iter()
+        .all(|&(u, w)| dot(cross(sub(w, u), sub(q, u)), n) >= 0.0);
+    if inside {
+        (h.abs() * nn.sqrt()).min(edges)
+    } else {
+        edges
+    }
+}
+
+/// The error bound of a face answer, from the error model of `REGION_DET_ERR` in
+/// `src/mesh/bvh.rs` evaluated in f64: each region determinant is within
+/// `2^-19·(S·S' + S''·S''')` of its exact value, so a face weight is within `2·Σerr/denom` and
+/// the face point within `(|ab|₁ + |ac|₁)·2·Σerr/denom`
+fn face_bound(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> f64 {
+    let (p, a, b, c) = (d3(p), d3(a), d3(b), d3(c));
+    let abs = |v: D3| [v[0].abs(), v[1].abs(), v[2].abs()];
+    let l1 = |v: D3| v[0].abs() + v[1].abs() + v[2].abs();
+    let (ab, ac) = (sub(b, a), sub(c, a));
+    let (ap, bp, cp) = (sub(p, a), sub(p, b), sub(p, c));
+    let s = |u: D3, w: D3| dot(abs(u), abs(w));
+    let (s1, s2, s3, s4, s5, s6) = (
+        s(ab, ap),
+        s(ac, ap),
+        s(ab, bp),
+        s(ac, bp),
+        s(ab, cp),
+        s(ac, cp),
+    );
+    let e = 1.0 / 524_288.0;
+    let err = e * ((s1 * s4 + s3 * s2) + (s5 * s2 + s1 * s6) + (s3 * s6 + s5 * s4));
+    let n = cross(ab, ac);
+    let denom = dot(n, n);
+    if denom == 0.0 {
+        return f64::INFINITY;
+    }
+    (l1(ab) + l1(ac)) * 2.0 * err / denom
+}
+
+/// `(compared, beyond)`: how many non-degenerate triangles were compared and how many answered
+/// a distance outside what the code guarantees, against the independent [`true_distance`]:
+///
+/// - never nearer than the truth by more than [`bound`]: every candidate is a point of the
+///   triangle;
+/// - never farther than the truth plus [`bound`] (an edge or vertex expression, or a face answer
+///   that passed the face gate), or else than the ill-conditioned answer allows: no farther than
+///   the nearest edge and no farther than the face point, which is within [`face_bound`] of the
+///   true nearest point.
+///
+/// `face_bound` alone would be no oracle on slivers: it divides by the small determinant sum and
+/// grows past any wrong-region answer. Each triangle is also tried with its vertices rotated, so
+/// the near-collinear vertex takes each role and each region determinant is in turn the one that
+/// trips the guard.
 fn beyond_bound(tris: &[(Vec3, Vec3, Vec3, Vec3)]) -> (usize, usize) {
     let (mut compared, mut beyond) = (0, 0);
     for &(a, b, c, p) in tris {
-        if (b - a).cross(c - a) == Vec3::ZERO {
-            continue;
-        }
-        compared += 1;
-        let got = answered_d2(p, a, b, c).sqrt();
-        let edge = nearest_edge_d2(p, a, b, c).sqrt();
-        if got > edge + bound(p, a, b, c) {
-            beyond += 1;
+        for (a, b, c) in [(a, b, c), (b, c, a), (c, a, b)] {
+            if (b - a).cross(c - a) == Vec3::ZERO {
+                continue;
+            }
+            compared += 1;
+            let got = f64::from(answered_d2(p, a, b, c).sqrt());
+            let truth = true_distance(p, a, b, c);
+            // plus the f32 rounding of the answered point: three coordinates of magnitude at
+            // most 2 in these sweeps, each within ε·|x|
+            let eps = 6.0 * f64::from(f32::EPSILON);
+            let bnd = f64::from(bound(p, a, b, c));
+            let (pd, ad, bd, cd) = (d3(p), d3(a), d3(b), d3(c));
+            let edges = seg_dist(pd, ad, bd)
+                .min(seg_dist(pd, bd, cd))
+                .min(seg_dist(pd, cd, ad));
+            let ill = edges.min(truth + face_bound(p, a, b, c));
+            if got < truth - bnd - eps || got > (truth + bnd).max(ill) + eps {
+                beyond += 1;
+            }
         }
     }
     (compared, beyond)
