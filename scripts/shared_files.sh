@@ -18,6 +18,11 @@
 # conversion), not the checkout: a checkout that converts line endings (Windows) holds
 # other bytes than the ones every crate shares.
 #
+# A private repository (one the table, which lists public repositories only, never names) adds
+# the pin line `visibility private`: the checker then runs in its private mode, comparing each
+# table path present with its row. A repository the table lists cannot use it (the checker
+# refuses), and a pin without the line is `visibility public`.
+#
 # usage: scripts/shared_files.sh [TREE]
 #   TREE: a directory to check instead of the committed tree (the tests)
 set -euo pipefail
@@ -34,10 +39,21 @@ name=$(awk '$1 == "name" { print $2 }' "$pin")
 rev=$(awk '$1 == "rev" { print $2 }' "$pin")
 table_sum=$(awk '$1 == "table-sha256" { print $2 }' "$pin")
 checker_sum=$(awk '$1 == "checker-sha256" { print $2 }' "$pin")
+visibility=$(awk '$1 == "visibility" { print $2 }' "$pin")
+# no line is public; a line with no value is malformed (it must not read as public)
+if [[ $(awk '$1 == "visibility" { n++ } END { print n + 0 }' "$pin") -eq 0 ]]; then
+  visibility=public
+fi
 if [[ ! "$name" =~ ^ALICE-[A-Za-z0-9-]+$ || ! "$rev" =~ ^[0-9a-f]{40}$ || ! "$table_sum" =~ ^[0-9a-f]{64}$ || ! "$checker_sum" =~ ^[0-9a-f]{64}$ ]]; then
   echo "$pin: needs 'name ALICE-<repository>', 'rev <40 hex>', 'table-sha256 <64 hex>' and 'checker-sha256 <64 hex>'" >&2
   exit 2
 fi
+if [[ "$visibility" != public && "$visibility" != private ]]; then
+  echo "$pin: 'visibility' is 'public' or 'private', got '$visibility'" >&2
+  exit 2
+fi
+mode=()
+[[ "$visibility" == private ]] && mode=(--private)
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -69,4 +85,4 @@ if [[ -z "$tree" ]]; then
   git -c core.autocrlf=false -c core.eol=lf archive HEAD | tar -x -C "$tree"
   echo "shared_files: checking the committed tree (HEAD $(git rev-parse --short HEAD)); uncommitted changes are not checked"
 fi
-"$py" "$tmp/shared_files_check.py" --table "$tmp/shared-files.toml" --repo "$tree" --name "$name"
+"$py" "$tmp/shared_files_check.py" --table "$tmp/shared-files.toml" --repo "$tree" --name "$name" ${mode[@]+"${mode[@]}"}

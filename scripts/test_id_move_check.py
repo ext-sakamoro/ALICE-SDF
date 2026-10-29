@@ -3,8 +3,11 @@
 throwaway crate in a throwaway git repository (built with cargo)."""
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -61,6 +64,7 @@ class Rules(unittest.TestCase):
 
     def test_the_named_test_must_be_a_test_that_runs(self):
         d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
         (d / "tests").mkdir()
         (d / "tests" / "golden.rs").write_text("#[test]\nfn ok() {}\n#[test]\n#[ignore]\nfn skipped() {}\nfn helper() {}\n")
         self.assertIsNone(imc._test_fn_problem(d, "tests/golden.rs::ok", "PREVIOUS"))
@@ -180,6 +184,7 @@ class Rules(unittest.TestCase):
 
     def test_a_config_without_identifiers_fails_as_comparing_nothing(self):
         d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
         (d / "scripts").mkdir()
         (d / "scripts" / "id_move.toml").write_text('package = "x"\nmanifest = "Cargo.toml"\ntags = ["v{version}"]\n')
         with self.assertRaisesRegex(imc.CheckError, "compared nothing"):
@@ -189,6 +194,54 @@ class Rules(unittest.TestCase):
 LIB = """pub const SEMANTICS_ID: [u8; 32] = [{b}; 32];
 pub const PREVIOUS_SEMANTICS_IDS: &[[u8; 32]] = &[{prev}];
 """
+
+
+E0599 = ("error[E0599]: no associated function or constant named `{item}` found for struct `{ty}` "
+         "in the current scope\n --> /tmp/id-move-probe-x/src/main.rs:3:61\n"
+         "error: could not compile `id-move-probe-1` (bin \"id-move-probe-1\") due to 1 previous error\n")
+
+
+class ProbeAbsent(unittest.TestCase):
+    """When a failed probe means the identifier is absent at the base (new), and when it is an error."""
+
+    def absent(self, path: str, stderr: str) -> bool:
+        try:
+            return imc.probe_says_absent(path, stderr)
+        except Exception as e:  # it judges, it never raises: a crash would be an error, not a verdict
+            self.fail(f"probe_says_absent raised {e!r}")
+
+    def test_a_missing_associated_const_of_the_named_type_is_absent(self):
+        self.assertTrue(self.absent("c::World::DOMAIN", E0599.format(item="DOMAIN", ty="World")))
+        # a generic or path-qualified type is the same type
+        self.assertTrue(self.absent("c::World::DOMAIN", E0599.format(item="DOMAIN", ty="c::World<T>")))
+        self.assertTrue(self.absent(
+            "c::World::DOMAIN", E0599.format(item="DOMAIN", ty="World").replace(
+                "no associated function or constant", "no associated item")))
+
+    def test_an_unrelated_e0599_is_not_absent(self):
+        # another item, another type, a substring of the name: each is an error, not a new identifier
+        self.assertFalse(self.absent("c::World::DOMAIN", E0599.format(item="OTHER", ty="World")))
+        self.assertFalse(self.absent("c::World::DOMAIN", E0599.format(item="DOMAIN", ty="Other")))
+        self.assertFalse(self.absent("c::World::DOMAIN", E0599.format(item="DOMAIN_V2", ty="World")))
+        self.assertFalse(self.absent("c::World::DOMAIN", E0599.format(item="DOMAIN", ty="MyWorld")))
+        # a free constant's path has no type segment to match
+        self.assertFalse(self.absent("c::DOMAIN", E0599.format(item="DOMAIN", ty="c")))
+
+    def test_a_failure_with_no_compile_error_or_not_from_the_probe_is_not_absent(self):
+        self.assertFalse(self.absent("c::World::DOMAIN", "error: linker `cc` not found\n"))
+        not_probe = E0599.format(item="DOMAIN", ty="World").replace("id-move-probe", "some-crate")
+        self.assertFalse(self.absent("c::World::DOMAIN", not_probe))
+
+    def test_a_matching_e0599_next_to_another_error_is_not_absent(self):
+        other = "error[E0308]: mismatched types\n --> src/lib.rs:2:1\n"
+        self.assertFalse(self.absent("c::World::DOMAIN", other + E0599.format(item="DOMAIN", ty="World")))
+
+    def test_an_unresolved_path_is_absent_and_a_build_error_is_not(self):
+        self.assertTrue(self.absent(
+            "c::SEMANTICS_ID",
+            "error[E0425]: cannot find value `SEMANTICS_ID` in crate `c`\n --> /tmp/id-move-probe-x/src/main.rs:3:1\n"))
+        self.assertFalse(self.absent(
+            "c::SEMANTICS_ID", "error[E0308]: mismatched types\nerror: could not compile `c`\n"))
 
 
 @unittest.skipUnless(shutil.which("cargo") and shutil.which("git"), "needs cargo and git")
@@ -207,6 +260,7 @@ class EndToEnd(unittest.TestCase):
 
     def repo(self) -> Path:
         d = Path(tempfile.mkdtemp(prefix="id-move-test-"))
+        self.addCleanup(shutil.rmtree, d, True)
         (d / "src").mkdir()
         (d / "scripts").mkdir()
         (d / "scripts" / "id_move.toml").write_text(
@@ -227,6 +281,7 @@ class EndToEnd(unittest.TestCase):
 
     def test_rustdoc_finds_every_form_of_a_32_byte_item(self):
         d = Path(tempfile.mkdtemp(prefix="id-move-forms-"))
+        self.addCleanup(shutil.rmtree, d, True)
         (d / "src").mkdir()
         (d / "Cargo.toml").write_text('[package]\nname = "forms"\nversion = "0.1.0"\nedition = "2021"\n\n[workspace]\n')
         (d / "src" / "lib.rs").write_text(
@@ -392,6 +447,26 @@ class EndToEnd(unittest.TestCase):
             subprocess.run(["git", "-C", str(d), *args], check=True, env=env, capture_output=True)
         self.write(d, "0.3.1", "0x11", "")
         problems, report = imc.check(d, None, "tag")
+        self.assertEqual(problems, [])
+        self.assertIn("new since the base", report[1])
+
+    def test_an_associated_const_the_release_did_not_have_is_new(self):
+        d = self.repo()
+        # the release has the type but not its associated const; the working tree adds it as an id
+        (d / "src" / "lib.rs").write_text("pub struct World;\n")
+        env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
+                   GIT_COMMITTER_EMAIL="t@t")
+        for args in (["commit", "-qam", "release without the const"], ["tag", "-f", "v0.3.0"]):
+            subprocess.run(["git", "-C", str(d), *args], check=True, env=env, capture_output=True)
+        (d / "scripts" / "id_move.toml").write_text(
+            'package = "probe-crate"\nmanifest = "Cargo.toml"\ntags = ["v{version}"]\n'
+            '[[id]]\npath = "probe_crate::World::DOMAIN"\n')
+        (d / "Cargo.toml").write_text('[package]\nname = "probe-crate"\nversion = "0.3.1"\nedition = "2021"\n\n[workspace]\n')
+        (d / "src" / "lib.rs").write_text("pub struct World;\nimpl World { pub const DOMAIN: [u8; 32] = [7; 32]; }\n")
+        try:
+            problems, report = imc.check(d, None, "tag")
+        except imc.CheckError as e:
+            self.fail(f"a new associated const was not taken as new: {e}")
         self.assertEqual(problems, [])
         self.assertIn("new since the base", report[1])
 
@@ -961,6 +1036,271 @@ class BaseTreeAtItsPins(unittest.TestCase):
         self.assertIn("abababababab", str(e.exception))
 
 
+@unittest.skipUnless(shutil.which("git"), "needs git")
+class PrintSiblings(unittest.TestCase):
+    """--print-siblings lists, before any sibling is cloned, every sibling commit a base tree can be
+    built against: on a chain ALICE-Probe -> ALICE-Up -> ALICE-Mid -> ALICE-Low (each a path
+    dependency of the one before), the list holds all three levels, and every sibling the check's
+    own walk lays out next to the base is in it"""
+
+    ENV = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
+               GIT_COMMITTER_EMAIL="t@t", GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+
+    def git(self, d: Path, *args: str) -> str:
+        return subprocess.run(["git", "-C", str(d), *args], check=True, env=self.ENV,
+                              capture_output=True, text=True).stdout.strip()
+
+    def repo(self, name: str, dep: str | None) -> str:
+        d = self.parent / name
+        (d / "src").mkdir(parents=True, exist_ok=True)
+        (d / "src" / "lib.rs").write_text("pub fn f() {}\n")
+        deps = f'\n[dependencies]\nnext = {{ path = "../{dep}" }}\n' if dep else ""
+        n = len(list(d.glob("rev-*")))
+        (d / f"rev-{n}").write_text("")
+        (d / "Cargo.toml").write_text(f'[package]\nname = "{name.lower()}"\nversion = "1.0.0"\n{deps}')
+        if not (d / ".git").exists():
+            self.git(d, "init", "-q", "-b", "main")
+        self.git(d, "add", "-A")
+        self.git(d, "commit", "-qm", name)
+        return self.git(d, "rev-parse", "HEAD")
+
+    def release(self, pins: str | None, dep: str | None = "ALICE-Up") -> str:
+        deps = f'\n[dependencies]\nup = {{ path = "../{dep}" }}\n' if dep else ""
+        (self.d / "Cargo.toml").write_text(f'[package]\nname = "probe-crate"\nversion = "0.3.0"\n{deps}')
+        f = self.d / ".github" / "alice-siblings"
+        if pins is None:
+            f.unlink(missing_ok=True)
+        else:
+            f.write_text(pins)
+        self.git(self.d, "add", "-A")
+        self.git(self.d, "commit", "-qm", "release", "--allow-empty")
+        self.git(self.d, "tag", "-f", "v0.3.0")
+        return self.git(self.d, "rev-parse", "HEAD")
+
+    def setUp(self):
+        self.parent = Path(tempfile.mkdtemp(prefix="id-move-print-siblings-"))
+        self.low = self.repo("ALICE-Low", None)
+        self.mid = self.repo("ALICE-Mid", "ALICE-Low")
+        self.up = self.repo("ALICE-Up", "ALICE-Mid")
+        self.d = self.parent / "ALICE-Probe"
+        (self.d / "scripts").mkdir(parents=True)
+        (self.d / ".github").mkdir()
+        (self.d / "scripts" / "id_move.toml").write_text(
+            'package = "probe-crate"\nmanifest = "Cargo.toml"\ntags = ["v{version}"]\n'
+            '[[id]]\npath = "probe_crate::SEMANTICS_ID"\n')
+        self.git(self.d, "init", "-q", "-b", "main")
+        self.pins = f"# siblings\nALICE-Up {self.up}\nALICE-Mid {self.mid}\nALICE-Low {self.low}\n"
+
+    def tearDown(self):
+        shutil.rmtree(self.parent, ignore_errors=True)
+
+    def printed(self, *extra: str) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = imc.main(["--root", str(self.d), "--base-from", "tag", "--print-siblings", *extra])
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_every_level_of_the_chain_is_listed(self):
+        self.release(self.pins)
+        rc, out, err = self.printed()
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out.splitlines(), sorted([f"ALICE-Low {self.low}", f"ALICE-Mid {self.mid}",
+                                                   f"ALICE-Up {self.up}"]))
+
+    def test_the_list_holds_what_the_walk_lays_out(self):
+        # the check's own walk over the base tree, at depth 3: each sibling it writes next to the
+        # base, at the commit it took, is a line of the list
+        ref = self.release(self.pins)
+        listed = set(imc.base_sibling_pins(self.d, [ref]))
+        work = Path(tempfile.mkdtemp(prefix="id-move-print-siblings-work-"))
+        try:
+            fresh = work / "fresh"
+            wt = fresh / "ALICE-Probe"
+            wt.mkdir(parents=True)
+            env = dict(self.ENV, GIT_INDEX_FILE=str(work / "base.index"))
+            for args in (["read-tree", ref], ["checkout-index", "--all", "--force", f"--prefix={wt}/"]):
+                subprocess.run(["git", "-C", str(self.d), *args], check=True, env=env, capture_output=True)
+            lines = imc.materialize_pinned_siblings(wt, self.parent, work, self.d, ref)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        walked = set()
+        for line in lines:
+            m = re.match(r"\.\./(ALICE-[A-Za-z]+) at ([0-9a-f]{12})", line)
+            walked.add((m.group(1), m.group(2)))
+        self.assertEqual(len(walked), 3, lines)
+        self.assertEqual(walked, {(r, sha[:12]) for r, sha in listed})
+
+    def test_two_bases_are_listed_together_once(self):
+        first = self.release(self.pins)
+        mid2 = self.repo("ALICE-Mid", "ALICE-Low")
+        second = self.release(f"ALICE-Up {self.up}\nALICE-Mid {mid2}\nALICE-Low {self.low}\n")
+        got = imc.base_sibling_pins(self.d, [first, second])
+        self.assertEqual(got, sorted([("ALICE-Low", self.low), ("ALICE-Mid", self.mid), ("ALICE-Mid", mid2),
+                                      ("ALICE-Up", self.up)]))
+
+    def test_a_base_without_path_dependencies_lists_nothing(self):
+        self.release(None, dep=None)
+        rc, out, err = self.printed()
+        self.assertEqual((rc, out), (0, ""), err)
+
+    def test_a_reached_sibling_without_a_pin_fails(self):
+        self.release(f"ALICE-Mid {self.mid}\nALICE-Low {self.low}\n")
+        rc, out, err = self.printed()
+        self.assertEqual((rc, out), (1, ""))
+        self.assertIn("path-depends on ../ALICE-Up but its .github/alice-siblings has no pin", err)
+
+    def test_a_malformed_pin_fails(self):
+        self.release(self.pins + "ALICE-Low abc\n")
+        rc, _, err = self.printed()
+        self.assertEqual(rc, 1)
+        self.assertIn("not one '<ALICE-Repo> <40-hex SHA>' line", err)
+
+    def test_a_base_from_before_the_pin_file_whose_sibling_cannot_be_fetched_fails(self):
+        self.release(None)
+        os.environ["ALICE_SIBLINGS_GIT_BASE"] = (self.parent / "no-remote").as_uri()
+        try:
+            rc, out, err = self.printed()
+        finally:
+            os.environ.pop("ALICE_SIBLINGS_GIT_BASE", None)
+        self.assertEqual((rc, out), (1, ""))
+        self.assertIn("reaches ../ALICE-Up, whose main cannot be fetched", err)
+
+    def test_a_base_whose_history_had_the_pin_file_fails(self):
+        self.release(self.pins)
+        self.release(None)
+        rc, _, err = self.printed()
+        self.assertEqual(rc, 1)
+        self.assertIn("broken base", err)
+
+    def test_base_names_the_base(self):
+        ref = self.release(self.pins)
+        self.release(None, dep=None)
+        rc, out, err = self.printed("--base", ref)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(len(out.splitlines()), 3)
+
+
+@unittest.skipUnless(shutil.which("git"), "needs git")
+class PrintSiblingsBeforePins(unittest.TestCase):
+    """A base from before .github/alice-siblings: --print-siblings resolves each sibling it reaches, at
+    any depth, at the newest commit of the sibling's main committed at or before the base commit, by
+    fetching that main (here from file:// remotes, no network), and the result is what the check's
+    own walk takes. The chain ALICE-Probe -> ALICE-Up -> ALICE-Mid -> ALICE-Low; every sibling has a
+    commit before the base and one after it, and ALICE-Up's later commit names another sibling"""
+
+    BEFORE, BASE, AFTER = "2026-02-01T00:00:00Z", "2026-03-01T00:00:00Z", "2026-04-01T00:00:00Z"
+
+    def env(self, date: str) -> dict:
+        return dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
+                    GIT_COMMITTER_EMAIL="t@t", GIT_AUTHOR_DATE=date, GIT_COMMITTER_DATE=date,
+                    GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+
+    def git(self, d: Path, *args: str, date: str = BEFORE) -> str:
+        return subprocess.run(["git", "-C", str(d), *args], check=True, env=self.env(date),
+                              capture_output=True, text=True).stdout.strip()
+
+    def commit(self, name: str, dep: str | None, date: str) -> str:
+        d = self.parent / name
+        (d / "src").mkdir(parents=True, exist_ok=True)
+        (d / "src" / "lib.rs").write_text(f"// {date}\n")
+        deps = f'\n[dependencies]\nnext = {{ path = "../{dep}" }}\n' if dep else ""
+        (d / "Cargo.toml").write_text(f'[package]\nname = "{name.lower()}"\nversion = "1.0.0"\n{deps}')
+        if not (d / ".git").exists():
+            bare = self.remotes / name
+            bare.mkdir(parents=True)
+            self.git(bare, "init", "-q", "--bare", "-b", "main")
+            self.git(d, "init", "-q", "-b", "main")
+            self.git(d, "config", "maintenance.auto", "false")
+            self.git(d, "remote", "add", "origin", str(bare))
+        self.git(d, "add", "-A", date=date)
+        self.git(d, "commit", "-qm", date, date=date)
+        self.git(d, "pu" + "sh", "-q", "origin", "HEAD:refs/heads/main", date=date)
+        return self.git(d, "rev-parse", "HEAD")
+
+    def setUp(self):
+        self.parent = Path(tempfile.mkdtemp(prefix="id-move-prepin-print-"))
+        self.remotes = self.parent / "remote"
+        self.low1 = self.commit("ALICE-Low", None, self.BEFORE)
+        self.mid1 = self.commit("ALICE-Mid", "ALICE-Low", self.BEFORE)
+        self.up1 = self.commit("ALICE-Up", "ALICE-Mid", self.BEFORE)
+        self.d = self.parent / "ALICE-Probe"
+        (self.d / "scripts").mkdir(parents=True)
+        (self.d / ".github").mkdir()
+        (self.d / "scripts" / "id_move.toml").write_text(
+            'package = "probe-crate"\nmanifest = "Cargo.toml"\ntags = ["v{version}"]\n'
+            '[[id]]\npath = "probe_crate::SEMANTICS_ID"\n')
+        (self.d / "Cargo.toml").write_text(
+            '[package]\nname = "probe-crate"\nversion = "0.3.0"\n\n[dependencies]\nup = { path = "../ALICE-Up" }\n')
+        self.git(self.d, "init", "-q", "-b", "main")
+        self.git(self.d, "add", "-A", date=self.BASE)
+        self.git(self.d, "commit", "-qm", "release", date=self.BASE)
+        self.git(self.d, "tag", "v0.3.0", date=self.BASE)
+        self.ref = self.git(self.d, "rev-parse", "HEAD")
+        # after the base: every sibling moves on, and ALICE-Up then names ALICE-Other instead
+        self.commit("ALICE-Other", None, self.AFTER)
+        self.commit("ALICE-Low", None, self.AFTER)
+        self.commit("ALICE-Mid", "ALICE-Low", self.AFTER)
+        self.commit("ALICE-Up", "ALICE-Other", self.AFTER)
+        os.environ["ALICE_SIBLINGS_GIT_BASE"] = self.remotes.as_uri()
+
+    def tearDown(self):
+        os.environ.pop("ALICE_SIBLINGS_GIT_BASE", None)
+        shutil.rmtree(self.parent, ignore_errors=True)
+
+    def expected(self) -> list[tuple[str, str]]:
+        return sorted([("ALICE-Low", self.low1), ("ALICE-Mid", self.mid1), ("ALICE-Up", self.up1)])
+
+    def test_every_level_is_taken_at_its_main_as_of_the_base(self):
+        self.assertEqual(imc.base_sibling_pins(self.d, [self.ref]), self.expected())
+
+    def test_the_cli_prints_the_lines(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = imc.main(["--root", str(self.d), "--base-from", "tag", "--print-siblings"])
+        self.assertEqual(rc, 0, err.getvalue())
+        self.assertEqual(out.getvalue().splitlines(), [f"{r} {sha}" for r, sha in self.expected()])
+
+    def test_the_same_base_gives_the_same_lines(self):
+        self.assertEqual(imc.base_sibling_pins(self.d, [self.ref]), imc.base_sibling_pins(self.d, [self.ref]))
+
+    def test_the_list_is_what_the_walk_takes(self):
+        # the check's own walk, with each sibling checked out next to the repository (as the action
+        # leaves it): every sibling it lays out, at the commit it took, is a printed line, and back
+        listed = {(r, sha[:12]) for r, sha in imc.base_sibling_pins(self.d, [self.ref])}
+        work = Path(tempfile.mkdtemp(prefix="id-move-prepin-print-work-"))
+        try:
+            wt = work / "fresh" / "ALICE-Probe"
+            wt.mkdir(parents=True)
+            env = dict(self.env(self.BASE), GIT_INDEX_FILE=str(work / "base.index"))
+            for args in (["read-tree", self.ref], ["checkout-index", "--all", "--force", f"--prefix={wt}/"]):
+                subprocess.run(["git", "-C", str(self.d), *args], check=True, env=env, capture_output=True)
+            lines = imc.materialize_pinned_siblings(wt, self.parent, work, self.d, self.ref)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        walked = {re.match(r"\.\./(ALICE-[A-Za-z]+) at ([0-9a-f]{12})", line).groups() for line in lines}
+        self.assertEqual(len(walked), 3, lines)
+        self.assertEqual(walked, listed)
+
+    def test_a_private_sibling_fails_naming_it(self):
+        (self.d / ".github" / "alice-siblings-private").write_text("ALICE-Mid\n")
+        with self.assertRaises(imc.CheckError) as e:
+            imc.base_sibling_pins(self.d, [self.ref])
+        self.assertIn("reaches ../ALICE-Mid, which .github/alice-siblings-private lists", str(e.exception))
+
+    def test_a_sibling_that_cannot_be_fetched_fails_naming_it(self):
+        shutil.rmtree(self.remotes / "ALICE-Low")
+        with self.assertRaises(imc.CheckError) as e:
+            imc.base_sibling_pins(self.d, [self.ref])
+        self.assertIn("reaches ../ALICE-Low, whose main cannot be fetched", str(e.exception))
+
+    def test_a_sibling_with_no_commit_by_the_base_date_fails(self):
+        self.git(self.d, "commit", "-q", "--amend", "--no-edit", date="2026-01-01T00:00:00Z")
+        ref = self.git(self.d, "rev-parse", "HEAD")
+        with self.assertRaises(imc.CheckError) as e:
+            imc.base_sibling_pins(self.d, [ref])
+        self.assertIn("../ALICE-Up has no commit of its origin main committed at or before", str(e.exception))
+
+
 @unittest.skipUnless(shutil.which("cargo") and shutil.which("git"), "needs cargo and git")
 class GitRevPreviousList(unittest.TestCase):
     """The crate re-exports the previous list of a dependency it takes by git + rev (not a path
@@ -1305,5 +1645,30 @@ class BaseBeforePins(unittest.TestCase):
         self.assertIn("no commit of its origin main", str(e.exception))
 
 
+def main() -> int:
+    """the suite inside a temporary directory of its own (also the $TMPDIR of what it runs): a test
+    that leaves a file or directory behind fails the run, naming it (the suite runs in every ALICE
+    crate that carries this file, so a leak grows each machine's temporary directory without end)"""
+    scratch = Path(tempfile.mkdtemp(prefix="id-move-tests-"))
+    old_tempdir, old_env = tempfile.tempdir, os.environ.get("TMPDIR")
+    tempfile.tempdir = str(scratch)
+    os.environ["TMPDIR"] = str(scratch)
+    try:
+        ok = unittest.main(exit=False).result.wasSuccessful()
+        left = sorted(p.name for p in scratch.iterdir())
+    finally:
+        tempfile.tempdir = old_tempdir
+        if old_env is None:
+            os.environ.pop("TMPDIR", None)
+        else:
+            os.environ["TMPDIR"] = old_env
+        shutil.rmtree(scratch, ignore_errors=True)
+    if left:
+        print(f"test_id_move_check: the tests left {len(left)} entries in the temporary directory: "
+              f"{', '.join(left[:10])}", file=sys.stderr)
+        return 1
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
-    unittest.main()
+    sys.exit(main())
