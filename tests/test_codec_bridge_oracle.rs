@@ -212,7 +212,10 @@ fn lossy_round_trip_stays_within_the_quantizer_bound_and_keeps_the_sign() {
         let at = quantizer_step_at(&bytes);
         assert_eq!(
             &bytes[HEADER_LEN..at],
-            &alice_sdf::SDF_SEMANTICS_ID[..],
+            &alice_sdf::provenance::meaning_id(
+                alice_sdf::provenance::StoredForm::EncodedVolume,
+                &alice_sdf::provenance::Provenance::sdf()
+            )[..],
             "the identifier sits between the header and the quantizer step"
         );
         let step = i32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
@@ -396,7 +399,10 @@ fn in_range_streams_are_byte_identical_to_the_i16_format() {
         );
         assert_eq!(
             stamped[HEADER_LEN..HEADER_LEN + 32],
-            alice_sdf::SDF_SEMANTICS_ID,
+            alice_sdf::provenance::meaning_id(
+                alice_sdf::provenance::StoredForm::EncodedVolume,
+                &alice_sdf::provenance::Provenance::sdf()
+            ),
             "{n} {name}: identifier"
         );
         let mut bytes = [&stamped[..HEADER_LEN], &stamped[HEADER_LEN + 32..]].concat();
@@ -691,7 +697,10 @@ fn hand_stream(
     b.push(100); // quality
     b.push(flags | FLAG_WIDE | FLAG_SEMANTICS_ID);
     b.extend_from_slice(&symbol_count.to_le_bytes());
-    b.extend_from_slice(&alice_sdf::SDF_SEMANTICS_ID);
+    b.extend_from_slice(&alice_sdf::provenance::meaning_id(
+        alice_sdf::provenance::StoredForm::EncodedVolume,
+        &alice_sdf::provenance::Provenance::sdf(),
+    ));
     assert_eq!(b.len(), QUANT_OFFSET);
     b.extend_from_slice(&step.to_le_bytes());
     b.extend_from_slice(&dead_zone.to_le_bytes());

@@ -598,12 +598,21 @@ fn a_snapshot_restores_craters_and_modifiers_bit_for_bit() {
 }
 
 // The payload names what the writer computed. oracle: the documented layout
-// (version 3, then `alice_sdf::SDF_SEMANTICS_ID`, then
-// `alice_physics::PHYSICS_SEMANTICS_ID`), the rule of
-// `alice_sdf::check_sdf_semantics` (this build's identifier or one of
-// `PREVIOUS_SDF_SEMANTICS_IDS` is accepted, anything else refused) and the
+// (version 4, then the meaning identifier of `StoredForm::LiveSdfPayload` under
+// `alice_sdf::SDF_SEMANTICS_ID` (ALICE-Law G8), then
+// `alice_physics::PHYSICS_SEMANTICS_ID`, raw), the rule of `Stored::judge` (this build's
+// identifier or one of `PREVIOUS_SDF_SEMANTICS_IDS` is accepted, anything else refused; a version
+// 3 payload holds the raw identifier, read as the previous generation) and the
 // rule of an alice-physics world snapshot header for the Physics identifier
 // (this build's or one of `PREVIOUS_PHYSICS_SEMANTICS_IDS`).
+
+/// The meaning identifier a payload stores for the SDF identifier `id`
+fn payload_meaning(id: &[u8; 32]) -> [u8; 32] {
+    alice_sdf::provenance::meaning_id(
+        alice_sdf::provenance::StoredForm::LiveSdfPayload,
+        &alice_sdf::provenance::Provenance::new(*id),
+    )
+}
 
 /// A shape with a crater and a stepped modifier, and the payload it writes.
 fn stepped_payload() -> (LiveSdf, Vec<u8>) {
@@ -627,8 +636,12 @@ fn target() -> LiveSdf {
 #[test]
 fn a_snapshot_payload_carries_the_semantics_identifier() {
     let (_, payload) = stepped_payload();
-    assert_eq!(payload[..4], 3u32.to_le_bytes(), "payload version");
-    assert_eq!(payload[4..36], alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(payload[..4], 4u32.to_le_bytes(), "payload version");
+    assert_eq!(
+        payload[4..36],
+        payload_meaning(&alice_sdf::SDF_SEMANTICS_ID)
+    );
+    assert_ne!(payload[4..36], alice_sdf::SDF_SEMANTICS_ID);
     assert_eq!(payload[36..68], alice_physics::PHYSICS_SEMANTICS_ID);
 }
 
@@ -782,20 +795,30 @@ fn a_payload_under_an_earlier_sdf_identifier_is_refused_and_a_listed_one_restore
             u8::from_str_radix(&dropped[2 * i..2 * i + 2], 16).expect("hex")
         });
         assert!(!alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS.contains(&id));
+        // as a version 4 payload's meaning identifier, and as a version 3 payload's raw one
         let mut stale = payload.clone();
-        stale[4..36].copy_from_slice(&id);
+        stale[4..36].copy_from_slice(&payload_meaning(&id));
         assert_eq!(
             target().check_state(&stale),
             Err(StateError::InvalidValue),
             "{dropped} is not a previous identifier of alice-sdf"
         );
-        refused += 1;
+        let mut stale_v3 = payload.clone();
+        stale_v3[..4].copy_from_slice(&3u32.to_le_bytes());
+        stale_v3[4..36].copy_from_slice(&id);
+        assert_eq!(
+            target().check_state(&stale_v3),
+            Err(StateError::InvalidValue),
+            "{dropped} (version 3) is not a previous identifier of alice-sdf"
+        );
+        refused += 2;
     }
-    assert_eq!(refused, 4);
-    // every listed earlier identifier (none in this build) restores bit for bit
+    assert_eq!(refused, 8);
+    // every listed earlier identifier (none in this build) restores bit for bit, as its meaning
+    // identifier
     for id in alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS {
         let mut previous = payload.clone();
-        previous[4..36].copy_from_slice(id);
+        previous[4..36].copy_from_slice(&payload_meaning(id));
         let mut b = target();
         assert_eq!(b.check_state(&previous), Ok(()));
         b.read_state(&previous);
@@ -806,6 +829,45 @@ fn a_payload_under_an_earlier_sdf_identifier_is_refused_and_a_listed_one_restore
         }
         assert!(compared > 0);
     }
+}
+
+/// A version 3 payload (what earlier releases wrote: the raw SDF identifier) restores bit for bit,
+/// read as the previous generation; each version is judged only as what it stores: a version 4
+/// payload holding the raw identifier, and a version 3 payload holding the meaning identifier, are
+/// refused
+#[test]
+fn a_version_3_payload_with_the_raw_identifier_restores_and_versions_are_not_mixed() {
+    let (a, payload) = stepped_payload();
+    let mut v3 = payload.clone();
+    v3[..4].copy_from_slice(&3u32.to_le_bytes());
+    v3[4..36].copy_from_slice(&alice_sdf::SDF_SEMANTICS_ID);
+    let mut b = target();
+    assert_eq!(b.check_state(&v3), Ok(()));
+    b.read_state(&v3);
+    let mut compared = 0;
+    for p in sample_points() {
+        assert_eq!(a.eval(p).to_bits(), b.eval(p).to_bits(), "at {p}");
+        compared += 1;
+    }
+    assert!(compared > 0);
+    // version 4 with the raw identifier
+    let mut raw_in_v4 = payload.clone();
+    raw_in_v4[4..36].copy_from_slice(&alice_sdf::SDF_SEMANTICS_ID);
+    assert_eq!(
+        target().check_state(&raw_in_v4),
+        Err(StateError::InvalidValue)
+    );
+    // version 3 with the meaning identifier
+    let mut meaning_in_v3 = payload.clone();
+    meaning_in_v3[..4].copy_from_slice(&3u32.to_le_bytes());
+    assert_eq!(
+        target().check_state(&meaning_in_v3),
+        Err(StateError::InvalidValue)
+    );
+    // version 5 is not a layout
+    let mut v5 = payload;
+    v5[..4].copy_from_slice(&5u32.to_le_bytes());
+    assert_eq!(target().check_state(&v5), Err(StateError::InvalidValue));
 }
 
 /// FNV-1a 64 over everything before the trailing 8 bytes, the checksum
@@ -832,8 +894,8 @@ fn a_world_restore_refuses_the_shape_under_other_semantics() {
     }
     let blob = world.snapshot_world();
 
-    let mut needle = 3u32.to_le_bytes().to_vec();
-    needle.extend_from_slice(&alice_sdf::SDF_SEMANTICS_ID);
+    let mut needle = 4u32.to_le_bytes().to_vec();
+    needle.extend_from_slice(&payload_meaning(&alice_sdf::SDF_SEMANTICS_ID));
     needle.extend_from_slice(&alice_physics::PHYSICS_SEMANTICS_ID);
     let at: Vec<usize> = blob
         .windows(needle.len())

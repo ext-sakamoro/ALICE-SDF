@@ -143,6 +143,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::io::load" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
 "binding::pyo3::load_asdf" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
 "binding::pyo3::load_sdf" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
+"binding::pyo3::semantics_id" = "local: returns this build's semantics identifier, reads no input"
 "abi::ffi::io_ffi::alice_sdf_load" = "handshake: an_asdf_json_from_6_1_0_is_refused_by_default_and_read_unverified"
 
 # 2 handshake
@@ -175,13 +176,14 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::Provenance::hex" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::Provenance::new" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::Provenance::stl_header" = "local: formats or wraps an identifier the caller holds for a writer to store"
-"fn::Provenance::tagged" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::Stamp::stl_header" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::Provenance::named_for" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::Provenance::slot_for" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::Provenance::tagged_for" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::Stamp::tagged_for" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::Stored::hex" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::Stored::in_slot" = "local: wraps 32 bytes the caller read from a binary slot; accepting them is Stored::judge's (the handshake above)"
+"fn::Stored::under_key" = "local: wraps 32 bytes the caller read under a text key; accepting them is Stored::judge's (the handshake above)"
 "fn::StoredForm::name" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::provenance::meaning_id" = "local: formats or wraps an identifier the caller holds for a writer to store"
 

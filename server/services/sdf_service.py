@@ -1,5 +1,6 @@
 """SDF Service - wraps alice_sdf for JSON parsing, meshing, and export."""
 
+import logging
 import time
 import tempfile
 import os
@@ -8,6 +9,8 @@ from typing import Optional
 
 import alice_sdf
 
+logger = logging.getLogger(__name__)
+
 
 def validate_sdf_json(json_str: str) -> tuple[bool, Optional[int], Optional[str]]:
     """Validate an SDF JSON string.
@@ -15,8 +18,10 @@ def validate_sdf_json(json_str: str) -> tuple[bool, Optional[int], Optional[str]
     Returns (valid, node_count, error_message).
     """
     try:
-        # a model's answer has no semantics identifier: the status is "unpinned"
-        node, _semantics = alice_sdf.from_json(json_str)
+        # a model's answer has no semantics identifier, so "unpinned" is expected here; the status
+        # is logged rather than dropped, so a document read under another status stays visible
+        node, semantics = alice_sdf.from_json(json_str)
+        logger.info("SDF JSON read: semantics %s", semantics)
         return True, node.node_count(), None
     except Exception as e:
         return False, None, str(e)
@@ -24,7 +29,8 @@ def validate_sdf_json(json_str: str) -> tuple[bool, Optional[int], Optional[str]
 
 def parse_sdf_json(json_str: str) -> alice_sdf.SdfNode:
     """Parse an SDF JSON string into an SdfNode."""
-    node, _semantics = alice_sdf.from_json(json_str)
+    node, semantics = alice_sdf.from_json(json_str)
+    logger.info("SDF JSON read: semantics %s", semantics)
     return node
 
 

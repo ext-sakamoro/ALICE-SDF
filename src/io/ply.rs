@@ -139,7 +139,7 @@ pub fn export_ply_with_provenance(
 ///
 /// # Errors
 ///
-/// [`IoError::SemanticsMismatch`] for another identifier, [`IoError::InvalidFormat`] for a
+/// [`IoError::MeaningMismatch`] (or [`IoError::SemanticsMismatch`] for an earlier file's raw identifier) for another identifier, [`IoError::InvalidFormat`] for a
 /// malformed one, and the I/O and parse errors.
 pub fn import_ply(path: impl AsRef<Path>) -> Result<Checked<Mesh>, IoError> {
     import_ply_with(path.as_ref(), true)

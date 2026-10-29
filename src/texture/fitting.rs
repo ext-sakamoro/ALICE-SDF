@@ -106,7 +106,7 @@ impl SubsampleGrid {
 /// # Errors
 ///
 /// [`TextureFitError::Io`]: the file cannot be read, the image is stamped under another identifier
-/// ([`IoError::SemanticsMismatch`], naming both), the identifier is malformed or the pixels cannot
+/// ([`IoError::MeaningMismatch`] (or [`IoError::SemanticsMismatch`] for an earlier file's raw identifier), naming both), the identifier is malformed or the pixels cannot
 /// be decoded ([`IoError::InvalidFormat`]); [`TextureFitError::Fit`] when the fit fails.
 pub fn fit_texture(
     path: &Path,

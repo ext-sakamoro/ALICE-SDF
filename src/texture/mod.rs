@@ -30,7 +30,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::io::IoError;
-use crate::provenance::{Checked, Provenance, StoredSemantics, KEY};
+use crate::provenance::{Checked, Provenance, StoredSemantics};
 
 /// Why [`fit_texture`] failed
 #[derive(Debug, thiserror::Error)]
@@ -127,6 +127,12 @@ struct FitDocument {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     format: Option<u32>,
     #[serde(
+        rename = "alice:meaning_id",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    meaning_id: Option<String>,
+    #[serde(
         rename = "alice:semantics_id",
         default,
         skip_serializing_if = "Option::is_none"
@@ -155,7 +161,12 @@ impl FitDocument {
     fn new(result: &TextureFitResult, provenance: &Provenance) -> Self {
         Self {
             format: Some(FIT_FORMAT),
-            semantics_id: Some(provenance.hex()),
+            meaning_id: Some(
+                provenance
+                    .named_for(crate::provenance::StoredForm::JsonDocument)
+                    .1,
+            ),
+            semantics_id: None,
             width: result.width,
             height: result.height,
             channels: result.channels,
@@ -181,17 +192,20 @@ impl FitDocument {
     }
 
     /// The stored identifier (`None` for a document written before `format` 1)
-    fn stored_id(&self) -> Result<Option<[u8; 32]>, IoError> {
-        match (self.format, &self.semantics_id) {
+    fn stored_id(&self) -> Result<Option<crate::provenance::Stored>, IoError> {
+        let id = crate::provenance::json_field_id(
+            self.meaning_id.as_deref(),
+            self.semantics_id.as_deref(),
+            crate::provenance::StoredForm::JsonDocument,
+            "texture fit",
+        )?;
+        match (self.format, id) {
             (None, None) => Ok(None),
-            (Some(FIT_FORMAT), Some(hex)) => Provenance::from_hex(hex)
-                .map(|p| Some(p.semantics_id))
-                .ok_or_else(|| {
-                    IoError::InvalidFormat(format!("texture fit: {KEY} is not 64 hex digits"))
-                }),
-            (Some(FIT_FORMAT), None) | (None, Some(_)) => Err(IoError::InvalidFormat(format!(
-                "texture fit: `format` and {KEY} must be both present or both absent"
-            ))),
+            (Some(FIT_FORMAT), Some(stored)) => Ok(Some(stored)),
+            (Some(FIT_FORMAT), None) | (None, Some(_)) => Err(IoError::InvalidFormat(
+                "texture fit: `format` and the identifier must be both present or both absent"
+                    .into(),
+            )),
             (Some(f), _) => Err(IoError::UnsupportedVersion(
                 u16::try_from(f).unwrap_or(u16::MAX),
             )),
@@ -262,7 +276,7 @@ pub fn save_texture_fit_with_provenance(
 ///
 /// # Errors
 ///
-/// [`IoError::Unpinned`] for a document without an identifier, [`IoError::SemanticsMismatch`]
+/// [`IoError::Unpinned`] for a document without an identifier, [`IoError::MeaningMismatch`] (or [`IoError::SemanticsMismatch`] for an earlier file's raw identifier)
 /// for another identifier, [`IoError::InvalidFormat`] / [`IoError::UnsupportedVersion`] for a
 /// malformed identifier or another format, and the I/O and JSON errors.
 pub fn load_texture_fit(path: impl AsRef<Path>) -> Result<TextureFitResult, IoError> {

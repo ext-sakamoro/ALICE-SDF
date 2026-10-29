@@ -15,14 +15,17 @@
 // ALLOW-DEAD: each example includes this module and calls one or both of its writers
 #![allow(dead_code)]
 
-use alice_sdf::provenance::{self, Provenance, KEY};
+use alice_sdf::provenance::{self, Provenance, KEY, MEANING_KEY};
 use std::fs;
 use std::io;
 use std::path::Path;
 
 /// The line a whole text built by hand puts first in its leading `//` block
 pub fn tag_line() -> String {
-    format!("// {}\n", Provenance::sdf().tagged())
+    format!(
+        "// {}\n",
+        Provenance::sdf().tagged_for(provenance::StoredForm::ShaderText)
+    )
 }
 
 /// Writes the whole shader or generated Rust `text` to `path` when it differs from the file
@@ -40,10 +43,12 @@ pub fn write_whole_text(path: &Path, text: &str) -> io::Result<bool> {
             ) => {}
         Ok(p) => {
             return Err(io::Error::other(format!(
-                "{}: whole text under {} (this build is {})",
+                "{}: whole text under {} (this build writes {})",
                 path.display(),
                 p.hex(),
-                Provenance::sdf().hex()
+                Provenance::sdf()
+                    .named_for(provenance::StoredForm::ShaderText)
+                    .1
             )))
         }
         Err(e) => {
@@ -70,11 +75,13 @@ pub fn write_whole_text(path: &Path, text: &str) -> io::Result<bool> {
 /// When `text` carries the identifier key (a whole text written as a fragment), and the errors
 /// of the write.
 pub fn write_fragment_text(path: &Path, text: &str) -> io::Result<bool> {
-    if text.contains(KEY) {
-        return Err(io::Error::other(format!(
-            "{}: a fragment carries no {KEY} (this text is a whole one)",
-            path.display()
-        )));
+    for key in [MEANING_KEY, KEY] {
+        if text.contains(key) {
+            return Err(io::Error::other(format!(
+                "{}: a fragment carries no {key} (this text is a whole one)",
+                path.display()
+            )));
+        }
     }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;

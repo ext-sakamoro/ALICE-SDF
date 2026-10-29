@@ -134,3 +134,21 @@ class TestFullPipeline:
         )
         assert len(data) > 0
         assert b"v " in data
+
+
+class TestSemanticsStatusIsVisible:
+    """A model's answer carries no identifier: it is read as "unpinned", and the status is logged"""
+
+    def test_unpinned_is_logged(self, caplog):
+        with caplog.at_level("INFO", logger="server.services.sdf_service"):
+            valid, _, _ = sdf_service.validate_sdf_json(VALID_SPHERE_JSON)
+            sdf_service.parse_sdf_json(VALID_SPHERE_JSON)
+        assert valid is True
+        lines = [r.getMessage() for r in caplog.records]
+        assert lines.count("SDF JSON read: semantics unpinned") == 2, lines
+
+    def test_own_document_is_current(self, caplog):
+        own = sdf_service.node_to_json(sdf_service.parse_sdf_json(VALID_SPHERE_JSON))
+        with caplog.at_level("INFO", logger="server.services.sdf_service"):
+            sdf_service.parse_sdf_json(own)
+        assert "SDF JSON read: semantics current" in [r.getMessage() for r in caplog.records]

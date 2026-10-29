@@ -55,12 +55,15 @@ const fn zigzag(delta: i64) -> u64 {
     (if d >= 0 { 2 * d } else { -2 * d - 1 }) as u64
 }
 
-/// The version 2 header of the module doc: magic, version 2, kind, 2 reserved, this crate's
-/// semantics identifier
+/// The version 2 header of the module doc: magic, version 2, kind, 2 reserved, the mesh codec's
+/// meaning identifier under this crate's semantics identifier (ALICE-Law G8)
 fn reference_header(kind: u8) -> Vec<u8> {
     let mut out = b"ASDF".to_vec();
     out.extend([2, kind, 0, 0]);
-    out.extend(alice_sdf::SDF_SEMANTICS_ID);
+    out.extend(alice_sdf::provenance::meaning_id(
+        alice_sdf::provenance::StoredForm::MeshCodec,
+        &alice_sdf::provenance::Provenance::sdf(),
+    ));
     out
 }
 

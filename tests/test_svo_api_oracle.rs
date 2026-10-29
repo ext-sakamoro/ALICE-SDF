@@ -402,11 +402,17 @@ fn chunk_wire_format_round_trips_and_follows_its_header_layout() {
     let chunks = split_into_chunks(&svo, 1);
     for c in &chunks {
         let bytes = c.to_bytes();
-        // version 2: magic, version, the 32-byte semantics identifier, then the version 1 body
+        // version 2: magic, version, the 32-byte meaning identifier (ALICE-Law G8), then the version 1 body
         let h = 40;
         assert_eq!(&bytes[0..4], b"ASVC");
         assert_eq!(&bytes[4..8], &2u32.to_le_bytes());
-        assert_eq!(&bytes[8..40], &alice_sdf::SDF_SEMANTICS_ID);
+        assert_eq!(
+            &bytes[8..40],
+            &alice_sdf::provenance::meaning_id(
+                alice_sdf::provenance::StoredForm::Svo,
+                &alice_sdf::provenance::Provenance::sdf()
+            )
+        );
         assert_eq!(bytes.len(), h + 36 + 32 * c.nodes.len());
         assert_eq!(
             u32::from_le_bytes(bytes[h..h + 4].try_into().unwrap()),

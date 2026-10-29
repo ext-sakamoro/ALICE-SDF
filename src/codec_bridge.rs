@@ -534,7 +534,7 @@ pub fn encode_sdf_volume_with_provenance(
         output.extend_from_slice(&vs.y.to_le_bytes());
         output.extend_from_slice(&vs.z.to_le_bytes());
     }
-    output.extend_from_slice(&provenance.semantics_id);
+    output.extend_from_slice(&provenance.slot_for(crate::provenance::StoredForm::EncodedVolume));
 
     // Write quantizer step + dead_zone (8 bytes)
     output.extend_from_slice(&quantizer.step.to_le_bytes());
@@ -614,6 +614,14 @@ pub enum DecodeError {
     /// The stream carries no semantics identifier (written by 7.0.0 or earlier); read it with
     /// [`try_decode_sdf_volume_unverified`] to get it marked as such.
     Unpinned,
+    /// The stream's meaning identifier is not the one this crate's writers store for it
+    /// (ALICE-Law G8): it was written under another semantics identifier.
+    MeaningMismatch {
+        /// The meaning identifier in the stream.
+        stored: crate::provenance::Provenance,
+        /// The meaning identifier this crate's writers store for the encoded volume.
+        expected: crate::provenance::Provenance,
+    },
 }
 
 impl std::fmt::Display for DecodeError {
@@ -656,6 +664,12 @@ impl std::fmt::Display for DecodeError {
             Self::Unpinned => write!(
                 f,
                 "encoded SDF volume: no semantics identifier (written by 7.0.0 or earlier; read it with try_decode_sdf_volume_unverified)"
+            ),
+            Self::MeaningMismatch { stored, expected } => write!(
+                f,
+                "encoded SDF volume: meaning identifier mismatch: stored {}, expected {}",
+                stored.hex(),
+                expected.hex()
             ),
         }
     }
@@ -785,15 +799,22 @@ fn try_decode_checked(
     } else {
         None
     };
-    let semantics =
-        crate::provenance::sdf_load_verdict(stored, "encoded SDF volume", allow_unpinned).map_err(
-            |e| match e {
-                crate::io::IoError::SemanticsMismatch {
-                    stored, expected, ..
-                } => DecodeError::SemanticsMismatch { stored, expected },
-                _ => DecodeError::Unpinned,
-            },
-        )?;
+    let semantics = crate::provenance::sdf_load_verdict(
+        stored.map(|id| {
+            crate::provenance::Stored::in_slot(crate::provenance::StoredForm::EncodedVolume, id)
+        }),
+        "encoded SDF volume",
+        allow_unpinned,
+    )
+    .map_err(|e| match e {
+        crate::io::IoError::SemanticsMismatch {
+            stored, expected, ..
+        } => DecodeError::SemanticsMismatch { stored, expected },
+        ref other => match crate::provenance::meaning_mismatch_ids(other) {
+            Some((_, stored, expected)) => DecodeError::MeaningMismatch { stored, expected },
+            None => DecodeError::Unpinned,
+        },
+    })?;
 
     // 2. Read quantizer params
     let step = read_u32(offset) as i32;

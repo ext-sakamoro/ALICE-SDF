@@ -134,6 +134,16 @@ python3 scripts/test_build_flags_check.py
 step "provenance writers: oracle + 公開の書き出し関数はすべて意味の識別子を書くか、未対応の一覧にある (件数固定、0 件で fail)"
 python3 scripts/test_provenance_writers.py
 python3 scripts/provenance_writers.py
+step "id_move_check: ALICE-Law G9 (SDF_SEMANTICS_ID は破壊的な版でだけ動き、CHANGELOG が両方の値を名指す、公開版と版上げの前の main と比べる)"
+python3 scripts/test_id_move_check.py
+# the comparison builds probes of the published release and of this tree (minutes, the registry):
+# the full run and CI's id-move job run it, --quick runs only the checker's own tests
+if [[ $quick -eq 0 ]]; then
+  python3 scripts/id_move_check.py
+fi
+step "meaning writers: oracle + src に raw の識別子を書く箇所が無く、意味の識別子を書く箇所の数が記録と同じ (0 件で fail)"
+python3 scripts/test_meaning_writers.py
+python3 scripts/meaning_writers.py
 step "bare deserialization reads: oracle + src の serde / bincode の読み込みは library clippy が禁止し、確認済みの箇所 (stored form checked / other-type / pending の理由つき allow) だけにある (0 件で fail)"
 python3 scripts/test_bare_serde_reads.py
 python3 scripts/bare_serde_reads.py
@@ -498,7 +508,7 @@ cargo test --lib --no-default-features --features "$BRIDGES"
 relint; RUSTFLAGS="-Dwarnings" cargo clippy --lib --features "$BRIDGES"
 
 step "test: bridge oracles (ci.yml の bridges job の bridge oracles と対)"
-cargo test --features "$BRIDGES,gpu" --test test_codec_bridge_oracle --test test_asp_bridge_oracle --test test_g8_tree_text \
+cargo test --features "$BRIDGES,gpu" --test test_codec_bridge_oracle --test test_asp_bridge_oracle --test test_g8_tree_text --test test_g8_meaning_id \
   --test test_sdf_eval_cache_oracle --test test_sim_bridge_oracle
 
 step "test: AAA meta"

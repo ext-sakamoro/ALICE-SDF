@@ -16,7 +16,7 @@
 
 use crate::io::IoError;
 use crate::mesh::nanite::NaniteMesh;
-use crate::provenance::{Provenance, KEY};
+use crate::provenance::Provenance;
 use std::io::Write;
 use std::path::Path;
 
@@ -137,7 +137,7 @@ pub fn export_nanite_with_provenance(
         | ((config.quantize_positions as u32) << 2);
     w.write_all(&flags.to_le_bytes())?;
     // the semantics identifier (version 4)
-    w.write_all(&provenance.semantics_id)?;
+    w.write_all(&provenance.slot_for(crate::provenance::StoredForm::Nanite))?;
 
     // LOD levels
     for lod in &nanite.lod_levels {
@@ -246,7 +246,8 @@ pub fn export_nanite_json_with_provenance(
     writeln!(w, "{{")?;
     writeln!(w, "  \"generator\": \"ALICE-SDF\",")?;
     writeln!(w, "  \"format_version\": {},", NANITE_VERSION)?;
-    writeln!(w, "  \"{KEY}\": \"{}\",", provenance.hex())?;
+    let (key, id) = provenance.named_for(crate::provenance::StoredForm::JsonDocument);
+    writeln!(w, "  \"{key}\": \"{id}\",")?;
     writeln!(w, "  \"cluster_count\": {},", nanite.clusters.len())?;
     writeln!(w, "  \"group_count\": {},", nanite.groups.len())?;
 
@@ -372,7 +373,11 @@ pub fn export_nanite_hlsl_material_with_provenance(
     let mut w = std::io::BufWriter::new(file);
 
     writeln!(w, "// ALICE-SDF Nanite Material Function")?;
-    writeln!(w, "// {KEY}={}", provenance.hex())?;
+    writeln!(
+        w,
+        "// {}",
+        provenance.tagged_for(crate::provenance::StoredForm::ShaderText)
+    )?;
     writeln!(w, "// Auto-generated procedural material for UE5 Nanite")?;
     writeln!(
         w,
