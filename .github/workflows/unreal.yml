@@ -98,7 +98,7 @@ jobs:
     env:
       # ASCII, short: UE / UBT and the editor's DDC choke on the non-ASCII
       # user profile path; E:\ is the engine drive.
-      CARGO_TARGET_DIR: E:\alice-ci\target-sdf
+      CARGO_TARGET_DIR: E:\ci-cache\target-sdf
       # the run's work directory (removed by the last step) and the root of the kept logs
       CI_WORK: E:\ci-work\ue5-${{ github.run_id }}
       CARGO_INCREMENTAL: "0"

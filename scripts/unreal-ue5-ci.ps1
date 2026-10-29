@@ -13,7 +13,7 @@
 # The GitHub-hosted runners have no Unreal; .github/workflows/ci.yml runs this
 # on the self-hosted `ue5` Windows runner. It is the same script locally:
 #
-#   pwsh scripts/unreal-ue5-ci.ps1 -EngineRoot E:\UE_5.7 -WorkDir E:\alice-ci\ue5
+#   pwsh scripts/unreal-ue5-ci.ps1 -EngineRoot E:\UE_5.7 -WorkDir E:\ci-work\ue5
 #
 # Steps:
 #   1. cargo build --release --features unreal   → alice_sdf.dll / .lib

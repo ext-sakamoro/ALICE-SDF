@@ -789,7 +789,7 @@ Two CI jobs keep the plugin building against a real engine (`.github/workflows/c
 | Job | Runner | What it proves |
 |-----|--------|----------------|
 | `unreal-abi` | GitHub-hosted Linux | `ThirdParty/AliceSDF/include/alice_sdf.h` == `include/alice_sdf.h`; every prototype in the header is exported by the cdylib built with `--features unreal` and vice versa; `AliceSDF.uplugin` is valid (`VersionName` == crate version, `EngineVersion` 5.x); every `/Plugin/AliceSDF/...` shader include resolves; the generated corpus files are current. Script: `scripts/unreal-abi-check.sh`. |
-| `unreal-ue5` | self-hosted Windows (`ue5` label, RTX GPU), one job per engine in `UE5_ENGINE_ROOTS` (currently 5.7 and 5.8) | `RunUAT BuildPlugin` (editor + game targets, Win64) compiles and links the C++; the editor starts, so every `.usf` / `.ush` compiles; then `Automation RunTests AliceSDF.Unreal` runs the two tests below on DX12. Script: `scripts/unreal-ue5-ci.ps1` (same command locally: `pwsh scripts/unreal-ue5-ci.ps1 -EngineRoot E:\UE_5.7 -WorkDir E:\alice-ci\ue5`). |
+| `unreal-ue5` | self-hosted Windows (`ue5` label, RTX GPU), one job per engine in `UE5_ENGINE_ROOTS` (currently 5.7 and 5.8) | `RunUAT BuildPlugin` (editor + game targets, Win64) compiles and links the C++; the editor starts, so every `.usf` / `.ush` compiles; then `Automation RunTests AliceSDF.Unreal` runs the two tests below on DX12. Script: `scripts/unreal-ue5-ci.ps1` (same command locally: `pwsh scripts/unreal-ue5-ci.ps1 -EngineRoot E:\UE_5.7 -WorkDir E:\ci-work\ue5`). |
 
 ### Automation tests (`Source/AliceSDF/Private/Tests/AliceSdfCorpusOracleTest.cpp`)
 
