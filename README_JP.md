@@ -289,10 +289,10 @@ cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
 
 リリース履歴は [`CHANGELOG.md`](CHANGELOG.md) にある
 
-<!-- law-integration:begin law=9cb423c95a03bf34b845933190d1b5bce68fbde6 -->
+<!-- law-integration:begin law=e245eb8b81667d5cf40f3d69b9daddb2b69628f3 -->
 ## ALICE-Law との統合
 
-ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `9cb423c95a03` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
+ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `e245eb8b8166` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
 
 | | |
 |---|---|
@@ -318,6 +318,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `9cb423c95a03` と
 | G12 public-repo-text-rules | 適合 | the CI job fetches ALICE-Law's own scripts/public_text_check.py at the revision named in .github/public-text-pin and refuses it unless its SHA-256 is the one … |
 | G13 no-unspecified-order | 適合 | the hash collections are used only through the wrappers, whose aggregates do not depend on the order (integer counts and sums, Ord maxima, key-ordered … |
 | G14 float-environment-invariants | 適合 | the Cargo.toml comment that suggests target-cpu=native to users is a comment, which the guard blanks; nothing sets it |
+| G15 surface-claims | 未申告 |  |
 
 ### feature と保証の範囲
 
