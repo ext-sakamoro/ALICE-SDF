@@ -111,8 +111,10 @@ jobs:
           (Get-Item $unity).VersionInfo.ProductVersion
 
       - name: cargo build --release --features unity
+        # cargo names the checkout path ("Compiling alice-sdf (E:\...)"): through Protect-CiLine
         run: |
-          cargo build --release --features unity
+          Import-Module ./scripts/ci-log-sanitize.psm1
+          cargo build --release --features unity 2>&1 | ForEach-Object { Protect-CiLine "$_" }
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Place native library (Assets/Plugins/alice_sdf.dll)
@@ -135,19 +137,20 @@ jobs:
             Write-Host "::error title=unity-sdf-universe::$log was never created (Unity exited $exit before writing it)"
             exit 1
           }
-          Get-Content $log | Select-String -Pattern "\[CiSmokeTest\]|error CS|Exception"
+          # through Protect-CiLine: the job log is public (scripts/ci-log-sanitize.psm1)
+          Import-Module ./scripts/ci-log-sanitize.psm1
+          Get-Content $log | Select-String -Pattern "\[CiSmokeTest\]|error CS|Exception" | ForEach-Object { Protect-CiLine $_.Line }
           if ($exit -ne 0) {
-            Write-Host "::error title=unity-sdf-universe::CiSmokeTest exited $exit — see uploaded log"
+            Write-Host "::error title=unity-sdf-universe::CiSmokeTest exited $exit — see the summary below"
             exit $exit
           }
 
-      - name: Unity log
+      # the Unity log names the machine (paths, account, licence serial, machine id), so it is not
+      # uploaded: it stays on the runner for 14 days (E:\alice-ci-logs\<run>-<attempt>\unity-sdf-universe)
+      # and the job log gets a sanitized summary (scripts/ci-log-retain.ps1)
+      - name: Keep the Unity log on the runner + sanitized summary
         if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: unity-sdf-universe-log
-          path: unity-sdf-universe-ci.log
-          if-no-files-found: ignore
+        run: pwsh -NoProfile -File scripts/ci-log-retain.ps1 -Path "$env:GITHUB_WORKSPACE\unity-sdf-universe-ci.log" -Root "E:\alice-ci-logs" -Run "${{ github.run_id }}-${{ github.run_attempt }}" -Job "unity-sdf-universe"
 
   # red when the changes job said run and a job was skipped, cancelled or failed
   gate:

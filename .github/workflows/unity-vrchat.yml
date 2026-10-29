@@ -120,13 +120,22 @@ jobs:
           (Get-Item $unity).VersionInfo.ProductVersion
 
       - name: VRChat Worlds project (vrc-get, com.alice.sdf file link)
-        run: pwsh -NoProfile -File scripts/unity-ci-project.ps1 -Project ci-unity
+        run: |
+          Import-Module ./scripts/ci-log-sanitize.psm1
+          pwsh -NoProfile -File scripts/unity-ci-project.ps1 -Project ci-unity 2>&1 | ForEach-Object { Protect-CiLine "$_" }
+          exit $LASTEXITCODE
 
       # setup / compile / samples / scenes / kit (looped over its domain
       # reloads) / verify / android. -SkipDrift: the project is created from
       # CI~ here, so there are no developer Assets/Samples copies to compare.
       - name: Unity stages (setup, compile, samples, scenes, kit, verify, android)
-        run: pwsh -NoProfile -File scripts/unity-preflight.ps1 -Project "$env:GITHUB_WORKSPACE\ci-unity" -Unity "${{ steps.unity.outputs.path }}" -SkipDrift
+        # everything the stages print goes through Protect-CiLine (scripts/ci-log-sanitize.psm1):
+        # the job log is public, and Unity prints drive paths, the profile directory and its
+        # licence fields
+        run: |
+          Import-Module ./scripts/ci-log-sanitize.psm1
+          pwsh -NoProfile -File scripts/unity-preflight.ps1 -Project "$env:GITHUB_WORKSPACE\ci-unity" -Unity "${{ steps.unity.outputs.path }}" -SkipDrift 2>&1 | ForEach-Object { Protect-CiLine "$_" }
+          exit $LASTEXITCODE
 
       - name: Kit unitypackage
         uses: actions/upload-artifact@v6
@@ -135,13 +144,12 @@ jobs:
           path: vrchat-package/Product~/*.unitypackage
           if-no-files-found: error
 
-      - name: Unity logs
+      # the Unity logs name the machine (paths, account, licence serial, machine id), so they are
+      # not uploaded: they stay on the runner for 14 days (E:\alice-ci-logs\<run>-<attempt>\unity-vrchat)
+      # and the job log gets a sanitized summary (scripts/ci-log-retain.ps1)
+      - name: Keep Unity logs on the runner + sanitized summary
         if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: unity-logs
-          path: target/unity-preflight/*.log
-          if-no-files-found: ignore
+        run: pwsh -NoProfile -File scripts/ci-log-retain.ps1 -Path "$env:GITHUB_WORKSPACE\target\unity-preflight" -Root "E:\alice-ci-logs" -Run "${{ github.run_id }}-${{ github.run_attempt }}" -Job "unity-vrchat"
 
   # red when the changes job said run and a job was skipped, cancelled or failed
   gate:

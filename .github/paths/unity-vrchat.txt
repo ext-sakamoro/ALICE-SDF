@@ -9,5 +9,6 @@ vrchat-package/**
 !vrchat-package/Product~/**
 scripts/unity-*
 .github/workflows/unity-vrchat.yml
+scripts/ci-log-*
 scripts/changed_paths.py
 .github/paths/unity-vrchat.txt
