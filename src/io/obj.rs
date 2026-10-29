@@ -286,7 +286,7 @@ fn export_mtl(
 ///
 /// # Errors
 ///
-/// [`IoError::SemanticsMismatch`] for another identifier, [`IoError::InvalidFormat`] for a
+/// [`IoError::MeaningMismatch`] (or [`IoError::SemanticsMismatch`] for an earlier file's raw identifier) for another identifier, [`IoError::InvalidFormat`] for a
 /// malformed one, and the I/O and parse errors.
 pub fn import_obj(path: impl AsRef<Path>) -> Result<Checked<Mesh>, IoError> {
     import_obj_with(path.as_ref(), true)

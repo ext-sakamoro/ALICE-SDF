@@ -60,6 +60,20 @@ zero = "scripts/test_api_boundary.py::CheckTest.test_nothing_enumerated_fails"
 shared = ["scripts/api_boundary.py", "scripts/test_api_boundary.py"]
 
 [[row]]
+gate = "G8"
+checker = ".github/workflows/ci.yml#- name: meaning writers (test, then check)>scripts/meaning_writers.py"
+canary = "scripts/test_meaning_writers.py::test_a_raw_write_fails"
+zero = "scripts/test_meaning_writers.py::test_no_meaning_writer_site_fails"
+shared = "n/a: scripts/meaning_writers.py is this repository's own"
+
+[[row]]
+gate = "G9"
+checker = "scripts/id_move_check.py"
+canary = "scripts/test_id_move_check.py::Rules.test_no_bump_and_the_old_value_not_kept_fails"
+zero = "scripts/test_id_move_check.py::Rules.test_a_config_without_identifiers_fails_as_comparing_nothing"
+shared = ["scripts/id_move_check.py", "scripts/test_id_move_check.py"]
+
+[[row]]
 gate = "G10"
 checker = "scripts/clippy_lib_gate.py"
 canary = "scripts/test_clippy_lib_gate.py::Judge.test_a_missing_diagnostic_is_red"

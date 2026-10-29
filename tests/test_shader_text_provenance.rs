@@ -2,8 +2,9 @@
 //! readers that compile shader text check it
 //!
 //! A whole shader (one that a GPU API or an offline compiler takes as is) starts with a block of
-//! `//` comment lines, one of which is `// alice:semantics_id=<64 hex>` ([`provenance::KEY`],
-//! [`Provenance::sdf`]). GLSL starts with its `#version` line instead (GLSL ES takes nothing
+//! `//` comment lines, one of which is `// alice:meaning_id=<64 hex>` ([`provenance::MEANING_KEY`],
+//! the meaning identifier of shader text under [`Provenance::sdf`]; text written before meaning
+//! identifiers holds `// alice:semantics_id=<64 hex>` instead). GLSL starts with its `#version` line instead (GLSL ES takes nothing
 //! before it, not even a comment: glslang 16.6.0 says "#version: statement must appear first in
 //! es-profile shader; before comments or newlines"), so there the block follows that line.
 //! [`provenance::from_bytes`] reads the identifier from that block only.
@@ -28,11 +29,24 @@ use shader_text::has_entry_point;
 
 #[cfg(feature = "gpu")]
 use alice_sdf::provenance::StoredSemantics;
-use alice_sdf::provenance::{self, Provenance, KEY};
+#[cfg(any(feature = "gpu", feature = "glsl", feature = "msl"))]
+use alice_sdf::provenance::MEANING_KEY;
+use alice_sdf::provenance::{self, meaning_id, Provenance, StoredForm, KEY};
 
 /// The tag line this crate's emitters write
+/// The meaning identifier of shader text under `p`, as the readers' errors name it
+#[cfg(any(feature = "gpu", feature = "msl"))]
+fn shader_meaning_of(p: &Provenance) -> Provenance {
+    Provenance::new(meaning_id(StoredForm::ShaderText, p))
+}
+
+/// This build's meaning identifier of shader text (what every whole shader text carries)
+fn shader_meaning() -> [u8; 32] {
+    meaning_id(StoredForm::ShaderText, &Provenance::sdf())
+}
+
 fn tag_line(p: &Provenance) -> String {
-    format!("// {KEY}={}", p.hex())
+    format!("// {}", p.tagged_for(StoredForm::ShaderText))
 }
 
 /// A GLSL version line: `#version <digits>` with an optional lower-case profile word
@@ -89,7 +103,7 @@ fn assert_whole_tagged(what: &str, text: &str) {
     );
     assert_eq!(
         provenance::from_bytes(text.as_bytes()).ok().map(|s| s.id),
-        Some(Provenance::sdf().semantics_id),
+        Some(shader_meaning()),
         "{what}: provenance::from_bytes does not read the identifier"
     );
 }
@@ -97,7 +111,7 @@ fn assert_whole_tagged(what: &str, text: &str) {
 /// `text` without the tag lines of its leading block (as another program would write it)
 #[cfg(any(feature = "gpu", feature = "glsl"))]
 fn untagged(text: &str) -> String {
-    let key = format!("// {KEY}=");
+    let keys = [format!("// {MEANING_KEY}="), format!("// {KEY}=")];
     let skip = header_lines(text);
     let mut out = String::new();
     let mut in_block = true;
@@ -105,7 +119,7 @@ fn untagged(text: &str) -> String {
         if i >= skip && in_block && !line.starts_with("//") {
             in_block = false;
         }
-        if i >= skip && in_block && line.starts_with(&key) {
+        if i >= skip && in_block && keys.iter().any(|k| line.starts_with(k.as_str())) {
             continue;
         }
         out.push_str(line);
@@ -232,7 +246,7 @@ fn whole_glsl_is_read_by_the_shader_text_branch() {
     ));
     assert_eq!(
         provenance::from_bytes(whole.as_bytes()).ok().map(|s| s.id),
-        Some(Provenance::sdf().semantics_id)
+        Some(shader_meaning())
     );
 }
 
@@ -297,7 +311,7 @@ fn obj_comments_are_not_a_glsl_header() {
         let tagged = format!("{first}\n{sdf}\nvoid main() {{}}\n");
         assert_eq!(
             provenance::from_bytes(tagged.as_bytes()).ok().map(|s| s.id),
-            Some(Provenance::sdf().semantics_id),
+            Some(shader_meaning()),
             "{first:?}"
         );
     }
@@ -352,7 +366,7 @@ fn the_nanite_header_form_is_read_as_this_crates() {
         provenance::from_bytes(nanite_form.as_bytes())
             .ok()
             .map(|s| s.id),
-        Some(Provenance::sdf().semantics_id)
+        Some(shader_meaning())
     );
     assert_eq!(
         MslShader::from_wgsl(&nanite_form).unwrap().semantics(),
@@ -509,8 +523,8 @@ fn msl_from_wgsl_checks_the_identifier() {
     }
     match MslShader::from_wgsl(&c.other) {
         Err(MslError::SemanticsMismatch { stored, expected }) => {
-            assert_eq!(stored, Provenance::new([0x5a; 32]));
-            assert_eq!(expected, Provenance::sdf());
+            assert_eq!(stored, shader_meaning_of(&Provenance::new([0x5a; 32])));
+            assert_eq!(expected, shader_meaning_of(&Provenance::sdf()));
         }
         other => panic!("another identifier: {other:?}"),
     }
@@ -524,7 +538,7 @@ fn msl_from_wgsl_checks_the_identifier() {
     assert_whole_tagged("MSL of this crate's WGSL", &msl.source);
     let (msl, _) = MslShader::from_wgsl(&c.untagged).unwrap().into_parts();
     assert!(
-        !msl.source.contains(KEY),
+        !msl.source.contains(KEY) && !msl.source.contains(MEANING_KEY),
         "MSL of unstamped WGSL claims an identifier:\n{}",
         msl.source
     );
@@ -552,8 +566,8 @@ fn gpu_readers_refuse_without_a_gpu() {
     let c = cases(&wgsl);
     let mismatch = |r: Result<_, GpuError>| match r {
         Err(GpuError::SemanticsMismatch { stored, expected }) => {
-            assert_eq!(stored, Provenance::new([0x5a; 32]));
-            assert_eq!(expected, Provenance::sdf());
+            assert_eq!(stored, shader_meaning_of(&Provenance::new([0x5a; 32])));
+            assert_eq!(expected, shader_meaning_of(&Provenance::sdf()));
         }
         Err(e) => panic!("another identifier: {e}"),
         Ok(()) => panic!("another identifier was accepted"),
@@ -756,6 +770,8 @@ const FRAGMENT: &str = "fragment: pasted into a host file or graph, not compiled
 const NOT_SHADER: &str = "not shader text";
 
 const OTHER: &[(&str, &str, &str)] = &[
+    // this build's semantics identifier as 64 hex digits (the Python binding's semantics_id())
+    ("src/python/functions.rs", "semantics_id", NOT_SHADER),
     ("src/compiled/wgsl/transpiler.rs", "source", FRAGMENT),
     (
         "src/compiled/wgsl/transpiler.rs",
@@ -1218,8 +1234,7 @@ fn whole_or_fragment_follows_from_the_entry_point() {
             ));
         }
         if l == "WHOLE"
-            && provenance::from_bytes(text.as_bytes()).ok().map(|s| s.id)
-                != Some(Provenance::sdf().semantics_id)
+            && provenance::from_bytes(text.as_bytes()).ok().map(|s| s.id) != Some(shader_meaning())
         {
             problems.push(format!(
                 "{file}: `{name}` is WHOLE but its output does not carry the identifier"

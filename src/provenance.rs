@@ -161,9 +161,57 @@ pub enum StoredForm {
     ShaderText,
     /// A sidecar file `<path>.semantics` (raw volume data, `.splat`)
     Sidecar,
+    /// The mesh codec's buffers (the version 2 header)
+    MeshCodec,
+    /// The stamped meshoptimizer buffer (`ASMO`)
+    MeshoptStamp,
+    /// The ASP I-packet (the first 32 coefficient entries)
+    AspPacket,
+    /// The encoded SDF volume of the codec bridge (the flagged header field)
+    EncodedVolume,
+    /// The baked bytecode of the asset baker (`ASDFBC02`, `examples/bake_assets`)
+    BakedBytecode,
 }
 
 impl StoredForm {
+    /// Every stored form, in declaration order (a unit test matches each exhaustively, so a form
+    /// added to the enum and not here fails the build of the tests)
+    pub const ALL: [Self; 33] = [
+        Self::StlBinary,
+        Self::StlAscii,
+        Self::ThreeMf,
+        Self::FbxBinary,
+        Self::FbxAscii,
+        Self::ObjText,
+        Self::Ply,
+        Self::Glb,
+        Self::Gltf,
+        Self::JsonDocument,
+        Self::Usd,
+        Self::Step,
+        Self::Iges,
+        Self::Alembic,
+        Self::Asdf,
+        Self::Abm,
+        Self::Nanite,
+        Self::Ue5Mesh,
+        Self::UnityMesh,
+        Self::Neural,
+        Self::Vdb,
+        Self::Svo,
+        Self::Vox,
+        Self::Dds,
+        Self::Png,
+        Self::Jpeg,
+        Self::ShaderText,
+        Self::Sidecar,
+        Self::MeshCodec,
+        Self::MeshoptStamp,
+        Self::AspPacket,
+        Self::EncodedVolume,
+        Self::BakedBytecode,
+    ];
+
     /// The form's name in the meaning identifier
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -196,6 +244,11 @@ impl StoredForm {
             Self::Jpeg => "jpeg",
             Self::ShaderText => "shader-text",
             Self::Sidecar => "sidecar",
+            Self::MeshCodec => "mesh-codec",
+            Self::MeshoptStamp => "meshopt-stamp",
+            Self::AspPacket => "asp-i-packet",
+            Self::EncodedVolume => "encoded-volume",
+            Self::BakedBytecode => "baked-bytecode",
         }
     }
 
@@ -207,27 +260,15 @@ impl StoredForm {
         1
     }
 
-    /// Whether this build's writers store the meaning identifier for this form (otherwise they
-    /// still store the raw semantics identifier, and a raw identifier is this form's current
-    /// generation)
+    /// Whether this build's writers store the meaning identifier for this form: every form does
+    /// (a raw semantics identifier read back is an earlier file, never this build's)
     #[must_use]
+    #[allow(
+        clippy::unused_self,
+        reason = "public API kept: every form answers true since every writer stores a meaning identifier"
+    )]
     pub const fn writes_meaning(self) -> bool {
-        matches!(
-            self,
-            Self::StlBinary
-                | Self::StlAscii
-                | Self::ThreeMf
-                | Self::FbxBinary
-                | Self::FbxAscii
-                | Self::ObjText
-                | Self::Ply
-                | Self::Glb
-                | Self::Gltf
-                | Self::Usd
-                | Self::Step
-                | Self::Iges
-                | Self::Alembic
-        )
+        true
     }
 }
 
@@ -439,44 +480,23 @@ impl Provenance {
         s
     }
 
-    /// `alice:semantics_id=<64 hex>`, the form the text formats stored before meaning identifiers
-    #[must_use]
-    pub fn tagged(&self) -> String {
-        format!("{KEY}={}", self.hex())
-    }
-
-    /// The text a writer of `form` stores: `alice:meaning_id=<64 hex>` of [`meaning_id`] for a form
-    /// that stores meaning identifiers, [`Self::tagged`] for one that does not yet
+    /// The text a writer of `form` stores: `alice:meaning_id=<64 hex>` of [`meaning_id`]
     #[must_use]
     pub fn tagged_for(&self, form: StoredForm) -> String {
-        if form.writes_meaning() {
-            format!("{MEANING_KEY}={}", hex_of(&meaning_id(form, self)))
-        } else {
-            self.tagged()
-        }
+        format!("{MEANING_KEY}={}", hex_of(&meaning_id(form, self)))
     }
 
     /// The key and the 64 hex digits a writer of `form` stores where a format keeps a name and a
-    /// value apart (the 3MF metadata): ([`MEANING_KEY`], [`meaning_id`]) for a form that stores
-    /// meaning identifiers, ([`KEY`], the raw identifier) for one that does not yet
+    /// value apart (the 3MF metadata, a JSON field): ([`MEANING_KEY`], [`meaning_id`])
     #[must_use]
     pub fn named_for(&self, form: StoredForm) -> (&'static str, String) {
-        if form.writes_meaning() {
-            (MEANING_KEY, hex_of(&meaning_id(form, self)))
-        } else {
-            (KEY, self.hex())
-        }
+        (MEANING_KEY, hex_of(&meaning_id(form, self)))
     }
 
-    /// The 32 bytes a binary writer of `form` stores in its slot: [`meaning_id`] for a form that
-    /// stores meaning identifiers, the raw identifier for one that does not yet
+    /// The 32 bytes a binary writer of `form` stores in its slot: [`meaning_id`]
     #[must_use]
     pub fn slot_for(&self, form: StoredForm) -> [u8; 32] {
-        if form.writes_meaning() {
-            meaning_id(form, self)
-        } else {
-            self.semantics_id
-        }
+        meaning_id(form, self)
     }
 
     /// The 80-byte binary STL header carrying this identifier
@@ -659,7 +679,7 @@ pub fn read(path: impl AsRef<Path>) -> Result<Stored, ProvenanceError> {
             });
             if !plain || find(&text, CONTENT_SHA256_KEY.as_bytes()).is_some() {
                 match bound_sidecar_id(path, &bytes) {
-                    Ok(Some(id)) => Ok(Found::slot(id).of(StoredForm::Sidecar)),
+                    Ok(Some(stored)) => Ok(stored),
                     Ok(None) => Err(ProvenanceError::Unreadable(
                         "sidecar: removed while reading".into(),
                     )),
@@ -784,10 +804,10 @@ fn found_in(bytes: &[u8]) -> Result<(StoredForm, Found), ProvenanceError> {
         return Ok((StoredForm::Asdf, Found::slot(id)));
     }
     if bytes.starts_with(PNG_SIGNATURE) {
-        return png_tagged(bytes).map(|p| (StoredForm::Png, Found::key(p)));
+        return png_found(bytes).map(|f| (StoredForm::Png, f));
     }
     if bytes.starts_with(JPEG_SOI) {
-        return jpeg_tagged(bytes).map(|p| (StoredForm::Jpeg, Found::key(p)));
+        return jpeg_found(bytes).map(|f| (StoredForm::Jpeg, f));
     }
     if bytes.starts_with(b"DDS ") {
         // DDS: the identifier block sits in the header's reserved dwords (bytes 32..76)
@@ -1265,16 +1285,13 @@ impl<T> Checked<T> {
     }
 }
 
-/// The verdict of this crate's own loaders on a stored identifier (`None`: the format version
-/// predates identifiers)
-///
-/// # Errors
-///
-/// [`crate::io::IoError::SemanticsMismatch`] for an identifier that is neither this crate's nor
-/// one it still reproduces; with `allow_unpinned == false`, [`crate::io::IoError::Unpinned`] for
-/// data without an identifier.
+/// The verdict of a loader of this crate on the identifier its form stores: `None` (the form's
+/// earlier version, which stored none) is [`StoredSemantics::Unpinned`] when `allow_unpinned`,
+/// [`crate::io::IoError::Unpinned`] otherwise; an identifier is judged by [`Stored::judge`] (a
+/// meaning identifier of this build is `Current`, a raw identifier of an earlier file is
+/// `VerifiedPrevious` when it is this crate's or a listed earlier one, anything else is refused)
 pub(crate) fn sdf_load_verdict(
-    stored: Option<[u8; 32]>,
+    stored: Option<Stored>,
     format: &'static str,
     allow_unpinned: bool,
 ) -> Result<StoredSemantics, crate::io::IoError> {
@@ -1289,7 +1306,7 @@ pub(crate) fn sdf_load_verdict(
 /// [`sdf_load_verdict`] against the earlier identifiers `previous` instead of G6's list, so the
 /// mapping of a reproduced earlier identifier stays tested while the list is empty
 fn sdf_load_verdict_against(
-    stored: Option<[u8; 32]>,
+    stored: Option<Stored>,
     format: &'static str,
     allow_unpinned: bool,
     previous: &[[u8; 32]],
@@ -1297,17 +1314,114 @@ fn sdf_load_verdict_against(
     match stored {
         None if allow_unpinned => Ok(StoredSemantics::Unpinned),
         None => Err(crate::io::IoError::Unpinned { format }),
-        Some(id) => match crate::semantics::check_sdf_semantics_against(&id, previous) {
-            alice_det_math::SemanticsCheck::Verified => Ok(StoredSemantics::Current),
-            alice_det_math::SemanticsCheck::VerifiedPrevious(p) => {
-                Ok(StoredSemantics::VerifiedPrevious(Provenance::new(p)))
-            }
-            _ => Err(crate::io::IoError::SemanticsMismatch {
-                format,
-                stored: Provenance::new(id),
-                expected: Provenance::sdf(),
-            }),
-        },
+        Some(s) => stored_verdict_against(&s, format, previous),
+    }
+}
+
+/// The identifier a JSON document of `form` holds at its top level, removed from `object`:
+/// [`MEANING_KEY`] (this build's writers), or the earlier [`KEY`] (a raw identifier); `None` when
+/// it holds neither, an error when it holds both or a value that is not 64 hex digits
+pub(crate) fn take_json_id(
+    object: &mut serde_json::Map<String, serde_json::Value>,
+    form: StoredForm,
+    format: &'static str,
+) -> Result<Option<Stored>, crate::io::IoError> {
+    let read = |v: serde_json::Value, key: &str| -> Result<[u8; 32], crate::io::IoError> {
+        match v {
+            serde_json::Value::String(hex) => Provenance::from_hex(&hex)
+                .map(|p| p.semantics_id)
+                .ok_or_else(|| {
+                    crate::io::IoError::InvalidFormat(format!(
+                        "{format}: {key} is not 64 hex digits"
+                    ))
+                }),
+            _ => Err(crate::io::IoError::InvalidFormat(format!(
+                "{format}: {key} is not a string"
+            ))),
+        }
+    };
+    match (object.remove(MEANING_KEY), object.remove(KEY)) {
+        (None, None) => Ok(None),
+        (Some(m), None) => Ok(Some(Stored::under_key(form, read(m, MEANING_KEY)?, true))),
+        (None, Some(r)) => Ok(Some(Stored::under_key(form, read(r, KEY)?, false))),
+        (Some(_), Some(_)) => Err(crate::io::IoError::InvalidFormat(format!(
+            "{format}: both {MEANING_KEY} and {KEY} (read as neither)"
+        ))),
+    }
+}
+
+/// The identifier of a JSON document of `form` whose struct holds the two fields: `meaning`
+/// (under [`MEANING_KEY`]) or `raw` (under the earlier [`KEY`]); `None` when neither, an error when
+/// both or a value that is not 64 hex digits
+pub(crate) fn json_field_id(
+    meaning: Option<&str>,
+    raw: Option<&str>,
+    form: StoredForm,
+    format: &'static str,
+) -> Result<Option<Stored>, crate::io::IoError> {
+    let read = |hex: &str, key: &str| {
+        Provenance::from_hex(hex)
+            .map(|p| p.semantics_id)
+            .ok_or_else(|| {
+                crate::io::IoError::InvalidFormat(format!("{format}: {key} is not 64 hex digits"))
+            })
+    };
+    match (meaning, raw) {
+        (None, None) => Ok(None),
+        (Some(m), None) => Ok(Some(Stored::under_key(form, read(m, MEANING_KEY)?, true))),
+        (None, Some(r)) => Ok(Some(Stored::under_key(form, read(r, KEY)?, false))),
+        (Some(_), Some(_)) => Err(crate::io::IoError::InvalidFormat(format!(
+            "{format}: both {MEANING_KEY} and {KEY} (read as neither)"
+        ))),
+    }
+}
+
+/// The form and the two meaning identifiers of [`crate::io::IoError::MeaningMismatch`] as
+/// identifiers (it names them in hex), for the codecs whose errors carry identifiers; `None` for
+/// any other error
+pub(crate) fn meaning_mismatch_ids(
+    e: &crate::io::IoError,
+) -> Option<(StoredForm, Provenance, Provenance)> {
+    match e {
+        crate::io::IoError::MeaningMismatch {
+            form,
+            stored,
+            expected,
+            ..
+        } => Some((
+            *form,
+            Provenance::from_hex(stored)?,
+            Provenance::from_hex(expected)?,
+        )),
+        _ => None,
+    }
+}
+
+impl Stored {
+    /// The 32 bytes of a binary slot of `form` (a meaning identifier, or a raw one in an earlier
+    /// file)
+    #[must_use]
+    pub const fn in_slot(form: StoredForm, id: [u8; 32]) -> Self {
+        Self {
+            form,
+            id,
+            via: StoredVia::Slot,
+        }
+    }
+
+    /// An identifier read under a text key of `form`: [`MEANING_KEY`] (`meaning`) or the earlier
+    /// [`KEY`]
+    #[must_use]
+    pub const fn under_key(form: StoredForm, id: [u8; 32], meaning: bool) -> Self {
+        Self {
+            form,
+            id,
+            via: if meaning {
+                StoredVia::MeaningKey
+            } else {
+                StoredVia::SemanticsKey
+            },
+        }
     }
 }
 
@@ -1442,7 +1556,7 @@ pub(crate) fn dds_reserved(p: &Provenance) -> [u32; 11] {
     let mut r = [0u32; 11];
     r[0] = u32::from_le_bytes(*DDS_TAG);
     r[1] = 1;
-    for (i, c) in p.semantics_id.chunks_exact(4).enumerate() {
+    for (i, c) in p.slot_for(StoredForm::Dds).chunks_exact(4).enumerate() {
         r[2 + i] = u32::from_le_bytes([c[0], c[1], c[2], c[3]]);
     }
     r
@@ -1456,13 +1570,17 @@ pub fn sidecar_path(path: &Path) -> std::path::PathBuf {
     std::path::PathBuf::from(name)
 }
 
-/// Writes the sidecar `<path>.semantics` (`alice:semantics_id=<64 hex>` and a newline)
+/// Writes the sidecar `<path>.semantics` (`alice:meaning_id=<64 hex>` and a newline)
 #[cfg(feature = "volume")]
 pub(crate) fn write_sidecar(path: &Path, p: &Provenance) -> std::io::Result<()> {
-    std::fs::write(sidecar_path(path), format!("{}\n", p.tagged()))
+    std::fs::write(
+        sidecar_path(path),
+        format!("{}\n", p.tagged_for(StoredForm::Sidecar)),
+    )
 }
 
-/// The extensions whose sidecar is the plain `alice:semantics_id=` line
+/// The extensions whose sidecar is the plain identifier line (`alice:meaning_id=`, or the earlier
+/// `alice:semantics_id=`)
 ///
 /// These are the raw volume exports (`volume::export_raw`, `volume::export_dds_3d`); every other
 /// sidecar is read in the bound form with the file's SHA-256.
@@ -1483,7 +1601,10 @@ pub(crate) fn write_bound_sidecar(
     let hex = Provenance::new(Sha256::digest(bytes).into()).hex();
     std::fs::write(
         sidecar_path(path),
-        format!("{}\n{CONTENT_SHA256_KEY}={hex}\n", p.tagged()),
+        format!(
+            "{}\n{CONTENT_SHA256_KEY}={hex}\n",
+            p.tagged_for(StoredForm::Sidecar)
+        ),
     )
 }
 
@@ -1491,7 +1612,7 @@ pub(crate) fn write_bound_sidecar(
 /// there is no sidecar; a sidecar that is not exactly the two lines of [`write_bound_sidecar`], or
 /// whose SHA-256 is not the SHA-256 of `bytes` (the file was rewritten without it), is an error,
 /// never "no identifier"
-pub(crate) fn bound_sidecar_id(path: &Path, bytes: &[u8]) -> Result<Option<[u8; 32]>, String> {
+pub(crate) fn bound_sidecar_id(path: &Path, bytes: &[u8]) -> Result<Option<Stored>, String> {
     use sha2::{Digest, Sha256};
     let sidecar = sidecar_path(path);
     let text = match std::fs::read(&sidecar) {
@@ -1510,13 +1631,15 @@ pub(crate) fn bound_sidecar_id(path: &Path, bytes: &[u8]) -> Result<Option<[u8; 
         }
         Some(out)
     };
-    let (mut id, mut sha) = (None, None);
+    let (mut id, mut raw, mut sha) = (None, None, None);
     for line in text.lines() {
         let (key, value) = line
             .split_once('=')
             .ok_or_else(|| format!("sidecar line {line:?} is not key=value"))?;
-        let slot = if key == KEY {
+        let slot = if key == MEANING_KEY {
             &mut id
+        } else if key == KEY {
+            &mut raw
         } else if key == CONTENT_SHA256_KEY {
             &mut sha
         } else {
@@ -1527,14 +1650,20 @@ pub(crate) fn bound_sidecar_id(path: &Path, bytes: &[u8]) -> Result<Option<[u8; 
         }
         *slot = Some(hex32(value).ok_or_else(|| format!("sidecar {key} is not 64 hex"))?);
     }
-    let id = id.ok_or_else(|| format!("sidecar has no {KEY}"))?;
+    // the meaning identifier, or (an earlier sidecar) the raw one; both is never read as either
+    let stored = match (id, raw) {
+        (Some(m), None) => Stored::under_key(StoredForm::Sidecar, m, true),
+        (None, Some(r)) => Stored::under_key(StoredForm::Sidecar, r, false),
+        (Some(_), Some(_)) => return Err(format!("sidecar has both {MEANING_KEY} and {KEY}")),
+        (None, None) => return Err(format!("sidecar has no {MEANING_KEY}")),
+    };
     let sha = sha.ok_or_else(|| format!("sidecar has no {CONTENT_SHA256_KEY}"))?;
     if sha[..] != Sha256::digest(bytes)[..] {
         return Err(format!(
             "the file's SHA-256 is not the sidecar's {CONTENT_SHA256_KEY} (the file was rewritten after its sidecar)"
         ));
     }
-    Ok(Some(id))
+    Ok(Some(stored))
 }
 
 /// The name of an image format in errors, from its signature (`PNG`, `JPEG`, else `image`)
@@ -1582,7 +1711,7 @@ fn png_crc(parts: &[&[u8]]) -> u32 {
 /// identifier is unreadable rather than a different identifier. The key only counts in `tEXt`
 /// (uncompressed): the keyword in a `zTXt` or `iTXt` chunk, a second key chunk, or a text that is
 /// not exactly 64 hex digits is unreadable.
-fn png_tagged(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
+fn png_tagged(bytes: &[u8], key: &str) -> Result<Option<Provenance>, ProvenanceError> {
     let bad = |what: &str| ProvenanceError::Unreadable(format!("PNG: {what}"));
     let mut found = None;
     let mut at = PNG_SIGNATURE.len();
@@ -1598,30 +1727,30 @@ fn png_tagged(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
             .ok_or_else(|| bad("a chunk runs past the end of the file"))?;
         let data = &bytes[at + 8..data_end];
         let keyword = data.split(|&b| b == 0).next().unwrap_or(data);
-        if keyword == KEY.as_bytes() {
+        if keyword == key.as_bytes() {
             if kind != b"tEXt" {
                 return Err(bad(&format!(
-                    "{KEY} is in a {} chunk (only tEXt is read)",
+                    "{key} is in a {} chunk (only tEXt is read)",
                     String::from_utf8_lossy(kind)
                 )));
             }
             let stored = &bytes[data_end..data_end + 4];
             if png_crc(&[kind, data]).to_be_bytes() != stored {
-                return Err(bad(&format!("the CRC of the {KEY} chunk does not match")));
+                return Err(bad(&format!("the CRC of the {key} chunk does not match")));
             }
             let p = data
-                .get(KEY.len() + 1..)
+                .get(key.len() + 1..)
                 .and_then(|text| std::str::from_utf8(text).ok())
                 .filter(|t| t.len() == 64)
                 .and_then(Provenance::from_hex)
-                .ok_or_else(|| bad(&format!("{KEY} is not 64 hex digits")))?;
+                .ok_or_else(|| bad(&format!("{key} is not 64 hex digits")))?;
             if found.replace(p).is_some() {
-                return Err(bad(&format!("{KEY} appears twice")));
+                return Err(bad(&format!("{key} appears twice")));
             }
         }
         at = data_end + 4;
         if kind == b"IEND" {
-            return found.ok_or(ProvenanceError::Missing { format: "PNG" });
+            return Ok(found);
         }
     }
 }
@@ -1633,7 +1762,7 @@ fn png_tagged(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
 /// bytes are entropy-coded data); a segment whose length runs past the end, a file that ends
 /// before the start of scan, a second key comment, or a comment that starts with the key but is
 /// not exactly the tagged form is unreadable.
-fn jpeg_tagged(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
+fn jpeg_tagged(bytes: &[u8], key: &str) -> Result<Option<Provenance>, ProvenanceError> {
     let bad = |what: &str| ProvenanceError::Unreadable(format!("JPEG: {what}"));
     let mut found = None;
     let mut at = JPEG_SOI.len();
@@ -1650,7 +1779,7 @@ fn jpeg_tagged(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
             .ok_or_else(|| bad("the file ends before the start of scan"))?;
         match marker {
             // the start of scan: the header segments end here
-            0xDA => return found.ok_or(ProvenanceError::Missing { format: "JPEG" }),
+            0xDA => return Ok(found),
             // markers without a length (TEM, RST0-7)
             0x01 | 0xD0..=0xD7 => {
                 at += 2;
@@ -1667,20 +1796,40 @@ fn jpeg_tagged(bytes: &[u8]) -> Result<Provenance, ProvenanceError> {
         if len < 2 || end > bytes.len() {
             return Err(bad("a segment runs past the end of the file"));
         }
-        if marker == 0xFE && bytes[at + 4..end].starts_with(KEY.as_bytes()) {
+        if marker == 0xFE && bytes[at + 4..end].starts_with(key.as_bytes()) {
             let p = std::str::from_utf8(&bytes[at + 4..end])
                 .ok()
-                .and_then(|t| t.strip_prefix(KEY))
+                .and_then(|t| t.strip_prefix(key))
                 .and_then(|t| t.strip_prefix('='))
                 .filter(|t| t.len() == 64)
                 .and_then(Provenance::from_hex)
-                .ok_or_else(|| bad(&format!("the {KEY} comment is not {KEY}=<64 hex digits>")))?;
+                .ok_or_else(|| bad(&format!("the {key} comment is not {key}=<64 hex digits>")))?;
             if found.replace(p).is_some() {
-                return Err(bad(&format!("{KEY} appears twice")));
+                return Err(bad(&format!("{key} appears twice")));
             }
         }
         at = end;
     }
+}
+
+/// The identifier of a PNG file: the `tEXt` chunk of [`MEANING_KEY`], or the earlier [`KEY`];
+/// both is unreadable, never read as either
+fn png_found(bytes: &[u8]) -> Result<Found, ProvenanceError> {
+    one_of_both_keys(
+        png_tagged(bytes, MEANING_KEY)?,
+        png_tagged(bytes, KEY)?,
+        "PNG",
+    )
+}
+
+/// The identifier of a JPEG file: the comment segment of [`MEANING_KEY`], or the earlier [`KEY`];
+/// both is unreadable, never read as either
+fn jpeg_found(bytes: &[u8]) -> Result<Found, ProvenanceError> {
+    one_of_both_keys(
+        jpeg_tagged(bytes, MEANING_KEY)?,
+        jpeg_tagged(bytes, KEY)?,
+        "JPEG",
+    )
 }
 
 /// The position of the first occurrence of `needle` in `haystack`
@@ -1791,12 +1940,14 @@ fn shader_leading_block(bytes: &[u8]) -> std::ops::Range<usize> {
 /// ignored.
 fn shader_text_tag(bytes: &[u8]) -> Result<Found, ProvenanceError> {
     let block = shader_leading_block(bytes);
-    if find(&bytes[..block.start], KEY.as_bytes()).is_some()
-        || find(&bytes[block.end..], KEY.as_bytes()).is_some()
-    {
-        return Err(ProvenanceError::Unreadable(format!(
-            "shader text: {KEY} outside the leading // block"
-        )));
+    for key in [MEANING_KEY, KEY] {
+        if find(&bytes[..block.start], key.as_bytes()).is_some()
+            || find(&bytes[block.end..], key.as_bytes()).is_some()
+        {
+            return Err(ProvenanceError::Unreadable(format!(
+                "shader text: {key} outside the leading // block"
+            )));
+        }
     }
     tagged_in(&bytes[block], "shader text")
 }
@@ -1811,7 +1962,7 @@ pub(crate) fn tagged_shader(body: &str) -> String {
 /// `body` under the identifier `provenance` (shader text derived from text that carried it)
 #[cfg(any(feature = "gpu", feature = "glsl", feature = "hlsl"))]
 pub(crate) fn tagged_shader_with(provenance: &Provenance, body: &str) -> String {
-    let tag = format!("// {KEY}={}\n", provenance.hex());
+    let tag = format!("// {}\n", provenance.tagged_for(StoredForm::ShaderText));
     match glsl_version_prefix_len(body.as_bytes()) {
         // a version line that ends the text has no line end of its own
         Some(n) if !body[..n].ends_with('\n') => format!("{}\n{tag}{}", &body[..n], &body[n..]),
@@ -1826,7 +1977,8 @@ pub(crate) fn tagged_shader_with(provenance: &Provenance, body: &str) -> String 
 pub(crate) enum ShaderRefusal {
     /// No identifier in the leading `//` block, and the reader is a `*_pinned` one
     Unpinned,
-    /// An identifier that is neither this crate's nor one it still reproduces
+    /// An identifier that is neither this crate's nor one it still reproduces: the stored one and
+    /// the expected one (meaning identifiers of shader text, or raw ones for text written before)
     Mismatch {
         stored: Provenance,
         expected: Provenance,
@@ -1857,7 +2009,12 @@ pub(crate) fn shader_text_verdict(
         crate::io::IoError::SemanticsMismatch {
             stored, expected, ..
         } => ShaderRefusal::Mismatch { stored, expected },
-        other => ShaderRefusal::Invalid(other.to_string()),
+        // the meaning identifier of text written under another identifier, and the one this
+        // build's writers store (both named, as for a raw identifier)
+        ref other => match meaning_mismatch_ids(other) {
+            Some((_, stored, expected)) => ShaderRefusal::Mismatch { stored, expected },
+            None => ShaderRefusal::Invalid(other.to_string()),
+        },
     })
 }
 
@@ -2111,6 +2268,53 @@ fn zip_entry<'a>(bytes: &'a [u8], name: &str) -> Result<Option<&'a [u8]>, Proven
 
 #[cfg(test)]
 mod tests {
+    /// [`StoredForm::ALL`] holds every variant once: the match below has no wildcard, so a variant
+    /// added to the enum fails to compile here until it is placed, and each is found in `ALL`
+    #[test]
+    fn all_stored_forms_are_listed_once() {
+        use super::StoredForm as F;
+        let index = |f: F| -> usize {
+            match f {
+                F::StlBinary => 0,
+                F::StlAscii => 1,
+                F::ThreeMf => 2,
+                F::FbxBinary => 3,
+                F::FbxAscii => 4,
+                F::ObjText => 5,
+                F::Ply => 6,
+                F::Glb => 7,
+                F::Gltf => 8,
+                F::JsonDocument => 9,
+                F::Usd => 10,
+                F::Step => 11,
+                F::Iges => 12,
+                F::Alembic => 13,
+                F::Asdf => 14,
+                F::Abm => 15,
+                F::Nanite => 16,
+                F::Ue5Mesh => 17,
+                F::UnityMesh => 18,
+                F::Neural => 19,
+                F::Vdb => 20,
+                F::Svo => 21,
+                F::Vox => 22,
+                F::Dds => 23,
+                F::Png => 24,
+                F::Jpeg => 25,
+                F::ShaderText => 26,
+                F::Sidecar => 27,
+                F::MeshCodec => 28,
+                F::MeshoptStamp => 29,
+                F::AspPacket => 30,
+                F::EncodedVolume => 31,
+                F::BakedBytecode => 32,
+            }
+        };
+        for (i, f) in F::ALL.iter().enumerate() {
+            assert_eq!(index(*f), i, "{f:?}");
+        }
+    }
+
     use super::*;
 
     /// The importers' verdicts map a reproduced earlier identifier to `VerifiedPrevious` and every
@@ -2121,11 +2325,27 @@ mod tests {
         let earlier = [0x6e; 32];
         let other = [0x5a; 32];
         assert!(crate::PREVIOUS_SDF_SEMANTICS_IDS.is_empty());
+        // this build's meaning identifier in the slot is current
+        assert_eq!(
+            sdf_load_verdict_against(
+                Some(Stored::in_slot(
+                    StoredForm::Ply,
+                    meaning_id(StoredForm::Ply, &Provenance::sdf())
+                )),
+                "T",
+                false,
+                &[]
+            )
+            .unwrap(),
+            StoredSemantics::Current
+        );
+        // a raw identifier in the slot (a file written before the form stored meaning
+        // identifiers): this build's own is the previous generation, never current
         for (id, previous, want) in [
             (
                 crate::SDF_SEMANTICS_ID,
                 &[][..],
-                Some(StoredSemantics::Current),
+                Some(StoredSemantics::VerifiedPrevious(Provenance::sdf())),
             ),
             (
                 earlier,
@@ -2135,14 +2355,23 @@ mod tests {
             (earlier, &[][..], None),
             (other, &[earlier][..], None),
         ] {
-            let got = sdf_load_verdict_against(Some(id), "T", false, previous);
+            let got = sdf_load_verdict_against(
+                Some(Stored::in_slot(StoredForm::Ply, id)),
+                "T",
+                false,
+                previous,
+            );
             let read = got.is_ok();
             match want {
                 Some(w) => assert_eq!(got.unwrap(), w),
+                // read as a meaning identifier of the form it is not: refused naming the form
                 None => assert!(matches!(
                     got,
-                    Err(crate::io::IoError::SemanticsMismatch { format: "T", stored, expected })
-                        if stored == Provenance::new(id) && expected == Provenance::sdf()
+                    Err(crate::io::IoError::MeaningMismatch {
+                        format: "T",
+                        form: StoredForm::Ply,
+                        ..
+                    })
                 )),
             }
             // the injected rule is the public one: the same verdict as check_sdf_semantics
@@ -2262,10 +2491,14 @@ mod tests {
     #[cfg(feature = "gpu")]
     #[test]
     fn from_bytes_and_the_shader_readers_agree_on_glsl_like_text() {
-        let ours = format!("// {KEY}={}", Provenance::sdf().hex());
+        // this build's text carries the meaning identifier; another program's the earlier key
+        let ours = format!(
+            "// {}",
+            Provenance::sdf().tagged_for(StoredForm::ShaderText)
+        );
         let other = format!("// {KEY}={}", Provenance::new([0x5a; 32]).hex());
         let stored = |bytes: &[u8]| match from_bytes(bytes) {
-            Ok(p) if p.id == Provenance::sdf().semantics_id => "current",
+            Ok(p) if p.is_written_under(&Provenance::sdf()) => "current",
             Ok(_) => "mismatch",
             Err(ProvenanceError::Missing { .. }) => "unpinned",
             Err(ProvenanceError::Unreadable(_)) => "invalid",
@@ -2338,7 +2571,10 @@ mod tests {
     #[cfg(any(feature = "gpu", feature = "glsl", feature = "hlsl"))]
     #[test]
     fn the_tag_goes_after_a_version_line_with_its_line_end() {
-        let tag = format!("// {KEY}={}", Provenance::sdf().hex());
+        let tag = format!(
+            "// {}",
+            Provenance::sdf().tagged_for(StoredForm::ShaderText)
+        );
         assert_eq!(
             tagged_shader("#version 450"),
             format!("#version 450\n{tag}\n")
@@ -2360,7 +2596,7 @@ mod tests {
                 from_bytes(tagged_shader(body).as_bytes())
                     .ok()
                     .map(|s| s.id),
-                Some(Provenance::sdf().semantics_id),
+                Some(meaning_id(StoredForm::ShaderText, &Provenance::sdf())),
                 "{body:?}"
             );
         }
@@ -2416,12 +2652,13 @@ mod tests {
 
     #[test]
     fn two_different_tags_are_refused() {
-        let text = format!("{} {}", id(1).tagged(), id(2).tagged());
+        let raw = |p: Provenance| format!("{KEY}={}", p.hex());
+        let text = format!("{} {}", raw(id(1)), raw(id(2)));
         assert!(matches!(
             tagged_in(text.as_bytes(), "t"),
             Err(ProvenanceError::Unreadable(_))
         ));
-        let same = format!("{} {}", id(1).tagged(), id(1).tagged());
+        let same = format!("{} {}", raw(id(1)), raw(id(1)));
         assert_eq!(tagged_in(same.as_bytes(), "t").unwrap(), Found::key(id(1)));
     }
 

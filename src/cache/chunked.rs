@@ -371,7 +371,11 @@ impl ChunkedMeshCache {
         }
         let mesh = match load_abm(&path) {
             Ok(mesh) => mesh,
-            Err(IoError::Unpinned { .. } | IoError::SemanticsMismatch { .. }) => return Ok(None),
+            Err(
+                IoError::Unpinned { .. }
+                | IoError::SemanticsMismatch { .. }
+                | IoError::MeaningMismatch { .. },
+            ) => return Ok(None),
             Err(e) => return Err(e),
         };
         let sdf_hash = *self

@@ -19,7 +19,7 @@ use crate::compiled::real::LawMinMax;
 use crate::io::abm::{load_abm_with_lods_unverified, save_abm_with_lods_with_provenance};
 use crate::io::IoError;
 use crate::mesh::Mesh;
-use crate::provenance::{Checked, Provenance, StoredSemantics, KEY};
+use crate::provenance::{Checked, Provenance, StoredSemantics};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -258,7 +258,14 @@ struct LodChainMetadata {
     /// Sidecar format (1 when absent: written by 7.0.0 or earlier)
     #[serde(default = "metadata_format_1")]
     format: u32,
-    /// The semantics identifier the computed values were written under (format 2)
+    /// The meaning identifier of the computed values (format 2, this build's writers)
+    #[serde(
+        rename = "alice:meaning_id",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    meaning_id: Option<String>,
+    /// The raw semantics identifier an earlier format-2 sidecar holds instead
     #[serde(
         rename = "alice:semantics_id",
         default,
@@ -343,7 +350,7 @@ pub fn save_lod_chain_with_provenance(
 ///
 /// # Errors
 ///
-/// [`IoError::SemanticsMismatch`] when either part was written under another identifier,
+/// [`IoError::MeaningMismatch`] (or [`IoError::SemanticsMismatch`] for an earlier file's raw identifier) when either part was written under another identifier,
 /// [`IoError::Unpinned`] when either part carries none (a chain written by 7.0.0 or earlier; read
 /// it with [`load_lod_chain_unverified`]), and the I/O and format errors of the two parts.
 pub fn load_lod_chain(path: impl AsRef<Path>) -> Result<LodChainPersist, IoError> {
@@ -480,7 +487,12 @@ pub fn save_lod_chain_metadata_with_provenance(
 
     let metadata = LodChainMetadata {
         format: METADATA_FORMAT,
-        semantics_id: Some(provenance.hex()),
+        meaning_id: Some(
+            provenance
+                .named_for(crate::provenance::StoredForm::JsonDocument)
+                .1,
+        ),
+        semantics_id: None,
         sdf_hash: chain.sdf_hash,
         config: chain.config.clone(),
         levels,
@@ -506,7 +518,7 @@ pub fn save_lod_chain_metadata_with_provenance(
 ///
 /// # Errors
 ///
-/// [`IoError::SemanticsMismatch`] for another identifier, and the I/O and JSON errors.
+/// [`IoError::MeaningMismatch`] (or [`IoError::SemanticsMismatch`] for an earlier file's raw identifier) for another identifier, and the I/O and JSON errors.
 pub fn load_lod_chain_metadata(path: impl AsRef<Path>) -> Result<Checked<LodChainConfig>, IoError> {
     let metadata = read_sidecar_metadata(path)?;
     let semantics = metadata_verdict(&metadata, true)?;
@@ -523,19 +535,24 @@ fn metadata_verdict(
     metadata: &LodChainMetadata,
     allow_unpinned: bool,
 ) -> Result<StoredSemantics, IoError> {
-    let stored = match (metadata.format, &metadata.semantics_id) {
+    let id = crate::provenance::json_field_id(
+        metadata.meaning_id.as_deref(),
+        metadata.semantics_id.as_deref(),
+        crate::provenance::StoredForm::JsonDocument,
+        "LOD metadata",
+    )?;
+    let stored = match (metadata.format, id) {
         (1, None) => None,
-        (2, Some(hex)) => Some(
-            Provenance::from_hex(hex)
-                .ok_or_else(|| {
-                    IoError::InvalidFormat(format!("LOD metadata: {KEY} is not 64 hex digits"))
-                })?
-                .semantics_id,
-        ),
+        (2, Some(stored)) => Some(stored),
+        (1, Some(_)) => {
+            return Err(IoError::InvalidFormat(
+                "LOD metadata: format 1 with an identifier".into(),
+            ))
+        }
         (2, None) => {
-            return Err(IoError::InvalidFormat(format!(
-                "LOD metadata: format 2 without {KEY}"
-            )))
+            return Err(IoError::InvalidFormat(
+                "LOD metadata: format 2 without an identifier".into(),
+            ))
         }
         (f, _) => {
             return Err(IoError::UnsupportedVersion(

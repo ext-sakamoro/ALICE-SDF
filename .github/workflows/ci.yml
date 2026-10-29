@@ -656,6 +656,13 @@ jobs:
         run: |
           python scripts/test_provenance_writers.py
           python scripts/provenance_writers.py
+      # G8: every stored form is written with its meaning identifier: no raw identifier is written
+      # in src, and the meaning writer sites are counted (0 sites, or a number other than
+      # scripts/meaning-writers.txt, fails)
+      - name: meaning writers (test, then check)
+        run: |
+          python scripts/test_meaning_writers.py
+          python scripts/meaning_writers.py
       # G8: the tree types keep Deserialize; the library clippy configuration forbids the
       # serde_json / bincode read entry points, so each read in src is a site marked with a
       # stored form checked / other-type / pending reason. This lists the sites and checks the
@@ -973,7 +980,7 @@ jobs:
       # so the default `cargo test --tests` builds them empty). `gpu` compiles the
       # GPU MC + physics case; without an adapter it skips (ALICE_SDF_REQUIRE_GPU unset).
       - name: bridge oracles (codec / asp / sdf-cache / sim)
-        run: cargo test --features "physics,codec,asp,sdf-cache,gpu" --test test_codec_bridge_oracle --test test_asp_bridge_oracle --test test_g8_tree_text --test test_sdf_eval_cache_oracle --test test_sim_bridge_oracle
+        run: cargo test --features "physics,codec,asp,sdf-cache,gpu" --test test_codec_bridge_oracle --test test_asp_bridge_oracle --test test_g8_tree_text --test test_g8_meaning_id --test test_sdf_eval_cache_oracle --test test_sim_bridge_oracle
 
   mobile:
     name: Mobile — iOS / Android cross-compile
@@ -1151,6 +1158,38 @@ jobs:
         run: cargo build --examples --features "glsl,hlsl,blinkscript,gpu,msl,rust"
         env:
           RUSTFLAGS: "-Dwarnings"
+
+  # ALICE-Law G9: SDF_SEMANTICS_ID (from which every stored form's meaning identifier is computed,
+  # with the form's name and layout version) moves only with a breaking version, the released value
+  # kept readable through PREVIOUS_SDF_SEMANTICS_IDS when it is reproduced, and both values named
+  # in CHANGELOG.md; the released value is read from the published crate at the newest release tag
+  # and from the commit before the newest version bump on main (scripts/id_move_check.py, shared
+  # with the other ALICE crates). A registry that cannot be read fails on main and warns on ci/
+  # branches and pull requests
+  id-move:
+    name: Identifier moves (ALICE-Law G9)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # the release tags and main's history: the bases the identifier is compared with
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Identifier moves (tests)
+        run: python3 scripts/test_id_move_check.py
+      - name: Identifier moves (the release compared with)
+        id: id-base
+        run: echo "crate=$(python3 scripts/id_move_check.py --print-base)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cargo/registry/cache/*/${{ steps.id-base.outputs.crate }}.crate
+          key: id-move-${{ steps.id-base.outputs.crate }}
+      - name: Identifier moves (against the published release and the version bump)
+        run: python3 scripts/id_move_check.py
 
   clippy-strict:
     name: Clippy strict (mobile wrapper, includes alice-sdf path dep)

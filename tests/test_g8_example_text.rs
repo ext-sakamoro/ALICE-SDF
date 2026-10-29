@@ -11,8 +11,9 @@
 //! its tag fails. Every whole text is then written under another identifier and without one, and
 //! `examples/support/stored_text.rs` must refuse both and refuse it as a fragment.
 //!
-//! Oracle: the identifier is the constant `SDF_SEMANTICS_ID` (`Provenance::sdf`); the generated
-//! Rust must name it, so a semantics move without re-emission fails here.
+//! Oracle: the identifier is the meaning identifier of shader text under the constant
+//! `SDF_SEMANTICS_ID` (`provenance::meaning_id(StoredForm::ShaderText, &Provenance::sdf())`); the
+//! generated Rust must name it, so a semantics move without re-emission fails here.
 //!
 //! Author: Moroya Sakamoto
 
@@ -59,8 +60,7 @@ mod temp;
 
 use alice_sdf::compiled::rust::RustSource;
 use alice_sdf::prelude::*;
-use alice_sdf::provenance::{self, Provenance, StoredSemantics, KEY};
-use alice_sdf::SDF_SEMANTICS_ID;
+use alice_sdf::provenance::{self, Provenance, StoredForm, StoredSemantics, KEY, MEANING_KEY};
 use shader_text::has_entry_point;
 use std::path::{Path, PathBuf};
 
@@ -171,7 +171,10 @@ fn every_file_the_examples_write_follows_the_shader_rule() {
                 whole += 1;
                 assert_eq!(
                     provenance::read(&path).map(|p| p.id).ok(),
-                    Some(SDF_SEMANTICS_ID),
+                    Some(provenance::meaning_id(
+                        StoredForm::ShaderText,
+                        &Provenance::sdf()
+                    )),
                     "{example}: {} is whole and must carry the identifier",
                     path.display()
                 );
@@ -184,7 +187,7 @@ fn every_file_the_examples_write_follows_the_shader_rule() {
             } else {
                 fragments += 1;
                 assert!(
-                    !text.contains(KEY),
+                    !text.contains(KEY) && !text.contains(MEANING_KEY),
                     "{example}: {} has no entry point and must carry no identifier",
                     path.display()
                 );
@@ -202,7 +205,7 @@ fn a_whole_text_under_another_identifier_is_refused_naming_both() {
     let other = Provenance::new([0xAB; 32]);
     let d = dir("other");
     for (name, text) in whole_texts("other_src") {
-        let moved = text.replace(&Provenance::sdf().hex(), &other.hex());
+        let moved = text.replace(&shader_hex(&Provenance::sdf()), &shader_hex(&other));
         assert_ne!(moved, text, "{name}: the identifier is in the text");
         // the writer refuses it, naming both identifiers
         let path = d.join(&name);
@@ -210,7 +213,7 @@ fn a_whole_text_under_another_identifier_is_refused_naming_both() {
             .unwrap_err()
             .to_string();
         assert!(
-            e.contains(&other.hex()) && e.contains(&Provenance::sdf().hex()),
+            e.contains(&shader_hex(&other)) && e.contains(&shader_hex(&Provenance::sdf())),
             "{name}: {e}"
         );
         assert!(!path.exists(), "{name}: nothing is written");
@@ -218,7 +221,7 @@ fn a_whole_text_under_another_identifier_is_refused_naming_both() {
         std::fs::write(&path, &moved).unwrap();
         let e = provenance::check_sdf(&path).unwrap_err().to_string();
         assert!(
-            e.contains(&other.hex()) && e.contains(&Provenance::sdf().hex()),
+            e.contains(&shader_hex(&other)) && e.contains(&shader_hex(&Provenance::sdf())),
             "{name}: {e}"
         );
     }
@@ -229,7 +232,10 @@ fn a_whole_text_without_the_identifier_is_written_neither_way() {
     let d = dir("bare");
     for (name, text) in whole_texts("bare_src") {
         let mut bare = String::new();
-        for line in text.lines().filter(|l| !l.contains(KEY)) {
+        for line in text
+            .lines()
+            .filter(|l| !l.contains(KEY) && !l.contains(MEANING_KEY))
+        {
             bare.push_str(line);
             bare.push('\n');
         }
@@ -253,9 +259,16 @@ fn the_generated_rust_names_the_current_semantics_identifier() {
     let src = RustSource::transpile(&shape()).unwrap();
     assert_eq!(
         provenance::from_bytes(src.source().as_bytes()).unwrap().id,
-        SDF_SEMANTICS_ID
+        provenance::meaning_id(StoredForm::ShaderText, &Provenance::sdf())
     );
     // in the leading block, before the first item
     let first_item = src.source().find("pub fn sdf").unwrap();
-    assert!(src.source()[..first_item].contains(&Provenance::sdf().tagged()));
+    assert!(
+        src.source()[..first_item].contains(&Provenance::sdf().tagged_for(StoredForm::ShaderText))
+    );
+}
+
+/// The meaning identifier of shader text under `p`, as the text and the errors name it (64 hex)
+fn shader_hex(p: &Provenance) -> String {
+    p.named_for(StoredForm::ShaderText).1
 }

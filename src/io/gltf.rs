@@ -1238,7 +1238,7 @@ fn accessor_layout<'a>(
 ///
 /// # Errors
 ///
-/// [`IoError::SemanticsMismatch`] for another identifier, [`IoError::InvalidFormat`] for a
+/// [`IoError::MeaningMismatch`] (or [`IoError::SemanticsMismatch`] for an earlier file's raw identifier) for another identifier, [`IoError::InvalidFormat`] for a
 /// malformed one, and the parse errors.
 pub fn import_glb_bytes(data: &[u8]) -> Result<Checked<Mesh>, IoError> {
     import_glb_bytes_with(data, true)

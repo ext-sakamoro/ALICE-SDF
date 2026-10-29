@@ -1,0 +1,4 @@
+# The number of meaning writer sites in src (calls of slot_for / tagged_for / named_for outside tests)
+# scripts/meaning_writers.py compares it with what it finds; change it only with a round trip for
+# the writer in tests/test_g8_meaning_id.rs (ALICE-Law G8)
+expected-sites 48

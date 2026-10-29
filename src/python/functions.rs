@@ -184,6 +184,13 @@ pub const fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
+/// The semantics identifier of this build (64 hex digits): what every stored form's meaning
+/// identifier is computed from (with the form's name and layout version)
+#[pyfunction]
+pub fn semantics_id() -> String {
+    crate::provenance::Provenance::sdf().hex()
+}
+
 /// Bake SDF to 3D volume texture (CPU, returns NumPy 3D array)
 #[cfg(feature = "volume")]
 #[pyfunction]

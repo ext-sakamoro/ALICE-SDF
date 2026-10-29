@@ -1,0 +1,21 @@
+# scripts/id_move_check.py (ALICE-Law G9): the identifiers whose value may move only with a
+# breaking version, with the previous-identifier list that keeps an earlier value readable, and
+# the release tags the base is read from (its values come from the published crate)
+#
+# The identifiers the stored forms carry are the meaning identifiers of
+# alice_sdf::provenance::meaning_id: law-id v2 over the form's name, its layout version (each
+# form at 1, StoredForm::version) and SDF_SEMANTICS_ID. They are computed, not constants, so their
+# history is the history of SDF_SEMANTICS_ID (checked here) and of the forms' layout versions
+# (tests/test_g8_meaning_id.rs pins every form at version 1 and each name once): an identifier a
+# file carries moves exactly when one of those moves.
+package = "alice-sdf"
+manifest = "Cargo.toml"
+tags = ["v{version}"]
+
+[exempt]
+SEMANTICS_ID = "alice-det-math's in-process identifier, re-exported (the input of SDF_SEMANTICS_ID through SDF_SEMANTICS_BY_DET_MATH, not a value this crate stores); its history is alice-det-math's"
+
+[[id]]
+path = "alice_sdf::SDF_SEMANTICS_ID"
+previous = "alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS"
+previous-tests = ["tests/sdf_semantics_id.rs::check_reads_this_identifier_and_refuses_the_earlier_ones", "tests/sdf_semantics_id.rs::every_previous_identifier_has_an_oracle_that_exists"]
