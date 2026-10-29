@@ -100,7 +100,9 @@ jobs:
       # user profile path; E:\ is the engine drive.
       CARGO_TARGET_DIR: E:\ci-cache\target-sdf
       # the run's work directory (removed by the last step) and the root of the kept logs
-      CI_WORK: E:\ci-work\ue5-${{ github.run_id }}
+      # one directory per job of the matrix: the UE 5.7 and 5.8 jobs of one run must not share it
+      # (one job's cleanup would delete the other's work); the cleanup step below uses the same value
+      CI_WORK: E:\ci-work\ue5-${{ github.run_id }}-${{ strategy.job-index }}
       CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@v5
