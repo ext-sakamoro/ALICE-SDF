@@ -5,7 +5,8 @@
 //! and the tree format (.asdf) carry it in their headers and their loaders check it, as do the
 //! neural weights (NSDF). A stamped STL also carries a
 //! producer identifier, read back from its own slot. A file written with another
-//! identifier is refused, and the error names both.
+//! identifier is refused, and the error names both. It first lists every stored form with the
+//! meaning identifier this build's writers store in it.
 //!
 //! # Running
 //! ```bash
@@ -17,10 +18,24 @@
 use alice_sdf::io;
 use alice_sdf::mesh::{sdf_to_mesh, MarchingCubesConfig};
 use alice_sdf::prelude::*;
-use alice_sdf::provenance::{self, Provenance, StoredSemantics};
+use alice_sdf::provenance::{self, Provenance, StoredForm, StoredSemantics};
 use glam::Vec3;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // what each stored form carries under this build's identifier: one meaning identifier per
+    // form, all distinct
+    let mut seen = std::collections::BTreeSet::new();
+    for form in StoredForm::ALL {
+        let id = Provenance::new(provenance::meaning_id(form, &Provenance::sdf()));
+        println!("{:>16} v{}: {id}", form.name(), form.version());
+        assert!(
+            seen.insert(id.hex()),
+            "{} shares a meaning identifier",
+            form.name()
+        );
+    }
+    assert_eq!(seen.len(), StoredForm::ALL.len());
+
     let mesh = sdf_to_mesh(
         &SdfNode::sphere(1.0),
         Vec3::splat(-1.5),

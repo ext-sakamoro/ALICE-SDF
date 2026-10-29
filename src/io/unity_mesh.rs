@@ -24,7 +24,7 @@
 
 use crate::io::IoError;
 use crate::mesh::Mesh;
-use crate::provenance::{Provenance, KEY};
+use crate::provenance::Provenance;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -199,7 +199,8 @@ pub fn export_unity_mesh_with_provenance(
     }
 
     // Build JSON manually for performance (avoid serde overhead for large arrays)
-    writeln!(w, "{{\n  \"{KEY}\": \"{}\",", provenance.hex())?;
+    let (key, id) = provenance.named_for(crate::provenance::StoredForm::JsonDocument);
+    writeln!(w, "{{\n  \"{key}\": \"{id}\",")?;
     writeln!(w, "  \"alice_sdf_mesh\": {{")?;
     writeln!(w, "    \"version\": {},", UNITY_JSON_VERSION)?;
     writeln!(w, "    \"name\": \"{}\",", config.name)?;
@@ -332,7 +333,7 @@ pub fn export_unity_mesh_binary_with_provenance(
     w.write_all(&ic.to_le_bytes())?;
     w.write_all(&flags.to_le_bytes())?;
     // the semantics identifier (version 2)
-    w.write_all(&provenance.semantics_id)?;
+    w.write_all(&provenance.slot_for(crate::provenance::StoredForm::UnityMesh))?;
 
     // Interleaved vertex data
     for v in &mesh.vertices {

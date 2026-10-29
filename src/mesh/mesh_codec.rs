@@ -93,6 +93,16 @@ pub enum CodecError {
     /// The buffer carries no semantics identifier (version 1, written before identifiers were
     /// stored); read it with the `*_unverified` decoder to get it marked as such
     Unpinned,
+    /// The buffer's meaning identifier is not the one this crate's writers store for its form
+    /// (ALICE-Law G8): it was written under another semantics identifier
+    MeaningMismatch {
+        /// The form the buffer was read as
+        form: crate::provenance::StoredForm,
+        /// The meaning identifier in the buffer
+        stored: Provenance,
+        /// The meaning identifier this crate's writers store for the form
+        expected: Provenance,
+    },
 }
 
 impl core::fmt::Display for CodecError {
@@ -112,6 +122,14 @@ impl core::fmt::Display for CodecError {
             Self::Unpinned => write!(
                 f,
                 "codec: no semantics identifier (a version 1 buffer; read it with the *_unverified decoder)"
+            ),
+            Self::MeaningMismatch { form, stored, expected } => write!(
+                f,
+                "codec: meaning identifier mismatch ({} version {}): stored {}, expected {}",
+                form.name(),
+                form.version(),
+                stored.hex(),
+                expected.hex()
             ),
         }
     }
@@ -172,7 +190,7 @@ const fn zigzag_decode_u32(v: u32) -> i32 {
 fn write_header(out: &mut Vec<u8>, kind: u8, provenance: &Provenance) {
     out.extend_from_slice(&MAGIC);
     out.extend_from_slice(&[VERSION, kind, 0, 0]);
-    out.extend_from_slice(&provenance.semantics_id);
+    out.extend_from_slice(&provenance.slot_for(crate::provenance::StoredForm::MeshCodec));
 }
 
 /// Checks the header of `kind` and judges its identifier; returns the offset of the payload and
@@ -204,14 +222,26 @@ fn read_header(
         return Err(CodecError::WrongKind);
     }
     // buf[6..8] は reserved
-    let semantics = crate::provenance::sdf_load_verdict(stored, FORMAT, allow_unpinned).map_err(
-        |e| match e {
-            crate::io::IoError::SemanticsMismatch {
-                stored, expected, ..
-            } => CodecError::SemanticsMismatch { stored, expected },
-            _ => CodecError::Unpinned,
+    let semantics = crate::provenance::sdf_load_verdict(
+        stored.map(|id| {
+            crate::provenance::Stored::in_slot(crate::provenance::StoredForm::MeshCodec, id)
+        }),
+        FORMAT,
+        allow_unpinned,
+    )
+    .map_err(|e| match e {
+        crate::io::IoError::SemanticsMismatch {
+            stored, expected, ..
+        } => CodecError::SemanticsMismatch { stored, expected },
+        ref other => match crate::provenance::meaning_mismatch_ids(other) {
+            Some((form, stored, expected)) => CodecError::MeaningMismatch {
+                form,
+                stored,
+                expected,
+            },
+            None => CodecError::Unpinned,
         },
-    )?;
+    })?;
     Ok((offset, semantics))
 }
 
@@ -233,7 +263,7 @@ pub(crate) fn meshopt_stamp(kind: u8, provenance: &Provenance, raw: &[u8]) -> Ve
     let mut out = Vec::with_capacity(MESHOPT_STAMP_LEN + raw.len());
     out.extend_from_slice(&MESHOPT_MAGIC);
     out.extend_from_slice(&[MESHOPT_STAMP_VERSION, kind, 0, 0]);
-    out.extend_from_slice(&provenance.semantics_id);
+    out.extend_from_slice(&provenance.slot_for(crate::provenance::StoredForm::MeshoptStamp));
     out.extend_from_slice(raw);
     out
 }
@@ -267,13 +297,27 @@ pub(crate) fn meshopt_unstamp(
     }
     let mut id = [0u8; 32];
     id.copy_from_slice(&buf[8..MESHOPT_STAMP_LEN]);
-    let semantics = crate::provenance::sdf_load_verdict(Some(id), "meshopt buffer", false)
-        .map_err(|e| match e {
-            crate::io::IoError::SemanticsMismatch {
-                stored, expected, ..
-            } => CodecError::SemanticsMismatch { stored, expected },
-            _ => CodecError::Unpinned,
-        })?;
+    let semantics = crate::provenance::sdf_load_verdict(
+        Some(crate::provenance::Stored::in_slot(
+            crate::provenance::StoredForm::MeshoptStamp,
+            id,
+        )),
+        "meshopt buffer",
+        false,
+    )
+    .map_err(|e| match e {
+        crate::io::IoError::SemanticsMismatch {
+            stored, expected, ..
+        } => CodecError::SemanticsMismatch { stored, expected },
+        ref other => match crate::provenance::meaning_mismatch_ids(other) {
+            Some((form, stored, expected)) => CodecError::MeaningMismatch {
+                form,
+                stored,
+                expected,
+            },
+            None => CodecError::Unpinned,
+        },
+    })?;
     Ok((&buf[MESHOPT_STAMP_LEN..], semantics))
 }
 

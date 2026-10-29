@@ -1,0 +1,10 @@
+{
+  "alice:semantics_id": "ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f642257da4938",
+  "metadata": null,
+  "root": {
+    "Sphere": {
+      "radius": 1.0
+    }
+  },
+  "version": "7.0.0"
+}

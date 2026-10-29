@@ -313,7 +313,7 @@ fn the_meaning_identifiers_are_distinct_from_each_other_and_from_the_in_process_
             alice_det_math::SEMANTICS_ID,
         ),
     ];
-    for form in MEANING_FORMS {
+    for form in StoredForm::ALL {
         ids.push((format!("{form:?}"), meaning_id(form, &Provenance::sdf())));
     }
     for (i, (a, x)) in ids.iter().enumerate() {
@@ -321,14 +321,15 @@ fn the_meaning_identifiers_are_distinct_from_each_other_and_from_the_in_process_
             assert_ne!(x, y, "{a} and {b}");
         }
     }
-    assert_eq!(ids.len(), MEANING_FORMS.len() + 2);
+    assert_eq!(ids.len(), StoredForm::ALL.len() + 2);
+    assert_eq!(StoredForm::ALL.len(), 33, "every stored form compared");
 }
 
 #[test]
 fn the_meaning_identifier_is_law_id_v2_as_its_byte_layout_reads() {
     // oracle: the law-id v2 bytes written out by hand from alice_zip::law_id's documented layout
     // (every length a big-endian u64; a str value tag 0x05 with its length; a u32 tag 0x02)
-    for form in MEANING_FORMS {
+    for form in StoredForm::ALL {
         let mut h = Sha256::new();
         let domain = b"alice-law-id/v2";
         h.update((domain.len() as u64).to_be_bytes());
@@ -401,4 +402,136 @@ fn a_document_holding_both_keys_is_refused_never_read_as_either() {
         compared += 1;
     }
     assert_eq!(compared, 2);
+}
+
+#[test]
+fn every_stored_form_writes_meaning_identifiers_under_its_own_name() {
+    // ALICE-Law G8: no form of this crate still stores the raw identifier; each form has its own
+    // name, so no two forms share a meaning identifier
+    let mut names = std::collections::BTreeSet::new();
+    for form in StoredForm::ALL {
+        assert!(form.writes_meaning(), "{form:?}");
+        assert!(
+            names.insert(form.name()),
+            "{form:?}: the name {} twice",
+            form.name()
+        );
+        assert_eq!(
+            form.version(),
+            1,
+            "{form:?}: the layout version this build writes"
+        );
+    }
+    assert_eq!(names.len(), 33);
+}
+
+#[test]
+fn the_meaning_identifier_agrees_with_the_independent_python_one() {
+    // oracle: python/tests/meaning_id.py (standard library only, from ALICE-Zip's documented
+    // law-id v2 layout) computed these for this build's semantics identifier; the Python binding
+    // tests use the same file against what the writers store
+    let sdf = Provenance::sdf();
+    let pinned = [
+        (
+            StoredForm::JsonDocument,
+            "a7541b24b44eb49edac41d3f6deacb0770028128d24e39f376f4021d9a6a8ae4",
+        ),
+        (
+            StoredForm::Vdb,
+            "0233911e4f3aabac7db28568878192b0445842fcac400ff1300610e7423e354a",
+        ),
+    ];
+    for (form, want) in pinned {
+        assert_eq!(hex(&meaning_id(form, &sdf)), want, "{form:?}");
+    }
+}
+
+/// The files the writers of the forms converted last stored before they wrote meaning
+/// identifiers: written by main at eb84934 / 7b8ddf9 (the last commit whose writers stored the raw
+/// identifier) through each form's plain writer, from the inputs of `tests/test_provenance.rs`;
+/// the shader text is main's generated Unreal corpus shader. Each holds this crate's raw
+/// identifier (`SDF_SEMANTICS_ID`, not 7.0.0's). The mesh codec's buffers (magic `ASDF`, as the ASDF
+/// tree's) are read by their decoder below, not by `from_bytes`
+const RAW_MAIN: [(StoredForm, &str); 14] = [
+    (StoredForm::JsonDocument, "tree_raw_main.asdf.json"),
+    (StoredForm::Asdf, "tree_raw_main.asdf"),
+    (StoredForm::Abm, "mesh_raw_main.abm"),
+    (StoredForm::Nanite, "mesh_raw_main.nanite"),
+    (StoredForm::Ue5Mesh, "mesh_raw_main.ue5_mesh_bin"),
+    (StoredForm::UnityMesh, "mesh_raw_main.unity_mesh_bin"),
+    (StoredForm::Neural, "net_raw_main.nsdf"),
+    (StoredForm::Vdb, "grid_raw_main.alicevdb"),
+    (StoredForm::Svo, "chunk_raw_main.svoc"),
+    (StoredForm::Vox, "model_raw_main.vox"),
+    (StoredForm::Dds, "volume_raw_main.dds"),
+    (StoredForm::Png, "heightmap_raw_main.png"),
+    (StoredForm::ShaderText, "shader_raw_main.usf"),
+    (StoredForm::Sidecar, "volume_raw_main.raw"),
+];
+
+#[test]
+fn a_raw_file_this_crate_wrote_before_meaning_identifiers_is_the_previous_generation() {
+    // read back: this crate's raw identifier, through the earlier key or a slot; judged the
+    // previous generation (VerifiedPrevious), never Current, and the importers read it
+    let raw = Provenance::sdf();
+    let mut compared = 0;
+    for (form, name) in RAW_MAIN {
+        let path = fixture(name);
+        let bytes = std::fs::read(&path).unwrap();
+        let stored = if form == StoredForm::Sidecar {
+            provenance::read(&path).unwrap()
+        } else {
+            provenance::from_bytes(&bytes).unwrap()
+        };
+        assert_eq!(stored.form, form, "{name}");
+        assert_eq!(stored.id, SDF_SEMANTICS_ID, "{name}: the raw identifier");
+        assert_ne!(stored.via, provenance::StoredVia::MeaningKey, "{name}");
+        assert!(
+            !stored.is_written_under(&raw),
+            "{name}: not what this build writes"
+        );
+        assert_eq!(
+            stored.judge(&raw, PREVIOUS_SDF_SEMANTICS_IDS).unwrap(),
+            StoredSemantics::VerifiedPrevious(raw),
+            "{name}: the previous generation"
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, RAW_MAIN.len());
+    // the loaders read them as the previous generation (one per kind of reader)
+    let tree = io::load_asdf_json_unverified(fixture("tree_raw_main.asdf.json")).unwrap();
+    assert_eq!(tree.semantics(), StoredSemantics::VerifiedPrevious(raw));
+    let tree = io::load_asdf_unverified(fixture("tree_raw_main.asdf")).unwrap();
+    assert_eq!(tree.semantics(), StoredSemantics::VerifiedPrevious(raw));
+    let idx = alice_sdf::mesh::mesh_codec::decode_indices_unverified(
+        &std::fs::read(fixture("mesh_codec_indices_raw_main.bin")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(idx.semantics(), StoredSemantics::VerifiedPrevious(raw));
+    assert_eq!(idx.into_parts().0, [0, 1, 2, 2, 1, 3]);
+    // the meshopt stamp, the encoded volume and the ASP I-packet are read through their decoders
+    let verts = alice_sdf::mesh::meshopt_vertex_codec::decode_vertex_buffer(
+        &std::fs::read(fixture("meshopt_vertex_raw_main.bin")).unwrap(),
+        4,
+        12,
+    )
+    .unwrap();
+    assert_eq!(verts.len(), 48);
+    #[cfg(feature = "codec")]
+    {
+        let volume = alice_sdf::codec_bridge::try_decode_sdf_volume_unverified(
+            &std::fs::read(fixture("codec_volume_raw_main.bin")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(volume.semantics(), StoredSemantics::VerifiedPrevious(raw));
+    }
+    #[cfg(feature = "asp")]
+    {
+        let packet: libasp::AspPacket = serde_json::from_str(
+            &std::fs::read_to_string(fixture("i_packet_raw_main.json")).unwrap(),
+        )
+        .unwrap();
+        let back = alice_sdf::asp_bridge::decode_sdf_i_packet_unverified(&packet).unwrap();
+        assert_eq!(back.semantics(), StoredSemantics::VerifiedPrevious(raw));
+    }
 }

@@ -110,7 +110,7 @@ pub fn create_sdf_i_packet_with_provenance(
         },
         dct_coefficients: Some(
             provenance
-                .semantics_id
+                .slot_for(crate::provenance::StoredForm::AspPacket)
                 .iter()
                 .chain(asdf_bytes.iter())
                 .enumerate()
@@ -230,8 +230,14 @@ fn decode_checked(packet: &AspPacket, allow_unpinned: bool) -> Result<Checked<Sd
         id.copy_from_slice(&bytes[..TREE_OFFSET]);
         id
     });
-    let semantics =
-        sdf_load_verdict(stored, "ASP I-packet", allow_unpinned).map_err(|e| e.to_string())?;
+    let semantics = sdf_load_verdict(
+        stored.map(|id| {
+            crate::provenance::Stored::in_slot(crate::provenance::StoredForm::AspPacket, id)
+        }),
+        "ASP I-packet",
+        allow_unpinned,
+    )
+    .map_err(|e| e.to_string())?;
 
     #[allow(
         clippy::disallowed_methods,

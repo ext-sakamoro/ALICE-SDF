@@ -1,7 +1,8 @@
 //! ALICE-Law G8: the SDF tree's own text and packet forms carry the semantics identifier and
 //! their readers check it.
 //!
-//! * `.asdf.json` (`io::save_asdf_json` / `to_json_string`): a top-level `"alice:semantics_id"`.
+//! * `.asdf.json` (`io::save_asdf_json` / `to_json_string`): a top-level `"alice:meaning_id"` (the
+//!   meaning identifier of a JSON document; an earlier document holds `"alice:semantics_id"`).
 //!   `load_asdf_json`, `from_json_string` and `io::load` refuse a document without one and one
 //!   with another identifier; the `*_unverified` readers return the tree with its status.
 //! * the ASP I-packet: the identifier in the first 32 coefficient entries, marked by the
@@ -20,7 +21,7 @@ mod temp;
 use alice_sdf::io::{self, IoError};
 use alice_sdf::llm_schema::validate_sdf_json;
 use alice_sdf::prelude::*;
-use alice_sdf::provenance::{self, Provenance, StoredSemantics};
+use alice_sdf::provenance::{self, Provenance, StoredForm, StoredSemantics};
 
 const V1_JSON: &str = include_str!("fixtures/provenance/tree_v1.asdf.json");
 
@@ -67,7 +68,7 @@ fn asdf_json_carries_and_checks_the_identifier() {
     // the stored field, read by the format-independent reader and by the loaders
     assert_eq!(
         provenance::read(&path).unwrap().id,
-        Provenance::sdf().semantics_id
+        provenance::meaning_id(StoredForm::JsonDocument, &Provenance::sdf())
     );
     assert_eq!(
         io::load_asdf_json(&path).unwrap().node_count(),
@@ -78,7 +79,8 @@ fn asdf_json_carries_and_checks_the_identifier() {
     assert_eq!(checked.semantics(), StoredSemantics::Current);
     // the string form is the same document
     let json = io::to_json_string(&t).unwrap();
-    assert!(json.contains(&Provenance::sdf().tagged().replace('=', "\": \"")));
+    let (key, id) = Provenance::sdf().named_for(StoredForm::JsonDocument);
+    assert!(json.contains(&format!("\"{key}\": \"{id}\"")));
     assert_eq!(
         io::from_json_string(&json).unwrap().node_count(),
         t.node_count()
@@ -121,13 +123,13 @@ fn asdf_json_with_another_identifier_is_refused_even_unverified() {
         io::from_json_string_unverified(&json).map(|_| ()),
     ] {
         match result {
-            Err(IoError::SemanticsMismatch {
+            Err(IoError::MeaningMismatch {
                 stored, expected, ..
             }) => {
-                assert_eq!(stored, other());
-                assert_eq!(expected, Provenance::sdf());
+                assert_eq!(stored, json_meaning(&other()));
+                assert_eq!(expected, json_meaning(&Provenance::sdf()));
             }
-            r => panic!("expected SemanticsMismatch, got {r:?}"),
+            r => panic!("expected MeaningMismatch, got {r:?}"),
         }
     }
 }
@@ -140,9 +142,12 @@ fn asdf_json_with_an_earlier_published_identifier_is_refused_and_judged_previous
         io::from_json_string_unverified(&json).map(|_| ()),
     ] {
         match result {
-            Err(io::IoError::SemanticsMismatch {
+            Err(io::IoError::MeaningMismatch {
                 stored, expected, ..
-            }) => assert_eq!((stored, expected), (earlier(), Provenance::sdf())),
+            }) => assert_eq!(
+                (stored, expected),
+                (json_meaning(&earlier()), json_meaning(&Provenance::sdf()))
+            ),
             other => panic!("the earlier identifier was not refused: {other:?}"),
         }
     }
@@ -159,12 +164,14 @@ fn asdf_json_with_an_earlier_published_identifier_is_refused_and_judged_previous
 fn asdf_json_with_a_malformed_identifier_is_an_error() {
     let mut value: serde_json::Value =
         serde_json::from_str(&io::to_json_string(&tree()).unwrap()).unwrap();
-    value[provenance::KEY] = serde_json::Value::String("not hex".into());
+    // the key this build writes, malformed (setting the earlier key would make the document hold
+    // both keys, refused for that reason instead)
+    value[provenance::MEANING_KEY] = serde_json::Value::String("not hex".into());
     assert!(matches!(
         io::from_json_string(&value.to_string()),
         Err(IoError::InvalidFormat(_))
     ));
-    value[provenance::KEY] = serde_json::json!(7);
+    value[provenance::MEANING_KEY] = serde_json::json!(7);
     assert!(matches!(
         io::from_json_string_unverified(&value.to_string()),
         Err(IoError::InvalidFormat(_))
@@ -221,7 +228,8 @@ mod packet {
                 .unwrap_err(),
         ] {
             assert!(
-                err.contains(&earlier().hex()) && err.contains(&Provenance::sdf().hex()),
+                err.contains(&packet_meaning(&earlier()))
+                    && err.contains(&packet_meaning(&Provenance::sdf())),
                 "{err}"
             );
         }
@@ -243,5 +251,40 @@ mod packet {
             .into_parts();
         assert_eq!(semantics, StoredSemantics::Unpinned);
         assert_eq!(back.node_count(), 4);
+    }
+}
+
+/// The meaning identifier of a JSON document under `p`, as the errors name it (64 hex digits)
+fn json_meaning(p: &Provenance) -> String {
+    p.named_for(StoredForm::JsonDocument).1
+}
+
+/// The meaning identifier of an ASP I-packet under `p`, as the errors name it (64 hex digits)
+#[cfg(feature = "asp")]
+fn packet_meaning(p: &Provenance) -> String {
+    p.named_for(StoredForm::AspPacket).1
+}
+
+#[test]
+fn asdf_json_holding_both_keys_is_refused_never_read_as_either() {
+    // this build's document plus the earlier key: refused by both readers, naming both keys
+    let mut value: serde_json::Value =
+        serde_json::from_str(&io::to_json_string(&tree()).unwrap()).unwrap();
+    assert!(value.get(provenance::MEANING_KEY).is_some());
+    value[provenance::KEY] = serde_json::Value::String(Provenance::sdf().hex());
+    let text = value.to_string();
+    for result in [
+        io::from_json_string(&text).map(|_| ()),
+        io::from_json_string_unverified(&text).map(|_| ()),
+    ] {
+        match result {
+            Err(IoError::InvalidFormat(why)) => {
+                assert!(
+                    why.contains(provenance::MEANING_KEY) && why.contains(provenance::KEY),
+                    "{why}"
+                );
+            }
+            r => panic!("a document with both keys was read: {r:?}"),
+        }
     }
 }

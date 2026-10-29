@@ -5,11 +5,16 @@
 //! # Semantics identifier (ALICE-Law G8)
 //!
 //! A `.asdf.json` document is the tree's JSON object with one more top-level field,
-//! `"alice:semantics_id"` ([`crate::provenance::KEY`]): the 64 hex digits of the identifier
-//! of the arithmetic the tree was written under (this crate's `SDF_SEMANTICS_ID` unless a
-//! `*_with_provenance` writer is given another). The readers check it: [`load_asdf_json`] and
-//! [`from_json_string`] refuse a document without one ([`IoError::Unpinned`], a document
-//! written by 7.0.0 or earlier) and one with another identifier ([`IoError::SemanticsMismatch`]);
+//! `"alice:meaning_id"` ([`crate::provenance::MEANING_KEY`]): the 64 hex digits of the meaning
+//! identifier of a JSON document of this crate written under the arithmetic of the tree
+//! (`provenance::meaning_id(StoredForm::JsonDocument, …)` of this crate's `SDF_SEMANTICS_ID`
+//! unless a `*_with_provenance` writer is given another). A document written before meaning
+//! identifiers holds the raw identifier under `"alice:semantics_id"` instead; one holding both is
+//! refused. The readers check it: [`load_asdf_json`] and [`from_json_string`] refuse a document
+//! without one ([`IoError::Unpinned`], a document written by 7.0.0 or earlier) and one with
+//! another identifier ([`IoError::MeaningMismatch`], or [`IoError::SemanticsMismatch`] for an
+//! earlier document's raw identifier); an earlier document of this crate reads as
+//! `VerifiedPrevious`;
 //! [`load_asdf_json_unverified`] and [`from_json_string_unverified`] also read a document
 //! without one and return the tree with what is known about it ([`Checked`]).
 //!
@@ -20,7 +25,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::io::IoError;
-use crate::provenance::{sdf_load_verdict, Checked, Provenance, KEY};
+use crate::provenance::{sdf_load_verdict, take_json_id, Checked, Provenance, Stored, StoredForm};
 use crate::types::SdfTree;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -35,26 +40,18 @@ fn stamped(tree: &SdfTree, provenance: &Provenance) -> Result<serde_json::Value,
     let object = value
         .as_object_mut()
         .ok_or_else(|| IoError::Serialization("an SDF tree is not a JSON object".to_string()))?;
-    object.insert(KEY.to_string(), serde_json::Value::String(provenance.hex()));
+    let (key, id) = provenance.named_for(StoredForm::JsonDocument);
+    object.insert(key.to_string(), serde_json::Value::String(id));
     Ok(value)
 }
 
-/// The tree and the identifier a document carries (`None`: no identifier field)
-pub fn split(mut value: serde_json::Value) -> Result<(SdfTree, Option<[u8; 32]>), IoError> {
-    let stored = match value.as_object_mut().and_then(|o| o.remove(KEY)) {
+/// The tree and the identifier a document carries (`None`: no identifier field): the meaning
+/// identifier under `alice:meaning_id`, or a raw one under the earlier `alice:semantics_id`; a
+/// document with both is an error
+pub fn split(mut value: serde_json::Value) -> Result<(SdfTree, Option<Stored>), IoError> {
+    let stored = match value.as_object_mut() {
+        Some(object) => take_json_id(object, StoredForm::JsonDocument, FORMAT)?,
         None => None,
-        Some(serde_json::Value::String(hex)) => Some(
-            Provenance::from_hex(&hex)
-                .ok_or_else(|| {
-                    IoError::InvalidFormat(format!("{FORMAT}: {KEY} is not 64 hex digits"))
-                })?
-                .semantics_id,
-        ),
-        Some(_) => {
-            return Err(IoError::InvalidFormat(format!(
-                "{FORMAT}: {KEY} is not a string"
-            )));
-        }
     };
     #[allow(
         clippy::disallowed_methods,
@@ -103,7 +100,7 @@ fn read_value(path: impl AsRef<Path>) -> Result<serde_json::Value, IoError> {
 /// # Errors
 ///
 /// [`IoError::Unpinned`] for a document without an identifier ([`load_asdf_json_unverified`]
-/// reads it), [`IoError::SemanticsMismatch`] for another identifier, and the I/O and JSON errors.
+/// reads it), [`IoError::MeaningMismatch`] (or [`IoError::SemanticsMismatch`] for an earlier file's raw identifier) for another identifier, and the I/O and JSON errors.
 pub fn load_asdf_json(path: impl AsRef<Path>) -> Result<SdfTree, IoError> {
     checked(read_value(path)?, false).map(|c| c.into_parts().0)
 }
