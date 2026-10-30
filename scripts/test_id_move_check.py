@@ -218,6 +218,16 @@ class ProbeAbsent(unittest.TestCase):
             "c::World::DOMAIN", E0599.format(item="DOMAIN", ty="World").replace(
                 "no associated function or constant", "no associated item")))
 
+    def test_a_coloured_e0599_is_read_like_a_plain_one(self):
+        # CARGO_TERM_COLOR=always (as CI sets it) wraps rustc's lines in escape sequences
+        coloured = E0599.format(item="DOMAIN", ty="World").replace(
+            "error[E0599]: ", "\x1b[1m\x1b[91merror[E0599]\x1b[0m\x1b[1m: ").replace(
+            "error: could not", "\x1b[1m\x1b[91merror\x1b[0m: could not")
+        self.assertTrue(self.absent("c::World::DOMAIN", coloured))
+        self.assertFalse(self.absent("c::World::DOMAIN", coloured.replace("`DOMAIN`", "`OTHER`")))
+        other = "\x1b[1m\x1b[91merror[E0308]\x1b[0m\x1b[1m: mismatched types\x1b[0m\n"
+        self.assertFalse(self.absent("c::World::DOMAIN", other + coloured))
+
     def test_an_unrelated_e0599_is_not_absent(self):
         # another item, another type, a substring of the name: each is an error, not a new identifier
         self.assertFalse(self.absent("c::World::DOMAIN", E0599.format(item="OTHER", ty="World")))

@@ -155,7 +155,9 @@ def probe_says_absent(path: str, stderr: str) -> bool:
     the path does not resolve (a segment of it named in a resolution error), or, for an associated
     const `…::Type::NAME`, every compile error is rustc's E0599 for exactly that item of exactly
     that type (both parsed from the message, the type without its path and generics). Any other
-    failure is an error, so a broken base cannot pass as "the identifier is new"."""
+    failure is an error, so a broken base cannot pass as "the identifier is new". The message is read
+    without terminal escape sequences (CARGO_TERM_COLOR=always colours rustc's lines)."""
+    stderr = ANSI.sub("", stderr)
     segs = path.split("::")[1:]
     errs = [ln for ln in stderr.splitlines() if MISSING_RE.search(ln)]
     if errs and "id-move-probe" in stderr and any(re.search(rf"`{re.escape(s)}`", ln) for ln in errs for s in segs):
