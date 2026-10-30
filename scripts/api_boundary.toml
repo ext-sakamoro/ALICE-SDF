@@ -186,6 +186,10 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::Stored::under_key" = "local: wraps 32 bytes the caller read under a text key; accepting them is Stored::judge's (the handshake above)"
 "fn::StoredForm::name" = "local: formats or wraps an identifier the caller holds for a writer to store"
 "fn::provenance::meaning_id" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::provenance::producer_meaning_id" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::Stamp::producer_slot_for" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::Stamp::producer_named_for" = "local: formats or wraps an identifier the caller holds for a writer to store"
+"fn::StoredProducer::judge" = "handshake: an_earlier_raw_producer_reads_as_the_previous_generation"
 
 # 1 local
 "fn::semantics::sdf_semantics_id_for" = "local: maps a linked alice-det-math identifier to this crate's identifier (const table)"
@@ -792,6 +796,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::io::gltf::export_glb" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::gltf::export_glb_bytes" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::gltf::export_glb_bytes_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
+"fn::io::gltf::export_glb_bytes_with_stamp" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::gltf::export_glb_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::gltf::export_gltf_json" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"
 "fn::io::gltf::export_gltf_json_with_provenance" = "local: writes this build's own values to bytes or a path; stamping the stored file is G8's"

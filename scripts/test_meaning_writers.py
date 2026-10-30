@@ -46,6 +46,10 @@ def test_a_raw_write_fails() -> int:
         "    let t = p.tagged();",
         '    writeln!(w, "// {KEY}={}", p.hex())?;',
         "    enc.add_text_chunk(crate::provenance::KEY.to_string(), p.hex());",
+        "    h[48..80].copy_from_slice(&producer.semantics_id);",
+        '    let t = format!("{PRODUCER_KEY}={}", hex);',
+        '    let t = format!("{}={}", crate::provenance::PRODUCER_KEY, x);',
+        '    model.push_str(&format!("<m>{}</m>", producer.hex()));',
     ]
     for line in raw:
         src = GOOD.replace("}\n", line + "\n}\n", 1)
@@ -89,6 +93,11 @@ def main() -> int:
     (foreign / "src" / "live_sdf.rs").write_text("fn w() {}\n", encoding="utf-8")
     assert any("stale" in p for p in mw.check(foreign)[0])
     ran += 2
+    # a producer meaning writer passes and is counted, beside the primary one
+    producer = GOOD.replace("}\n", "    let _ = stamp.producer_named_for(StoredForm::ThreeMf);\n}\n", 1)
+    assert problems(producer, 2) == [], problems(producer, 2)
+    assert mw.check(tree(producer, 2))[2] == 2
+    ran += 1
     # inside a test module a raw write is not a writer
     in_test = GOOD + "#[cfg(test)]\nmod tests {\n    fn t(p: &Provenance) { let _ = p.tagged(); }\n}\n"
     assert problems(in_test) == [], problems(in_test)

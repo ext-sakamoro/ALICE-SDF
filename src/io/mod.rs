@@ -52,9 +52,9 @@ pub use fbx::{
     FbxAnimCurve, FbxBone, FbxConfig, FbxFormat, FbxUpAxis, ImportedFbx,
 };
 pub use gltf::{
-    export_glb, export_glb_bytes, export_glb_bytes_with_provenance, export_glb_with_provenance,
-    export_gltf_json, export_gltf_json_with_provenance, import_glb, import_glb_bytes,
-    import_glb_bytes_pinned, import_glb_pinned, GltfConfig,
+    export_glb, export_glb_bytes, export_glb_bytes_with_provenance, export_glb_bytes_with_stamp,
+    export_glb_with_provenance, export_gltf_json, export_gltf_json_with_provenance, import_glb,
+    import_glb_bytes, import_glb_bytes_pinned, import_glb_pinned, GltfConfig,
 };
 pub use json::{
     from_json_string, from_json_string_unverified, load_asdf_json, load_asdf_json_unverified,

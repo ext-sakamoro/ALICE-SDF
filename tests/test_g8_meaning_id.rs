@@ -444,6 +444,36 @@ fn the_meaning_identifier_agrees_with_the_independent_python_one() {
     for (form, want) in pinned {
         assert_eq!(hex(&meaning_id(form, &sdf)), want, "{form:?}");
     }
+    // the producer meaning identifier, the same oracle's `producer_meaning_id`, for a producer
+    // other than this crate (ALICE-LOL's geometry identifier, the producer it stamps)
+    let lol =
+        Provenance::from_hex("d1cbba69a1b33ce7363ac178f16ad0cb062699ff8c9c76af7058c6d006bc8a24")
+            .unwrap();
+    let pinned = [
+        (
+            StoredForm::StlBinary,
+            "a43ff2e7a95c54ea7da6dac461534073279badbc1ccfc25370007329b368db9e",
+        ),
+        (
+            StoredForm::ThreeMf,
+            "8fc5289f1a0e2c8b502db7b1ed18a76fd0376d0f223a1cab607b799dc6d81f79",
+        ),
+    ];
+    for (form, want) in pinned {
+        assert_eq!(
+            hex(&alice_sdf::provenance::producer_meaning_id(form, &lol)),
+            want,
+            "producer {form:?}"
+        );
+    }
+    // under its own kind: never the primary meaning identifier of the same identifier
+    for form in StoredForm::ALL {
+        assert_ne!(
+            alice_sdf::provenance::producer_meaning_id(form, &sdf),
+            meaning_id(form, &sdf),
+            "{form:?}"
+        );
+    }
 }
 
 /// The files the writers of the forms converted last stored before they wrote meaning

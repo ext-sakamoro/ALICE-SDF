@@ -158,7 +158,7 @@ pub fn export_fbx_with_provenance(
 }
 
 /// Export a mesh to FBX with a [`Stamp`]: the primary identifier in the `Creator` string, and a
-/// producer identifier (when present) in a separate `ProducerSemanticsId` string of
+/// producer meaning identifier (when present) in a separate `ProducerMeaningId` string of
 /// `FBXHeaderExtension`
 pub fn export_fbx_with_stamp(
     mesh: &Mesh,
@@ -173,8 +173,8 @@ pub fn export_fbx_with_stamp(
     };
     let creator = format!("ALICE-SDF {}", stamp.primary.tagged_for(form));
     let producer = stamp
-        .producer
-        .map(|p| format!("{}={}", crate::provenance::PRODUCER_KEY, p.hex()));
+        .producer_named_for(form)
+        .map(|(key, value)| format!("{key}={value}"));
     let header = FbxHeaderText {
         creator: &creator,
         producer: producer.as_deref(),
@@ -216,7 +216,7 @@ fn export_fbx_ascii(
     writeln!(w, "\tFBXVersion: 7400")?;
     writeln!(w, "\tCreator: \"{}\"", header.creator)?;
     if let Some(producer) = header.producer {
-        writeln!(w, "\tProducerSemanticsId: \"{producer}\"")?;
+        writeln!(w, "\tProducerMeaningId: \"{producer}\"")?;
     }
     writeln!(w, "}}")?;
     writeln!(w)?;
@@ -666,7 +666,7 @@ fn export_fbx_binary(
         let mut children = vec![version_node, fbx_version, creator];
         if let Some(producer) = header.producer {
             children.push(serialize_fbx_node(
-                "ProducerSemanticsId",
+                "ProducerMeaningId",
                 &[FbxProp::Str(producer.to_string())],
                 &[],
             ));
