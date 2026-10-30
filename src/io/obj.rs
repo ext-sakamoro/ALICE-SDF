@@ -65,8 +65,8 @@ pub fn export_obj_with_provenance(
 /// [`export_obj_with_provenance`] with a [`Stamp`], keeping a producer identifier
 ///
 /// The primary identifier goes where that writer puts it, and the producer identifier (when
-/// present) beside it on the same header comment line, as `alice:producer_semantics_id=<hex>`
-/// (in the MTL file too); without a producer the bytes are those of
+/// present) beside it on the same header comment line, as `alice:producer_meaning_id=<hex>` (its
+/// producer meaning identifier, in the MTL file too); without a producer the bytes are those of
 /// [`export_obj_with_provenance`]. [`crate::provenance::read_with_producer`] reads both back.
 pub fn export_obj_with_stamp(
     mesh: &Mesh,

@@ -43,18 +43,18 @@ RAW_WRITES = [
     ("raw hex as a stored field", re.compile(r"semantics_id:\s*Some\(\s*[A-Za-z_][A-Za-z0-9_.()]*\.hex\(\)\s*\)")),
     ("raw tagged text", re.compile(r"\.tagged\(\)")),
     ("the earlier key written", re.compile(r"\{KEY\}\s*=|\{KEY\}\\\"|KEY\.to_string\(\)|provenance::KEY\b")),
+    ("the earlier producer key written", re.compile(r"\{PRODUCER_KEY\}\s*=|provenance::PRODUCER_KEY\b")),
+    ("a producer's raw hex written", re.compile(r"\bproducer\.hex\(\)")),
 ]
 
-MEANING_SITE = re.compile(r"\.(slot_for|tagged_for|named_for)\(")
+MEANING_SITE = re.compile(r"\.(slot_for|tagged_for|named_for|producer_slot_for|producer_named_for)\(")
 
-# lines of src/provenance.rs that name the raw identifier on purpose: `tagged` (the earlier text
-# form, read back from earlier files), meaning_id hashing it, and the producer stamp of STL / FBX /
-# 3MF, which stores another crate's own semantics identifier beside this crate's meaning
-# identifier (it names that crate's arithmetic, not a stored form of this crate: the producer
-# checks it against its own identifier, alice_sdf::provenance::check_producer)
+# lines of src/provenance.rs that name the raw identifier on purpose: meaning_id and
+# producer_meaning_id hashing it (every writer, the producer stamp included, stores a meaning
+# identifier; nothing is allowed to write a raw one)
 PROVENANCE_DEFINITIONS = re.compile(
-    r"pub fn tagged\(|format!\(\"\{KEY\}=\{\}\", self\.hex\(\)\)|LawIdHasher::new\(MEANING_KIND, &semantics\.semantics_id\)"
-    r"|h\[48\.\.80\]\.copy_from_slice\(&producer\.semantics_id\)"
+    r"LawIdHasher::new\(MEANING_KIND, &semantics\.semantics_id\)"
+    r"|LawIdHasher::new\(PRODUCER_MEANING_KIND, &producer\.semantics_id\)"
 )
 
 

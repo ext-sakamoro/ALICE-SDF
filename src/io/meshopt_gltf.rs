@@ -26,7 +26,7 @@ use crate::io::IoError;
 use crate::mesh::meshopt_index_codec::encode_index_buffer_raw;
 use crate::mesh::meshopt_vertex_codec::encode_vertex_buffer_level_raw;
 use crate::mesh::Mesh;
-use crate::provenance::Provenance;
+use crate::provenance::{Provenance, Stamp};
 use std::io::Write;
 use std::path::Path;
 
@@ -181,6 +181,17 @@ pub fn export_glb_meshopt_bytes_skinned_with_provenance(
     skinning: Option<&MeshoptSkinning>,
     config: &MeshoptGltfConfig,
     provenance: &Provenance,
+) -> Result<Vec<u8>, IoError> {
+    export_glb_meshopt_bytes_skinned_with_stamp(mesh, skinning, config, &Stamp::from(*provenance))
+}
+
+/// [`export_glb_meshopt_bytes_skinned_with_provenance`] with a [`Stamp`]: the producer meaning
+/// identifier (when present) beside the primary in `asset.extras`
+pub(crate) fn export_glb_meshopt_bytes_skinned_with_stamp(
+    mesh: &Mesh,
+    skinning: Option<&MeshoptSkinning>,
+    config: &MeshoptGltfConfig,
+    stamp: &Stamp,
 ) -> Result<Vec<u8>, IoError> {
     if mesh.vertices.is_empty() {
         return Err(IoError::InvalidFormat("empty mesh".into()));
@@ -510,9 +521,9 @@ pub fn export_glb_meshopt_bytes_skinned_with_provenance(
     };
 
     // Build final JSON
-    let (key, id) = provenance.named_for(crate::provenance::StoredForm::Glb);
+    let extras = crate::io::gltf::stamp_extras(stamp, crate::provenance::StoredForm::Glb);
     let json = format!(
-        r#"{{"asset":{{"version":"2.0","generator":"ALICE-SDF meshopt-gltf","extras":{{"{key}":"{id}"}}}},"extensionsUsed":["EXT_meshopt_compression"],"extensionsRequired":["EXT_meshopt_compression"],"buffers":[{{"byteLength":{buffer_len}}}],"bufferViews":[{buffer_views_json}],"accessors":[{accessors_json}],"materials":[{mat_json}],"meshes":[{{"primitives":[{{"attributes":{{{attributes_json}}},"indices":{idx_accessor},"material":0}}]}}],"nodes":[{{"mesh":0}}],"scenes":[{{"nodes":[0]}}],"scene":0}}"#,
+        r#"{{"asset":{{"version":"2.0","generator":"ALICE-SDF meshopt-gltf","extras":{{{extras}}}}},"extensionsUsed":["EXT_meshopt_compression"],"extensionsRequired":["EXT_meshopt_compression"],"buffers":[{{"byteLength":{buffer_len}}}],"bufferViews":[{buffer_views_json}],"accessors":[{accessors_json}],"materials":[{mat_json}],"meshes":[{{"primitives":[{{"attributes":{{{attributes_json}}},"indices":{idx_accessor},"material":0}}]}}],"nodes":[{{"mesh":0}}],"scenes":[{{"nodes":[0]}}],"scene":0}}"#,
         buffer_len = bin.len(),
         buffer_views_json = buffer_views.join(","),
         accessors_json = accessors.join(","),

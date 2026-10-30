@@ -66,19 +66,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stamped = dir.join("sphere_stamped.stl");
     io::export_stl_with_stamp(&mesh, &stamped, &stamp)?;
     let (primary, stored_producer) = provenance::read_with_producer(&stamped)?;
-    // the primary slot holds this crate's meaning identifier for binary STL, the producer its raw one
+    // the primary slot holds this crate's meaning identifier for binary STL, the producer slot the
+    // producer meaning identifier of `producer` for binary STL
     assert_eq!(
         primary.judge(&Provenance::sdf(), &[])?,
         StoredSemantics::Current
     );
-    assert_eq!(stored_producer, Some(producer));
+    assert_eq!(
+        stored_producer.map(|p| p.judge(&producer)).transpose()?,
+        Some(StoredSemantics::Current)
+    );
     // what this build's writers store for binary STL under this crate's identifier
     assert!(primary.is_written_under(&Provenance::sdf()));
     assert_eq!(
         provenance::from_bytes_with_producer(&std::fs::read(&stamped)?)?,
         (primary, stored_producer)
     );
-    provenance::check_producer(&stamped, &producer)?;
+    assert_eq!(
+        provenance::check_producer(&stamped, &producer)?,
+        StoredSemantics::Current
+    );
     println!("{}: {primary}, producer {producer}", stamped.display());
     // the same in a text format: an OBJ keeps both on its header comment line
     let stamped_obj = dir.join("sphere_stamped.obj");
@@ -88,7 +95,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         obj_primary.judge(&Provenance::sdf(), &[])?,
         StoredSemantics::Current
     );
-    assert_eq!(obj_producer, Some(producer));
+    assert_eq!(
+        obj_producer.map(|p| p.judge(&producer)).transpose()?,
+        Some(StoredSemantics::Current)
+    );
     println!(
         "{}: {obj_primary}, producer {producer}",
         stamped_obj.display()

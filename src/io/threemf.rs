@@ -30,7 +30,7 @@ pub fn export_3mf_with_provenance(
 }
 
 /// Export mesh to 3MF format with a [`Stamp`] as model metadata (a second
-/// `alice:producer_semantics_id` entry when it carries a producer identifier)
+/// `alice:producer_meaning_id` entry when it carries a producer identifier)
 pub fn export_3mf_with_stamp(
     mesh: &Mesh,
     path: impl AsRef<Path>,
@@ -66,12 +66,8 @@ pub fn export_3mf_with_stamp(
         .primary
         .named_for(crate::provenance::StoredForm::ThreeMf);
     model.push_str(&format!("  <metadata name=\"{name}\">{value}</metadata>\n"));
-    if let Some(producer) = stamp.producer {
-        model.push_str(&format!(
-            "  <metadata name=\"{}\">{}</metadata>\n",
-            crate::provenance::PRODUCER_KEY,
-            producer.hex()
-        ));
+    if let Some((name, value)) = stamp.producer_named_for(crate::provenance::StoredForm::ThreeMf) {
+        model.push_str(&format!("  <metadata name=\"{name}\">{value}</metadata>\n"));
     }
     model.push_str("  <resources>\n");
     model.push_str("    <object id=\"1\" type=\"model\">\n");
