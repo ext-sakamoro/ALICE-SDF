@@ -15,7 +15,7 @@
 mod temp;
 
 use alice_sdf::io::IoError;
-use alice_sdf::provenance::{self, Provenance, StoredSemantics};
+use alice_sdf::provenance::{self, meaning_id, Provenance, StoredForm, StoredSemantics};
 use alice_sdf::texture::{
     eval_octave, fit_texture, generate_shader, hash_noise_3d_cpu, load_texture_fit,
     load_texture_fit_unverified, nelder_mead, reconstruct, save_texture_fit,
@@ -533,8 +533,9 @@ fn texture_fit_writer_stores_and_loaders_check_the_identifier() {
     );
 
     // an identifier this crate published before and no longer reproduces (`6e98f0be…`,
-    // alice-det-math 0.5.2 at 39507d1b) is refused by both loaders, naming both; the shared judge
-    // given it as an earlier identifier reads the document as VerifiedPrevious
+    // alice-det-math 0.5.2 at 39507d1b): the writer stores the document form's meaning identifier
+    // under it (ALICE-Law G8), refused by both loaders naming both meaning identifiers; the shared
+    // judge given it as an earlier identifier reads the document as VerifiedPrevious
     let hex = "6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37";
     let earlier = Provenance::new(core::array::from_fn(|i| {
         u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap()
@@ -548,9 +549,21 @@ fn texture_fit_writer_stores_and_loaders_check_the_identifier() {
         load_texture_fit_unverified(&prev).map(|_| ()).unwrap_err(),
     ] {
         match err {
-            IoError::SemanticsMismatch {
-                stored, expected, ..
-            } => assert_eq!((stored, expected), (earlier, Provenance::sdf())),
+            IoError::MeaningMismatch {
+                form,
+                stored,
+                expected,
+                ..
+            } => {
+                assert_eq!(form, StoredForm::JsonDocument);
+                assert_eq!(
+                    (stored, expected),
+                    (
+                        Provenance::new(meaning_id(form, &earlier)).hex(),
+                        Provenance::new(meaning_id(form, &Provenance::sdf())).hex()
+                    )
+                );
+            }
             other => panic!("the earlier identifier was not refused: {other:?}"),
         }
     }
@@ -570,13 +583,19 @@ fn texture_fit_writer_stores_and_loaders_check_the_identifier() {
         load_texture_fit_unverified(&other).unwrap_err(),
     ] {
         match err {
-            IoError::SemanticsMismatch {
-                stored, expected, ..
+            IoError::MeaningMismatch {
+                form,
+                stored,
+                expected,
+                ..
             } => {
-                assert_eq!(stored, other_id);
-                assert_eq!(expected, Provenance::sdf());
+                assert_eq!(stored, Provenance::new(meaning_id(form, &other_id)).hex());
+                assert_eq!(
+                    expected,
+                    Provenance::new(meaning_id(form, &Provenance::sdf())).hex()
+                );
             }
-            e => panic!("expected SemanticsMismatch, got {e:?}"),
+            e => panic!("expected MeaningMismatch, got {e:?}"),
         }
     }
 }
@@ -601,7 +620,7 @@ fn texture_fit_without_identifier_is_unpinned_and_malformed_is_refused() {
 
     let legacy = write("legacy.json", &|d| {
         d.remove("format");
-        d.remove(provenance::KEY);
+        d.remove(provenance::MEANING_KEY);
     });
     assert!(matches!(
         load_texture_fit(&legacy),
@@ -612,13 +631,13 @@ fn texture_fit_without_identifier_is_unpinned_and_malformed_is_refused() {
     assert_eq!(back, fit);
 
     let no_id = write("no_id.json", &|d| {
-        d.remove(provenance::KEY);
+        d.remove(provenance::MEANING_KEY);
     });
     let no_format = write("no_format.json", &|d| {
         d.remove("format");
     });
     let bad_hex = write("bad_hex.json", &|d| {
-        d.insert(provenance::KEY.into(), "zz".into());
+        d.insert(provenance::MEANING_KEY.into(), "zz".into());
     });
     for p in [&no_id, &no_format, &bad_hex] {
         assert!(

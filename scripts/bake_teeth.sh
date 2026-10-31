@@ -40,9 +40,9 @@ expect() {
     drop-face) echo 'boundary edges \(not watertight\)' ;;
     shrink-aabb) echo 'collider AABB .* does not contain' ;;
     no-scenes) echo 'no scene verified' ;;
-    bytecode-id) echo 'law.bytecode: semantics identifier [0-9a-f]{64} is not this build' ;;
+    bytecode-id) echo 'law.bytecode: alice:meaning_id mismatch for BakedBytecode version [0-9]+: stored [0-9a-f]{64}, expected [0-9a-f]{64}' ;;
     bytecode-unpinned) echo 'law.bytecode: ASDFBC01 stores no semantics identifier' ;;
-    manifest-id) echo 'manifest.json: semantics identifier [0-9a-f]{64} is not this build' ;;
+    manifest-id) echo 'manifest.json: alice:meaning_id mismatch for JsonDocument version [0-9]+: stored [0-9a-f]{64}, expected [0-9a-f]{64}' ;;
     gpu-vertex) echo 'gpu-vs-cpu: vertex-to-surface distance' ;;
     gpu-extra-vertex) echo 'gpu-vs-cpu: topology differs' ;;
   esac

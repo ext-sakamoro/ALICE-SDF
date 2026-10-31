@@ -313,7 +313,7 @@ fn the_qualifier_is_precise_from_450_and_es_320_and_empty_before() {
     }
 }
 
-/// The semantics identifier of the whole GLSL (ALICE-Law G8) sits on line 2, after `#version`:
+/// The meaning identifier of the whole GLSL (ALICE-Law G8) sits on line 2, after `#version`:
 /// GLSL ES takes nothing before `#version`, not even a comment. Every whole output a compiler
 /// takes, desktop and ES (`render_pipeline::build_full_shader`, `to_fragment_shader_full`), is
 /// tagged that way and compiles; the same ES text with the tag moved before `#version`, or with a
@@ -322,14 +322,18 @@ fn the_qualifier_is_precise_from_450_and_es_320_and_empty_before() {
 fn tagged_whole_glsl_compiles_and_es_takes_nothing_before_version() {
     use alice_sdf::compiled::glsl::render_pipeline::build_full_shader;
     use alice_sdf::compiled::glsl::RenderConfig;
-    use alice_sdf::provenance::{Provenance, KEY};
+    use alice_sdf::provenance::{Provenance, StoredForm};
     let Some(glslang) =
         glslang_or_skip("tagged_whole_glsl_compiles_and_es_takes_nothing_before_version")
     else {
         return;
     };
     let dir = scratch("glslang_g8_tag");
-    let tag = format!("// {KEY}={}", Provenance::sdf().hex());
+    // the shader text form's meaning identifier under this crate's identifier
+    let tag = format!(
+        "// {}",
+        Provenance::sdf().tagged_for(StoredForm::ShaderText)
+    );
     let mut compiled = 0;
     for (name, node) in corpus() {
         for mode in [GlslTranspileMode::Hardcoded, GlslTranspileMode::Dynamic] {
