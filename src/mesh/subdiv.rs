@@ -160,7 +160,13 @@ fn build(cage: &Cage) -> Result<Mesh, CageError> {
     let n = cage.positions.len();
     let mut directed: BTreeMap<(u32, u32), usize> = BTreeMap::new();
     let mut index: BTreeMap<(u32, u32), usize> = BTreeMap::new();
-    let mut m = Mesh { edges: Vec::new(), edge_faces: Vec::new(), vert_faces: vec![Vec::new(); n], vert_edges: vec![Vec::new(); n], face_edges: Vec::with_capacity(cage.faces.len()) };
+    let mut m = Mesh {
+        edges: Vec::new(),
+        edge_faces: Vec::new(),
+        vert_faces: vec![Vec::new(); n],
+        vert_edges: vec![Vec::new(); n],
+        face_edges: Vec::with_capacity(cage.faces.len()),
+    };
     for (fi, f) in cage.faces.iter().enumerate() {
         if f.iter().any(|&v| v as usize >= n) {
             return Err(CageError::VertexOutOfRange { face: fi });
@@ -207,7 +213,10 @@ fn build(cage: &Cage) -> Result<Mesh, CageError> {
     for (v, faces) in m.vert_faces.iter().enumerate() {
         let across = |f: usize, step: usize| -> Option<usize> {
             let face = cage.faces[f];
-            let i = face.iter().position(|&x| x as usize == v).expect("a vertex's face holds it");
+            let i = face
+                .iter()
+                .position(|&x| x as usize == v)
+                .expect("a vertex's face holds it");
             let u = face[(i + step) % 4];
             let e = index[&(u.min(v as u32), u.max(v as u32))];
             m.edge_faces[e].iter().copied().find(|&g| g != f)
@@ -233,7 +242,12 @@ fn build(cage: &Cage) -> Result<Mesh, CageError> {
 /// The largest finite sharpness on the cage (0 when none): the steps after which only infinite
 /// creases remain
 fn finite_steps(cage: &Cage) -> u32 {
-    cage.sharpness.values().copied().filter(|&s| s != INFINITE).max().unwrap_or(0)
+    cage.sharpness
+        .values()
+        .copied()
+        .filter(|&s| s != INFINITE)
+        .max()
+        .unwrap_or(0)
 }
 
 impl Mesh {
@@ -251,12 +265,20 @@ impl Mesh {
     }
 
     fn kind(&self, cage: &Cage, v: usize) -> Kind {
-        let hard: Vec<usize> = self.vert_edges[v].iter().copied().filter(|&e| self.hard(cage, e)).collect();
-        let boundary = self.vert_edges[v].iter().any(|&e| self.edge_faces[e].len() == 1);
+        let hard: Vec<usize> = self.vert_edges[v]
+            .iter()
+            .copied()
+            .filter(|&e| self.hard(cage, e))
+            .collect();
+        let boundary = self.vert_edges[v]
+            .iter()
+            .any(|&e| self.edge_faces[e].len() == 1);
         match hard.len() {
             // (a dart, one sharp edge ending here, moves by the smooth rule)
             0 | 1 => Kind::Smooth,
-            2 if !(boundary && self.vert_edges[v].len() == 2) => Kind::Crease(self.other(hard[0], v), self.other(hard[1], v)),
+            2 if !(boundary && self.vert_edges[v].len() == 2) => {
+                Kind::Crease(self.other(hard[0], v), self.other(hard[1], v))
+            }
             _ => Kind::Corner,
         }
     }
@@ -267,7 +289,11 @@ impl Mesh {
 /// every vertex used by a face and every vertex's faces forming one fan
 pub fn check(cage: &Cage) -> Result<Topology, CageError> {
     let m = build(cage)?;
-    let on_boundary: Vec<bool> = m.vert_edges.iter().map(|es| es.iter().any(|&e| m.edge_faces[e].len() == 1)).collect();
+    let on_boundary: Vec<bool> = m
+        .vert_edges
+        .iter()
+        .map(|es| es.iter().any(|&e| m.edge_faces[e].len() == 1))
+        .collect();
     Ok(Topology {
         vertices: cage.positions.len(),
         edges: m.edges.len(),
@@ -285,7 +311,11 @@ pub fn subdivide(cage: &Cage) -> Result<Cage, CageError> {
     let m = build(cage)?;
     let p = &cage.positions;
     let (nv, ne) = (p.len(), m.edges.len());
-    let face_pt: Vec<DVec3> = cage.faces.iter().map(|f| (p[f[0] as usize] + p[f[1] as usize] + p[f[2] as usize] + p[f[3] as usize]) * 0.25).collect();
+    let face_pt: Vec<DVec3> = cage
+        .faces
+        .iter()
+        .map(|f| (p[f[0] as usize] + p[f[1] as usize] + p[f[2] as usize] + p[f[3] as usize]) * 0.25)
+        .collect();
     let edge_pt: Vec<DVec3> = (0..ne)
         .map(|e| {
             let (a, b) = m.edges[e];
@@ -304,8 +334,13 @@ pub fn subdivide(cage: &Cage) -> Result<Cage, CageError> {
             Kind::Crease(a, b) => (p[a as usize] + p[v] * 6.0 + p[b as usize]) * 0.125,
             Kind::Smooth => {
                 let n = m.vert_edges[v].len() as f64;
-                let fbar = m.vert_faces[v].iter().fold(DVec3::ZERO, |s, &f| s + face_pt[f]) / m.vert_faces[v].len() as f64;
-                let ebar = m.vert_edges[v].iter().fold(DVec3::ZERO, |s, &e| s + (p[v] + p[m.other(e, v) as usize]) * 0.5) / n;
+                let fbar = m.vert_faces[v]
+                    .iter()
+                    .fold(DVec3::ZERO, |s, &f| s + face_pt[f])
+                    / m.vert_faces[v].len() as f64;
+                let ebar = m.vert_edges[v].iter().fold(DVec3::ZERO, |s, &e| {
+                    s + (p[v] + p[m.other(e, v) as usize]) * 0.5
+                }) / n;
                 (fbar + ebar * 2.0 + p[v] * (n - 3.0)) / n
             }
         });
@@ -317,20 +352,37 @@ pub fn subdivide(cage: &Cage) -> Result<Cage, CageError> {
         let fe = m.face_edges[fi];
         let centre = (nv + ne + fi) as u32;
         for i in 0..4 {
-            faces.push([f[i], (nv + fe[i]) as u32, centre, (nv + fe[(i + 3) % 4]) as u32]);
+            faces.push([
+                f[i],
+                (nv + fe[i]) as u32,
+                centre,
+                (nv + fe[(i + 3) % 4]) as u32,
+            ]);
         }
     }
     let mut sharpness = BTreeMap::new();
     for (&(a, b), &s) in &cage.sharpness {
-        let next = if s == INFINITE { INFINITE } else { s.saturating_sub(1) };
+        let next = if s == INFINITE {
+            INFINITE
+        } else {
+            s.saturating_sub(1)
+        };
         if next == 0 {
             continue;
         }
-        let e = (nv + m.edges.iter().position(|&k| k == (a, b)).expect("checked by build")) as u32;
+        let e = (nv
+            + m.edges
+                .iter()
+                .position(|&k| k == (a, b))
+                .expect("checked by build")) as u32;
         sharpness.insert((a, e), next);
         sharpness.insert((b, e), next);
     }
-    Ok(Cage { positions, faces, sharpness })
+    Ok(Cage {
+        positions,
+        faces,
+        sharpness,
+    })
 }
 
 /// Each vertex's point on the limit surface (see the module documentation)
@@ -355,10 +407,15 @@ pub fn limit_positions(cage: &Cage) -> Result<Vec<DVec3>, CageError> {
             Kind::Crease(a, b) => (p[a as usize] + p[v] * 4.0 + p[b as usize]) / 6.0,
             Kind::Smooth => {
                 let n = m.vert_edges[v].len() as f64;
-                let se = m.vert_edges[v].iter().fold(DVec3::ZERO, |s, &e| s + p[m.other(e, v) as usize]);
+                let se = m.vert_edges[v]
+                    .iter()
+                    .fold(DVec3::ZERO, |s, &e| s + p[m.other(e, v) as usize]);
                 let sf = m.vert_faces[v].iter().fold(DVec3::ZERO, |s, &f| {
                     let face = cage.faces[f];
-                    let i = face.iter().position(|&x| x as usize == v).expect("a vertex's face holds it");
+                    let i = face
+                        .iter()
+                        .position(|&x| x as usize == v)
+                        .expect("a vertex's face holds it");
                     s + p[face[(i + 2) % 4] as usize]
                 });
                 (p[v] * (n * n) + se * 4.0 + sf) / (n * (n + 5.0))
@@ -386,12 +443,18 @@ pub fn limit_normals(cage: &Cage) -> Result<Vec<Option<DVec3>>, CageError> {
     let p = &cage.positions;
     let corner = |f: usize, v: usize| -> (u32, u32, u32) {
         let face = cage.faces[f];
-        let i = face.iter().position(|&x| x as usize == v).expect("a vertex's face holds it");
+        let i = face
+            .iter()
+            .position(|&x| x as usize == v)
+            .expect("a vertex's face holds it");
         (face[(i + 1) % 4], face[(i + 2) % 4], face[(i + 3) % 4])
     };
     Ok((0..p.len())
         .map(|v| {
-            if m.vert_edges[v].iter().any(|&e| m.edge_faces[e].len() != 2 || m.hard(cage, e)) {
+            if m.vert_edges[v]
+                .iter()
+                .any(|&e| m.edge_faces[e].len() != 2 || m.hard(cage, e))
+            {
                 return None;
             }
             // the ring in cyclic order: face k has corners (v, next, diagonal, prev), and the face
@@ -410,7 +473,12 @@ pub fn limit_normals(cage: &Cage) -> Result<Vec<Option<DVec3>>, CageError> {
             let (mut t1, mut t2) = (DVec3::ZERO, DVec3::ZERO);
             for (i, &f) in order.iter().enumerate() {
                 let (e, d, _) = corner(f, v);
-                let (ci, cj, si, sj) = (cos64(w * i as f64), cos64(w * (i + 1) as f64), sin64(w * i as f64), sin64(w * (i + 1) as f64));
+                let (ci, cj, si, sj) = (
+                    cos64(w * i as f64),
+                    cos64(w * (i + 1) as f64),
+                    sin64(w * i as f64),
+                    sin64(w * (i + 1) as f64),
+                );
                 t1 += p[e as usize] * (a * ci) + p[d as usize] * (ci + cj);
                 t2 += p[e as usize] * (a * si) + p[d as usize] * (si + sj);
             }
@@ -430,7 +498,11 @@ pub fn limit_mesh(cage: &Cage, levels: u32) -> Result<Cage, CageError> {
         s = subdivide(&s)?;
     }
     let positions = limit_positions(&s)?;
-    Ok(Cage { positions, faces: s.faces, sharpness: s.sharpness })
+    Ok(Cage {
+        positions,
+        faces: s.faces,
+        sharpness: s.sharpness,
+    })
 }
 
 #[cfg(test)]
@@ -452,13 +524,18 @@ mod tests {
                 faces.push([id(i, j), id(i + 1, j), id(i + 1, j + 1), id(i, j + 1)]);
             }
         }
-        Cage { positions, faces, sharpness: BTreeMap::new() }
+        Cage {
+            positions,
+            faces,
+            sharpness: BTreeMap::new(),
+        }
     }
 
     // a fixed bumpy height field (no symmetry the rules could hide behind)
     fn bumps(i: usize, j: usize) -> f64 {
         let (x, y) = (i as f64, j as f64);
-        0.3 * x - 0.2 * y + 0.05 * x * y + 0.01 * x * x * y - 0.02 * y * y + if (i * 7 + j * 3) % 5 == 0 { 0.4 } else { 0.0 }
+        0.3 * x - 0.2 * y + 0.05 * x * y + 0.01 * x * x * y - 0.02 * y * y
+            + if (i * 7 + j * 3) % 5 == 0 { 0.4 } else { 0.0 }
     }
 
     // oracle: the cubic B-spline surface reproduces a quadratic up to a constant, so on a regular
@@ -479,7 +556,10 @@ mod tests {
             }
         }
         assert_eq!(checked, 49);
-        assert!(nrm[0].is_none() && nrm[4].is_none(), "boundary vertices have none");
+        assert!(
+            nrm[0].is_none() && nrm[4].is_none(),
+            "boundary vertices have none"
+        );
     }
 
     // oracle: the cube's symmetry: the limit normal at a corner (valence 3) is the corner's direction
@@ -489,7 +569,11 @@ mod tests {
         let nrm = limit_normals(&c).unwrap();
         for (v, q) in c.positions.iter().enumerate() {
             let got = nrm[v].expect("a closed cube's vertices are smooth");
-            assert!((got - q.normalize()).length() < 1e-12, "{v}: {got} vs {}", q.normalize());
+            assert!(
+                (got - q.normalize()).length() < 1e-12,
+                "{v}: {got} vs {}",
+                q.normalize()
+            );
         }
     }
 
@@ -504,37 +588,89 @@ mod tests {
             for k in 0..n {
                 let t = std::f64::consts::TAU * k as f64 / n as f64;
                 // a first-harmonic tilt on each ring, different on the two (the masks weigh them)
-                positions.push(DVec3::new(t.cos(), t.sin(), 0.1 * (2.0 * t).sin() + 0.3 * t.cos()));
+                positions.push(DVec3::new(
+                    t.cos(),
+                    t.sin(),
+                    0.1 * (2.0 * t).sin() + 0.3 * t.cos(),
+                ));
                 let t2 = std::f64::consts::TAU * (k as f64 + 0.5) / n as f64;
-                positions.push(DVec3::new(1.6 * t2.cos(), 1.6 * t2.sin(), 0.15 * (3.0 * t2).cos() - 0.2 * t2.sin()));
+                positions.push(DVec3::new(
+                    1.6 * t2.cos(),
+                    1.6 * t2.sin(),
+                    0.15 * (3.0 * t2).cos() - 0.2 * t2.sin(),
+                ));
             }
             let e = |k: usize| (1 + 2 * (k % n)) as u32;
             let f = |k: usize| (2 + 2 * (k % n)) as u32;
             let faces: Vec<[u32; 4]> = (0..n).map(|k| [0, e(k), f(k), e(k + 1)]).collect();
-            let c = Cage { positions, faces, sharpness: BTreeMap::new() };
+            let c = Cage {
+                positions,
+                faces,
+                sharpness: BTreeMap::new(),
+            };
             let want = limit_normals(&c).unwrap()[0].expect("the centre is smooth and interior");
             let deep = limit_mesh(&c, 6).unwrap();
             // the centre keeps index 0; its neighbours in the deep mesh lie about it in a small ring
-            let nb: Vec<DVec3> = deep.faces.iter().filter(|q| q.contains(&0)).flat_map(|q| q.iter().map(|&i| deep.positions[i as usize])).collect();
+            let nb: Vec<DVec3> = deep
+                .faces
+                .iter()
+                .filter(|q| q.contains(&0))
+                .flat_map(|q| q.iter().map(|&i| deep.positions[i as usize]))
+                .collect();
             let o = deep.positions[0];
             let mut acc = DVec3::ZERO;
-            let ring: Vec<DVec3> = deep.faces.iter().filter_map(|q| q.iter().position(|&i| i == 0).map(|k| (deep.positions[q[(k + 1) % 4] as usize], deep.positions[q[(k + 3) % 4] as usize]))).map(|(a, b)| (a - o).cross(b - o)).collect();
+            let ring: Vec<DVec3> = deep
+                .faces
+                .iter()
+                .filter_map(|q| {
+                    q.iter().position(|&i| i == 0).map(|k| {
+                        (
+                            deep.positions[q[(k + 1) % 4] as usize],
+                            deep.positions[q[(k + 3) % 4] as usize],
+                        )
+                    })
+                })
+                .map(|(a, b)| (a - o).cross(b - o))
+                .collect();
             for r in &ring {
                 acc += *r;
             }
             assert_eq!(nb.len(), 4 * n);
             let fd = acc.normalize();
             let ang = fd.dot(want).clamp(-1.0, 1.0).acos().to_degrees();
-            assert!(ang < 0.05, "valence {n}: mask normal vs the deep limit's {ang}°");
+            assert!(
+                ang < 0.05,
+                "valence {n}: mask normal vs the deep limit's {ang}°"
+            );
         }
     }
 
     // the cube of half-width 1, faces wound outward
     fn cube() -> Cage {
         let p = |x: f64, y: f64, z: f64| DVec3::new(x, y, z);
-        let positions = vec![p(-1.0, -1.0, -1.0), p(1.0, -1.0, -1.0), p(1.0, 1.0, -1.0), p(-1.0, 1.0, -1.0), p(-1.0, -1.0, 1.0), p(1.0, -1.0, 1.0), p(1.0, 1.0, 1.0), p(-1.0, 1.0, 1.0)];
-        let faces = vec![[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [0, 4, 7, 3]];
-        Cage { positions, faces, sharpness: BTreeMap::new() }
+        let positions = vec![
+            p(-1.0, -1.0, -1.0),
+            p(1.0, -1.0, -1.0),
+            p(1.0, 1.0, -1.0),
+            p(-1.0, 1.0, -1.0),
+            p(-1.0, -1.0, 1.0),
+            p(1.0, -1.0, 1.0),
+            p(1.0, 1.0, 1.0),
+            p(-1.0, 1.0, 1.0),
+        ];
+        let faces = vec![
+            [0, 3, 2, 1],
+            [4, 5, 6, 7],
+            [0, 1, 5, 4],
+            [2, 3, 7, 6],
+            [1, 2, 6, 5],
+            [0, 4, 7, 3],
+        ];
+        Cage {
+            positions,
+            faces,
+            sharpness: BTreeMap::new(),
+        }
     }
 
     // a closed "n-gon prism" of quads around a valence-n vertex: n quads fanned around a centre,
@@ -554,7 +690,11 @@ mod tests {
             faces.push([0, ring(2 * k), ring(2 * k + 1), ring(2 * k + 2)]);
             faces.push([1, ring(2 * k + 2), ring(2 * k + 1), ring(2 * k)]);
         }
-        Cage { positions, faces, sharpness: BTreeMap::new() }
+        Cage {
+            positions,
+            faces,
+            sharpness: BTreeMap::new(),
+        }
     }
 
     fn close(a: DVec3, b: DVec3, tol: f64) -> bool {
@@ -576,7 +716,11 @@ mod tests {
                     want += c.positions[(j + b - 1) * 9 + i + a - 1] * (wa * wb / 36.0);
                 }
             }
-            assert!(close(lim[j * 9 + i], want, 1e-13), "knot ({i}, {j}): {} vs {want}", lim[j * 9 + i]);
+            assert!(
+                close(lim[j * 9 + i], want, 1e-13),
+                "knot ({i}, {j}): {} vs {want}",
+                lim[j * 9 + i]
+            );
         }
         // one step down: the point between (4, 4) and (5, 4) is the edge point of that edge; its
         // limit is the B-spline at u = 4.5 (weights (1, 23, 23, 1)/48 over i = 3..6), v = 4
@@ -584,7 +728,20 @@ mod tests {
         let ls = limit_positions(&s).unwrap();
         let (pa, pb) = (c.positions[4 * 9 + 4], c.positions[4 * 9 + 5]);
         let mid = (pa + pb) * 0.5;
-        let k = s.positions.iter().enumerate().filter(|(k, _)| *k >= c.positions.len()).find(|(_, p)| close(DVec3::new(p.x, p.y, 0.0), DVec3::new(mid.x, mid.y, 0.0), 1e-12)).map(|(k, _)| k).expect("the edge point of (4, 4)–(5, 4)");
+        let k = s
+            .positions
+            .iter()
+            .enumerate()
+            .filter(|(k, _)| *k >= c.positions.len())
+            .find(|(_, p)| {
+                close(
+                    DVec3::new(p.x, p.y, 0.0),
+                    DVec3::new(mid.x, mid.y, 0.0),
+                    1e-12,
+                )
+            })
+            .map(|(k, _)| k)
+            .expect("the edge point of (4, 4)–(5, 4)");
         let wu = [1.0, 23.0, 23.0, 1.0];
         let mut want = DVec3::ZERO;
         for (a, wa) in wu.iter().enumerate() {
@@ -592,7 +749,11 @@ mod tests {
                 want += c.positions[(3 + b) * 9 + 3 + a] * (wa / 48.0 * wb / 6.0);
             }
         }
-        assert!(close(ls[k], want, 1e-13), "edge midpoint: {} vs {want}", ls[k]);
+        assert!(
+            close(ls[k], want, 1e-13),
+            "edge midpoint: {} vs {want}",
+            ls[k]
+        );
     }
 
     // oracle (two independent paths): at an extraordinary vertex the limit mask equals the point
@@ -602,8 +763,15 @@ mod tests {
     // λ(5) ≈ 0.550, λ(6) ≈ 0.580); valences 3 (the cube), 5 and 6
     #[test]
     fn the_limit_mask_is_where_subdivision_converges() {
-        for (name, c, v, n) in [("cube", cube(), 6usize, 3.0f64), ("fan 5", double_fan(5), 0, 5.0), ("fan 6", double_fan(6), 0, 6.0)] {
-            let (c2, c1) = ((std::f64::consts::TAU / n).cos(), (std::f64::consts::PI / n).cos());
+        for (name, c, v, n) in [
+            ("cube", cube(), 6usize, 3.0f64),
+            ("fan 5", double_fan(5), 0, 5.0),
+            ("fan 6", double_fan(6), 0, 6.0),
+        ] {
+            let (c2, c1) = (
+                (std::f64::consts::TAU / n).cos(),
+                (std::f64::consts::PI / n).cos(),
+            );
             let lambda = (5.0 + c2 + c1 * (2.0 * (9.0 + c2)).sqrt()) / 16.0;
             let target = limit_positions(&c).unwrap()[v];
             let d0 = (c.positions[v] - target).length();
@@ -613,10 +781,16 @@ mod tests {
             for level in 1..=6 {
                 s = subdivide(&s).unwrap();
                 let next = (s.positions[v] - target).length();
-                assert!(next <= d * lambda * 1.05 + 1e-14, "{name} level {level}: {next} after {d} (λ {lambda:.4})");
+                assert!(
+                    next <= d * lambda * 1.05 + 1e-14,
+                    "{name} level {level}: {next} after {d} (λ {lambda:.4})"
+                );
                 d = next;
             }
-            assert!(d <= d0 * (lambda * 1.05).powi(6) + 1e-14, "{name}: {d} after 6 steps from {d0}");
+            assert!(
+                d <= d0 * (lambda * 1.05).powi(6) + 1e-14,
+                "{name}: {d} after 6 steps from {d0}"
+            );
         }
     }
 
@@ -639,21 +813,36 @@ mod tests {
         let lim = limit_positions(&c).unwrap();
         for i in 1..6 {
             let (a, v, b) = (c.positions[i - 1], c.positions[i], c.positions[i + 1]);
-            assert!(close(lim[i], (a + 4.0 * v + b) / 6.0, 1e-14), "limit at {i}");
+            assert!(
+                close(lim[i], (a + 4.0 * v + b) / 6.0, 1e-14),
+                "limit at {i}"
+            );
         }
         let s = subdivide(&c).unwrap();
         for i in 1..6 {
             let (a, v, b) = (c.positions[i - 1], c.positions[i], c.positions[i + 1]);
-            assert!(close(s.positions[i], (a + 6.0 * v + b) / 8.0, 1e-14), "step at {i}");
+            assert!(
+                close(s.positions[i], (a + 6.0 * v + b) / 8.0, 1e-14),
+                "step at {i}"
+            );
         }
         let mut moved = c.clone();
         moved.positions[2 * 7 + 3] += DVec3::new(0.3, -0.2, 1.7);
         let lm = limit_positions(&subdivide(&moved).unwrap()).unwrap();
         let l0 = limit_positions(&s).unwrap();
-        let on_edge: Vec<usize> = (0..s.positions.len()).filter(|&k| s.positions[k].y == 0.0).collect();
-        assert_eq!(on_edge.len(), 13, "the subdivided boundary row: 7 vertices and 6 edge points");
+        let on_edge: Vec<usize> = (0..s.positions.len())
+            .filter(|&k| s.positions[k].y == 0.0)
+            .collect();
+        assert_eq!(
+            on_edge.len(),
+            13,
+            "the subdivided boundary row: 7 vertices and 6 edge points"
+        );
         for k in on_edge {
-            assert_eq!(lm[k], l0[k], "boundary point {k} of the subdivided grid moved");
+            assert_eq!(
+                lm[k], l0[k],
+                "boundary point {k} of the subdivided grid moved"
+            );
         }
     }
 
@@ -671,7 +860,11 @@ mod tests {
         for i in 1..6 {
             let k = row * 7 + i;
             let want = (c.positions[k - 1] + 4.0 * c.positions[k] + c.positions[k + 1]) / 6.0;
-            assert!(close(lim[k], want, 1e-14), "crease limit at {i}: {} vs {want}", lim[k]);
+            assert!(
+                close(lim[k], want, 1e-14),
+                "crease limit at {i}: {} vs {want}",
+                lim[k]
+            );
         }
         let mut moved = c.clone();
         moved.positions[2 * 7 + 3].z += 2.0;
@@ -683,7 +876,11 @@ mod tests {
             assert_eq!(a.positions[k], b.positions[k], "crease vertex {i}");
         }
         // and its sharpness survives the steps
-        assert!(subdivide(&c).unwrap().sharpness.values().all(|&s| s == INFINITE));
+        assert!(subdivide(&c)
+            .unwrap()
+            .sharpness
+            .values()
+            .all(|&s| s == INFINITE));
     }
 
     // a semi-sharp crease acts at integer steps: sharpness s becomes s − 1 on both halves, and an
@@ -703,7 +900,10 @@ mod tests {
     #[test]
     fn euler_and_valence_defect() {
         let t = check(&cube()).unwrap();
-        assert_eq!((t.vertices, t.edges, t.faces, t.boundary_edges), (8, 12, 6, 0));
+        assert_eq!(
+            (t.vertices, t.edges, t.faces, t.boundary_edges),
+            (8, 12, 6, 0)
+        );
         assert_eq!(t.euler(), 2);
         assert_eq!(t.valence_defect(), 8);
         let g = check(&grid(4, 3, &|_, _| 0.0)).unwrap();
@@ -726,7 +926,10 @@ mod tests {
     fn invalid_cages_are_refused() {
         let mut c = cube();
         c.faces[1] = [4, 7, 6, 5];
-        assert!(matches!(check(&c), Err(CageError::InconsistentWinding { .. })));
+        assert!(matches!(
+            check(&c),
+            Err(CageError::InconsistentWinding { .. })
+        ));
         let mut c = grid(3, 2, &|_, _| 0.0);
         c.positions.push(DVec3::new(0.5, -1.0, 0.0));
         c.positions.push(DVec3::new(1.5, -1.0, 0.0));
@@ -741,13 +944,22 @@ mod tests {
         assert_eq!(check(&c), Err(CageError::DegenerateFace { face: 0 }));
         let mut c = cube();
         c.sharpness.insert((0, 6), 1);
-        assert_eq!(check(&c), Err(CageError::SharpnessOnMissingEdge { edge: (0, 6) }));
-        let c = Cage { positions: vec![DVec3::ZERO], faces: Vec::new(), sharpness: BTreeMap::new() };
+        assert_eq!(
+            check(&c),
+            Err(CageError::SharpnessOnMissingEdge { edge: (0, 6) })
+        );
+        let c = Cage {
+            positions: vec![DVec3::ZERO],
+            faces: Vec::new(),
+            sharpness: BTreeMap::new(),
+        };
         assert_eq!(check(&c), Err(CageError::Empty));
         // the operations refuse what check refuses
         let mut c = cube();
         c.faces[1] = [4, 7, 6, 5];
-        assert!(subdivide(&c).is_err() && limit_positions(&c).is_err() && limit_mesh(&c, 1).is_err());
+        assert!(
+            subdivide(&c).is_err() && limit_positions(&c).is_err() && limit_mesh(&c, 1).is_err()
+        );
     }
 
     // a rebuild is bit-identical, and the counts follow V' = V + E + F, F' = 4 F
@@ -760,8 +972,16 @@ mod tests {
         let s = subdivide(&c).unwrap();
         assert_eq!(s.positions.len(), t.vertices + t.edges + t.faces);
         assert_eq!(s.faces.len(), 4 * t.faces);
-        let bits: Vec<u64> = a.positions.iter().flat_map(|p| [p.x.to_bits(), p.y.to_bits(), p.z.to_bits()]).collect();
-        let bits2: Vec<u64> = b.positions.iter().flat_map(|p| [p.x.to_bits(), p.y.to_bits(), p.z.to_bits()]).collect();
+        let bits: Vec<u64> = a
+            .positions
+            .iter()
+            .flat_map(|p| [p.x.to_bits(), p.y.to_bits(), p.z.to_bits()])
+            .collect();
+        let bits2: Vec<u64> = b
+            .positions
+            .iter()
+            .flat_map(|p| [p.x.to_bits(), p.y.to_bits(), p.z.to_bits()])
+            .collect();
         assert_eq!(bits, bits2);
     }
     // oracle (refusal): a position no face uses has no ring, so no rule applies to it: every entry
@@ -790,10 +1010,22 @@ mod tests {
         let n = a.positions.len() as u32;
         let map = |v: u32| if v == 0 { 6 } else { n + v - 1 };
         let mut c = a.clone();
-        c.positions.extend(b.positions.drain(..).skip(1).map(|p| p + shift));
-        c.faces.extend(cube().faces.iter().map(|f| [map(f[0]), map(f[1]), map(f[2]), map(f[3])]));
-        assert_eq!(check(&c).unwrap_err(), CageError::NonManifoldVertex { vertex: 6 });
-        assert_eq!(limit_normals(&c).unwrap_err(), CageError::NonManifoldVertex { vertex: 6 });
+        c.positions
+            .extend(b.positions.drain(..).skip(1).map(|p| p + shift));
+        c.faces.extend(
+            cube()
+                .faces
+                .iter()
+                .map(|f| [map(f[0]), map(f[1]), map(f[2]), map(f[3])]),
+        );
+        assert_eq!(
+            check(&c).unwrap_err(),
+            CageError::NonManifoldVertex { vertex: 6 }
+        );
+        assert_eq!(
+            limit_normals(&c).unwrap_err(),
+            CageError::NonManifoldVertex { vertex: 6 }
+        );
         // each cube alone is accepted
         assert!(check(&a).is_ok());
     }
@@ -812,7 +1044,12 @@ mod tests {
         let s1 = subdivide(&c).unwrap();
         assert!(s1.sharpness.is_empty(), "s = 1 is spent in one step");
         let p = &s1.positions;
-        let around: Vec<[u32; 4]> = s1.faces.iter().copied().filter(|f| f.contains(&12)).collect();
+        let around: Vec<[u32; 4]> = s1
+            .faces
+            .iter()
+            .copied()
+            .filter(|f| f.contains(&12))
+            .collect();
         assert_eq!(around.len(), 4, "a regular vertex");
         let mut se = DVec3::ZERO;
         let mut sf = DVec3::ZERO;
@@ -828,11 +1065,18 @@ mod tests {
         for _ in 0..6 {
             d = subdivide(&d).unwrap();
         }
-        assert!((d.positions[12] - got).length() < 5e-3, "deep {} vs {got}", d.positions[12]);
+        assert!(
+            (d.positions[12] - got).length() < 5e-3,
+            "deep {} vs {got}",
+            d.positions[12]
+        );
         // the infinite-crease rule would put it elsewhere (the probe: 3.3e-2 away)
         let p0 = &c.positions;
         let crease = (p0[11] + p0[12] * 4.0 + p0[13]) / 6.0;
-        assert!((crease - got).length() > 1e-2, "not the infinite-crease point");
+        assert!(
+            (crease - got).length() > 1e-2,
+            "not the infinite-crease point"
+        );
         // and limit_mesh below the sharpness level agrees with the limit
         let lm = limit_mesh(&c, 0).unwrap();
         assert!((lm.positions[12] - got).length() < 1e-12);
@@ -850,11 +1094,26 @@ mod tests {
         let mid = (a + b) * 0.5;
         // the edge point is the subdivided vertex adjacent to both 11 and 12's new positions on the
         // edge: find it as the point equal to the midpoint
-        let hits = s1.positions.iter().filter(|q| (**q - mid).length() < 1e-12).count();
+        let hits = s1
+            .positions
+            .iter()
+            .filter(|q| (**q - mid).length() < 1e-12)
+            .count();
         assert_eq!(hits, 1, "the s = 1 edge's point is the midpoint");
         // the smooth edge point differs from the midpoint here
-        let faces: Vec<usize> = c.faces.iter().enumerate().filter(|(_, f)| f.contains(&11) && f.contains(&12)).map(|(i, _)| i).collect();
-        let fp = |fi: usize| c.faces[fi].iter().fold(DVec3::ZERO, |s, &v| s + c.positions[v as usize]) * 0.25;
+        let faces: Vec<usize> = c
+            .faces
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| f.contains(&11) && f.contains(&12))
+            .map(|(i, _)| i)
+            .collect();
+        let fp = |fi: usize| {
+            c.faces[fi]
+                .iter()
+                .fold(DVec3::ZERO, |s, &v| s + c.positions[v as usize])
+                * 0.25
+        };
         let smooth = (a + b + fp(faces[0]) + fp(faces[1])) * 0.25;
         assert!((smooth - mid).length() > 1e-3);
     }
@@ -869,11 +1128,23 @@ mod tests {
         let p = &c.positions;
         let v = 12usize;
         let around: Vec<&[u32; 4]> = c.faces.iter().filter(|f| f.contains(&12)).collect();
-        let fbar = around.iter().fold(DVec3::ZERO, |s, f| s + f.iter().fold(DVec3::ZERO, |t, &u| t + p[u as usize]) * 0.25) / 4.0;
-        let ebar = [7usize, 11, 13, 17].iter().fold(DVec3::ZERO, |s, &u| s + (p[v] + p[u]) * 0.5) / 4.0;
+        let fbar = around.iter().fold(DVec3::ZERO, |s, f| {
+            s + f.iter().fold(DVec3::ZERO, |t, &u| t + p[u as usize]) * 0.25
+        }) / 4.0;
+        let ebar = [7usize, 11, 13, 17]
+            .iter()
+            .fold(DVec3::ZERO, |s, &u| s + (p[v] + p[u]) * 0.5)
+            / 4.0;
         let want = (fbar + ebar * 2.0 + p[v]) / 4.0;
-        assert!((s1.positions[v] - want).length() < 1e-12, "{} vs {want}", s1.positions[v]);
-        assert!((s1.positions[v] - p[v]).length() > 1e-3, "it moves (not a corner)");
+        assert!(
+            (s1.positions[v] - want).length() < 1e-12,
+            "{} vs {want}",
+            s1.positions[v]
+        );
+        assert!(
+            (s1.positions[v] - p[v]).length() > 1e-3,
+            "it moves (not a corner)"
+        );
     }
 
     // oracle: a vertex on an infinite crease has no single tangent plane: no normal; the crease's
@@ -890,5 +1161,4 @@ mod tests {
         }
         assert!(nrm[8].is_some() && nrm[36].is_some(), "off the crease");
     }
-
 }
