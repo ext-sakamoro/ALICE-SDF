@@ -1146,7 +1146,27 @@ fn a_file_without_the_identifier_is_missing_not_semantics() {
 
 // ── producer identifier (`*_with_stamp`) ────────────────────────────────────────────────
 
-use alice_sdf::provenance::Stamp;
+use alice_sdf::provenance::{Stamp, StoredProducer};
+
+/// The producer read back is the producer meaning identifier of `want` in the file's form, and
+/// judges as current against `want`
+fn assert_current_producer(
+    stored: &provenance::Stored,
+    producer: Option<StoredProducer>,
+    want: &Provenance,
+    what: &str,
+) {
+    let p = producer.unwrap_or_else(|| panic!("{what}: no producer read back"));
+    assert!(p.meaning, "{what}: read as an earlier raw producer");
+    assert_eq!(p.form, stored.form, "{what}");
+    assert_eq!(
+        p.id,
+        provenance::producer_meaning_id(stored.form, want),
+        "{what}"
+    );
+    assert_ne!(p.id, stored.id, "{what}: the producer equals the primary");
+    assert_eq!(p.judge(want).unwrap(), StoredSemantics::Current, "{what}");
+}
 
 fn producer_id() -> Provenance {
     let mut id = [0u8; 32];
@@ -1206,6 +1226,38 @@ const STAMPED: &[(&str, &str, StampWrite, Write)] = &[
         },
     ),
     (
+        "export_glb_bytes_with_stamp",
+        "s.glb",
+        |m, p, s| {
+            let b = io::export_glb_bytes_with_stamp(m, &io::GltfConfig::default(), None, s);
+            std::fs::write(p, b.unwrap()).unwrap();
+        },
+        |m, p, id| {
+            let c = io::GltfConfig::default();
+            let b = io::export_glb_bytes_with_provenance(m, &c, None, id.unwrap());
+            std::fs::write(p, b.unwrap()).unwrap();
+        },
+    ),
+    (
+        "export_glb_bytes_with_stamp (meshopt)",
+        "s_meshopt.glb",
+        |m, p, s| {
+            let c = io::GltfConfig {
+                meshopt_compress: true,
+                ..Default::default()
+            };
+            std::fs::write(p, io::export_glb_bytes_with_stamp(m, &c, None, s).unwrap()).unwrap();
+        },
+        |m, p, id| {
+            let c = io::GltfConfig {
+                meshopt_compress: true,
+                ..Default::default()
+            };
+            let b = io::export_glb_bytes_with_provenance(m, &c, None, id.unwrap());
+            std::fs::write(p, b.unwrap()).unwrap();
+        },
+    ),
+    (
         "export_fbx_with_stamp (ascii)",
         "s_ascii.fbx",
         |m, p, s| {
@@ -1253,7 +1305,7 @@ fn a_stamped_obj_writes_both_identifiers_into_its_mtl() {
                 "{}",
                 p.display()
             );
-            assert_eq!(producer, Some(producer_id()), "{}", p.display());
+            assert_current_producer(&stored, producer, &producer_id(), &p.display().to_string());
         }
     }
 }
@@ -1272,7 +1324,7 @@ fn stamped_writers_keep_both_identifiers_in_their_slots() {
         {
             let (stored, producer) = provenance::read_with_producer(&path).unwrap();
             assert!(stored.is_written_under(&Provenance::sdf()), "{name}");
-            assert_eq!(producer, Some(producer_id()), "{name}");
+            assert_current_producer(&stored, producer, &producer_id(), name);
         }
         assert!(
             provenance::read(&path)
@@ -1285,10 +1337,26 @@ fn stamped_writers_keep_both_identifiers_in_their_slots() {
             StoredSemantics::Current,
             "{name}"
         );
-        provenance::check_producer(&path, &producer_id()).unwrap();
+        assert_eq!(
+            provenance::check_producer(&path, &producer_id()).unwrap(),
+            StoredSemantics::Current,
+            "{name}"
+        );
         match provenance::check_producer(&path, &caller_id()) {
-            Err(ProvenanceError::ProducerMismatch { stored, expected }) => {
-                assert_eq!((stored, expected), (producer_id(), caller_id()), "{name}");
+            Err(ProvenanceError::ProducerMismatch {
+                form,
+                stored,
+                expected,
+            }) => {
+                // both named as producer meaning identifiers of the file's form
+                assert_eq!(
+                    (stored, expected),
+                    (
+                        Provenance::new(provenance::producer_meaning_id(form, &producer_id())),
+                        Provenance::new(provenance::producer_meaning_id(form, &caller_id())),
+                    ),
+                    "{name}"
+                );
             }
             other => panic!("{name}: expected a producer mismatch, got {other:?}"),
         }
@@ -1304,11 +1372,7 @@ fn stamped_writers_keep_both_identifiers_in_their_slots() {
                 stored.is_written_under(&producer_id()),
                 "{name}: swapped assignment"
             );
-            assert_eq!(
-                producer,
-                Some(Provenance::sdf()),
-                "{name}: swapped assignment"
-            );
+            assert_current_producer(&stored, producer, &Provenance::sdf(), name);
         }
         // no producer: the same bytes as the provenance writer, and no producer read back
         stamped(&m, &path, &Stamp::from(caller_id()));
@@ -1338,8 +1402,10 @@ fn stamped_writers_keep_both_identifiers_in_their_slots() {
     assert!(compared > 0, "compared no stamped writer");
 }
 
-/// The binary STL header with a producer: version 2, bytes 41..48 zero, the producer in 48..80,
-/// never starting with `solid`; an all-zero producer is still present (the version says so)
+/// The binary STL header with a producer: version 3, bytes 41..48 zero, the producer meaning
+/// identifier in 48..80, never starting with `solid`; an all-zero producer is still present (the
+/// version says so); an earlier version 2 header (the raw producer in 48..80) reads as the previous
+/// generation
 #[test]
 fn the_binary_stl_header_with_a_producer_has_the_documented_layout() {
     let m = mesh();
@@ -1347,13 +1413,36 @@ fn the_binary_stl_header_with_a_producer_has_the_documented_layout() {
     io::export_stl_with_stamp(&m, &path, &Stamp::sdf_with_producer(producer_id())).unwrap();
     let bytes = std::fs::read(&path).unwrap();
     assert_eq!(&bytes[..8], provenance::STL_MAGIC);
-    assert_eq!(bytes[8], provenance::STL_HEADER_VERSION_PRODUCER);
+    assert_eq!(bytes[8], provenance::STL_HEADER_VERSION_PRODUCER_MEANING);
     assert_eq!(
         &bytes[9..41],
         &provenance::meaning_id(StoredForm::StlBinary, &Provenance::sdf())
     );
     assert_eq!(&bytes[41..48], &[0u8; 7]);
-    assert_eq!(&bytes[48..80], &producer_id().semantics_id);
+    assert_eq!(
+        &bytes[48..80],
+        &provenance::producer_meaning_id(StoredForm::StlBinary, &producer_id())
+    );
+    // the earlier layout: version 2 with the raw producer, read as the previous generation
+    let mut earlier = bytes.clone();
+    earlier[8] = provenance::STL_HEADER_VERSION_PRODUCER;
+    earlier[48..80].copy_from_slice(&producer_id().semantics_id);
+    {
+        let (stored, producer) = provenance::from_bytes_with_producer(&earlier).unwrap();
+        assert!(stored.is_written_under(&Provenance::sdf()));
+        let producer = producer.expect("an earlier producer");
+        assert!(!producer.meaning);
+        assert_eq!(producer.id, producer_id().semantics_id);
+        assert_eq!(
+            producer.judge(&producer_id()).unwrap(),
+            StoredSemantics::VerifiedPrevious
+        );
+        assert!(matches!(
+            producer.judge(&caller_id()),
+            Err(ProvenanceError::ProducerMismatch { stored, expected, .. })
+                if stored == producer_id() && expected == caller_id()
+        ));
+    }
     assert!(!bytes.starts_with(b"solid"));
     // without a producer: version 1 and zeros after the identifier
     io::export_stl_with_stamp(&m, &path, &Stamp::from(Provenance::sdf())).unwrap();
@@ -1370,9 +1459,14 @@ fn the_binary_stl_header_with_a_producer_has_the_documented_layout() {
     {
         let (stored, producer) = provenance::read_with_producer(&path).unwrap();
         assert!(stored.is_written_under(&Provenance::sdf()));
-        assert_eq!(producer, Some(Provenance::new([0; 32])));
+        assert_current_producer(
+            &stored,
+            producer,
+            &Provenance::new([0; 32]),
+            "zero producer",
+        );
     }
-    // a version 2 header with a non-zero reserved byte carries this crate's magic but is not a
+    // a version 3 header with a non-zero reserved byte carries this crate's magic but is not a
     // layout it writes: refused, never read as a file without an identifier
     let mut bad = std::fs::read(&path).unwrap();
     bad[44] = 1;
@@ -1398,8 +1492,12 @@ fn ascii_stl_reads_each_identifier_from_its_own_key() {
         format!(
             "solid {} {}={}",
             Provenance::sdf().tagged_for(StoredForm::StlAscii),
-            provenance::PRODUCER_KEY,
-            producer_id().hex()
+            provenance::PRODUCER_MEANING_KEY,
+            Provenance::new(provenance::producer_meaning_id(
+                StoredForm::StlAscii,
+                &producer_id()
+            ))
+            .hex()
         )
     );
     let only_producer = text.replacen(
@@ -1415,8 +1513,8 @@ fn ascii_stl_reads_each_identifier_from_its_own_key() {
     std::fs::remove_file(&path).ok();
 }
 
-/// The independent parsers still read the stamped files: `stl_io` the version 2 binary STL,
-/// `fbxcel` the binary FBX (with `ProducerSemanticsId` beside `Creator`), and the 3MF model keeps
+/// The independent parsers still read the stamped files: `stl_io` the version 3 binary STL,
+/// `fbxcel` the binary FBX (with `ProducerMeaningId` beside `Creator`), and the 3MF model keeps
 /// both metadata entries before `<resources>`
 #[test]
 fn independent_parsers_read_the_stamped_files() {
@@ -1463,8 +1561,16 @@ fn independent_parsers_read_the_stamped_files() {
         )
     );
     assert_eq!(
-        string_of("ProducerSemanticsId"),
-        format!("{}={}", provenance::PRODUCER_KEY, producer_id().hex())
+        string_of("ProducerMeaningId"),
+        format!(
+            "{}={}",
+            provenance::PRODUCER_MEANING_KEY,
+            Provenance::new(provenance::producer_meaning_id(
+                StoredForm::FbxBinary,
+                &producer_id()
+            ))
+            .hex()
+        )
     );
     std::fs::remove_file(&fbx).ok();
 
@@ -1476,11 +1582,183 @@ fn independent_parsers_read_the_stamped_files() {
         .find(&format!("<metadata name=\"{}\">", provenance::MEANING_KEY))
         .unwrap();
     let producer = text
-        .find("<metadata name=\"alice:producer_semantics_id\">")
+        .find(&format!(
+            "<metadata name=\"{}\">",
+            provenance::PRODUCER_MEANING_KEY
+        ))
         .unwrap();
     let resources = text.find("<resources>").unwrap();
     assert!(primary < producer && producer < resources);
     std::fs::remove_file(&tmf).ok();
+}
+
+/// The stamped files main wrote before the producer stored a meaning identifier (the STAMPED
+/// writers at 7b8ddf9 with `Stamp::sdf_with_producer(producer_id())`): each holds the raw producer
+/// (binary STL header version 2, key `alice:producer_semantics_id`, FBX `ProducerSemanticsId`), read
+/// as the previous generation against that producer, a mismatch against another, both named raw
+const PRODUCER_RAW_MAIN: [&str; 6] = [
+    "producer_raw_main.stl",
+    "producer_raw_main_ascii.stl",
+    "producer_raw_main.3mf",
+    "producer_raw_main_bin.fbx",
+    "producer_raw_main.obj",
+    "producer_raw_main_ascii.fbx",
+];
+
+#[test]
+fn an_earlier_raw_producer_reads_as_the_previous_generation() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/provenance");
+    let mut read = 0;
+    for file in PRODUCER_RAW_MAIN {
+        let path = dir.join(file);
+        let (_, producer) = provenance::read_with_producer(&path).unwrap();
+        let producer = producer.unwrap_or_else(|| panic!("{file}: no producer"));
+        assert!(!producer.meaning, "{file}: read as a meaning identifier");
+        assert_eq!(producer.id, producer_id().semantics_id, "{file}");
+        assert_eq!(
+            provenance::check_producer(&path, &producer_id()).unwrap(),
+            StoredSemantics::VerifiedPrevious,
+            "{file}"
+        );
+        match provenance::check_producer(&path, &caller_id()) {
+            Err(ProvenanceError::ProducerMismatch {
+                stored, expected, ..
+            }) => assert_eq!((stored, expected), (producer_id(), caller_id()), "{file}"),
+            other => panic!("{file}: expected a producer mismatch, got {other:?}"),
+        }
+        read += 1;
+    }
+    assert_eq!(read, PRODUCER_RAW_MAIN.len());
+}
+
+/// A single stored zip entry (method 0, sizes in the local header), as the 3MF reader reads them
+fn stored_zip(name: &str, data: &[u8]) -> Vec<u8> {
+    let mut z = Vec::new();
+    z.extend_from_slice(b"PK\x03\x04");
+    z.extend_from_slice(&[20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let len = u32::try_from(data.len()).unwrap().to_le_bytes();
+    z.extend_from_slice(&len);
+    z.extend_from_slice(&len);
+    z.extend_from_slice(&u16::try_from(name.len()).unwrap().to_le_bytes());
+    z.extend_from_slice(&[0, 0]);
+    z.extend_from_slice(name.as_bytes());
+    z.extend_from_slice(data);
+    z
+}
+
+/// A file holding both the current and the earlier producer key is refused, in every text form, the
+/// binary FBX and the 3MF model; with either key alone it reads
+#[test]
+fn a_file_with_both_producer_keys_is_refused() {
+    let m = mesh();
+    let stamp = Stamp::sdf_with_producer(producer_id());
+    let raw = format!("{}={}", provenance::PRODUCER_KEY, producer_id().hex());
+    let mut refused = 0;
+    for &(name, file, stamped, _) in STAMPED {
+        if file.ends_with(".stl") && !file.contains("ascii")
+            || file.ends_with(".3mf")
+            || file.ends_with(".glb")
+        {
+            continue; // binary STL: the header version decides; 3MF and glTF: below
+        }
+        let path = temp(file);
+        stamped(&m, &path, &stamp);
+        let mut both = std::fs::read(&path).unwrap();
+        provenance::from_bytes_with_producer(&both).unwrap();
+        both.extend_from_slice(format!("\n# {raw}\n").as_bytes());
+        assert!(
+            matches!(
+                provenance::from_bytes_with_producer(&both),
+                Err(ProvenanceError::Unreadable(ref e)) if e.contains("both")
+            ),
+            "{name}"
+        );
+        std::fs::remove_file(&path).ok();
+        refused += 1;
+    }
+    assert_eq!(refused, 4, "ASCII STL, binary and ASCII FBX, OBJ");
+    let primary = format!(
+        "<metadata name=\"{}\">{}</metadata>",
+        provenance::MEANING_KEY,
+        Provenance::new(provenance::meaning_id(
+            StoredForm::ThreeMf,
+            &Provenance::sdf()
+        ))
+        .hex()
+    );
+    let current = format!(
+        "<metadata name=\"{}\">{}</metadata>",
+        provenance::PRODUCER_MEANING_KEY,
+        Provenance::new(provenance::producer_meaning_id(
+            StoredForm::ThreeMf,
+            &producer_id()
+        ))
+        .hex()
+    );
+    let earlier = format!(
+        "<metadata name=\"{}\">{}</metadata>",
+        provenance::PRODUCER_KEY,
+        producer_id().hex()
+    );
+    let model = |entries: &str| {
+        stored_zip(
+            "3D/3dmodel.model",
+            format!("<model>{entries}</model>").as_bytes(),
+        )
+    };
+    let (_, p) =
+        provenance::from_bytes_with_producer(&model(&format!("{primary}{current}"))).unwrap();
+    assert_eq!(
+        p.map(|p| (p.meaning, p.judge(&producer_id()).unwrap())),
+        Some((true, StoredSemantics::Current))
+    );
+    let (_, p) =
+        provenance::from_bytes_with_producer(&model(&format!("{primary}{earlier}"))).unwrap();
+    assert_eq!(
+        p.map(|p| (p.meaning, p.judge(&producer_id()).unwrap())),
+        Some((false, StoredSemantics::VerifiedPrevious))
+    );
+    assert!(matches!(
+        provenance::from_bytes_with_producer(&model(&format!("{primary}{current}{earlier}"))),
+        Err(ProvenanceError::Unreadable(ref e)) if e.contains("both")
+    ));
+    // glTF: the keys of asset.extras
+    let gltf = |extras: &str| {
+        format!(
+            r#"{{"asset":{{"version":"2.0","extras":{{"{}":"{}"{extras}}}}}}}"#,
+            provenance::MEANING_KEY,
+            Provenance::new(provenance::meaning_id(StoredForm::Gltf, &Provenance::sdf())).hex()
+        )
+        .into_bytes()
+    };
+    let current = format!(
+        r#","{}":"{}""#,
+        provenance::PRODUCER_MEANING_KEY,
+        Provenance::new(provenance::producer_meaning_id(
+            StoredForm::Gltf,
+            &producer_id()
+        ))
+        .hex()
+    );
+    let earlier = format!(
+        r#","{}":"{}""#,
+        provenance::PRODUCER_KEY,
+        producer_id().hex()
+    );
+    let (_, p) = provenance::from_bytes_with_producer(&gltf(&current)).unwrap();
+    assert_eq!(
+        p.map(|p| (p.meaning, p.judge(&producer_id()).unwrap())),
+        Some((true, StoredSemantics::Current))
+    );
+    let (_, p) = provenance::from_bytes_with_producer(&gltf(&earlier)).unwrap();
+    assert_eq!(
+        p.map(|p| (p.meaning, p.judge(&producer_id()).unwrap())),
+        Some((false, StoredSemantics::VerifiedPrevious))
+    );
+    assert!(matches!(
+        provenance::from_bytes_with_producer(&gltf(&format!("{current}{earlier}"))),
+        Err(ProvenanceError::Unreadable(ref e)) if e.contains("both")
+    ));
 }
 
 /// The mesh the ABM fixtures hold (written by alice-sdf 6.1.0 from crates.io with the same

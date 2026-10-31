@@ -15,7 +15,7 @@ use crate::io::IoError;
 use crate::material::MaterialLibrary;
 use crate::mesh::Mesh;
 use crate::provenance::{import_verdict, Checked};
-use crate::provenance::{Provenance, StoredForm};
+use crate::provenance::{Provenance, Stamp, StoredForm};
 use std::io::Write;
 use std::path::Path;
 
@@ -199,7 +199,8 @@ pub fn export_glb_with_provenance(
         return Ok(());
     }
 
-    let (json_bytes, bin_bytes) = build_glb_data(mesh, config, materials, provenance)?;
+    let (json_bytes, bin_bytes) =
+        build_glb_data(mesh, config, materials, &Stamp::from(*provenance))?;
 
     let file = std::fs::File::create(path)?;
     let mut w = std::io::BufWriter::new(file);
@@ -255,11 +256,30 @@ pub fn export_glb_bytes_with_provenance(
     materials: Option<&MaterialLibrary>,
     provenance: &Provenance,
 ) -> Result<Vec<u8>, IoError> {
+    export_glb_bytes_with_stamp(mesh, config, materials, &Stamp::from(*provenance))
+}
+
+/// [`export_glb_bytes`] with a [`Stamp`]: `asset.extras` holds the primary meaning identifier and,
+/// when the stamp has a producer, the producer meaning identifier
+/// (`alice:producer_meaning_id`, [`crate::provenance::producer_meaning_id`]) beside it, as the
+/// STL / 3MF / FBX / OBJ `*_with_stamp` writers store them; without a producer the bytes are those
+/// of [`export_glb_bytes_with_provenance`]. [`crate::provenance::from_bytes_with_producer`] reads
+/// both back.
+///
+/// # Errors
+///
+/// As [`export_glb_bytes`].
+pub fn export_glb_bytes_with_stamp(
+    mesh: &Mesh,
+    config: &GltfConfig,
+    materials: Option<&MaterialLibrary>,
+    stamp: &Stamp,
+) -> Result<Vec<u8>, IoError> {
     // meshopt compression path: delegate to meshopt_gltf module
     // (see GltfConfig::meshopt_compress docs for limitations)
     if config.meshopt_compress {
         use crate::io::meshopt_gltf::{
-            export_glb_meshopt_bytes_skinned_with_provenance, MeshoptGltfConfig,
+            export_glb_meshopt_bytes_skinned_with_stamp, MeshoptGltfConfig,
         };
         let mo_config = MeshoptGltfConfig {
             export_normals: config.export_normals,
@@ -267,12 +287,10 @@ pub fn export_glb_bytes_with_provenance(
             level: config.meshopt_level,
             double_sided: config.double_sided,
         };
-        return export_glb_meshopt_bytes_skinned_with_provenance(
-            mesh, None, &mo_config, provenance,
-        );
+        return export_glb_meshopt_bytes_skinned_with_stamp(mesh, None, &mo_config, stamp);
     }
 
-    let (json_bytes, bin_bytes) = build_glb_data(mesh, config, materials, provenance)?;
+    let (json_bytes, bin_bytes) = build_glb_data(mesh, config, materials, stamp)?;
 
     let json_padded_len = (json_bytes.len() + 3) & !3;
     let bin_padded_len = (bin_bytes.len() + 3) & !3;
@@ -318,7 +336,13 @@ pub fn export_gltf_json_with_provenance(
     materials: Option<&MaterialLibrary>,
     provenance: &Provenance,
 ) -> Result<(), IoError> {
-    let (json_bytes, bin) = build_gltf_data(mesh, config, materials, provenance, StoredForm::Gltf)?;
+    let (json_bytes, bin) = build_gltf_data(
+        mesh,
+        config,
+        materials,
+        &Stamp::from(*provenance),
+        StoredForm::Gltf,
+    )?;
 
     // A .gltf has no BIN chunk: the buffer must carry its bytes in `uri`
     // (glTF 2.0 §3.6.1.1), here as a base64 data URI
@@ -385,9 +409,19 @@ fn build_glb_data(
     mesh: &Mesh,
     config: &GltfConfig,
     materials: Option<&MaterialLibrary>,
-    provenance: &Provenance,
+    stamp: &Stamp,
 ) -> Result<(Vec<u8>, Vec<u8>), IoError> {
-    build_gltf_data(mesh, config, materials, provenance, StoredForm::Glb)
+    build_gltf_data(mesh, config, materials, stamp, StoredForm::Glb)
+}
+
+/// The members of `asset.extras` for a stamp in `form`: the primary meaning identifier, then the
+/// producer meaning identifier when the stamp has one
+pub(crate) fn stamp_extras(stamp: &Stamp, form: StoredForm) -> String {
+    let (key, id) = stamp.primary.named_for(form);
+    match stamp.producer_named_for(form) {
+        None => format!(r#""{key}":"{id}""#),
+        Some((pkey, pid)) => format!(r#""{key}":"{id}","{pkey}":"{pid}""#),
+    }
 }
 
 /// The JSON and the binary buffer of a glTF asset stored as `form` (GLB or glTF JSON, whose
@@ -396,7 +430,7 @@ fn build_gltf_data(
     mesh: &Mesh,
     config: &GltfConfig,
     materials: Option<&MaterialLibrary>,
-    provenance: &Provenance,
+    stamp: &Stamp,
     form: StoredForm,
 ) -> Result<(Vec<u8>, Vec<u8>), IoError> {
     let vert_count = mesh.vertices.len();
@@ -1021,10 +1055,9 @@ fn build_gltf_data(
     }
 
     // Build JSON
-    let (key, id) = provenance.named_for(form);
-    let mut json = format!(
-        r#"{{"asset":{{"version":"2.0","generator":"ALICE-SDF","extras":{{"{key}":"{id}"}}}}"#
-    );
+    let extras = stamp_extras(stamp, form);
+    let mut json =
+        format!(r#"{{"asset":{{"version":"2.0","generator":"ALICE-SDF","extras":{{{extras}}}}}"#);
 
     // Extensions
     if needs_quantization_ext && !used_extensions.contains(&"KHR_mesh_quantization".to_string()) {

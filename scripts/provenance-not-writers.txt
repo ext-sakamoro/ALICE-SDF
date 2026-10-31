@@ -51,6 +51,8 @@ src/python/io.rs::to_json delegates to to_json_string
 src/mesh/meshopt_vertex_codec.rs::decode_vertex_buffer decodes a vertex buffer: it reads stored bytes and writes none
 src/provenance.rs::stl_header builds the 80-byte STL header that carries the identifier for the STL writers
 src/provenance.rs::meaning_id computes the meaning identifier the writers store, writes nothing itself
+src/provenance.rs::producer_meaning_id computes the producer meaning identifier the stamped writers store, writes nothing itself
+src/provenance.rs::producer_slot_for returns the producer meaning identifier a stamped binary writer stores, writes nothing itself
 src/provenance.rs::slot_for returns the 32 bytes a binary writer stores in its slot, writes nothing
 src/provenance.rs::writes_meaning tells whether a form's writers store meaning identifiers, writes nothing
 src/semantics.rs::sdf_semantics_id_for returns the 32-byte identifier constant of a det-math identifier

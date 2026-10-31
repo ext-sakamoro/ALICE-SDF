@@ -58,12 +58,19 @@
 //! through the `*_with_stamp` writers ([`Stamp`]); [`read_with_producer`] returns both. Without a
 //! producer the bytes are exactly those of the `*_with_provenance` writers.
 //!
-//! | format | where the producer identifier is stored |
-//! |---|---|
-//! | binary STL | header version `2` (instead of `1`), bytes `41..48` zero, bytes `48..80` the producer's 32 raw bytes |
-//! | ASCII STL | the solid name continues: ` alice:producer_semantics_id=<64 hex>` |
-//! | 3MF | a second `<metadata name="alice:producer_semantics_id">` in `3D/3dmodel.model` |
-//! | FBX (binary and ASCII) | a `ProducerSemanticsId` string in `FBXHeaderExtension`: `alice:producer_semantics_id=<64 hex>` (not in `Creator`) |
+//! The stamp stores the producer's *producer meaning identifier* ([`producer_meaning_id`]: the
+//! producer's identifier folded with the stored form under its own kind, so it is never equal to
+//! a primary meaning identifier); earlier files stored the producer's raw identifier, which
+//! [`check_producer`] still reads as [`StoredSemantics::VerifiedPrevious`].
+//!
+//! | format | where the producer identifier is stored | earlier files (read only) |
+//! |---|---|---|
+//! | binary STL | header version `3` (instead of `1`), bytes `41..48` zero, bytes `48..80` the producer meaning identifier | version `2`, the raw identifier in `48..80` |
+//! | ASCII STL / OBJ | after the primary: ` alice:producer_meaning_id=<64 hex>` | `alice:producer_semantics_id=<64 hex>` |
+//! | 3MF | a second `<metadata name="alice:producer_meaning_id">` in `3D/3dmodel.model` | `alice:producer_semantics_id` |
+//! | FBX (binary and ASCII) | a `ProducerMeaningId` string in `FBXHeaderExtension`: `alice:producer_meaning_id=<64 hex>` (not in `Creator`) | `ProducerSemanticsId`: `alice:producer_semantics_id=<64 hex>` |
+//!
+//! A file holding both the earlier and the current producer key is refused.
 
 use std::fmt;
 use std::path::Path;
@@ -80,11 +87,25 @@ pub const STL_MAGIC: &[u8; 8] = b"ALICESDF";
 /// The layout version of the binary STL header
 pub const STL_HEADER_VERSION: u8 = 1;
 
-/// The layout version of a binary STL header that also carries a producer identifier
+/// The layout version of a binary STL header whose bytes `48..80` hold a producer's raw
+/// identifier: written by earlier releases, read only
 pub const STL_HEADER_VERSION_PRODUCER: u8 = 2;
 
-/// The key under which a producer identifier is stored in text formats
+/// The layout version of a binary STL header whose bytes `48..80` hold the producer meaning
+/// identifier ([`producer_meaning_id`])
+pub const STL_HEADER_VERSION_PRODUCER_MEANING: u8 = 3;
+
+/// The key under which earlier releases stored a producer's raw identifier in text formats (read
+/// only)
 pub const PRODUCER_KEY: &str = "alice:producer_semantics_id";
+
+/// The key under which text formats store the producer meaning identifier
+/// ([`producer_meaning_id`])
+pub const PRODUCER_MEANING_KEY: &str = "alice:producer_meaning_id";
+
+/// The kind [`producer_meaning_id`] hashes under (not [`MEANING_KIND`], so a producer meaning
+/// identifier never equals a primary one, even for a producer with this crate's identifier)
+pub const PRODUCER_MEANING_KIND: &[u8] = b"alice-sdf/stored-form-producer";
 
 /// The key under which the text forms store the meaning identifier ([`meaning_id`])
 ///
@@ -282,6 +303,17 @@ impl StoredForm {
 #[must_use]
 pub fn meaning_id(form: StoredForm, semantics: &Provenance) -> [u8; 32] {
     alice_zip::law_id::LawIdHasher::new(MEANING_KIND, &semantics.semantics_id)
+        .str(form.name())
+        .u32(form.version())
+        .finish()
+}
+
+/// The producer meaning identifier of `producer` in a file of `form`: `alice_zip::law_id::LawIdHasher`
+/// v2 over the kind [`PRODUCER_MEANING_KIND`], the producer's identifier, the form's name and its
+/// layout version
+#[must_use]
+pub fn producer_meaning_id(form: StoredForm, producer: &Provenance) -> [u8; 32] {
+    alice_zip::law_id::LawIdHasher::new(PRODUCER_MEANING_KIND, &producer.semantics_id)
         .str(form.name())
         .u32(form.version())
         .finish()
@@ -573,28 +605,41 @@ impl Stamp {
     }
 
     /// The 80-byte binary STL header: version `1` without a producer (the bytes of
-    /// [`Provenance::stl_header`]), version `2` with the producer in bytes `48..80`
+    /// [`Provenance::stl_header`]), version `3` with the producer meaning identifier in bytes
+    /// `48..80`
     #[must_use]
     pub fn stl_header(&self) -> [u8; 80] {
         let mut h = self.primary.stl_header();
-        if let Some(producer) = self.producer {
-            h[8] = STL_HEADER_VERSION_PRODUCER;
-            h[48..80].copy_from_slice(&producer.semantics_id);
+        if let Some(slot) = self.producer_slot_for(StoredForm::StlBinary) {
+            h[8] = STL_HEADER_VERSION_PRODUCER_MEANING;
+            h[48..80].copy_from_slice(&slot);
         }
         h
     }
 
-    /// The stamp's text for a writer of `form`: the primary as [`Provenance::tagged_for`] writes it
-    /// (a meaning identifier for a form that stores them), then the producer's raw identifier
+    /// The 32 bytes a binary writer of `form` stores for the producer: its producer meaning
+    /// identifier ([`producer_meaning_id`]), `None` without a producer
+    #[must_use]
+    pub fn producer_slot_for(&self, form: StoredForm) -> Option<[u8; 32]> {
+        self.producer.map(|p| producer_meaning_id(form, &p))
+    }
+
+    /// The key and value a text writer of `form` stores for the producer:
+    /// [`PRODUCER_MEANING_KEY`] and the hex of its producer meaning identifier, `None` without a
+    /// producer
+    #[must_use]
+    pub fn producer_named_for(&self, form: StoredForm) -> Option<(&'static str, String)> {
+        self.producer_slot_for(form)
+            .map(|id| (PRODUCER_MEANING_KEY, hex_of(&id)))
+    }
+
+    /// The stamp's text for a writer of `form`: the primary as [`Provenance::tagged_for`] writes it,
+    /// then the producer as [`Stamp::producer_named_for`] gives it
     #[must_use]
     pub fn tagged_for(&self, form: StoredForm) -> String {
-        match self.producer {
+        match self.producer_named_for(form) {
             None => self.primary.tagged_for(form),
-            Some(p) => format!(
-                "{} {PRODUCER_KEY}={}",
-                self.primary.tagged_for(form),
-                p.hex()
-            ),
+            Some((key, value)) => format!("{} {key}={value}", self.primary.tagged_for(form)),
         }
     }
 }
@@ -643,14 +688,17 @@ pub enum ProvenanceError {
         expected: Provenance,
     },
     /// The file carries no producer identifier where one was expected
-    #[error("no {PRODUCER_KEY} in the file")]
+    #[error("no producer identifier ({PRODUCER_MEANING_KEY} or {PRODUCER_KEY}) in the file")]
     ProducerMissing,
     /// The stored producer identifier is not the expected one
-    #[error("{PRODUCER_KEY} mismatch: stored {stored}, expected {expected}")]
+    #[error("producer mismatch ({}): stored {stored}, expected {expected}", form.name())]
     ProducerMismatch {
+        /// The form the file was read as
+        form: StoredForm,
         /// The producer identifier in the file
         stored: Provenance,
-        /// The producer identifier the caller expected
+        /// The producer identifier the caller expected, in the same space as `stored` (its
+        /// producer meaning identifier in `form`, or its raw identifier for an earlier file)
         expected: Provenance,
     },
 }
@@ -1094,10 +1142,13 @@ fn found_in(bytes: &[u8]) -> Result<(StoredForm, Found), ProvenanceError> {
         let count = u32::from_le_bytes([bytes[80], bytes[81], bytes[82], bytes[83]]) as usize;
         if count.checked_mul(50).and_then(|n| n.checked_add(84)) == Some(bytes.len()) {
             if &bytes[..8] == STL_MAGIC {
-                // this crate's header: a version it does not know, or a version 2 header whose
+                // this crate's header: a version it does not know, or a version 2 / 3 header whose
                 // padding is not zero, is refused rather than read as a file without one
                 if bytes[8] == STL_HEADER_VERSION
-                    || (bytes[8] == STL_HEADER_VERSION_PRODUCER && bytes[41..48] == [0; 7])
+                    || (matches!(
+                        bytes[8],
+                        STL_HEADER_VERSION_PRODUCER | STL_HEADER_VERSION_PRODUCER_MEANING
+                    ) && bytes[41..48] == [0; 7])
                 {
                     let mut id = [0u8; 32];
                     id.copy_from_slice(&bytes[9..41]);
@@ -1116,6 +1167,51 @@ fn found_in(bytes: &[u8]) -> Result<(StoredForm, Found), ProvenanceError> {
     Err(ProvenanceError::Unreadable("unrecognised format".into()))
 }
 
+/// A producer identifier as read from a file: the 32 bytes and whether they were stored under the
+/// current producer key ([`PRODUCER_MEANING_KEY`], binary STL header version `3`) or the earlier
+/// one ([`PRODUCER_KEY`], version `2`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct StoredProducer {
+    /// The form the file was read as (the primary identifier's)
+    pub form: StoredForm,
+    /// The 32 stored bytes
+    pub id: [u8; 32],
+    /// `true` for a producer meaning identifier, `false` for an earlier file's raw identifier
+    pub meaning: bool,
+}
+
+impl StoredProducer {
+    /// Judge the stored producer against `expected`: [`StoredSemantics::Current`] for its
+    /// producer meaning identifier in this form, [`StoredSemantics::VerifiedPrevious`] for its raw
+    /// identifier under the earlier key
+    ///
+    /// # Errors
+    ///
+    /// [`ProvenanceError::ProducerMismatch`] naming both, in the same space (both producer meaning
+    /// identifiers, or both raw identifiers)
+    pub fn judge(&self, expected: &Provenance) -> Result<StoredSemantics, ProvenanceError> {
+        let want = if self.meaning {
+            producer_meaning_id(self.form, expected)
+        } else {
+            expected.semantics_id
+        };
+        if self.id == want {
+            Ok(if self.meaning {
+                StoredSemantics::Current
+            } else {
+                StoredSemantics::VerifiedPrevious
+            })
+        } else {
+            Err(ProvenanceError::ProducerMismatch {
+                form: self.form,
+                stored: Provenance::new(self.id),
+                expected: Provenance::new(want),
+            })
+        }
+    }
+}
+
 /// The identifier and the producer identifier stored in the file at `path`
 ///
 /// The first is what [`read`] returns; the second is `None` when the file carries no producer
@@ -1123,31 +1219,37 @@ fn found_in(bytes: &[u8]) -> Result<(StoredForm, Found), ProvenanceError> {
 ///
 /// # Errors
 ///
-/// As [`read`], and [`ProvenanceError::Unreadable`] when a producer slot is malformed.
+/// As [`read`], and [`ProvenanceError::Unreadable`] when a producer slot is malformed or a file
+/// holds both producer keys.
 pub fn read_with_producer(
     path: impl AsRef<Path>,
-) -> Result<(Stored, Option<Provenance>), ProvenanceError> {
-    let path = path.as_ref();
-    let primary = read(path)?;
-    let producer = producer_in(&std::fs::read(path)?)?;
-    Ok((primary, producer))
+) -> Result<(Stored, Option<StoredProducer>), ProvenanceError> {
+    from_bytes_with_producer(&std::fs::read(path.as_ref())?)
 }
 
 /// As [`read_with_producer`], from the bytes of a file
 ///
 /// # Errors
 ///
-/// As [`from_bytes`], and [`ProvenanceError::Unreadable`] when a producer slot is malformed.
+/// As [`from_bytes`], and [`ProvenanceError::Unreadable`] when a producer slot is malformed or a
+/// file holds both producer keys.
 pub fn from_bytes_with_producer(
     bytes: &[u8],
-) -> Result<(Stored, Option<Provenance>), ProvenanceError> {
-    Ok((from_bytes(bytes)?, producer_in(bytes)?))
+) -> Result<(Stored, Option<StoredProducer>), ProvenanceError> {
+    let primary = from_bytes(bytes)?;
+    let producer = producer_in(bytes)?.map(|(id, meaning)| StoredProducer {
+        form: primary.form,
+        id,
+        meaning,
+    });
+    Ok((primary, producer))
 }
 
 /// Check the producer identifier of the file at `path` against `expected`
 ///
-/// The primary identifier is [`check`]'s; this compares only the producer slot: `Ok(())` when it
-/// holds `expected`.
+/// The primary identifier is [`check`]'s; this judges only the producer ([`StoredProducer::judge`]):
+/// `Current` for `expected`'s producer meaning identifier, `VerifiedPrevious` for its raw
+/// identifier in an earlier file.
 ///
 /// # Errors
 ///
@@ -1157,67 +1259,135 @@ pub fn from_bytes_with_producer(
 pub fn check_producer(
     path: impl AsRef<Path>,
     expected: &Provenance,
-) -> Result<(), ProvenanceError> {
+) -> Result<StoredSemantics, ProvenanceError> {
     match read_with_producer(path)?.1 {
         None => Err(ProvenanceError::ProducerMissing),
-        Some(stored) if stored == *expected => Ok(()),
-        Some(stored) => Err(ProvenanceError::ProducerMismatch {
-            stored,
-            expected: *expected,
-        }),
+        Some(stored) => stored.judge(expected),
     }
 }
 
-/// The producer identifier in the bytes of a file, if any
-fn producer_in(bytes: &[u8]) -> Result<Option<Provenance>, ProvenanceError> {
+/// The producer bytes of a file and whether they are a producer meaning identifier (`true`) or an
+/// earlier file's raw identifier (`false`), if any
+fn producer_in(bytes: &[u8]) -> Result<Option<([u8; 32], bool)>, ProvenanceError> {
     if bytes.starts_with(b"PK\x03\x04") {
         let Some(model) = zip_entry(bytes, "3D/3dmodel.model")? else {
             return Ok(None);
         };
         let text = std::str::from_utf8(model)
             .map_err(|_| ProvenanceError::Unreadable("3MF: model is not UTF-8".into()))?;
-        let open = format!("<metadata name=\"{PRODUCER_KEY}\">");
-        let mut values = text.match_indices(&open).map(|(at, _)| {
-            let start = at + open.len();
-            text.get(start..start + 64)
-                .and_then(Provenance::from_hex)
-                .filter(|_| text[start + 64..].starts_with("</metadata>"))
-        });
-        return match (values.next(), values.next()) {
-            (None, _) => Ok(None),
-            (Some(Some(p)), None) => Ok(Some(p)),
-            _ => Err(ProvenanceError::Unreadable(format!(
-                "3MF: {PRODUCER_KEY} is malformed or repeated"
-            ))),
+        let entry = |key: &str| {
+            let open = format!("<metadata name=\"{key}\">");
+            let mut values = text.match_indices(&open).map(|(at, _)| {
+                let start = at + open.len();
+                text.get(start..start + 64)
+                    .and_then(Provenance::from_hex)
+                    .filter(|_| text[start + 64..].starts_with("</metadata>"))
+            });
+            match (values.next(), values.next()) {
+                (None, _) => Ok(None),
+                (Some(Some(p)), None) => Ok(Some(p.semantics_id)),
+                _ => Err(ProvenanceError::Unreadable(format!(
+                    "3MF: {key} is malformed or repeated"
+                ))),
+            }
         };
+        return one_producer(entry(PRODUCER_MEANING_KEY)?, entry(PRODUCER_KEY)?, "3MF");
+    }
+    if bytes.starts_with(b"glTF") {
+        // GLB: `asset.extras` of the JSON chunk (the primary reader has checked the header)
+        let len = bytes
+            .get(12..16)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
+            .ok_or_else(|| ProvenanceError::Unreadable("GLB: truncated header".into()))?;
+        let json = bytes
+            .get(20..20 + len)
+            .ok_or_else(|| ProvenanceError::Unreadable("GLB: truncated JSON chunk".into()))?;
+        return json_producer(json, "GLB");
+    }
+    if bytes.first() == Some(&b'{') {
+        return json_producer(bytes, "JSON");
     }
     if !bytes.starts_with(b"solid") && bytes.len() >= 84 && &bytes[..8] == STL_MAGIC {
-        // binary STL written by this crate: version 2 carries the producer in bytes 48..80
-        return Ok((bytes[8] == STL_HEADER_VERSION_PRODUCER).then(|| {
-            let mut id = [0u8; 32];
-            id.copy_from_slice(&bytes[48..80]);
-            Provenance::new(id)
-        }));
+        // binary STL written by this crate: version 3 carries the producer meaning identifier in
+        // bytes 48..80, version 2 (earlier files) the producer's raw identifier
+        let mut id = [0u8; 32];
+        id.copy_from_slice(&bytes[48..80]);
+        return Ok(match bytes[8] {
+            STL_HEADER_VERSION_PRODUCER_MEANING => Some((id, true)),
+            STL_HEADER_VERSION_PRODUCER => Some((id, false)),
+            _ => None,
+        });
     }
-    // text and FBX: the tagged form, at most one distinct value
-    let key = format!("{PRODUCER_KEY}=");
-    let key = key.as_bytes();
-    let mut found: Option<Provenance> = None;
+    // text and FBX: the tagged form, at most one distinct value per key
+    one_producer(
+        tagged_producer(bytes, PRODUCER_MEANING_KEY)?,
+        tagged_producer(bytes, PRODUCER_KEY)?,
+        "text",
+    )
+}
+
+/// The producer in a glTF document's `asset.extras` (none in a JSON document without `asset`)
+fn json_producer(bytes: &[u8], format: &str) -> Result<Option<([u8; 32], bool)>, ProvenanceError> {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "stored form other-type: a serde_json::Value of a glTF document, read only for its producer identifier"
+    )]
+    let doc: serde_json::Value = serde_json::from_slice(bytes)
+        .map_err(|e| ProvenanceError::Unreadable(format!("JSON: {e}")))?;
+    let Some(extras) = doc.get("asset").and_then(|a| a.get("extras")) else {
+        return Ok(None);
+    };
+    let one = |name: &str| -> Result<Option<[u8; 32]>, ProvenanceError> {
+        match extras.get(name) {
+            None => Ok(None),
+            Some(v) => v
+                .as_str()
+                .and_then(Provenance::from_hex)
+                .map(|p| Some(p.semantics_id))
+                .ok_or_else(|| {
+                    ProvenanceError::Unreadable(format!("{format}: {name} is not 64 hex digits"))
+                }),
+        }
+    };
+    one_producer(one(PRODUCER_MEANING_KEY)?, one(PRODUCER_KEY)?, format)
+}
+
+/// The producer of a file from what its current and earlier keys hold: a file with both is refused
+fn one_producer(
+    meaning: Option<[u8; 32]>,
+    raw: Option<[u8; 32]>,
+    format: &str,
+) -> Result<Option<([u8; 32], bool)>, ProvenanceError> {
+    match (meaning, raw) {
+        (Some(_), Some(_)) => Err(ProvenanceError::Unreadable(format!(
+            "{format}: both {PRODUCER_MEANING_KEY} and {PRODUCER_KEY} (read as neither)"
+        ))),
+        (Some(id), None) => Ok(Some((id, true))),
+        (None, Some(id)) => Ok(Some((id, false))),
+        (None, None) => Ok(None),
+    }
+}
+
+/// The value of `key=<64 hex>` in text, at most one distinct value
+fn tagged_producer(bytes: &[u8], key: &str) -> Result<Option<[u8; 32]>, ProvenanceError> {
+    let tag = format!("{key}=");
+    let tag = tag.as_bytes();
+    let mut found: Option<[u8; 32]> = None;
     let mut i = 0;
-    while i + key.len() + 64 <= bytes.len() {
-        if &bytes[i..i + key.len()] == key {
-            let start = i + key.len();
+    while i + tag.len() + 64 <= bytes.len() {
+        if &bytes[i..i + tag.len()] == tag {
+            let start = i + tag.len();
             let p = std::str::from_utf8(&bytes[start..start + 64])
                 .ok()
                 .and_then(Provenance::from_hex)
-                .ok_or_else(|| ProvenanceError::Unreadable(format!("{PRODUCER_KEY} is not hex")))?;
+                .ok_or_else(|| ProvenanceError::Unreadable(format!("{key} is not hex")))?;
             match found {
-                Some(q) if q != p => {
+                Some(q) if q != p.semantics_id => {
                     return Err(ProvenanceError::Unreadable(format!(
-                        "two different {PRODUCER_KEY} values"
+                        "two different {key} values"
                     )))
                 }
-                _ => found = Some(p),
+                _ => found = Some(p.semantics_id),
             }
             i = start + 64;
         } else {
