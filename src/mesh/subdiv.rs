@@ -15,7 +15,9 @@
 //! Sharpness is an integer per edge (semi-sharp creases act at integer steps only): an edge of
 //! sharpness s ≥ 1 is sharp for this step and its two halves get s − 1; [`INFINITE`] stays.
 //!
-//! [`limit_positions`] gives each vertex's point on the limit surface:
+//! [`limit_positions`] gives each vertex's point on the limit surface (a cage with finite
+//! sharpness is first subdivided until only infinite creases remain, s steps for sharpness s, since
+//! a semi-sharp crease shapes the limit only for those steps):
 //!
 //! - smooth vertex of valence n: (n² v + 4 Σ eᵢ + Σ fᵢ) / (n (n + 5)), eᵢ the vertices across the
 //!   n edges and fᵢ the vertices diagonally across the n faces;
@@ -82,6 +84,17 @@ pub enum CageError {
     },
     /// The cage has no face
     Empty,
+    /// A position no face uses (no ring, so no rule applies to it)
+    UnusedVertex {
+        /// The vertex
+        vertex: usize,
+    },
+    /// A vertex whose faces do not form one fan (e.g. two surfaces touching at it): it has no
+    /// single ring
+    NonManifoldVertex {
+        /// The vertex
+        vertex: usize,
+    },
 }
 
 /// What [`check`] measured on a valid cage
@@ -186,7 +199,41 @@ fn build(cage: &Cage) -> Result<Mesh, CageError> {
     if let Some(&edge) = cage.sharpness.keys().find(|k| !index.contains_key(k)) {
         return Err(CageError::SharpnessOnMissingEdge { edge });
     }
+    if let Some(vertex) = m.vert_faces.iter().position(Vec::is_empty) {
+        return Err(CageError::UnusedVertex { vertex });
+    }
+    // every vertex's faces form one fan: walking from its first face across the edges at the
+    // vertex (both ways, stopping at a boundary) reaches all of them
+    for (v, faces) in m.vert_faces.iter().enumerate() {
+        let across = |f: usize, step: usize| -> Option<usize> {
+            let face = cage.faces[f];
+            let i = face.iter().position(|&x| x as usize == v).expect("a vertex's face holds it");
+            let u = face[(i + step) % 4];
+            let e = index[&(u.min(v as u32), u.max(v as u32))];
+            m.edge_faces[e].iter().copied().find(|&g| g != f)
+        };
+        let mut seen = vec![faces[0]];
+        for step in [3, 1] {
+            let mut cur = faces[0];
+            while let Some(g) = across(cur, step) {
+                if seen.contains(&g) {
+                    break;
+                }
+                seen.push(g);
+                cur = g;
+            }
+        }
+        if seen.len() != faces.len() {
+            return Err(CageError::NonManifoldVertex { vertex: v });
+        }
+    }
     Ok(m)
+}
+
+/// The largest finite sharpness on the cage (0 when none): the steps after which only infinite
+/// creases remain
+fn finite_steps(cage: &Cage) -> u32 {
+    cage.sharpness.values().copied().filter(|&s| s != INFINITE).max().unwrap_or(0)
 }
 
 impl Mesh {
@@ -216,7 +263,8 @@ impl Mesh {
 }
 
 /// Checks the cage: indices in range, no repeated vertex in a face, every edge used by at most
-/// two faces and, when by two, in opposite directions, every sharpness entry on an existing edge
+/// two faces and, when by two, in opposite directions, every sharpness entry on an existing edge,
+/// every vertex used by a face and every vertex's faces forming one fan
 pub fn check(cage: &Cage) -> Result<Topology, CageError> {
     let m = build(cage)?;
     let on_boundary: Vec<bool> = m.vert_edges.iter().map(|es| es.iter().any(|&e| m.edge_faces[e].len() == 1)).collect();
@@ -288,6 +336,18 @@ pub fn subdivide(cage: &Cage) -> Result<Cage, CageError> {
 /// Each vertex's point on the limit surface (see the module documentation)
 pub fn limit_positions(cage: &Cage) -> Result<Vec<DVec3>, CageError> {
     let m = build(cage)?;
+    // a semi-sharp crease shapes the limit for its s steps and not after: take those steps first
+    // (a vertex keeps its index through subdivision)
+    let k = finite_steps(cage);
+    if k > 0 {
+        let mut c = cage.clone();
+        for _ in 0..k {
+            c = subdivide(&c)?;
+        }
+        let mut l = limit_positions(&c)?;
+        l.truncate(cage.positions.len());
+        return Ok(l);
+    }
     let p = &cage.positions;
     Ok((0..p.len())
         .map(|v| match m.kind(cage, v) {
@@ -312,6 +372,17 @@ pub fn limit_positions(cage: &Cage) -> Result<Vec<DVec3>, CageError> {
 /// its faces' winding; a crease, corner, dart or boundary vertex gets none
 pub fn limit_normals(cage: &Cage) -> Result<Vec<Option<DVec3>>, CageError> {
     let m = build(cage)?;
+    // a semi-sharp crease's s steps first, as in limit_positions
+    let k = finite_steps(cage);
+    if k > 0 {
+        let mut c = cage.clone();
+        for _ in 0..k {
+            c = subdivide(&c)?;
+        }
+        let mut l = limit_normals(&c)?;
+        l.truncate(cage.positions.len());
+        return Ok(l);
+    }
     let p = &cage.positions;
     let corner = |f: usize, v: usize| -> (u32, u32, u32) {
         let face = cage.faces[f];
@@ -693,4 +764,131 @@ mod tests {
         let bits2: Vec<u64> = b.positions.iter().flat_map(|p| [p.x.to_bits(), p.y.to_bits(), p.z.to_bits()]).collect();
         assert_eq!(bits, bits2);
     }
+    // oracle (refusal): a position no face uses has no ring, so no rule applies to it: every entry
+    // point refuses it with its index (not a NaN, not a panic)
+    #[test]
+    fn an_unused_vertex_is_refused() {
+        let mut c = grid(5, 5, &bumps);
+        c.positions.push(DVec3::new(9.0, 9.0, 9.0));
+        let want = CageError::UnusedVertex { vertex: 25 };
+        assert_eq!(check(&c).unwrap_err(), want);
+        assert_eq!(subdivide(&c).unwrap_err(), want);
+        assert_eq!(limit_positions(&c).unwrap_err(), want);
+        assert_eq!(limit_normals(&c).unwrap_err(), want);
+        assert_eq!(limit_mesh(&c, 2).unwrap_err(), want);
+    }
+
+    // oracle (refusal): two closed cubes sharing one vertex: every edge has two faces, but the
+    // shared vertex's faces form two fans, so it has no single ring (no tangent plane, no rule):
+    // refused with its index
+    #[test]
+    fn a_vertex_with_two_fans_is_refused() {
+        let a = cube();
+        let mut b = cube();
+        // the second cube moved so its vertex 0 lands on the first cube's vertex 6, then merged
+        let shift = a.positions[6] - b.positions[0];
+        let n = a.positions.len() as u32;
+        let map = |v: u32| if v == 0 { 6 } else { n + v - 1 };
+        let mut c = a.clone();
+        c.positions.extend(b.positions.drain(..).skip(1).map(|p| p + shift));
+        c.faces.extend(cube().faces.iter().map(|f| [map(f[0]), map(f[1]), map(f[2]), map(f[3])]));
+        assert_eq!(check(&c).unwrap_err(), CageError::NonManifoldVertex { vertex: 6 });
+        assert_eq!(limit_normals(&c).unwrap_err(), CageError::NonManifoldVertex { vertex: 6 });
+        // each cube alone is accepted
+        assert!(check(&a).is_ok());
+    }
+
+    // oracle: a semi-sharp crease (finite sharpness s) is sharp for s steps and smooth after, so the
+    // limit at a vertex on it is the smooth limit of the cage after those s steps: for s = 1 on a
+    // regular grid, the regular limit mask (16 v + 4 Σ e + Σ f) / 36 (written out here) applied to
+    // the once-subdivided cage; and the deeply subdivided vertex converges to the same point
+    #[test]
+    fn a_semi_sharp_crease_limit_is_the_limit_after_its_steps() {
+        let mut c = grid(5, 5, &bumps);
+        c.sharpness.insert((11, 12), 1);
+        c.sharpness.insert((12, 13), 1);
+        let got = limit_positions(&c).unwrap()[12];
+        // the regular mask on the once-subdivided cage, from its faces around vertex 12
+        let s1 = subdivide(&c).unwrap();
+        assert!(s1.sharpness.is_empty(), "s = 1 is spent in one step");
+        let p = &s1.positions;
+        let around: Vec<[u32; 4]> = s1.faces.iter().copied().filter(|f| f.contains(&12)).collect();
+        assert_eq!(around.len(), 4, "a regular vertex");
+        let mut se = DVec3::ZERO;
+        let mut sf = DVec3::ZERO;
+        for f in &around {
+            let i = f.iter().position(|&x| x == 12).unwrap();
+            se += p[f[(i + 1) % 4] as usize];
+            sf += p[f[(i + 2) % 4] as usize];
+        }
+        let want = (p[12] * 16.0 + se * 4.0 + sf) / 36.0;
+        assert!((got - want).length() < 1e-12, "{got} vs {want}");
+        // the deep limit (vertex 12 after 6 more plain steps; regular convergence ~ (1/2)^k)
+        let mut d = s1.clone();
+        for _ in 0..6 {
+            d = subdivide(&d).unwrap();
+        }
+        assert!((d.positions[12] - got).length() < 5e-3, "deep {} vs {got}", d.positions[12]);
+        // the infinite-crease rule would put it elsewhere (the probe: 3.3e-2 away)
+        let p0 = &c.positions;
+        let crease = (p0[11] + p0[12] * 4.0 + p0[13]) / 6.0;
+        assert!((crease - got).length() > 1e-2, "not the infinite-crease point");
+        // and limit_mesh below the sharpness level agrees with the limit
+        let lm = limit_mesh(&c, 0).unwrap();
+        assert!((lm.positions[12] - got).length() < 1e-12);
+    }
+
+    // oracle: an edge of sharpness 1 is sharp for its step: its edge point is the midpoint of its
+    // two vertices (the smooth rule would add the two face points), on a bumpy grid where the two
+    // differ
+    #[test]
+    fn a_sharpness_one_edge_is_sharp_for_its_step() {
+        let mut c = grid(5, 5, &bumps);
+        c.sharpness.insert((11, 12), 1);
+        let s1 = subdivide(&c).unwrap();
+        let (a, b) = (c.positions[11], c.positions[12]);
+        let mid = (a + b) * 0.5;
+        // the edge point is the subdivided vertex adjacent to both 11 and 12's new positions on the
+        // edge: find it as the point equal to the midpoint
+        let hits = s1.positions.iter().filter(|q| (**q - mid).length() < 1e-12).count();
+        assert_eq!(hits, 1, "the s = 1 edge's point is the midpoint");
+        // the smooth edge point differs from the midpoint here
+        let faces: Vec<usize> = c.faces.iter().enumerate().filter(|(_, f)| f.contains(&11) && f.contains(&12)).map(|(i, _)| i).collect();
+        let fp = |fi: usize| c.faces[fi].iter().fold(DVec3::ZERO, |s, &v| s + c.positions[v as usize]) * 0.25;
+        let smooth = (a + b + fp(faces[0]) + fp(faces[1])) * 0.25;
+        assert!((smooth - mid).length() > 1e-3);
+    }
+
+    // oracle: a dart (one sharp edge ending at an interior vertex) moves by the smooth rule, written
+    // out here: (F̄ + 2 Ē + (n − 3) v) / n
+    #[test]
+    fn a_dart_vertex_moves_by_the_smooth_rule() {
+        let mut c = grid(5, 5, &bumps);
+        c.sharpness.insert((11, 12), INFINITE);
+        let s1 = subdivide(&c).unwrap();
+        let p = &c.positions;
+        let v = 12usize;
+        let around: Vec<&[u32; 4]> = c.faces.iter().filter(|f| f.contains(&12)).collect();
+        let fbar = around.iter().fold(DVec3::ZERO, |s, f| s + f.iter().fold(DVec3::ZERO, |t, &u| t + p[u as usize]) * 0.25) / 4.0;
+        let ebar = [7usize, 11, 13, 17].iter().fold(DVec3::ZERO, |s, &u| s + (p[v] + p[u]) * 0.5) / 4.0;
+        let want = (fbar + ebar * 2.0 + p[v]) / 4.0;
+        assert!((s1.positions[v] - want).length() < 1e-12, "{} vs {want}", s1.positions[v]);
+        assert!((s1.positions[v] - p[v]).length() > 1e-3, "it moves (not a corner)");
+    }
+
+    // oracle: a vertex on an infinite crease has no single tangent plane: no normal; the crease's
+    // smooth neighbours off the crease line keep theirs
+    #[test]
+    fn a_crease_vertex_has_no_normal() {
+        let mut c = grid(7, 7, &bumps);
+        for i in 0..6u32 {
+            c.sharpness.insert((21 + i, 22 + i), INFINITE);
+        }
+        let nrm = limit_normals(&c).unwrap();
+        for i in 1..6 {
+            assert!(nrm[21 + i].is_none(), "crease vertex {}", 21 + i);
+        }
+        assert!(nrm[8].is_some() && nrm[36].is_some(), "off the crease");
+    }
+
 }
