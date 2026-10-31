@@ -74,6 +74,7 @@ pub mod quantization;
 pub(crate) mod sdf_to_mesh;
 pub mod spatial_order;
 pub mod stripifier;
+pub mod subdiv;
 pub mod uv_unwrap;
 pub mod winding;
 
