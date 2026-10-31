@@ -22,7 +22,9 @@
 //! - smooth vertex of valence n: (n² v + 4 Σ eᵢ + Σ fᵢ) / (n (n + 5)), eᵢ the vertices across the
 //!   n edges and fᵢ the vertices diagonally across the n faces;
 //! - crease or boundary vertex: (a + 4 v + b) / 6;
-//! - corner: v.
+//! - corner: v;
+//! - dart (one sharp edge ends at an interior vertex): the fixed point of its local subdivision
+//!   (its 1-ring's subdivision is not the smooth one, so no closed mask applies).
 //!
 //! [`limit_normals`] gives the limit surface's unit normal at each smooth interior vertex from the
 //! two tangent masks (n the valence, eᵢ and fᵢ the ring in cyclic order, A = 1 + cos(2π/n) +
@@ -261,17 +263,6 @@ fn build(cage: &Cage) -> Result<Mesh, CageError> {
     Ok(m)
 }
 
-/// The largest finite sharpness on the cage (0 when none): the steps after which only infinite
-/// creases remain
-fn finite_steps(cage: &Cage) -> u32 {
-    cage.sharpness
-        .values()
-        .copied()
-        .filter(|&s| s != INFINITE)
-        .max()
-        .unwrap_or(0)
-}
-
 impl Mesh {
     fn hard(&self, cage: &Cage, e: usize) -> bool {
         self.edge_faces[e].len() == 1 || cage.sharpness.get(&self.edges[e]).is_some_and(|&s| s >= 1)
@@ -411,64 +402,139 @@ pub fn subdivide(cage: &Cage) -> Result<Cage, CageError> {
     })
 }
 
-/// Each vertex's point on the limit surface (see the module documentation)
-pub fn limit_positions(cage: &Cage) -> Result<Vec<DVec3>, CageError> {
-    let m = build(cage)?;
-    // a semi-sharp crease shapes the limit for its s steps and not after: take those steps first
-    // (a vertex keeps its index through subdivision)
-    let k = finite_steps(cage);
-    if k > 0 {
-        let mut c = cage.clone();
-        for _ in 0..k {
-            c = subdivide(&c)?;
-        }
-        let mut l = limit_positions(&c)?;
-        l.truncate(cage.positions.len());
-        return Ok(l);
-    }
-    let p = &cage.positions;
-    Ok((0..p.len())
-        .map(|v| match m.kind(cage, v) {
-            Kind::Corner => p[v],
-            Kind::Crease(a, b) => (p[a as usize] + p[v] * 4.0 + p[b as usize]) / 6.0,
-            Kind::Smooth => {
-                let n = m.vert_edges[v].len() as f64;
-                let se = m.vert_edges[v]
-                    .iter()
-                    .fold(DVec3::ZERO, |s, &e| s + p[m.other(e, v) as usize]);
-                let sf = m.vert_faces[v].iter().fold(DVec3::ZERO, |s, &f| {
-                    let face = cage.faces[f];
-                    let i = face
-                        .iter()
-                        .position(|&x| x as usize == v)
-                        .expect("a vertex's face holds it");
-                    s + p[face[(i + 2) % 4] as usize]
-                });
-                (p[v] * (n * n) + se * 4.0 + sf) / (n * (n + 5.0))
-            }
-        })
-        .collect())
+/// The steps a vertex's limit takes: the largest finite sharpness on an edge at it (0 when none)
+///
+/// A vertex's limit depends only on its own 1-ring and the edges at it: one step makes its new
+/// 1-ring (its vertex point, the edge points of its edges, the face points of its faces) from its
+/// faces alone, and a sharpness on an edge not at it moves only points outside that ring
+fn vertex_steps(m: &Mesh, cage: &Cage, v: usize) -> u32 {
+    m.vert_edges[v]
+        .iter()
+        .filter_map(|&e| cage.sharpness.get(&m.edges[e]).copied())
+        .filter(|&s| s != INFINITE)
+        .max()
+        .unwrap_or(0)
 }
 
-/// Each vertex's unit normal on the limit surface by the tangent masks (see the module doc)
-///
-/// A smooth interior vertex (every edge with two faces, none sharp) gets its normal, on the side
-/// of its faces' winding; a crease, corner, dart or boundary vertex gets none
-pub fn limit_normals(cage: &Cage) -> Result<Vec<Option<DVec3>>, CageError> {
-    let m = build(cage)?;
-    // a semi-sharp crease's s steps first, as in limit_positions
-    let k = finite_steps(cage);
-    if k > 0 {
-        let mut c = cage.clone();
-        for _ in 0..k {
-            c = subdivide(&c)?;
+#[cfg(test)]
+thread_local! {
+    /// The largest local patch built (faces), for the bounded-size test
+    static PATCH_FACES_MAX: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Vertex `v`'s faces as a cage of their own (`v` re-indexed to 0, the sharpness of their edges
+/// kept)
+fn crop(c: &Cage, faces: &[usize], centre: u32) -> Cage {
+    let mut map: BTreeMap<u32, u32> = BTreeMap::new();
+    map.insert(centre, 0);
+    let mut positions = vec![c.positions[centre as usize]];
+    let mut fs: Vec<[u32; 4]> = Vec::with_capacity(faces.len());
+    for &fi in faces {
+        let f = c.faces[fi];
+        let mut q = [0u32; 4];
+        for i in 0..4 {
+            q[i] = *map.entry(f[i]).or_insert_with(|| {
+                positions.push(c.positions[f[i] as usize]);
+                (positions.len() - 1) as u32
+            });
         }
-        let mut l = limit_normals(&c)?;
-        l.truncate(cage.positions.len());
-        return Ok(l);
+        fs.push(q);
     }
+    let has = |x: u32, y: u32| {
+        fs.iter()
+            .any(|f| (0..4).any(|i| (f[i].min(f[(i + 1) % 4]), f[i].max(f[(i + 1) % 4])) == (x, y)))
+    };
+    let sharpness = c
+        .sharpness
+        .iter()
+        .filter_map(|(&(a, b), &s)| {
+            let (x, y) = (*map.get(&a)?, *map.get(&b)?);
+            let key = (x.min(y), x.max(y));
+            has(key.0, key.1).then_some((key, s))
+        })
+        .collect();
+    Cage {
+        positions,
+        faces: fs,
+        sharpness,
+    }
+}
+
+/// Vertex `v`'s local patch taken `k` steps down: its faces subdivided and cropped back to the
+/// faces around it after every step, so the work is O(valence) per step instead of four times the
+/// whole cage (`v` is vertex 0 of the result; after `k` steps no finite sharpness is left at it)
+fn local_patch(cage: &Cage, m: &Mesh, v: usize, k: u32) -> Result<Cage, CageError> {
+    let mut patch = crop(cage, &m.vert_faces[v], v as u32);
+    for _ in 0..k {
+        let sub = subdivide(&patch)?;
+        #[cfg(test)]
+        PATCH_FACES_MAX.with(|x| x.set(x.get().max(sub.faces.len())));
+        let around: Vec<usize> = (0..sub.faces.len())
+            .filter(|&fi| sub.faces[fi].contains(&0))
+            .collect();
+        patch = crop(&sub, &around, 0);
+    }
+    Ok(patch)
+}
+
+/// Whether vertex `v` is a dart (one sharp edge ends at it, an interior vertex): it moves by the
+/// smooth rule while its sharp edge's points take the crease rule, so its 1-ring's subdivision is
+/// not the smooth one and the smooth limit mask does not give its limit
+fn is_dart(m: &Mesh, cage: &Cage, v: usize) -> bool {
+    m.vert_edges[v].iter().all(|&e| m.edge_faces[e].len() == 2)
+        && m.vert_edges[v].iter().filter(|&&e| m.hard(cage, e)).count() == 1
+}
+
+/// A dart's limit (vertex 0 of its local patch): the fixed point of its local subdivision, the
+/// patch subdivided and cropped until the vertex moves less than 1e-15 of its size (at most 64
+/// steps; the subdominant eigenvalue is below 1, so it converges geometrically)
+fn dart_limit(mut patch: Cage) -> Result<DVec3, CageError> {
+    for _ in 0..64 {
+        let sub = subdivide(&patch)?;
+        #[cfg(test)]
+        PATCH_FACES_MAX.with(|x| x.set(x.get().max(sub.faces.len())));
+        let moved = (sub.positions[0] - patch.positions[0]).length();
+        let around: Vec<usize> = (0..sub.faces.len())
+            .filter(|&fi| sub.faces[fi].contains(&0))
+            .collect();
+        patch = crop(&sub, &around, 0);
+        if moved <= 1e-15 * (1.0 + patch.positions[0].length()) {
+            break;
+        }
+    }
+    Ok(patch.positions[0])
+}
+
+/// Vertex `v`'s limit point by the limit masks (its edges' sharpness integral: no finite
+/// sharpness at it; not a dart)
+fn limit_point(m: &Mesh, cage: &Cage, v: usize) -> DVec3 {
     let p = &cage.positions;
-    let corner = |f: usize, v: usize| -> (u32, u32, u32) {
+    match m.kind(cage, v) {
+        Kind::Corner => p[v],
+        Kind::Crease(a, b) => (p[a as usize] + p[v] * 4.0 + p[b as usize]) / 6.0,
+        Kind::Smooth => {
+            let n = m.vert_edges[v].len() as f64;
+            let se = m.vert_edges[v]
+                .iter()
+                .fold(DVec3::ZERO, |s, &e| s + p[m.other(e, v) as usize]);
+            let sf = m.vert_faces[v].iter().fold(DVec3::ZERO, |s, &f| {
+                let face = cage.faces[f];
+                let i = face
+                    .iter()
+                    .position(|&x| x as usize == v)
+                    .expect("a vertex's face holds it");
+                s + p[face[(i + 2) % 4] as usize]
+            });
+            (p[v] * (n * n) + se * 4.0 + sf) / (n * (n + 5.0))
+        }
+    }
+}
+
+/// Vertex `v`'s limit normal by the tangent masks (none at a crease, corner, dart or boundary
+/// vertex; no finite sharpness at it)
+fn limit_normal(m: &Mesh, cage: &Cage, v: usize) -> Option<DVec3> {
+    let p = &cage.positions;
+    let corner = |f: usize| -> (u32, u32, u32) {
         let face = cage.faces[f];
         let i = face
             .iter()
@@ -476,44 +542,82 @@ pub fn limit_normals(cage: &Cage) -> Result<Vec<Option<DVec3>>, CageError> {
             .expect("a vertex's face holds it");
         (face[(i + 1) % 4], face[(i + 2) % 4], face[(i + 3) % 4])
     };
-    Ok((0..p.len())
+    if m.vert_edges[v]
+        .iter()
+        .any(|&e| m.edge_faces[e].len() != 2 || m.hard(cage, e))
+    {
+        return None;
+    }
+    // the ring in cyclic order: face k has corners (v, next, diagonal, prev), and the face after
+    // it is the one whose next is this one's prev
+    let faces = &m.vert_faces[v];
+    let n = faces.len();
+    let mut order = vec![faces[0]];
+    while order.len() < n {
+        let (_, _, prev) = corner(*order.last().expect("a face"));
+        let f = faces.iter().copied().find(|&f| corner(f).0 == prev)?;
+        order.push(f);
+    }
+    let nf = n as f64;
+    let w = std::f64::consts::TAU / nf;
+    let a = 1.0 + cos64(w) + cos64(w / 2.0) * sqrt64(2.0 * (9.0 + cos64(w)));
+    let (mut t1, mut t2) = (DVec3::ZERO, DVec3::ZERO);
+    for (i, &f) in order.iter().enumerate() {
+        let (e, d, _) = corner(f);
+        let (ci, cj, si, sj) = (
+            cos64(w * i as f64),
+            cos64(w * (i + 1) as f64),
+            sin64(w * i as f64),
+            sin64(w * (i + 1) as f64),
+        );
+        t1 += p[e as usize] * (a * ci) + p[d as usize] * (ci + cj);
+        t2 += p[e as usize] * (a * si) + p[d as usize] * (si + sj);
+    }
+    // (the ring runs in the faces' winding, so t₁ × t₂ is on the winding's side)
+    let nn = t1.cross(t2);
+    (nn.length_squared() > 0.0).then(|| nn.normalize())
+}
+
+/// Each vertex's point on the limit surface (see the module documentation)
+///
+/// A vertex with a finite sharpness s on an edge at it takes its s steps first on its own local
+/// patch (a semi-sharp crease shapes the limit only for those steps); the cost stays bounded by
+/// the cage's size times [`MAX_SHARPNESS`] small patches
+pub fn limit_positions(cage: &Cage) -> Result<Vec<DVec3>, CageError> {
+    let m = build(cage)?;
+    (0..cage.positions.len())
         .map(|v| {
-            if m.vert_edges[v]
-                .iter()
-                .any(|&e| m.edge_faces[e].len() != 2 || m.hard(cage, e))
-            {
-                return None;
+            let k = vertex_steps(&m, cage, v);
+            if k == 0 && !is_dart(&m, cage, v) {
+                return Ok(limit_point(&m, cage, v));
             }
-            // the ring in cyclic order: face k has corners (v, next, diagonal, prev), and the face
-            // after it is the one whose next is this one's prev
-            let faces = &m.vert_faces[v];
-            let n = faces.len();
-            let mut order = vec![faces[0]];
-            while order.len() < n {
-                let (_, _, prev) = corner(*order.last().expect("a face"), v);
-                let f = faces.iter().copied().find(|&f| corner(f, v).0 == prev)?;
-                order.push(f);
+            let patch = local_patch(cage, &m, v, k)?;
+            let pm = build(&patch)?;
+            if is_dart(&pm, &patch, 0) {
+                dart_limit(patch)
+            } else {
+                Ok(limit_point(&pm, &patch, 0))
             }
-            let nf = n as f64;
-            let w = std::f64::consts::TAU / nf;
-            let a = 1.0 + cos64(w) + cos64(w / 2.0) * sqrt64(2.0 * (9.0 + cos64(w)));
-            let (mut t1, mut t2) = (DVec3::ZERO, DVec3::ZERO);
-            for (i, &f) in order.iter().enumerate() {
-                let (e, d, _) = corner(f, v);
-                let (ci, cj, si, sj) = (
-                    cos64(w * i as f64),
-                    cos64(w * (i + 1) as f64),
-                    sin64(w * i as f64),
-                    sin64(w * (i + 1) as f64),
-                );
-                t1 += p[e as usize] * (a * ci) + p[d as usize] * (ci + cj);
-                t2 += p[e as usize] * (a * si) + p[d as usize] * (si + sj);
-            }
-            // (the ring runs in the faces' winding, so t₁ × t₂ is on the winding's side)
-            let nn = t1.cross(t2);
-            (nn.length_squared() > 0.0).then(|| nn.normalize())
         })
-        .collect())
+        .collect()
+}
+
+/// Each vertex's unit normal on the limit surface by the tangent masks (see the module doc)
+///
+/// A smooth interior vertex (every edge with two faces, none sharp) gets its normal, on the side
+/// of its faces' winding; a crease, corner, dart or boundary vertex gets none; a vertex with a
+/// finite sharpness at it takes its steps on its local patch first, as in [`limit_positions`]
+pub fn limit_normals(cage: &Cage) -> Result<Vec<Option<DVec3>>, CageError> {
+    let m = build(cage)?;
+    (0..cage.positions.len())
+        .map(|v| match vertex_steps(&m, cage, v) {
+            0 => Ok(limit_normal(&m, cage, v)),
+            k => {
+                let patch = local_patch(cage, &m, v, k)?;
+                Ok(limit_normal(&build(&patch)?, &patch, 0))
+            }
+        })
+        .collect()
 }
 
 /// The limit surface sampled `levels` steps down: the cage subdivided `levels` times, each
@@ -1243,6 +1347,93 @@ mod tests {
         assert!(
             ang < 0.5,
             "semi-sharp crease normal {got} vs deep {deep}: {ang}°"
+        );
+    }
+
+    // oracle: the local patches equal the global subdivision: a bumpy grid with semi-sharp edges
+    // of sharpness 1, 2 and 3 (and an infinite one), every vertex's limit point and normal against
+    // the whole cage subdivided 3 times (no finite sharpness left) and read by the masks
+    #[test]
+    fn local_patches_equal_the_global_subdivision() {
+        let mut c = grid(9, 9, &bumps);
+        c.sharpness.insert((20, 21), 1);
+        c.sharpness.insert((21, 22), 2);
+        c.sharpness.insert((40, 49), 3);
+        c.sharpness.insert((49, 58), 3);
+        c.sharpness.insert((60, 61), INFINITE);
+        let (lp, ln) = (limit_positions(&c).unwrap(), limit_normals(&c).unwrap());
+        let mut g = c.clone();
+        for _ in 0..3 {
+            g = subdivide(&g).unwrap();
+        }
+        assert!(
+            g.sharpness.values().all(|&s| s == INFINITE),
+            "3 steps spend every finite sharpness"
+        );
+        let (gp, gn) = (limit_positions(&g).unwrap(), limit_normals(&g).unwrap());
+        // (vertex 60 is a dart: neither route has a closed mask for it; its own test follows)
+        for v in (0..c.positions.len()).filter(|&v| v != 60) {
+            assert!(
+                (lp[v] - gp[v]).length() < 1e-12,
+                "position {v}: {} vs {}",
+                lp[v],
+                gp[v]
+            );
+            match (ln[v], gn[v]) {
+                (Some(a), Some(b)) => assert!((a - b).length() < 1e-12, "normal {v}: {a} vs {b}"),
+                (None, None) => {}
+                (a, b) => panic!("normal {v}: {a:?} vs {b:?}"),
+            }
+        }
+    }
+
+    // oracle (bounded size): a 25 × 25 grid (576 faces) with a sharpness-10 edge: the global
+    // route would build 576 · 4¹⁰ ≈ 6e8 faces; the local patches never hold more than 64 faces (a
+    // valence-4 vertex's 4 faces subdivided once, 16, before the crop), and the result is finite
+    #[test]
+    fn a_large_cage_with_a_maximal_sharpness_stays_small() {
+        let mut c = grid(25, 25, &bumps);
+        assert_eq!(c.faces.len(), 576);
+        c.sharpness.insert((312, 313), MAX_SHARPNESS);
+        PATCH_FACES_MAX.with(|x| x.set(0));
+        let lp = limit_positions(&c).unwrap();
+        let ln = limit_normals(&c).unwrap();
+        let most = PATCH_FACES_MAX.with(std::cell::Cell::get);
+        assert!(
+            most > 0 && most <= 64,
+            "the largest local patch: {most} faces"
+        );
+        assert!(lp.iter().all(|p| p.is_finite()) && ln[312].is_some_and(|n| n.is_finite()));
+    }
+
+    // oracle: a dart's limit is where its own subdivision converges: an infinite sharp edge
+    // ending inside a bumpy grid; the vertex after 8 plain global steps lies within the geometric
+    // tail of the fixed point (the 7 → 8 move bounds what remains, with margin), and the smooth
+    // mask (what the dart used to get) is measurably elsewhere
+    #[test]
+    fn a_dart_limit_is_its_subdivision_fixed_point() {
+        let mut c = grid(9, 9, &bumps);
+        c.sharpness.insert((39, 40), INFINITE);
+        let got = limit_positions(&c).unwrap()[40];
+        let mut g = c.clone();
+        let mut prev = g.positions[40];
+        let mut last_move = 0.0;
+        for _ in 0..8 {
+            g = subdivide(&g).unwrap();
+            last_move = (g.positions[40] - prev).length();
+            prev = g.positions[40];
+        }
+        let d = (got - g.positions[40]).length();
+        assert!(
+            d <= 4.0 * last_move + 1e-12,
+            "dart limit {got} vs 8 steps {}: {d} (last move {last_move})",
+            g.positions[40]
+        );
+        let m = build(&c).unwrap();
+        let smooth = limit_point(&m, &c, 40);
+        assert!(
+            (smooth - got).length() > 10.0 * d.max(1e-9),
+            "the smooth mask is not the dart's limit: {smooth} vs {got}"
         );
     }
 }
