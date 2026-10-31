@@ -117,7 +117,7 @@ pub struct Topology {
 impl Topology {
     /// V − E + F
     #[must_use]
-    pub fn euler(&self) -> i64 {
+    pub const fn euler(&self) -> i64 {
         self.vertices as i64 - self.edges as i64 + self.faces as i64
     }
 
@@ -284,9 +284,11 @@ impl Mesh {
     }
 }
 
-/// Checks the cage: indices in range, no repeated vertex in a face, every edge used by at most
-/// two faces and, when by two, in opposite directions, every sharpness entry on an existing edge,
-/// every vertex used by a face and every vertex's faces forming one fan
+/// Checks the cage
+///
+/// Indices in range, no repeated vertex in a face, every edge used by at most two faces and, when
+/// by two, in opposite directions, every sharpness entry on an existing edge, every vertex used by
+/// a face and every vertex's faces forming one fan
 pub fn check(cage: &Cage) -> Result<Topology, CageError> {
     let m = build(cage)?;
     let on_boundary: Vec<bool> = m
@@ -304,9 +306,11 @@ pub fn check(cage: &Cage) -> Result<Topology, CageError> {
     })
 }
 
-/// One Catmull–Clark step (see the module documentation). The output's vertices are, in order,
-/// the input's vertices (moved), one per edge (in the order of the edges' first appearance
-/// walking the faces), then one per face; each input face becomes four faces
+/// One Catmull–Clark step (see the module documentation)
+///
+/// The output's vertices are, in order, the input's vertices (moved), one per edge (in the order
+/// of the edges' first appearance walking the faces), then one per face; each input face becomes
+/// four faces
 pub fn subdivide(cage: &Cage) -> Result<Cage, CageError> {
     let m = build(cage)?;
     let p = &cage.positions;
@@ -424,9 +428,10 @@ pub fn limit_positions(cage: &Cage) -> Result<Vec<DVec3>, CageError> {
         .collect())
 }
 
-/// Each vertex's unit normal on the limit surface by the tangent masks (see the module doc): a
-/// smooth interior vertex (every edge with two faces, none sharp) gets its normal, on the side of
-/// its faces' winding; a crease, corner, dart or boundary vertex gets none
+/// Each vertex's unit normal on the limit surface by the tangent masks (see the module doc)
+///
+/// A smooth interior vertex (every edge with two faces, none sharp) gets its normal, on the side
+/// of its faces' winding; a crease, corner, dart or boundary vertex gets none
 pub fn limit_normals(cage: &Cage) -> Result<Vec<Option<DVec3>>, CageError> {
     let m = build(cage)?;
     // a semi-sharp crease's s steps first, as in limit_positions
@@ -508,6 +513,7 @@ pub fn limit_mesh(cage: &Cage, levels: u32) -> Result<Cage, CageError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alice_det_math::atan2_64;
 
     // an n × m grid of vertices over [0, n−1] × [0, m−1] with heights z(i, j), faces wound +z
     fn grid(n: usize, m: usize, z: &dyn Fn(usize, usize) -> f64) -> Cage {
@@ -535,7 +541,11 @@ mod tests {
     fn bumps(i: usize, j: usize) -> f64 {
         let (x, y) = (i as f64, j as f64);
         0.3 * x - 0.2 * y + 0.05 * x * y + 0.01 * x * x * y - 0.02 * y * y
-            + if (i * 7 + j * 3) % 5 == 0 { 0.4 } else { 0.0 }
+            + if (i * 7 + j * 3).is_multiple_of(5) {
+                0.4
+            } else {
+                0.0
+            }
     }
 
     // oracle: the cubic B-spline surface reproduces a quadratic up to a constant, so on a regular
@@ -543,7 +553,7 @@ mod tests {
     #[test]
     fn limit_normals_on_a_paraboloid_grid_are_the_closed_form() {
         let a = 0.03;
-        let c = grid(9, 9, &|i, j| a * ((i as f64).powi(2) + (j as f64).powi(2)));
+        let c = grid(9, 9, &|i, j| a * ((i * i + j * j) as f64));
         let nrm = limit_normals(&c).unwrap();
         let mut checked = 0;
         for j in 1..8 {
@@ -589,15 +599,15 @@ mod tests {
                 let t = std::f64::consts::TAU * k as f64 / n as f64;
                 // a first-harmonic tilt on each ring, different on the two (the masks weigh them)
                 positions.push(DVec3::new(
-                    t.cos(),
-                    t.sin(),
-                    0.1 * (2.0 * t).sin() + 0.3 * t.cos(),
+                    cos64(t),
+                    sin64(t),
+                    0.1 * sin64(2.0 * t) + 0.3 * cos64(t),
                 ));
                 let t2 = std::f64::consts::TAU * (k as f64 + 0.5) / n as f64;
                 positions.push(DVec3::new(
-                    1.6 * t2.cos(),
-                    1.6 * t2.sin(),
-                    0.15 * (3.0 * t2).cos() - 0.2 * t2.sin(),
+                    1.6 * cos64(t2),
+                    1.6 * sin64(t2),
+                    0.15 * cos64(3.0 * t2) - 0.2 * sin64(t2),
                 ));
             }
             let e = |k: usize| (1 + 2 * (k % n)) as u32;
@@ -611,12 +621,12 @@ mod tests {
             let want = limit_normals(&c).unwrap()[0].expect("the centre is smooth and interior");
             let deep = limit_mesh(&c, 6).unwrap();
             // the centre keeps index 0; its neighbours in the deep mesh lie about it in a small ring
-            let nb: Vec<DVec3> = deep
+            let nb = deep
                 .faces
                 .iter()
                 .filter(|q| q.contains(&0))
                 .flat_map(|q| q.iter().map(|&i| deep.positions[i as usize]))
-                .collect();
+                .count();
             let o = deep.positions[0];
             let mut acc = DVec3::ZERO;
             let ring: Vec<DVec3> = deep
@@ -635,9 +645,9 @@ mod tests {
             for r in &ring {
                 acc += *r;
             }
-            assert_eq!(nb.len(), 4 * n);
+            assert_eq!(nb, 4 * n);
             let fd = acc.normalize();
-            let ang = fd.dot(want).clamp(-1.0, 1.0).acos().to_degrees();
+            let ang = atan2_64(fd.cross(want).length(), fd.dot(want)).to_degrees();
             assert!(
                 ang < 0.05,
                 "valence {n}: mask normal vs the deep limit's {ang}°"
@@ -682,7 +692,7 @@ mod tests {
         for k in 0..2 * n {
             let a = tau * k as f64 / (2 * n) as f64;
             let r = if k % 2 == 0 { 1.0 } else { 1.3 };
-            positions.push(DVec3::new(r * a.cos(), r * a.sin(), 0.1 * (k % 3) as f64));
+            positions.push(DVec3::new(r * cos64(a), r * sin64(a), 0.1 * (k % 3) as f64));
         }
         let ring = |k: usize| (2 + k % (2 * n)) as u32;
         let mut faces = Vec::new();
@@ -769,10 +779,10 @@ mod tests {
             ("fan 6", double_fan(6), 0, 6.0),
         ] {
             let (c2, c1) = (
-                (std::f64::consts::TAU / n).cos(),
-                (std::f64::consts::PI / n).cos(),
+                cos64(std::f64::consts::TAU / n),
+                cos64(std::f64::consts::PI / n),
             );
-            let lambda = (5.0 + c2 + c1 * (2.0 * (9.0 + c2)).sqrt()) / 16.0;
+            let lambda = (5.0 + c2 + c1 * sqrt64(2.0 * (9.0 + c2))) / 16.0;
             let target = limit_positions(&c).unwrap()[v];
             let d0 = (c.positions[v] - target).length();
             assert!(d0 > 1e-3, "{name}: the cage vertex is off its limit point");
@@ -788,7 +798,11 @@ mod tests {
                 d = next;
             }
             assert!(
-                d <= d0 * (lambda * 1.05).powi(6) + 1e-14,
+                d <= d0 * {
+                    let l = lambda * 1.05;
+                    let l2 = l * l;
+                    l2 * l2 * l2
+                } + 1e-14,
                 "{name}: {d} after 6 steps from {d0}"
             );
         }
@@ -811,12 +825,9 @@ mod tests {
     fn a_boundary_is_the_b_spline_curve_of_its_vertices() {
         let c = grid(7, 5, &bumps);
         let lim = limit_positions(&c).unwrap();
-        for i in 1..6 {
+        for (i, &l) in lim.iter().enumerate().take(6).skip(1) {
             let (a, v, b) = (c.positions[i - 1], c.positions[i], c.positions[i + 1]);
-            assert!(
-                close(lim[i], (a + 4.0 * v + b) / 6.0, 1e-14),
-                "limit at {i}"
-            );
+            assert!(close(l, (a + 4.0 * v + b) / 6.0, 1e-14), "limit at {i}");
         }
         let s = subdivide(&c).unwrap();
         for i in 1..6 {
@@ -826,7 +837,7 @@ mod tests {
                 "step at {i}"
             );
         }
-        let mut moved = c.clone();
+        let mut moved = c;
         moved.positions[2 * 7 + 3] += DVec3::new(0.3, -0.2, 1.7);
         let lm = limit_positions(&subdivide(&moved).unwrap()).unwrap();
         let l0 = limit_positions(&s).unwrap();
