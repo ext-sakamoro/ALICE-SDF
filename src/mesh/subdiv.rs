@@ -22,9 +22,19 @@
 //! - crease or boundary vertex: (a + 4 v + b) / 6;
 //! - corner: v.
 //!
+//! [`limit_normals`] gives the limit surface's unit normal at each smooth interior vertex from the
+//! two tangent masks (n the valence, eᵢ and fᵢ the ring in cyclic order, A = 1 + cos(2π/n) +
+//! cos(π/n)·√(2 (9 + cos(2π/n)))):
+//!
+//! - t₁ = Σ A cos(2πi/n) eᵢ + (cos(2πi/n) + cos(2π(i+1)/n)) fᵢ;
+//! - t₂ = Σ A sin(2πi/n) eᵢ + (sin(2πi/n) + sin(2π(i+1)/n)) fᵢ;
+//! - n = t₁ × t₂ normalised (the ring runs in the faces' winding, so n is on that side); none at crease, corner and
+//!   boundary vertices (no single tangent plane there).
+//!
 //! Deterministic: every sum runs in a fixed order (faces in index order, a vertex's ring in the
 //! order of its faces), with no hashing and no parallel reduction, so a rebuild is bit-identical.
 
+use alice_det_math::{cos64, sin64, sqrt64};
 use glam::DVec3;
 use std::collections::BTreeMap;
 
@@ -297,6 +307,49 @@ pub fn limit_positions(cage: &Cage) -> Result<Vec<DVec3>, CageError> {
         .collect())
 }
 
+/// Each vertex's unit normal on the limit surface by the tangent masks (see the module doc): a
+/// smooth interior vertex (every edge with two faces, none sharp) gets its normal, on the side of
+/// its faces' winding; a crease, corner, dart or boundary vertex gets none
+pub fn limit_normals(cage: &Cage) -> Result<Vec<Option<DVec3>>, CageError> {
+    let m = build(cage)?;
+    let p = &cage.positions;
+    let corner = |f: usize, v: usize| -> (u32, u32, u32) {
+        let face = cage.faces[f];
+        let i = face.iter().position(|&x| x as usize == v).expect("a vertex's face holds it");
+        (face[(i + 1) % 4], face[(i + 2) % 4], face[(i + 3) % 4])
+    };
+    Ok((0..p.len())
+        .map(|v| {
+            if m.vert_edges[v].iter().any(|&e| m.edge_faces[e].len() != 2 || m.hard(cage, e)) {
+                return None;
+            }
+            // the ring in cyclic order: face k has corners (v, next, diagonal, prev), and the face
+            // after it is the one whose next is this one's prev
+            let faces = &m.vert_faces[v];
+            let n = faces.len();
+            let mut order = vec![faces[0]];
+            while order.len() < n {
+                let (_, _, prev) = corner(*order.last().expect("a face"), v);
+                let f = faces.iter().copied().find(|&f| corner(f, v).0 == prev)?;
+                order.push(f);
+            }
+            let nf = n as f64;
+            let w = std::f64::consts::TAU / nf;
+            let a = 1.0 + cos64(w) + cos64(w / 2.0) * sqrt64(2.0 * (9.0 + cos64(w)));
+            let (mut t1, mut t2) = (DVec3::ZERO, DVec3::ZERO);
+            for (i, &f) in order.iter().enumerate() {
+                let (e, d, _) = corner(f, v);
+                let (ci, cj, si, sj) = (cos64(w * i as f64), cos64(w * (i + 1) as f64), sin64(w * i as f64), sin64(w * (i + 1) as f64));
+                t1 += p[e as usize] * (a * ci) + p[d as usize] * (ci + cj);
+                t2 += p[e as usize] * (a * si) + p[d as usize] * (si + sj);
+            }
+            // (the ring runs in the faces' winding, so t₁ × t₂ is on the winding's side)
+            let nn = t1.cross(t2);
+            (nn.length_squared() > 0.0).then(|| nn.normalize())
+        })
+        .collect())
+}
+
 /// The limit surface sampled `levels` steps down: the cage subdivided `levels` times, each
 /// vertex moved to its limit point; the faces are the subdivided cage's
 pub fn limit_mesh(cage: &Cage, levels: u32) -> Result<Cage, CageError> {
@@ -335,6 +388,74 @@ mod tests {
     fn bumps(i: usize, j: usize) -> f64 {
         let (x, y) = (i as f64, j as f64);
         0.3 * x - 0.2 * y + 0.05 * x * y + 0.01 * x * x * y - 0.02 * y * y + if (i * 7 + j * 3) % 5 == 0 { 0.4 } else { 0.0 }
+    }
+
+    // oracle: the cubic B-spline surface reproduces a quadratic up to a constant, so on a regular
+    // grid of z = a(x² + y²) the limit normal at an interior vertex is ∝ (−2ax, −2ay, 1) exactly
+    #[test]
+    fn limit_normals_on_a_paraboloid_grid_are_the_closed_form() {
+        let a = 0.03;
+        let c = grid(9, 9, &|i, j| a * ((i as f64).powi(2) + (j as f64).powi(2)));
+        let nrm = limit_normals(&c).unwrap();
+        let mut checked = 0;
+        for j in 1..8 {
+            for i in 1..8 {
+                let (x, y) = (i as f64, j as f64);
+                let want = DVec3::new(-2.0 * a * x, -2.0 * a * y, 1.0).normalize();
+                let got = nrm[j * 9 + i].expect("an interior vertex has a normal");
+                assert!((got - want).length() < 1e-12, "({i}, {j}): {got} vs {want}");
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 49);
+        assert!(nrm[0].is_none() && nrm[4].is_none(), "boundary vertices have none");
+    }
+
+    // oracle: the cube's symmetry: the limit normal at a corner (valence 3) is the corner's direction
+    #[test]
+    fn limit_normals_at_the_cube_corners_are_the_diagonals() {
+        let c = cube();
+        let nrm = limit_normals(&c).unwrap();
+        for (v, q) in c.positions.iter().enumerate() {
+            let got = nrm[v].expect("a closed cube's vertices are smooth");
+            assert!((got - q.normalize()).length() < 1e-12, "{v}: {got} vs {}", q.normalize());
+        }
+    }
+
+    // oracle: valence 5 and 6 (extraordinary vertices): the normal of the limit surface from its
+    // own points six levels down (the plane through the vertex's limit neighbours) agrees with the
+    // mask normal to within the sampling's own error
+    #[test]
+    fn limit_normals_at_extraordinary_vertices_match_the_deep_limit() {
+        for n in [5usize, 6] {
+            // a fan of n quads about a centre, with a bumpy outer ring (a disc, the centre interior)
+            let mut positions = vec![DVec3::new(0.0, 0.0, 0.2)];
+            for k in 0..n {
+                let t = std::f64::consts::TAU * k as f64 / n as f64;
+                // a first-harmonic tilt on each ring, different on the two (the masks weigh them)
+                positions.push(DVec3::new(t.cos(), t.sin(), 0.1 * (2.0 * t).sin() + 0.3 * t.cos()));
+                let t2 = std::f64::consts::TAU * (k as f64 + 0.5) / n as f64;
+                positions.push(DVec3::new(1.6 * t2.cos(), 1.6 * t2.sin(), 0.15 * (3.0 * t2).cos() - 0.2 * t2.sin()));
+            }
+            let e = |k: usize| (1 + 2 * (k % n)) as u32;
+            let f = |k: usize| (2 + 2 * (k % n)) as u32;
+            let faces: Vec<[u32; 4]> = (0..n).map(|k| [0, e(k), f(k), e(k + 1)]).collect();
+            let c = Cage { positions, faces, sharpness: BTreeMap::new() };
+            let want = limit_normals(&c).unwrap()[0].expect("the centre is smooth and interior");
+            let deep = limit_mesh(&c, 6).unwrap();
+            // the centre keeps index 0; its neighbours in the deep mesh lie about it in a small ring
+            let nb: Vec<DVec3> = deep.faces.iter().filter(|q| q.contains(&0)).flat_map(|q| q.iter().map(|&i| deep.positions[i as usize])).collect();
+            let o = deep.positions[0];
+            let mut acc = DVec3::ZERO;
+            let ring: Vec<DVec3> = deep.faces.iter().filter_map(|q| q.iter().position(|&i| i == 0).map(|k| (deep.positions[q[(k + 1) % 4] as usize], deep.positions[q[(k + 3) % 4] as usize]))).map(|(a, b)| (a - o).cross(b - o)).collect();
+            for r in &ring {
+                acc += *r;
+            }
+            assert_eq!(nb.len(), 4 * n);
+            let fd = acc.normalize();
+            let ang = fd.dot(want).clamp(-1.0, 1.0).acos().to_degrees();
+            assert!(ang < 0.05, "valence {n}: mask normal vs the deep limit's {ang}°");
+        }
     }
 
     // the cube of half-width 1, faces wound outward
