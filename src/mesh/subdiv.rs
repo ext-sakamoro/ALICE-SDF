@@ -43,6 +43,13 @@ use std::collections::BTreeMap;
 /// The sharpness of an edge that stays sharp at every level
 pub const INFINITE: u32 = u32::MAX;
 
+/// The largest finite sharpness accepted
+///
+/// A semi-sharp crease costs one subdivision step per unit in the limit (each step multiplies the
+/// faces by four), so larger values are refused with [`CageError::SharpnessTooLarge`] instead of
+/// driving an unbounded allocation; an edge meant to stay sharp at every level is [`INFINITE`]
+pub const MAX_SHARPNESS: u32 = 10;
+
 /// A quad cage
 #[derive(Clone, Debug, PartialEq)]
 pub struct Cage {
@@ -94,6 +101,14 @@ pub enum CageError {
     NonManifoldVertex {
         /// The vertex
         vertex: usize,
+    },
+    /// A finite sharpness above [`MAX_SHARPNESS`] (use [`INFINITE`] for an edge sharp at every
+    /// level)
+    SharpnessTooLarge {
+        /// The edge
+        edge: (u32, u32),
+        /// Its sharpness
+        sharpness: u32,
     },
 }
 
@@ -204,6 +219,13 @@ fn build(cage: &Cage) -> Result<Mesh, CageError> {
     }
     if let Some(&edge) = cage.sharpness.keys().find(|k| !index.contains_key(k)) {
         return Err(CageError::SharpnessOnMissingEdge { edge });
+    }
+    if let Some((&edge, &sharpness)) = cage
+        .sharpness
+        .iter()
+        .find(|(_, &s)| s != INFINITE && s > MAX_SHARPNESS)
+    {
+        return Err(CageError::SharpnessTooLarge { edge, sharpness });
     }
     if let Some(vertex) = m.vert_faces.iter().position(Vec::is_empty) {
         return Err(CageError::UnusedVertex { vertex });
@@ -1171,5 +1193,56 @@ mod tests {
             assert!(nrm[21 + i].is_none(), "crease vertex {}", 21 + i);
         }
         assert!(nrm[8].is_some() && nrm[36].is_some(), "off the crease");
+    }
+
+    // oracle (refusal, bounded cost): a finite sharpness above MAX_SHARPNESS would cost one
+    // subdivision step per unit in the limit (4× the faces each), so every entry point refuses it
+    // with the edge and the value; MAX_SHARPNESS itself and INFINITE are accepted
+    #[test]
+    fn a_sharpness_above_the_bound_is_refused() {
+        let mut c = cube();
+        c.sharpness.insert((0, 1), MAX_SHARPNESS + 1);
+        let want = CageError::SharpnessTooLarge {
+            edge: (0, 1),
+            sharpness: MAX_SHARPNESS + 1,
+        };
+        assert_eq!(check(&c).unwrap_err(), want);
+        assert_eq!(subdivide(&c).unwrap_err(), want);
+        assert_eq!(limit_positions(&c).unwrap_err(), want);
+        assert_eq!(limit_normals(&c).unwrap_err(), want);
+        assert_eq!(limit_mesh(&c, 1).unwrap_err(), want);
+        c.sharpness.insert((0, 1), MAX_SHARPNESS);
+        assert!(check(&c).is_ok());
+        c.sharpness.insert((0, 1), INFINITE);
+        assert!(limit_positions(&c).is_ok());
+    }
+
+    // oracle: a vertex on a sharpness-1 crease is smooth after its one step, so it has a normal,
+    // and that normal is the deep limit's: the faces around it six plain steps further down (their
+    // area-weighted normal at the vertex) agree within 0.5°
+    #[test]
+    fn a_semi_sharp_crease_vertex_has_the_deep_limit_normal() {
+        let mut c = grid(7, 7, &bumps);
+        for i in 0..6u32 {
+            c.sharpness.insert((21 + i, 22 + i), 1);
+        }
+        let nrm = limit_normals(&c).unwrap();
+        let v = 24usize;
+        let got = nrm[v].expect("a semi-sharp crease vertex is smooth after its step");
+        let mut d = subdivide(&c).unwrap();
+        for _ in 0..6 {
+            d = subdivide(&d).unwrap();
+        }
+        let p = &d.positions;
+        let mut acc = DVec3::ZERO;
+        for f in d.faces.iter().filter(|f| f.contains(&(v as u32))) {
+            acc += (p[f[2] as usize] - p[f[0] as usize]).cross(p[f[3] as usize] - p[f[1] as usize]);
+        }
+        let deep = acc.normalize();
+        let ang = atan2_64(got.cross(deep).length(), got.dot(deep)).to_degrees();
+        assert!(
+            ang < 0.5,
+            "semi-sharp crease normal {got} vs deep {deep}: {ang}°"
+        );
     }
 }
