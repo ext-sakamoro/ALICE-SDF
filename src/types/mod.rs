@@ -329,6 +329,24 @@ pub enum SdfNode {
         thickness: f32,
     },
 
+    /// Polar sections swept along a spline axis, each end flat or closed by a dome (see
+    /// [`crate::primitives::loft`] for the shape, the field and its bound). Built by
+    /// [`SdfNode::loft`] / [`SdfNode::loft_capped`], which check the input and compute `bounds`.
+    Loft {
+        /// Axis points (a uniform Catmull-Rom curve passes through them)
+        axis: Vec<Vec3>,
+        /// The direction the section frame's first axis leans toward
+        up: Vec3,
+        /// Harmonics per section (K)
+        harmonics: u32,
+        /// Coefficient rows, `2K + 1` each (`a0, a1, b1, …, aK, bK`), row after row
+        rows: Vec<f32>,
+        /// Dome heights at the start and the end (0 = flat)
+        caps: [f32; 2],
+        /// The bounds the field is divided by
+        bounds: crate::primitives::loft::LoftBounds,
+    },
+
     /// Ball of a weighted norm — `w₁‖p‖₁ + w₂‖p‖₂ + w∞‖p‖∞ − radius`.
     ///
     /// The three weights choose the shape: `(0, 1, 0)` is a sphere,
@@ -336,24 +354,6 @@ pub enum SdfNode {
     /// between a convex blend of those unit balls. They are non-negative and
     /// not all zero — [`SdfNode::metric_ball`] takes a validated
     /// `MetricWeights`, which is the only way to build one.
-    /// Closed planar sections swept along a spline axis, the section interpolated between stations
-    /// (see [`crate::primitives::loft`] for the field and its bound). Built by [`SdfNode::loft`],
-    /// which checks the input and computes `lipschitz`.
-    Loft {
-        /// Axis points (a uniform Catmull-Rom curve passes through them)
-        axis: Vec<Vec3>,
-        /// The direction the section frame's first axis leans toward
-        up: Vec3,
-        /// Axis parameter of each section, rising from 0 to `axis.len() - 1`
-        stations: Vec<f32>,
-        /// Sections, `section_vertices` per station, station after station
-        sections: Vec<Vec2>,
-        /// Vertices per section
-        section_vertices: u32,
-        /// The bound the distance is divided by (1 for a straight axis with a constant section)
-        lipschitz: f32,
-    },
-
     MetricBall {
         /// Radius in the ball's own metric.
         radius: f32,
@@ -1410,6 +1410,7 @@ impl SdfNode {
             | Self::Rect2D { .. }
             | Self::Segment2D { .. }
             | Self::Polygon2D { .. }
+            | Self::Loft { .. }
             | Self::RoundedRect2D { .. }
             | Self::Annular2D { .. }
             | Self::Terrain { .. }

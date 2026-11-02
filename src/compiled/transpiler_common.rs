@@ -3471,6 +3471,21 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 v
             }
 
+            SdfNode::Loft { axis, up, harmonics, rows, caps, bounds } => {
+                // the loft's law as module-scope functions over a module-scope data array
+                // (`compiled::loft_shader`, one template rendered per dialect)
+                let id = self.var_counter;
+                self.var_counter += 1;
+                let arr = format!("alice_loft_d_{id}");
+                let func = format!("alice_loft_{id}");
+                let flat = crate::primitives::loft::flatten(axis, *up, *harmonics, rows, *caps, bounds);
+                self.globals.push_str(&L::global_float_array(&arr, &flat));
+                self.globals.push_str(&crate::compiled::loft_shader::loft_functions(&func, &arr, &flat, L::NAME));
+                let var = self.next_var();
+                code.push_str(&L::decl_float(&var, &format!("{func}({point_var})")));
+                var
+            }
+
             SdfNode::Polygon2D {
                 vertices,
                 half_height,

@@ -188,6 +188,7 @@ pub const fn is_supported(op: OpCode) -> bool {
         | OpCode::Rect2D
         | OpCode::Segment2D
         | OpCode::Polygon2D
+        | OpCode::Loft
         | OpCode::RoundedRect2D
         | OpCode::Annular2D
         | OpCode::MetricBall

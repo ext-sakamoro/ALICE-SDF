@@ -343,21 +343,31 @@ impl SdfNode {
         Self::Gyroid { scale, thickness }
     }
 
-    /// Closed planar sections swept along a spline axis (see [`crate::primitives::loft`]).
+    /// Polar sections swept along a spline axis, both ends flat (see [`crate::primitives::loft`]).
     ///
     /// # Errors
-    /// Fewer than 2 axis points, stations not rising from 0 to the last axis parameter, sections of
-    /// different vertex counts (or fewer than 3, more than 256), a non-finite value, `up` parallel to
-    /// the axis, or sections wider than the axis's radius of curvature
-    pub fn loft(
+    /// See [`SdfNode::loft_capped`]
+    pub fn loft(axis: Vec<Vec3>, up: Vec3, harmonics: u32, rows: Vec<Vec<f32>>) -> Result<Self, crate::primitives::loft::LoftError> {
+        Self::loft_capped(axis, up, harmonics, rows, [0.0, 0.0])
+    }
+
+    /// Polar sections swept along a spline axis, each end flat (`0`) or closed by a dome of that
+    /// height (see [`crate::primitives::loft`]).
+    ///
+    /// # Errors
+    /// Fewer than 2 axis points or 2 rows, a row that is not `2K + 1` long, more than
+    /// [`crate::primitives::loft::MAX_HARMONICS`] harmonics, a non-finite value, a negative cap
+    /// height, `up` parallel to the axis, a section whose radius reaches 0, or sections wider than
+    /// the axis's radius of curvature
+    pub fn loft_capped(
         axis: Vec<Vec3>,
         up: Vec3,
-        stations: Vec<f32>,
-        sections: Vec<Vec<Vec2>>,
+        harmonics: u32,
+        rows: Vec<Vec<f32>>,
+        caps: [f32; 2],
     ) -> Result<Self, crate::primitives::loft::LoftError> {
-        let (flat, lipschitz) = crate::primitives::loft::validate(&axis, up, &stations, &sections)?;
-        let section_vertices = sections[0].len() as u32;
-        Ok(Self::Loft { axis, up, stations, sections: flat, section_vertices, lipschitz })
+        let (rows, bounds) = crate::primitives::loft::validate(&axis, up, harmonics, &rows, caps)?;
+        Ok(Self::Loft { axis, up, harmonics, rows, caps, bounds })
     }
 
     /// Create the ball of a weighted norm.

@@ -1,42 +1,62 @@
-//! Loft: closed planar sections swept along a spline axis, the section interpolated between stations.
+//! Loft: polar sections swept along a spline axis, the section a smooth function of the axis
+//! parameter, each end flat or closed by a dome.
 //!
-//! # The field
+//! # The shape
 //!
 //! - **Axis**: a uniform Catmull-Rom curve `C(s)` through the points `A₀ … Aₙ₋₁` (n ≥ 2),
 //!   `s ∈ [0, n − 1]`, the end tangents continued by reflected phantom points
 //!   (`A₋₁ = 2A₀ − A₁`, `Aₙ = 2Aₙ₋₁ − Aₙ₋₂`), so two points give a straight segment at uniform speed.
 //! - **Frame**: `T = C'(s)/|C'(s)|`, `N = normalize(up − (up·T)T)`, `B = T × N`. `up` must not be
 //!   parallel to the axis anywhere.
-//! - **Sections**: one closed polygon per station `sₖ` (strictly increasing, the first 0 and the last
-//!   n − 1), all with the same vertex count, vertex `j` corresponding across sections. Between two
-//!   stations each vertex moves along a uniform Catmull-Rom curve in the local parameter, with
-//!   reflected phantom sections at the ends.
-//! - **Distance**: for a point `p`, `s*` is the axis parameter of the closest axis point (found by a
-//!   fixed scan of [`SCAN_PER_SEGMENT`] samples per segment and [`REFINE_STEPS`] ternary steps, the
-//!   same steps on every backend); `(u, v) = ((p − C(s*))·N, (p − C(s*))·B)`; `d₂` is the 2D signed
-//!   distance to the section at `s*`; `d_w` is the signed distance past the end planes (the planes
-//!   through `C(0)` and `C(n − 1)` normal to the tangent there); the two combine as an extrusion,
-//!   `min(max(d₂, d_w), 0) + |max((d₂, d_w), 0)|`, and the result is divided by the bound `L`.
+//! - **Section**: in the frame's plane, with `(u, v) = ((p − C)·N, (p − C)·B)`, `ρ = |(u, v)|` and
+//!   `θ` the angle of `(u, v)` from `N` toward `B`, the section is `ρ ≤ r(θ)` with
+//!   `r(θ) = a₀ + Σₖ₌₁..K (aₖ cos kθ + bₖ sin kθ)`, `K ≤` [`MAX_HARMONICS`]. `cos kθ, sin kθ` come from
+//!   the rotation recurrence started at `(u/ρ, v/ρ)` (no trigonometric call).
+//! - **Along the axis**: the coefficient rows `c₀ … c_{k−1}` (k ≥ 2, each `[a₀, a₁, b₁, …, a_K, b_K]`)
+//!   are the control rows of a uniform cubic B-spline in `w = s (k − 1)/(n − 1)`, the end rows reflected
+//!   (`c₋₁ = 2c₀ − c₁`, `c_k = 2c_{k−1} − c_{k−2}`) so the first and last rows are met exactly. The
+//!   radius at `s` is the B-spline of the rows' radii at `θ` (the same as the radius of the
+//!   B-spline of the coefficients).
+//! - **Ends**: the planes through `C(0)` and `C(n − 1)` normal to the tangent there. An end with cap
+//!   height `H > 0` is closed by the dome `(ρ/r_end(θ))² + (h/H)² ≤ 1` beyond the plane (`h` the height
+//!   past it, `r_end` the end row): a hemisphere for a circle of radius `H`, an end that closes to a
+//!   point for any star-shaped end section.
 //!
-//! # The bound
+//! # The field and its bound
 //!
-//! `L = (1 + 1.1·G) / (1 − 1.1·κR)`, from samples of the axis and the sections ([`BOUND_SAMPLES`] per
-//! segment): `R` the largest section radius, `κ` the largest axis curvature, and `G` the largest
-//! rate at which the section changes per unit axis length (vertex speed plus `R` times the frame's
-//! turn rate). It is 1 for a straight axis with a constant section, where the field is the exact
-//! distance; elsewhere dividing by it keeps the field from growing faster than 1 per unit length,
-//! so sphere tracing never steps past the surface. A loft whose sections are wider than the axis's
-//! radius of curvature (`1.1·κR ≥ 1`) is refused.
+//! - In the section: `g = max(ρ − r, c)`, where `c = ρ₀ − r_min` holds the field constant in the core
+//!   `ρ < ρ₀ = r_min / 2` (`r_min` a lower bound of every row's radius). Outside the core,
+//!   `|∇(ρ − r)| ≤ √(1 + (r'_max/ρ₀)²) = L₂` (`r'_max` an upper bound of `|∂r/∂θ|`); with no angular
+//!   term (`r'_max = 0`) there is no core and `L₂ = 1`. `d₂ = g / L₂`.
+//! - Along the axis: `d₂` and the signed distance past the end planes `d_w` combine as an extrusion,
+//!   `min(max(d₂, d_w), 0) + |max((d₂, d_w), 0)|`, divided by `L = (1 + 1.1·G)/(1 − 1.1·κR)`, from `R`
+//!   the largest radius, `κ` the largest axis curvature (sampled, [`BOUND_SAMPLES`] per segment) and
+//!   `G` the largest rate the radius changes per unit axis length (the rows' largest step, times
+//!   `(k − 1)/(n − 1)` over the slowest axis speed) plus `R` times the frame's turn rate.
+//! - A dome: `q = √((ρ/r_end)² + (h/H)²)`; `|∇q| ≤ max(√(1/r_min² + r'_max²/r_min⁴), 1/H) = L_q` (the two
+//!   terms are orthogonal), so `(q − 1)/L_q` is 1-Lipschitz, cut by the half-space `h ≥ 0`, and joined
+//!   to the body by `min`.
+//! - The field is 1-Lipschitz and exact for a straight axis with a constant circle (and a
+//!   hemispherical dome on it). Elsewhere it is a bound: never past the surface, but the march
+//!   slows where `L` is large.
+//!
+//! Every bound is taken over the rows (the B-spline weights are convex, so the radius and its
+//! angular derivative at any `s` lie within the rows' extremes), each row sampled at
+//! `64(K + 1)` angles and widened by the sampling step times the next derivative's bound.
 
-use crate::primitives::sdf_polygon_2d_xy;
+use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Axis samples per segment in the closest-point scan
 pub const SCAN_PER_SEGMENT: u32 = 16;
 /// Ternary refinement steps around the best scan sample
 pub const REFINE_STEPS: u32 = 16;
-/// Samples per segment for the Lipschitz bound
+/// Samples per segment for the axis curvature and frame turn bounds
 pub const BOUND_SAMPLES: u32 = 64;
+/// The most harmonics a section may have
+pub const MAX_HARMONICS: u32 = 64;
+/// The core value used when a loft has no angular term (no core)
+const NO_CORE: f32 = -3.0e38;
 
 /// Why a loft was refused
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,157 +70,283 @@ impl std::fmt::Display for LoftError {
 
 impl std::error::Error for LoftError {}
 
-/// The loft's data, read by the tree (slices) and the bytecode (one flat `f32` block) alike, so the
-/// two run the same arithmetic
-pub trait LoftData {
-    /// Axis point count
-    fn n(&self) -> usize;
-    /// Axis point `i`
-    fn axis(&self, i: usize) -> Vec3;
-    /// Station count
-    fn k(&self) -> usize;
-    /// Station `i`'s axis parameter
-    fn station(&self, i: usize) -> f32;
-    /// Vertices per section
-    fn m(&self) -> usize;
-    /// Section `i`'s vertex `j`
-    fn vert(&self, i: usize, j: usize) -> Vec2;
-    /// The frame's up direction
-    fn up(&self) -> Vec3;
-    /// The bound the distance is divided by
-    fn lipschitz(&self) -> f32;
+/// The bounds a loft's field is divided by, computed by [`validate`]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LoftBounds {
+    /// The far bound `L_g` (the whole field divided by it is 1-Lipschitz)
+    pub l: f32,
+    /// The section bound `L₂`
+    pub l2: f32,
+    /// The core value `c` (≤ 0; a large negative number when there is no core)
+    pub core: f32,
+    /// The domes' bounds `L_q` (start, end); 1 for a flat end
+    pub lq: [f32; 2],
+    /// The clamp `m` of the local correction (0: the bound is the same on every span)
+    pub m: f32,
+    /// The local bound `L(s)` at the B-spline knots (one per row), linear between them
+    pub knots: Vec<f32>,
+    /// A radius holding the whole surface around the axis curve (the largest radius and dome height)
+    pub reach: f32,
 }
 
-/// The tree's form: slices
-pub struct LoftSlices<'a> {
-    /// Axis points
-    pub axis: &'a [Vec3],
-    /// Up direction
-    pub up: Vec3,
-    /// Stations
-    pub stations: &'a [f32],
-    /// Sections, `m` per station
-    pub sections: &'a [Vec2],
-    /// Vertices per section
-    pub m: usize,
-    /// The bound
-    pub lipschitz: f32,
-}
+/// The flat block of a loft (the bytecode's aux data and the shaders' module-scope array):
+/// `[n, K, k, up.x, up.y, up.z, H₀, H₁, L_g, L₂, c, L_q0, L_q1, m, R_b, axis (3n), rows (k(2K + 1)), knots (k)]`
+pub const HEAD: usize = 15;
 
-impl LoftData for LoftSlices<'_> {
-    fn n(&self) -> usize { self.axis.len() }
-    fn axis(&self, i: usize) -> Vec3 { self.axis[i] }
-    fn k(&self) -> usize { self.stations.len() }
-    fn station(&self, i: usize) -> f32 { self.stations[i] }
-    fn m(&self) -> usize { self.m }
-    fn vert(&self, i: usize, j: usize) -> Vec2 { self.sections[i * self.m + j] }
-    fn up(&self) -> Vec3 { self.up }
-    fn lipschitz(&self) -> f32 { self.lipschitz }
-}
-
-/// The bytecode's form: `[n, k, m, up.x, up.y, up.z, L, axis (3n), stations (k), sections (2km)]`
-pub struct LoftFlat<'a>(pub &'a [f32]);
-
-impl LoftFlat<'_> {
-    const HEAD: usize = 7;
-    fn nn(&self) -> usize { self.0[0] as usize }
-    fn kk(&self) -> usize { self.0[1] as usize }
-}
-
-impl LoftData for LoftFlat<'_> {
-    fn n(&self) -> usize { self.nn() }
-    fn axis(&self, i: usize) -> Vec3 {
-        let o = Self::HEAD + 3 * i;
-        Vec3::new(self.0[o], self.0[o + 1], self.0[o + 2])
-    }
-    fn k(&self) -> usize { self.kk() }
-    fn station(&self, i: usize) -> f32 { self.0[Self::HEAD + 3 * self.nn() + i] }
-    fn m(&self) -> usize { self.0[2] as usize }
-    fn vert(&self, i: usize, j: usize) -> Vec2 {
-        let o = Self::HEAD + 3 * self.nn() + self.kk() + 2 * (i * self.m() + j);
-        Vec2::new(self.0[o], self.0[o + 1])
-    }
-    fn up(&self) -> Vec3 { Vec3::new(self.0[3], self.0[4], self.0[5]) }
-    fn lipschitz(&self) -> f32 { self.0[6] }
-}
-
-/// The flat block of a loft (the bytecode's aux data and the shaders' module-scope array)
-pub fn flatten(axis: &[Vec3], up: Vec3, stations: &[f32], sections: &[Vec2], m: usize, lipschitz: f32) -> Vec<f32> {
-    let mut v = vec![axis.len() as f32, stations.len() as f32, m as f32, up.x, up.y, up.z, lipschitz];
+/// The flat block of a loft
+pub fn flatten(axis: &[Vec3], up: Vec3, harmonics: u32, rows: &[f32], caps: [f32; 2], b: &LoftBounds) -> Vec<f32> {
+    let k = rows.len() / (2 * harmonics as usize + 1);
+    let mut v = vec![
+        axis.len() as f32,
+        harmonics as f32,
+        k as f32,
+        up.x,
+        up.y,
+        up.z,
+        caps[0],
+        caps[1],
+        b.l,
+        b.l2,
+        b.core,
+        b.lq[0],
+        b.lq[1],
+        b.m,
+        b.reach,
+    ];
     v.extend(axis.iter().flat_map(|a| [a.x, a.y, a.z]));
-    v.extend_from_slice(stations);
-    v.extend(sections.iter().flat_map(|s| [s.x, s.y]));
+    v.extend_from_slice(rows);
+    v.extend_from_slice(&b.knots);
     v
 }
 
-/// Catmull-Rom point and derivative at `t ∈ [0, 1]` between `b` and `c`
-#[inline]
-fn cr(a: Vec3, b: Vec3, c: Vec3, d: Vec3, t: f32) -> (Vec3, Vec3) {
-    let t2 = t * t;
-    let t3 = t2 * t;
-    let k1 = c - a;
-    let k2 = 2.0 * a - 5.0 * b + 4.0 * c - d;
-    let k3 = -a + 3.0 * b - 3.0 * c + d;
-    let pos = 0.5 * (2.0 * b + k1 * t + k2 * t2 + k3 * t3);
-    let der = 0.5 * (k1 + 2.0 * k2 * t + 3.0 * k3 * t2);
-    (pos, der)
+/// The loft's data, read by the tree (slices) and the bytecode (the flat block) alike, so the two
+/// run the same arithmetic
+struct Loft<'a> {
+    n: usize,
+    kh: usize,
+    kr: usize,
+    up: Vec3,
+    caps: [f32; 2],
+    lg: f32,
+    l2: f32,
+    core: f32,
+    lq: [f32; 2],
+    m: f32,
+    reach: f32,
+    axis: &'a [f32],
+    rows: &'a [f32],
+    knots: &'a [f32],
 }
 
-/// The axis control point `i`, with reflected phantom points one step past either end
-#[inline]
-fn axis_pt<D: LoftData + ?Sized>(d: &D, i: isize) -> Vec3 {
-    let n = d.n() as isize;
-    if i < 0 {
-        2.0 * d.axis(0) - d.axis(1)
-    } else if i >= n {
-        2.0 * d.axis((n - 1) as usize) - d.axis((n - 2) as usize)
-    } else {
-        d.axis(i as usize)
-    }
-}
-
-/// Axis point and derivative at `s ∈ [0, n − 1]`
-#[inline]
-pub fn axis_at<D: LoftData + ?Sized>(d: &D, s: f32) -> (Vec3, Vec3) {
-    let n = d.n();
-    let last = (n - 1) as f32;
-    let s = s.clamp(0.0, last);
-    let i = (s as usize).min(n - 2);
-    let t = s - i as f32;
-    let i = i as isize;
-    cr(axis_pt(d, i - 1), axis_pt(d, i), axis_pt(d, i + 1), axis_pt(d, i + 2), t)
-}
-
-/// The closest axis parameter to `p`: a fixed scan, then fixed ternary steps around the best sample
-pub fn closest_param<D: LoftData + ?Sized>(d: &D, p: Vec3) -> f32 {
-    let n = d.n();
-    let last = (n - 1) as f32;
-    let steps = (n - 1) as u32 * SCAN_PER_SEGMENT;
-    let h = 1.0 / SCAN_PER_SEGMENT as f32;
-    let mut best_s = 0.0f32;
-    let mut best_d = f32::INFINITY;
-    for k in 0..=steps {
-        let s = k as f32 * h;
-        let e = (axis_at(d, s).0 - p).length_squared();
-        if e < best_d {
-            best_d = e;
-            best_s = s;
+impl<'a> Loft<'a> {
+    fn from_flat(f: &'a [f32]) -> Self {
+        let n = f[0] as usize;
+        let kh = f[1] as usize;
+        let kr = f[2] as usize;
+        Self {
+            n,
+            kh,
+            kr,
+            up: Vec3::new(f[3], f[4], f[5]),
+            caps: [f[6], f[7]],
+            lg: f[8],
+            l2: f[9],
+            core: f[10],
+            lq: [f[11], f[12]],
+            m: f[13],
+            reach: f[14],
+            axis: &f[HEAD..HEAD + 3 * n],
+            rows: &f[HEAD + 3 * n..HEAD + 3 * n + kr * (2 * kh + 1)],
+            knots: &f[HEAD + 3 * n + kr * (2 * kh + 1)..HEAD + 3 * n + kr * (2 * kh + 1) + kr],
         }
     }
-    let mut lo = (best_s - h).max(0.0);
-    let mut hi = (best_s + h).min(last);
-    for _ in 0..REFINE_STEPS {
-        let m1 = lo + (hi - lo) / 3.0;
-        let m2 = hi - (hi - lo) / 3.0;
-        let e1 = (axis_at(d, m1).0 - p).length_squared();
-        let e2 = (axis_at(d, m2).0 - p).length_squared();
-        if e1 <= e2 {
-            hi = m2;
+
+    #[inline]
+    fn axis_pt(&self, i: isize) -> Vec3 {
+        let at = |j: usize| Vec3::new(self.axis[3 * j], self.axis[3 * j + 1], self.axis[3 * j + 2]);
+        let n = self.n as isize;
+        if i < 0 {
+            2.0 * at(0) - at(1)
+        } else if i >= n {
+            2.0 * at(self.n - 1) - at(self.n - 2)
         } else {
-            lo = m1;
+            at(i as usize)
         }
     }
-    0.5 * (lo + hi)
+
+    /// Axis point and derivative at `s ∈ [0, n − 1]`
+    #[inline]
+    fn axis_at(&self, s: f32) -> (Vec3, Vec3) {
+        let last = (self.n - 1) as f32;
+        let s = s.law_max(0.0).law_min(last);
+        let i = (s as usize).min(self.n - 2);
+        let t = s - i as f32;
+        let i = i as isize;
+        let (a, b, c, d) = (self.axis_pt(i - 1), self.axis_pt(i), self.axis_pt(i + 1), self.axis_pt(i + 2));
+        let t2 = t * t;
+        let t3 = t2 * t;
+        let k1 = c - a;
+        let k2 = 2.0 * a - 5.0 * b + 4.0 * c - d;
+        let k3 = -a + 3.0 * b - 3.0 * c + d;
+        let pos = 0.5 * (2.0 * b + k1 * t + k2 * t2 + k3 * t3);
+        let der = 0.5 * (k1 + 2.0 * k2 * t + 3.0 * k3 * t2);
+        (pos, der)
+    }
+
+    /// The closest axis parameter to `p`: a fixed scan, then fixed ternary steps
+    fn closest_param(&self, p: Vec3) -> f32 {
+        let last = (self.n - 1) as f32;
+        let steps = (self.n - 1) as u32 * SCAN_PER_SEGMENT;
+        let h = 1.0 / SCAN_PER_SEGMENT as f32;
+        let mut best_s = 0.0f32;
+        let mut best_d = f32::INFINITY;
+        for k in 0..=steps {
+            let s = k as f32 * h;
+            let e = (self.axis_at(s).0 - p).length_squared();
+            if e < best_d {
+                best_d = e;
+                best_s = s;
+            }
+        }
+        let mut lo = (best_s - h).law_max(0.0);
+        let mut hi = (best_s + h).law_min(last);
+        for _ in 0..REFINE_STEPS {
+            let m1 = lo + (hi - lo) / 3.0;
+            let m2 = hi - (hi - lo) / 3.0;
+            let e1 = (self.axis_at(m1).0 - p).length_squared();
+            let e2 = (self.axis_at(m2).0 - p).length_squared();
+            if e1 <= e2 {
+                hi = m2;
+            } else {
+                lo = m1;
+            }
+        }
+        // a bracket still touching an end: the end itself when it is closer (the minimum on the
+        // boundary is where the ternary steps converge only linearly)
+        let mut best = 0.5 * (lo + hi);
+        let mut be = (self.axis_at(best).0 - p).length_squared();
+        for end in [0.0, last] {
+            if lo == end || hi == end {
+                let e = (self.axis_at(end).0 - p).length_squared();
+                if e < be {
+                    be = e;
+                    best = end;
+                }
+            }
+        }
+        best
+    }
+
+    /// Row `i`'s radius at the angle with cosine and sine `(c1, s1)`, reflected rows past the ends
+    #[inline]
+    fn row_radius(&self, i: isize, c1: f32, s1: f32) -> f32 {
+        let kr = self.kr as isize;
+        if i < 0 {
+            2.0 * self.row_radius(0, c1, s1) - self.row_radius(1, c1, s1)
+        } else if i >= kr {
+            2.0 * self.row_radius(kr - 1, c1, s1) - self.row_radius(kr - 2, c1, s1)
+        } else {
+            let w = 2 * self.kh + 1;
+            let row = &self.rows[i as usize * w..(i as usize + 1) * w];
+            polar_radius(row, c1, s1)
+        }
+    }
+
+    /// The B-spline parameter at axis parameter `s`: its span and the fraction in it
+    #[inline]
+    fn span(&self, s: f32) -> (usize, f32) {
+        let w = s * (self.kr - 1) as f32 / (self.n - 1) as f32;
+        let w = w.law_max(0.0).law_min((self.kr - 1) as f32);
+        let i = (w as usize).min(self.kr - 2);
+        (i, w - i as f32)
+    }
+
+    /// The local bound `L(s)`: linear between the knots
+    #[inline]
+    fn local_l(&self, s: f32) -> f32 {
+        let (i, t) = self.span(s);
+        self.knots[i] + (self.knots[i + 1] - self.knots[i]) * t
+    }
+
+    /// The section radius at axis parameter `s` and the angle `(c1, s1)`
+    #[inline]
+    fn radius(&self, s: f32, c1: f32, s1: f32) -> f32 {
+        let (i, t) = self.span(s);
+        let i = i as isize;
+        let t2 = t * t;
+        let t3 = t2 * t;
+        let u = 1.0 - t;
+        let b0 = u * u * u / 6.0;
+        let b1 = (3.0 * t3 - 6.0 * t2 + 4.0) / 6.0;
+        let b2 = (-3.0 * t3 + 3.0 * t2 + 3.0 * t + 1.0) / 6.0;
+        let b3 = t3 / 6.0;
+        b0 * self.row_radius(i - 1, c1, s1)
+            + b1 * self.row_radius(i, c1, s1)
+            + b2 * self.row_radius(i + 1, c1, s1)
+            + b3 * self.row_radius(i + 2, c1, s1)
+    }
+
+    /// The dome at end `e` (0 at `s = 0`, 1 at `s = n − 1`): its field cut by the end's half-space
+    fn dome(&self, p: Vec3, e: usize) -> f32 {
+        let s = if e == 0 { 0.0 } else { (self.n - 1) as f32 };
+        let (c, der) = self.axis_at(s);
+        let (t, nn, bb) = frame(der, self.up);
+        let out = if e == 0 { -t } else { t };
+        let r = p - c;
+        let h = r.dot(out);
+        let (u, v) = (r.dot(nn), r.dot(bb));
+        let rho = (u * u + v * v).sqrt();
+        let (c1, s1) = if rho > 0.0 { (u / rho, v / rho) } else { (1.0, 0.0) };
+        let i = if e == 0 { 0 } else { self.kr as isize - 1 };
+        let re = self.row_radius(i, c1, s1);
+        let a = rho / re;
+        let bq = h / self.caps[e];
+        let q = (a * a + bq * bq).sqrt();
+        ((q - 1.0) / self.lq[e]).law_max(-h)
+    }
+
+    fn eval(&self, p: Vec3) -> f32 {
+        let s = self.closest_param(p);
+        let (c, der) = self.axis_at(s);
+        let (_, nn, bb) = frame(der, self.up);
+        let r = p - c;
+        let (u, v) = (r.dot(nn), r.dot(bb));
+        let rho = (u * u + v * v).sqrt();
+        let (c1, s1) = if rho > 0.0 { (u / rho, v / rho) } else { (1.0, 0.0) };
+        let g = (rho - self.radius(s, c1, s1)).law_max(self.core);
+        let d2 = g / self.l2;
+        let (c0, d0) = self.axis_at(0.0);
+        let (ce, de) = self.axis_at((self.n - 1) as f32);
+        let dw = (c0 - p).dot(d0.normalize()).law_max((p - ce).dot(de.normalize()));
+        let o = Vec2::new(d2.law_max(0.0), dw.law_max(0.0));
+        // F, then f = F/L_g + clamp(F (1/L(s) − 1/L_g), −m, m): F/L(s) near the surface, F/L_g ± m far
+        let big_f = d2.law_max(dw).law_min(0.0) + o.length();
+        let corr = (big_f * (1.0 / self.local_l(s) - 1.0 / self.lg)).law_max(-self.m).law_min(self.m);
+        let mut f = big_f / self.lg + corr;
+        for e in 0..2 {
+            if self.caps[e] > 0.0 {
+                f = f.law_min(self.dome(p, e));
+            }
+        }
+        // the far bound: the distance to the tube of radius R_b around the axis curve holds the whole
+        // surface, so it never exceeds the distance to it, and it is 1-Lipschitz; the larger of the two
+        f.law_max(r.length() - self.reach)
+    }
+}
+
+/// A row's polar radius at the angle with cosine and sine `(c1, s1)`: the rotation recurrence
+#[inline]
+fn polar_radius(row: &[f32], c1: f32, s1: f32) -> f32 {
+    let mut r = row[0];
+    let (mut ck, mut sk) = (c1, s1);
+    let kh = (row.len() - 1) / 2;
+    for k in 0..kh {
+        r += row[1 + 2 * k] * ck + row[2 + 2 * k] * sk;
+        let next_c = ck * c1 - sk * s1;
+        sk = sk * c1 + ck * s1;
+        ck = next_c;
+    }
+    r
 }
 
 /// The frame at a derivative: (T, N, B)
@@ -212,136 +358,230 @@ pub fn frame(der: Vec3, up: Vec3) -> (Vec3, Vec3, Vec3) {
     (t, n, b)
 }
 
-/// The section's vertex `j` at axis parameter `s`
-#[inline]
-pub fn section_vertex<D: LoftData + ?Sized>(d: &D, j: usize, s: f32) -> Vec2 {
-    let kc = d.k();
-    let mut k = 0usize;
-    while k + 2 < kc && s > d.station(k + 1) {
-        k += 1;
-    }
-    let s0 = d.station(k);
-    let s1 = d.station(k + 1);
-    let t = ((s - s0) / (s1 - s0)).clamp(0.0, 1.0);
-    let get = |i: isize| -> Vec2 {
-        if i < 0 {
-            2.0 * d.vert(0, j) - d.vert(1, j)
-        } else if i >= kc as isize {
-            2.0 * d.vert(kc - 1, j) - d.vert(kc - 2, j)
-        } else {
-            d.vert(i as usize, j)
-        }
-    };
-    let ki = k as isize;
-    let (a, b, c, e) = (get(ki - 1), get(ki), get(ki + 1), get(ki + 2));
-    let t2 = t * t;
-    let t3 = t2 * t;
-    0.5 * (2.0 * b + (c - a) * t + (2.0 * a - 5.0 * b + 4.0 * c - e) * t2 + (-a + 3.0 * b - 3.0 * c + e) * t3)
-}
-
-/// The loft's distance at `p` (already divided by the bound)
-pub fn sdf_loft<D: LoftData + ?Sized>(d: &D, p: Vec3) -> f32 {
-    let n = d.n();
-    let m = d.m();
-    let s = closest_param(d, p);
-    let (c, der) = axis_at(d, s);
-    let (_, nn, bb) = frame(der, d.up());
-    let r = p - c;
-    let q = Vec2::new(r.dot(nn), r.dot(bb));
-    let mut sec = [Vec2::ZERO; MAX_SECTION_VERTICES];
-    for (j, v) in sec.iter_mut().enumerate().take(m) {
-        *v = section_vertex(d, j, s);
-    }
-    let d2 = sdf_polygon_2d_xy(q, &sec[..m]);
-    let (c0, d0) = axis_at(d, 0.0);
-    let (c1, d1) = axis_at(d, (n - 1) as f32);
-    let dw = (c0 - p).dot(d0.normalize()).max((p - c1).dot(d1.normalize()));
-    let o = Vec2::new(d2.max(0.0), dw.max(0.0));
-    (d2.max(dw).min(0.0) + o.length()) / d.lipschitz()
+/// The loft's distance at `p` from the flat block of [`flatten`]
+pub fn sdf_loft_flat(p: Vec3, flat: &[f32]) -> f32 {
+    Loft::from_flat(flat).eval(p)
 }
 
 /// The tree's loft distance
-pub fn sdf_loft_slices(p: Vec3, axis: &[Vec3], up: Vec3, stations: &[f32], sections: &[Vec2], m: usize, lipschitz: f32) -> f32 {
-    sdf_loft(&LoftSlices { axis, up, stations, sections, m, lipschitz }, p)
+#[allow(clippy::too_many_arguments)]
+pub fn sdf_loft(p: Vec3, axis: &[Vec3], up: Vec3, harmonics: u32, rows: &[f32], caps: [f32; 2], b: &LoftBounds) -> f32 {
+    sdf_loft_flat(p, &flatten(axis, up, harmonics, rows, caps, b))
 }
 
-/// The bytecode's loft distance (the flat block of [`flatten`])
-pub fn sdf_loft_flat(p: Vec3, flat: &[f32]) -> f32 {
-    sdf_loft(&LoftFlat(flat), p)
+/// A box holding the loft's surface, from the flat block: each axis segment is the cubic Bézier
+/// `b, b + (c − a)/6, c − (d − b)/6, c`, inside the hull of those four points; the box of the axis's
+/// Bézier points, grown by a radius bound (|a₀| + Σ(|aₖ| + |bₖ|) over the rows, times 3 for the
+/// reflected rows) plus the larger dome height
+pub fn aabb_flat(flat: &[f32]) -> (Vec3, Vec3) {
+    let d = Loft::from_flat(flat);
+    let n = d.n as isize;
+    let mut mn = Vec3::splat(f32::INFINITY);
+    let mut mx = Vec3::splat(f32::NEG_INFINITY);
+    for i in 0..n - 1 {
+        let (a, b, c, e) = (d.axis_pt(i - 1), d.axis_pt(i), d.axis_pt(i + 1), d.axis_pt(i + 2));
+        for q in [b, b + (c - a) / 6.0, c - (e - b) / 6.0, c] {
+            mn = mn.law_min(q);
+            mx = mx.law_max(q);
+        }
+    }
+    let w = 2 * d.kh + 1;
+    let bound = |row: &[f32]| row.iter().map(|x| x.abs()).fold(0.0f32, |a, b| a + b);
+    let mut r = 0.0f32;
+    for i in 0..d.kr {
+        r = r.law_max(bound(&d.rows[i * w..(i + 1) * w]));
+    }
+    // a reflected row 2c₀ − c₁ is bounded by 3 times the largest row
+    let r = 3.0 * r + d.caps[0].law_max(d.caps[1]);
+    (mn - Vec3::splat(r), mx + Vec3::splat(r))
 }
 
-/// The most vertices a section may have
-pub const MAX_SECTION_VERTICES: usize = 256;
+/// Per row: (the least radius, the largest radius, the largest |∂r/∂θ|), each widened by the sampling
+fn row_bounds(row: &[f32]) -> (f32, f32, f32) {
+    let kh = (row.len() - 1) / 2;
+    let (mut s1, mut s2) = (0.0f32, 0.0f32);
+    for k in 0..kh {
+        let a = row[1 + 2 * k].abs() + row[2 + 2 * k].abs();
+        s1 += (k + 1) as f32 * a;
+        s2 += ((k + 1) * (k + 1)) as f32 * a;
+    }
+    let m = 64 * (kh + 1);
+    let step = std::f64::consts::TAU / m as f64;
+    let (mut lo, mut hi, mut dmax) = (f32::INFINITY, f32::NEG_INFINITY, 0.0f32);
+    for j in 0..m {
+        let th = j as f64 * step;
+        let (c1, s1_) = (alice_det_math::cos(th as f32), alice_det_math::sin(th as f32));
+        let r = polar_radius(row, c1, s1_);
+        lo = lo.law_min(r);
+        hi = hi.law_max(r);
+        // ∂r/∂θ = Σ k (−aₖ sin kθ + bₖ cos kθ)
+        let (mut ck, mut sk, mut dr) = (c1, s1_, 0.0f32);
+        for k in 0..kh {
+            dr += (k + 1) as f32 * (-row[1 + 2 * k] * sk + row[2 + 2 * k] * ck);
+            let nc = ck * c1 - sk * s1_;
+            sk = sk * c1 + ck * s1_;
+            ck = nc;
+        }
+        dmax = dmax.law_max(dr.abs());
+    }
+    let half = (step / 2.0) as f32;
+    (lo - half * s1, hi + half * s1, dmax + half * s2)
+}
 
-/// Checks a loft's input and computes its bound; returns the flat sections and `L`
-pub fn validate(axis: &[Vec3], up: Vec3, stations: &[f32], sections: &[Vec<Vec2>]) -> Result<(Vec<Vec2>, f32), LoftError> {
+/// Checks a loft's input and computes its bounds
+pub fn validate(axis: &[Vec3], up: Vec3, harmonics: u32, rows: &[Vec<f32>], caps: [f32; 2]) -> Result<(Vec<f32>, LoftBounds), LoftError> {
     let err = |s: String| Err(LoftError(s));
     if axis.len() < 2 {
         return err(format!("the axis needs 2 points or more, it has {}", axis.len()));
     }
-    if !axis.iter().all(|a| a.is_finite()) || !up.is_finite() || !stations.iter().all(|s| s.is_finite()) {
-        return err("the axis, up and stations must be finite".into());
+    if harmonics > MAX_HARMONICS {
+        return err(format!("{harmonics} harmonics, at most {MAX_HARMONICS}"));
     }
-    if sections.iter().flatten().any(|v| !v.is_finite()) {
-        return err("every section vertex must be finite".into());
+    if !axis.iter().all(|a| a.is_finite()) || !up.is_finite() || !caps.iter().all(|c| c.is_finite()) || rows.iter().flatten().any(|v| !v.is_finite()) {
+        return err("the axis, up, caps and rows must be finite".into());
     }
-    let last = (axis.len() - 1) as f32;
-    if stations.len() < 2 || stations.len() != sections.len() {
-        return err(format!("{} stations for {} sections: 2 or more, one per section", stations.len(), sections.len()));
+    let w = 2 * harmonics as usize + 1;
+    if rows.len() < 2 || rows.iter().any(|r| r.len() != w) {
+        return err(format!("2 rows or more, each of 2K + 1 = {w} coefficients"));
     }
-    if stations[0] != 0.0 || stations[stations.len() - 1] != last || stations.windows(2).any(|w| w[1] <= w[0]) {
-        return err(format!("the stations must rise strictly from 0 to {last}"));
+    if caps.iter().any(|c| *c < 0.0) {
+        return err("a cap height must be 0 (flat) or positive".into());
     }
-    let m = sections[0].len();
-    if m < 3 || m > MAX_SECTION_VERTICES || sections.iter().any(|s| s.len() != m) {
-        return err(format!("every section needs the same vertex count, 3 to {MAX_SECTION_VERTICES}"));
-    }
-    for w in axis.windows(2) {
-        if (w[1] - w[0]).length_squared() == 0.0 {
+    for pair in axis.windows(2) {
+        if (pair[1] - pair[0]).length_squared() == 0.0 {
             return err("two consecutive axis points coincide".into());
         }
     }
-    let flat: Vec<Vec2> = sections.iter().flatten().copied().collect();
-    let data = LoftSlices { axis, up, stations, sections: &flat, m, lipschitz: 1.0 };
-    // samples for the bound, and the up check
+    let (mut rmin, mut rmax, mut dmax) = (f32::INFINITY, 0.0f32, 0.0f32);
+    let mut end = [(0.0f32, 0.0f32); 2];
+    for (i, row) in rows.iter().enumerate() {
+        let (lo, hi, d) = row_bounds(row);
+        rmin = rmin.law_min(lo);
+        rmax = rmax.law_max(hi);
+        dmax = dmax.law_max(d);
+        if i == 0 {
+            end[0] = (lo, d);
+        }
+        if i == rows.len() - 1 {
+            end[1] = (lo, d);
+        }
+    }
+    if rmin <= 0.0 {
+        return err(format!("a section's radius reaches 0 or below (least radius bound {rmin}): the centre must be inside every section"));
+    }
+    // the step between consecutive rows j, j + 1, as a bound of |r_{j+1}(θ) − r_j(θ)| (Σ |Δ coefficient|)
+    let steps: Vec<f32> = rows
+        .windows(2)
+        .map(|pair| pair[0].iter().zip(&pair[1]).map(|(a, b)| (a - b).abs()).fold(0.0f32, |x, y| x + y))
+        .collect();
+    let flat_rows: Vec<f32> = rows.iter().flatten().copied().collect();
+    let kr = rows.len();
+    let provisional = LoftBounds { l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, knots: vec![1.0; kr], reach: 0.0 };
+    let block = flatten(axis, up, harmonics, &flat_rows, caps, &provisional);
+    let data = Loft::from_flat(&block);
+    let last = (axis.len() - 1) as f32;
     let per = BOUND_SAMPLES as usize * (axis.len() - 1);
-    let mut kappa = 0.0f32;
-    let mut grow = 0.0f32;
-    let mut radius = 0.0f32;
     let ds = last / per as f32;
-    let mut prev: Option<(Vec3, Vec<Vec2>)> = None;
+    let (mut kappa, mut slow) = (0.0f32, f32::INFINITY);
+    let mut prev: Option<Vec3> = None;
+    // per sample: (s, speed, frame turn rate)
+    let mut samples: Vec<(f32, f32, f32)> = Vec::with_capacity(per + 1);
     for i in 0..=per {
         let s = i as f32 * ds;
-        let (_, d1) = axis_at(&data, s);
+        let (_, d1) = data.axis_at(s);
         let speed = d1.length();
         if speed == 0.0 {
             return err("the axis stops (zero speed)".into());
         }
+        slow = slow.law_min(speed);
         let t = d1 / speed;
         if (up - t * up.dot(t)).length() < 1e-3 * up.length() {
             return err("up is parallel to the axis".into());
         }
         let h = 1e-3;
-        let (_, da) = axis_at(&data, (s - h).max(0.0));
-        let (_, db) = axis_at(&data, (s + h).min(last));
-        let span = (s + h).min(last) - (s - h).max(0.0);
+        let (_, da) = data.axis_at((s - h).law_max(0.0));
+        let (_, db) = data.axis_at((s + h).law_min(last));
+        let span = (s + h).law_min(last) - (s - h).law_max(0.0);
         let dd = (db - da) / span;
-        kappa = kappa.max(d1.cross(dd).length() / (speed * speed * speed));
+        kappa = kappa.law_max(d1.cross(dd).length() / (speed * speed * speed));
         let (_, nn, _) = frame(d1, up);
-        let verts: Vec<Vec2> = (0..m).map(|j| section_vertex(&data, j, s)).collect();
-        radius = radius.max(verts.iter().map(|v| v.length()).fold(0.0, f32::max));
-        if let Some((pn, pv)) = &prev {
-            let len = (axis_at(&data, s).0 - axis_at(&data, s - ds).0).length().max(1e-12);
-            let vmove = verts.iter().zip(pv).map(|(a, b)| (*a - *b).length()).fold(0.0, f32::max);
-            let turn = (nn - *pn).length();
-            grow = grow.max((vmove + radius * turn) / len);
+        let mut turn = 0.0f32;
+        if let Some(pn) = prev {
+            let len = (data.axis_at(s).0 - data.axis_at(s - ds).0).length().law_max(1e-12);
+            turn = (nn - pn).length() / len;
+            // the turn between two samples belongs to both
+            if let Some(last_sample) = samples.last_mut() {
+                last_sample.2 = last_sample.2.law_max(turn);
+            }
         }
-        prev = Some((nn, verts));
+        prev = Some(nn);
+        samples.push((s, speed, turn));
     }
-    let bend = 1.1 * kappa * radius;
+    let bend = 1.1 * kappa * rmax;
     if bend >= 1.0 {
-        return err(format!("the sections (radius {radius}) are wider than the axis's radius of curvature (curvature {kappa})"));
+        return err(format!("the sections (radius {rmax}) are wider than the axis's radius of curvature (curvature {kappa})"));
     }
-    let l = (1.0 + 1.1 * grow) / (1.0 - bend);
-    Ok((flat, l))
+    // per span i of the B-spline (rows i − 1 … i + 2): the local bound Λᵢ = (1 + 1.1 Gᵢ)/(1 − 1.1 κR),
+    // Gᵢ = the rows' largest step there × (k − 1)/(n − 1) over the span's slowest speed + R × its turn
+    let w_per_s = (kr - 1) as f32 / last;
+    let span_s = last / (kr - 1) as f32;
+    let lam: Vec<f32> = (0..kr - 1)
+        .map(|i| {
+            let lo_j = i.saturating_sub(1);
+            let hi_j = (i + 1).min(kr - 2);
+            let stp = steps[lo_j..=hi_j].iter().copied().fold(0.0f32, f32::law_max);
+            let (a, b) = (i as f32 * span_s - ds, (i + 1) as f32 * span_s + ds);
+            let (mut sl, mut tr) = (f32::INFINITY, 0.0f32);
+            for &(s, sp, t) in samples.iter().filter(|x| x.0 >= a && x.0 <= b) {
+                let _ = s;
+                sl = sl.law_min(sp);
+                tr = tr.law_max(t);
+            }
+            (1.0 + 1.1 * (stp * w_per_s / sl + rmax * tr)) / (1.0 - bend)
+        })
+        .collect();
+    // the knots: the larger neighbouring span bound, so L(s) ≥ Λᵢ on span i and is continuous
+    let base: Vec<f32> = (0..kr).map(|j| lam[j.saturating_sub(1).min(kr - 2)].law_max(lam[j.min(kr - 2)])).collect();
+    let top = base.iter().copied().fold(0.0f32, f32::law_max);
+    let (l, m, knots) = if base.iter().all(|&b| b == top) {
+        // one bound everywhere: f = F / L, no correction
+        (top, 0.0, base)
+    } else {
+        // L(s) = (1 + ε) × the knots, L_g = (1 + δ) × max L(s); in the band |F| ≤ B the term
+        // |F| |L'| |∇s| / L² ≤ ε/(1 + ε), so |∇(F/L(s))| ≤ 1/(1 + ε) + ε/(1 + ε) = 1; the clamp m
+        // keeps the correction active only where |F| < m / min(1/L(s) − 1/L_g) ≤ B
+        const EPS: f32 = 0.25;
+        const DELTA: f32 = 0.25;
+        let knots: Vec<f32> = base.iter().map(|b| (1.0 + EPS) * b).collect();
+        let kmax = (1.0 + EPS) * top;
+        let kmin_l = knots.iter().copied().fold(f32::INFINITY, f32::law_min);
+        let lg = (1.0 + DELTA) * kmax;
+        let dlds = knots.windows(2).map(|p| (p[1] - p[0]).abs()).fold(0.0f32, f32::law_max) * w_per_s;
+        // |∇s| ≤ 1/(slow (1 − κρ)) ≤ 2/slow while ρ ≤ 1/(2κ); a point with |F| ≤ B has ρ ≤ R + L₂ B
+        let grad_s = 2.0 / slow;
+        let l2_here = if dmax == 0.0 { 1.0 } else { (1.0 + (dmax / (0.5 * rmin)) * (dmax / (0.5 * rmin))).sqrt() };
+        let band_curv = if kappa > 0.0 { (0.5 / kappa - rmax) / l2_here } else { f32::INFINITY };
+        let band = (EPS * kmin_l * kmin_l / ((1.0 + EPS) * dlds * grad_s)).law_min(band_curv);
+        let kappa_min = (1.0 / kmax) * (1.0 - 1.0 / (1.0 + DELTA));
+        (lg, kappa_min * band, knots)
+    };
+    let (l2, core) = if dmax == 0.0 {
+        (1.0, NO_CORE)
+    } else {
+        let rho0 = 0.5 * rmin;
+        ((1.0 + (dmax / rho0) * (dmax / rho0)).sqrt(), rho0 - rmin)
+    };
+    let mut lq = [1.0f32; 2];
+    for e in 0..2 {
+        if caps[e] > 0.0 {
+            let (lo, d) = end[e];
+            if lo <= 0.0 {
+                return err("a capped end's section must keep a positive radius".into());
+            }
+            let sec = (1.0 / (lo * lo) + d * d / (lo * lo * lo * lo)).sqrt();
+            lq[e] = sec.law_max(1.0 / caps[e]);
+        }
+    }
+    let reach = rmax.law_max(caps[0]).law_max(caps[1]);
+    Ok((flat_rows, LoftBounds { l, l2, core, lq, m, knots, reach }))
 }

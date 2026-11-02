@@ -1108,6 +1108,15 @@ impl Compiler {
                     .push(Instruction::segment_2d(*a, *b, *thickness, *half_height));
             }
 
+            SdfNode::Loft { axis, up, harmonics, rows, caps, bounds } => {
+                let flat = crate::primitives::loft::flatten(axis, *up, *harmonics, rows, *caps, bounds);
+                let (aux_off, aux_len) = self.push_aux(&flat);
+                let mut inst = Instruction::loft();
+                inst.aux_offset = aux_off;
+                inst.aux_len = aux_len;
+                self.instructions.push(inst);
+            }
+
             SdfNode::Polygon2D {
                 vertices,
                 half_height,
@@ -1413,6 +1422,7 @@ pub fn compute_stack_depths(node: &SdfNode) -> (usize, usize) {
         | SdfNode::Rect2D { .. }
         | SdfNode::Segment2D { .. }
         | SdfNode::Polygon2D { .. }
+        | SdfNode::Loft { .. }
         | SdfNode::RoundedRect2D { .. }
         | SdfNode::Annular2D { .. }
         | SdfNode::Terrain { .. } => (1, 0),
@@ -1655,6 +1665,7 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         | SdfNode::Rect2D { .. }
         | SdfNode::Segment2D { .. }
         | SdfNode::Polygon2D { .. }
+        | SdfNode::Loft { .. }
         | SdfNode::RoundedRect2D { .. }
         | SdfNode::Annular2D { .. } => {}
     }

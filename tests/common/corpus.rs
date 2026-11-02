@@ -167,6 +167,21 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
             },
         ),
         ("polygon_2d", SdfNode::polygon_2d(square_verts(), 0.5)),
+        (
+            "loft",
+            SdfNode::loft_capped(
+                vec![Vec3::new(0.0, -0.6, 0.0), Vec3::new(0.1, 0.0, 0.05), Vec3::new(0.0, 0.6, 0.0)],
+                Vec3::X,
+                2,
+                vec![
+                    vec![0.4, 0.0, 0.05, 0.06, 0.0],
+                    vec![0.35, 0.03, 0.0, -0.04, 0.02],
+                    vec![0.3, 0.0, -0.03, 0.03, 0.0],
+                ],
+                [0.0, 0.25],
+            )
+            .expect("corpus loft"),
+        ),
         ("annular_2d", SdfNode::annular_2d(0.6, 0.1, 0.5)),
         // --- binary operations ---
         ("union", a.clone().union(b.clone())),

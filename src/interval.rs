@@ -863,6 +863,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::Segment2D { .. } | SdfNode::Polygon2D { .. } => Interval::EVERYTHING,
         // divided by its own Lipschitz bound at construction: 1-Lipschitz
         SdfNode::SectionStack(_) => ia_lipschitz(node, bounds, 1.0),
+        // the field is already divided by its bound: 1-Lipschitz
+        SdfNode::Loft { .. } => ia_lipschitz(node, bounds, 1.0),
         SdfNode::RoundedRect2D { .. } | SdfNode::Annular2D { .. } => {
             ia_lipschitz(node, bounds, 1.0)
         }
@@ -1638,6 +1640,7 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::Rect2D { .. }
         | SdfNode::Segment2D { .. }
         | SdfNode::Polygon2D { .. }
+        | SdfNode::Loft { .. }
         | SdfNode::RoundedRect2D { .. }
         | SdfNode::Annular2D { .. }
         | SdfNode::Egg { .. }
