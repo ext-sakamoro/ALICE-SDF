@@ -6,11 +6,11 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1090 |
+| 🟢 Not ignored | 1091 |
 | 🔴 Red by design | 2 |
 | ⏱ Gated (runtime / diagnostic / manual) | 6 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **1098** |
+| **Total** | **1099** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -35,7 +35,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1090)
+## 🟢 Not ignored (1091)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -49,7 +49,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_live_sdf_oracle.rs` | 21 |
 | `test_lod_nanite_meshlet_oracle.rs` | 21 |
 | `test_tight_aabb_fold_oracle.rs` | 21 |
-| `test_loft_oracle.rs` | 19 |
+| `test_loft_oracle.rs` | 20 |
 | `test_shape_analysis_oracle.rs` | 18 |
 | `test_shader_text_provenance.rs` | 17 |
 | `test_smooth_ops_oracle.rs` | 17 |

@@ -76,9 +76,17 @@ impl std::fmt::Display for LoftError {
 
 impl std::error::Error for LoftError {}
 
-/// The bounds a loft's field is divided by, computed by [`validate`]
+/// The version of the loft's bound law. Bounds are derived data: a stored tree carries them, and
+/// loading accepts them only from this version of the law (an older tree's bounds mean something else,
+/// so it is refused with a request to rebuild from its axis and rows, never read with a changed meaning)
+pub const LOFT_LAW_VERSION: u32 = 1;
+
+/// The bounds a loft's field is divided by, computed by [`validate`]; checked on load
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(try_from = "LoftBoundsStored")]
 pub struct LoftBounds {
+    /// The bound law's version ([`LOFT_LAW_VERSION`])
+    pub law: u32,
     /// The far bound `L_g` (the whole field divided by it is 1-Lipschitz)
     pub l: f32,
     /// The section bound `L₂`
@@ -90,8 +98,8 @@ pub struct LoftBounds {
     /// The clamp `m` of the local correction (0: the bound is the same on every span)
     pub m: f32,
     /// The local correction fades out between these distances from the axis curve (`None`: no fade,
-    /// a straight axis); omitted from the serialised form when `None`
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// a straight axis); written as `null` when `None` (every field is always written, so binary forms
+    /// that are not self-describing load it too)
     pub fade: Option<[f32; 2]>,
     /// The local bound `L(s)` at the B-spline knots (one per row), linear between them
     pub knots: Vec<f32>,
@@ -103,6 +111,48 @@ pub struct LoftBounds {
     /// The far bound's pieces, [`PIECE_FLOATS`] each: the piece frame `T, N, B` and the offsets of its
     /// [`PIECE_PLANES`] planes (see [`far_bound`])
     pub pieces: Vec<f32>,
+}
+
+/// The stored form of [`LoftBounds`], checked on load
+#[derive(serde::Deserialize)]
+struct LoftBoundsStored {
+    #[serde(default)]
+    law: u32,
+    l: f32,
+    l2: f32,
+    core: f32,
+    lq: [f32; 2],
+    m: f32,
+    #[serde(default)]
+    fade: Option<[f32; 2]>,
+    knots: Vec<f32>,
+    #[serde(default)]
+    bknots: Vec<f32>,
+    reach: f32,
+    #[serde(default)]
+    pieces: Vec<f32>,
+}
+
+impl TryFrom<LoftBoundsStored> for LoftBounds {
+    type Error = String;
+    fn try_from(b: LoftBoundsStored) -> Result<Self, String> {
+        if b.law != LOFT_LAW_VERSION {
+            return Err(format!(
+                "loft: stored bounds are from bound law {} (this build: {LOFT_LAW_VERSION}); rebuild the loft from its axis and rows",
+                b.law
+            ));
+        }
+        let shape_ok = !b.knots.is_empty()
+            && (if b.m > 0.0 { b.bknots.len() == b.knots.len() } else { b.bknots.is_empty() })
+            && b.pieces.len() % PIECE_FLOATS == 0
+            && !b.pieces.is_empty()
+            && [b.l, b.l2, b.core, b.lq[0], b.lq[1], b.m, b.reach].iter().all(|x| x.is_finite())
+            && b.knots.iter().chain(&b.bknots).chain(&b.pieces).all(|x| x.is_finite());
+        if !shape_ok {
+            return Err("loft: stored bounds are inconsistent (knots, saturation widths or far-bound pieces); rebuild the loft from its axis and rows".into());
+        }
+        Ok(Self { law: b.law, l: b.l, l2: b.l2, core: b.core, lq: b.lq, m: b.m, fade: b.fade, knots: b.knots, bknots: b.bknots, reach: b.reach, pieces: b.pieces })
+    }
 }
 
 /// Far bound: pieces per axis segment
@@ -1009,7 +1059,7 @@ fn finish(
 ) -> Result<LoftBounds, LoftError> {
     let err = |s: String| Err(LoftError(s));
     let kr = flat_rows.len() / section.width();
-    let provisional = LoftBounds { l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, fade: None, knots: vec![1.0; kr], bknots: Vec::new(), reach: 0.0, pieces: Vec::new() };
+    let provisional = LoftBounds { law: LOFT_LAW_VERSION, l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, fade: None, knots: vec![1.0; kr], bknots: Vec::new(), reach: 0.0, pieces: Vec::new() };
     let block = flatten(axis, up, section, flat_rows, sknots, caps, &provisional);
     let data = Loft::from_flat(&block);
     let last = (axis.len() - 1) as f32;
@@ -1132,7 +1182,7 @@ fn finish(
     };
     let step_max = steps.iter().copied().fold(0.0f32, f32::law_max);
     let pieces = piece_planes(&data, rmax, ang, step_max * w_per_s, caps, ends, kappa, slow);
-    Ok(LoftBounds { l, l2, core, lq, m, fade, knots, bknots, reach, pieces })
+    Ok(LoftBounds { law: LOFT_LAW_VERSION, l, l2, core, lq, m, fade, knots, bknots, reach, pieces })
 }
 
 /// The cubic Bézier coefficients of the part `[ta, tb]` of the cubic with coefficients `c` on `[0, 1]`
