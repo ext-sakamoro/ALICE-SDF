@@ -271,15 +271,28 @@ fn correction(name: &str, flat: &[f32]) -> String {
     )
 }
 
-/// The end of the field: the far bound of the plane pieces, outside only, lowered by
-/// `τ = max(m/4, R_b/80)` (computed here in f32 as the CPU does)
+/// The end of the field: the far bound of the plane pieces joined C1 above the near field, outside
+/// only (see the CPU's `eval`)
 fn far_tail(name: &str, flat: &[f32]) -> String {
     let pieces = flat[16] as usize;
     if pieces == 0 {
         return "    return f;\n}\n".to_string();
     }
-    let tau = (0.25 * flat[13]).max(0.0125 * flat[14]);
-    format!("    if (f <= 0.0) {{ return f; }}\n    return max(f, {name}_fb(p) - {tau});\n}}\n", tau = lit(tau))
+    // the CPU's C1 join: x = far − τ − f, f + φ(x) with φ = 0 (x ≤ 0), x²/(2k) (x ≤ k), x − k/2,
+    // τ = k = max(B, R_b/80) computed in f32 as the CPU does
+    let k = flat[13].max(0.0125 * flat[14]);
+    format!(
+        "    if (f <= 0.0) {{ return f; }}
+    var x: F = {name}_fb(p) - {k} - f;
+    var phi: F = 0.0;
+    if (x > 0.0) {{
+        if (x <= {k}) {{ phi = x * x / (2.0 * {k}); }} else {{ phi = x - 0.5 * {k}; }}
+    }}
+    return f + phi;
+}}
+",
+        k = lit(k)
+    )
 }
 
 /// cos and sin of 2πj/16, the CPU far bound's `DIR16` (the same literals)
