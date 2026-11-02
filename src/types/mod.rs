@@ -336,6 +336,24 @@ pub enum SdfNode {
     /// between a convex blend of those unit balls. They are non-negative and
     /// not all zero — [`SdfNode::metric_ball`] takes a validated
     /// `MetricWeights`, which is the only way to build one.
+    /// Closed planar sections swept along a spline axis, the section interpolated between stations
+    /// (see [`crate::primitives::loft`] for the field and its bound). Built by [`SdfNode::loft`],
+    /// which checks the input and computes `lipschitz`.
+    Loft {
+        /// Axis points (a uniform Catmull-Rom curve passes through them)
+        axis: Vec<Vec3>,
+        /// The direction the section frame's first axis leans toward
+        up: Vec3,
+        /// Axis parameter of each section, rising from 0 to `axis.len() - 1`
+        stations: Vec<f32>,
+        /// Sections, `section_vertices` per station, station after station
+        sections: Vec<Vec2>,
+        /// Vertices per section
+        section_vertices: u32,
+        /// The bound the distance is divided by (1 for a straight axis with a constant section)
+        lipschitz: f32,
+    },
+
     MetricBall {
         /// Radius in the ball's own metric.
         radius: f32,
