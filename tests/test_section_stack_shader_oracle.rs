@@ -7,7 +7,7 @@
 //! | output | oracle |
 //! |---|---|
 //! | WGSL (`GpuEvaluator::new`) | runs on the GPU, every point within `TOL` of the CPU |
-//! | GLSL (`to_compute_shader`) | runs on the GPU through naga's GLSL front end, within `TOL` |
+//! | GLSL (`to_vulkan_compute_shader`) | runs on the GPU through naga's GLSL front end, within `TOL` |
 //! | HLSL (`HlslShader::transpile`) | compiled as C++ with `tests/common/hlsl_cpu_shim.h`, within `TOL` |
 //!
 //! The stacks exercise every branch of the law: several loops on one level (even-odd over all of
@@ -162,7 +162,7 @@ fn wgsl_matches_the_cpu_on_the_gpu() {
 #[test]
 fn glsl_matches_the_cpu_on_the_gpu() {
     for (what, node) in [("stack", stack()), ("scene", scene())] {
-        let src = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded).to_compute_shader();
+        let src = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded).to_vulkan_compute_shader();
         let Some(gpu) = require_gpu(what, GpuEvaluator::from_glsl_compute(&src).map(|c| c.into_parts().0))
         else {
             return;
