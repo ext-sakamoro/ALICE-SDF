@@ -550,3 +550,154 @@ fn the_local_bounds_margin_is_never_negative() {
     }
     assert!(worst <= 1.0 + 2e-3, "largest difference quotient {worst}");
 }
+
+/// A bent axis (mm scale) whose circle sections jump from 40 to 70 and back over two rows: one span
+/// with a high axial rate
+fn bent_jump() -> (Vec<Vec3>, Vec<f32>, SdfNode) {
+    let axis: Vec<Vec3> = (0..6).map(|i| Vec3::new(30.0 * (0.5 * i as f32).sin(), 80.0 * i as f32, 0.0)).collect();
+    let radii = vec![40.0f32, 40.0, 40.0, 70.0, 40.0, 40.0, 40.0];
+    let node = SdfNode::loft(axis.clone(), Vec3::Z, 1, radii.iter().map(|&r| circle_row(r, 1)).collect()).expect("bent jump");
+    (axis, radii, node)
+}
+
+/// Dense samples of a circle loft's surface, written here: the uniform Catmull-Rom axis with
+/// reflected ends, the B-spline radius over the rows with reflected end rows, the circle in the
+/// plane normal to the axis; the end discs too
+fn circle_loft_samples(axis: &[Vec3], radii: &[f32]) -> Vec<Vec3> {
+    let n = axis.len();
+    let ap = |i: isize| -> Vec3 {
+        if i < 0 {
+            2.0 * axis[0] - axis[1]
+        } else if i >= n as isize {
+            2.0 * axis[n - 1] - axis[n - 2]
+        } else {
+            axis[i as usize]
+        }
+    };
+    let k = radii.len();
+    let rr = |i: isize| -> f32 {
+        if i < 0 {
+            2.0 * radii[0] - radii[1]
+        } else if i >= k as isize {
+            2.0 * radii[k - 1] - radii[k - 2]
+        } else {
+            radii[i as usize]
+        }
+    };
+    let mut out = Vec::new();
+    let ns = 1500;
+    for si in 0..=ns {
+        let s = (n - 1) as f32 * si as f32 / ns as f32;
+        let i = (s as usize).min(n - 2);
+        let t = s - i as f32;
+        let i = i as isize;
+        let (a, b, c, d) = (ap(i - 1), ap(i), ap(i + 1), ap(i + 2));
+        let pos = 0.5 * (2.0 * b + (c - a) * t + (2.0 * a - 5.0 * b + 4.0 * c - d) * t * t + (-a + 3.0 * b - 3.0 * c + d) * t * t * t);
+        let der = 0.5 * ((c - a) + 2.0 * (2.0 * a - 5.0 * b + 4.0 * c - d) * t + 3.0 * (-a + 3.0 * b - 3.0 * c + d) * t * t);
+        let tt = der.normalize();
+        let nn = (Vec3::Z - tt * Vec3::Z.dot(tt)).normalize();
+        let bb = tt.cross(nn);
+        let w = (s * (k - 1) as f32 / (n - 1) as f32).clamp(0.0, (k - 1) as f32);
+        let j = (w as usize).min(k - 2);
+        let u = w - j as f32;
+        let v = 1.0 - u;
+        let j = j as isize;
+        let r = v * v * v / 6.0 * rr(j - 1)
+            + (3.0 * u * u * u - 6.0 * u * u + 4.0) / 6.0 * rr(j)
+            + (-3.0 * u * u * u + 3.0 * u * u + 3.0 * u + 1.0) / 6.0 * rr(j + 1)
+            + u * u * u / 6.0 * rr(j + 2);
+        let disc = si == 0 || si == ns;
+        for q in 0..256 {
+            let th = std::f32::consts::TAU * q as f32 / 256.0;
+            let dir = nn * th.cos() + bb * th.sin();
+            out.push(pos + dir * r);
+            if disc {
+                for f in 1..40 {
+                    out.push(pos + dir * (r * f as f32 / 40.0));
+                }
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn far_from_a_loft_the_field_keeps_the_distance_scale() {
+    // at 50–150 mm from the surface: 0.5 D ≤ f ≤ D (+ the sampling's own error, 1 mm)
+    let (axis, radii, node) = bent_jump();
+    let surf = circle_loft_samples(&axis, &radii);
+    let mut r = lcg(15);
+    let (mut low, mut over, mut compared, mut least) = (0, 0, 0, f32::INFINITY);
+    while compared < 300 {
+        let p = Vec3::new(r() * 700.0 - 350.0, r() * 700.0 - 150.0, r() * 700.0 - 350.0);
+        let d = surf.iter().map(|q| (*q - p).length()).fold(f32::INFINITY, f32::min);
+        if !(50.0..=150.0).contains(&d) {
+            continue;
+        }
+        compared += 1;
+        let f = eval(&node, p);
+        least = least.min(f / d);
+        low += usize::from(f < 0.5 * d);
+        over += usize::from(f > d + 1.0);
+    }
+    assert_eq!((low, over), (0, 0), "below half / past the surface among {compared} (least f/D {least})");
+}
+
+#[test]
+fn the_normal_does_not_turn_between_small_and_large_difference_steps() {
+    // at surface points of the bent mm-scale loft (the dense samples written here), the normal by
+    // central differences with a 20 µm step and with a 500 µm step differ by less than 1°
+    let (axis, radii, node) = bent_jump();
+    let surf = circle_loft_samples(&axis, &radii);
+    let grad = |p: Vec3, e: f32| -> Vec3 {
+        Vec3::new(
+            eval(&node, p + Vec3::X * e) - eval(&node, p - Vec3::X * e),
+            eval(&node, p + Vec3::Y * e) - eval(&node, p - Vec3::Y * e),
+            eval(&node, p + Vec3::Z * e) - eval(&node, p - Vec3::Z * e),
+        )
+        .normalize()
+    };
+    let (mut worst, mut compared) = (0.0f32, 0);
+    for (i, p) in surf.iter().enumerate().step_by(997) {
+        // skip the end discs and the side within 2 mm of the rims (an edge has no normal; the sides
+        // are sampled every 400/1500 mm along the axis)
+        if i < 256 * 40 + 256 * 8 || i + 256 * 40 + 256 * 8 > surf.len() {
+            continue;
+        }
+        let a = grad(*p, 0.02);
+        let b = grad(*p, 0.5);
+        let turn = a.dot(b).clamp(-1.0, 1.0).acos().to_degrees();
+        if turn > worst {
+            worst = turn;
+            eprintln!("normal turn {turn}° at {p:?} (sample {i})");
+        }
+        compared += 1;
+    }
+    assert!(compared > 100, "compared {compared}");
+    assert!(worst < 1.0, "largest normal turn {worst}° over {compared} surface points");
+}
+
+#[test]
+#[ignore = "measurement: |∇f| at the surface of the bent mm-scale loft (run with --ignored --nocapture)"]
+fn gradient_norm_at_the_surface() {
+    let (axis, radii, node) = bent_jump();
+    let surf = circle_loft_samples(&axis, &radii);
+    let mut g: Vec<f32> = surf
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i >= 256 * 48 && i + 256 * 48 <= surf.len())
+        .step_by(97)
+        .map(|(_, p)| {
+            let e = 0.05;
+            Vec3::new(
+                eval(&node, *p + Vec3::X * e) - eval(&node, *p - Vec3::X * e),
+                eval(&node, *p + Vec3::Y * e) - eval(&node, *p - Vec3::Y * e),
+                eval(&node, *p + Vec3::Z * e) - eval(&node, *p - Vec3::Z * e),
+            )
+            .length()
+                / (2.0 * e)
+        })
+        .collect();
+    g.sort_by(f32::total_cmp);
+    println!("|grad f| at the surface: p10 {:.3} median {:.3} p90 {:.3} ({} points)", g[g.len() / 10], g[g.len() / 2], g[g.len() * 9 / 10], g.len());
+}
