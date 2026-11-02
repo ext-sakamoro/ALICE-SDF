@@ -87,6 +87,23 @@ pub fn loft_fade(curved: bool) -> SdfNode {
     node
 }
 
+/// A loft on a bent axis whose radius bulges in the middle, so the local bound varies and the
+/// correction fades out away from the axis (`fade` is `Some`); the bend keeps the radius of
+/// curvature (≈ 1.05) above the widest section (0.5), which the law requires
+pub fn loft_faded() -> SdfNode {
+    let node = SdfNode::loft(
+        (0..6).map(|i| Vec3::new(0.15 * (0.5 * i as f32).sin(), 0.25 * i as f32 - 0.6, 0.0)).collect(),
+        Vec3::Z,
+        1,
+        [0.3f32, 0.3, 0.3, 0.5, 0.3, 0.3, 0.3].iter().map(|&r| vec![r, 0.0, 0.0]).collect(),
+    )
+    .expect("corpus faded loft");
+    if let SdfNode::Loft { bounds, .. } = &node {
+        assert!(bounds.fade.is_some() && bounds.m > 0.0, "fade {:?}, m {}", bounds.fade, bounds.m);
+    }
+    node
+}
+
 pub fn corpus() -> Vec<(&'static str, SdfNode)> {
     let a = sphere();
     let b = SdfNode::sphere(0.5).translate(0.8, 0.0, 0.0);
@@ -233,16 +250,7 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
         ),
         ("loft_curves", loft_curves_c()),
         ("loft_nofade", loft_fade(false)),
-        (
-            "loft_faded",
-            SdfNode::loft(
-                (0..6).map(|i| Vec3::new(0.3 * (0.5 * i as f32).sin(), 0.25 * i as f32 - 0.6, 0.0)).collect(),
-                Vec3::Z,
-                1,
-                [0.3f32, 0.3, 0.3, 0.5, 0.3, 0.3, 0.3].iter().map(|&r| vec![r, 0.0, 0.0]).collect(),
-            )
-            .expect("corpus faded loft"),
-        ),
+        ("loft_faded", loft_faded()),
         ("annular_2d", SdfNode::annular_2d(0.6, 0.1, 0.5)),
         // --- binary operations ---
         ("union", a.clone().union(b.clone())),
