@@ -300,7 +300,7 @@ pub(crate) fn c_like_section_stack(
     s.push_str(&iarr(&format!("{name}_vs"), st.vert_start.len(), &ints(&st.vert_start)));
     s.push_str(&format!(
         "float {name}_d2({v2} q, int k) {{
-    float d = 3.4028235e38;
+    float d = 1e30; // above any squared distance; not the f32 maximum, whose decimal some WGSL compilers refuse
     float s = 1.0;
     for (int l = {name}_ls[k]; l < {name}_ls[k + 1]; l++) {{
         int a = {name}_vs[l];

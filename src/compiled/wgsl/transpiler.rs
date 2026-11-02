@@ -127,7 +127,7 @@ const {name}_v: array<f32, {nv}> = array<f32, {nv}>({vs});
 const {name}_ls: array<i32, {nl}> = array<i32, {nl}>({lss});
 const {name}_vs: array<i32, {nvs}> = array<i32, {nvs}>({vss});
 fn {name}_d2(q: vec2<f32>, k: i32) -> f32 {{
-    var d = 3.4028235e38;
+    var d = 1e30; // above any squared distance; not the f32 maximum, whose decimal some WGSL compilers refuse
     var s = 1.0;
     for (var l = {name}_ls[k]; l < {name}_ls[k + 1]; l = l + 1) {{
         let a = {name}_vs[l];
