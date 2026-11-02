@@ -10,7 +10,7 @@ use crate::compiled::transpiler_common::lit;
 use crate::primitives::loft::{AXIS_NEWTON, CURVE_NEWTON, CURVE_SCAN, HEAD, PIECE_FLOATS, PIECE_PLANES, SCAN_PER_SEGMENT};
 
 /// The statements of one loft, `fn {name}(p: V3) -> F` plus helpers, over the array `{arr}`
-fn template(name: &str, arr: &str, flat: &[f32]) -> String {
+fn template(name: &str, arr: &str, flat: &[f32], split: bool) -> String {
     let curve = flat[15] != 0.0;
     let n = flat[0] as usize;
     let kh = flat[1] as usize;
@@ -238,7 +238,7 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
     s += &far_tail(name, flat);
     // the far bound is declared before the field that calls it (GLSL / HLSL need it first)
     let at = s.find(&format!("fn {name}(p: V3) -> F {{")).expect("the field function");
-    s.insert_str(at, &far_function(name, arr, flat, rb + kr * w + kr + if curve { kh + 1 } else { 0 }));
+    s.insert_str(at, &far_function(name, arr, flat, pieces_at(flat), split));
     s
 }
 
@@ -322,14 +322,26 @@ fn plane_normal_expr(k: usize) -> String {
     }
 }
 
+/// Where the pieces start in the flat block (after the axis, rows, knots and, for curve sections,
+/// the section knots): the array emit and the template both use this
+fn pieces_at(flat: &[f32]) -> usize {
+    let (n, kh, kr) = (flat[0] as usize, flat[1] as usize, flat[2] as usize);
+    let curve = flat[15] != 0.0;
+    let w = if curve { 2 * kh } else { 2 * kh + 1 };
+    HEAD + 3 * n + kr * w + kr + if curve { kh + 1 } else { 0 }
+}
+
 /// `far_bound(p, pieces)` of the CPU: min over pieces of max over its planes of `n·p − h`, a piece
 /// skipped when the subset 0, 4, 8, 12, 48, 49 already reaches the least so far. The planes are a
 /// loop over the direction table appended to the data array at `dir` (normal `d = n·c + b·s`, then
 /// `d`, `(d + t)/√2` or `(d − t)/√2` by `k / 16`; 48 is `t`, 49 is `−t`: the CPU's `plane_normal`)
-fn far_function(name: &str, arr: &str, flat: &[f32], at: usize) -> String {
+fn far_function(name: &str, arr: &str, flat: &[f32], at: usize, split: bool) -> String {
     let pieces = flat[16] as usize;
     if pieces == 0 {
         return String::new();
+    }
+    if split {
+        return far_function_split(name, arr, pieces);
     }
     let dir = flat.len();
     let inv = lit(0.707_106_77);
@@ -368,6 +380,46 @@ fn {name}_fb(p: V3) -> F {{
         pf = PIECE_FLOATS,
         planes = PIECE_PLANES
     )
+}
+
+/// The far bound for the C-like dialects: each piece's frame and offsets are their own small array
+/// `{arr}_p{q}` and the directions `{arr}_dir` (see [`loft_array`]); one block per piece in the
+/// CPU's order, each indexing only its own 59 floats. A single large module array indexed at run
+/// time is copied per invocation by some GLSL compilers and exceeded the compute stack
+fn far_function_split(name: &str, arr: &str, pieces: usize) -> String {
+    let inv = lit(0.707_106_77);
+    let mut s = format!(
+        "fn {name}_pn(k: I, t: V3, n: V3, b: V3) -> V3 {{
+    if (k == 48) {{ return t; }}
+    if (k == 49) {{ return -t; }}
+    var j: I = k - 16 * (k / 16);
+    var d: V3 = n * {arr}_dir[2 * j] + b * {arr}_dir[2 * j + 1];
+    if (k < 16) {{ return d; }}
+    if (k < 32) {{ return (d + t) * {inv}; }}
+    return (d - t) * {inv};
+}}
+fn {name}_fb(p: V3) -> F {{
+    var best: F = 3.0e38;
+    var t: V3 = V3(0.0, 0.0, 0.0);
+    var n: V3 = V3(0.0, 0.0, 0.0);
+    var b: V3 = V3(0.0, 0.0, 0.0);
+    var lb: F = 0.0;
+    var v: F = 0.0;
+"
+    );
+    for q in 0..pieces {
+        let a = format!("{arr}_p{q}");
+        s += &format!("    t = V3({a}[0], {a}[1], {a}[2]);\n    n = V3({a}[3], {a}[4], {a}[5]);\n    b = V3({a}[6], {a}[7], {a}[8]);\n    lb = -3.0e38;\n");
+        for k in [0usize, 4, 8, 12, 48, 49] {
+            s += &format!("    lb = max(lb, dot({}, p) - {a}[{}]);\n", plane_normal_expr(k), 9 + k);
+        }
+        s += &format!(
+            "    if (lb < best) {{\n        v = lb;\n        for (var k: I = 0; k < {planes}; k++) {{\n            v = max(v, dot({name}_pn(k, t, n, b), p) - {a}[9 + k]);\n        }}\n        best = min(best, v);\n    }}\n",
+            planes = PIECE_PLANES
+        );
+    }
+    s += "    return best;\n}\n";
+    s
 }
 
 /// Curve sections (mode 1): the statements of `Loft::sknot`, `row_point`, `row_weights`,
@@ -636,7 +688,7 @@ fn replace_types(l: &str, f: &str, i: &str, v2: &str, v3: &str, v4: &str) -> Str
 /// The loft's module-scope source for one node in `dialect`: the data array declaration is the
 /// caller's (`ShaderLang::global_float_array`), this is the functions; the field is `{name}(p)`
 pub fn loft_functions(name: &str, arr: &str, flat: &[f32], dialect: &str) -> String {
-    render(&template(name, arr, flat), dialect)
+    render(&template(name, arr, flat, dialect != "wgsl"), dialect)
 }
 
 /// The loft's data array: in WGSL a module-scope `const` (a `var<private>` copy of a large block
@@ -661,6 +713,18 @@ pub fn loft_array(arr: &str, flat: &[f32], dialect: &str, default: fn(&str, &[f3
         }
     }
     let flat = &finite[..];
+    if dialect != "wgsl" && flat[16] > 0.0 {
+        // the C-like dialects: the block without its pieces, each piece on its own, the directions
+        let at = pieces_at(flat);
+        let pieces = flat[16] as usize;
+        let mut out = default(arr, &flat[..at]);
+        for q in 0..pieces {
+            out += &default(&format!("{arr}_p{q}"), &flat[at + q * PIECE_FLOATS..at + (q + 1) * PIECE_FLOATS]);
+        }
+        let dir: Vec<f32> = DIR16.iter().flat_map(|(c, s)| [*c, *s]).collect();
+        out += &default(&format!("{arr}_dir"), &dir);
+        return out;
+    }
     if dialect == "wgsl" {
         let n = flat.len();
         let items: Vec<String> = flat.iter().map(|v| lit(*v)).collect();
