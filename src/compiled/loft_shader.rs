@@ -399,12 +399,32 @@ fn {name}_bw(s: F) -> V4 {{
         kr1f = lit((kr - 1) as f32),
         n1f = lit((n - 1) as f32),
     );
+    s += &closed_curve_shader(name, "i0: I, b: V4", "i0, b", &m.to_string(), &format!("{name}_spt"), &format!("{name}_sk"));
+    s += &format!(
+        "fn {name}_cd(s: F, q: V2) -> F {{
+    var i0: I = {name}_i0(s);
+    var b: V4 = {name}_bw(s);
+    return {name}_ccd(i0, b, q);
+}}
+"
+    );
+    s
+}
+
+/// The closed cubic B-spline curve's closest point and signed distance, the statements of
+/// [`crate::primitives::loft::closed_curve_on_span`] and [`crate::primitives::loft::closed_curve_distance`]
+/// in the same order, for any curve: `ctx_params` / `ctx_args` the context the accessors take,
+/// `m` the number of spans (a literal or a variable among the context), `pt(ctx, j)` the control point
+/// `j` (any integer, periodic) and `sk(i)` the knot `i` (the periodic extension). Emits `{name}_cs`
+/// (point and derivative), `{name}_cdd`, `{name}_on` and `{name}_ccd(ctx, q)`, the signed distance
+pub(crate) fn closed_curve_shader(name: &str, ctx_params: &str, ctx_args: &str, m: &str, pt: &str, sk: &str) -> String {
+    let mut s = String::new();
     // de Boor on span j: point and first derivative (V4: xy point, zw derivative), and the second
     // derivative; unrolled exactly as the CPU loops run (r = 1..=3, i = 3 down to r)
     let mut deboor = String::new();
-    deboor += "    var d0: V2 = NAME_spt(i0, b, j - 1);\n    var d1: V2 = NAME_spt(i0, b, j);\n    var d2: V2 = NAME_spt(i0, b, j + 1);\n    var d3: V2 = NAME_spt(i0, b, j + 2);\n";
+    deboor += "    var d0: V2 = PT(CTX, j - 1);\n    var d1: V2 = PT(CTX, j);\n    var d2: V2 = PT(CTX, j + 1);\n    var d3: V2 = PT(CTX, j + 2);\n";
     for k in 0..6 {
-        deboor += &format!("    var u{k}: F = NAME_sk(j - 2 + {k});\n");
+        deboor += &format!("    var u{k}: F = SK(j - 2 + {k});\n");
     }
     for k in 0..3 {
         deboor += &format!("    var q{k}: V2 = (d{k1} - d{k}) * (3.0 / (u{k3} - u{k}));\n", k1 = k + 1, k3 = k + 3);
@@ -430,9 +450,9 @@ fn {name}_bw(s: F) -> V4 {{
         }
     }
     deboor += "    a = (t - u2) / (u3 - u2);\n";
-    let deboor = deboor.replace("NAME", name);
-    s += &format!("fn {name}_cs(i0: I, b: V4, j: I, t: F) -> V4 {{\n{deboor}    return V4(p3.x, p3.y, q2.x, q2.y);\n}}\n");
-    s += &format!("fn {name}_cdd(i0: I, b: V4, j: I, t: F) -> V2 {{\n{deboor}    return r0 * (1.0 - a) + r1 * a;\n}}\n");
+    let deboor = deboor.replace("PT", pt).replace("SK", sk).replace("CTX", ctx_args);
+    s += &format!("fn {name}_cs({ctx_params}, j: I, t: F) -> V4 {{\n{deboor}    return V4(p3.x, p3.y, q2.x, q2.y);\n}}\n");
+    s += &format!("fn {name}_cdd({ctx_params}, j: I, t: F) -> V2 {{\n{deboor}    return r0 * (1.0 - a) + r1 * a;\n}}\n");
     let scan = CURVE_SCAN;
     let scanf = lit(CURVE_SCAN as f32);
     s += &format!(
@@ -441,54 +461,52 @@ fn {name}_bw(s: F) -> V4 {{
     if (t > k1) {{ return bj + 1; }}
     return bj;
 }}
-fn {name}_cd(s: F, q: V2) -> F {{
-    var i0: I = {name}_i0(s);
-    var b: V4 = {name}_bw(s);
+fn {name}_ccd({ctx_params}, q: V2) -> F {{
     var bj: I = 0;
-    var bt: F = {name}_sk(0);
+    var bt: F = {sk}(0);
     var be: F = 3.0e38;
     for (var j: I = 0; j < {m}; j++) {{
-        var p0: V2 = {name}_spt(i0, b, j - 1);
-        var p1: V2 = {name}_spt(i0, b, j);
-        var p2: V2 = {name}_spt(i0, b, j + 1);
-        var p3: V2 = {name}_spt(i0, b, j + 2);
+        var p0: V2 = {pt}({ctx_args}, j - 1);
+        var p1: V2 = {pt}({ctx_args}, j);
+        var p2: V2 = {pt}({ctx_args}, j + 1);
+        var p3: V2 = {pt}({ctx_args}, j + 2);
         var c: V2 = (p0 + p1 + p2 + p3) * 0.25;
         var rad: F = max(max(max(length(p0 - c), length(p1 - c)), length(p2 - c)), length(p3 - c));
         var lb: F = length(q - c) - rad;
         if (lb > 0.0 && lb * lb >= be) {{ continue; }}
-        var k0: F = {name}_sk(j);
-        var k1: F = {name}_sk(j + 1);
+        var k0: F = {sk}(j);
+        var k1: F = {sk}(j + 1);
         for (var k: I = 0; k < {scan}; k++) {{
             var t: F = k0 + (k1 - k0) * (F(k) / {scanf});
-            var cs: V4 = {name}_cs(i0, b, j, t);
+            var cs: V4 = {name}_cs({ctx_args}, j, t);
             var dq: V2 = V2(cs.x, cs.y) - q;
             var e: F = dot(dq, dq);
             if (e < be) {{ be = e; bt = t; bj = j; }}
         }}
     }}
-    var k0: F = {name}_sk(bj);
-    var k1: F = {name}_sk(bj + 1);
+    var k0: F = {sk}(bj);
+    var k1: F = {sk}(bj + 1);
     var lo: F = bt - (k1 - k0) / {scanf};
     var hi: F = bt + (k1 - k0) / {scanf};
-    lo = max(lo, {name}_sk(bj - 1));
-    hi = min(hi, {name}_sk(bj + 2));
+    lo = max(lo, {sk}(bj - 1));
+    hi = min(hi, {sk}(bj + 2));
     var t: F = bt;
     for (var it: I = 0; it < {newton}; it++) {{
         var sj: I = {name}_on(t, k0, k1, bj);
-        var cs: V4 = {name}_cs(i0, b, sj, t);
-        var dd: V2 = {name}_cdd(i0, b, sj, t);
+        var cs: V4 = {name}_cs({ctx_args}, sj, t);
+        var dd: V2 = {name}_cdd({ctx_args}, sj, t);
         var r: V2 = V2(cs.x, cs.y) - q;
         var d: V2 = V2(cs.z, cs.w);
         var g: F = dot(r, d);
         var gp: F = dot(d, d) + dot(r, dd);
         if (gp > 0.0) {{ t = min(max(t - g / gp, lo), hi); }}
     }}
-    var cf: V4 = {name}_cs(i0, b, {name}_on(t, k0, k1, bj), t);
+    var cf: V4 = {name}_cs({ctx_args}, {name}_on(t, k0, k1, bj), t);
     var cc: V2 = V2(cf.x, cf.y);
     var dc: V2 = V2(cf.z, cf.w);
     var dqf: V2 = cc - q;
     if (dot(dqf, dqf) > be) {{
-        var cb: V4 = {name}_cs(i0, b, bj, bt);
+        var cb: V4 = {name}_cs({ctx_args}, bj, bt);
         cc = V2(cb.x, cb.y);
         dc = V2(cb.z, cb.w);
     }}
@@ -556,6 +574,12 @@ fn render(src: &str, dialect: &str) -> String {
         out.push('\n');
     }
     out
+}
+
+/// The template rewrite for other law templates in the same notation
+#[allow(dead_code, reason = "the entry the closed-curve shader of other nodes renders through; no caller in this crate yet")]
+pub(crate) fn render_template(src: &str, dialect: &str) -> String {
+    render(src, dialect)
 }
 
 /// Replaces the whole-word type tokens `F`, `I`, `V2`, `V3` (types and casts)
