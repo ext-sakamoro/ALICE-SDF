@@ -503,7 +503,7 @@ pub const BOUND_SKIP_EPS: f32 = 1e-4;
 /// about as much as the operand)
 pub const BOUND_SKIP_MIN_NODES: usize = 8;
 
-fn node_count(node: &SdfNode) -> usize {
+fn subtree_size(node: &SdfNode) -> usize {
     fn walk(n: &SdfNode, acc: &mut usize) {
         *acc += 1;
         match n {
@@ -747,7 +747,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
     /// small, skipping is switched off, or the mode is not Hardcoded (Dynamic keeps one text per
     /// tree shape, whatever the parameters)
     fn skip_bound(&mut self, b: &SdfNode, point_var: &str, code: &mut String) -> Option<String> {
-        if !self.bound_skip || self.mode != TranspileModeLang::Hardcoded || node_count(b) < BOUND_SKIP_MIN_NODES {
+        if !self.bound_skip || self.mode != TranspileModeLang::Hardcoded || subtree_size(b) < BOUND_SKIP_MIN_NODES {
             return None;
         }
         let lb = lower_bound(b)?;

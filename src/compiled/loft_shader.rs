@@ -283,10 +283,10 @@ fn far_tail(name: &str, flat: &[f32]) -> String {
     let k = flat[13].max(0.0125 * flat[14]);
     format!(
         "    if (f <= 0.0) {{ return f; }}
-    var x: F = {name}_fb(p) - {k} - f;
+    var xj: F = {name}_fb(p) - {k} - f;
     var phi: F = 0.0;
-    if (x > 0.0) {{
-        if (x <= {k}) {{ phi = x * x / (2.0 * {k}); }} else {{ phi = x - 0.5 * {k}; }}
+    if (xj > 0.0) {{
+        if (xj <= {k}) {{ phi = xj * xj / (2.0 * {k}); }} else {{ phi = xj - 0.5 * {k}; }}
     }}
     return f + phi;
 }}
