@@ -7,7 +7,7 @@
 //! the flat block of [`crate::primitives::loft::flatten`], a module-scope array.
 
 use crate::compiled::transpiler_common::lit;
-use crate::primitives::loft::{AXIS_NEWTON, CURVE_NEWTON, CURVE_SCAN, HEAD, SCAN_PER_SEGMENT};
+use crate::primitives::loft::{AXIS_NEWTON, CURVE_NEWTON, CURVE_SCAN, HEAD, PIECE_FLOATS, PIECE_PLANES, SCAN_PER_SEGMENT};
 
 /// The statements of one loft, `fn {name}(p: V3) -> F` plus helpers, over the array `{arr}`
 fn template(name: &str, arr: &str, flat: &[f32]) -> String {
@@ -19,9 +19,6 @@ fn template(name: &str, arr: &str, flat: &[f32]) -> String {
     let caps = [flat[6], flat[7]];
     let (l, l2, core) = (lit(flat[8]), lit(flat[9]), lit(flat[10]));
     let lq = [lit(flat[11]), lit(flat[12])];
-    let m = lit(flat[13]);
-    let neg_m = lit(-flat[13]);
-    let reach = lit(flat[14]);
     let last = lit((n - 1) as f32);
     let a0 = HEAD;
     let rb = HEAD + 3 * n;
@@ -223,10 +220,10 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
     var dw: F = max(dot(c0 - p, normalize(e0)), dot(p - ce, normalize(ee)));
     var o: V2 = V2(max(d2, 0.0), max(dw, 0.0));
     var bigf: F = min(max(d2, dw), 0.0) + length(o);
-    var corr: F = min(max(bigf * (1.0 / {name}_ll(s) - 1.0 / {l}), {neg_m}), {m});
-    var f: F = bigf / {l} + corr;
-",
+    var f: F = bigf / {l};
+{corr}",
         fr = frame(""),
+        corr = correction(name, flat),
         d2 = if curve {
             format!("    var d2: F = {name}_cd(s, V2(u, v));\n")
         } else {
@@ -238,8 +235,117 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
             s += &format!("    f = min(f, {name}_dome{e}(p));\n");
         }
     }
-    s += &format!("    return max(f, length(r) - {reach});\n}}\n");
+    s += &far_tail(name, flat);
+    s += &far_function(name, arr, flat, rb + kr * w + kr + if curve { kh + 1 } else { 0 });
     s
+}
+
+/// The local correction `(1/L(s) − 1/L_g)·sat(F)·ψ` (only when `m > 0`), in the CPU's order:
+/// `sat = F / √(1 + (F/m)²)`, `ψ` a smoothstep from 1 at `|p − C(s)| ≤ fade₀` to 0 at `≥ fade₁`
+/// (a fade of ∞ is resolved here, so no infinite literal reaches the shader)
+fn correction(name: &str, flat: &[f32]) -> String {
+    let (lg, m, f0, f1) = (flat[8], flat[13], flat[17], flat[18]);
+    if !(m > 0.0) {
+        return String::new();
+    }
+    let psi = if f0 == f32::INFINITY {
+        "    var psi: F = 1.0;\n".to_string()
+    } else if f1 == f32::INFINITY {
+        format!("    var psi: F = 0.0;\n    if (dist <= {f0}) {{ psi = 1.0; }} else {{\n        var uu: F = ({f1i} - dist) / ({f1i} - {f0});\n        psi = uu * uu * (3.0 - 2.0 * uu);\n    }}\n", f0 = lit(f0), f1i = "3.0e38")
+    } else {
+        format!(
+            "    var psi: F = 0.0;\n    if (dist <= {f0}) {{ psi = 1.0; }} else {{ if (dist >= {f1}) {{ psi = 0.0; }} else {{\n        var uu: F = ({f1} - dist) / ({f1} - {f0});\n        psi = uu * uu * (3.0 - 2.0 * uu);\n    }} }}\n",
+            f0 = lit(f0),
+            f1 = lit(f1)
+        )
+    };
+    format!(
+        "    var x: F = bigf / {m};\n    var sat: F = bigf / sqrt(1.0 + x * x);\n    var dist: F = length(r);\n{psi}    f = f + (1.0 / {name}_ll(s) - 1.0 / {lg}) * sat * psi;\n",
+        m = lit(m),
+        lg = lit(lg)
+    )
+}
+
+/// The end of the field: the far bound of the plane pieces, outside only, lowered by
+/// `τ = max(m/4, R_b/80)` (computed here in f32 as the CPU does)
+fn far_tail(name: &str, flat: &[f32]) -> String {
+    let pieces = flat[16] as usize;
+    if pieces == 0 {
+        return "    return f;\n}\n".to_string();
+    }
+    let tau = (0.25 * flat[13]).max(0.0125 * flat[14]);
+    format!("    if (f <= 0.0) {{ return f; }}\n    return max(f, {name}_fb(p) - {tau});\n}}\n", tau = lit(tau))
+}
+
+/// `plane_normal(k, t, n, b)` of the CPU, as an expression over the piece frame `t, n, b`
+fn plane_normal_expr(k: usize) -> String {
+    const DIR16: [(f32, f32); 16] = [
+        (1.0, 0.0),
+        (0.923_879_5, 0.382_683_43),
+        (0.707_106_77, 0.707_106_77),
+        (0.382_683_43, 0.923_879_5),
+        (0.0, 1.0),
+        (-0.382_683_43, 0.923_879_5),
+        (-0.707_106_77, 0.707_106_77),
+        (-0.923_879_5, 0.382_683_43),
+        (-1.0, 0.0),
+        (-0.923_879_5, -0.382_683_43),
+        (-0.707_106_77, -0.707_106_77),
+        (-0.382_683_43, -0.923_879_5),
+        (0.0, -1.0),
+        (0.382_683_43, -0.923_879_5),
+        (0.707_106_77, -0.707_106_77),
+        (0.923_879_5, -0.382_683_43),
+    ];
+    let inv = lit(0.707_106_77);
+    match k {
+        48 => "t".into(),
+        49 => "(-t)".into(),
+        _ => {
+            let (c, sn) = DIR16[k % 16];
+            let d = format!("(n * {} + b * {})", lit(c), lit(sn));
+            match k / 16 {
+                0 => d,
+                1 => format!("(({d} + t) * {inv})"),
+                _ => format!("(({d} - t) * {inv})"),
+            }
+        }
+    }
+}
+
+/// `far_bound(p, pieces)` of the CPU: min over pieces of max over its planes of `n·p − h`, a piece
+/// skipped when the subset 0, 4, 8, 12, 48, 49 already reaches the least so far
+fn far_function(name: &str, arr: &str, flat: &[f32], at: usize) -> String {
+    let pieces = flat[16] as usize;
+    if pieces == 0 {
+        return String::new();
+    }
+    let mut lb = String::new();
+    for k in [0usize, 4, 8, 12, 48, 49] {
+        lb += &format!("        lb = max(lb, dot({}, p) - {arr}[o + {}]);\n", plane_normal_expr(k), 9 + k);
+    }
+    let mut full = String::new();
+    for k in 0..PIECE_PLANES {
+        full += &format!("        v = max(v, dot({}, p) - {arr}[o + {}]);\n", plane_normal_expr(k), 9 + k);
+    }
+    format!(
+        "fn {name}_fb(p: V3) -> F {{
+    var best: F = 3.0e38;
+    for (var q: I = 0; q < {pieces}; q++) {{
+        var o: I = {at} + q * {pf};
+        var t: V3 = V3({arr}[o], {arr}[o + 1], {arr}[o + 2]);
+        var n: V3 = V3({arr}[o + 3], {arr}[o + 4], {arr}[o + 5]);
+        var b: V3 = V3({arr}[o + 6], {arr}[o + 7], {arr}[o + 8]);
+        var lb: F = -3.0e38;
+{lb}        if (lb >= best) {{ continue; }}
+        var v: F = lb;
+{full}        best = min(best, v);
+    }}
+    return best;
+}}
+",
+        pf = PIECE_FLOATS
+    )
 }
 
 /// Curve sections (mode 1): the statements of `Loft::sknot`, `row_point`, `row_weights`,
