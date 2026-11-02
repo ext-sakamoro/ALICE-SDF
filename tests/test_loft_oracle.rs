@@ -506,3 +506,47 @@ fn the_local_bound_never_passes_the_lofts_own_surface() {
         assert_eq!(over, 0, "past the loft's own surface or the wrong sign among {compared} (least f/D outside {tightest})");
     }
 }
+
+#[test]
+fn the_local_bounds_margin_is_never_negative() {
+    // every loft built in these oracles and the corpus, plus a gently bent limb-like loft whose
+    // sections reach past half the axis's radius of curvature (where the margin used to come out
+    // negative): m ≥ 0, and > 0 wherever the local bound varies
+    let bent: Vec<Vec3> = (0..6)
+        .map(|i| {
+            let a = 0.35 * i as f32;
+            Vec3::new(0.6 * (1.0 - a.cos()), 0.6 * a.sin(), 0.0)
+        })
+        .collect();
+    let rows: Vec<Vec<f32>> = (0..6).map(|i| circle_row(0.13 + 0.05 * (i as f32 * 0.9).sin(), 2)).collect();
+    let limb = SdfNode::loft(bent, Vec3::Z, 2, rows).expect("a bent limb");
+    let n = 13;
+    let ys: Vec<f32> = (0..n).map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32).collect();
+    let sphere = SdfNode::loft(
+        ys.iter().map(|&y| Vec3::new(0.0, y, 0.0)).collect(),
+        Vec3::X,
+        1,
+        ys.iter().map(|&y| circle_row((1.0 - y * y).sqrt(), 1)).collect(),
+    )
+    .expect("sphere");
+    let mut checked = 0;
+    for node in [limb.clone(), sphere, curved()] {
+        if let SdfNode::Loft { ref bounds, .. } = node {
+            checked += 1;
+            assert!(bounds.m >= 0.0, "margin {}", bounds.m);
+            let varies = bounds.knots.windows(2).any(|w| w[0] != w[1]);
+            assert!(!varies || bounds.m > 0.0, "margin {} with a varying bound", bounds.m);
+        }
+    }
+    assert_eq!(checked, 3);
+    // the bent limb's field stays 1-Lipschitz
+    let mut r = lcg(14);
+    let mut worst = 0.0f32;
+    for _ in 0..20000 {
+        let p = Vec3::new(r() * 1.6 - 0.4, r() * 1.4 - 0.2, r() * 0.8 - 0.4);
+        let dir = Vec3::new(r() - 0.5, r() - 0.5, r() - 0.5).normalize();
+        let step = 1e-3 + r() * 0.05;
+        worst = worst.max((eval(&limb, p + dir * step) - eval(&limb, p)).abs() / step);
+    }
+    assert!(worst <= 1.0 + 2e-3, "largest difference quotient {worst}");
+}

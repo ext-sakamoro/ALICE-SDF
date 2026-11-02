@@ -11,6 +11,10 @@ use crate::primitives::loft::{HEAD, REFINE_STEPS, SCAN_PER_SEGMENT};
 
 /// The statements of one loft, `fn {name}(p: V3) -> F` plus helpers, over the array `{arr}`
 fn template(name: &str, arr: &str, flat: &[f32]) -> String {
+    assert!(
+        flat[15] == 0.0,
+        "loft curve sections are not emitted to shaders yet (CPU tree and bytecode only)"
+    );
     let n = flat[0] as usize;
     let kh = flat[1] as usize;
     let kr = flat[2] as usize;
@@ -19,6 +23,7 @@ fn template(name: &str, arr: &str, flat: &[f32]) -> String {
     let (l, l2, core) = (lit(flat[8]), lit(flat[9]), lit(flat[10]));
     let lq = [lit(flat[11]), lit(flat[12])];
     let m = lit(flat[13]);
+    let neg_m = lit(-flat[13]);
     let reach = lit(flat[14]);
     let last = lit((n - 1) as f32);
     let a0 = HEAD;
@@ -198,7 +203,7 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
     var dw: F = max(dot(c0 - p, normalize(e0)), dot(p - ce, normalize(ee)));
     var o: V2 = V2(max(d2, 0.0), max(dw, 0.0));
     var bigf: F = min(max(d2, dw), 0.0) + length(o);
-    var corr: F = min(max(bigf * (1.0 / {name}_ll(s) - 1.0 / {l}), -{m}), {m});
+    var corr: F = min(max(bigf * (1.0 / {name}_ll(s) - 1.0 / {l}), {neg_m}), {m});
     var f: F = bigf / {l} + corr;
 ",
         fr = frame("")
@@ -298,4 +303,17 @@ fn replace_types(l: &str, f: &str, i: &str, v2: &str, v3: &str) -> String {
 /// caller's (`ShaderLang::global_float_array`), this is the functions; the field is `{name}(p)`
 pub fn loft_functions(name: &str, arr: &str, flat: &[f32], dialect: &str) -> String {
     render(&template(name, arr, flat), dialect)
+}
+
+/// The loft's data array: in WGSL a module-scope `const` (a `var<private>` copy of a large block
+/// exhausts the per-invocation stack in some implementations), elsewhere the language's own
+/// module-scope float array
+pub fn loft_array(arr: &str, flat: &[f32], dialect: &str, default: fn(&str, &[f32]) -> String) -> String {
+    if dialect == "wgsl" {
+        let n = flat.len();
+        let items: Vec<String> = flat.iter().map(|v| lit(*v)).collect();
+        format!("const {arr}: array<f32, {n}> = array<f32, {n}>({});\n", items.join(", "))
+    } else {
+        default(arr, flat)
+    }
 }
