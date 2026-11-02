@@ -636,7 +636,10 @@ fn far_from_a_loft_the_field_keeps_the_distance_scale() {
         }
         compared += 1;
         let f = eval(&node, p);
-        least = least.min(f / d);
+        if f / d < least {
+            least = f / d;
+            eprintln!("least f/D {least} at {p:?} D {d}");
+        }
         low += usize::from(f < 0.5 * d);
         over += usize::from(f > d + 1.0);
     }
@@ -738,4 +741,38 @@ fn every_loft_kind_survives_a_json_round_trip_bit_for_bit() {
         }
     }
     assert_eq!(compared, 2500);
+}
+
+#[test]
+fn the_field_bends_smoothly_away_from_the_surface() {
+    // along the outward normal from surface points of the bent mm loft, out to 10 mm (past the local
+    // band, B ≈ 4 mm; the range of union blends): the directional derivative changes by less than
+    // 0.05 between samples 0.25 mm apart (C1; a hard switch between the local and global bounds jumps
+    // by 1/L(s) − 1/L_g ≈ 0.1, a hard max with the far bound by ≈ 0.5)
+    let (axis, radii, node) = bent_jump();
+    let surf = circle_loft_samples(&axis, &radii);
+    let mut worst = 0.0f32;
+    let mut compared = 0;
+    for (i, p) in surf.iter().enumerate().step_by(4999) {
+        if i < 256 * 48 || i + 256 * 48 > surf.len() {
+            continue;
+        }
+        let e = 0.01;
+        let n = Vec3::new(
+            eval(&node, *p + Vec3::X * e) - eval(&node, *p - Vec3::X * e),
+            eval(&node, *p + Vec3::Y * e) - eval(&node, *p - Vec3::Y * e),
+            eval(&node, *p + Vec3::Z * e) - eval(&node, *p - Vec3::Z * e),
+        )
+        .normalize();
+        let slope = |t: f32| (eval(&node, *p + n * (t + 0.05)) - eval(&node, *p + n * (t - 0.05))) / 0.1;
+        let mut prev = slope(0.1);
+        for k in 1..40 {
+            let s = slope(0.1 + 0.25 * k as f32);
+            worst = worst.max((s - prev).abs());
+            prev = s;
+        }
+        compared += 1;
+    }
+    assert!(compared > 20, "compared {compared}");
+    assert!(worst < 0.05, "largest change of the directional derivative {worst}");
 }

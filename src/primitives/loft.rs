@@ -636,8 +636,20 @@ impl<'a> Loft<'a> {
         if self.pieces.is_empty() || f <= 0.0 {
             f
         } else {
-            let tau = (0.25 * self.m).law_max(0.0125 * self.reach);
-            f.law_max(far_bound(p, self.pieces) - tau)
+            // joined C1: f + φ(b − f) with φ(x) = 0 (x ≤ 0), x²/(2k) (x ≤ k), x − k/2 (beyond):
+            // 0 ≤ φ(x) ≤ max(0, x) keeps the result ≤ max(f, b) ≤ the distance, and φ' ∈ [0, 1]
+            // makes its gradient a convex mix of the two (1-Lipschitz)
+            let tau = self.m.law_max(0.0125 * self.reach);
+            let k = self.m.law_max(0.0125 * self.reach);
+            let x = far_bound(p, self.pieces) - tau - f;
+            let phi = if x <= 0.0 {
+                0.0
+            } else if x <= k {
+                x * x / (2.0 * k)
+            } else {
+                x - 0.5 * k
+            };
+            f + phi
         }
     }
 }
@@ -1087,6 +1099,23 @@ fn finish(
     Ok(LoftBounds { l, l2, core, lq, m, fade, knots, reach, pieces })
 }
 
+/// The cubic Bézier coefficients of the part `[ta, tb]` of the cubic with coefficients `c` on `[0, 1]`
+fn bezier_sub(c: [f32; 4], ta: f32, tb: f32) -> [f32; 4] {
+    let split = |c: [f32; 4], t: f32| -> ([f32; 4], [f32; 4]) {
+        let l = |a: f32, b: f32| a + (b - a) * t;
+        let (a1, b1, c1) = (l(c[0], c[1]), l(c[1], c[2]), l(c[2], c[3]));
+        let (a2, b2) = (l(a1, b1), l(b1, c1));
+        let a3 = l(a2, b2);
+        ([c[0], a1, a2, a3], [a3, b2, c1, c[3]])
+    };
+    let (left, _) = split(c, tb);
+    if tb <= 0.0 {
+        return [left[0]; 4];
+    }
+    let (_, right) = split(left, ta / tb);
+    right
+}
+
 /// The far bound's pieces: each axis segment in [`PIECES_PER_SEGMENT`] parts, and each dome. Plane `k`'s
 /// offset bounds `n_k·x` over the piece's surface `x = C(s) + u N(s) + v B(s)`:
 /// - `n·C(s)` ≤ the largest `n·X` over the segment's four Bézier points (the segment lies in their hull);
@@ -1192,7 +1221,11 @@ fn piece_planes(d: &Loft, rmax: f32, ang: f32, rs_per_s: f32, caps: [f32; 2], en
                         (2.0 * hh[1] + 4.0 * hh[2]) / 6.0,
                         (hh[1] + 4.0 * hh[2] + hh[3]) / 6.0,
                     ];
-                    sup = sup.law_max(bz.iter().copied().fold(f32::NEG_INFINITY, f32::law_max));
+                    // the part of the span inside the piece, by de Casteljau (its Bézier points hold it)
+                    let ta = (wa - sp as f32).law_max(0.0).law_min(1.0);
+                    let tb = (wb - sp as f32).law_max(0.0).law_min(1.0);
+                    let sub = bezier_sub(bz, ta, tb);
+                    sup = sup.law_max(sub.iter().copied().fold(f32::NEG_INFINITY, f32::law_max));
                 }
             }
             out.push(ax + sup + rad * 2.0 * delta);
@@ -1256,6 +1289,44 @@ mod tests {
             }
             assert!(worst.0 < 1e-5, "closest axis point off by {:?}", worst);
         }
+    }
+
+    /// Every far-bound piece's planes hold its part of the surface: on a strongly bent axis with an
+    /// elongated section, dense surface samples of each piece satisfy `n·x ≤ h` for all 50 planes
+    #[test]
+    fn far_bound_pieces_hold_their_surface() {
+        let axis: Vec<Vec3> = (0..4)
+            .map(|i| {
+                let a = 0.5 * i as f32;
+                Vec3::new(200.0 * (1.0 - alice_det_math::cos(a)), 200.0 * alice_det_math::sin(a), 0.0)
+            })
+            .collect();
+        let rows = vec![vec![40.0f32, 0.0, 0.0, 18.0, 6.0]; 4];
+        let (fr, b) = validate(&axis, Vec3::Z, 2, &rows, [0.0, 0.0]).expect("valid");
+        let block = flatten(&axis, Vec3::Z, LoftSection::Polar(2), &fr, &[], [0.0, 0.0], &b);
+        let d = Loft::from_flat(&block);
+        let mut worst = f32::NEG_INFINITY;
+        let mut checked = 0usize;
+        for (pc, piece) in b.pieces.chunks_exact(PIECE_FLOATS).enumerate() {
+            let (t, n, bb) = (Vec3::new(piece[0], piece[1], piece[2]), Vec3::new(piece[3], piece[4], piece[5]), Vec3::new(piece[6], piece[7], piece[8]));
+            let (sa, sb) = (pc as f32 / PIECES_PER_SEGMENT as f32, (pc + 1) as f32 / PIECES_PER_SEGMENT as f32);
+            for i in 0..=64 {
+                let s = sa + (sb - sa) * i as f32 / 64.0;
+                let (c, der) = d.axis_at(s);
+                let (_, fnn, fb) = frame(der, d.up);
+                for j in 0..720 {
+                    let th = std::f32::consts::TAU * j as f32 / 720.0;
+                    let (c1, s1) = (alice_det_math::cos(th), alice_det_math::sin(th));
+                    let x = c + (fnn * c1 + fb * s1) * d.radius(s, c1, s1);
+                    for k in 0..PIECE_PLANES {
+                        worst = worst.max(plane_normal(k, t, n, bb).dot(x) - piece[9 + k]);
+                        checked += 1;
+                    }
+                }
+            }
+        }
+        assert!(checked > 0);
+        assert!(worst <= 0.0, "a surface sample lies {worst} past its piece's plane");
     }
 
     /// The culled axis scan against the full scan, bit for bit
