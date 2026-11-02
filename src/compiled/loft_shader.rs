@@ -242,6 +242,11 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
     s
 }
 
+/// A fade bound that means "no fade": ∞ or the CPU's finite sentinel f32::MAX
+fn no_fade(v: f32) -> bool {
+    v >= f32::MAX
+}
+
 /// The local correction `(1/L(s) − 1/L_g)·sat(F)·ψ` (only when `m > 0`), in the CPU's order:
 /// `sat = F / √(1 + (F/m)²)`, `ψ` a smoothstep from 1 at `|p − C(s)| ≤ fade₀` to 0 at `≥ fade₁`
 /// (a fade of ∞ is resolved here, so no infinite literal reaches the shader)
@@ -250,10 +255,10 @@ fn correction(name: &str, flat: &[f32]) -> String {
     if !(m > 0.0) {
         return String::new();
     }
-    let psi = if f0 == f32::INFINITY {
+    // with no outer fade bound (f32::MAX) the CPU's u = (MAX − dist)/(MAX − f0) rounds to 1, so
+    // ψ = 1 at every distance, the same as with no fade at all
+    let psi = if no_fade(f0) || no_fade(f1) {
         "    var psi: F = 1.0;\n".to_string()
-    } else if f1 == f32::INFINITY {
-        format!("    var psi: F = 0.0;\n    if (dist <= {f0}) {{ psi = 1.0; }} else {{\n        var uu: F = ({f1i} - dist) / ({f1i} - {f0});\n        psi = uu * uu * (3.0 - 2.0 * uu);\n    }}\n", f0 = lit(f0), f1i = "3.0e38")
     } else {
         format!(
             "    var psi: F = 0.0;\n    if (dist <= {f0}) {{ psi = 1.0; }} else {{ if (dist >= {f1}) {{ psi = 0.0; }} else {{\n        var uu: F = ({f1} - dist) / ({f1} - {f0});\n        psi = uu * uu * (3.0 - 2.0 * uu);\n    }} }}\n",
@@ -638,10 +643,15 @@ pub fn loft_functions(name: &str, arr: &str, flat: &[f32], dialect: &str) -> Str
 /// exhausts the per-invocation stack in some implementations), elsewhere the language's own
 /// module-scope float array
 pub fn loft_array(arr: &str, flat: &[f32], dialect: &str, default: fn(&str, &[f32]) -> String) -> String {
-    // an infinite entry (the fade of a loft without one) has no literal in any shading language;
-    // the template resolves those entries when it emits the code and never reads them from the
-    // array, so a finite stand-in of the same sign is written there
-    let mut finite: Vec<f32> = flat.iter().map(|v| if v.is_infinite() { 3.0e38f32.copysign(*v) } else { *v }).collect();
+    let mut finite = flat.to_vec();
+    // the fade slots are resolved when the code is emitted (`no_fade`) and never read from the
+    // array; "no fade" is stored as f32::MAX or ∞, which no shading language accepts as a literal
+    // (Tint refuses 3.4028235e38), so the array carries 0 there
+    for k in [17, 18] {
+        if no_fade(flat[k]) {
+            finite[k] = 0.0;
+        }
+    }
     // the far bound's 16 in-plane directions (cos, sin), after the block: the shader loops over a
     // piece's planes instead of unrolling them (an unrolled piece exceeded a compute stack)
     if flat[16] > 0.0 {

@@ -62,6 +62,31 @@ pub fn loft_curves_c() -> SdfNode {
     .expect("corpus curve loft")
 }
 
+/// A polar loft whose radius varies along the axis, so its local bound varies and the saturated
+/// correction is on; on a curved axis the correction fades out (`fade` finite), on a straight one
+/// it does not (`fade` = the no-fade value). Panics when the law gives the other case, so the entry
+/// keeps covering the branch it is named for
+pub fn loft_fade(curved: bool) -> SdfNode {
+    let bend = if curved { 0.15 } else { 0.0 };
+    let node = SdfNode::loft(
+        vec![Vec3::new(0.0, -0.6, 0.0), Vec3::new(bend, 0.0, 0.5 * bend), Vec3::new(0.0, 0.6, 0.0)],
+        Vec3::X,
+        2,
+        vec![
+            vec![0.25, 0.0, 0.03, 0.04, 0.0],
+            vec![0.4, 0.03, 0.0, -0.04, 0.02],
+            vec![0.2, 0.0, -0.02, 0.02, 0.0],
+            vec![0.35, 0.02, 0.01, 0.0, -0.02],
+        ],
+    )
+    .expect("corpus fade loft");
+    if let SdfNode::Loft { bounds, .. } = &node {
+        assert!(bounds.m > 0.0, "the correction is off (m = {})", bounds.m);
+        assert_eq!(bounds.fade[0] < f32::MAX, curved, "fade {:?} for curved = {curved}", bounds.fade);
+    }
+    node
+}
+
 pub fn corpus() -> Vec<(&'static str, SdfNode)> {
     let a = sphere();
     let b = SdfNode::sphere(0.5).translate(0.8, 0.0, 0.0);
@@ -207,6 +232,8 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
             .expect("corpus loft"),
         ),
         ("loft_curves", loft_curves_c()),
+        ("loft_fade", loft_fade(true)),
+        ("loft_nofade", loft_fade(false)),
         ("annular_2d", SdfNode::annular_2d(0.6, 0.1, 0.5)),
         // --- binary operations ---
         ("union", a.clone().union(b.clone())),
