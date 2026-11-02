@@ -92,6 +92,9 @@ impl ShaderLang for WgslLang {
     fn decl_int(name: &str, expr: &str) -> String {
         format!("    let {name}: i32 = {expr};\n")
     }
+    // `const`, not `var<private>`: a private array is copied per invocation, and a body-sized
+    // tree (hundreds of polygon arrays) exceeds the per-thread stack in some backends; GLSL and
+    // HLSL already emit constant arrays
     fn global_float_array(name: &str, values: &[f32]) -> String {
         let n = values.len();
         let items: Vec<String> = values
@@ -99,7 +102,7 @@ impl ShaderLang for WgslLang {
             .map(|v| super::super::transpiler_common::lit(*v))
             .collect();
         format!(
-            "var<private> {name}: array<f32, {n}> = array<f32, {n}>({});\n",
+            "const {name}: array<f32, {n}> = array<f32, {n}>({});\n",
             items.join(", ")
         )
     }

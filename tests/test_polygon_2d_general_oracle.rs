@@ -328,11 +328,62 @@ fn the_material_shader_carries_its_polygon_arrays_without_name_clashes() {
     names.dedup();
     assert!(names.len() >= 4, "main and material arrays: {names:?}");
     for n in &names {
-        let decls = src.matches(&format!("var<private> {n}:")).count();
+        let decls = src.matches(&format!("const {n}:")).count();
         assert_eq!(decls, 1, "{n} declared {decls} times");
     }
     let module = naga::front::wgsl::parse_str(&src).unwrap_or_else(|e| panic!("{}", e.emit_to_string(&src)));
     naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
         .validate(&module)
         .expect("valid");
+}
+
+/// A tree the size of a body made of extrusion hulls (hundreds of polygons of tens of vertices,
+/// the shader holding every vertex array at module scope) builds a GPU pipeline and evaluates to
+/// the CPU's values; skipped without an adapter unless `ALICE_SDF_REQUIRE_GPU` is set
+#[cfg(feature = "gpu")]
+#[test]
+fn hundreds_of_large_polygons_run_on_the_gpu_and_match_the_cpu() {
+    use alice_sdf::compiled::GpuEvaluator;
+    let mut level: Vec<SdfNode> = (0..400u32)
+        .map(|k| {
+            let (i, j) = ((k % 20) as f32, (k / 20) as f32);
+            SdfNode::polygon_2d(star(46, 0.04 + 0.002 * (k % 7) as f32, 0.02), 0.03)
+                .translate(i * 0.1, j * 0.1, 0.0)
+        })
+        .collect();
+    // a balanced union, as a body's parts are, so no recursion goes 400 deep
+    while level.len() > 1 {
+        let mut next = Vec::with_capacity(level.len().div_ceil(2));
+        let mut it = level.into_iter();
+        while let Some(a) = it.next() {
+            next.push(match it.next() {
+                Some(b) => a.union(b),
+                None => a,
+            });
+        }
+        level = next;
+    }
+    let node = level.pop().unwrap();
+    let gpu = match GpuEvaluator::new(&node) {
+        Ok(g) => g,
+        Err(e) => {
+            assert!(
+                std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                "ALICE_SDF_REQUIRE_GPU is set but the GPU evaluator failed: {e}"
+            );
+            eprintln!("skipped ({e})");
+            return;
+        }
+    };
+    let mut r = lcg(11);
+    let pts: Vec<Vec3> = (0..4000)
+        .map(|_| Vec3::new(r() * 2.2 - 0.1, r() * 2.2 - 0.1, r() * 0.2 - 0.1))
+        .collect();
+    let got = gpu.eval_batch(&pts).expect("gpu eval");
+    assert_eq!(got.len(), pts.len());
+    let mut worst = 0.0f32;
+    for (p, g) in pts.iter().zip(&got) {
+        worst = worst.max((eval(&node, *p) - g).abs());
+    }
+    assert!(worst < 2e-5, "largest GPU - CPU difference {worst}");
 }
