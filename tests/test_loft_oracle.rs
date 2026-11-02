@@ -792,6 +792,11 @@ fn a_tree_with_bounds_from_another_law_is_refused_on_load() {
     old["Loft"]["bounds"].as_object_mut().expect("bounds").remove("bknots");
     let e = serde_json::from_value::<SdfNode>(old).err().expect("an older law's bounds are refused");
     assert!(e.to_string().contains("rebuild"), "{e}");
+    // complete in shape but from another law version: refused by the version alone
+    let mut other = v.clone();
+    other["Loft"]["bounds"]["law"] = serde_json::json!(0);
+    let e = serde_json::from_value::<SdfNode>(other).err().expect("another law version is refused");
+    assert!(e.to_string().contains("bound law 0"), "{e}");
     let mut short = v.clone();
     short["Loft"]["bounds"]["bknots"].as_array_mut().expect("bknots").pop();
     let e = serde_json::from_value::<SdfNode>(short).err().expect("inconsistent widths are refused");
