@@ -714,6 +714,13 @@ pub fn loft_array(arr: &str, flat: &[f32], dialect: &str, default: fn(&str, &[f3
         out += &default(&format!("{arr}_dir"), &dir);
         return out;
     }
+    const_array(arr, flat, dialect, default)
+}
+
+/// A module-scope float array for any law's flat block, with no knowledge of its layout: in WGSL a
+/// `const` (a `var<private>` copy of a large block exhausts the per-invocation stack in some
+/// implementations), elsewhere the language's own module-scope float array
+pub fn const_array(arr: &str, flat: &[f32], dialect: &str, default: fn(&str, &[f32]) -> String) -> String {
     if dialect == "wgsl" {
         let n = flat.len();
         let items: Vec<String> = flat.iter().map(|v| lit(*v)).collect();

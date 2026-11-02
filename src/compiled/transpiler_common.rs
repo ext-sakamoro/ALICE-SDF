@@ -3509,7 +3509,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let arr = format!("alice_sss_d_{id}");
                 let func = format!("alice_sss_{id}");
                 let flat = crate::compiled::smooth_stack_shader::flatten(st);
-                self.globals.push_str(&crate::compiled::loft_shader::loft_array(&arr, &flat, L::NAME, L::global_float_array));
+                // a plain array: the loft's array emitter reads the loft's own slots (pieces, fade)
+                self.globals.push_str(&crate::compiled::loft_shader::const_array(&arr, &flat, L::NAME, L::global_float_array));
                 self.globals.push_str(&crate::compiled::smooth_stack_shader::stack_functions(&func, &arr, &flat, L::NAME));
                 let var = self.next_var();
                 code.push_str(&L::decl_float(&var, &format!("{func}({point_var})")));
