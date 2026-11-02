@@ -124,7 +124,8 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         | SdfNode::RoundedRect2D { .. }
         | SdfNode::Annular2D { .. }
         | SdfNode::Loft { .. }
-        | SdfNode::LoftCurves { .. } => numerical_gradient_of(node, point),
+        | SdfNode::LoftCurves { .. }
+        | SdfNode::SmoothSectionStack(_) => numerical_gradient_of(node, point),
 
         SdfNode::Polygon2D {
             vertices,

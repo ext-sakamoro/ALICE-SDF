@@ -79,6 +79,7 @@ mod rounded_cylinder;
 mod rounded_x;
 mod schwarz_p;
 mod section_stack;
+mod smooth_section_stack;
 mod shapes_2d;
 mod solid_angle;
 mod sphere;
@@ -155,6 +156,7 @@ pub use schwarz_p::sdf_schwarz_p;
 pub use section_stack::{
     boundary_hausdorff_bound, sdf_loops_2d, SectionStack, SECTION_STACK_SAMPLE,
 };
+pub use smooth_section_stack::{levels_hausdorff_bound, sdf_spline_loops_2d, SmoothSectionStack, SMOOTH_STACK_HAUSDORFF_SAMPLES};
 pub use shapes_2d::{
     extrude_2d, sdf_annular_2d, sdf_circle_2d, sdf_polygon_2d, sdf_polygon_2d_flat,
     sdf_polygon_2d_xy, sdf_rect_2d, sdf_rounded_rect_2d, sdf_segment_2d,

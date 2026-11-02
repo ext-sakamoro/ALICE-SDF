@@ -772,6 +772,11 @@ pub enum SdfNode {
     SectionStack(crate::primitives::SectionStack),
     /// A closed 2D polygon extruded along Z: any vertex count, any concavity (a simple polygon); the
     /// exact distance to its edges with the even-odd sign
+    /// Closed spline sections stacked along local Y, any number of loops per level, the levels' 2D
+    /// distances interpolated C1 along Y (see [`crate::primitives::SmoothSectionStack`]); divided by its
+    /// local Lipschitz bound, so 1-Lipschitz
+    SmoothSectionStack(crate::primitives::SmoothSectionStack),
+    /// 2D Polygon (convex, up to 8 vertices) extruded along Z
     Polygon2D {
         /// Vertices, in order around the outline (either winding)
         vertices: Vec<Vec2>,
@@ -1435,7 +1440,8 @@ impl SdfNode {
             | Self::RoundedRect2D { .. }
             | Self::Annular2D { .. }
             | Self::Terrain { .. }
-            | Self::SectionStack(_) => SdfCategory::Primitive,
+            | Self::SectionStack(_)
+            | Self::SmoothSectionStack(_) => SdfCategory::Primitive,
 
             // === Operations ===
             Self::Union { .. }

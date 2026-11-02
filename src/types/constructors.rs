@@ -24,6 +24,12 @@ impl SdfNode {
     pub fn section_stack(levels: Vec<f32>, loops: Vec<Vec<Vec<Vec2>>>) -> Result<Self, String> {
         crate::primitives::SectionStack::new(levels, loops).map(Self::SectionStack)
     }
+    /// Closed spline sections stacked along local Y (levels strictly increasing, at least 4; per level
+    /// one or more closed uniform cubic B-splines in (x, z), at least 4 control points each); `r0` the
+    /// near-field radius and `eps` the bound's slope limit. Err on degenerate input
+    pub fn smooth_section_stack(levels: Vec<f32>, loops: Vec<Vec<Vec<Vec2>>>, r0: f32, eps: f32) -> Result<Self, String> {
+        crate::primitives::SmoothSectionStack::new(levels, loops, r0, eps).map(Self::SmoothSectionStack)
+    }
 
     /// Create an axis-aligned box with the given **full** dimensions
     /// (`width` × `height` × `depth`; the node stores half of each).
