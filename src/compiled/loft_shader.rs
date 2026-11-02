@@ -242,22 +242,20 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
     s
 }
 
-/// A fade bound that means "no fade": ∞ or the CPU's finite sentinel f32::MAX
-fn no_fade(v: f32) -> bool {
-    v >= f32::MAX
+/// No fade: the flat block flags it with a negative fade start (`[17] = [18] = −1`)
+fn no_fade(flat: &[f32]) -> bool {
+    flat[17] < 0.0
 }
 
 /// The local correction `(1/L(s) − 1/L_g)·sat(F)·ψ` (only when `m > 0`), in the CPU's order:
 /// `sat = F / √(1 + (F/m)²)`, `ψ` a smoothstep from 1 at `|p − C(s)| ≤ fade₀` to 0 at `≥ fade₁`
-/// (a fade of ∞ is resolved here, so no infinite literal reaches the shader)
+/// (with no fade, flagged by `[17] < 0`, ψ is 1 and is resolved here)
 fn correction(name: &str, flat: &[f32]) -> String {
     let (lg, m, f0, f1) = (flat[8], flat[13], flat[17], flat[18]);
     if !(m > 0.0) {
         return String::new();
     }
-    // with no outer fade bound (f32::MAX) the CPU's u = (MAX − dist)/(MAX − f0) rounds to 1, so
-    // ψ = 1 at every distance, the same as with no fade at all
-    let psi = if no_fade(f0) || no_fade(f1) {
+    let psi = if no_fade(flat) {
         "    var psi: F = 1.0;\n".to_string()
     } else {
         format!(
@@ -696,14 +694,6 @@ pub fn loft_functions(name: &str, arr: &str, flat: &[f32], dialect: &str) -> Str
 /// module-scope float array
 pub fn loft_array(arr: &str, flat: &[f32], dialect: &str, default: fn(&str, &[f32]) -> String) -> String {
     let mut finite = flat.to_vec();
-    // the fade slots are resolved when the code is emitted (`no_fade`) and never read from the
-    // array; "no fade" is stored as f32::MAX or ∞, which no shading language accepts as a literal
-    // (Tint refuses 3.4028235e38), so the array carries 0 there
-    for k in [17, 18] {
-        if no_fade(flat[k]) {
-            finite[k] = 0.0;
-        }
-    }
     // the far bound's 16 in-plane directions (cos, sin), after the block: the shader loops over a
     // piece's planes instead of unrolling them (an unrolled piece exceeded a compute stack)
     if flat[16] > 0.0 {

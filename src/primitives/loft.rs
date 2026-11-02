@@ -63,8 +63,6 @@ pub const CURVE_SCAN: u32 = 8;
 pub const CURVE_NEWTON: u32 = 4;
 /// The core value used when a loft has no angular term (no core)
 const NO_CORE: f32 = -3.0e38;
-/// The fade radius meaning "no fade": finite, so that every stored bound serialises (JSON has no ∞)
-pub const NO_FADE: f32 = f32::MAX;
 
 /// Why a loft was refused
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,8 +89,10 @@ pub struct LoftBounds {
     pub lq: [f32; 2],
     /// The clamp `m` of the local correction (0: the bound is the same on every span)
     pub m: f32,
-    /// The local correction fades out between these distances from the axis curve ([`NO_FADE`]: no fade)
-    pub fade: [f32; 2],
+    /// The local correction fades out between these distances from the axis curve (`None`: no fade,
+    /// a straight axis); omitted from the serialised form when `None`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fade: Option<[f32; 2]>,
     /// The local bound `L(s)` at the B-spline knots (one per row), linear between them
     pub knots: Vec<f32>,
     /// A radius holding the whole surface around the axis curve (the largest radius and dome height)
@@ -178,7 +178,8 @@ pub fn far_bound(p: Vec3, pieces: &[f32]) -> f32 {
 }
 
 /// The flat block of a loft (the bytecode's aux data and the shaders' module-scope array):
-/// `[n, K or M, k, up.x, up.y, up.z, H₀, H₁, L_g, L₂, c, L_q0, L_q1, m, R_b, mode, axis (3n), rows (k w), knots (k)]`
+/// `[n, K or M, k, up.x, up.y, up.z, H₀, H₁, L_g, L₂, c, L_q0, L_q1, B, R_b, mode, pieces, fade₀, fade₁,
+/// axis (3n), rows (k w), knots (k)]`, fade₀ < 0 meaning no fade (both −1)
 /// with mode 0 (polar: `K` harmonics, rows of `w = 2K + 1` coefficients) or 1 (curve: `M` control points,
 /// rows of `w = 2M` coordinates `u₀, v₀, u₁, v₁, …`, then the section knots `K₀ … K_M`)
 pub const HEAD: usize = 19;
@@ -234,8 +235,8 @@ pub fn flatten(axis: &[Vec3], up: Vec3, section: LoftSection, rows: &[f32], sect
         b.reach,
         section.mode(),
         (b.pieces.len() / PIECE_FLOATS) as f32,
-        b.fade[0],
-        b.fade[1],
+        b.fade.map_or(-1.0, |f| f[0]),
+        b.fade.map_or(-1.0, |f| f[1]),
     ];
     v.extend(axis.iter().flat_map(|a| [a.x, a.y, a.z]));
     v.extend_from_slice(rows);
@@ -263,7 +264,7 @@ struct Loft<'a> {
     core: f32,
     lq: [f32; 2],
     m: f32,
-    fade: [f32; 2],
+    fade: Option<[f32; 2]>,
     reach: f32,
     axis: &'a [f32],
     rows: &'a [f32],
@@ -294,7 +295,7 @@ impl<'a> Loft<'a> {
             core: f[10],
             lq: [f[11], f[12]],
             m: f[13],
-            fade: [f[17], f[18]],
+            fade: if f[17] < 0.0 { None } else { Some([f[17], f[18]]) },
             reach: f[14],
             axis: &f[HEAD..HEAD + 3 * n],
             rows: &f[HEAD + 3 * n..HEAD + 3 * n + kr * w],
@@ -713,13 +714,14 @@ impl<'a> Loft<'a> {
             let x = big_f / self.m;
             let sat = big_f / (1.0 + x * x).sqrt();
             let dist = r.length();
-            let psi = if dist <= self.fade[0] {
-                1.0
-            } else if dist >= self.fade[1] {
-                0.0
-            } else {
-                let u = (self.fade[1] - dist) / (self.fade[1] - self.fade[0]);
-                u * u * (3.0 - 2.0 * u)
+            let psi = match self.fade {
+                None => 1.0,
+                Some([fa, _]) if dist <= fa => 1.0,
+                Some([_, fb]) if dist >= fb => 0.0,
+                Some([fa, fb]) => {
+                    let u = (fb - dist) / (fb - fa);
+                    u * u * (3.0 - 2.0 * u)
+                }
             };
             f += (1.0 / self.local_l(s) - 1.0 / self.lg) * sat * psi;
         }
@@ -969,7 +971,7 @@ fn finish(
 ) -> Result<LoftBounds, LoftError> {
     let err = |s: String| Err(LoftError(s));
     let kr = flat_rows.len() / section.width();
-    let provisional = LoftBounds { l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, fade: [NO_FADE; 2], knots: vec![1.0; kr], reach: 0.0, pieces: Vec::new() };
+    let provisional = LoftBounds { l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, fade: None, knots: vec![1.0; kr], reach: 0.0, pieces: Vec::new() };
     let block = flatten(axis, up, section, flat_rows, sknots, caps, &provisional);
     let data = Loft::from_flat(&block);
     let last = (axis.len() - 1) as f32;
@@ -1038,7 +1040,7 @@ fn finish(
     let top = base.iter().copied().fold(0.0f32, f32::law_max);
     let (l, m, knots, fade) = if base.iter().all(|&b| b == top) {
         // one bound everywhere: f = F / L, no correction
-        (top, 0.0, base, [NO_FADE, NO_FADE])
+        (top, 0.0, base, None)
     } else {
         // L(s) = (1 + ε) × the knots, L_g = (1 + δ) × max L(s); f = F/L_g + κ(s) sat(F) ψ with
         // κ(s) = 1/L(s) − 1/L_g ≥ 0. |∇f| ≤ |∇F| (1/L_g + κ sat' ψ) + |sat| |κ'| |∇s| ψ + |sat| κ |ψ'|
@@ -1058,9 +1060,9 @@ fn finish(
             let span = 1.0 / kappa - rmax;
             let (ra, rb) = (rmax + 0.5 * span, rmax + 0.75 * span);
             let gs = 1.0 / (slow * (1.0 - kappa * rb));
-            ([ra, rb], gs, EPS * (rb - ra) / (2.0 * (1.0 + EPS) * 1.5 * kap_max))
+            (Some([ra, rb]), gs, EPS * (rb - ra) / (2.0 * (1.0 + EPS) * 1.5 * kap_max))
         } else {
-            ([NO_FADE, NO_FADE], 1.0 / slow, f32::INFINITY)
+            (None, 1.0 / slow, f32::INFINITY)
         };
         let b_l = if dlds > 0.0 { EPS * kmin_l * kmin_l / (2.0 * (1.0 + EPS) * dlds * grad_s) } else { f32::INFINITY };
         let band = b_l.law_min(b_fade);

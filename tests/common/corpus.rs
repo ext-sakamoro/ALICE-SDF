@@ -82,7 +82,7 @@ pub fn loft_fade(curved: bool) -> SdfNode {
     .expect("corpus fade loft");
     if let SdfNode::Loft { bounds, .. } = &node {
         assert!(bounds.m > 0.0, "the correction is off (m = {})", bounds.m);
-        assert_eq!(bounds.fade[0] < f32::MAX, curved, "fade {:?} for curved = {curved}", bounds.fade);
+        assert_eq!(bounds.fade.is_some(), curved, "fade {:?} for curved = {curved}", bounds.fade);
     }
     node
 }
@@ -232,8 +232,17 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
             .expect("corpus loft"),
         ),
         ("loft_curves", loft_curves_c()),
-        ("loft_fade", loft_fade(true)),
         ("loft_nofade", loft_fade(false)),
+        (
+            "loft_faded",
+            SdfNode::loft(
+                (0..6).map(|i| Vec3::new(0.3 * (0.5 * i as f32).sin(), 0.25 * i as f32 - 0.6, 0.0)).collect(),
+                Vec3::Z,
+                1,
+                [0.3f32, 0.3, 0.3, 0.5, 0.3, 0.3, 0.3].iter().map(|&r| vec![r, 0.0, 0.0]).collect(),
+            )
+            .expect("corpus faded loft"),
+        ),
         ("annular_2d", SdfNode::annular_2d(0.6, 0.1, 0.5)),
         // --- binary operations ---
         ("union", a.clone().union(b.clone())),
