@@ -3501,6 +3501,21 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 v
             }
 
+            SdfNode::SmoothSectionStack(st) => {
+                // the stack's law as module-scope functions over a module-scope data array
+                // (`compiled::smooth_stack_shader`, calling the loft's closed-curve emitter)
+                let id = self.var_counter;
+                self.var_counter += 1;
+                let arr = format!("alice_sss_d_{id}");
+                let func = format!("alice_sss_{id}");
+                let flat = crate::compiled::smooth_stack_shader::flatten(st);
+                self.globals.push_str(&crate::compiled::loft_shader::loft_array(&arr, &flat, L::NAME, L::global_float_array));
+                self.globals.push_str(&crate::compiled::smooth_stack_shader::stack_functions(&func, &arr, &flat, L::NAME));
+                let var = self.next_var();
+                code.push_str(&L::decl_float(&var, &format!("{func}({point_var})")));
+                var
+            }
+
             SdfNode::Loft { axis, up, harmonics, rows, caps, bounds } => {
                 let (sec, caps) = (crate::primitives::loft::LoftSection::Polar(*harmonics), *caps);
                 // the loft's law as module-scope functions over a module-scope data array
