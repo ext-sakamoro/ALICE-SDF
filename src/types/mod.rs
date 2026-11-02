@@ -728,6 +728,10 @@ pub enum SdfNode {
         /// Half-depth of extrusion along Z
         half_height: f32,
     },
+    /// A stack of planar closed-loop sections along local Y, any topology per level (see
+    /// [`crate::primitives::SectionStack`]); the field interpolates the levels' 2D distances and is
+    /// divided by its Lipschitz bound
+    SectionStack(crate::primitives::SectionStack),
     /// A closed 2D polygon extruded along Z: any vertex count, any concavity (a simple polygon); the
     /// exact distance to its edges with the even-odd sign
     Polygon2D {
@@ -1390,7 +1394,8 @@ impl SdfNode {
             | Self::Polygon2D { .. }
             | Self::RoundedRect2D { .. }
             | Self::Annular2D { .. }
-            | Self::Terrain { .. } => SdfCategory::Primitive,
+            | Self::Terrain { .. }
+            | Self::SectionStack(_) => SdfCategory::Primitive,
 
             // === Operations ===
             Self::Union { .. }

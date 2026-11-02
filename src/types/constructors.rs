@@ -18,6 +18,13 @@ impl SdfNode {
         Self::Sphere { radius }
     }
 
+    /// A stack of planar closed-loop sections along local Y (levels strictly increasing, at least 2;
+    /// per level one or more closed loops in the (x, z) plane of at least 3 vertices). Err on
+    /// degenerate input
+    pub fn section_stack(levels: Vec<f32>, loops: Vec<Vec<Vec<Vec2>>>) -> Result<Self, String> {
+        crate::primitives::SectionStack::new(levels, loops).map(Self::SectionStack)
+    }
+
     /// Create an axis-aligned box with the given **full** dimensions
     /// (`width` × `height` × `depth`; the node stores half of each).
     ///
