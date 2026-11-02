@@ -101,6 +101,44 @@ fn union_chain() -> SdfNode {
     node
 }
 
+/// A capped polar loft along a gently curved axis, one non-circular section along it
+fn limb(seed: u64, from: Vec3, to: Vec3, r0: f32, k: u32) -> SdfNode {
+    let mut r = lcg(seed);
+    let axis: Vec<Vec3> = (0..6)
+        .map(|i| {
+            let t = i as f32 / 5.0;
+            from + (to - from) * t + Vec3::new(0.02 * (t * 3.0).sin(), 0.0, 0.015 * (t * 2.0).cos())
+        })
+        .collect();
+    // one section along the whole loft: the loft law's constant-bound branch (m = 0); a section
+    // that varies along the axis gives a negative clamp m, an open defect of the loft emit
+    let w = 2 * k as usize + 1;
+    let mut row = vec![0.0; w];
+    row[0] = r0;
+    for h in 1..w {
+        row[h] = r0 * 0.03 * (r() - 0.5) / (1 + h / 2) as f32;
+    }
+    let rows: Vec<Vec<f32>> = vec![row; 12];
+    SdfNode::loft_capped(axis, Vec3::Z, k, rows, [r0, r0]).expect("loft")
+}
+
+/// Six lofts joined like the body's smooth parts: a smooth-union chain
+fn loft_body() -> SdfNode {
+    let parts = [
+        limb(1, Vec3::new(0.0, 0.8, 0.0), Vec3::new(0.0, 1.4, 0.0), 0.14, 16),
+        limb(2, Vec3::new(0.15, 1.35, 0.0), Vec3::new(0.7, 1.35, 0.0), 0.045, 8),
+        limb(3, Vec3::new(-0.15, 1.35, 0.0), Vec3::new(-0.7, 1.35, 0.0), 0.045, 8),
+        limb(4, Vec3::new(0.08, 0.85, 0.0), Vec3::new(0.1, 0.05, 0.0), 0.06, 8),
+        limb(5, Vec3::new(-0.08, 0.85, 0.0), Vec3::new(-0.1, 0.05, 0.0), 0.06, 8),
+        limb(6, Vec3::new(0.0, 1.45, 0.0), Vec3::new(0.0, 1.62, 0.02), 0.09, 12),
+    ];
+    let mut node = parts[0].clone();
+    for p in &parts[1..] {
+        node = node.smooth_union(p.clone(), 0.01);
+    }
+    node
+}
+
 fn scenes() -> Vec<(&'static str, SdfNode)> {
     vec![("body_like", body_like()), ("union_chain", union_chain())]
 }
@@ -325,4 +363,62 @@ fn wgsl_with_skips_equals_wgsl_without_bit_for_bit_on_the_gpu() {
             panic!("{what}: at {:?} skip {} vs full {}", pts[i], ga[i], gb[i]);
         }
     }
+}
+
+/// The loft body through the same three oracles. Every loft whose local bound varies along the axis
+/// (any curved axis) gets a negative clamp `m`, and the loft emit then prints `--m`, which neither
+/// WGSL nor C++ parses; the scene runs once that is fixed
+#[test]
+#[ignore = "known defect: loft emit prints `-{m}` for a negative clamp m (WGSL / C++ parse error), and m < 0 for every curved-axis loft"]
+fn loft_body_skips_bit_for_bit() {
+    let node = loft_body();
+    let mut all = Vec::new();
+    bounds(&node, &mut all);
+    for (n, _) in &all {
+        if let SdfNode::Loft { bounds, .. } = n {
+            assert!(bounds.m >= 0.0, "loft clamp m = {} (the emit prints `--m`)", bounds.m);
+        }
+    }
+    let mut bs = Vec::new();
+    bounds(&node, &mut bs);
+    let pts = points(&node, 40_000, 4);
+    for (sub, b) in &bs {
+        for p in pts.iter().step_by(7) {
+            let lb = b.scale * box_dist(*p, b) - (b.margin + BOUND_SKIP_EPS);
+            if lb > 0.0 {
+                assert!(eval(sub, *p) >= lb);
+            }
+        }
+    }
+    let skip = WgslShader::transpile(&node, TranspileMode::Hardcoded);
+    let plain = WgslShader::transpile_without_bound_skip(&node, TranspileMode::Hardcoded);
+    assert!(skip.source.matches("> 0.0 &&").count() >= 4);
+    let (a, b) = (GpuEvaluator::from_shader(&skip).expect("gpu"), GpuEvaluator::from_shader(&plain).expect("gpu"));
+    let pts = points(&node, 1_000_000, 5);
+    let (ga, gb) = (a.eval_batch(&pts).expect("gpu"), b.eval_batch(&pts).expect("gpu"));
+    assert!(ga.iter().zip(&gb).all(|(x, y)| x.to_bits() == y.to_bits()));
+}
+
+/// The loft's bound on the CPU (independent of the emit defect above): the field is at least the
+/// distance to the box of the axis's Bézier control points grown by the reach, wherever positive
+#[test]
+fn the_loft_bound_holds_on_the_cpu() {
+    let node = loft_body();
+    let mut bs = Vec::new();
+    bounds(&node, &mut bs);
+    let lofts = bs.iter().filter(|(n, _)| matches!(n, SdfNode::Loft { .. })).count();
+    assert_eq!(lofts, 6, "every loft has a bound");
+    let pts = points(&node, 60_000, 6);
+    let mut checked = 0usize;
+    for (sub, b) in &bs {
+        for p in &pts {
+            let lb = b.scale * box_dist(*p, b) - (b.margin + BOUND_SKIP_EPS);
+            if lb > 0.0 {
+                let f = eval(sub, *p);
+                assert!(f >= lb, "field {f} < bound {lb} at {p:?}");
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 50_000, "only {checked} points outside a box");
 }

@@ -374,6 +374,12 @@ float {name}(vec3_t p) {{
 /// - `Intersection`: `max(a, b) ≥ a` and `≥ b`: either child's bound (the smaller box)
 /// - `Subtraction`: `max(a, −b) ≥ a`: the bound of `a`
 /// - `WithMaterial`: the child's field
+/// - `Loft`: its field ends with `max(…, |p − C(s*)| − reach)`, `C(s*)` a point of the axis curve,
+///   so it is ≥ `dist(p, curve) − reach`; each uniform Catmull-Rom segment between `B` and `C`
+///   (neighbours `A`, `D`, the ends' phantom points reflected) is the cubic Bézier
+///   `[B, B + (C − A)/6, C − (D − B)/6, C]` and lies in their convex hull, so in the box of all
+///   segments' control points; the distance to that box grown by `reach` on every side is at most
+///   `dist(p, box) − reach` (the grown box holds the box's `reach` neighbourhood)
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LowerBound {
     /// Box minimum corner
@@ -453,6 +459,29 @@ pub fn lower_bound(node: &SdfNode) -> Option<LowerBound> {
             LowerBound::from_points(b.corners().map(|c| *rotation * c), b.scale, b.margin)
         }
         SdfNode::WithMaterial { child, .. } => lower_bound(child),
+        SdfNode::Loft { axis, bounds, .. } if axis.len() >= 2 && bounds.reach.is_finite() => {
+            let n = axis.len() as isize;
+            let pt = |i: isize| {
+                if i < 0 {
+                    2.0 * axis[0] - axis[1]
+                } else if i >= n {
+                    2.0 * axis[(n - 1) as usize] - axis[(n - 2) as usize]
+                } else {
+                    axis[i as usize]
+                }
+            };
+            let ctrl = (0..n - 1).flat_map(|i| {
+                let (a, b, c, d) = (pt(i - 1), pt(i), pt(i + 1), pt(i + 2));
+                [b, b + (c - a) / 6.0, c - (d - b) / 6.0, c]
+            });
+            let r = bounds.reach.abs();
+            let mut lb = LowerBound::from_points(ctrl, 1.0, 0.0)?;
+            for k in 0..3 {
+                lb.lo[k] -= r;
+                lb.hi[k] += r;
+            }
+            Some(lb)
+        }
         SdfNode::Union { a, b } => Some(LowerBound::hull(lower_bound(a)?, lower_bound(b)?, 0.0)),
         SdfNode::SmoothUnion { a, b, k } if *k >= 0.0 && k.is_finite() => {
             Some(LowerBound::hull(lower_bound(a)?, lower_bound(b)?, k * 0.25))
@@ -490,6 +519,7 @@ fn node_count(node: &SdfNode) -> usize {
             | SdfNode::WithMaterial { child, .. } => walk(child, acc),
             SdfNode::SectionStack(st) => *acc += st.loops.iter().flatten().map(Vec::len).sum::<usize>() / 8,
             SdfNode::Polygon2D { vertices, .. } => *acc += vertices.len() / 8,
+            SdfNode::Loft { axis, rows, .. } => *acc += 8 + axis.len() + rows.len() / 8,
             _ => {}
         }
     }
