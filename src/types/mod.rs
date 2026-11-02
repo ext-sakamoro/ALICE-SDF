@@ -347,6 +347,26 @@ pub enum SdfNode {
         bounds: crate::primitives::loft::LoftBounds,
     },
 
+    /// Curve sections swept along a spline axis: each section a closed counter-clockwise periodic
+    /// cubic B-spline of `section_points` control points in the frame's plane, on one periodic knot
+    /// vector shared by every row (see
+    /// [`crate::primitives::loft`]). Built by [`SdfNode::loft_curves`], which checks the input and
+    /// computes `bounds`.
+    LoftCurves {
+        /// Axis points (a uniform Catmull-Rom curve passes through them)
+        axis: Vec<Vec3>,
+        /// The direction the section frame's first axis leans toward
+        up: Vec3,
+        /// Control points per section (M)
+        section_points: u32,
+        /// Control rows, `2M` each (`u0, v0, u1, v1, …`), row after row
+        points: Vec<f32>,
+        /// The section knots `K0 … KM` shared by every row (periodic, rising)
+        knots: Vec<f32>,
+        /// The bounds the field is divided by
+        bounds: crate::primitives::loft::LoftBounds,
+    },
+
     /// Ball of a weighted norm — `w₁‖p‖₁ + w₂‖p‖₂ + w∞‖p‖∞ − radius`.
     ///
     /// The three weights choose the shape: `(0, 1, 0)` is a sphere,
@@ -1406,6 +1426,7 @@ impl SdfNode {
             | Self::Segment2D { .. }
             | Self::Polygon2D { .. }
             | Self::Loft { .. }
+            | Self::LoftCurves { .. }
             | Self::RoundedRect2D { .. }
             | Self::Annular2D { .. }
             | Self::Terrain { .. } => SdfCategory::Primitive,

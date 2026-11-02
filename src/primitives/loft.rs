@@ -55,6 +55,12 @@ pub const REFINE_STEPS: u32 = 16;
 pub const BOUND_SAMPLES: u32 = 64;
 /// The most harmonics a section may have
 pub const MAX_HARMONICS: u32 = 64;
+/// The most control points a curve section may have
+pub const MAX_CONTROL_POINTS: u32 = 512;
+/// Curve sections: scan samples per span
+pub const CURVE_SCAN: u32 = 8;
+/// Curve sections: Newton steps after the scan
+pub const CURVE_NEWTON: u32 = 4;
 /// The core value used when a loft has no angular term (no core)
 const NO_CORE: f32 = -3.0e38;
 
@@ -90,15 +96,47 @@ pub struct LoftBounds {
 }
 
 /// The flat block of a loft (the bytecode's aux data and the shaders' module-scope array):
-/// `[n, K, k, up.x, up.y, up.z, H₀, H₁, L_g, L₂, c, L_q0, L_q1, m, R_b, axis (3n), rows (k(2K + 1)), knots (k)]`
-pub const HEAD: usize = 15;
+/// `[n, K or M, k, up.x, up.y, up.z, H₀, H₁, L_g, L₂, c, L_q0, L_q1, m, R_b, mode, axis (3n), rows (k w), knots (k)]`
+/// with mode 0 (polar: `K` harmonics, rows of `w = 2K + 1` coefficients) or 1 (curve: `M` control points,
+/// rows of `w = 2M` coordinates `u₀, v₀, u₁, v₁, …`, then the section knots `K₀ … K_M`)
+pub const HEAD: usize = 16;
+
+/// What a section is: the polar curve of `K` harmonics, or the closed periodic uniform cubic
+/// B-spline of `M` control points
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoftSection {
+    /// `r(θ) = a₀ + Σ (aₖ cos kθ + bₖ sin kθ)`, `K` harmonics
+    Polar(u32),
+    /// a closed counter-clockwise periodic uniform cubic B-spline of `M` control points
+    Curve(u32),
+}
+
+impl LoftSection {
+    fn count(self) -> u32 {
+        match self {
+            Self::Polar(k) | Self::Curve(k) => k,
+        }
+    }
+    fn width(self) -> usize {
+        match self {
+            Self::Polar(k) => 2 * k as usize + 1,
+            Self::Curve(m) => 2 * m as usize,
+        }
+    }
+    fn mode(self) -> f32 {
+        match self {
+            Self::Polar(_) => 0.0,
+            Self::Curve(_) => 1.0,
+        }
+    }
+}
 
 /// The flat block of a loft
-pub fn flatten(axis: &[Vec3], up: Vec3, harmonics: u32, rows: &[f32], caps: [f32; 2], b: &LoftBounds) -> Vec<f32> {
-    let k = rows.len() / (2 * harmonics as usize + 1);
+pub fn flatten(axis: &[Vec3], up: Vec3, section: LoftSection, rows: &[f32], section_knots: &[f32], caps: [f32; 2], b: &LoftBounds) -> Vec<f32> {
+    let k = rows.len() / section.width();
     let mut v = vec![
         axis.len() as f32,
-        harmonics as f32,
+        section.count() as f32,
         k as f32,
         up.x,
         up.y,
@@ -112,10 +150,12 @@ pub fn flatten(axis: &[Vec3], up: Vec3, harmonics: u32, rows: &[f32], caps: [f32
         b.lq[1],
         b.m,
         b.reach,
+        section.mode(),
     ];
     v.extend(axis.iter().flat_map(|a| [a.x, a.y, a.z]));
     v.extend_from_slice(rows);
     v.extend_from_slice(&b.knots);
+    v.extend_from_slice(section_knots);
     v
 }
 
@@ -123,7 +163,12 @@ pub fn flatten(axis: &[Vec3], up: Vec3, harmonics: u32, rows: &[f32], caps: [f32
 /// run the same arithmetic
 struct Loft<'a> {
     n: usize,
+    /// 0 polar, 1 curve
+    curve: bool,
+    /// harmonics (polar) or control points (curve)
     kh: usize,
+    /// row width
+    w: usize,
     kr: usize,
     up: Vec3,
     caps: [f32; 2],
@@ -136,6 +181,8 @@ struct Loft<'a> {
     axis: &'a [f32],
     rows: &'a [f32],
     knots: &'a [f32],
+    /// section knots `K₀ … K_M` (curve mode)
+    sknots: &'a [f32],
 }
 
 impl<'a> Loft<'a> {
@@ -143,9 +190,13 @@ impl<'a> Loft<'a> {
         let n = f[0] as usize;
         let kh = f[1] as usize;
         let kr = f[2] as usize;
+        let curve = f[15] != 0.0;
+        let w = if curve { 2 * kh } else { 2 * kh + 1 };
         Self {
             n,
+            curve,
             kh,
+            w,
             kr,
             up: Vec3::new(f[3], f[4], f[5]),
             caps: [f[6], f[7]],
@@ -156,8 +207,9 @@ impl<'a> Loft<'a> {
             m: f[13],
             reach: f[14],
             axis: &f[HEAD..HEAD + 3 * n],
-            rows: &f[HEAD + 3 * n..HEAD + 3 * n + kr * (2 * kh + 1)],
-            knots: &f[HEAD + 3 * n + kr * (2 * kh + 1)..HEAD + 3 * n + kr * (2 * kh + 1) + kr],
+            rows: &f[HEAD + 3 * n..HEAD + 3 * n + kr * w],
+            knots: &f[HEAD + 3 * n + kr * w..HEAD + 3 * n + kr * w + kr],
+            sknots: if curve { &f[HEAD + 3 * n + kr * w + kr..HEAD + 3 * n + kr * w + kr + kh + 1] } else { &[] },
         }
     }
 
@@ -246,7 +298,7 @@ impl<'a> Loft<'a> {
         } else if i >= kr {
             2.0 * self.row_radius(kr - 1, c1, s1) - self.row_radius(kr - 2, c1, s1)
         } else {
-            let w = 2 * self.kh + 1;
+            let w = self.w;
             let row = &self.rows[i as usize * w..(i as usize + 1) * w];
             polar_radius(row, c1, s1)
         }
@@ -286,6 +338,164 @@ impl<'a> Loft<'a> {
             + b3 * self.row_radius(i + 2, c1, s1)
     }
 
+    /// Control point `j` (periodic) of row `i`, reflected rows past the ends
+    #[inline]
+    fn row_point(&self, i: isize, j: usize) -> Vec2 {
+        let kr = self.kr as isize;
+        let at = |r: usize| Vec2::new(self.rows[r * self.w + 2 * j], self.rows[r * self.w + 2 * j + 1]);
+        if i < 0 {
+            2.0 * at(0) - at(1)
+        } else if i >= kr {
+            2.0 * at(self.kr - 1) - at(self.kr - 2)
+        } else {
+            at(i as usize)
+        }
+    }
+
+    /// The B-spline weights along the axis at `s`: (first row, b₀ … b₃)
+    #[inline]
+    fn row_weights(&self, s: f32) -> (isize, [f32; 4]) {
+        let (i, t) = self.span(s);
+        let t2 = t * t;
+        let t3 = t2 * t;
+        let u = 1.0 - t;
+        (
+            i as isize - 1,
+            [u * u * u / 6.0, (3.0 * t3 - 6.0 * t2 + 4.0) / 6.0, (-3.0 * t3 + 3.0 * t2 + 3.0 * t + 1.0) / 6.0, t3 / 6.0],
+        )
+    }
+
+    /// The section's control point `j` (any integer, periodic) at the weights
+    #[inline]
+    fn section_point(&self, i0: isize, b: &[f32; 4], j: isize) -> Vec2 {
+        let jj = j.rem_euclid(self.kh as isize) as usize;
+        b[0] * self.row_point(i0, jj) + b[1] * self.row_point(i0 + 1, jj) + b[2] * self.row_point(i0 + 2, jj) + b[3] * self.row_point(i0 + 3, jj)
+    }
+
+    /// The section knot `i` (any integer): the periodic extension of `K₀ … K_M`
+    #[inline]
+    fn sknot(&self, i: isize) -> f32 {
+        let m = self.kh as isize;
+        let period = self.sknots[self.kh] - self.sknots[0];
+        let r = i.rem_euclid(m);
+        let wraps = (i - r) / m;
+        self.sknots[r as usize] + wraps as f32 * period
+    }
+
+    /// The section curve on span `j` (`K_j ≤ t ≤ K_{j+1}`) by de Boor's algorithm with the span's
+    /// control points `P_{j−1} … P_{j+2}` and knots `K_{j−2} … K_{j+3}`: point, first and second
+    /// derivative (the derivative curves' control points `3ΔP/ΔK` and `2ΔQ/ΔK`)
+    #[inline]
+    fn curve_on_span(&self, i0: isize, b: &[f32; 4], j: isize, t: f32) -> (Vec2, Vec2, Vec2) {
+        let mut d = [Vec2::ZERO; 4];
+        for (k, dk) in d.iter_mut().enumerate() {
+            *dk = self.section_point(i0, b, j - 1 + k as isize);
+        }
+        let mut u = [0.0f32; 6];
+        for (k, uk) in u.iter_mut().enumerate() {
+            *uk = self.sknot(j - 2 + k as isize);
+        }
+        // first derivative control points (degree 2) and second (degree 1)
+        let mut q = [Vec2::ZERO; 3];
+        for k in 0..3 {
+            q[k] = (d[k + 1] - d[k]) * (3.0 / (u[k + 3] - u[k]));
+        }
+        let r0 = (q[1] - q[0]) * (2.0 / (u[3] - u[1]));
+        let r1 = (q[2] - q[1]) * (2.0 / (u[4] - u[2]));
+        // de Boor, degree 3
+        let mut p = d;
+        for r in 1..=3usize {
+            for i in (r..=3).rev() {
+                let a = (t - u[i - 1]) / (u[i + 3 - r] - u[i - 1]);
+                p[i] = p[i - 1] * (1.0 - a) + p[i] * a;
+            }
+        }
+        // degree 2
+        for r in 1..=2usize {
+            for i in (r..=2).rev() {
+                let a = (t - u[i]) / (u[i + 3 - r] - u[i]);
+                q[i] = q[i - 1] * (1.0 - a) + q[i] * a;
+            }
+        }
+        let a = (t - u[2]) / (u[3] - u[2]);
+        (p[3], q[2], r0 * (1.0 - a) + r1 * a)
+    }
+
+    /// The signed distance in the section plane at `s` from `q` to the section curve (negative
+    /// inside). Per span, a lower bound of the distance (the circle around the span's four control
+    /// points, which hold the span) is compared with the best so far, and only a span that may come
+    /// closer is scanned at [`CURVE_SCAN`] even steps: the best sample is the one a full scan finds.
+    /// Then [`CURVE_NEWTON`] Newton steps on `(c − q)·c' = 0`, kept within the span and one scan step
+    /// of the best sample; the closer of the two is kept. The sign from the side of the tangent
+    /// there (counter-clockwise: inside on the left).
+    fn curve_distance(&self, s: f32, q: Vec2) -> f32 {
+        let (i0, b) = self.row_weights(s);
+        let m = self.kh as isize;
+        let (mut bj, mut bt, mut be) = (0isize, self.sknot(0), f32::INFINITY);
+        for j in 0..m {
+            let (p0, p1, p2, p3) = (
+                self.section_point(i0, &b, j - 1),
+                self.section_point(i0, &b, j),
+                self.section_point(i0, &b, j + 1),
+                self.section_point(i0, &b, j + 2),
+            );
+            let c = (p0 + p1 + p2 + p3) * 0.25;
+            let rad = (p0 - c).length().law_max((p1 - c).length()).law_max((p2 - c).length()).law_max((p3 - c).length());
+            let lb = (q - c).length() - rad;
+            if lb > 0.0 && lb * lb >= be {
+                continue;
+            }
+            let (k0, k1) = (self.sknot(j), self.sknot(j + 1));
+            for k in 0..CURVE_SCAN {
+                let t = k0 + (k1 - k0) * (k as f32 / CURVE_SCAN as f32);
+                let e = (self.curve_on_span(i0, &b, j, t).0 - q).length_squared();
+                if e < be {
+                    be = e;
+                    bt = t;
+                    bj = j;
+                }
+            }
+        }
+        let (k0, k1) = (self.sknot(bj), self.sknot(bj + 1));
+        // one scan step either side, into the neighbouring span when the best sample is a span's end
+        let (lo, hi) = (bt - (k1 - k0) / CURVE_SCAN as f32, bt + (k1 - k0) / CURVE_SCAN as f32);
+        let lo = lo.law_max(self.sknot(bj - 1));
+        let hi = hi.law_min(self.sknot(bj + 2));
+        let on = |t: f32| -> isize {
+            if t < k0 {
+                bj - 1
+            } else if t > k1 {
+                bj + 1
+            } else {
+                bj
+            }
+        };
+        let mut t = bt;
+        for _ in 0..CURVE_NEWTON {
+            let (c, d, dd) = self.curve_on_span(i0, &b, on(t), t);
+            let r = c - q;
+            let g = r.dot(d);
+            let gp = d.dot(d) + r.dot(dd);
+            if gp > 0.0 {
+                t = (t - g / gp).law_max(lo).law_min(hi);
+            }
+        }
+        let (c, d, _) = self.curve_on_span(i0, &b, on(t), t);
+        let (mut cc, mut dc) = (c, d);
+        if (c - q).length_squared() > be {
+            let (c0, d0, _) = self.curve_on_span(i0, &b, bj, bt);
+            cc = c0;
+            dc = d0;
+        }
+        let r = q - cc;
+        let dist = r.length();
+        if dc.x * r.y - dc.y * r.x > 0.0 {
+            -dist
+        } else {
+            dist
+        }
+    }
+
     /// The dome at end `e` (0 at `s = 0`, 1 at `s = n − 1`): its field cut by the end's half-space
     fn dome(&self, p: Vec3, e: usize) -> f32 {
         let s = if e == 0 { 0.0 } else { (self.n - 1) as f32 };
@@ -313,8 +523,12 @@ impl<'a> Loft<'a> {
         let (u, v) = (r.dot(nn), r.dot(bb));
         let rho = (u * u + v * v).sqrt();
         let (c1, s1) = if rho > 0.0 { (u / rho, v / rho) } else { (1.0, 0.0) };
-        let g = (rho - self.radius(s, c1, s1)).law_max(self.core);
-        let d2 = g / self.l2;
+        let d2 = if self.curve {
+            self.curve_distance(s, Vec2::new(u, v))
+        } else {
+            let g = (rho - self.radius(s, c1, s1)).law_max(self.core);
+            g / self.l2
+        };
         let (c0, d0) = self.axis_at(0.0);
         let (ce, de) = self.axis_at((self.n - 1) as f32);
         let dw = (c0 - p).dot(d0.normalize()).law_max((p - ce).dot(de.normalize()));
@@ -365,14 +579,13 @@ pub fn sdf_loft_flat(p: Vec3, flat: &[f32]) -> f32 {
 
 /// The tree's loft distance
 #[allow(clippy::too_many_arguments)]
-pub fn sdf_loft(p: Vec3, axis: &[Vec3], up: Vec3, harmonics: u32, rows: &[f32], caps: [f32; 2], b: &LoftBounds) -> f32 {
-    sdf_loft_flat(p, &flatten(axis, up, harmonics, rows, caps, b))
+pub fn sdf_loft(p: Vec3, axis: &[Vec3], up: Vec3, section: LoftSection, rows: &[f32], section_knots: &[f32], caps: [f32; 2], b: &LoftBounds) -> f32 {
+    sdf_loft_flat(p, &flatten(axis, up, section, rows, section_knots, caps, b))
 }
 
 /// A box holding the loft's surface, from the flat block: each axis segment is the cubic Bézier
 /// `b, b + (c − a)/6, c − (d − b)/6, c`, inside the hull of those four points; the box of the axis's
-/// Bézier points, grown by a radius bound (|a₀| + Σ(|aₖ| + |bₖ|) over the rows, times 3 for the
-/// reflected rows) plus the larger dome height
+/// Bézier points grown by `R_b`
 pub fn aabb_flat(flat: &[f32]) -> (Vec3, Vec3) {
     let d = Loft::from_flat(flat);
     let n = d.n as isize;
@@ -385,14 +598,8 @@ pub fn aabb_flat(flat: &[f32]) -> (Vec3, Vec3) {
             mx = mx.law_max(q);
         }
     }
-    let w = 2 * d.kh + 1;
-    let bound = |row: &[f32]| row.iter().map(|x| x.abs()).fold(0.0f32, |a, b| a + b);
-    let mut r = 0.0f32;
-    for i in 0..d.kr {
-        r = r.law_max(bound(&d.rows[i * w..(i + 1) * w]));
-    }
-    // a reflected row 2c₀ − c₁ is bounded by 3 times the largest row
-    let r = 3.0 * r + d.caps[0].law_max(d.caps[1]);
+    // R_b holds every section and dome around the axis (the B-spline weights along the axis are convex)
+    let r = d.reach;
     (mn - Vec3::splat(r), mx + Vec3::splat(r))
 }
 
@@ -475,9 +682,87 @@ pub fn validate(axis: &[Vec3], up: Vec3, harmonics: u32, rows: &[Vec<f32>], caps
         .map(|pair| pair[0].iter().zip(&pair[1]).map(|(a, b)| (a - b).abs()).fold(0.0f32, |x, y| x + y))
         .collect();
     let flat_rows: Vec<f32> = rows.iter().flatten().copied().collect();
-    let kr = rows.len();
+    let (l2, core) = if dmax == 0.0 {
+        (1.0, NO_CORE)
+    } else {
+        let rho0 = 0.5 * rmin;
+        ((1.0 + (dmax / rho0) * (dmax / rho0)).sqrt(), rho0 - rmin)
+    };
+    let mut lq = [1.0f32; 2];
+    for e in 0..2 {
+        if caps[e] > 0.0 {
+            let (lo, d) = end[e];
+            let sec = (1.0 / (lo * lo) + d * d / (lo * lo * lo * lo)).sqrt();
+            lq[e] = sec.law_max(1.0 / caps[e]);
+        }
+    }
+    let reach = rmax.law_max(caps[0]).law_max(caps[1]);
+    let b = finish(axis, up, LoftSection::Polar(harmonics), &flat_rows, caps, &steps, rmax, (l2, core, lq, reach))?;
+    Ok((flat_rows, b))
+}
+
+/// Checks a curve-section loft's input and computes its bounds
+pub fn validate_curves(axis: &[Vec3], up: Vec3, section_knots: &[f32], rows: &[Vec<Vec2>]) -> Result<(Vec<f32>, LoftBounds), LoftError> {
+    let err = |s: String| Err(LoftError(s));
+    if axis.len() < 2 {
+        return err(format!("the axis needs 2 points or more, it has {}", axis.len()));
+    }
+    if !axis.iter().all(|a| a.is_finite()) || !up.is_finite() || rows.iter().flatten().any(|v| !v.is_finite()) {
+        return err("the axis, up and control points must be finite".into());
+    }
+    if rows.len() < 2 {
+        return err("2 rows or more".into());
+    }
+    let m = rows[0].len();
+    if m < 4 || m > MAX_CONTROL_POINTS as usize || rows.iter().any(|r| r.len() != m) {
+        return err(format!("every row needs the same number of control points, 4 to {MAX_CONTROL_POINTS}"));
+    }
+    for pair in axis.windows(2) {
+        if (pair[1] - pair[0]).length_squared() == 0.0 {
+            return err("two consecutive axis points coincide".into());
+        }
+    }
+    if section_knots.len() != m + 1 || !section_knots.iter().all(|k| k.is_finite()) || section_knots.windows(2).any(|w| w[1] <= w[0]) {
+        return err(format!("the section knots must be M + 1 = {} finite values rising strictly", m + 1));
+    }
+    for row in rows {
+        // twice the signed area of the control polygon
+        let area: f32 = (0..m).map(|j| row[j].perp_dot(row[(j + 1) % m])).sum();
+        if area <= 0.0 {
+            return err("every section must run counter-clockwise (positive area)".into());
+        }
+    }
+    // the B-spline weights are convex (along the section and along the axis), so every section point
+    // lies within the largest control point length, and the section moves along the axis at most at
+    // the largest control point step
+    let rmax = rows.iter().flatten().map(|p| p.length()).fold(0.0f32, f32::law_max);
+    let steps: Vec<f32> = rows
+        .windows(2)
+        .map(|pair| pair[0].iter().zip(&pair[1]).map(|(a, b)| (*a - *b).length()).fold(0.0f32, f32::law_max))
+        .collect();
+    let flat_rows: Vec<f32> = rows.iter().flatten().flat_map(|p| [p.x, p.y]).collect();
+    let b = finish(axis, up, LoftSection::Curve(m as u32), &flat_rows, [0.0, 0.0], &steps, rmax, (1.0, NO_CORE, [1.0, 1.0], rmax))?;
+    Ok((flat_rows, b))
+}
+
+/// The axis part of the bounds, common to both section kinds: the curvature check, the per-span
+/// local bounds, the knots, the clamp
+#[allow(clippy::too_many_arguments)]
+fn finish(
+    axis: &[Vec3],
+    up: Vec3,
+    section: LoftSection,
+    flat_rows: &[f32],
+    caps: [f32; 2],
+    steps: &[f32],
+    rmax: f32,
+    (l2, core, lq, reach): (f32, f32, [f32; 2], f32),
+) -> Result<LoftBounds, LoftError> {
+    let err = |s: String| Err(LoftError(s));
+    let kr = flat_rows.len() / section.width();
     let provisional = LoftBounds { l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, knots: vec![1.0; kr], reach: 0.0 };
-    let block = flatten(axis, up, harmonics, &flat_rows, caps, &provisional);
+    let sk: Vec<f32> = (0..=section.count()).map(|i| i as f32).collect();
+    let block = flatten(axis, up, section, flat_rows, if matches!(section, LoftSection::Curve(_)) { &sk } else { &[] }, caps, &provisional);
     let data = Loft::from_flat(&block);
     let last = (axis.len() - 1) as f32;
     let per = BOUND_SAMPLES as usize * (axis.len() - 1);
@@ -557,31 +842,87 @@ pub fn validate(axis: &[Vec3], up: Vec3, harmonics: u32, rows: &[Vec<f32>], caps
         let kmin_l = knots.iter().copied().fold(f32::INFINITY, f32::law_min);
         let lg = (1.0 + DELTA) * kmax;
         let dlds = knots.windows(2).map(|p| (p[1] - p[0]).abs()).fold(0.0f32, f32::law_max) * w_per_s;
-        // |∇s| ≤ 1/(slow (1 − κρ)) ≤ 2/slow while ρ ≤ 1/(2κ); a point with |F| ≤ B has ρ ≤ R + L₂ B
-        let grad_s = 2.0 / slow;
-        let l2_here = if dmax == 0.0 { 1.0 } else { (1.0 + (dmax / (0.5 * rmin)) * (dmax / (0.5 * rmin))).sqrt() };
-        let band_curv = if kappa > 0.0 { (0.5 / kappa - rmax) / l2_here } else { f32::INFINITY };
+        // |∇s| ≤ 1/(slow (1 − κρ)); within ρ ≤ ρ* = R + (1/κ − R)/2 (half way from the widest section
+        // to the axis's centre of curvature, which `1.1 κR < 1` keeps beyond R) that is at most
+        // 2/(slow (1 − κR)); a point with |F| ≤ B has ρ ≤ R + L₂ B, so B ≤ (1/κ − R)/(2 L₂) keeps it there
+        let grad_s = 2.0 / (slow * (1.0 - kappa * rmax));
+        let l2_here = l2;
+        let band_curv = if kappa > 0.0 { (1.0 / kappa - rmax) / (2.0 * l2_here) } else { f32::INFINITY };
         let band = (EPS * kmin_l * kmin_l / ((1.0 + EPS) * dlds * grad_s)).law_min(band_curv);
         let kappa_min = (1.0 / kmax) * (1.0 - 1.0 / (1.0 + DELTA));
-        (lg, kappa_min * band, knots)
+        // the band is positive by construction (κR < 1/1.1, dL/ds finite); a zero margin would only
+        // switch the correction off (f = F/L_g, still 1-Lipschitz), a negative one is a defect
+        let m = kappa_min * band;
+        if !(m >= 0.0) {
+            return err(format!("internal: the local bound's margin came out {m} (band {band}, κ {kappa}, R {rmax})"));
+        }
+        (lg, m, knots)
     };
-    let (l2, core) = if dmax == 0.0 {
-        (1.0, NO_CORE)
-    } else {
-        let rho0 = 0.5 * rmin;
-        ((1.0 + (dmax / rho0) * (dmax / rho0)).sqrt(), rho0 - rmin)
-    };
-    let mut lq = [1.0f32; 2];
-    for e in 0..2 {
-        if caps[e] > 0.0 {
-            let (lo, d) = end[e];
-            if lo <= 0.0 {
-                return err("a capped end's section must keep a positive radius".into());
-            }
-            let sec = (1.0 / (lo * lo) + d * d / (lo * lo * lo * lo)).sqrt();
-            lq[e] = sec.law_max(1.0 / caps[e]);
+    Ok(LoftBounds { l, l2, core, lq, m, knots, reach })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The section curve's first and second derivatives (de Boor on the derivative control points)
+    /// against central differences of the curve itself, on non-uniform knots
+    #[test]
+    fn curve_derivatives_match_differences() {
+        for m in [12usize, 300] {
+            check_curve(m);
         }
     }
-    let reach = rmax.law_max(caps[0]).law_max(caps[1]);
-    Ok((flat_rows, LoftBounds { l, l2, core, lq, m, knots, reach }))
+
+    fn check_curve(m: usize) {
+        let row: Vec<Vec2> = (0..m)
+            .map(|k| {
+                let a = std::f32::consts::TAU * k as f32 / m as f32;
+                Vec2::new(0.3 * alice_det_math::cos(a), 0.2 * alice_det_math::sin(a))
+            })
+            .collect();
+        let sk: Vec<f32> = (0..=m).map(|j| j as f32 + if j % 3 == 1 { 0.3 } else { 0.0 }).collect();
+        let (pts, b) = validate_curves(&[Vec3::ZERO, Vec3::Y], Vec3::X, &sk, &[row.clone(), row]).expect("valid");
+        let block = flatten(&[Vec3::ZERO, Vec3::Y], Vec3::X, LoftSection::Curve(m as u32), &pts, &sk, [0.0, 0.0], &b);
+        let d = Loft::from_flat(&block);
+        let (i0, w) = d.row_weights(0.5);
+        let mut worst = (0.0f32, 0.0f32);
+        for j in 0..m as isize {
+            let (k0, k1) = (d.sknot(j), d.sknot(j + 1));
+            for k in 1..8 {
+                let t = k0 + (k1 - k0) * k as f32 / 8.0;
+                let h = 1e-3 * (k1 - k0);
+                let (_, d1, d2) = d.curve_on_span(i0, &w, j, t);
+                let (a, ..) = d.curve_on_span(i0, &w, j, t - h);
+                let (c, ..) = d.curve_on_span(i0, &w, j, t);
+                let (e, ..) = d.curve_on_span(i0, &w, j, t + h);
+                worst.0 = worst.0.max((d1 - (e - a) / (2.0 * h)).length());
+                worst.1 = worst.1.max((d2 - (e - 2.0 * c + a) / (h * h)).length());
+            }
+        }
+        assert!(worst.0 < 1e-3, "first derivative error {worst:?}");
+        // the distance against a brute-force search of the same curve
+        let mut st: u64 = 3;
+        let mut rnd = || {
+            st = st.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            ((st >> 40) as f32) / ((1u64 << 24) as f32)
+        };
+        let mut wd = (0.0f32, Vec2::ZERO, 0.0f32, 0.0f32);
+        for _ in 0..400 {
+            let q = Vec2::new(rnd() * 0.8 - 0.4, rnd() * 0.6 - 0.3);
+            let mut best = f32::INFINITY;
+            for j in 0..m as isize {
+                let (k0, k1) = (d.sknot(j), d.sknot(j + 1));
+                for k in 0..(24000 / m) {
+                    let t = k0 + (k1 - k0) * k as f32 / (24000 / m) as f32;
+                    best = best.min((d.curve_on_span(i0, &w, j, t).0 - q).length());
+                }
+            }
+            let got = d.curve_distance(0.5, q).abs();
+            if (got - best).abs() > wd.0 {
+                wd = ((got - best).abs(), q, got, best);
+            }
+        }
+        assert!(wd.0 < 2e-5, "M {m}: distance error {wd:?}");
+    }
 }

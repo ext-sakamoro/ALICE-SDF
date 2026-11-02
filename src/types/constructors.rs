@@ -363,6 +363,37 @@ impl SdfNode {
         Ok(Self::Loft { axis, up, harmonics, rows, caps, bounds })
     }
 
+    /// Curve sections swept along a spline axis, both ends flat: each row is the control points of
+    /// a closed counter-clockwise periodic uniform cubic B-spline in the frame's plane (see
+    /// [`crate::primitives::loft`]).
+    ///
+    /// # Errors
+    /// Fewer than 2 axis points or 2 rows, rows of different lengths or fewer than 4 (more than
+    /// [`crate::primitives::loft::MAX_CONTROL_POINTS`]) control points, a clockwise section, a
+    /// non-finite value, `up` parallel to the axis, or sections wider than the axis's radius of
+    /// curvature
+    pub fn loft_curves(axis: Vec<Vec3>, up: Vec3, rows: Vec<Vec<glam::Vec2>>) -> Result<Self, crate::primitives::loft::LoftError> {
+        let m = rows.first().map_or(0, Vec::len);
+        Self::loft_curves_knots(axis, up, (0..=m).map(|i| i as f32).collect(), rows)
+    }
+
+    /// As [`SdfNode::loft_curves`], on a non-uniform periodic knot vector `K0 … KM` (strictly rising,
+    /// `M + 1` values, shared by every row): span `j` runs from `Kj` to `K(j+1)`, the knots repeat
+    /// with period `KM − K0`.
+    ///
+    /// # Errors
+    /// As [`SdfNode::loft_curves`], and knots that are not `M + 1` finite strictly rising values
+    pub fn loft_curves_knots(
+        axis: Vec<Vec3>,
+        up: Vec3,
+        knots: Vec<f32>,
+        rows: Vec<Vec<glam::Vec2>>,
+    ) -> Result<Self, crate::primitives::loft::LoftError> {
+        let section_points = rows.first().map_or(0, Vec::len) as u32;
+        let (points, bounds) = crate::primitives::loft::validate_curves(&axis, up, &knots, &rows)?;
+        Ok(Self::LoftCurves { axis, up, section_points, points, knots, bounds })
+    }
+
     /// Create the ball of a weighted norm.
     ///
     /// `(0, 1, 0)` gives a sphere, `(0, 0, 1)` a cube, `(1, 0, 0)` an
