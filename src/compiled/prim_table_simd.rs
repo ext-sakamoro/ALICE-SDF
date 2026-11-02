@@ -1433,6 +1433,18 @@ impl PrimTable for f32x8 {
         out
     }
     #[inline(always)]
+    fn loft(
+        inst: &Instruction,
+        aux_data: &[f32],
+        p: Vec3R<Self>,
+        scale_correction: Self,
+    ) -> Self {
+        let p: Vec3x8 = p.into();
+        let off = inst.aux_offset as usize;
+        let flat = &aux_data[off..off + inst.aux_len as usize];
+        eval_per_lane(&p, |q| crate::primitives::loft::sdf_loft_flat(q, flat)) * scale_correction
+    }
+    #[inline(always)]
     fn polygon_2d(
         inst: &Instruction,
         aux_data: &[f32],
