@@ -248,9 +248,12 @@ mod tests {
     }
 
     // oracle (closed form): a constant stack of one circle is the circle extruded over [y₁, y_{n−2}] = [1, 3]
-    // and capped there: near the wall (|f| ≤ r₀ L, the unclamped field) the field times its bound is
-    // |q| − r up to the curve's own approximation of the circle (< 2e-3 r for m = 32); the sign is the capped
-    // extrusion's everywhere (on the end planes inside the circle the capped distance is 0)
+    // and capped there. Near the wall (|q| − r within r₀ L, the unclamped field) the in-plane field is
+    // a = (|q| − r) / L, and the output is the capped extrusion of it in eval's units,
+    // min(max(a, dw), 0) + |(max(a, 0), max(dw, 0))| with dw the distance past the end planes, up to the
+    // curve's own approximation of the circle (< 2e-3 r for m = 32, so 4e-3 / L); compared at heights
+    // inside, on the end planes and past the caps. The sign is the capped extrusion's everywhere (on the
+    // end planes inside the circle the capped distance is 0)
     #[test]
     fn a_constant_stack_is_the_extruded_circle() {
         let lp = circle(1.0, Vec2::ZERO, 32);
@@ -262,9 +265,11 @@ mod tests {
                 let dw = (1.0 - y).max(y - 3.0);
                 let want = dc.max(dw).min(0.0) + Vec2::new(dc.max(0.0), dw.max(0.0)).length();
                 let l = st.knots()[1] * (1.0 + 0.2);
-                if dw < -0.5 && dc.abs() < 0.5 * l {
-                    let got = st.eval(Vec3::new(x, y, z)) * l;
-                    assert!((got - dc).abs() < 4e-3, "({x}, {y}, {z}): got {got} want {dc}");
+                if dc.abs() < 0.5 * l {
+                    let a = dc / l;
+                    let capped = a.max(dw).min(0.0) + Vec2::new(a.max(0.0), dw.max(0.0)).length();
+                    let got = st.eval(Vec3::new(x, y, z));
+                    assert!((got - capped).abs() < 4e-3 / l, "({x}, {y}, {z}): got {got} want {capped}");
                     n += 1;
                 }
                 if want.abs() > 1e-2 {
@@ -272,7 +277,8 @@ mod tests {
                 }
             }
         }
-        assert!(n >= 6, "only {n} near-wall values compared");
+        println!("near-wall values compared: {n}");
+        assert!(n >= 36, "only {n} near-wall values compared");
     }
 
     // oracle (property): the output is 1-Lipschitz near and far, on a stack where one loop splits into two
