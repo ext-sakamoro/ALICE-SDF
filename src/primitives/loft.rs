@@ -554,7 +554,9 @@ impl<'a> Loft<'a> {
         self.sknots[r as usize] + wraps as f32 * period
     }
 
-    /// The section curve on span `j` at the weights (see [`closed_curve_on_span`])
+    /// The section curve on span `j` at the weights (see [`closed_curve_on_span`]); the oracles of
+    /// this module read the derivatives through it, the field calls the crate function directly
+    #[cfg(test)]
     #[inline]
     fn curve_on_span(&self, i0: isize, b: &[f32; 4], j: isize, t: f32) -> (Vec2, Vec2, Vec2) {
         closed_curve_on_span(&|x| self.section_point(i0, b, x), &|x| self.sknot(x), j, t)

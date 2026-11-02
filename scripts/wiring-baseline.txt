@@ -9,7 +9,6 @@ dead_code src/volume/export.rs 1
 unwired src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED
 unwired src/ffi/registry.rs::clear_all
 unwired src/ffi/registry.rs::compiled_count
-unwired src/ffi/registry.rs::node_count
 unwired src/ffi/types.rs::EvalStats
 unwired src/ffi/types.rs::ShaderType
 unwired src/ffi/types.rs::SoaBatchConfig
