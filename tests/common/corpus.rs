@@ -38,6 +38,30 @@ pub fn square_verts() -> Vec<Vec2> {
 }
 
 /// Every compilable SdfNode variant with non-trivial parameters.
+/// A curve-section loft on a curved axis: a C shape (not star-shaped, its hollow outside) whose
+/// arcs thin and turn from row to row
+pub fn loft_curves_c() -> SdfNode {
+    let c = |ro: f32, ri: f32, turn: f32| -> Vec<Vec2> {
+        let mut v = Vec::new();
+        let n = 7;
+        for k in 0..=n {
+            let t = (50.0 + 260.0 * k as f32 / n as f32 + turn).to_radians();
+            v.push(Vec2::new(ro * t.cos(), ro * t.sin()));
+        }
+        for k in 0..=n {
+            let t = (310.0 - 260.0 * k as f32 / n as f32 + turn).to_radians();
+            v.push(Vec2::new(ri * t.cos(), ri * t.sin()));
+        }
+        v
+    };
+    SdfNode::loft_curves(
+        vec![Vec3::new(0.0, -0.6, 0.0), Vec3::new(0.1, 0.0, 0.05), Vec3::new(0.0, 0.6, 0.0)],
+        Vec3::X,
+        vec![c(0.4, 0.22, 0.0), c(0.36, 0.2, 10.0), c(0.32, 0.18, 20.0)],
+    )
+    .expect("corpus curve loft")
+}
+
 pub fn corpus() -> Vec<(&'static str, SdfNode)> {
     let a = sphere();
     let b = SdfNode::sphere(0.5).translate(0.8, 0.0, 0.0);
@@ -182,6 +206,7 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
             )
             .expect("corpus loft"),
         ),
+        ("loft_curves", loft_curves_c()),
         ("annular_2d", SdfNode::annular_2d(0.6, 0.1, 0.5)),
         // --- binary operations ---
         ("union", a.clone().union(b.clone())),
