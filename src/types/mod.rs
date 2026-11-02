@@ -766,6 +766,10 @@ pub enum SdfNode {
         /// Half-depth of extrusion along Z
         half_height: f32,
     },
+    /// Closed spline sections stacked along local Y, any number of loops per level, the levels' 2D
+    /// distances interpolated C1 along Y (see [`crate::primitives::SmoothSectionStack`]); divided by its
+    /// local Lipschitz bound, so 1-Lipschitz
+    SmoothSectionStack(crate::primitives::SmoothSectionStack),
     /// 2D Polygon (convex, up to 8 vertices) extruded along Z
     Polygon2D {
         /// Vertices (up to 8)
@@ -1429,7 +1433,8 @@ impl SdfNode {
             | Self::LoftCurves { .. }
             | Self::RoundedRect2D { .. }
             | Self::Annular2D { .. }
-            | Self::Terrain { .. } => SdfCategory::Primitive,
+            | Self::Terrain { .. }
+            | Self::SmoothSectionStack(_) => SdfCategory::Primitive,
 
             // === Operations ===
             Self::Union { .. }
