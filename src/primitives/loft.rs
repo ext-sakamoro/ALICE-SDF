@@ -89,17 +89,97 @@ pub struct LoftBounds {
     pub lq: [f32; 2],
     /// The clamp `m` of the local correction (0: the bound is the same on every span)
     pub m: f32,
+    /// The local correction fades out between these distances from the axis curve (∞: no fade)
+    pub fade: [f32; 2],
     /// The local bound `L(s)` at the B-spline knots (one per row), linear between them
     pub knots: Vec<f32>,
     /// A radius holding the whole surface around the axis curve (the largest radius and dome height)
     pub reach: f32,
+    /// The far bound's pieces, [`PIECE_FLOATS`] each: the piece frame `T, N, B` and the offsets of its
+    /// [`PIECE_PLANES`] planes (see [`far_bound`])
+    pub pieces: Vec<f32>,
+}
+
+/// Far bound: pieces per axis segment
+pub const PIECES_PER_SEGMENT: usize = 8;
+/// Far bound: planes per piece (16 in the piece's section plane, 16 tilted 45° toward +T, 16 toward
+/// −T, then +T and −T)
+pub const PIECE_PLANES: usize = 50;
+/// Far bound: floats per piece (frame 9 + offsets)
+pub const PIECE_FLOATS: usize = 9 + PIECE_PLANES;
+/// cos and sin of 2πj/16
+const DIR16: [(f32, f32); 16] = [
+    (1.0, 0.0),
+    (0.923_879_5, 0.382_683_43),
+    (0.707_106_77, 0.707_106_77),
+    (0.382_683_43, 0.923_879_5),
+    (0.0, 1.0),
+    (-0.382_683_43, 0.923_879_5),
+    (-0.707_106_77, 0.707_106_77),
+    (-0.923_879_5, 0.382_683_43),
+    (-1.0, 0.0),
+    (-0.923_879_5, -0.382_683_43),
+    (-0.707_106_77, -0.707_106_77),
+    (-0.382_683_43, -0.923_879_5),
+    (0.0, -1.0),
+    (0.382_683_43, -0.923_879_5),
+    (0.707_106_77, -0.707_106_77),
+    (0.923_879_5, -0.382_683_43),
+];
+/// 1/√2
+const INV_SQRT2: f32 = 0.707_106_77;
+
+/// Plane `k`'s unit normal in a piece frame
+#[inline]
+fn plane_normal(k: usize, t: Vec3, n: Vec3, b: Vec3) -> Vec3 {
+    match k {
+        48 => t,
+        49 => -t,
+        _ => {
+            let (c, s) = DIR16[k % 16];
+            let d = n * c + b * s;
+            match k / 16 {
+                0 => d,
+                1 => (d + t) * INV_SQRT2,
+                _ => (d - t) * INV_SQRT2,
+            }
+        }
+    }
+}
+
+/// The far bound over the pieces of a flat block: min over pieces of max over each piece's planes of
+/// `n·p − h`. Each piece's planes hold that piece's part of the surface, so the max is ≤ the distance to
+/// that part and 1-Lipschitz; the min over pieces is ≤ the distance to the surface and 1-Lipschitz.
+/// A piece is skipped when a subset of its planes (in-plane 0, 4, 8, 12 and ±T, itself a lower bound
+/// of its max) already reaches the least so far: the min is the full one.
+pub fn far_bound(p: Vec3, pieces: &[f32]) -> f32 {
+    let mut best = f32::INFINITY;
+    for pc in pieces.chunks_exact(PIECE_FLOATS) {
+        let t = Vec3::new(pc[0], pc[1], pc[2]);
+        let n = Vec3::new(pc[3], pc[4], pc[5]);
+        let b = Vec3::new(pc[6], pc[7], pc[8]);
+        let h = &pc[9..];
+        let mut lb = f32::NEG_INFINITY;
+        for k in [0usize, 4, 8, 12, 48, 49] {
+            lb = lb.law_max(plane_normal(k, t, n, b).dot(p) - h[k]);
+        }
+        if lb >= best {
+            continue;
+        }
+        let mut v = lb;
+        for (k, hk) in h.iter().enumerate() {
+            v = v.law_max(plane_normal(k, t, n, b).dot(p) - hk);
+        }
+        best = best.law_min(v);
+    }
+    best
 }
 
 /// The flat block of a loft (the bytecode's aux data and the shaders' module-scope array):
 /// `[n, K or M, k, up.x, up.y, up.z, H₀, H₁, L_g, L₂, c, L_q0, L_q1, m, R_b, mode, axis (3n), rows (k w), knots (k)]`
 /// with mode 0 (polar: `K` harmonics, rows of `w = 2K + 1` coefficients) or 1 (curve: `M` control points,
 /// rows of `w = 2M` coordinates `u₀, v₀, u₁, v₁, …`, then the section knots `K₀ … K_M`)
-pub const HEAD: usize = 16;
+pub const HEAD: usize = 19;
 
 /// What a section is: the polar curve of `K` harmonics, or the closed periodic uniform cubic
 /// B-spline of `M` control points
@@ -151,11 +231,15 @@ pub fn flatten(axis: &[Vec3], up: Vec3, section: LoftSection, rows: &[f32], sect
         b.m,
         b.reach,
         section.mode(),
+        (b.pieces.len() / PIECE_FLOATS) as f32,
+        b.fade[0],
+        b.fade[1],
     ];
     v.extend(axis.iter().flat_map(|a| [a.x, a.y, a.z]));
     v.extend_from_slice(rows);
     v.extend_from_slice(&b.knots);
     v.extend_from_slice(section_knots);
+    v.extend_from_slice(&b.pieces);
     v
 }
 
@@ -177,12 +261,15 @@ struct Loft<'a> {
     core: f32,
     lq: [f32; 2],
     m: f32,
+    fade: [f32; 2],
     reach: f32,
     axis: &'a [f32],
     rows: &'a [f32],
     knots: &'a [f32],
     /// section knots `K₀ … K_M` (curve mode)
     sknots: &'a [f32],
+    /// the far bound's pieces
+    pieces: &'a [f32],
 }
 
 impl<'a> Loft<'a> {
@@ -205,11 +292,16 @@ impl<'a> Loft<'a> {
             core: f[10],
             lq: [f[11], f[12]],
             m: f[13],
+            fade: [f[17], f[18]],
             reach: f[14],
             axis: &f[HEAD..HEAD + 3 * n],
             rows: &f[HEAD + 3 * n..HEAD + 3 * n + kr * w],
             knots: &f[HEAD + 3 * n + kr * w..HEAD + 3 * n + kr * w + kr],
             sknots: if curve { &f[HEAD + 3 * n + kr * w + kr..HEAD + 3 * n + kr * w + kr + kh + 1] } else { &[] },
+            pieces: {
+                let at = HEAD + 3 * n + kr * w + kr + if curve { kh + 1 } else { 0 };
+                &f[at..at + f[16] as usize * PIECE_FLOATS]
+            },
         }
     }
 
@@ -612,16 +704,39 @@ impl<'a> Loft<'a> {
         let o = Vec2::new(d2.law_max(0.0), dw.law_max(0.0));
         // F, then f = F/L_g + clamp(F (1/L(s) − 1/L_g), −m, m): F/L(s) near the surface, F/L_g ± m far
         let big_f = d2.law_max(dw).law_min(0.0) + o.length();
-        let corr = (big_f * (1.0 / self.local_l(s) - 1.0 / self.lg)).law_max(-self.m).law_min(self.m);
-        let mut f = big_f / self.lg + corr;
+        // f = F/L_g + (1/L(s) − 1/L_g) sat(F) ψ: sat(F) = F/√(1 + (F/B)²) (smooth, |sat| ≤ B,
+        // 0 < sat' ≤ 1), ψ a smoothstep from 1 at |p − C(s)| ≤ ρ* to 0 at ≥ ρ** (∞: no fade)
+        let mut f = big_f / self.lg;
+        if self.m > 0.0 {
+            let x = big_f / self.m;
+            let sat = big_f / (1.0 + x * x).sqrt();
+            let dist = r.length();
+            let psi = if dist <= self.fade[0] {
+                1.0
+            } else if dist >= self.fade[1] {
+                0.0
+            } else {
+                let u = (self.fade[1] - dist) / (self.fade[1] - self.fade[0]);
+                u * u * (3.0 - 2.0 * u)
+            };
+            f += (1.0 / self.local_l(s) - 1.0 / self.lg) * sat * psi;
+        }
         for e in 0..2 {
             if self.caps[e] > 0.0 {
                 f = f.law_min(self.dome(p, e));
             }
         }
-        // the far bound: the distance to the tube of radius R_b around the axis curve holds the whole
-        // surface, so it never exceeds the distance to it, and it is 1-Lipschitz; the larger of the two
-        f.law_max(r.length() - self.reach)
+        // the far bound (pieces of planes holding the surface), the larger of the two
+        // outside only: the pieces hold the surface, so the far bound is ≤ 0 on it and the switch at
+        // f = 0 is continuous; inside the loft's own field stands
+        // lowered by τ = max(B/4, R_b/80), so that near the surface (within about τ L/(L − 1)) the loft's own
+        // smooth field stands and the planes' directions never set the normal; still ≤ the distance
+        if self.pieces.is_empty() || f <= 0.0 {
+            f
+        } else {
+            let tau = (0.25 * self.m).law_max(0.0125 * self.reach);
+            f.law_max(far_bound(p, self.pieces) - tau)
+        }
     }
 }
 
@@ -774,7 +889,7 @@ pub fn validate(axis: &[Vec3], up: Vec3, harmonics: u32, rows: &[Vec<f32>], caps
         }
     }
     let reach = rmax.law_max(caps[0]).law_max(caps[1]);
-    let b = finish(axis, up, LoftSection::Polar(harmonics), &flat_rows, caps, &steps, rmax, (l2, core, lq, reach))?;
+    let b = finish(axis, up, LoftSection::Polar(harmonics), &flat_rows, caps, &steps, rmax, (l2, core, lq, reach), (&[], rmax + dmax, [(end[0].0, end[0].1), (end[1].0, end[1].1)]))?;
     Ok((flat_rows, b))
 }
 
@@ -818,7 +933,21 @@ pub fn validate_curves(axis: &[Vec3], up: Vec3, section_knots: &[f32], rows: &[V
         .map(|pair| pair[0].iter().zip(&pair[1]).map(|(a, b)| (*a - *b).length()).fold(0.0f32, f32::law_max))
         .collect();
     let flat_rows: Vec<f32> = rows.iter().flatten().flat_map(|p| [p.x, p.y]).collect();
-    let b = finish(axis, up, LoftSection::Curve(m as u32), &flat_rows, [0.0, 0.0], &steps, rmax, (1.0, NO_CORE, [1.0, 1.0], rmax))?;
+    // |c'| on span j is at most 3 max |ΔP| over the smallest three-span knot interval
+    let mut dp = 0.0f32;
+    for row in rows {
+        for j in 0..m {
+            dp = dp.law_max((row[j] - row[(j + m - 1) % m]).length());
+        }
+    }
+    let period = section_knots[m] - section_knots[0];
+    let kn = |i: isize| -> f32 {
+        let r = i.rem_euclid(m as isize);
+        section_knots[r as usize] + ((i - r) / m as isize) as f32 * period
+    };
+    let min3 = (0..m as isize).map(|j| kn(j + 2) - kn(j - 1)).fold(f32::INFINITY, f32::law_min);
+    let cder = 3.0 * dp / min3;
+    let b = finish(axis, up, LoftSection::Curve(m as u32), &flat_rows, [0.0, 0.0], &steps, rmax, (1.0, NO_CORE, [1.0, 1.0], rmax), (section_knots, cder, [(0.0, 0.0); 2]))?;
     Ok((flat_rows, b))
 }
 
@@ -834,12 +963,12 @@ fn finish(
     steps: &[f32],
     rmax: f32,
     (l2, core, lq, reach): (f32, f32, [f32; 2], f32),
+    (sknots, ang, ends): (&[f32], f32, [(f32, f32); 2]),
 ) -> Result<LoftBounds, LoftError> {
     let err = |s: String| Err(LoftError(s));
     let kr = flat_rows.len() / section.width();
-    let provisional = LoftBounds { l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, knots: vec![1.0; kr], reach: 0.0 };
-    let sk: Vec<f32> = (0..=section.count()).map(|i| i as f32).collect();
-    let block = flatten(axis, up, section, flat_rows, if matches!(section, LoftSection::Curve(_)) { &sk } else { &[] }, caps, &provisional);
+    let provisional = LoftBounds { l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, fade: [f32::INFINITY; 2], knots: vec![1.0; kr], reach: 0.0, pieces: Vec::new() };
+    let block = flatten(axis, up, section, flat_rows, sknots, caps, &provisional);
     let data = Loft::from_flat(&block);
     let last = (axis.len() - 1) as f32;
     let per = BOUND_SAMPLES as usize * (axis.len() - 1);
@@ -905,13 +1034,16 @@ fn finish(
     // the knots: the larger neighbouring span bound, so L(s) ≥ Λᵢ on span i and is continuous
     let base: Vec<f32> = (0..kr).map(|j| lam[j.saturating_sub(1).min(kr - 2)].law_max(lam[j.min(kr - 2)])).collect();
     let top = base.iter().copied().fold(0.0f32, f32::law_max);
-    let (l, m, knots) = if base.iter().all(|&b| b == top) {
+    let (l, m, knots, fade) = if base.iter().all(|&b| b == top) {
         // one bound everywhere: f = F / L, no correction
-        (top, 0.0, base)
+        (top, 0.0, base, [f32::INFINITY, f32::INFINITY])
     } else {
-        // L(s) = (1 + ε) × the knots, L_g = (1 + δ) × max L(s); in the band |F| ≤ B the term
-        // |F| |L'| |∇s| / L² ≤ ε/(1 + ε), so |∇(F/L(s))| ≤ 1/(1 + ε) + ε/(1 + ε) = 1; the clamp m
-        // keeps the correction active only where |F| < m / min(1/L(s) − 1/L_g) ≤ B
+        // L(s) = (1 + ε) × the knots, L_g = (1 + δ) × max L(s); f = F/L_g + κ(s) sat(F) ψ with
+        // κ(s) = 1/L(s) − 1/L_g ≥ 0. |∇f| ≤ |∇F| (1/L_g + κ sat' ψ) + |sat| |κ'| |∇s| ψ + |sat| κ |ψ'|
+        // ≤ 1/(1 + ε) + ε/(2(1 + ε)) + ε/(2(1 + ε)) ≤ 1, given |sat| ≤ B with
+        // B ≤ ε L_min² / (2 (1 + ε) |dL/ds| |∇s|) and B ≤ ε (ρ** − ρ*) / (2 (1 + ε) 1.5 κ_max)
+        // (1.5 = the smoothstep's largest slope times the fade width); |∇s| ≤ 1/(slow (1 − κ ρ**))
+        // within ρ** (no fade and |∇s| ≤ 1/slow on a straight axis)
         const EPS: f32 = 0.25;
         const DELTA: f32 = 0.25;
         let knots: Vec<f32> = base.iter().map(|b| (1.0 + EPS) * b).collect();
@@ -919,23 +1051,157 @@ fn finish(
         let kmin_l = knots.iter().copied().fold(f32::INFINITY, f32::law_min);
         let lg = (1.0 + DELTA) * kmax;
         let dlds = knots.windows(2).map(|p| (p[1] - p[0]).abs()).fold(0.0f32, f32::law_max) * w_per_s;
-        // |∇s| ≤ 1/(slow (1 − κρ)); within ρ ≤ ρ* = R + (1/κ − R)/2 (half way from the widest section
-        // to the axis's centre of curvature, which `1.1 κR < 1` keeps beyond R) that is at most
-        // 2/(slow (1 − κR)); a point with |F| ≤ B has ρ ≤ R + L₂ B, so B ≤ (1/κ − R)/(2 L₂) keeps it there
-        let grad_s = 2.0 / (slow * (1.0 - kappa * rmax));
-        let l2_here = l2;
-        let band_curv = if kappa > 0.0 { (1.0 / kappa - rmax) / (2.0 * l2_here) } else { f32::INFINITY };
-        let band = (EPS * kmin_l * kmin_l / ((1.0 + EPS) * dlds * grad_s)).law_min(band_curv);
-        let kappa_min = (1.0 / kmax) * (1.0 - 1.0 / (1.0 + DELTA));
-        // the band is positive by construction (κR < 1/1.1, dL/ds finite); a zero margin would only
-        // switch the correction off (f = F/L_g, still 1-Lipschitz), a negative one is a defect
-        let m = kappa_min * band;
-        if !(m >= 0.0) {
-            return err(format!("internal: the local bound's margin came out {m} (band {band}, κ {kappa}, R {rmax})"));
+        let kap_max = 1.0 / kmin_l - 1.0 / lg;
+        let (fade, grad_s, b_fade) = if kappa > 0.0 {
+            let span = 1.0 / kappa - rmax;
+            let (ra, rb) = (rmax + 0.5 * span, rmax + 0.75 * span);
+            let gs = 1.0 / (slow * (1.0 - kappa * rb));
+            ([ra, rb], gs, EPS * (rb - ra) / (2.0 * (1.0 + EPS) * 1.5 * kap_max))
+        } else {
+            ([f32::INFINITY, f32::INFINITY], 1.0 / slow, f32::INFINITY)
+        };
+        let b_l = if dlds > 0.0 { EPS * kmin_l * kmin_l / (2.0 * (1.0 + EPS) * dlds * grad_s) } else { f32::INFINITY };
+        let band = b_l.law_min(b_fade);
+        if !(band > 0.0 && band.is_finite()) {
+            return err(format!("internal: the local bound's saturation width came out {band} (κ {kappa}, R {rmax})"));
         }
-        (lg, m, knots)
+        (lg, band, knots, fade)
     };
-    Ok(LoftBounds { l, l2, core, lq, m, knots, reach })
+    let step_max = steps.iter().copied().fold(0.0f32, f32::law_max);
+    let pieces = piece_planes(&data, rmax, ang, step_max * w_per_s, caps, ends, kappa, slow);
+    Ok(LoftBounds { l, l2, core, lq, m, fade, knots, reach, pieces })
+}
+
+/// The far bound's pieces: each axis segment in [`PIECES_PER_SEGMENT`] parts, and each dome. Plane `k`'s
+/// offset bounds `n_k·x` over the piece's surface `x = C(s) + u N(s) + v B(s)`:
+/// - `n·C(s)` ≤ the largest `n·X` over the segment's four Bézier points (the segment lies in their hull);
+/// - with `a = (n·N_mid, n·B_mid)` at the piece's middle frame, `u n·N + v n·B ≤ (u, v)·a + |(u, v)| δ`,
+///   `δ` = the frame's largest change from the middle over the piece (its rate `|N'| + |B'|` ≤
+///   `3 |C''|max / (|C'|min |up⊥|min)` times the half length);
+/// - `(u, v)·a` over the section: curve mode, the largest over the control points of the rows that
+///   reach the piece (the section lies in their hull, the rows mix with convex weights); polar mode, the
+///   largest over those rows and `64 (K + 1)` angles of `r(θ) (cos θ, sin θ)·a`, plus the angle step's
+///   half times `|a| (R + max |∂r/∂θ|)`, which bounds that function's rate.
+/// A dome adds `√((H n·out)² + S²)` to `n·C_end`, `S` the end row's support in `a` (exact frame).
+#[allow(clippy::too_many_arguments)]
+fn piece_planes(d: &Loft, rmax: f32, ang: f32, rs_per_s: f32, caps: [f32; 2], ends: [(f32, f32); 2], kappa: f32, slow: f32) -> Vec<f32> {
+    let _ = (rs_per_s, kappa);
+    let mut out = Vec::new();
+    let last = (d.n - 1) as f32;
+    let nseg = d.n - 1;
+    let w_per_s = (d.kr - 1) as f32 / last;
+    // the support of the rows `lo..=hi` in direction a (2D), and the largest control radius among them
+    let support = |lo: usize, hi: usize, a: Vec2| -> (f32, f32) {
+        let mut best = f32::NEG_INFINITY;
+        let mut rad = 0.0f32;
+        if d.curve {
+            for i in lo..=hi {
+                for j in 0..d.kh {
+                    let q = d.row_point(i as isize, j);
+                    best = best.law_max(q.dot(a));
+                    rad = rad.law_max(q.length());
+                }
+            }
+        } else {
+            let m = 64 * (d.kh + 1);
+            for i in lo..=hi {
+                for j in 0..m {
+                    let th = std::f32::consts::TAU * j as f32 / m as f32;
+                    let (c1, s1) = (alice_det_math::cos(th), alice_det_math::sin(th));
+                    let r = d.row_radius(i as isize, c1, s1);
+                    best = best.law_max(r * (c1 * a.x + s1 * a.y));
+                    rad = rad.law_max(r);
+                }
+            }
+            best += a.length() * ang * 0.5 * std::f32::consts::TAU / m as f32;
+            rad = rad.law_max(rmax);
+        }
+        (best, rad)
+    };
+    // the frame's rate bound over an axis segment: 3 |C''|max / (|C'|min |up⊥|min)
+    let frame_rate = |seg: usize| -> f32 {
+        let i = seg as isize;
+        let (a, b, c, e) = (d.axis_pt(i - 1), d.axis_pt(i), d.axis_pt(i + 1), d.axis_pt(i + 2));
+        let k2 = 2.0 * a - 5.0 * b + 4.0 * c - e;
+        let k3 = -a + 3.0 * b - 3.0 * c + e;
+        let dd = k2.length().law_max((k2 + 3.0 * k3).length());
+        let mut upp = f32::INFINITY;
+        for q in 0..=32 {
+            let (_, der) = d.axis_at(seg as f32 + q as f32 / 32.0);
+            let t = der.normalize();
+            upp = upp.law_min((d.up - t * d.up.dot(t)).length() / d.up.length());
+        }
+        3.0 * dd / (slow * upp)
+    };
+    for pc in 0..nseg * PIECES_PER_SEGMENT {
+        let seg = pc / PIECES_PER_SEGMENT;
+        let (sa, sb) = (pc as f32 / PIECES_PER_SEGMENT as f32, (pc + 1) as f32 / PIECES_PER_SEGMENT as f32);
+        let (sa, sb) = (sa.law_min(last), sb.law_min(last));
+        let (_, dmid) = d.axis_at(0.5 * (sa + sb));
+        let (t, n, b) = frame(dmid, d.up);
+        let delta = frame_rate(seg) * 0.5 * (sb - sa);
+        let ii = seg as isize;
+        let bez = {
+            let (a, bb, c, e) = (d.axis_pt(ii - 1), d.axis_pt(ii), d.axis_pt(ii + 1), d.axis_pt(ii + 2));
+            [bb, bb + (c - a) / 6.0, c - (e - bb) / 6.0, c]
+        };
+        let (wa, wb) = (sa * w_per_s, sb * w_per_s);
+        let s0 = (wa as usize).min(d.kr - 2);
+        let s1 = (wb.ceil() as usize).saturating_sub(1).max(s0).min(d.kr - 2);
+        out.extend_from_slice(&[t.x, t.y, t.z, n.x, n.y, n.z, b.x, b.y, b.z]);
+        for k in 0..PIECE_PLANES {
+            let nk = plane_normal(k, t, n, b);
+            let ax = bez.iter().map(|x| nk.dot(*x)).fold(f32::NEG_INFINITY, f32::law_max);
+            let a = Vec2::new(nk.dot(n), nk.dot(b));
+            // per span: the section is Σ βⱼ(t) rowⱼ with convex weights, and the support function is
+            // sublinear, so its support is ≤ Σ βⱼ(t) hⱼ — a cubic in t, bounded by its Bézier
+            // coefficients. The end spans (reflected rows, folded weights) take the largest row.
+            let mut sup = f32::NEG_INFINITY;
+            let mut rad = 0.0f32;
+            for sp in s0..=s1 {
+                if sp == 0 || sp + 2 >= d.kr {
+                    let (lo, hi) = (sp.saturating_sub(1), (sp + 2).min(d.kr - 1));
+                    let (h, r) = support(lo, hi, a);
+                    sup = sup.law_max(h);
+                    rad = rad.law_max(r);
+                } else {
+                    let mut hh = [0.0f32; 4];
+                    for (q, hq) in hh.iter_mut().enumerate() {
+                        let (h, r) = support(sp - 1 + q, sp - 1 + q, a);
+                        *hq = h;
+                        rad = rad.law_max(r);
+                    }
+                    let bz = [
+                        (hh[0] + 4.0 * hh[1] + hh[2]) / 6.0,
+                        (4.0 * hh[1] + 2.0 * hh[2]) / 6.0,
+                        (2.0 * hh[1] + 4.0 * hh[2]) / 6.0,
+                        (hh[1] + 4.0 * hh[2] + hh[3]) / 6.0,
+                    ];
+                    sup = sup.law_max(bz.iter().copied().fold(f32::NEG_INFINITY, f32::law_max));
+                }
+            }
+            out.push(ax + sup + rad * 2.0 * delta);
+        }
+    }
+    for (e, &cap) in caps.iter().enumerate() {
+        if cap <= 0.0 {
+            continue;
+        }
+        let s = if e == 0 { 0.0 } else { last };
+        let (c, der) = d.axis_at(s);
+        let (tt, n, b) = frame(der, d.up);
+        let outv = if e == 0 { -tt } else { tt };
+        let row = if e == 0 { 0 } else { d.kr - 1 };
+        let _ = ends;
+        out.extend_from_slice(&[tt.x, tt.y, tt.z, n.x, n.y, n.z, b.x, b.y, b.z]);
+        for k in 0..PIECE_PLANES {
+            let nk = plane_normal(k, tt, n, b);
+            let (sup, _) = support(row, row, Vec2::new(nk.dot(n), nk.dot(b)));
+            let a_out = cap * nk.dot(outv);
+            out.push(nk.dot(c) + (a_out * a_out + sup.law_max(0.0) * sup.law_max(0.0)).sqrt());
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -1069,3 +1335,4 @@ mod tests {
         assert!(wd.0 < 2e-5, "M {m}: distance error {wd:?}");
     }
 }
+
