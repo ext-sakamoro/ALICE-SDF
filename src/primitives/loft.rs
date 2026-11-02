@@ -95,6 +95,9 @@ pub struct LoftBounds {
     pub fade: Option<[f32; 2]>,
     /// The local bound `L(s)` at the B-spline knots (one per row), linear between them
     pub knots: Vec<f32>,
+    /// The saturation width `B(s)` at the same knots (linear between them); empty with no correction
+    #[serde(default)]
+    pub bknots: Vec<f32>,
     /// A radius holding the whole surface around the axis curve (the largest radius and dome height)
     pub reach: f32,
     /// The far bound's pieces, [`PIECE_FLOATS`] each: the piece frame `T, N, B` and the offsets of its
@@ -241,6 +244,7 @@ pub fn flatten(axis: &[Vec3], up: Vec3, section: LoftSection, rows: &[f32], sect
     v.extend(axis.iter().flat_map(|a| [a.x, a.y, a.z]));
     v.extend_from_slice(rows);
     v.extend_from_slice(&b.knots);
+    v.extend_from_slice(&b.bknots);
     v.extend_from_slice(section_knots);
     v.extend_from_slice(&b.pieces);
     v
@@ -269,6 +273,7 @@ struct Loft<'a> {
     axis: &'a [f32],
     rows: &'a [f32],
     knots: &'a [f32],
+    bknots: &'a [f32],
     /// section knots `K₀ … K_M` (curve mode)
     sknots: &'a [f32],
     /// the far bound's pieces
@@ -300,9 +305,13 @@ impl<'a> Loft<'a> {
             axis: &f[HEAD..HEAD + 3 * n],
             rows: &f[HEAD + 3 * n..HEAD + 3 * n + kr * w],
             knots: &f[HEAD + 3 * n + kr * w..HEAD + 3 * n + kr * w + kr],
-            sknots: if curve { &f[HEAD + 3 * n + kr * w + kr..HEAD + 3 * n + kr * w + kr + kh + 1] } else { &[] },
+            bknots: if f[13] > 0.0 { &f[HEAD + 3 * n + kr * w + kr..HEAD + 3 * n + kr * w + 2 * kr] } else { &[] },
+            sknots: {
+                let at = HEAD + 3 * n + kr * w + kr + if f[13] > 0.0 { kr } else { 0 };
+                if curve { &f[at..at + kh + 1] } else { &[] }
+            },
             pieces: {
-                let at = HEAD + 3 * n + kr * w + kr + if curve { kh + 1 } else { 0 };
+                let at = HEAD + 3 * n + kr * w + kr + if f[13] > 0.0 { kr } else { 0 } + if curve { kh + 1 } else { 0 };
                 &f[at..at + f[16] as usize * PIECE_FLOATS]
             },
         }
@@ -487,6 +496,12 @@ impl<'a> Loft<'a> {
 
     /// The local bound `L(s)`: linear between the knots
     #[inline]
+    fn local_b(&self, s: f32) -> f32 {
+        let (i, t) = self.span(s);
+        self.bknots[i] + (self.bknots[i + 1] - self.bknots[i]) * t
+    }
+
+    #[inline]
     fn local_l(&self, s: f32) -> f32 {
         let (i, t) = self.span(s);
         self.knots[i] + (self.knots[i + 1] - self.knots[i]) * t
@@ -609,7 +624,7 @@ impl<'a> Loft<'a> {
         // 0 < sat' ≤ 1), ψ a smoothstep from 1 at |p − C(s)| ≤ ρ* to 0 at ≥ ρ** (∞: no fade)
         let mut f = big_f / self.lg;
         if self.m > 0.0 {
-            let x = big_f / self.m;
+            let x = big_f / self.local_b(s);
             let sat = big_f / (1.0 + x * x).sqrt();
             let dist = r.length();
             let psi = match self.fade {
@@ -994,7 +1009,7 @@ fn finish(
 ) -> Result<LoftBounds, LoftError> {
     let err = |s: String| Err(LoftError(s));
     let kr = flat_rows.len() / section.width();
-    let provisional = LoftBounds { l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, fade: None, knots: vec![1.0; kr], reach: 0.0, pieces: Vec::new() };
+    let provisional = LoftBounds { l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, fade: None, knots: vec![1.0; kr], bknots: Vec::new(), reach: 0.0, pieces: Vec::new() };
     let block = flatten(axis, up, section, flat_rows, sknots, caps, &provisional);
     let data = Loft::from_flat(&block);
     let last = (axis.len() - 1) as f32;
@@ -1061,42 +1076,63 @@ fn finish(
     // the knots: the larger neighbouring span bound, so L(s) ≥ Λᵢ on span i and is continuous
     let base: Vec<f32> = (0..kr).map(|j| lam[j.saturating_sub(1).min(kr - 2)].law_max(lam[j.min(kr - 2)])).collect();
     let top = base.iter().copied().fold(0.0f32, f32::law_max);
-    let (l, m, knots, fade) = if base.iter().all(|&b| b == top) {
+    let (l, m, knots, fade, bknots) = if base.iter().all(|&b| b == top) {
         // one bound everywhere: f = F / L, no correction
-        (top, 0.0, base, None)
+        (top, 0.0, base, None, Vec::new())
     } else {
-        // L(s) = (1 + ε) × the knots, L_g = (1 + δ) × max L(s); f = F/L_g + κ(s) sat(F) ψ with
-        // κ(s) = 1/L(s) − 1/L_g ≥ 0. |∇f| ≤ |∇F| (1/L_g + κ sat' ψ) + |sat| |κ'| |∇s| ψ + |sat| κ |ψ'|
-        // ≤ 1/(1 + ε) + ε/(2(1 + ε)) + ε/(2(1 + ε)) ≤ 1, given |sat| ≤ B with
-        // B ≤ ε L_min² / (2 (1 + ε) |dL/ds| |∇s|) and B ≤ ε (ρ** − ρ*) / (2 (1 + ε) 1.5 κ_max)
-        // (1.5 = the smoothstep's largest slope times the fade width); |∇s| ≤ 1/(slow (1 − κ ρ**))
-        // within ρ** (no fade and |∇s| ≤ 1/slow on a straight axis)
+        // L(s) = (1 + ε) × the knots, L_g = (1 + δ) × max L(s); f = F/L_g + κ(s) sat(F, B(s)) ψ with
+        // κ(s) = 1/L(s) − 1/L_g ≥ 0 and sat(F, B) = F/√(1 + (F/B)²). ∇f = ∇F (1/L_g + κ ∂sat/∂F ψ)
+        // + (sat κ' + κ ∂sat/∂B B') ∇s ψ + sat κ ∇ψ, with 0 < ∂sat/∂F ≤ 1, |sat| ≤ B, |∂sat/∂B| ≤ 1:
+        // |∇f| ≤ 1/(1 + ε) + 3 · ε/(3(1 + ε)) = 1 given, on every span, B ≤ ε/(3 (1 + ε) |κ'| |∇s|),
+        // |B'| |∇s| ≤ ε/(3 (1 + ε) κ_max), and B ≤ ε (ρ** − ρ*)/(3 (1 + ε) 1.5 κ_max) (the fade).
+        // B is per knot, so the band is narrow only where L(s) changes fast, not over the whole loft.
         const EPS: f32 = 0.25;
         const DELTA: f32 = 0.25;
         let knots: Vec<f32> = base.iter().map(|b| (1.0 + EPS) * b).collect();
         let kmax = (1.0 + EPS) * top;
         let kmin_l = knots.iter().copied().fold(f32::INFINITY, f32::law_min);
         let lg = (1.0 + DELTA) * kmax;
-        let dlds = knots.windows(2).map(|p| (p[1] - p[0]).abs()).fold(0.0f32, f32::law_max) * w_per_s;
         let kap_max = 1.0 / kmin_l - 1.0 / lg;
         let (fade, grad_s, b_fade) = if kappa > 0.0 {
             let span = 1.0 / kappa - rmax;
             let (ra, rb) = (rmax + 0.5 * span, rmax + 0.75 * span);
             let gs = 1.0 / (slow * (1.0 - kappa * rb));
-            (Some([ra, rb]), gs, EPS * (rb - ra) / (2.0 * (1.0 + EPS) * 1.5 * kap_max))
+            (Some([ra, rb]), gs, EPS * (rb - ra) / (3.0 * (1.0 + EPS) * 1.5 * kap_max))
         } else {
             (None, 1.0 / slow, f32::INFINITY)
         };
-        let b_l = if dlds > 0.0 { EPS * kmin_l * kmin_l / (2.0 * (1.0 + EPS) * dlds * grad_s) } else { f32::INFINITY };
-        let band = b_l.law_min(b_fade);
-        if !(band > 0.0 && band.is_finite()) {
-            return err(format!("internal: the local bound's saturation width came out {band} (κ {kappa}, R {rmax})"));
+        let budget = EPS / (3.0 * (1.0 + EPS));
+        // per span: |κ'| = |d(1/L)/ds| ≤ |ΔL| w_per_s / min(L)² on that span
+        let span_req: Vec<f32> = knots
+            .windows(2)
+            .map(|p| {
+                let dk = (p[1] - p[0]).abs() * w_per_s / (p[0].law_min(p[1]) * p[0].law_min(p[1]));
+                if dk > 0.0 { budget / (dk * grad_s) } else { f32::INFINITY }
+            })
+            .collect();
+        let cap = rmax.law_max(1e-30);
+        let req: Vec<f32> = (0..kr)
+            .map(|j| {
+                let a = if j > 0 { span_req[j - 1] } else { f32::INFINITY };
+                let b = if j + 1 < kr { span_req[j] } else { f32::INFINITY };
+                a.law_min(b).law_min(b_fade).law_min(cap)
+            })
+            .collect();
+        // the lower envelope with slope |ΔB| w_per_s ≤ budget / (κ_max |∇s|) per knot step
+        let step_b = budget / (kap_max * grad_s * w_per_s);
+        let bknots: Vec<f32> = (0..kr)
+            .map(|j| (0..kr).map(|i| req[i] + step_b * (i as f32 - j as f32).abs()).fold(f32::INFINITY, f32::law_min))
+            .collect();
+        if !bknots.iter().all(|b| *b > 0.0 && b.is_finite()) {
+            return err(format!("internal: a saturation width came out non-positive or infinite (κ {kappa}, R {rmax})"));
         }
-        (lg, band, knots, fade)
+        // the scalar B: the least width (where the band is everywhere valid; it sizes the far join)
+        let band = bknots.iter().copied().fold(f32::INFINITY, f32::law_min);
+        (lg, band, knots, fade, bknots)
     };
     let step_max = steps.iter().copied().fold(0.0f32, f32::law_max);
     let pieces = piece_planes(&data, rmax, ang, step_max * w_per_s, caps, ends, kappa, slow);
-    Ok(LoftBounds { l, l2, core, lq, m, fade, knots, reach, pieces })
+    Ok(LoftBounds { l, l2, core, lq, m, fade, knots, bknots, reach, pieces })
 }
 
 /// The cubic Bézier coefficients of the part `[ta, tb]` of the cubic with coefficients `c` on `[0, 1]`
