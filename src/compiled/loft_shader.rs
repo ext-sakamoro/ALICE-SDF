@@ -7,7 +7,7 @@
 //! the flat block of [`crate::primitives::loft::flatten`], a module-scope array.
 
 use crate::compiled::transpiler_common::lit;
-use crate::primitives::loft::{HEAD, REFINE_STEPS, SCAN_PER_SEGMENT};
+use crate::primitives::loft::{AXIS_NEWTON, HEAD, SCAN_PER_SEGMENT};
 
 /// The statements of one loft, `fn {name}(p: V3) -> F` plus helpers, over the array `{arr}`
 fn template(name: &str, arr: &str, flat: &[f32]) -> String {
@@ -48,7 +48,7 @@ fn template(name: &str, arr: &str, flat: &[f32]) -> String {
         ax(n - 1),
         ax(n - 2)
     );
-    for (suffix, ret) in [("pos", "0.5 * (2.0 * b + k1 * t + k2 * t2 + k3 * t3)"), ("der", "0.5 * (k1 + 2.0 * k2 * t + 3.0 * k3 * t2)")] {
+    for (suffix, ret) in [("pos", "0.5 * (2.0 * b + k1 * t + k2 * t2 + k3 * t3)"), ("der", "0.5 * (k1 + 2.0 * k2 * t + 3.0 * k3 * t2)"), ("dd", "k2 + 3.0 * k3 * t")] {
         s += &format!(
             "fn {name}_{suffix}(s: F) -> V3 {{
     var ss: F = min(max(s, 0.0), {last});
@@ -99,14 +99,16 @@ fn {name}_cp(p: V3) -> F {{
     }}
     var lo: F = max(bs - {h}, 0.0);
     var hi: F = min(bs + {h}, {last});
-    for (var it: I = 0; it < {REFINE_STEPS}; it++) {{
-        var m1: F = lo + (hi - lo) / 3.0;
-        var m2: F = hi - (hi - lo) / 3.0;
-        var q1: V3 = {name}_pos(m1) - p;
-        var q2: V3 = {name}_pos(m2) - p;
-        if (dot(q1, q1) <= dot(q2, q2)) {{ hi = m2; }} else {{ lo = m1; }}
+    var sn: F = bs;
+    for (var it: I = 0; it < {AXIS_NEWTON}; it++) {{
+        var cn: V3 = {name}_pos(sn);
+        var dn: V3 = {name}_der(sn);
+        var rn: V3 = cn - p;
+        var g: F = dot(rn, dn);
+        var gp: F = dot(dn, dn) + dot(rn, {name}_dd(sn));
+        if (gp > 0.0) {{ sn = min(max(sn - g / gp, lo), hi); }}
     }}
-    var best: F = 0.5 * (lo + hi);
+    var best: F = sn;
     var qb: V3 = {name}_pos(best) - p;
     var be: F = dot(qb, qb);
     if (lo == 0.0 || hi == 0.0) {{

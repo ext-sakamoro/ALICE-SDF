@@ -49,8 +49,8 @@ use glam::{Vec2, Vec3};
 
 /// Axis samples per segment in the closest-point scan
 pub const SCAN_PER_SEGMENT: u32 = 16;
-/// Ternary refinement steps around the best scan sample
-pub const REFINE_STEPS: u32 = 16;
+/// Newton steps on the axis around the best scan sample
+pub const AXIS_NEWTON: u32 = 4;
 /// Samples per segment for the axis curvature and frame turn bounds
 pub const BOUND_SAMPLES: u32 = 64;
 /// The most harmonics a section may have
@@ -245,6 +245,20 @@ impl<'a> Loft<'a> {
         (pos, der)
     }
 
+    /// The axis's second derivative at `s` (the segment's `k₂ + 3 k₃ t`)
+    #[inline]
+    fn axis_dd(&self, s: f32) -> Vec3 {
+        let last = (self.n - 1) as f32;
+        let s = s.law_max(0.0).law_min(last);
+        let i = (s as usize).min(self.n - 2);
+        let t = s - i as f32;
+        let i = i as isize;
+        let (a, b, c, d) = (self.axis_pt(i - 1), self.axis_pt(i), self.axis_pt(i + 1), self.axis_pt(i + 2));
+        let k2 = 2.0 * a - 5.0 * b + 4.0 * c - d;
+        let k3 = -a + 3.0 * b - 3.0 * c + d;
+        k2 + 3.0 * k3 * t
+    }
+
     /// The fixed scan of the axis: every sample `s = k / SCAN_PER_SEGMENT`, `k = 0 … (n − 1) SCAN_PER_SEGMENT`;
     /// the least squared distance, ties to the smaller `s` (the first in `k` order)
     #[cfg(test)]
@@ -322,22 +336,23 @@ impl<'a> Loft<'a> {
         let last = (self.n - 1) as f32;
         let h = 1.0 / SCAN_PER_SEGMENT as f32;
         let (best_s, _) = self.scan_culled(p);
-        let mut lo = (best_s - h).law_max(0.0);
-        let mut hi = (best_s + h).law_min(last);
-        for _ in 0..REFINE_STEPS {
-            let m1 = lo + (hi - lo) / 3.0;
-            let m2 = hi - (hi - lo) / 3.0;
-            let e1 = (self.axis_at(m1).0 - p).length_squared();
-            let e2 = (self.axis_at(m2).0 - p).length_squared();
-            if e1 <= e2 {
-                hi = m2;
-            } else {
-                lo = m1;
+        let lo = (best_s - h).law_max(0.0);
+        let hi = (best_s + h).law_min(last);
+        // Newton on g(s) = (C(s) − p)·C'(s), g' = C'·C' + (C − p)·C'', kept within the bracket; a step
+        // is taken only where g' > 0 (a minimum, not a maximum, of the distance)
+        let mut sn = best_s;
+        for _ in 0..AXIS_NEWTON {
+            let (c, d) = self.axis_at(sn);
+            let r = c - p;
+            let g = r.dot(d);
+            let gp = d.dot(d) + r.dot(self.axis_dd(sn));
+            if gp > 0.0 {
+                sn = (sn - g / gp).law_max(lo).law_min(hi);
             }
         }
-        // a bracket still touching an end: the end itself when it is closer (the minimum on the
-        // boundary is where the ternary steps converge only linearly)
-        let mut best = 0.5 * (lo + hi);
+        // a bracket touching an end: the end itself when it is closer (a minimum on the boundary,
+        // where g ≠ 0)
+        let mut best = sn;
         let mut be = (self.axis_at(best).0 - p).length_squared();
         for end in [0.0, last] {
             if lo == end || hi == end {
@@ -926,6 +941,41 @@ fn finish(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The closest axis parameter (scan + bracketed Newton) against a dense brute-force argmin of the
+    /// axis curve: the distance to the found point exceeds the true least distance by at most 1e-5
+    /// (relative to the scale), on a bent 9-point axis and a straight one, near and far
+    #[test]
+    fn the_closest_axis_point_matches_a_dense_search() {
+        let bent: Vec<Vec3> = (0..9)
+            .map(|i| Vec3::new(0.3 * alice_det_math::sin(0.7 * i as f32), 0.25 * i as f32, 0.1 * alice_det_math::cos(1.3 * i as f32)))
+            .collect();
+        let rows = vec![vec![0.1f32, 0.0, 0.0], vec![0.1, 0.0, 0.0]];
+        let mut st: u64 = 9;
+        let mut rnd = || {
+            st = st.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            ((st >> 40) as f32) / ((1u64 << 24) as f32)
+        };
+        for axis in [bent, vec![Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0)]] {
+            let (fr, b) = validate(&axis, Vec3::Z, 1, &rows, [0.0, 0.0]).expect("valid");
+            let block = flatten(&axis, Vec3::Z, LoftSection::Polar(1), &fr, &[], [0.0, 0.0], &b);
+            let d = Loft::from_flat(&block);
+            let last = (axis.len() - 1) as f32;
+            let dense: Vec<Vec3> = (0..=200_000).map(|i| d.axis_at(last * i as f32 / 200_000.0).0).collect();
+            let mut worst = (0.0f32, Vec3::ZERO);
+            for _ in 0..2000 {
+                let scale = if rnd() < 0.5 { 0.3 } else { 3.0 };
+                let p = Vec3::new((rnd() - 0.5) * scale, rnd() * 2.4 - 0.2, (rnd() - 0.5) * scale);
+                let truth = dense.iter().map(|q| (*q - p).length()).fold(f32::INFINITY, f32::min);
+                let got = (d.axis_at(d.closest_param(p)).0 - p).length();
+                let err = (got - truth) / scale;
+                if err > worst.0 {
+                    worst = (err, p);
+                }
+            }
+            assert!(worst.0 < 1e-5, "closest axis point off by {:?}", worst);
+        }
+    }
 
     /// The culled axis scan against the full scan, bit for bit
     #[test]
