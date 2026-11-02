@@ -274,6 +274,9 @@ impl Compiler {
             SdfNode::SectionStack(_) => {
                 unreachable!("SectionStack: validated by validate_for_compile()");
             }
+            SdfNode::SmoothSectionStack(_) => {
+                unreachable!("SmoothSectionStack: validated by validate_for_compile()");
+            }
 
             SdfNode::Bezier { .. } => {
                 unreachable!("Bezier: validated by validate_for_compile()");
@@ -1538,6 +1541,10 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         // compiled to a stand-in
         SdfNode::SectionStack(_) => {
             return Err(CompileError::UnsupportedPrimitive("SectionStack".into()));
+        }
+        // no bytecode law yet (the levels and loops go to aux data next): refused, not compiled to a stand-in
+        SdfNode::SmoothSectionStack(_) => {
+            return Err(CompileError::UnsupportedPrimitive("SmoothSectionStack".into()));
         }
         SdfNode::Bezier { .. } => {
             return Err(CompileError::UnsupportedPrimitive("Bezier".into()));

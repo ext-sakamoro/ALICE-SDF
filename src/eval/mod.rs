@@ -310,6 +310,7 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             half_height,
         } => sdf_segment_2d(point, *a, *b, *thickness, *half_height),
         SdfNode::SectionStack(st) => st.eval(point),
+        SdfNode::SmoothSectionStack(st) => st.eval(point),
         SdfNode::Polygon2D {
             vertices,
             half_height,
