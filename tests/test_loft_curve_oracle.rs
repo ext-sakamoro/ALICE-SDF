@@ -549,3 +549,129 @@ fn the_normal_is_steady_at_the_99th_percentile_on_a_torso_like_curve_loft() {
     turns.sort_by(f32::total_cmp);
     assert!(turns[turns.len() * 99 / 100] < 1.0, "normal turn p99 {}°", turns[turns.len() * 99 / 100]);
 }
+
+// ---- caps: the end section eroded toward its deepest point and sheared toward an apex offset ----
+
+#[test]
+fn a_near_circle_with_hemispherical_caps_is_the_capsule() {
+    // the near-circle (M = 32, radius 0.3): its curve radius r (measured here on the curve) and caps of
+    // height r with no offset: the capsule of radius r between the end planes
+    let cp = ellipse(32, 0.3, 0.3);
+    let r: f32 = (0..3200).map(|i| spline(&cp, 32.0 * i as f32 / 3200.0).length()).sum::<f32>() / 3200.0;
+    let h = 0.8;
+    let node = SdfNode::loft_curves_capped(vec![Vec3::ZERO, Vec3::new(0.0, h, 0.0)], Vec3::X, vec![cp.clone(), cp], [[r, 0.0, 0.0], [r, 0.0, 0.0]])
+        .expect("capsule");
+    let mut rr = lcg(20);
+    let mut worst = 0.0f32;
+    for _ in 0..3000 {
+        let p = Vec3::new(rr() * 1.4 - 0.7, rr() * 2.0 - 0.6, rr() * 1.4 - 0.7);
+        let y = p.y.clamp(0.0, h);
+        let want = (p - Vec3::new(0.0, y, 0.0)).length() - r;
+        if want > 0.0 {
+            worst = worst.max((eval(&node, p) - want).abs());
+        }
+    }
+    // the B-spline near-circle's radius varies by about 1e-4 around r
+    assert!(worst < 1e-3, "largest difference outside {worst}");
+}
+
+/// A straight C-section loft capped at the far end with an apex offset
+fn capped_c(offset: Vec2) -> (SdfNode, f32) {
+    let h = 0.6;
+    let node = SdfNode::loft_curves_capped(
+        vec![Vec3::ZERO, Vec3::new(0.0, h, 0.0)],
+        Vec3::X,
+        vec![c_shape(), c_shape()],
+        [[0.0, 0.0, 0.0], [0.25, offset.x, offset.y]],
+    )
+    .expect("capped C");
+    (node, h)
+}
+
+#[test]
+fn a_capped_non_star_section_closes_and_stays_one_lipschitz() {
+    let (node, h) = capped_c(Vec2::new(0.05, 0.02));
+    // beyond the cap's height nothing is inside; the field is 1-Lipschitz across body and cap
+    let mut r = lcg(21);
+    for _ in 0..2000 {
+        let p = Vec3::new(r() * 1.0 - 0.5, h + 0.26 + r() * 0.2, r() * 1.0 - 0.5);
+        assert!(eval(&node, p) > 0.0, "inside beyond the cap at {p:?}");
+    }
+    let mut worst = 0.0f32;
+    for _ in 0..20000 {
+        let p = Vec3::new(r() * 1.0 - 0.5, h - 0.1 + r() * 0.4, r() * 1.0 - 0.5);
+        let dir = Vec3::new(r() - 0.5, r() - 0.5, r() - 0.5).normalize();
+        let step = 1e-3 + r() * 0.03;
+        worst = worst.max((eval(&node, p + dir * step) - eval(&node, p)).abs() / step);
+    }
+    assert!(worst <= 1.0 + 2e-3, "largest difference quotient {worst}");
+}
+
+#[test]
+fn a_cap_reaches_its_height_at_the_offset_apex() {
+    // an ellipse end (its deepest point is its centre) with apex offset o: just below the cap height the
+    // point above the end centre shifted by o is inside, the unshifted one outside
+    let o = Vec2::new(0.08, 0.0);
+    let h = 0.6;
+    let node = SdfNode::loft_curves_capped(
+        vec![Vec3::ZERO, Vec3::new(0.0, h, 0.0)],
+        Vec3::X,
+        vec![ellipse(24, 0.2, 0.12), ellipse(24, 0.2, 0.12)],
+        [[0.0, 0.0, 0.0], [0.3, o.x, o.y]],
+    )
+    .expect("offset cap");
+    // frame: N = +x (up = X), B = T × N = −z; the apex at (o.x, h + H, −o.y)
+    let apex = Vec3::new(o.x, h + 0.3, -o.y);
+    assert!(eval(&node, apex - Vec3::Y * 0.01) < 0.0, "below the apex reads {}", eval(&node, apex - Vec3::Y * 0.01));
+    assert!(eval(&node, apex + Vec3::Y * 0.01) > 0.0, "above the apex reads {}", eval(&node, apex + Vec3::Y * 0.01));
+    assert!(eval(&node, Vec3::new(-o.x, h + 0.29, 0.0)) > 0.0, "the unshifted point near the top reads inside");
+}
+
+#[test]
+fn a_capped_loft_never_reads_past_its_own_surface() {
+    let (node, h) = capped_c(Vec2::new(0.05, 0.02));
+    let mut r = lcg(22);
+    let (mut over, mut compared) = (0, 0);
+    while compared < 60 {
+        let p = Vec3::new(r() * 1.2 - 0.6, h - 0.2 + r() * 0.8, r() * 1.2 - 0.6);
+        let f = eval(&node, p);
+        if !(0.005..=0.3).contains(&f) {
+            continue;
+        }
+        let mut hit = false;
+        for _ in 0..20000 {
+            let d = Vec3::new(r() - 0.5, r() - 0.5, r() - 0.5) * 2.0;
+            if d.length() <= 1.0 && eval(&node, p + d * (0.98 * f)) <= 0.0 {
+                hit = true;
+                break;
+            }
+        }
+        compared += 1;
+        over += usize::from(hit);
+    }
+    assert_eq!(over, 0, "read past its own surface at {over} of {compared} points");
+}
+
+#[test]
+fn a_strongly_sheared_cap_stays_one_lipschitz() {
+    // apex offset 0.9 H (c = 0.9): the shear's factor is c/2 + √(1 + c²/4) ≈ 1.54; with √(1 + c²) ≈ 1.35
+    // the field would grow faster than 1 along the shear
+    let hh = 0.2;
+    let node = SdfNode::loft_curves_capped(
+        vec![Vec3::ZERO, Vec3::new(0.0, 0.4, 0.0)],
+        Vec3::X,
+        vec![ellipse(24, 0.2, 0.12), ellipse(24, 0.2, 0.12)],
+        [[0.0, 0.0, 0.0], [hh, 0.9 * hh, 0.0]],
+    )
+    .expect("sheared cap");
+    let mut r = lcg(23);
+    let mut worst = 0.0f32;
+    for _ in 0..60000 {
+        let p = Vec3::new(r() * 0.8 - 0.3, 0.38 + r() * 0.3, r() * 0.5 - 0.25);
+        let dir = Vec3::new(r() - 0.5, r() - 0.5, r() - 0.5).normalize();
+        let step = 1e-4 + r() * 0.01;
+        worst = worst.max((eval(&node, p + dir * step) - eval(&node, p)).abs() / step);
+    }
+    eprintln!("sheared cap: largest difference quotient {worst}");
+    assert!(worst <= 1.0 + 2e-3, "largest difference quotient {worst}");
+}

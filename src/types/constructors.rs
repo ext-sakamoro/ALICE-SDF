@@ -402,9 +402,35 @@ impl SdfNode {
         knots: Vec<f32>,
         rows: Vec<Vec<glam::Vec2>>,
     ) -> Result<Self, crate::primitives::loft::LoftError> {
+        Self::loft_curves_knots_capped(axis, up, knots, rows, [[0.0; 3]; 2])
+    }
+
+    /// As [`SdfNode::loft_curves`], each end closed by a cap `[H, o_u, o_v]` (height H; 0 = flat): the end
+    /// section eroded toward its deepest point by `w (1 − √(1 − (h/H)²))` and sheared by `o h/H` (the
+    /// apex offset in the end frame), see [`crate::primitives::loft`].
+    ///
+    /// # Errors
+    /// As [`SdfNode::loft_curves`], a negative cap height, a non-finite offset, or a capped end section
+    /// with no interior
+    pub fn loft_curves_capped(axis: Vec<Vec3>, up: Vec3, rows: Vec<Vec<glam::Vec2>>, caps: [[f32; 3]; 2]) -> Result<Self, crate::primitives::loft::LoftError> {
+        let m = rows.first().map_or(0, Vec::len);
+        Self::loft_curves_knots_capped(axis, up, (0..=m).map(|i| i as f32).collect(), rows, caps)
+    }
+
+    /// As [`SdfNode::loft_curves_knots`] with caps (see [`SdfNode::loft_curves_capped`]).
+    ///
+    /// # Errors
+    /// As [`SdfNode::loft_curves_knots`] and [`SdfNode::loft_curves_capped`]
+    pub fn loft_curves_knots_capped(
+        axis: Vec<Vec3>,
+        up: Vec3,
+        knots: Vec<f32>,
+        rows: Vec<Vec<glam::Vec2>>,
+        caps: [[f32; 3]; 2],
+    ) -> Result<Self, crate::primitives::loft::LoftError> {
         let section_points = rows.first().map_or(0, Vec::len) as u32;
-        let (points, bounds) = crate::primitives::loft::validate_curves(&axis, up, &knots, &rows)?;
-        Ok(Self::LoftCurves { axis, up, section_points, points, knots, bounds })
+        let (points, bounds) = crate::primitives::loft::validate_curves(&axis, up, &knots, &rows, caps)?;
+        Ok(Self::LoftCurves { axis, up, section_points, points, knots, caps, bounds })
     }
 
     /// Create the ball of a weighted norm.

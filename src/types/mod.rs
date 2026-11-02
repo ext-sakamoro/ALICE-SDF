@@ -363,6 +363,8 @@ pub enum SdfNode {
         points: Vec<f32>,
         /// The section knots `K0 … KM` shared by every row (periodic, rising)
         knots: Vec<f32>,
+        /// Caps at the start and the end: `[H, o_u, o_v]` (height, apex offset in the end frame); H = 0 is flat
+        caps: [[f32; 3]; 2],
         /// The bounds the field is divided by
         bounds: crate::primitives::loft::LoftBounds,
     },

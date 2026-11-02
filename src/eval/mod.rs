@@ -139,14 +139,14 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         SdfNode::Loft { axis, up, harmonics, rows, caps, bounds } => {
             crate::primitives::loft::sdf_loft(point, axis, *up, crate::primitives::loft::LoftSection::Polar(*harmonics), rows, &[], *caps, bounds)
         }
-        SdfNode::LoftCurves { axis, up, section_points, points, knots, bounds } => crate::primitives::loft::sdf_loft(
+        SdfNode::LoftCurves { axis, up, section_points, points, knots, caps, bounds } => crate::primitives::loft::sdf_loft(
             point,
             axis,
             *up,
             crate::primitives::loft::LoftSection::Curve(*section_points),
             points,
             knots,
-            [0.0, 0.0],
+            [caps[0][0], caps[1][0]],
             bounds,
         ),
         SdfNode::MetricBall {

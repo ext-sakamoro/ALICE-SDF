@@ -79,7 +79,7 @@ impl std::error::Error for LoftError {}
 /// The version of the loft's bound law. Bounds are derived data: a stored tree carries them, and
 /// loading accepts them only from this version of the law (an older tree's bounds mean something else,
 /// so it is refused with a request to rebuild from its axis and rows, never read with a changed meaning)
-pub const LOFT_LAW_VERSION: u32 = 1;
+pub const LOFT_LAW_VERSION: u32 = 2;
 
 /// The bounds a loft's field is divided by, computed by [`validate`]; checked on load
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -111,6 +111,9 @@ pub struct LoftBounds {
     /// The far bound's pieces, [`PIECE_FLOATS`] each: the piece frame `T, N, B` and the offsets of its
     /// [`PIECE_PLANES`] planes (see [`far_bound`])
     pub pieces: Vec<f32>,
+    /// Curve-mode caps per end: `[o_u, o_v, w, σ]` (apex offset in the end frame, the end section's
+    /// erosion depth, the shear's Lipschitz factor); zeros for a flat end and in polar mode
+    pub cap_curve: [[f32; 4]; 2],
 }
 
 /// The stored form of [`LoftBounds`], checked on load
@@ -131,6 +134,8 @@ struct LoftBoundsStored {
     reach: f32,
     #[serde(default)]
     pieces: Vec<f32>,
+    #[serde(default)]
+    cap_curve: [[f32; 4]; 2],
 }
 
 impl TryFrom<LoftBoundsStored> for LoftBounds {
@@ -151,7 +156,7 @@ impl TryFrom<LoftBoundsStored> for LoftBounds {
         if !shape_ok {
             return Err("loft: stored bounds are inconsistent (knots, saturation widths or far-bound pieces); rebuild the loft from its axis and rows".into());
         }
-        Ok(Self { law: b.law, l: b.l, l2: b.l2, core: b.core, lq: b.lq, m: b.m, fade: b.fade, knots: b.knots, bknots: b.bknots, reach: b.reach, pieces: b.pieces })
+        Ok(Self { law: b.law, l: b.l, l2: b.l2, core: b.core, lq: b.lq, m: b.m, fade: b.fade, knots: b.knots, bknots: b.bknots, reach: b.reach, pieces: b.pieces, cap_curve: b.cap_curve })
     }
 }
 
@@ -235,7 +240,7 @@ pub fn far_bound(p: Vec3, pieces: &[f32]) -> f32 {
 /// axis (3n), rows (k w), knots (k)]`, fade₀ < 0 meaning no fade (both −1)
 /// with mode 0 (polar: `K` harmonics, rows of `w = 2K + 1` coefficients) or 1 (curve: `M` control points,
 /// rows of `w = 2M` coordinates `u₀, v₀, u₁, v₁, …`, then the section knots `K₀ … K_M`)
-pub const HEAD: usize = 19;
+pub const HEAD: usize = 27;
 
 /// What a section is: the polar curve of `K` harmonics, or the closed periodic uniform cubic
 /// B-spline of `M` control points
@@ -290,6 +295,14 @@ pub fn flatten(axis: &[Vec3], up: Vec3, section: LoftSection, rows: &[f32], sect
         (b.pieces.len() / PIECE_FLOATS) as f32,
         b.fade.map_or(-1.0, |f| f[0]),
         b.fade.map_or(-1.0, |f| f[1]),
+        b.cap_curve[0][0],
+        b.cap_curve[0][1],
+        b.cap_curve[0][2],
+        b.cap_curve[0][3],
+        b.cap_curve[1][0],
+        b.cap_curve[1][1],
+        b.cap_curve[1][2],
+        b.cap_curve[1][3],
     ];
     v.extend(axis.iter().flat_map(|a| [a.x, a.y, a.z]));
     v.extend_from_slice(rows);
@@ -319,6 +332,7 @@ struct Loft<'a> {
     lq: [f32; 2],
     m: f32,
     fade: Option<[f32; 2]>,
+    cap_curve: [[f32; 4]; 2],
     reach: f32,
     axis: &'a [f32],
     rows: &'a [f32],
@@ -351,6 +365,7 @@ impl<'a> Loft<'a> {
             lq: [f[11], f[12]],
             m: f[13],
             fade: if f[17] < 0.0 { None } else { Some([f[17], f[18]]) },
+            cap_curve: [[f[19], f[20], f[21], f[22]], [f[23], f[24], f[25], f[26]]],
             reach: f[14],
             axis: &f[HEAD..HEAD + 3 * n],
             rows: &f[HEAD + 3 * n..HEAD + 3 * n + kr * w],
@@ -632,6 +647,26 @@ impl<'a> Loft<'a> {
     }
 
     /// The dome at end `e` (0 at `s = 0`, 1 at `s = n − 1`): its field cut by the end's half-space
+    fn curve_dome(&self, p: Vec3, e: usize) -> f32 {
+        // the end section eroded by w (1 − √(1 − (h/H)²)) and sheared by o h/H: in (x, y) =
+        // (d_S(q − o h/H) + w, h) the solid is (x⁺/w)² + (y/H)² ≤ 1; the map's Jacobian has largest
+        // singular value σ = c/2 + √(1 + c²/4), c = |o|/H, and the norm's gradient is ≤ 1/min(w, H)
+        let s = if e == 0 { 0.0 } else { (self.n - 1) as f32 };
+        let (c, der) = self.axis_at(s);
+        let (t, nn, bb) = frame(der, self.up);
+        let out = if e == 0 { -t } else { t };
+        let [ou, ov, w, sigma] = self.cap_curve[e];
+        let hh = self.caps[e];
+        let r = p - c;
+        let h = r.dot(out);
+        let q = Vec2::new(r.dot(nn), r.dot(bb)) + Vec2::new(ou, ov) * (h / hh);
+        let d = self.curve_distance(s, q);
+        let x = (d + w).law_max(0.0) / w;
+        let y = h / hh;
+        let v = ((x * x + y * y).sqrt() - 1.0) * w.law_min(hh) / sigma;
+        v.law_max(-h)
+    }
+
     fn dome(&self, p: Vec3, e: usize) -> f32 {
         let s = if e == 0 { 0.0 } else { (self.n - 1) as f32 };
         let (c, der) = self.axis_at(s);
@@ -690,7 +725,7 @@ impl<'a> Loft<'a> {
         }
         for e in 0..2 {
             if self.caps[e] > 0.0 {
-                f = f.law_min(self.dome(p, e));
+                f = f.law_min(if self.curve { self.curve_dome(p, e) } else { self.dome(p, e) });
             }
         }
         // the far bound (pieces of planes holding the surface), the larger of the two
@@ -981,12 +1016,12 @@ pub fn validate(axis: &[Vec3], up: Vec3, harmonics: u32, rows: &[Vec<f32>], caps
         }
     }
     let reach = rmax.law_max(caps[0]).law_max(caps[1]);
-    let b = finish(axis, up, LoftSection::Polar(harmonics), &flat_rows, caps, &steps, rmax, (l2, core, lq, reach), (&[], rmax + dmax, [(end[0].0, end[0].1), (end[1].0, end[1].1)]))?;
+    let b = finish(axis, up, LoftSection::Polar(harmonics), &flat_rows, caps, &steps, rmax, (l2, core, lq, reach), (&[], rmax + dmax, [(end[0].0, end[0].1), (end[1].0, end[1].1)], [[0.0; 4]; 2]))?;
     Ok((flat_rows, b))
 }
 
 /// Checks a curve-section loft's input and computes its bounds
-pub fn validate_curves(axis: &[Vec3], up: Vec3, section_knots: &[f32], rows: &[Vec<Vec2>]) -> Result<(Vec<f32>, LoftBounds), LoftError> {
+pub fn validate_curves(axis: &[Vec3], up: Vec3, section_knots: &[f32], rows: &[Vec<Vec2>], caps: [[f32; 3]; 2]) -> Result<(Vec<f32>, LoftBounds), LoftError> {
     let err = |s: String| Err(LoftError(s));
     if axis.len() < 2 || axis.len() > 257 {
         return err(format!("the axis needs 2 to 257 points, it has {}", axis.len()));
@@ -1039,7 +1074,69 @@ pub fn validate_curves(axis: &[Vec3], up: Vec3, section_knots: &[f32], rows: &[V
     };
     let min3 = (0..m as isize).map(|j| kn(j + 2) - kn(j - 1)).fold(f32::INFINITY, f32::law_min);
     let cder = 3.0 * dp / min3;
-    let b = finish(axis, up, LoftSection::Curve(m as u32), &flat_rows, [0.0, 0.0], &steps, rmax, (1.0, NO_CORE, [1.0, 1.0], rmax), (section_knots, cder, [(0.0, 0.0); 2]))?;
+    // caps: height H ≥ 0 (0 = flat), apex offset o in the end frame; the erosion depth w = the end
+    // section's inradius (the deepest interior point: a 64 × 64 grid of its control box, then a fixed
+    // pattern search; any positive w gives a valid field, the inradius closes the cap to a point), the shear
+    // factor σ = c/2 + √(1 + c²/4), c = |o|/H
+    if caps.iter().flatten().any(|v| !v.is_finite()) || caps.iter().any(|c| c[0] < 0.0) {
+        return err("a cap's height must be 0 (flat) or positive, and its apex offset finite".into());
+    }
+    let mut cap_curve = [[0.0f32; 4]; 2];
+    let mut heights = [0.0f32; 2];
+    for e in 0..2 {
+        let [hh, ou, ov] = caps[e];
+        if hh <= 0.0 {
+            continue;
+        }
+        let row = if e == 0 { &rows[0] } else { &rows[rows.len() - 1] };
+        let point = |j: isize| row[j.rem_euclid(m as isize) as usize];
+        let knot = |i: isize| {
+            let r = i.rem_euclid(m as isize);
+            section_knots[r as usize] + ((i - r) / m as isize) as f32 * period
+        };
+        let (mut lo, mut hi) = (Vec2::splat(f32::INFINITY), Vec2::splat(f32::NEG_INFINITY));
+        for p in row {
+            lo = lo.law_min(*p);
+            hi = hi.law_max(*p);
+        }
+        let depth = |q: Vec2| -closed_curve_distance(m as isize, &point, &knot, q);
+        let (mut w, mut at) = (f32::NEG_INFINITY, lo);
+        for i in 0..64 {
+            for j in 0..64 {
+                let q = lo + (hi - lo) * Vec2::new((i as f32 + 0.5) / 64.0, (j as f32 + 0.5) / 64.0);
+                let dq = depth(q);
+                if dq > w {
+                    w = dq;
+                    at = q;
+                }
+            }
+        }
+        // then a fixed pattern search from the best cell: 8 neighbours at a step halved on no gain
+        let mut step = (hi - lo).max_element() / 64.0;
+        for _ in 0..48 {
+            let mut moved = false;
+            for (dx, dy) in [(1.0f32, 0.0f32), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0), (1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)] {
+                let q = at + Vec2::new(dx, dy) * step;
+                let dq = depth(q);
+                if dq > w {
+                    w = dq;
+                    at = q;
+                    moved = true;
+                }
+            }
+            if !moved {
+                step *= 0.5;
+            }
+        }
+        if w <= 0.0 {
+            return err("a capped end's section has no interior".into());
+        }
+        let c = Vec2::new(ou, ov).length() / hh;
+        cap_curve[e] = [ou, ov, w, 0.5 * c + (1.0 + 0.25 * c * c).sqrt()];
+        heights[e] = hh;
+    }
+    let reach = rmax + (0..2).map(|e| heights[e] + Vec2::new(caps[e][1], caps[e][2]).length()).fold(0.0f32, f32::law_max);
+    let b = finish(axis, up, LoftSection::Curve(m as u32), &flat_rows, heights, &steps, rmax, (1.0, NO_CORE, [1.0, 1.0], reach), (section_knots, cder, [(0.0, 0.0); 2], cap_curve))?;
     Ok((flat_rows, b))
 }
 
@@ -1055,11 +1152,12 @@ fn finish(
     steps: &[f32],
     rmax: f32,
     (l2, core, lq, reach): (f32, f32, [f32; 2], f32),
-    (sknots, ang, ends): (&[f32], f32, [(f32, f32); 2]),
+    (sknots, ang, ends, cap_curve): (&[f32], f32, [(f32, f32); 2], [[f32; 4]; 2]),
 ) -> Result<LoftBounds, LoftError> {
     let err = |s: String| Err(LoftError(s));
     let kr = flat_rows.len() / section.width();
-    let provisional = LoftBounds { law: LOFT_LAW_VERSION, l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, fade: None, knots: vec![1.0; kr], bknots: Vec::new(), reach: 0.0, pieces: Vec::new() };
+    let provisional = LoftBounds { law: LOFT_LAW_VERSION, l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, fade: None, knots: vec![1.0; kr], bknots: Vec::new(), reach: 0.0, pieces: Vec::new(), cap_curve: [[0.0; 4]; 2] };
+    let provisional = LoftBounds { cap_curve, ..provisional };
     let block = flatten(axis, up, section, flat_rows, sknots, caps, &provisional);
     let data = Loft::from_flat(&block);
     let last = (axis.len() - 1) as f32;
@@ -1182,7 +1280,7 @@ fn finish(
     };
     let step_max = steps.iter().copied().fold(0.0f32, f32::law_max);
     let pieces = piece_planes(&data, rmax, ang, step_max * w_per_s, caps, ends, kappa, slow);
-    Ok(LoftBounds { law: LOFT_LAW_VERSION, l, l2, core, lq, m, fade, knots, bknots, reach, pieces })
+    Ok(LoftBounds { law: LOFT_LAW_VERSION, l, l2, core, lq, m, fade, knots, bknots, reach, pieces, cap_curve })
 }
 
 /// The cubic Bézier coefficients of the part `[ta, tb]` of the cubic with coefficients `c` on `[0, 1]`
@@ -1331,8 +1429,16 @@ fn piece_planes(d: &Loft, rmax: f32, ang: f32, rs_per_s: f32, caps: [f32; 2], en
         for k in 0..PIECE_PLANES {
             let nk = plane_normal(k, tt, n, b);
             let (sup, _) = support(row, row, Vec2::new(nk.dot(n), nk.dot(b)));
-            let a_out = cap * nk.dot(outv);
-            out.push(nk.dot(c) + (a_out * a_out + sup.law_max(0.0) * sup.law_max(0.0)).sqrt());
+            if d.curve {
+                // the eroded, sheared section at height h lies in the end section shifted by o h/H, so
+                // n·x ≤ n·C + h (n·out) + (h/H) n·(N o_u + B o_v) + S, linear in h: its larger end
+                let [ou, ov, _, _] = d.cap_curve[e];
+                let lift = cap * nk.dot(outv) + nk.dot(n * ou + b * ov);
+                out.push(nk.dot(c) + lift.law_max(0.0) + sup);
+            } else {
+                let a_out = cap * nk.dot(outv);
+                out.push(nk.dot(c) + (a_out * a_out + sup.law_max(0.0) * sup.law_max(0.0)).sqrt());
+            }
         }
     }
     out
@@ -1463,7 +1569,7 @@ mod tests {
             })
             .collect();
         let sk: Vec<f32> = (0..=m).map(|j| j as f32 + if j % 3 == 1 { 0.3 } else { 0.0 }).collect();
-        let (pts, b) = validate_curves(&[Vec3::ZERO, Vec3::Y], Vec3::X, &sk, &[row.clone(), row]).expect("valid");
+        let (pts, b) = validate_curves(&[Vec3::ZERO, Vec3::Y], Vec3::X, &sk, &[row.clone(), row], [[0.0; 3]; 2]).expect("valid");
         let block = flatten(&[Vec3::ZERO, Vec3::Y], Vec3::X, LoftSection::Curve(m as u32), &pts, &sk, [0.0, 0.0], &b);
         let d = Loft::from_flat(&block);
         let (i0, w) = d.row_weights(0.5);
