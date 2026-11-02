@@ -10,7 +10,8 @@
 //!   `m ≥ 4` control points (knots `0, 1, …, m`, periodic).
 //! - **Per level** `d_i(x, z)`: the distance to the nearest loop curve (the loft's curve-section
 //!   closest point, [`closed_curve_distance`]: a bounded span scan and Newton steps, the same on every
-//!   backend), negative inside an odd number of loops (even-odd over the level's loops). It is
+//!   backend), negative inside an odd number of loops (even-odd over the level's loops; every loop is stored
+//!   counter-clockwise, reversed at construction when its curve's area is negative). It is
 //!   1-Lipschitz in (x, z).
 //! - **Along the axis**: on `[y_i, y_{i+1}]`, `t = (y − y_i)/D`, a cubic Hermite with finite-difference
 //!   tangents `m_i = (d_{i+1} − d_{i−1})/(y_{i+1} − y_{i−1})`. That is Catmull-Rom on uniform levels,
@@ -100,6 +101,20 @@ fn spline_point(lp: &[Vec2], u: f32) -> Vec2 {
     (0..4).map(|k| w[k] * lp[(i - 1 + k as isize).rem_euclid(m) as usize]).fold(Vec2::ZERO, |a, b| a + b)
 }
 
+/// The signed area of a loop's curve (shoelace over [`SMOOTH_STACK_HAUSDORFF_SAMPLES`] points per span):
+/// positive when the curve runs counter-clockwise in (x, z)
+fn curve_area(lp: &[Vec2]) -> f32 {
+    let n = lp.len() * SMOOTH_STACK_HAUSDORFF_SAMPLES;
+    let mut a = 0.0f32;
+    let mut prev = spline_point(lp, 0.0);
+    for s in 1..=n {
+        let p = spline_point(lp, s as f32 / SMOOTH_STACK_HAUSDORFF_SAMPLES as f32 % lp.len() as f32);
+        a += prev.x * p.y - p.x * prev.y;
+        prev = p;
+    }
+    0.5 * a
+}
+
 /// An upper bound of the Hausdorff distance between two levels' curves: each curve sampled at
 /// [`SMOOTH_STACK_HAUSDORFF_SAMPLES`] per span, each sample's distance to the other level, the largest
 /// plus half the largest sampling chord
@@ -124,7 +139,7 @@ pub fn levels_hausdorff_bound(a: &[Vec<Vec2>], b: &[Vec<Vec2>]) -> f32 {
 impl SmoothSectionStack {
     /// A stack from its levels and loops, with the near-field radius `r0` (> 0) and the knot slope
     /// limit `eps` (0 < ε < 1); Err on degenerate input
-    pub fn new(levels: Vec<f32>, loops: Vec<Vec<Vec<Vec2>>>, r0: f32, eps: f32) -> Result<Self, String> {
+    pub fn new(levels: Vec<f32>, mut loops: Vec<Vec<Vec<Vec2>>>, r0: f32, eps: f32) -> Result<Self, String> {
         let n = levels.len();
         if n < 4 || loops.len() != n {
             return Err(format!("smooth section stack: {} levels and {} loop sets (at least 4, equal)", n, loops.len()));
@@ -145,6 +160,21 @@ impl SmoothSectionStack {
                 }
                 if lp.iter().any(|p| !p.is_finite()) {
                     return Err(format!("smooth section stack: a non-finite control point at level {i}"));
+                }
+            }
+        }
+        // every loop stored counter-clockwise: the per-loop distance is signed by the side of the
+        // tangent, so a clockwise loop would read its inside as outside and the even-odd count would be
+        // wrong. The orientation is the sign of the sampled curve's area (not the control polygon's);
+        // a reversed control-point order is the same curve run backwards
+        for (i, lv) in loops.iter_mut().enumerate() {
+            for lp in lv.iter_mut() {
+                let a = curve_area(lp);
+                if !(a.is_finite() && a != 0.0) {
+                    return Err(format!("smooth section stack: a loop at level {i} encloses no area"));
+                }
+                if a < 0.0 {
+                    lp.reverse();
                 }
             }
         }
@@ -333,6 +363,34 @@ mod tests {
         assert!(SmoothSectionStack::new(vec![0.0, 1.0, 2.0, f32::NAN], vec![c.clone(); 4], 1.0, 0.1).is_err());
         assert!(SmoothSectionStack::new(vec![0.0, 1.0, 2.0, 3.0], vec![c.clone(); 4], 0.0, 0.1).is_err());
         assert!(SmoothSectionStack::new(vec![0.0, 1.0, 2.0, 3.0], vec![c.clone(); 4], 1.0, 1.5).is_err());
+    }
+
+    // oracle (invariance): the field does not depend on the loops' orientation. The same levels with every
+    // loop given clockwise (control points reversed), an outer loop with a hole and a separate island,
+    // give the bit-equal field; and the sign is even-odd (inside the hole is outside)
+    #[test]
+    fn a_clockwise_loop_gives_the_same_field() {
+        let lv = |r: f32| vec![circle(1.0 * r, Vec2::ZERO, 16), circle(0.4 * r, Vec2::new(0.1, 0.0), 12), circle(0.3, Vec2::new(2.2, 0.0), 8)];
+        let ccw: Vec<Vec<Vec<Vec2>>> = [1.0f32, 1.05, 1.1, 1.0, 0.95].iter().map(|&r| lv(r)).collect();
+        let cw: Vec<Vec<Vec<Vec2>>> = ccw.iter().map(|l| l.iter().map(|lp| lp.iter().rev().copied().collect()).collect()).collect();
+        let mixed: Vec<Vec<Vec<Vec2>>> = ccw.iter().enumerate().map(|(i, l)| if i % 2 == 0 { cw[i].clone() } else { l.clone() }).collect();
+        let a = SmoothSectionStack::new(vec![0.0, 0.5, 1.0, 1.5, 2.0], ccw, 0.3, 0.1).unwrap();
+        let b = SmoothSectionStack::new(vec![0.0, 0.5, 1.0, 1.5, 2.0], cw, 0.3, 0.1).unwrap();
+        let c = SmoothSectionStack::new(vec![0.0, 0.5, 1.0, 1.5, 2.0], mixed, 0.3, 0.1).unwrap();
+        let mut seed = 3u64;
+        let mut n = 0;
+        for _ in 0..4000 {
+            let p = Vec3::new(lcg(&mut seed) * 6.0 - 2.5, lcg(&mut seed) * 2.4 - 0.2, lcg(&mut seed) * 4.0 - 2.0);
+            let fa = a.eval(p);
+            assert_eq!(fa.to_bits(), b.eval(p).to_bits(), "clockwise loops changed the field at {p:?}");
+            assert_eq!(fa.to_bits(), c.eval(p).to_bits(), "mixed orientations changed the field at {p:?}");
+            n += 1;
+        }
+        assert_eq!(n, 4000);
+        // even-odd: inside the outer loop, inside the hole (outside), inside the island
+        assert!(b.eval(Vec3::new(-0.75, 1.0, 0.0)) < 0.0, "between the outer loop and the hole is inside");
+        assert!(b.eval(Vec3::new(0.1, 1.0, 0.0)) > 0.0, "inside the hole is outside");
+        assert!(b.eval(Vec3::new(2.2, 1.0, 0.0)) < 0.0, "inside the island is inside");
     }
 
     // determinism: the same input gives the same bits
