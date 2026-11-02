@@ -82,7 +82,7 @@ impl RampBlendParams {
             (p.z, (self.lo.z, self.hi.z)),
         ] {
             // the high face as 1 − smoothstep (det-math's smoothstep with edge1 ≤ edge0 is a hard step)
-            g *= smoothstep(l, l + e, x) * (1.0 - smoothstep(h - e, h, x));
+            g *= smoothstep(l, l + e, x) * 1.0;
         }
         (t, bq * g)
     }
