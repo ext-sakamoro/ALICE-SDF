@@ -400,3 +400,43 @@ fn a_steeply_growing_section_stays_one_lipschitz_along_the_axis() {
     }
     assert!(worst <= 1.0 + 2e-3, "largest difference quotient {worst}");
 }
+
+#[test]
+fn a_small_tightly_bent_curve_loft_never_reads_past_its_own_surface() {
+    // a toe-sized loft (mm): ellipse sections 7 × 5 mm on an axis bent to a radius of curvature of
+    // about 25 mm; at points 0.2–8 mm outside, f never exceeds the distance to the loft's own zero set:
+    // no inside point within 0.98 f (20,000 random points in that ball per point)
+    let axis: Vec<Vec3> = (0..8)
+        .map(|i| {
+            let a = 0.12 * i as f32;
+            Vec3::new(25.0 * (1.0 - a.cos()), 25.0 * a.sin(), 0.0)
+        })
+        .collect();
+    let rows: Vec<Vec<Vec2>> = (0..8).map(|i| ellipse(24, 3.5 - 0.15 * i as f32, 2.5)).collect();
+    let node = SdfNode::loft_curves(axis, Vec3::Z, rows).expect("toe-like");
+    let mut r = lcg(17);
+    let (mut over, mut compared) = (0, 0);
+    while compared < 60 {
+        let p = Vec3::new(r() * 30.0 - 5.0, r() * 30.0 - 4.0, r() * 16.0 - 8.0);
+        let f = eval(&node, p);
+        if !(0.2..=8.0).contains(&f) {
+            continue;
+        }
+        // no point of the loft's own inside within 0.98 f: 20,000 random points in that ball
+        let mut best = f32::INFINITY;
+        for _ in 0..20000 {
+            let d = Vec3::new(r() - 0.5, r() - 0.5, r() - 0.5) * 2.0;
+            if d.length() > 1.0 {
+                continue;
+            }
+            let q = p + d * (0.98 * f);
+            if eval(&node, q) <= 0.0 {
+                best = best.min((q - p).length());
+            }
+        }
+        compared += 1;
+        over += usize::from(best.is_finite());
+    }
+    assert_eq!(over, 0, "read past its own surface at {over} of {compared} points");
+}
+
