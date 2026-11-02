@@ -71,6 +71,7 @@ mod pie;
 mod plane;
 mod pmy;
 mod pyramid;
+pub mod ramp_blend;
 mod regular_polygon;
 mod rhombus;
 mod rounded_box;
