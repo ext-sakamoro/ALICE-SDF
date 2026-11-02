@@ -459,118 +459,16 @@ impl<'a> Loft<'a> {
         self.sknots[r as usize] + wraps as f32 * period
     }
 
-    /// The section curve on span `j` (`K_j ≤ t ≤ K_{j+1}`) by de Boor's algorithm with the span's
-    /// control points `P_{j−1} … P_{j+2}` and knots `K_{j−2} … K_{j+3}`: point, first and second
-    /// derivative (the derivative curves' control points `3ΔP/ΔK` and `2ΔQ/ΔK`)
+    /// The section curve on span `j` at the weights (see [`closed_curve_on_span`])
     #[inline]
     fn curve_on_span(&self, i0: isize, b: &[f32; 4], j: isize, t: f32) -> (Vec2, Vec2, Vec2) {
-        let mut d = [Vec2::ZERO; 4];
-        for (k, dk) in d.iter_mut().enumerate() {
-            *dk = self.section_point(i0, b, j - 1 + k as isize);
-        }
-        let mut u = [0.0f32; 6];
-        for (k, uk) in u.iter_mut().enumerate() {
-            *uk = self.sknot(j - 2 + k as isize);
-        }
-        // first derivative control points (degree 2) and second (degree 1)
-        let mut q = [Vec2::ZERO; 3];
-        for k in 0..3 {
-            q[k] = (d[k + 1] - d[k]) * (3.0 / (u[k + 3] - u[k]));
-        }
-        let r0 = (q[1] - q[0]) * (2.0 / (u[3] - u[1]));
-        let r1 = (q[2] - q[1]) * (2.0 / (u[4] - u[2]));
-        // de Boor, degree 3
-        let mut p = d;
-        for r in 1..=3usize {
-            for i in (r..=3).rev() {
-                let a = (t - u[i - 1]) / (u[i + 3 - r] - u[i - 1]);
-                p[i] = p[i - 1] * (1.0 - a) + p[i] * a;
-            }
-        }
-        // degree 2
-        for r in 1..=2usize {
-            for i in (r..=2).rev() {
-                let a = (t - u[i]) / (u[i + 3 - r] - u[i]);
-                q[i] = q[i - 1] * (1.0 - a) + q[i] * a;
-            }
-        }
-        let a = (t - u[2]) / (u[3] - u[2]);
-        (p[3], q[2], r0 * (1.0 - a) + r1 * a)
+        closed_curve_on_span(&|x| self.section_point(i0, b, x), &|x| self.sknot(x), j, t)
     }
 
-    /// The signed distance in the section plane at `s` from `q` to the section curve (negative
-    /// inside). Per span, a lower bound of the distance (the circle around the span's four control
-    /// points, which hold the span) is compared with the best so far, and only a span that may come
-    /// closer is scanned at [`CURVE_SCAN`] even steps: the best sample is the one a full scan finds.
-    /// Then [`CURVE_NEWTON`] Newton steps on `(c − q)·c' = 0`, kept within the span and one scan step
-    /// of the best sample; the closer of the two is kept. The sign from the side of the tangent
-    /// there (counter-clockwise: inside on the left).
+    /// The signed distance in the section plane at `s` from `q` to the section curve (see [`closed_curve_distance`])
     fn curve_distance(&self, s: f32, q: Vec2) -> f32 {
         let (i0, b) = self.row_weights(s);
-        let m = self.kh as isize;
-        let (mut bj, mut bt, mut be) = (0isize, self.sknot(0), f32::INFINITY);
-        for j in 0..m {
-            let (p0, p1, p2, p3) = (
-                self.section_point(i0, &b, j - 1),
-                self.section_point(i0, &b, j),
-                self.section_point(i0, &b, j + 1),
-                self.section_point(i0, &b, j + 2),
-            );
-            let c = (p0 + p1 + p2 + p3) * 0.25;
-            let rad = (p0 - c).length().law_max((p1 - c).length()).law_max((p2 - c).length()).law_max((p3 - c).length());
-            let lb = (q - c).length() - rad;
-            if lb > 0.0 && lb * lb >= be {
-                continue;
-            }
-            let (k0, k1) = (self.sknot(j), self.sknot(j + 1));
-            for k in 0..CURVE_SCAN {
-                let t = k0 + (k1 - k0) * (k as f32 / CURVE_SCAN as f32);
-                let e = (self.curve_on_span(i0, &b, j, t).0 - q).length_squared();
-                if e < be {
-                    be = e;
-                    bt = t;
-                    bj = j;
-                }
-            }
-        }
-        let (k0, k1) = (self.sknot(bj), self.sknot(bj + 1));
-        // one scan step either side, into the neighbouring span when the best sample is a span's end
-        let (lo, hi) = (bt - (k1 - k0) / CURVE_SCAN as f32, bt + (k1 - k0) / CURVE_SCAN as f32);
-        let lo = lo.law_max(self.sknot(bj - 1));
-        let hi = hi.law_min(self.sknot(bj + 2));
-        let on = |t: f32| -> isize {
-            if t < k0 {
-                bj - 1
-            } else if t > k1 {
-                bj + 1
-            } else {
-                bj
-            }
-        };
-        let mut t = bt;
-        for _ in 0..CURVE_NEWTON {
-            let (c, d, dd) = self.curve_on_span(i0, &b, on(t), t);
-            let r = c - q;
-            let g = r.dot(d);
-            let gp = d.dot(d) + r.dot(dd);
-            if gp > 0.0 {
-                t = (t - g / gp).law_max(lo).law_min(hi);
-            }
-        }
-        let (c, d, _) = self.curve_on_span(i0, &b, on(t), t);
-        let (mut cc, mut dc) = (c, d);
-        if (c - q).length_squared() > be {
-            let (c0, d0, _) = self.curve_on_span(i0, &b, bj, bt);
-            cc = c0;
-            dc = d0;
-        }
-        let r = q - cc;
-        let dist = r.length();
-        if dc.x * r.y - dc.y * r.x > 0.0 {
-            -dist
-        } else {
-            dist
-        }
+        closed_curve_distance(self.kh as isize, &|x| self.section_point(i0, &b, x), &|x| self.sknot(x), q)
     }
 
     /// The dome at end `e` (0 at `s = 0`, 1 at `s = n − 1`): its field cut by the end's half-space
@@ -622,6 +520,119 @@ impl<'a> Loft<'a> {
         // the far bound: the distance to the tube of radius R_b around the axis curve holds the whole
         // surface, so it never exceeds the distance to it, and it is 1-Lipschitz; the larger of the two
         f.law_max(r.length() - self.reach)
+    }
+}
+
+/// The section curve on span `j` (`K_j ≤ t ≤ K_{j+1}`) by de Boor's algorithm with the span's
+/// control points `P_{j−1} … P_{j+2}` and knots `K_{j−2} … K_{j+3}`: point, first and second
+/// derivative (the derivative curves' control points `3ΔP/ΔK` and `2ΔQ/ΔK`)
+#[inline]
+pub(crate) fn closed_curve_on_span(point: &impl Fn(isize) -> Vec2, knot: &impl Fn(isize) -> f32, j: isize, t: f32) -> (Vec2, Vec2, Vec2) {
+    let mut d = [Vec2::ZERO; 4];
+    for (k, dk) in d.iter_mut().enumerate() {
+        *dk = point(j - 1 + k as isize);
+    }
+    let mut u = [0.0f32; 6];
+    for (k, uk) in u.iter_mut().enumerate() {
+        *uk = knot(j - 2 + k as isize);
+    }
+    // first derivative control points (degree 2) and second (degree 1)
+    let mut q = [Vec2::ZERO; 3];
+    for k in 0..3 {
+        q[k] = (d[k + 1] - d[k]) * (3.0 / (u[k + 3] - u[k]));
+    }
+    let r0 = (q[1] - q[0]) * (2.0 / (u[3] - u[1]));
+    let r1 = (q[2] - q[1]) * (2.0 / (u[4] - u[2]));
+    // de Boor, degree 3
+    let mut p = d;
+    for r in 1..=3usize {
+        for i in (r..=3).rev() {
+            let a = (t - u[i - 1]) / (u[i + 3 - r] - u[i - 1]);
+            p[i] = p[i - 1] * (1.0 - a) + p[i] * a;
+        }
+    }
+    // degree 2
+    for r in 1..=2usize {
+        for i in (r..=2).rev() {
+            let a = (t - u[i]) / (u[i + 3 - r] - u[i]);
+            q[i] = q[i - 1] * (1.0 - a) + q[i] * a;
+        }
+    }
+    let a = (t - u[2]) / (u[3] - u[2]);
+    (p[3], q[2], r0 * (1.0 - a) + r1 * a)
+}
+
+/// The signed distance from `q` to a closed cubic B-spline curve of `m` spans (control points `point(j)`, any
+/// integer `j`, periodic; knots `knot(i)`, the periodic extension), shared by the loft's curve sections and the
+/// smooth section stack (negative inside). Per span, a lower bound of the distance (the circle around the span's four control
+/// points, which hold the span) is compared with the best so far, and only a span that may come
+/// closer is scanned at [`CURVE_SCAN`] even steps: the best sample is the one a full scan finds.
+/// Then [`CURVE_NEWTON`] Newton steps on `(c − q)·c' = 0`, kept within the span and one scan step
+/// of the best sample; the closer of the two is kept. The sign from the side of the tangent
+/// there (counter-clockwise: inside on the left).
+pub(crate) fn closed_curve_distance(m: isize, point: &impl Fn(isize) -> Vec2, knot: &impl Fn(isize) -> f32, q: Vec2) -> f32 {
+    let (mut bj, mut bt, mut be) = (0isize, knot(0), f32::INFINITY);
+    for j in 0..m {
+        let (p0, p1, p2, p3) = (
+            point(j - 1),
+            point(j),
+            point(j + 1),
+            point(j + 2),
+        );
+        let c = (p0 + p1 + p2 + p3) * 0.25;
+        let rad = (p0 - c).length().law_max((p1 - c).length()).law_max((p2 - c).length()).law_max((p3 - c).length());
+        let lb = (q - c).length() - rad;
+        if lb > 0.0 && lb * lb >= be {
+            continue;
+        }
+        let (k0, k1) = (knot(j), knot(j + 1));
+        for k in 0..CURVE_SCAN {
+            let t = k0 + (k1 - k0) * (k as f32 / CURVE_SCAN as f32);
+            let e = (closed_curve_on_span(point, knot, j, t).0 - q).length_squared();
+            if e < be {
+                be = e;
+                bt = t;
+                bj = j;
+            }
+        }
+    }
+    let (k0, k1) = (knot(bj), knot(bj + 1));
+    // one scan step either side, into the neighbouring span when the best sample is a span's end
+    let (lo, hi) = (bt - (k1 - k0) / CURVE_SCAN as f32, bt + (k1 - k0) / CURVE_SCAN as f32);
+    let lo = lo.law_max(knot(bj - 1));
+    let hi = hi.law_min(knot(bj + 2));
+    let on = |t: f32| -> isize {
+        if t < k0 {
+            bj - 1
+        } else if t > k1 {
+            bj + 1
+        } else {
+            bj
+        }
+    };
+    let mut t = bt;
+    for _ in 0..CURVE_NEWTON {
+        let (c, d, dd) = closed_curve_on_span(point, knot, on(t), t);
+        let r = c - q;
+        let g = r.dot(d);
+        let gp = d.dot(d) + r.dot(dd);
+        if gp > 0.0 {
+            t = (t - g / gp).law_max(lo).law_min(hi);
+        }
+    }
+    let (c, d, _) = closed_curve_on_span(point, knot, on(t), t);
+    let (mut cc, mut dc) = (c, d);
+    if (c - q).length_squared() > be {
+        let (c0, d0, _) = closed_curve_on_span(point, knot, bj, bt);
+        cc = c0;
+        dc = d0;
+    }
+    let r = q - cc;
+    let dist = r.length();
+    if dc.x * r.y - dc.y * r.x > 0.0 {
+        -dist
+    } else {
+        dist
     }
 }
 
