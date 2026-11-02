@@ -21,7 +21,12 @@ use serde::{Deserialize, Serialize};
 pub const SECTION_STACK_SAMPLE: f32 = 0.0005;
 
 /// A stack of planar closed-loop sections along local Y
+///
+/// Loading recomputes the bound from the levels and loops and refuses a stored `lipschitz` that
+/// differs from it: a smaller stored value would overstate the distance and let sphere tracing step
+/// through the surface.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "SectionStackStored")]
 pub struct SectionStack {
     /// Heights of the levels (strictly increasing, at least 2)
     pub levels: Vec<f32>,
@@ -29,6 +34,28 @@ pub struct SectionStack {
     pub loops: Vec<Vec<Vec<Vec2>>>,
     /// The Lipschitz bound of the interpolated field (≥ 1), computed at construction
     pub lipschitz: f32,
+}
+
+/// The stored form of a [`SectionStack`], checked on load
+#[derive(Deserialize)]
+struct SectionStackStored {
+    levels: Vec<f32>,
+    loops: Vec<Vec<Vec<Vec2>>>,
+    lipschitz: f32,
+}
+
+impl TryFrom<SectionStackStored> for SectionStack {
+    type Error = String;
+    fn try_from(v: SectionStackStored) -> Result<Self, String> {
+        let s = Self::new(v.levels, v.loops)?;
+        if s.lipschitz.to_bits() != v.lipschitz.to_bits() {
+            return Err(format!(
+                "section stack: stored lipschitz {} differs from the bound {} recomputed from its levels",
+                v.lipschitz, s.lipschitz
+            ));
+        }
+        Ok(s)
+    }
 }
 
 /// The 2D signed distance to a set of closed loops: the nearest edge of any loop, negative inside an
@@ -65,8 +92,9 @@ fn edge_distance(q: Vec2, loops: &[Vec<Vec2>]) -> f32 {
     sdf_loops_2d(q, loops).abs()
 }
 
-/// An upper bound of the Hausdorff distance between the boundaries of two loop sets: both boundaries
-/// sampled every [`SECTION_STACK_SAMPLE`], each sample's exact distance to the other boundary, the
+/// An upper bound of the Hausdorff distance between the boundaries of two loop sets
+///
+/// Both boundaries are sampled every [`SECTION_STACK_SAMPLE`], each sample's exact distance to the other boundary, the
 /// largest plus half the step (the distance function is 1-Lipschitz along an edge)
 #[must_use]
 pub fn boundary_hausdorff_bound(a: &[Vec<Vec2>], b: &[Vec<Vec2>]) -> f32 {
@@ -135,7 +163,7 @@ impl SectionStack {
 
     /// The bound the field was divided by
     #[must_use]
-    pub fn lipschitz(&self) -> f32 {
+    pub const fn lipschitz(&self) -> f32 {
         self.lipschitz
     }
 
@@ -324,5 +352,32 @@ mod tests {
         let mut bad = c.clone();
         bad[2].x = f32::NAN;
         assert!(SectionStack::new(vec![0.0, 1.0], vec![vec![c], vec![bad]]).is_err());
+    }
+
+    // the stored bound is recomputed on load: a round trip keeps it, a tampered value (smaller or
+    // larger) and a missing one are refused, and so is a stack that new() would refuse
+    #[test]
+    fn load_recomputes_and_checks_the_bound() {
+        let a = circle(Vec2::ZERO, 0.1, 24);
+        let b = circle(Vec2::new(0.02, 0.0), 0.06, 24);
+        let s = SectionStack::new(vec![0.0, 0.05], vec![vec![a], vec![b]]).unwrap();
+        assert!(s.lipschitz() > 1.0);
+        let json = serde_json::to_string(&s).unwrap();
+        let back: SectionStack = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, s);
+        let mut v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        for wrong in [1.0_f32, s.lipschitz() * 0.5, s.lipschitz() * 2.0] {
+            v["lipschitz"] = serde_json::json!(wrong);
+            let r: Result<SectionStack, _> = serde_json::from_value(v.clone());
+            assert!(
+                r.is_err(),
+                "stored lipschitz {wrong} accepted (bound {})",
+                s.lipschitz()
+            );
+        }
+        v.as_object_mut().unwrap().remove("lipschitz");
+        assert!(serde_json::from_value::<SectionStack>(v.clone()).is_err());
+        let one_level = serde_json::json!({"levels": [0.0], "loops": [[[[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]]], "lipschitz": 1.0});
+        assert!(serde_json::from_value::<SectionStack>(one_level).is_err());
     }
 }
