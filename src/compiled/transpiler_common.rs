@@ -43,6 +43,9 @@ pub const SHADER_UNSUPPORTED: [&str; 4] = [
     "IFS",
 ];
 
+/// Polygons with more vertices than this are emitted as a vertex array and a loop function
+pub const POLYGON_2D_UNROLL_MAX: usize = 8;
+
 const fn unsupported_name(node: &SdfNode) -> Option<&'static str> {
     // Every node kind is transpiled (IFS / SdfSkinning / ProjectiveTransform
     // with literal matrices, LatticeDeform / HeightmapDisplacement as
@@ -221,6 +224,10 @@ pub trait ShaderLang: private::Sealed + 'static {
     fn global_float_array(name: &str, values: &[f32]) -> String;
     /// A module-scope `vec3 name(vec3 p)` function with the given body lines.
     fn global_vec3_fn(name: &str, body: &str) -> String;
+    /// A module-scope `float name(vec2 q)` function: the signed distance to the closed polygon whose
+    /// `n` vertices are the pairs of the module-scope array `arr` (the loop of `sdf_polygon_2d_xy`:
+    /// the same edge order, clamp and even-odd sign rule)
+    fn global_polygon_2d_fn(name: &str, arr: &str, n: usize) -> String;
 }
 
 /// Float literal for shader source: shortest round-trip form with a decimal
@@ -3125,6 +3132,27 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let n = vertices.len();
                 if n < 3 {
                     code.push_str(&L::decl_float(&v, "1e10"));
+                    return v;
+                }
+                if n > POLYGON_2D_UNROLL_MAX {
+                    // a module-scope vertex array and one loop function: the shader's length does not
+                    // grow with the outline (an unrolled outline of hundreds of edges makes a shader
+                    // some drivers take seconds to compile)
+                    let id = self.var_counter;
+                    self.var_counter += 1;
+                    let arr = format!("alice_poly_v_{id}");
+                    let func = format!("alice_poly_{id}");
+                    let flat: Vec<f32> = vertices.iter().flat_map(|q| [q.x, q.y]).collect();
+                    self.globals.push_str(&L::global_float_array(&arr, &flat));
+                    self.globals.push_str(&L::global_polygon_2d_fn(&func, &arr, n));
+                    code.push_str(&L::decl_float(&format!("{v}_d2d"), &format!("{func}({point_var}.xy)")));
+                    code.push_str(&L::decl_float(&format!("{v}_dz"), &format!("abs({point_var}.z) - {hh}")));
+                    code.push_str(&L::decl_float(&format!("{v}_wx"), &format!("max({v}_d2d, 0.0)")));
+                    code.push_str(&L::decl_float(&format!("{v}_wy"), &format!("max({v}_dz, 0.0)")));
+                    code.push_str(&L::decl_float(
+                        &v,
+                        &format!("sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0)"),
+                    ));
                     return v;
                 }
                 // Emit vertex params

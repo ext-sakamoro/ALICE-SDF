@@ -752,6 +752,45 @@ impl SdfNode {
         }
     }
 
+    /// A closed curve through `points` (a uniform closed Catmull-Rom spline) sampled to a polygon of
+    /// `per_span` vertices per span, extruded along Z. Every `per_span`-th vertex is a control point,
+    /// exactly. The distance is the polygon's (exact for the polygon, any concavity), so it reads the
+    /// spline to within the sampling chord error.
+    ///
+    /// # Errors
+    /// Fewer than 3 points, `per_span` of 0, or a non-finite point
+    pub fn polygon_2d_closed_spline(points: &[Vec2], per_span: u32, half_height: f32) -> Result<Self, String> {
+        if points.len() < 3 {
+            return Err(format!("a closed spline needs 3 points or more, it has {}", points.len()));
+        }
+        if per_span == 0 {
+            return Err("per_span must be 1 or more".into());
+        }
+        if !points.iter().all(|p| p.is_finite()) {
+            return Err("every point must be finite".into());
+        }
+        let n = points.len();
+        let mut vertices = Vec::with_capacity(n * per_span as usize);
+        for i in 0..n {
+            let a = points[(i + n - 1) % n];
+            let b = points[i];
+            let c = points[(i + 1) % n];
+            let d = points[(i + 2) % n];
+            for k in 0..per_span {
+                let t = k as f32 / per_span as f32;
+                let t2 = t * t;
+                let t3 = t2 * t;
+                vertices.push(
+                    0.5 * (2.0 * b
+                        + (c - a) * t
+                        + (2.0 * a - 5.0 * b + 4.0 * c - d) * t2
+                        + (-a + 3.0 * b - 3.0 * c + d) * t3),
+                );
+            }
+        }
+        Ok(Self::Polygon2D { vertices, half_height })
+    }
+
     /// Create a 2D rounded rectangle extruded along Z
     #[must_use]
     #[inline]

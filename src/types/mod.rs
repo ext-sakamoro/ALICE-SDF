@@ -728,9 +728,10 @@ pub enum SdfNode {
         /// Half-depth of extrusion along Z
         half_height: f32,
     },
-    /// 2D Polygon (convex, up to 8 vertices) extruded along Z
+    /// A closed 2D polygon extruded along Z: any vertex count, any concavity (a simple polygon); the
+    /// exact distance to its edges with the even-odd sign
     Polygon2D {
-        /// Vertices (up to 8)
+        /// Vertices, in order around the outline (either winding)
         vertices: Vec<Vec2>,
         /// Half-depth of extrusion along Z
         half_height: f32,

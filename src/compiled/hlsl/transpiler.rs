@@ -110,6 +110,12 @@ impl ShaderLang for HlslLang {
             items.join(", ")
         )
     }
+    fn global_polygon_2d_fn(name: &str, arr: &str, n: usize) -> String {
+        format!(
+            "float {name}(float2 q) {{\n    float2 v0 = float2({arr}[0], {arr}[1]);\n    float d = dot(q - v0, q - v0);\n    float s = 1.0;\n    int j = {last};\n    for (int i = 0; i < {n}; i++) {{\n        float2 vi = float2({arr}[2 * i], {arr}[2 * i + 1]);\n        float2 vj = float2({arr}[2 * j], {arr}[2 * j + 1]);\n        float2 e = vj - vi;\n        float2 w = q - vi;\n        float2 b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);\n        d = min(d, dot(b, b));\n        bool c1 = q.y >= vi.y;\n        bool c2 = q.y < vj.y;\n        bool c3 = e.x * w.y > e.y * w.x;\n        if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {{ s = -s; }}\n        j = i;\n    }}\n    return s * sqrt(d);\n}}\n",
+            last = n - 1
+        )
+    }
     fn global_vec3_fn(name: &str, body: &str) -> String {
         format!("float3 {name}(float3 p) {{\n{body}}}\n")
     }

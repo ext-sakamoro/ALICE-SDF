@@ -103,6 +103,12 @@ impl ShaderLang for WgslLang {
             items.join(", ")
         )
     }
+    fn global_polygon_2d_fn(name: &str, arr: &str, n: usize) -> String {
+        format!(
+            "fn {name}(q: vec2<f32>) -> f32 {{\n    let v0 = vec2<f32>({arr}[0], {arr}[1]);\n    var d = dot(q - v0, q - v0);\n    var s = 1.0;\n    var j = {last}i;\n    for (var i = 0i; i < {n}i; i = i + 1i) {{\n        let vi = vec2<f32>({arr}[2 * i], {arr}[2 * i + 1]);\n        let vj = vec2<f32>({arr}[2 * j], {arr}[2 * j + 1]);\n        let e = vj - vi;\n        let w = q - vi;\n        let b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);\n        d = min(d, dot(b, b));\n        let c1 = q.y >= vi.y;\n        let c2 = q.y < vj.y;\n        let c3 = e.x * w.y > e.y * w.x;\n        if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {{ s = -s; }}\n        j = i;\n    }}\n    return s * sqrt(d);\n}}\n",
+            last = n - 1
+        )
+    }
     fn global_vec3_fn(name: &str, body: &str) -> String {
         format!("fn {name}(p: vec3<f32>) -> vec3<f32> {{\n{body}}}\n")
     }
@@ -255,6 +261,14 @@ impl WgslShader {
         // メイン transpile で使われるヘルパーを事前収集（重複排除用）
         let main_shader = Self::transpile(node, mode);
         let main_source = &main_shader.source;
+        // module 先頭の配列・関数 (頂点の多い Polygon2D 等) の名前は var_counter
+        // から作るので、サブ関数は main の続きの番号から始めて衝突させない
+        let mut next_var = {
+            let mut t = WgslTranspiler::new(mode);
+            let _ = t.transpile_node(node, "p");
+            t.var_counter
+        };
+        let mut globals_all = String::new();
 
         // 各サブツリーを個別にトランスパイル
         let mut helpers_all = String::new();
@@ -265,8 +279,11 @@ impl WgslShader {
 
         for (i, (mid, child)) in materials.iter().enumerate() {
             let mut transpiler = WgslTranspiler::new(mode);
+            transpiler.var_counter = next_var;
             let fn_name = format!("sdf_mat_sub_{}", i);
             let inner_body = transpiler.transpile_node(child, "p");
+            next_var = transpiler.var_counter;
+            globals_all.push_str(&transpiler.globals);
 
             // ヘルパーを収集（メインソースに既に含まれるものはスキップ）
             for helper in &transpiler.helper_functions {
@@ -300,7 +317,7 @@ impl WgslShader {
 
         body.push_str("    return mat_id;\n}\n");
 
-        format!("{}{}{}", helpers_all, eval_fns, body)
+        format!("{}{}{}{}", helpers_all, globals_all, eval_fns, body)
     }
 
     /// SdfNode ツリーから WithMaterial サブツリーを再帰的に収集
