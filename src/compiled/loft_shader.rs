@@ -160,8 +160,25 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
         kr1f = lit((kr - 1) as f32),
         n1f = lit((n - 1) as f32),
     );
+    if flat[13] > 0.0 {
+        // the saturation width B(s): linear between its knots, as L(s) (the CPU's `local_b`)
+        s += &format!(
+            "fn {name}_lb(s: F) -> F {{
+    var w: F = s * {kr1f} / {n1f};
+    w = min(max(w, 0.0), {kr1f});
+    var i: I = min(I(w), {krm2});
+    var t: F = w - F(i);
+    return {arr}[{bb} + i] + ({arr}[{bb} + i + 1] - {arr}[{bb} + i]) * t;
+}}
+",
+            bb = kb + kr,
+            kr1f = lit((kr - 1) as f32),
+            n1f = lit((n - 1) as f32),
+            krm2 = kr - 2
+        );
+    }
     if curve {
-        s += &curve_functions(name, arr, kh, kr, rb, w, kb + kr, n);
+        s += &curve_functions(name, arr, kh, kr, rb, w, kb + kr + if flat[13] > 0.0 { kr } else { 0 }, n);
     }
     let frame = |pfx: &str| {
         format!(
@@ -265,8 +282,7 @@ fn correction(name: &str, flat: &[f32]) -> String {
         )
     };
     format!(
-        "    var x: F = bigf / {m};\n    var sat: F = bigf / sqrt(1.0 + x * x);\n    var dist: F = length(r);\n{psi}    f = f + (1.0 / {name}_ll(s) - 1.0 / {lg}) * sat * psi;\n",
-        m = lit(m),
+        "    var x: F = bigf / {name}_lb(s);\n    var sat: F = bigf / sqrt(1.0 + x * x);\n    var dist: F = length(r);\n{psi}    f = f + (1.0 / {name}_ll(s) - 1.0 / {lg}) * sat * psi;\n",
         lg = lit(lg)
     )
 }
@@ -339,7 +355,8 @@ fn pieces_at(flat: &[f32]) -> usize {
     let (n, kh, kr) = (flat[0] as usize, flat[1] as usize, flat[2] as usize);
     let curve = flat[15] != 0.0;
     let w = if curve { 2 * kh } else { 2 * kh + 1 };
-    HEAD + 3 * n + kr * w + kr + if curve { kh + 1 } else { 0 }
+    // the saturation widths B(s) (k knots) follow the L(s) knots when the correction is on
+    HEAD + 3 * n + kr * w + kr + if flat[13] > 0.0 { kr } else { 0 } + if curve { kh + 1 } else { 0 }
 }
 
 /// `far_bound(p, pieces)` of the CPU: min over pieces of max over its planes of `n·p − h`, a piece
