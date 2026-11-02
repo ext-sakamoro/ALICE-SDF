@@ -236,7 +236,9 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
         }
     }
     s += &far_tail(name, flat);
-    s += &far_function(name, arr, flat, rb + kr * w + kr + if curve { kh + 1 } else { 0 });
+    // the far bound is declared before the field that calls it (GLSL / HLSL need it first)
+    let at = s.find(&format!("fn {name}(p: V3) -> F {{")).expect("the field function");
+    s.insert_str(at, &far_function(name, arr, flat, rb + kr * w + kr + if curve { kh + 1 } else { 0 }));
     s
 }
 
@@ -277,26 +279,28 @@ fn far_tail(name: &str, flat: &[f32]) -> String {
     format!("    if (f <= 0.0) {{ return f; }}\n    return max(f, {name}_fb(p) - {tau});\n}}\n", tau = lit(tau))
 }
 
+/// cos and sin of 2πj/16, the CPU far bound's `DIR16` (the same literals)
+const DIR16: [(f32, f32); 16] = [
+    (1.0, 0.0),
+    (0.923_879_5, 0.382_683_43),
+    (0.707_106_77, 0.707_106_77),
+    (0.382_683_43, 0.923_879_5),
+    (0.0, 1.0),
+    (-0.382_683_43, 0.923_879_5),
+    (-0.707_106_77, 0.707_106_77),
+    (-0.923_879_5, 0.382_683_43),
+    (-1.0, 0.0),
+    (-0.923_879_5, -0.382_683_43),
+    (-0.707_106_77, -0.707_106_77),
+    (-0.382_683_43, -0.923_879_5),
+    (0.0, -1.0),
+    (0.382_683_43, -0.923_879_5),
+    (0.707_106_77, -0.707_106_77),
+    (0.923_879_5, -0.382_683_43),
+];
+
 /// `plane_normal(k, t, n, b)` of the CPU, as an expression over the piece frame `t, n, b`
 fn plane_normal_expr(k: usize) -> String {
-    const DIR16: [(f32, f32); 16] = [
-        (1.0, 0.0),
-        (0.923_879_5, 0.382_683_43),
-        (0.707_106_77, 0.707_106_77),
-        (0.382_683_43, 0.923_879_5),
-        (0.0, 1.0),
-        (-0.382_683_43, 0.923_879_5),
-        (-0.707_106_77, 0.707_106_77),
-        (-0.923_879_5, 0.382_683_43),
-        (-1.0, 0.0),
-        (-0.923_879_5, -0.382_683_43),
-        (-0.707_106_77, -0.707_106_77),
-        (-0.382_683_43, -0.923_879_5),
-        (0.0, -1.0),
-        (0.382_683_43, -0.923_879_5),
-        (0.707_106_77, -0.707_106_77),
-        (0.923_879_5, -0.382_683_43),
-    ];
     let inv = lit(0.707_106_77);
     match k {
         48 => "t".into(),
@@ -314,22 +318,31 @@ fn plane_normal_expr(k: usize) -> String {
 }
 
 /// `far_bound(p, pieces)` of the CPU: min over pieces of max over its planes of `n·p − h`, a piece
-/// skipped when the subset 0, 4, 8, 12, 48, 49 already reaches the least so far
+/// skipped when the subset 0, 4, 8, 12, 48, 49 already reaches the least so far. The planes are a
+/// loop over the direction table appended to the data array at `dir` (normal `d = n·c + b·s`, then
+/// `d`, `(d + t)/√2` or `(d − t)/√2` by `k / 16`; 48 is `t`, 49 is `−t`: the CPU's `plane_normal`)
 fn far_function(name: &str, arr: &str, flat: &[f32], at: usize) -> String {
     let pieces = flat[16] as usize;
     if pieces == 0 {
         return String::new();
     }
+    let dir = flat.len();
+    let inv = lit(0.707_106_77);
     let mut lb = String::new();
     for k in [0usize, 4, 8, 12, 48, 49] {
         lb += &format!("        lb = max(lb, dot({}, p) - {arr}[o + {}]);\n", plane_normal_expr(k), 9 + k);
     }
-    let mut full = String::new();
-    for k in 0..PIECE_PLANES {
-        full += &format!("        v = max(v, dot({}, p) - {arr}[o + {}]);\n", plane_normal_expr(k), 9 + k);
-    }
     format!(
-        "fn {name}_fb(p: V3) -> F {{
+        "fn {name}_pn(k: I, t: V3, n: V3, b: V3) -> V3 {{
+    if (k == 48) {{ return t; }}
+    if (k == 49) {{ return -t; }}
+    var j: I = k - 16 * (k / 16);
+    var d: V3 = n * {arr}[{dir} + 2 * j] + b * {arr}[{dir} + 2 * j + 1];
+    if (k < 16) {{ return d; }}
+    if (k < 32) {{ return (d + t) * {inv}; }}
+    return (d - t) * {inv};
+}}
+fn {name}_fb(p: V3) -> F {{
     var best: F = 3.0e38;
     for (var q: I = 0; q < {pieces}; q++) {{
         var o: I = {at} + q * {pf};
@@ -339,12 +352,16 @@ fn far_function(name: &str, arr: &str, flat: &[f32], at: usize) -> String {
         var lb: F = -3.0e38;
 {lb}        if (lb >= best) {{ continue; }}
         var v: F = lb;
-{full}        best = min(best, v);
+        for (var k: I = 0; k < {planes}; k++) {{
+            v = max(v, dot({name}_pn(k, t, n, b), p) - {arr}[o + 9 + k]);
+        }}
+        best = min(best, v);
     }}
     return best;
 }}
 ",
-        pf = PIECE_FLOATS
+        pf = PIECE_FLOATS,
+        planes = PIECE_PLANES
     )
 }
 
@@ -621,6 +638,19 @@ pub fn loft_functions(name: &str, arr: &str, flat: &[f32], dialect: &str) -> Str
 /// exhausts the per-invocation stack in some implementations), elsewhere the language's own
 /// module-scope float array
 pub fn loft_array(arr: &str, flat: &[f32], dialect: &str, default: fn(&str, &[f32]) -> String) -> String {
+    // an infinite entry (the fade of a loft without one) has no literal in any shading language;
+    // the template resolves those entries when it emits the code and never reads them from the
+    // array, so a finite stand-in of the same sign is written there
+    let mut finite: Vec<f32> = flat.iter().map(|v| if v.is_infinite() { 3.0e38f32.copysign(*v) } else { *v }).collect();
+    // the far bound's 16 in-plane directions (cos, sin), after the block: the shader loops over a
+    // piece's planes instead of unrolling them (an unrolled piece exceeded a compute stack)
+    if flat[16] > 0.0 {
+        for (c, s) in DIR16 {
+            finite.push(c);
+            finite.push(s);
+        }
+    }
+    let flat = &finite[..];
     if dialect == "wgsl" {
         let n = flat.len();
         let items: Vec<String> = flat.iter().map(|v| lit(*v)).collect();
