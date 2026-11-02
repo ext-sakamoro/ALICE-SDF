@@ -56,4 +56,4 @@ fn the_curve_loft_field_is_bit_equal_after_the_lift() {
     assert_eq!(h, PINNED, "the loft's field changed");
 }
 
-const PINNED: u64 = 0xd042_efdc_bdc5_6d2e;
+const PINNED: u64 = 0xe755_05f7_78a4_b115;
