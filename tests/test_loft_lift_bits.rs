@@ -50,9 +50,10 @@ fn the_curve_loft_field_is_bit_equal_after_the_lift() {
         }
     }
     assert_eq!(n, 4000, "every point compared");
-    // pinned before the lift (b5cba59): print with --nocapture when it moves
+    // pinned on the law before the lift (the loft field with the far bound and the optional fade,
+    // measured with and without the lift: equal); print with --nocapture when it moves
     println!("loft field hash {h:#018x}");
     assert_eq!(h, PINNED, "the loft's field changed");
 }
 
-const PINNED: u64 = 0xb867_15bc_dd92_6d59;
+const PINNED: u64 = 0xd042_efdc_bdc5_6d2e;
