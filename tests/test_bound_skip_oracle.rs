@@ -365,11 +365,9 @@ fn wgsl_with_skips_equals_wgsl_without_bit_for_bit_on_the_gpu() {
     }
 }
 
-/// The loft body through the same three oracles. Every loft whose local bound varies along the axis
-/// (any curved axis) gets a negative clamp `m`, and the loft emit then prints `--m`, which neither
-/// WGSL nor C++ parses; the scene runs once that is fixed
+/// The loft body through the same oracles: the bound on the CPU, skip tests emitted, and the
+/// skipping shader bit-equal to the full one on the GPU on 1e6 points
 #[test]
-#[ignore = "known defect: loft emit prints `-{m}` for a negative clamp m (WGSL / C++ parse error), and m < 0 for every curved-axis loft"]
 fn loft_body_skips_bit_for_bit() {
     let node = loft_body();
     let mut all = Vec::new();
