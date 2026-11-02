@@ -198,7 +198,7 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
     var dw: F = max(dot(c0 - p, normalize(e0)), dot(p - ce, normalize(ee)));
     var o: V2 = V2(max(d2, 0.0), max(dw, 0.0));
     var bigf: F = min(max(d2, dw), 0.0) + length(o);
-    var corr: F = min(max(bigf * (1.0 / {name}_ll(s) - 1.0 / {l}), -{m}), {m});
+    var corr: F = min(max(bigf * (1.0 / {name}_ll(s) - 1.0 / {l}), -({m})), {m});
     var f: F = bigf / {l} + corr;
 ",
         fr = frame("")
