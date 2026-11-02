@@ -776,3 +776,26 @@ fn the_field_bends_smoothly_away_from_the_surface() {
     assert!(compared > 20, "compared {compared}");
     assert!(worst < 0.05, "largest change of the directional derivative {worst}");
 }
+
+#[test]
+fn a_tree_with_bounds_from_another_law_is_refused_on_load() {
+    // a fresh tree loads bit-equal (the round-trip row); the same tree with its bounds as an older
+    // law stored them (no law version, no saturation widths) must be refused, not read with a changed
+    // meaning; so must one whose widths are inconsistent with its knots
+    let (_, _, node) = bent_jump();
+    let text = serde_json::to_string(&node).expect("serialise");
+    let mut v: serde_json::Value = serde_json::from_str(&text).expect("json");
+    let b = &mut v["Loft"]["bounds"];
+    assert!(b["m"].as_f64().expect("m") > 0.0, "the test loft must carry the local correction");
+    let mut old = v.clone();
+    old["Loft"]["bounds"].as_object_mut().expect("bounds").remove("law");
+    old["Loft"]["bounds"].as_object_mut().expect("bounds").remove("bknots");
+    let e = serde_json::from_value::<SdfNode>(old).err().expect("an older law's bounds are refused");
+    assert!(e.to_string().contains("rebuild"), "{e}");
+    let mut short = v.clone();
+    short["Loft"]["bounds"]["bknots"].as_array_mut().expect("bknots").pop();
+    let e = serde_json::from_value::<SdfNode>(short).err().expect("inconsistent widths are refused");
+    assert!(e.to_string().contains("inconsistent"), "{e}");
+    let back: SdfNode = serde_json::from_value(v).expect("the current law loads");
+    assert_eq!(eval(&back, Vec3::new(55.0, 210.0, 3.0)).to_bits(), eval(&node, Vec3::new(55.0, 210.0, 3.0)).to_bits());
+}
