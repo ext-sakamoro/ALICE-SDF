@@ -112,6 +112,77 @@ impl ShaderLang for WgslLang {
             last = n - 1
         )
     }
+    fn global_section_stack(
+        name: &str,
+        st: &super::super::transpiler_common::SectionStackData,
+    ) -> String {
+        use super::super::transpiler_common::lit;
+        let fl = |v: &[f32]| v.iter().map(|x| lit(*x)).collect::<Vec<_>>().join(", ");
+        let il = |v: &[i32]| v.iter().map(|x| format!("{x}i")).collect::<Vec<_>>().join(", ");
+        let n = st.levels.len();
+        let (nv, nl, nvs) = (st.verts.len(), st.loop_start.len(), st.vert_start.len());
+        format!(
+            "const {name}_y: array<f32, {n}> = array<f32, {n}>({ys});
+const {name}_v: array<f32, {nv}> = array<f32, {nv}>({vs});
+const {name}_ls: array<i32, {nl}> = array<i32, {nl}>({lss});
+const {name}_vs: array<i32, {nvs}> = array<i32, {nvs}>({vss});
+fn {name}_d2(q: vec2<f32>, k: i32) -> f32 {{
+    var d = 3.4028235e38;
+    var s = 1.0;
+    for (var l = {name}_ls[k]; l < {name}_ls[k + 1]; l = l + 1) {{
+        let a = {name}_vs[l];
+        let m = {name}_vs[l + 1] - a;
+        var j = m - 1;
+        for (var i = 0i; i < m; i = i + 1) {{
+            let vi = vec2<f32>({name}_v[2 * (a + i)], {name}_v[2 * (a + i) + 1]);
+            let vj = vec2<f32>({name}_v[2 * (a + j)], {name}_v[2 * (a + j) + 1]);
+            let e = vj - vi;
+            let w = q - vi;
+            let ee = dot(e, e);
+            var b = w;
+            if (ee > 0.0) {{ b = w - e * clamp(dot(w, e) / ee, 0.0, 1.0); }}
+            d = min(d, dot(b, b));
+            let c1 = q.y >= vi.y;
+            let c2 = q.y < vj.y;
+            let c3 = e.x * w.y > e.y * w.x;
+            if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {{ s = -s; }}
+            j = i;
+        }}
+    }}
+    return s * sqrt(d);
+}}
+fn {name}(p: vec3<f32>) -> f32 {{
+    let q = vec2<f32>(p.x, p.z);
+    let y0 = {name}_y[0];
+    let yn = {name}_y[{last}];
+    var d: f32;
+    var h: f32;
+    if (p.y < y0) {{
+        d = {name}_d2(q, 0i);
+        h = y0 - p.y;
+    }} else if (p.y > yn) {{
+        d = {name}_d2(q, {last}i);
+        h = p.y - yn;
+    }} else {{
+        var c = 0i;
+        for (var k = 0i; k < {n}i; k = k + 1) {{ if ({name}_y[k] <= p.y) {{ c = k + 1; }} }}
+        let i = clamp(c, 1i, {last}i) - 1;
+        let t = (p.y - {name}_y[i]) / ({name}_y[i + 1] - {name}_y[i]);
+        d = (1.0 - t) * {name}_d2(q, i) + t * {name}_d2(q, i + 1);
+        h = max(y0 - p.y, p.y - yn);
+    }}
+    let raw = min(max(d, h), 0.0) + length(vec2<f32>(max(d, 0.0), max(h, 0.0)));
+    return raw / {lip};
+}}
+",
+            ys = fl(&st.levels),
+            vs = fl(&st.verts),
+            lss = il(&st.loop_start),
+            vss = il(&st.vert_start),
+            last = n - 1,
+            lip = lit(st.lipschitz),
+        )
+    }
     fn global_vec3_fn(name: &str, body: &str) -> String {
         format!("fn {name}(p: vec3<f32>) -> vec3<f32> {{\n{body}}}\n")
     }
@@ -223,6 +294,24 @@ pub struct WgslShader {
 }
 
 impl WgslShader {
+    /// [`Self::transpile`] with every union operand evaluated: no bound skip (see
+    /// [`crate::compiled::transpiler_common::lower_bound`]). The reference the skipping shader must
+    /// equal bit for bit
+    #[must_use]
+    pub fn transpile_without_bound_skip(node: &SdfNode, mode: TranspileMode) -> Self {
+        let mut transpiler = WgslTranspiler::new(mode);
+        transpiler.bound_skip = false;
+        let body = transpiler.transpile_node(node, "p");
+        let source = transpiler.generate_shader(&body);
+        Self {
+            source,
+            helper_count: transpiler.helper_functions.len(),
+            param_layout: transpiler.params,
+            mode,
+            workgroup_size: 256,
+        }
+    }
+
     /// Transpile an SDF node tree to WGSL with the specified mode
     pub fn transpile(node: &SdfNode, mode: TranspileMode) -> Self {
         let mut transpiler = WgslTranspiler::new(mode);
@@ -604,6 +693,8 @@ struct WgslTranspiler {
     params: Vec<f32>,
     /// Module-scope data / functions emitted before the entry point
     globals: String,
+    /// See `GenericTranspiler::bound_skip`
+    bound_skip: bool,
 }
 
 impl WgslTranspiler {
@@ -614,6 +705,7 @@ impl WgslTranspiler {
             mode,
             params: Vec::new(),
             globals: String::new(),
+            bound_skip: true,
         }
     }
 
@@ -628,6 +720,7 @@ impl WgslTranspiler {
         generic.params = std::mem::take(&mut self.params);
         generic.helper_functions = std::mem::take(&mut self.helper_functions);
         generic.globals = std::mem::take(&mut self.globals);
+        generic.bound_skip = self.bound_skip;
         let body = generic.transpile_node(node, point_var);
         self.globals = generic.globals;
         self.var_counter = generic.var_counter;

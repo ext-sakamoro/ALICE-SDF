@@ -116,6 +116,19 @@ impl ShaderLang for HlslLang {
             last = n - 1
         )
     }
+    fn global_section_stack(
+        name: &str,
+        st: &super::super::transpiler_common::SectionStackData,
+    ) -> String {
+        super::super::transpiler_common::c_like_section_stack(
+            name,
+            st,
+            "float2",
+            &|n, c, v| format!("static const float {n}[{c}] = {{ {v} }};\n"),
+            &|n, c, v| format!("static const int {n}[{c}] = {{ {v} }};\n"),
+        )
+        .replace("vec3_t", "float3")
+    }
     fn global_vec3_fn(name: &str, body: &str) -> String {
         format!("float3 {name}(float3 p) {{\n{body}}}\n")
     }
@@ -216,6 +229,23 @@ pub struct HlslShader {
 }
 
 impl HlslShader {
+    /// [`Self::transpile`] with every union operand evaluated: no bound skip (see
+    /// [`crate::compiled::transpiler_common::lower_bound`]). The reference the skipping shader must
+    /// equal bit for bit
+    #[must_use]
+    pub fn transpile_without_bound_skip(node: &SdfNode, mode: HlslTranspileMode) -> Self {
+        let mut transpiler = HlslTranspiler::new(mode);
+        transpiler.bound_skip = false;
+        let body = transpiler.transpile_node(node, "p");
+        let source = transpiler.generate_shader(&body);
+        Self {
+            source,
+            helper_count: transpiler.helper_functions.len(),
+            param_layout: transpiler.params,
+            mode,
+        }
+    }
+
     /// Transpile an SDF node tree to HLSL with the specified mode
     pub fn transpile(node: &SdfNode, mode: HlslTranspileMode) -> Self {
         let mut transpiler = HlslTranspiler::new(mode);
@@ -576,6 +606,8 @@ struct HlslTranspiler {
     params: Vec<f32>,
     /// Module-scope data / functions emitted before the entry point
     globals: String,
+    /// See `GenericTranspiler::bound_skip`
+    bound_skip: bool,
 }
 
 impl HlslTranspiler {
@@ -586,6 +618,7 @@ impl HlslTranspiler {
             mode,
             params: Vec::new(),
             globals: String::new(),
+            bound_skip: true,
         }
     }
 
@@ -600,6 +633,7 @@ impl HlslTranspiler {
         generic.params = std::mem::take(&mut self.params);
         generic.helper_functions = std::mem::take(&mut self.helper_functions);
         generic.globals = std::mem::take(&mut self.globals);
+        generic.bound_skip = self.bound_skip;
         let body = generic.transpile_node(node, point_var);
         self.globals = generic.globals;
         self.var_counter = generic.var_counter;

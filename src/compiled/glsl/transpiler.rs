@@ -113,6 +113,19 @@ impl ShaderLang for GlslLang {
             last = n - 1
         )
     }
+    fn global_section_stack(
+        name: &str,
+        st: &super::super::transpiler_common::SectionStackData,
+    ) -> String {
+        super::super::transpiler_common::c_like_section_stack(
+            name,
+            st,
+            "vec2",
+            &|n, c, v| format!("const float {n}[{c}] = float[{c}]({v});\n"),
+            &|n, c, v| format!("const int {n}[{c}] = int[{c}]({v});\n"),
+        )
+        .replace("vec3_t", "vec3")
+    }
     fn global_vec3_fn(name: &str, body: &str) -> String {
         format!("vec3 {name}(vec3 p) {{\n{body}}}\n")
     }
@@ -215,6 +228,24 @@ pub struct GlslShader {
 }
 
 impl GlslShader {
+    /// [`Self::transpile`] with every union operand evaluated: no bound skip (see
+    /// [`crate::compiled::transpiler_common::lower_bound`]). The reference the skipping shader must
+    /// equal bit for bit
+    #[must_use]
+    pub fn transpile_without_bound_skip(node: &SdfNode, mode: GlslTranspileMode) -> Self {
+        let mut transpiler = GlslTranspiler::new(mode);
+        transpiler.bound_skip = false;
+        let body = transpiler.transpile_node(node, "p");
+        let source = transpiler.generate_shader(&body);
+        Self {
+            source,
+            helper_count: transpiler.helper_functions.len(),
+            param_layout: transpiler.params,
+            mode,
+            version: 450,
+        }
+    }
+
     /// Transpile an SDF node tree to GLSL with the specified mode
     pub fn transpile(node: &SdfNode, mode: GlslTranspileMode) -> Self {
         Self::transpile_with_version(node, mode, 450)
@@ -620,6 +651,8 @@ struct GlslTranspiler {
     params: Vec<f32>,
     /// Module-scope data / functions emitted before the entry point
     globals: String,
+    /// See `GenericTranspiler::bound_skip`
+    bound_skip: bool,
 }
 
 impl GlslTranspiler {
@@ -630,6 +663,7 @@ impl GlslTranspiler {
             mode,
             params: Vec::new(),
             globals: String::new(),
+            bound_skip: true,
         }
     }
 
@@ -644,6 +678,7 @@ impl GlslTranspiler {
         generic.params = std::mem::take(&mut self.params);
         generic.helper_functions = std::mem::take(&mut self.helper_functions);
         generic.globals = std::mem::take(&mut self.globals);
+        generic.bound_skip = self.bound_skip;
         let body = generic.transpile_node(node, point_var);
         self.globals = generic.globals;
         self.var_counter = generic.var_counter;
