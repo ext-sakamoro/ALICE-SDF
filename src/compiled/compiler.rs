@@ -408,6 +408,8 @@ impl Compiler {
                     .push(Instruction::metric_ball(*radius, *w_l1, *w_l2, *w_linf));
             }
 
+            SdfNode::RampBlend { .. } => unreachable!("validate_for_compile refuses RampBlend"),
+
             SdfNode::MetricBlend {
                 inner,
                 outer,
@@ -1525,6 +1527,10 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         SdfNode::MetricBlend { inner, outer, .. } => {
             validate_for_compile(inner)?;
             validate_for_compile(outer)?;
+        }
+        // no bytecode law yet (its shader entries come later): tree eval only
+        SdfNode::RampBlend { .. } => {
+            return Err(CompileError::UnsupportedPrimitive("RampBlend".into()));
         }
         // Unsupported primitives (exceed params[6] limit)
         SdfNode::Triangle { .. } => {

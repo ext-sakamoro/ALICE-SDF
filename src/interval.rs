@@ -1581,6 +1581,8 @@ fn ia_bsphere(bounds: Vec3Interval, radius: f32) -> Interval {
 /// and IWP could not be rendered at all (external review, 2026-09-15).
 pub fn eval_lipschitz(node: &SdfNode) -> f32 {
     match node {
+        // divided by the bound computed from its children's bounds at construction
+        SdfNode::RampBlend { .. } => 1.0,
         // Exact SDFs (|∇f| = 1 almost everywhere, L = 1)
         SdfNode::Sphere { .. }
         | SdfNode::Box3d { .. }

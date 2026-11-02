@@ -414,6 +414,9 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let d2 = eval(b, point);
             sdf_xor(d1, d2)
         }
+        SdfNode::RampBlend { a, b, params } => {
+            params.combine(point, eval(a, point), eval(b, point))
+        }
         SdfNode::Morph { a, b, t } => {
             let d1 = eval(a, point);
             let d2 = eval(b, point);

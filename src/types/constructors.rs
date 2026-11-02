@@ -363,6 +363,48 @@ impl SdfNode {
         Ok(Self::Loft { axis, up, harmonics, rows, caps, bounds })
     }
 
+    /// A ramp blend of `self` (low side) and `other` (high side) across the plane `normal·p = offset`
+    /// over `width`, applied where both fields are within `band` of zero inside the box `lo`–`hi`
+    /// (tapered over `margin`); the difference bound is measured on a grid of spacing `h` (see
+    /// [`crate::primitives::ramp_blend`])
+    ///
+    /// # Errors
+    /// Children without a finite Lipschitz bound, or see
+    /// [`crate::primitives::ramp_blend::RampBlendParams::new`]
+    #[allow(clippy::too_many_arguments)]
+    pub fn ramp_blend(
+        self,
+        other: Self,
+        normal: Vec3,
+        offset: f32,
+        width: f32,
+        band: f32,
+        lo: Vec3,
+        hi: Vec3,
+        margin: f32,
+        h: f32,
+    ) -> Result<Self, String> {
+        let (la, lb) = (crate::interval::eval_lipschitz(&self), crate::interval::eval_lipschitz(&other));
+        if !la.is_finite() || !lb.is_finite() {
+            return Err(format!("ramp blend: the children need finite Lipschitz bounds (got {la}, {lb})"));
+        }
+        let params = crate::primitives::ramp_blend::RampBlendParams::new(
+            normal,
+            offset,
+            width,
+            band,
+            lo,
+            hi,
+            margin,
+            h,
+            la,
+            lb,
+            |p| crate::eval::eval(&self, p),
+            |p| crate::eval::eval(&other, p),
+        )?;
+        Ok(Self::RampBlend { a: Arc::new(self), b: Arc::new(other), params })
+    }
+
     /// Curve sections swept along a spline axis, both ends flat: each row is the control points of
     /// a closed counter-clockwise periodic uniform cubic B-spline in the frame's plane (see
     /// [`crate::primitives::loft`]).

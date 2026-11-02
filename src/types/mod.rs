@@ -412,6 +412,18 @@ pub enum SdfNode {
         skin: f32,
     },
 
+    /// Ramp blend: a partition of unity between `a` and `b` across a slab, confined to the band where
+    /// both are near zero and to a box, divided by its Lipschitz bound (see
+    /// [`crate::primitives::ramp_blend`])
+    RampBlend {
+        /// Field on the low side of the ramp
+        a: Arc<Self>,
+        /// Field on the high side of the ramp
+        b: Arc<Self>,
+        /// The ramp, band, box and the bounds computed at construction
+        params: crate::primitives::ramp_blend::RampBlendParams,
+    },
+
     /// 3D heart shape (revolved contour)
     Heart {
         /// Overall size
@@ -1434,6 +1446,7 @@ impl SdfNode {
             // === Operations ===
             Self::Union { .. }
             | Self::MetricBlend { .. }
+            | Self::RampBlend { .. }
             | Self::Intersection { .. }
             | Self::Subtraction { .. }
             | Self::SmoothUnion { .. }
@@ -1627,6 +1640,7 @@ impl SdfNode {
             | Self::SurfaceRoughness { child, .. } => 1 + child.node_count(),
 
             Self::MetricBlend { inner, outer, .. } => 1 + inner.node_count() + outer.node_count(),
+            Self::RampBlend { a, b, .. } => 1 + a.node_count() + b.node_count(),
 
             #[allow(unreachable_patterns)]
             _ => 1,

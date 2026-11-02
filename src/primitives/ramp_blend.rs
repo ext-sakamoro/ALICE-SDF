@@ -626,4 +626,43 @@ mod tests {
     }
     // pinned from the measured run (Λ/raw = 1.515, ceiled to 2 significant digits)
     const RATCHET_SMALL: f32 = 1.6;
+
+    // the tree node: eval equals the parameters' law at every point, a JSON round trip keeps it bit for
+    // bit, and the bytecode compiler refuses it (tree eval only until its shader entries exist)
+    #[test]
+    fn node_eval_roundtrip_and_compile_refusal() {
+        use crate::types::SdfNode;
+        let a = SdfNode::sphere(1.0).translate(0.0, -0.01, 0.0);
+        let b = SdfNode::sphere(1.004).translate(0.0, 0.01, 0.0);
+        let node = a
+            .clone()
+            .ramp_blend(
+                b.clone(),
+                Vec3::Y,
+                0.0,
+                0.4,
+                0.3,
+                Vec3::splat(-2.0),
+                Vec3::splat(2.0),
+                0.3,
+                0.05,
+            )
+            .unwrap();
+        let SdfNode::RampBlend { params, .. } = &node else {
+            panic!("not a ramp blend")
+        };
+        for p in pts(2000, 1.5) {
+            let want = params.combine(p, crate::eval::eval(&a, p), crate::eval::eval(&b, p));
+            assert_eq!(crate::eval::eval(&node, p).to_bits(), want.to_bits(), "{p}");
+        }
+        let json = serde_json::to_string(&node).unwrap();
+        let back: SdfNode = serde_json::from_str(&json).unwrap();
+        for p in pts(500, 1.5) {
+            assert_eq!(
+                crate::eval::eval(&back, p).to_bits(),
+                crate::eval::eval(&node, p).to_bits()
+            );
+        }
+        assert!(crate::compiled::CompiledSdf::try_compile(&node).is_err());
+    }
 }
