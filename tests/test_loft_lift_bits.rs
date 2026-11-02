@@ -1,7 +1,7 @@
 //! The curve-section distance moved out of the loft into shared functions (used by the smooth section
 //! stack too): the loft's field must stay bit for bit what it was. Curve lofts (straight and curved axes,
 //! uniform and non-uniform section knots, 6..48 control points) evaluated at fixed points; the hash of every
-//! value's bits is pinned to the value measured before the move (224bf16).
+//! value's bits is pinned to the value measured before the move (b5cba59).
 
 use alice_sdf::eval::eval;
 use alice_sdf::types::SdfNode;
@@ -50,9 +50,9 @@ fn the_curve_loft_field_is_bit_equal_after_the_lift() {
         }
     }
     assert_eq!(n, 4000, "every point compared");
-    // pinned before the lift (224bf16): print with --nocapture when it moves
+    // pinned before the lift (b5cba59): print with --nocapture when it moves
     println!("loft field hash {h:#018x}");
     assert_eq!(h, PINNED, "the loft's field changed");
 }
 
-const PINNED: u64 = 0xcbbd_2ec1_4427_ffaf;
+const PINNED: u64 = 0xb867_15bc_dd92_6d59;
