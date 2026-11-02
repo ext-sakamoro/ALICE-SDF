@@ -291,6 +291,11 @@ fn render(src: &str, dialect: &str) -> String {
     out
 }
 
+/// The template rewrite for other law templates in the same notation
+pub(crate) fn render_template(src: &str, dialect: &str) -> String {
+    render(src, dialect)
+}
+
 /// Replaces the whole-word type tokens `F`, `I`, `V2`, `V3` (types and casts)
 fn replace_types(l: &str, f: &str, i: &str, v2: &str, v3: &str) -> String {
     let mut out = String::new();
