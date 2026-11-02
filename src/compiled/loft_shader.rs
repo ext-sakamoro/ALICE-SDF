@@ -7,14 +7,11 @@
 //! the flat block of [`crate::primitives::loft::flatten`], a module-scope array.
 
 use crate::compiled::transpiler_common::lit;
-use crate::primitives::loft::{HEAD, REFINE_STEPS, SCAN_PER_SEGMENT};
+use crate::primitives::loft::{CURVE_NEWTON, CURVE_SCAN, HEAD, REFINE_STEPS, SCAN_PER_SEGMENT};
 
 /// The statements of one loft, `fn {name}(p: V3) -> F` plus helpers, over the array `{arr}`
 fn template(name: &str, arr: &str, flat: &[f32]) -> String {
-    assert!(
-        flat[15] == 0.0,
-        "loft curve sections are not emitted to shaders yet (CPU tree and bytecode only)"
-    );
+    let curve = flat[15] != 0.0;
     let n = flat[0] as usize;
     let kh = flat[1] as usize;
     let kr = flat[2] as usize;
@@ -28,7 +25,7 @@ fn template(name: &str, arr: &str, flat: &[f32]) -> String {
     let last = lit((n - 1) as f32);
     let a0 = HEAD;
     let rb = HEAD + 3 * n;
-    let w = 2 * kh + 1;
+    let w = if curve { 2 * kh } else { 2 * kh + 1 };
     let kb = rb + kr * w;
     let ax = |i: usize| format!("V3({arr}[{}], {arr}[{}], {arr}[{}])", a0 + 3 * i, a0 + 3 * i + 1, a0 + 3 * i + 2);
     let h = lit(1.0 / SCAN_PER_SEGMENT as f32);
@@ -164,6 +161,9 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
         kr1f = lit((kr - 1) as f32),
         n1f = lit((n - 1) as f32),
     );
+    if curve {
+        s += &curve_functions(name, arr, kh, kr, rb, w, kb + kr, n);
+    }
     let frame = |pfx: &str| {
         format!(
             "    var t{pfx}: V3 = normalize(dr{pfx});
@@ -214,9 +214,7 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
     var c1: F = 1.0;
     var s1: F = 0.0;
     if (rho > 0.0) {{ c1 = u / rho; s1 = v / rho; }}
-    var g: F = max(rho - {name}_rad(s, c1, s1), {core});
-    var d2: F = g / {l2};
-    var c0: V3 = {name}_pos(0.0);
+{d2}    var c0: V3 = {name}_pos(0.0);
     var e0: V3 = {name}_der(0.0);
     var ce: V3 = {name}_pos({last});
     var ee: V3 = {name}_der({last});
@@ -226,7 +224,12 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
     var corr: F = min(max(bigf * (1.0 / {name}_ll(s) - 1.0 / {l}), {neg_m}), {m});
     var f: F = bigf / {l} + corr;
 ",
-        fr = frame("")
+        fr = frame(""),
+        d2 = if curve {
+            format!("    var d2: F = {name}_cd(s, V2(u, v));\n")
+        } else {
+            format!("    var g: F = max(rho - {name}_rad(s, c1, s1), {core});\n    var d2: F = g / {l2};\n")
+        }
     );
     for e in 0..2 {
         if caps[e] > 0.0 {
@@ -237,12 +240,167 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
     s
 }
 
+/// Curve sections (mode 1): the statements of `Loft::sknot`, `row_point`, `row_weights`,
+/// `section_point`, `curve_on_span` and `curve_distance`, in the same order. `sb` is the offset of
+/// the section knots `K₀ … K_M` in the block
+#[allow(clippy::too_many_arguments)]
+fn curve_functions(name: &str, arr: &str, m: usize, kr: usize, rb: usize, w: usize, sb: usize, n: usize) -> String {
+    let mut s = String::new();
+    // periodic section knot: K[r] + wraps * period, r = i mod M (Euclidean); the floor of a float
+    // quotient, since GLSL leaves `%` of negative operands undefined (exact: small integers, and a
+    // quotient that is not an integer is at least 1/M from one)
+    s += &format!(
+        "fn {name}_sk(i: I) -> F {{
+    var wraps: I = I(floor(F(i) / {mf}));
+    var r: I = i - {m} * wraps;
+    return {arr}[{sb} + r] + F(wraps) * ({arr}[{sbm}] - {arr}[{sb}]);
+}}
+fn {name}_rpa(r: I, j: I) -> V2 {{
+    return V2({arr}[{rb} + r * {w} + 2 * j], {arr}[{rb} + r * {w} + 2 * j + 1]);
+}}
+fn {name}_rp(i: I, j: I) -> V2 {{
+    if (i < 0) {{ return 2.0 * {name}_rpa(0, j) - {name}_rpa(1, j); }}
+    if (i >= {kr}) {{ return 2.0 * {name}_rpa({krm1}, j) - {name}_rpa({krm2}, j); }}
+    return {name}_rpa(i, j);
+}}
+fn {name}_spt(i0: I, b: V4, j: I) -> V2 {{
+    var jj: I = j - {m} * I(floor(F(j) / {mf}));
+    return b.x * {name}_rp(i0, jj) + b.y * {name}_rp(i0 + 1, jj) + b.z * {name}_rp(i0 + 2, jj) + b.w * {name}_rp(i0 + 3, jj);
+}}
+fn {name}_i0(s: F) -> I {{
+    var w: F = s * {kr1f} / {n1f};
+    w = min(max(w, 0.0), {kr1f});
+    var i: I = min(I(w), {krm2});
+    return i - 1;
+}}
+fn {name}_bw(s: F) -> V4 {{
+    var w: F = s * {kr1f} / {n1f};
+    w = min(max(w, 0.0), {kr1f});
+    var i: I = min(I(w), {krm2});
+    var t: F = w - F(i);
+    var t2: F = t * t;
+    var t3: F = t2 * t;
+    var u: F = 1.0 - t;
+    return V4(u * u * u / 6.0, (3.0 * t3 - 6.0 * t2 + 4.0) / 6.0, (-3.0 * t3 + 3.0 * t2 + 3.0 * t + 1.0) / 6.0, t3 / 6.0);
+}}
+",
+        sbm = sb + m,
+        mf = lit(m as f32),
+        krm1 = kr - 1,
+        krm2 = kr - 2,
+        kr1f = lit((kr - 1) as f32),
+        n1f = lit((n - 1) as f32),
+    );
+    // de Boor on span j: point and first derivative (V4: xy point, zw derivative), and the second
+    // derivative; unrolled exactly as the CPU loops run (r = 1..=3, i = 3 down to r)
+    let mut deboor = String::new();
+    deboor += "    var d0: V2 = NAME_spt(i0, b, j - 1);\n    var d1: V2 = NAME_spt(i0, b, j);\n    var d2: V2 = NAME_spt(i0, b, j + 1);\n    var d3: V2 = NAME_spt(i0, b, j + 2);\n";
+    for k in 0..6 {
+        deboor += &format!("    var u{k}: F = NAME_sk(j - 2 + {k});\n");
+    }
+    for k in 0..3 {
+        deboor += &format!("    var q{k}: V2 = (d{k1} - d{k}) * (3.0 / (u{k3} - u{k}));\n", k1 = k + 1, k3 = k + 3);
+    }
+    deboor += "    var r0: V2 = (q1 - q0) * (2.0 / (u3 - u1));\n    var r1: V2 = (q2 - q1) * (2.0 / (u4 - u2));\n";
+    deboor += "    var p0: V2 = d0;\n    var p1: V2 = d1;\n    var p2: V2 = d2;\n    var p3: V2 = d3;\n    var a: F = 0.0;\n";
+    for r in 1..=3usize {
+        for i in (r..=3).rev() {
+            deboor += &format!(
+                "    a = (t - u{im1}) / (u{hi} - u{im1});\n    p{i} = p{im1} * (1.0 - a) + p{i} * a;\n",
+                im1 = i - 1,
+                hi = i + 3 - r
+            );
+        }
+    }
+    for r in 1..=2usize {
+        for i in (r..=2).rev() {
+            deboor += &format!(
+                "    a = (t - u{i}) / (u{hi} - u{i});\n    q{i} = q{im1} * (1.0 - a) + q{i} * a;\n",
+                im1 = i - 1,
+                hi = i + 3 - r
+            );
+        }
+    }
+    deboor += "    a = (t - u2) / (u3 - u2);\n";
+    let deboor = deboor.replace("NAME", name);
+    s += &format!("fn {name}_cs(i0: I, b: V4, j: I, t: F) -> V4 {{\n{deboor}    return V4(p3.x, p3.y, q2.x, q2.y);\n}}\n");
+    s += &format!("fn {name}_cdd(i0: I, b: V4, j: I, t: F) -> V2 {{\n{deboor}    return r0 * (1.0 - a) + r1 * a;\n}}\n");
+    let scan = CURVE_SCAN;
+    let scanf = lit(CURVE_SCAN as f32);
+    s += &format!(
+        "fn {name}_on(t: F, k0: F, k1: F, bj: I) -> I {{
+    if (t < k0) {{ return bj - 1; }}
+    if (t > k1) {{ return bj + 1; }}
+    return bj;
+}}
+fn {name}_cd(s: F, q: V2) -> F {{
+    var i0: I = {name}_i0(s);
+    var b: V4 = {name}_bw(s);
+    var bj: I = 0;
+    var bt: F = {name}_sk(0);
+    var be: F = 3.0e38;
+    for (var j: I = 0; j < {m}; j++) {{
+        var p0: V2 = {name}_spt(i0, b, j - 1);
+        var p1: V2 = {name}_spt(i0, b, j);
+        var p2: V2 = {name}_spt(i0, b, j + 1);
+        var p3: V2 = {name}_spt(i0, b, j + 2);
+        var c: V2 = (p0 + p1 + p2 + p3) * 0.25;
+        var rad: F = max(max(max(length(p0 - c), length(p1 - c)), length(p2 - c)), length(p3 - c));
+        var lb: F = length(q - c) - rad;
+        if (lb > 0.0 && lb * lb >= be) {{ continue; }}
+        var k0: F = {name}_sk(j);
+        var k1: F = {name}_sk(j + 1);
+        for (var k: I = 0; k < {scan}; k++) {{
+            var t: F = k0 + (k1 - k0) * (F(k) / {scanf});
+            var cs: V4 = {name}_cs(i0, b, j, t);
+            var dq: V2 = V2(cs.x, cs.y) - q;
+            var e: F = dot(dq, dq);
+            if (e < be) {{ be = e; bt = t; bj = j; }}
+        }}
+    }}
+    var k0: F = {name}_sk(bj);
+    var k1: F = {name}_sk(bj + 1);
+    var lo: F = bt - (k1 - k0) / {scanf};
+    var hi: F = bt + (k1 - k0) / {scanf};
+    lo = max(lo, {name}_sk(bj - 1));
+    hi = min(hi, {name}_sk(bj + 2));
+    var t: F = bt;
+    for (var it: I = 0; it < {newton}; it++) {{
+        var sj: I = {name}_on(t, k0, k1, bj);
+        var cs: V4 = {name}_cs(i0, b, sj, t);
+        var dd: V2 = {name}_cdd(i0, b, sj, t);
+        var r: V2 = V2(cs.x, cs.y) - q;
+        var d: V2 = V2(cs.z, cs.w);
+        var g: F = dot(r, d);
+        var gp: F = dot(d, d) + dot(r, dd);
+        if (gp > 0.0) {{ t = min(max(t - g / gp, lo), hi); }}
+    }}
+    var cf: V4 = {name}_cs(i0, b, {name}_on(t, k0, k1, bj), t);
+    var cc: V2 = V2(cf.x, cf.y);
+    var dc: V2 = V2(cf.z, cf.w);
+    var dqf: V2 = cc - q;
+    if (dot(dqf, dqf) > be) {{
+        var cb: V4 = {name}_cs(i0, b, bj, bt);
+        cc = V2(cb.x, cb.y);
+        dc = V2(cb.z, cb.w);
+    }}
+    var rr: V2 = q - cc;
+    var dist: F = length(rr);
+    if (dc.x * rr.y - dc.y * rr.x > 0.0) {{ return -dist; }}
+    return dist;
+}}
+",
+        newton = CURVE_NEWTON
+    );
+    s
+}
+
 /// Rewrites the WGSL-like template into one dialect (`"wgsl"`, `"glsl"`, `"hlsl"`)
 fn render(src: &str, dialect: &str) -> String {
-    let (f, i, v2, v3) = match dialect {
-        "wgsl" => ("f32", "i32", "vec2<f32>", "vec3<f32>"),
-        "hlsl" => ("float", "int", "float2", "float3"),
-        _ => ("float", "int", "vec2", "vec3"),
+    let (f, i, v2, v3, v4) = match dialect {
+        "wgsl" => ("f32", "i32", "vec2<f32>", "vec3<f32>", "vec4<f32>"),
+        "hlsl" => ("float", "int", "float2", "float3", "float4"),
+        _ => ("float", "int", "vec2", "vec3", "vec4"),
     };
     let ty = |t: &str| -> String {
         match t {
@@ -250,6 +408,7 @@ fn render(src: &str, dialect: &str) -> String {
             "I" => i.to_string(),
             "V2" => v2.to_string(),
             "V3" => v3.to_string(),
+            "V4" => v4.to_string(),
             other => other.to_string(),
         }
     };
@@ -285,14 +444,14 @@ fn render(src: &str, dialect: &str) -> String {
                 l = format!("{}{} {}{}", &l[..at], ty(&vt), vn, &rest[eq..]);
             }
         }
-        out += &replace_types(&l, f, i, v2, v3);
+        out += &replace_types(&l, f, i, v2, v3, v4);
         out.push('\n');
     }
     out
 }
 
 /// Replaces the whole-word type tokens `F`, `I`, `V2`, `V3` (types and casts)
-fn replace_types(l: &str, f: &str, i: &str, v2: &str, v3: &str) -> String {
+fn replace_types(l: &str, f: &str, i: &str, v2: &str, v3: &str, v4: &str) -> String {
     let mut out = String::new();
     let b = l.as_bytes();
     let mut k = 0;
@@ -309,6 +468,7 @@ fn replace_types(l: &str, f: &str, i: &str, v2: &str, v3: &str) -> String {
                 "I" => i,
                 "V2" => v2,
                 "V3" => v3,
+                "V4" => v4,
                 w => w,
             };
         } else {
