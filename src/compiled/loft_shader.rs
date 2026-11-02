@@ -32,7 +32,9 @@ fn template(name: &str, arr: &str, flat: &[f32]) -> String {
     let kb = rb + kr * w;
     let ax = |i: usize| format!("V3({arr}[{}], {arr}[{}], {arr}[{}])", a0 + 3 * i, a0 + 3 * i + 1, a0 + 3 * i + 2);
     let h = lit(1.0 / SCAN_PER_SEGMENT as f32);
-    let steps = (n - 1) as u32 * SCAN_PER_SEGMENT;
+    let nseg = n - 1;
+    let per = SCAN_PER_SEGMENT;
+    let perm1 = SCAN_PER_SEGMENT - 1;
     let mut s = String::new();
     s += &format!(
         "fn {name}_ap(i: I) -> V3 {{
@@ -68,14 +70,32 @@ fn template(name: &str, arr: &str, flat: &[f32]) -> String {
         );
     }
     s += &format!(
-        "fn {name}_cp(p: V3) -> F {{
+        "fn {name}_sd(x: V3, b: V3, c: V3) -> F {{
+    var e: V3 = c - b;
+    var t: F = min(max(dot(x - b, e) / dot(e, e), 0.0), 1.0);
+    return length(x - (b + e * t));
+}}
+fn {name}_cp(p: V3) -> F {{
     var bs: F = 0.0;
     var bd: F = 3.0e38;
-    for (var k: I = 0; k <= {steps}; k++) {{
-        var s: F = F(k) * {h};
-        var q: V3 = {name}_pos(s) - p;
-        var e: F = dot(q, q);
-        if (e < bd) {{ bd = e; bs = s; }}
+    for (var i: I = 0; i < {nseg}; i++) {{
+        var a: V3 = {name}_ap(i - 1);
+        var b: V3 = {name}_ap(i);
+        var c: V3 = {name}_ap(i + 1);
+        var d: V3 = {name}_ap(i + 2);
+        var r: F = max({name}_sd(b + (c - a) / 6.0, b, c), {name}_sd(c - (d - b) / 6.0, b, c));
+        var margin: F = 0.00001 * (length(p - b) + length(c - b) + r);
+        var lb: F = {name}_sd(p, b, c) - r - margin;
+        if (lb > 0.0 && lb * lb > bd) {{ continue; }}
+        var k0: I = i * {per};
+        var k1: I = k0 + {perm1};
+        if (i + 1 == {nseg}) {{ k1 = k0 + {per}; }}
+        for (var k: I = k0; k <= k1; k++) {{
+            var s: F = F(k) * {h};
+            var q: V3 = {name}_pos(s) - p;
+            var e: F = dot(q, q);
+            if (e < bd || (e == bd && s < bs)) {{ bd = e; bs = s; }}
+        }}
     }}
     var lo: F = max(bs - {h}, 0.0);
     var hi: F = min(bs + {h}, {last});

@@ -245,13 +245,13 @@ impl<'a> Loft<'a> {
         (pos, der)
     }
 
-    /// The closest axis parameter to `p`: a fixed scan, then fixed ternary steps
-    fn closest_param(&self, p: Vec3) -> f32 {
-        let last = (self.n - 1) as f32;
+    /// The fixed scan of the axis: every sample `s = k / SCAN_PER_SEGMENT`, `k = 0 … (n − 1) SCAN_PER_SEGMENT`;
+    /// the least squared distance, ties to the smaller `s` (the first in `k` order)
+    #[cfg(test)]
+    fn scan_full(&self, p: Vec3) -> (f32, f32) {
         let steps = (self.n - 1) as u32 * SCAN_PER_SEGMENT;
         let h = 1.0 / SCAN_PER_SEGMENT as f32;
-        let mut best_s = 0.0f32;
-        let mut best_d = f32::INFINITY;
+        let (mut best_s, mut best_d) = (0.0f32, f32::INFINITY);
         for k in 0..=steps {
             let s = k as f32 * h;
             let e = (self.axis_at(s).0 - p).length_squared();
@@ -260,6 +260,68 @@ impl<'a> Loft<'a> {
                 best_s = s;
             }
         }
+        (best_s, best_d)
+    }
+
+    /// The same scan, by segments: segment `i` (samples `k = 16 i … 16 i + 15`, the last segment also
+    /// `k = (n − 1)·16`) lies in the capsule around the chord `Aᵢ Aᵢ₊₁` whose radius is the larger
+    /// distance of the segment's two inner Bézier points to the chord (the segment is inside the
+    /// hull of its four Bézier points); segments are visited from the least lower bound, and a
+    /// segment whose bound (less a rounding margin) exceeds the best so far holds no sample that could
+    /// win. Ties go to the smaller `s`, so the result is the full scan's, bit for bit.
+    fn scan_culled(&self, p: Vec3) -> (f32, f32) {
+        const MAX_SEG: usize = 256;
+        let nseg = self.n - 1;
+        let h = 1.0 / SCAN_PER_SEGMENT as f32;
+        let mut lbs = [0.0f32; MAX_SEG];
+        let mut order = [0usize; MAX_SEG];
+        let segs = nseg.min(MAX_SEG);
+        for i in 0..segs {
+            let ii = i as isize;
+            let (a, b, c, d) = (self.axis_pt(ii - 1), self.axis_pt(ii), self.axis_pt(ii + 1), self.axis_pt(ii + 2));
+            let seg_dist = |x: Vec3| -> f32 {
+                let e = c - b;
+                let t = ((x - b).dot(e) / e.dot(e)).law_max(0.0).law_min(1.0);
+                (x - (b + e * t)).length()
+            };
+            let r = seg_dist(b + (c - a) / 6.0).law_max(seg_dist(c - (d - b) / 6.0));
+            let margin = 1e-5 * ((p - b).length() + (c - b).length() + r);
+            lbs[i] = seg_dist(p) - r - margin;
+            order[i] = i;
+        }
+        // insertion sort by the bound (segments are few)
+        for i in 1..segs {
+            let mut j = i;
+            while j > 0 && lbs[order[j - 1]] > lbs[order[j]] {
+                order.swap(j - 1, j);
+                j -= 1;
+            }
+        }
+        let (mut best_s, mut best_d) = (0.0f32, f32::INFINITY);
+        for &i in &order[..segs] {
+            let lb = lbs[i];
+            if lb > 0.0 && lb * lb > best_d {
+                break;
+            }
+            let k0 = i as u32 * SCAN_PER_SEGMENT;
+            let k1 = if i + 1 == nseg { k0 + SCAN_PER_SEGMENT } else { k0 + SCAN_PER_SEGMENT - 1 };
+            for k in k0..=k1 {
+                let s = k as f32 * h;
+                let e = (self.axis_at(s).0 - p).length_squared();
+                if e < best_d || (e == best_d && s < best_s) {
+                    best_d = e;
+                    best_s = s;
+                }
+            }
+        }
+        (best_s, best_d)
+    }
+
+    /// The closest axis parameter to `p`: the scan, then fixed ternary steps
+    fn closest_param(&self, p: Vec3) -> f32 {
+        let last = (self.n - 1) as f32;
+        let h = 1.0 / SCAN_PER_SEGMENT as f32;
+        let (best_s, _) = self.scan_culled(p);
         let mut lo = (best_s - h).law_max(0.0);
         let mut hi = (best_s + h).law_min(last);
         for _ in 0..REFINE_STEPS {
@@ -638,8 +700,8 @@ fn row_bounds(row: &[f32]) -> (f32, f32, f32) {
 /// Checks a loft's input and computes its bounds
 pub fn validate(axis: &[Vec3], up: Vec3, harmonics: u32, rows: &[Vec<f32>], caps: [f32; 2]) -> Result<(Vec<f32>, LoftBounds), LoftError> {
     let err = |s: String| Err(LoftError(s));
-    if axis.len() < 2 {
-        return err(format!("the axis needs 2 points or more, it has {}", axis.len()));
+    if axis.len() < 2 || axis.len() > 257 {
+        return err(format!("the axis needs 2 to 257 points, it has {}", axis.len()));
     }
     if harmonics > MAX_HARMONICS {
         return err(format!("{harmonics} harmonics, at most {MAX_HARMONICS}"));
@@ -704,8 +766,8 @@ pub fn validate(axis: &[Vec3], up: Vec3, harmonics: u32, rows: &[Vec<f32>], caps
 /// Checks a curve-section loft's input and computes its bounds
 pub fn validate_curves(axis: &[Vec3], up: Vec3, section_knots: &[f32], rows: &[Vec<Vec2>]) -> Result<(Vec<f32>, LoftBounds), LoftError> {
     let err = |s: String| Err(LoftError(s));
-    if axis.len() < 2 {
-        return err(format!("the axis needs 2 points or more, it has {}", axis.len()));
+    if axis.len() < 2 || axis.len() > 257 {
+        return err(format!("the axis needs 2 to 257 points, it has {}", axis.len()));
     }
     if !axis.iter().all(|a| a.is_finite()) || !up.is_finite() || rows.iter().flatten().any(|v| !v.is_finite()) {
         return err("the axis, up and control points must be finite".into());
@@ -865,8 +927,39 @@ fn finish(
 mod tests {
     use super::*;
 
-    /// The section curve's first and second derivatives (de Boor on the derivative control points)
-    /// against central differences of the curve itself, on non-uniform knots
+    /// The culled axis scan against the full scan, bit for bit
+    #[test]
+    fn the_culled_axis_scan_is_the_full_scan_bit_for_bit() {
+        // a bent 9-point axis and a straight 2-point one, a million points each spread from the axis
+        // out to well beyond it
+        let bent: Vec<Vec3> = (0..9)
+            .map(|i| Vec3::new(0.3 * alice_det_math::sin(0.7 * i as f32), 0.25 * i as f32, 0.1 * alice_det_math::cos(1.3 * i as f32)))
+            .collect();
+        let rows = vec![vec![0.1f32, 0.0, 0.0], vec![0.1, 0.0, 0.0]];
+        let mut st: u64 = 5;
+        let mut rnd = || {
+            st = st.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            ((st >> 40) as f32) / ((1u64 << 24) as f32)
+        };
+        for axis in [bent, vec![Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0)]] {
+            let (fr, b) = validate(&axis, Vec3::Z, 1, &rows, [0.0, 0.0]).expect("valid");
+            let block = flatten(&axis, Vec3::Z, LoftSection::Polar(1), &fr, &[], [0.0, 0.0], &b);
+            let d = Loft::from_flat(&block);
+            let mut compared = 0u32;
+            for _ in 0..1_000_000 {
+                let scale = if rnd() < 0.5 { 0.3 } else { 3.0 };
+                let p = Vec3::new((rnd() - 0.5) * scale, rnd() * 2.4 - 0.2, (rnd() - 0.5) * scale);
+                let (a, ad) = d.scan_full(p);
+                let (c, cd) = d.scan_culled(p);
+                assert_eq!((a.to_bits(), ad.to_bits()), (c.to_bits(), cd.to_bits()), "at {p:?}");
+                compared += 1;
+            }
+            assert_eq!(compared, 1_000_000);
+        }
+    }
+
+    /// The section curve's first derivative (de Boor on the derivative control points) against
+    /// central differences, and the section distance against a brute-force search, on non-uniform knots
     #[test]
     fn curve_derivatives_match_differences() {
         for m in [12usize, 300] {
