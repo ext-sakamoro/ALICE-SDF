@@ -552,6 +552,8 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_polygo
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_polygon_2d_general_oracle.log" --min 11 --what "test_polygon_2d_general_oracle"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_section_stack_shader_oracle -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_section_stack_shader_oracle.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_section_stack_shader_oracle.log" --min 4 --what "test_section_stack_shader_oracle"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_smooth_stack_shader -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_smooth_stack_shader.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_smooth_stack_shader.log" --min 4 --what "test_smooth_stack_shader"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_bound_skip_oracle -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_bound_skip_oracle.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_bound_skip_oracle.log" --min 6 --what "test_bound_skip_oracle"
 
