@@ -649,7 +649,6 @@ fn render(src: &str, dialect: &str) -> String {
 }
 
 /// The template rewrite for other law templates in the same notation
-#[allow(dead_code, reason = "the entry the closed-curve shader of other nodes renders through; no caller in this crate yet")]
 pub(crate) fn render_template(src: &str, dialect: &str) -> String {
     render(src, dialect)
 }
