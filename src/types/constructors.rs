@@ -343,6 +343,23 @@ impl SdfNode {
         Self::Gyroid { scale, thickness }
     }
 
+    /// Closed planar sections swept along a spline axis (see [`crate::primitives::loft`]).
+    ///
+    /// # Errors
+    /// Fewer than 2 axis points, stations not rising from 0 to the last axis parameter, sections of
+    /// different vertex counts (or fewer than 3, more than 256), a non-finite value, `up` parallel to
+    /// the axis, or sections wider than the axis's radius of curvature
+    pub fn loft(
+        axis: Vec<Vec3>,
+        up: Vec3,
+        stations: Vec<f32>,
+        sections: Vec<Vec<Vec2>>,
+    ) -> Result<Self, crate::primitives::loft::LoftError> {
+        let (flat, lipschitz) = crate::primitives::loft::validate(&axis, up, &stations, &sections)?;
+        let section_vertices = sections[0].len() as u32;
+        Ok(Self::Loft { axis, up, stations, sections: flat, section_vertices, lipschitz })
+    }
+
     /// Create the ball of a weighted norm.
     ///
     /// `(0, 1, 0)` gives a sphere, `(0, 0, 1)` a cube, `(1, 0, 0)` an

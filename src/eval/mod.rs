@@ -136,6 +136,22 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         SdfNode::InfiniteCone { angle } => sdf_infinite_cone(point, *angle),
         SdfNode::Gyroid { scale, thickness } => sdf_gyroid(point, *scale, *thickness),
 
+        SdfNode::Loft {
+            axis,
+            up,
+            stations,
+            sections,
+            section_vertices,
+            lipschitz,
+        } => crate::primitives::loft::sdf_loft_slices(
+            point,
+            axis,
+            *up,
+            stations,
+            sections,
+            *section_vertices as usize,
+            *lipschitz,
+        ),
         SdfNode::MetricBall {
             radius,
             w_l1,

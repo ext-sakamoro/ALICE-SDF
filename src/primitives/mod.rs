@@ -60,6 +60,7 @@ mod infinite_cylinder;
 mod iwp;
 mod lidinoid;
 mod link;
+pub mod loft;
 mod metric_ball;
 mod moon;
 mod neovius;
