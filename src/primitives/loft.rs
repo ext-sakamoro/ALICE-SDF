@@ -63,6 +63,8 @@ pub const CURVE_SCAN: u32 = 8;
 pub const CURVE_NEWTON: u32 = 4;
 /// The core value used when a loft has no angular term (no core)
 const NO_CORE: f32 = -3.0e38;
+/// The fade radius meaning "no fade": finite, so that every stored bound serialises (JSON has no ∞)
+pub const NO_FADE: f32 = f32::MAX;
 
 /// Why a loft was refused
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,7 +91,7 @@ pub struct LoftBounds {
     pub lq: [f32; 2],
     /// The clamp `m` of the local correction (0: the bound is the same on every span)
     pub m: f32,
-    /// The local correction fades out between these distances from the axis curve (∞: no fade)
+    /// The local correction fades out between these distances from the axis curve ([`NO_FADE`]: no fade)
     pub fade: [f32; 2],
     /// The local bound `L(s)` at the B-spline knots (one per row), linear between them
     pub knots: Vec<f32>,
@@ -967,7 +969,7 @@ fn finish(
 ) -> Result<LoftBounds, LoftError> {
     let err = |s: String| Err(LoftError(s));
     let kr = flat_rows.len() / section.width();
-    let provisional = LoftBounds { l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, fade: [f32::INFINITY; 2], knots: vec![1.0; kr], reach: 0.0, pieces: Vec::new() };
+    let provisional = LoftBounds { l: 1.0, l2: 1.0, core: NO_CORE, lq: [1.0, 1.0], m: 0.0, fade: [NO_FADE; 2], knots: vec![1.0; kr], reach: 0.0, pieces: Vec::new() };
     let block = flatten(axis, up, section, flat_rows, sknots, caps, &provisional);
     let data = Loft::from_flat(&block);
     let last = (axis.len() - 1) as f32;
@@ -1036,7 +1038,7 @@ fn finish(
     let top = base.iter().copied().fold(0.0f32, f32::law_max);
     let (l, m, knots, fade) = if base.iter().all(|&b| b == top) {
         // one bound everywhere: f = F / L, no correction
-        (top, 0.0, base, [f32::INFINITY, f32::INFINITY])
+        (top, 0.0, base, [NO_FADE, NO_FADE])
     } else {
         // L(s) = (1 + ε) × the knots, L_g = (1 + δ) × max L(s); f = F/L_g + κ(s) sat(F) ψ with
         // κ(s) = 1/L(s) − 1/L_g ≥ 0. |∇f| ≤ |∇F| (1/L_g + κ sat' ψ) + |sat| |κ'| |∇s| ψ + |sat| κ |ψ'|
@@ -1058,7 +1060,7 @@ fn finish(
             let gs = 1.0 / (slow * (1.0 - kappa * rb));
             ([ra, rb], gs, EPS * (rb - ra) / (2.0 * (1.0 + EPS) * 1.5 * kap_max))
         } else {
-            ([f32::INFINITY, f32::INFINITY], 1.0 / slow, f32::INFINITY)
+            ([NO_FADE, NO_FADE], 1.0 / slow, f32::INFINITY)
         };
         let b_l = if dlds > 0.0 { EPS * kmin_l * kmin_l / (2.0 * (1.0 + EPS) * dlds * grad_s) } else { f32::INFINITY };
         let band = b_l.law_min(b_fade);

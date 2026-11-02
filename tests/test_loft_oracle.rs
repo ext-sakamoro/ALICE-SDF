@@ -701,3 +701,41 @@ fn gradient_norm_at_the_surface() {
     g.sort_by(f32::total_cmp);
     println!("|grad f| at the surface: p10 {:.3} median {:.3} p90 {:.3} ({} points)", g[g.len() / 10], g[g.len() / 2], g[g.len() * 9 / 10], g.len());
 }
+
+#[test]
+fn every_loft_kind_survives_a_json_round_trip_bit_for_bit() {
+    let n = 13;
+    let ys: Vec<f32> = (0..n).map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32).collect();
+    let sphere = SdfNode::loft(
+        ys.iter().map(|&y| Vec3::new(0.0, y, 0.0)).collect(),
+        Vec3::X,
+        1,
+        ys.iter().map(|&y| circle_row((1.0 - y * y).sqrt(), 1)).collect(),
+    )
+    .expect("sphere");
+    let capped = SdfNode::loft_capped(straight_axis(0.9), Vec3::X, 3, vec![circle_row(0.3, 3), circle_row(0.3, 3)], [0.3, 0.2]).expect("capsule");
+    let ellipse: Vec<Vec2> = (0..16)
+        .map(|k| {
+            let t = std::f32::consts::TAU * k as f32 / 16.0;
+            Vec2::new(0.3 * t.cos(), 0.15 * t.sin())
+        })
+        .collect();
+    let curves = SdfNode::loft_curves(
+        vec![Vec3::ZERO, Vec3::new(0.05, 0.5, 0.0), Vec3::new(0.0, 1.0, 0.1)],
+        Vec3::Z,
+        vec![ellipse.clone(), ellipse.iter().map(|p| *p * 1.3).collect(), ellipse],
+    )
+    .expect("curves");
+    let mut r = lcg(16);
+    let mut compared = 0;
+    for node in [sphere, capped, curved(), bent_jump().2, curves] {
+        let text = serde_json::to_string(&node).expect("serialise");
+        let back: SdfNode = serde_json::from_str(&text).expect("load");
+        for _ in 0..500 {
+            let p = Vec3::new(r() * 3.0 - 1.5, r() * 3.0 - 1.0, r() * 3.0 - 1.5) * if compared % 2 == 0 { 1.0 } else { 100.0 };
+            assert_eq!(eval(&node, p).to_bits(), eval(&back, p).to_bits(), "at {p:?}");
+            compared += 1;
+        }
+    }
+    assert_eq!(compared, 2500);
+}
