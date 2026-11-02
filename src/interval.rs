@@ -861,6 +861,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         SdfNode::Circle2D { .. } => ia_lipschitz(node, bounds, 1.0),
         SdfNode::Rect2D { .. } => ia_lipschitz(node, bounds, 1.0),
         SdfNode::Segment2D { .. } | SdfNode::Polygon2D { .. } => Interval::EVERYTHING,
+        // divided by its own Lipschitz bound at construction: 1-Lipschitz
+        SdfNode::SectionStack(_) => ia_lipschitz(node, bounds, 1.0),
         SdfNode::RoundedRect2D { .. } | SdfNode::Annular2D { .. } => {
             ia_lipschitz(node, bounds, 1.0)
         }
@@ -1579,8 +1581,10 @@ fn ia_bsphere(bounds: Vec3Interval, radius: f32) -> Interval {
 /// and IWP could not be rendered at all (external review, 2026-09-15).
 pub fn eval_lipschitz(node: &SdfNode) -> f32 {
     match node {
-        // Exact SDFs (|∇f| = 1 almost everywhere, L = 1)
-        SdfNode::Sphere { .. }
+        // Exact SDFs (|∇f| = 1 almost everywhere, L = 1); a section stack is divided by its own
+        // bound at construction, so it is 1-Lipschitz
+        SdfNode::SectionStack(_)
+        | SdfNode::Sphere { .. }
         | SdfNode::Box3d { .. }
         | SdfNode::Cylinder { .. }
         | SdfNode::Torus { .. }

@@ -271,6 +271,10 @@ impl Compiler {
                 unreachable!("Triangle: validated by validate_for_compile()");
             }
 
+            SdfNode::SectionStack(_) => {
+                unreachable!("SectionStack: validated by validate_for_compile()");
+            }
+
             SdfNode::Bezier { .. } => {
                 unreachable!("Bezier: validated by validate_for_compile()");
             }
@@ -1507,6 +1511,11 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         // Unsupported primitives (exceed params[6] limit)
         SdfNode::Triangle { .. } => {
             return Err(CompileError::UnsupportedPrimitive("Triangle".into()));
+        }
+        // no bytecode law yet (its levels and loops live in aux data, the next step): refused, not
+        // compiled to a stand-in
+        SdfNode::SectionStack(_) => {
+            return Err(CompileError::UnsupportedPrimitive("SectionStack".into()));
         }
         SdfNode::Bezier { .. } => {
             return Err(CompileError::UnsupportedPrimitive("Bezier".into()));
