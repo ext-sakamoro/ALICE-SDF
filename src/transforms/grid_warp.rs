@@ -17,9 +17,10 @@
 //! `(m − 1)·h`), and `p`'s cell is one of the 8 cells of every corner, so every corner's `Λ_n`
 //! and hence `Λ(p)` bounds the slope of `g = child ∘ x` on the ball of radius `reach` around `p`
 //! (a 1-Lipschitz child). The node returns
-//! `v = clamp(g / Λ, −reach, reach)`: when `|g| / Λ < reach` no zero of `g` is nearer than
-//! `|g| / Λ`, otherwise none is nearer than `reach`, so `|v|` never exceeds the distance to the
-//! surface (sphere tracing is safe with step `v`) and is the distance itself where the warp is
+//! `v = clamp(g / Λ, −R, R)` with `R = max(reach, |g| / Λ_g)` and `Λ_g` the largest node bound
+//! (the warp's slope bound over the whole box, so no zero of `g` in the box is nearer than
+//! `|g| / Λ_g`): when `|g| / Λ < reach` no zero of `g` is nearer than `|g| / Λ`, otherwise none is
+//! nearer than `R`, so `|v|` never exceeds the distance to the surface (sphere tracing is safe with step `v`) and is the distance itself where the warp is
 //! rigid nearby, however steep the warp is far away. The field's slope is bounded by
 //! [`GridWarp::lipschitz`] = `max_c (1 + reach · |∇Λ|_c / min Λ_c)` (the second term from `Λ`
 //! varying, with `|g| / Λ ≤ reach`).
@@ -79,6 +80,8 @@ pub struct GridWarp {
     node_lambda: Vec<f32>,
     /// slope bound of the node's field (computed)
     slope: f32,
+    /// the largest node bound `Λ_g` (computed): the warp's slope bound over the whole box
+    lambda_global: f32,
 }
 
 /// Why a grid warp was refused
@@ -255,10 +258,12 @@ impl GridWarp {
         {
             return Err(GridWarpError::BadBound);
         }
+        let lambda_global = node_lambda.iter().copied().fold(0.0f32, law_max_f32);
         Ok(Self {
             data,
             node_lambda,
             slope,
+            lambda_global,
         })
     }
 
@@ -473,6 +478,12 @@ impl GridWarp {
         &self.node_lambda
     }
 
+    /// The largest node bound `Λ_g` (computed): the warp's slope bound over the whole box
+    #[must_use]
+    pub const fn lambda_global(&self) -> f32 {
+        self.lambda_global
+    }
+
     /// The stored data
     #[must_use]
     pub const fn data(&self) -> &GridWarpData {
@@ -559,10 +570,13 @@ impl GridWarp {
     pub fn finish(&self, c: f32, b: f32, lam: f32, fl: f32) -> f32 {
         let e = law_max_f32(b, 0.0);
         let r = self.data.reach;
-        let d = law_max_f32(
-            law_min_f32(law_max_f32(c / lam, -r), r),
-            law_min_f32(law_max_f32(fl, -r), r),
+        // beyond the reach, |c| / Λ_g (a bound over the whole box) still holds: the clamp widens to it
+        let cg = c / self.lambda_global;
+        let v = law_min_f32(
+            law_max_f32(c / lam, law_min_f32(-r, cg)),
+            law_max_f32(r, cg),
         );
+        let d = law_max_f32(v, law_min_f32(law_max_f32(fl, -r), r));
         let dp = law_max_f32(d, 0.0);
         law_max_f32(d + ((e * e + dp * dp).sqrt() - dp), b)
     }

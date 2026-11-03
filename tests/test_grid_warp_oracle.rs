@@ -818,3 +818,38 @@ fn the_interval_contains_the_sampled_values() {
         "no box where the samples span the interval: the test has no teeth"
     );
 }
+
+/// oracle (closed form): beyond the reach the value is not stuck at ±reach: with a rigid grid the
+/// whole-box bound Λ_g is 1 (up to one f32 step), so far from the surface inside the box the value
+/// is the sphere's distance itself (old behaviour: reach), and the value never exceeds it
+#[test]
+fn beyond_the_reach_a_rigid_grid_gives_the_distance() {
+    let a = 0.3f32;
+    let w = grid_reach([9, 9, 9], 0.05, [-0.2; 3], 0.02, |_| rot_y(a));
+    assert!(
+        (w.lambda_global() - 1.0).abs() < 1e-5,
+        "Λ_g {}",
+        w.lambda_global()
+    );
+    let node = sphere_at_c().grid_warp(w);
+    let (s, c) = alice_det_math::sin_cos(a);
+    let rt_c = Vec3::new(c * C.x - s * C.z, C.y, s * C.x + c * C.z);
+    let (mut n, mut worst) = (0, 0.0f32);
+    for p in points(Vec3::splat(-0.2), Vec3::splat(0.2), 12) {
+        if p.abs().max_element() > 0.2 {
+            continue;
+        }
+        let want = (p - rt_c).length() - R;
+        let v = eval(&node, p);
+        assert!(
+            v <= want + 2e-6,
+            "p {p}: value {v} above the distance {want}"
+        );
+        if want.abs() > 0.05 {
+            worst = worst.max((v - want).abs());
+            n += 1;
+        }
+    }
+    assert!(n > 200, "compared {n} points beyond the reach");
+    assert!(worst < 2e-5, "beyond the reach: max |error| {worst}");
+}

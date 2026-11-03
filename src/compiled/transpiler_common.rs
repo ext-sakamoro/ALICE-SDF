@@ -2743,9 +2743,12 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let dc = self.transpile_node_inner(child, &x, code);
                 let (dv, dp, out) = (self.next_var(), self.next_var(), self.next_var());
                 let r = lit(data.reach);
+                let lg = lit(warp.lambda_global());
                 code.push_str(&L::decl_float(
                     &dv,
-                    &format!("max(clamp({dc} / {lam}, -{r}, {r}), clamp({fl}, -{r}, {r}))"),
+                    &format!(
+                        "max(min(max({dc} / {lam}, min(-{r}, {dc} / {lg})), max({r}, {dc} / {lg})), clamp({fl}, -{r}, {r}))"
+                    ),
                 ));
                 code.push_str(&L::decl_float(&dp, &format!("max({dv}, 0.0)")));
                 code.push_str(&L::decl_float(
