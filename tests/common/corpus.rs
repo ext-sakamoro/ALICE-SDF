@@ -294,7 +294,7 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
                 for _k in 0..5 {
                     for j in 0..5 {
                         for _i in 0..5 {
-                            let (s, c) = (0.3 * (j as f32 - 2.0)).sin_cos();
+                            let (s, c) = alice_det_math::sin_cos(0.3 * (j as f32 - 2.0));
                             maps.extend_from_slice(&[
                                 c, 0.0, s, 0.0, 0.0, 1.0, 0.0, 0.0, -s, 0.0, c, 0.0,
                             ]);

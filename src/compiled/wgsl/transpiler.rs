@@ -249,7 +249,7 @@ impl WgslShader {
         }
     }
 
-    fn node_data_decl(&self) -> &'static str {
+    const fn node_data_decl(&self) -> &'static str {
         if self.node_data.is_empty() {
             ""
         } else {

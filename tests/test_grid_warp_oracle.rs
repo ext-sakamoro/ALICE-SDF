@@ -33,7 +33,7 @@ fn grid(dims: [u32; 3], cell: f32, origin: [f32; 3], map: impl Fn(Vec3) -> [f32;
 }
 
 fn rot_y(a: f32) -> [f32; 12] {
-    let (s, c) = a.sin_cos();
+    let (s, c) = alice_det_math::sin_cos(a);
     [c, 0.0, s, 0.0, 0.0, 1.0, 0.0, 0.0, -s, 0.0, c, 0.0]
 }
 
@@ -66,7 +66,7 @@ fn a_rotation_grid_is_the_rotated_sphere_inside_the_box() {
     let w = grid([5, 5, 5], 0.05, [-0.1; 3], |_| rot_y(a));
     let node = sphere_at_c().grid_warp(w);
     // closed form: x = R p with R the rotation about y by a, so the surface is the sphere at Rᵀ c
-    let (s, c) = a.sin_cos();
+    let (s, c) = alice_det_math::sin_cos(a);
     let rt_c = Vec3::new(c * C.x - s * C.z, C.y, s * C.x + c * C.z);
     let mut n = 0;
     let mut worst = 0.0f32;
@@ -87,7 +87,7 @@ fn outside_the_box_the_value_is_a_lower_bound() {
     let a = -0.4f32;
     let w = grid([5, 5, 5], 0.05, [-0.1; 3], |_| rot_y(a));
     let node = sphere_at_c().grid_warp(w);
-    let (s, c) = a.sin_cos();
+    let (s, c) = alice_det_math::sin_cos(a);
     let rt_c = Vec3::new(c * C.x - s * C.z, C.y, s * C.x + c * C.z);
     let mut n = 0;
     for p in points(Vec3::splat(-0.1), Vec3::splat(0.1), 14) {

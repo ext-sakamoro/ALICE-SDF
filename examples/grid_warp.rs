@@ -23,7 +23,7 @@ fn main() {
                 // the posed lower half is the rest lower half rotated by +60° about x: the map back
                 // to the rest pose rotates by the blended angle in the other direction
                 let t = ((0.05 - y) / 0.1).clamp(0.0, 1.0);
-                let (s, c) = (-t * 60f32.to_radians()).sin_cos();
+                let (s, c) = alice_det_math::sin_cos(-t * std::f32::consts::FRAC_PI_3);
                 maps.extend_from_slice(&[1.0, 0.0, 0.0, 0.0, 0.0, c, -s, 0.0, 0.0, s, c, 0.0]);
             }
         }
@@ -37,7 +37,7 @@ fn main() {
     .expect("valid grid");
     println!("Lipschitz bound of the warp: {:.4}", warp.lipschitz());
     let posed = rest.grid_warp(warp);
-    let (s, c) = 60f32.to_radians().sin_cos();
+    let (s, c) = alice_det_math::sin_cos(std::f32::consts::FRAC_PI_3);
     for i in 0..=6 {
         // points along the posed lower axis: the rest axis (0, -t, 0) rotated by +60° about x
         let t = 0.05 * i as f32;

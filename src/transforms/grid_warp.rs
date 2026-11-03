@@ -110,42 +110,54 @@ impl From<GridWarp> for GridWarpData {
     }
 }
 
-/// Spectral norm of a 3x3 matrix (rows): the square root of the largest eigenvalue of AᵀA, from
-/// the closed form for a symmetric 3x3 (trigonometric), in f64, with a 1e-9 relative margin and
-/// never above the Frobenius norm (both are upper bounds within the margin)
+/// Spectral norm of a 3x3 matrix (rows): an upper bound of the square root of the largest
+/// eigenvalue of AᵀA. AᵀA is diagonalised by cyclic Jacobi rotations (square roots and the four
+/// operations only, a fixed 12 sweeps), then the largest Gershgorin bound `a_ii + Σ_j≠i |a_ij|` of
+/// the result is taken (an upper bound of every eigenvalue), with a 1e-9 relative margin for the
+/// rounding of the rotations, and never above the Frobenius norm
+#[allow(
+    clippy::needless_range_loop,
+    reason = "a Jacobi rotation updates two rows / columns of the same matrix by index"
+)]
 fn spectral_norm(a: &[f32; 9]) -> f64 {
     let m: Vec<f64> = a.iter().map(|&v| f64::from(v)).collect();
-    let mut s = [0.0f64; 9];
-    for i in 0..3 {
-        for j in 0..3 {
-            s[i * 3 + j] = (0..3).map(|k| m[k * 3 + i] * m[k * 3 + j]).sum();
+    let mut s = [[0.0f64; 3]; 3];
+    for (i, row) in s.iter_mut().enumerate() {
+        for (j, v) in row.iter_mut().enumerate() {
+            *v = (0..3).map(|k| m[k * 3 + i] * m[k * 3 + j]).sum();
         }
     }
     let frob: f64 = m.iter().map(|v| v * v).sum::<f64>().sqrt();
-    let p1 = s[1] * s[1] + s[2] * s[2] + s[5] * s[5];
-    let q = (s[0] + s[4] + s[8]) / 3.0;
-    let emax = if p1 <= 1e-300 {
-        s[0].max(s[4]).max(s[8])
-    } else {
-        let p2 = (s[0] - q).powi(2) + (s[4] - q).powi(2) + (s[8] - q).powi(2) + 2.0 * p1;
-        let p = (p2 / 6.0).sqrt();
-        let b = [
-            s[0] - q,
-            s[1],
-            s[2],
-            s[3],
-            s[4] - q,
-            s[5],
-            s[6],
-            s[7],
-            s[8] - q,
-        ]
-        .map(|v| v / p);
-        let det = b[0] * (b[4] * b[8] - b[5] * b[7]) - b[1] * (b[3] * b[8] - b[5] * b[6])
-            + b[2] * (b[3] * b[7] - b[4] * b[6]);
-        let r = (det / 2.0).clamp(-1.0, 1.0);
-        q + 2.0 * p * (r.acos() / 3.0).cos()
-    };
+    for _ in 0..12 {
+        for (p, q) in [(0usize, 1usize), (0, 2), (1, 2)] {
+            if s[p][q] == 0.0 {
+                continue;
+            }
+            let theta = (s[q][q] - s[p][p]) / (2.0 * s[p][q]);
+            let t = theta.signum() / (theta.abs() + (theta * theta + 1.0).sqrt());
+            let c = 1.0 / (t * t + 1.0).sqrt();
+            let sn = t * c;
+            for k in 0..3 {
+                let (skp, skq) = (s[k][p], s[k][q]);
+                s[k][p] = c * skp - sn * skq;
+                s[k][q] = sn * skp + c * skq;
+            }
+            for k in 0..3 {
+                let (spk, sqk) = (s[p][k], s[q][k]);
+                s[p][k] = c * spk - sn * sqk;
+                s[q][k] = sn * spk + c * sqk;
+            }
+        }
+    }
+    let emax = (0..3)
+        .map(|i| {
+            s[i][i]
+                + (0..3)
+                    .filter(|&j| j != i)
+                    .map(|j| s[i][j].abs())
+                    .sum::<f64>()
+        })
+        .fold(0.0f64, f64::max);
     (emax.max(0.0).sqrt() * (1.0 + 1e-9)).min(frob)
 }
 
@@ -243,8 +255,8 @@ impl GridWarp {
                                 dk[2].max(diff(at(i + a, j + b, k), at(i + a, j + b, k + 1), c));
                         }
                     }
-                    let grad =
-                        ((dk[0] / h).powi(2) + (dk[1] / h).powi(2) + (dk[2] / h).powi(2)).sqrt();
+                    let g = [dk[0] / h, dk[1] / h, dk[2] / h];
+                    let grad = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
                     lam = lam.max(amax + grad);
                 }
             }
@@ -315,7 +327,7 @@ impl GridWarp {
             let w = wx * wy * wz;
             let base = ((i0 + dx) + nx * ((j0 + dy) + ny * (k0 + dz))) * GRID_WARP_NODE_FLOATS;
             for (t, mt) in m.iter_mut().enumerate() {
-                *mt = *mt + w * d.maps[base + t];
+                *mt += w * d.maps[base + t];
             }
         }
         let x = Vec3::new(
@@ -375,7 +387,7 @@ mod tests {
 
     #[test]
     fn a_rotation_grid_has_bound_one_and_rotates() {
-        let (s, c) = 0.6f32.sin_cos();
+        let (s, c) = alice_det_math::sin_cos(0.6f32);
         let rot = [c, 0.0, s, 0.0, 0.0, 1.0, 0.0, 0.0, -s, 0.0, c, 0.0];
         let w = GridWarp::new(grid([3, 3, 3], 0.2, [-0.2; 3], |_| rot)).unwrap();
         assert!((w.lipschitz() - 1.0).abs() < 1e-6, "{}", w.lipschitz());
@@ -389,7 +401,7 @@ mod tests {
     fn the_bound_holds_on_a_blended_grid() {
         // maps rotate by an angle that grows along y: the blend term must enter the bound
         let w = GridWarp::new(grid([4, 6, 4], 0.05, [-0.1, -0.1, -0.1], |p| {
-            let (s, c) = (p.y * 8.0).sin_cos();
+            let (s, c) = alice_det_math::sin_cos(p.y * 8.0);
             [c, 0.0, s, 0.0, 0.0, 1.0, 0.0, 0.0, -s, 0.0, c, 0.0]
         }))
         .unwrap();
@@ -458,7 +470,7 @@ mod tests {
     #[test]
     fn load_recomputes_the_bound_and_validates() {
         let w = GridWarp::new(grid([3, 3, 3], 0.05, [0.0; 3], |p| {
-            let (s, c) = (p.x * 9.0).sin_cos();
+            let (s, c) = alice_det_math::sin_cos(p.x * 9.0);
             [c, -s, 0.0, 0.0, s, c, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
         }))
         .unwrap();

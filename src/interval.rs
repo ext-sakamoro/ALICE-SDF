@@ -1125,9 +1125,9 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         // within the centre's value ± L · half-diagonal.
         SdfNode::GridWarp { .. } => {
             let c = Vec3::new(
-                0.5 * (bounds.x.lo + bounds.x.hi),
-                0.5 * (bounds.y.lo + bounds.y.hi),
-                0.5 * (bounds.z.lo + bounds.z.hi),
+                bounds.x.lo.midpoint(bounds.x.hi),
+                bounds.y.lo.midpoint(bounds.y.hi),
+                bounds.z.lo.midpoint(bounds.z.hi),
             );
             let r = 0.5
                 * Vec3::new(
