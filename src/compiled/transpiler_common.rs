@@ -2612,6 +2612,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let arr = self.data_array_accessed(&format!("alice_gw_{id}"), &data.maps);
                 let lam_arr =
                     self.data_array_accessed(&format!("alice_gwl_{id}"), warp.node_lambda());
+                let floor_arr = (!data.floor.is_empty())
+                    .then(|| self.data_array_accessed(&format!("alice_gwf_{id}"), &data.floor));
                 let bmin = warp.box_min();
                 let bmax = warp.box_max();
                 let [nx, ny, nz] = data.dims.map(i64::from);
@@ -2685,6 +2687,21 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 }
                 let lam = self.next_var();
                 code.push_str(&L::decl_float(&lam, &lexpr));
+                // F(q): the floor blended with the same weights (−reach without a floor)
+                let fl = self.next_var();
+                match &floor_arr {
+                    Some(fa) => {
+                        let mut fexpr = "0.0".to_owned();
+                        for (wv, off) in &w {
+                            fexpr = format!(
+                                "({fexpr} + {wv} * {})",
+                                fa.at_fn(&format!("{node} + {}", off / 12))
+                            );
+                        }
+                        code.push_str(&L::decl_float(&fl, &fexpr));
+                    }
+                    None => code.push_str(&L::decl_float(&fl, &format!("-{}", lit(data.reach)))),
+                }
                 let mut m = Vec::new();
                 for t in 0..12i64 {
                     let mut expr = "0.0".to_owned();
@@ -2714,7 +2731,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let r = lit(data.reach);
                 code.push_str(&L::decl_float(
                     &dv,
-                    &format!("clamp({dc} / {lam}, -{r}, {r})"),
+                    &format!("max(clamp({dc} / {lam}, -{r}, {r}), clamp({fl}, -{r}, {r}))"),
                 ));
                 code.push_str(&L::decl_float(&dp, &format!("max({dv}, 0.0)")));
                 code.push_str(&L::decl_float(

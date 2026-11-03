@@ -307,6 +307,7 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
                     dims: [3, 3, 3],
                     maps,
                     reach: 1.0,
+                    floor: Vec::new(),
                 })
                 .expect("valid grid")
             }),

@@ -510,8 +510,8 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             eval(child, q)
         }
         SdfNode::GridWarp { child, warp } => {
-            let (x, e, lam) = warp.warp(point);
-            warp.finish(eval(child, x), e, lam)
+            let (x, e, lam, fl) = warp.warp(point);
+            warp.finish(eval(child, x), e, lam, fl)
         }
 
         // === Modifiers ===

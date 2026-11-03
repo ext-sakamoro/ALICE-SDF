@@ -55,6 +55,13 @@ pub struct GridWarpData {
     /// Radius over which the local slope bound is taken, > 0: the value is clamped to ±`reach`
     /// (a larger reach gives larger values far from the surface and a larger `Λ`)
     pub reach: f32,
+    /// Optional floor per node (empty, or one value per node, x fastest): where the maps fold
+    /// (send a point to a rest point whose image is elsewhere), a lower bound of the signed
+    /// distance to the posed surface minus the cell diagonal; elsewhere −`reach`. The node returns
+    /// `max(v, clamp(F, −reach, reach))` with `F` the trilinear blend, so a floor that is a lower
+    /// bound at the nodes keeps the value a lower bound and removes surfaces the fold creates.
+    #[serde(default)]
+    pub floor: Vec<f32>,
 }
 
 /// A validated grid warp with its Lipschitz bound (see the module doc)
@@ -223,6 +230,15 @@ impl GridWarp {
         if !(data.reach.is_finite() && data.reach > 0.0) {
             return Err(GridWarpError::BadReach);
         }
+        if !(data.floor.is_empty() || data.floor.len() == n) {
+            return Err(GridWarpError::BadLength {
+                expected: n,
+                got: data.floor.len(),
+            });
+        }
+        if data.floor.iter().any(|v| !v.is_finite()) {
+            return Err(GridWarpError::NotFinite);
+        }
         let cells = Self::cell_bounds(&data);
         if cells.iter().any(|v| !(v.is_finite() && *v > 0.0)) {
             return Err(GridWarpError::BadBound);
@@ -246,7 +262,13 @@ impl GridWarp {
         let [nx, ny, nz] = d.dims.map(|v| v as usize);
         let (cx, cy, cz) = (nx - 1, ny - 1, nz - 1);
         let h = f64::from(d.cell);
-        let k = ((f64::from(d.reach) + h * 3f64.sqrt()) / h).ceil() as usize;
+        // capped at the largest cell count: a reach beyond the grid covers every cell, and t + k
+        // cannot overflow for any finite reach
+        let kmax = cx.max(cy).max(cz);
+        let k = min64(
+            ((f64::from(d.reach) + h * 3f64.sqrt()) / h).ceil(),
+            kmax as f64,
+        ) as usize;
         let idx = |i: usize, j: usize, l: usize| i + cx * (j + cy * l);
         let mut a = cells.to_vec();
         let mut b = vec![0.0f64; a.len()];
@@ -328,6 +350,40 @@ impl GridWarp {
                     let g = [dk[0] / h, dk[1] / h, dk[2] / h];
                     let grad = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
                     slope = max64(slope, 1.0 + r * grad / lmin);
+                }
+            }
+        }
+        // the floor's slope: max over cells of |∇F| (trilinear, clamped to ±reach)
+        if !d.floor.is_empty() {
+            let fl = |i: usize, j: usize, l: usize| {
+                f64::from(law_min_f32(
+                    law_max_f32(d.floor[i + nx * (j + ny * l)], -d.reach),
+                    d.reach,
+                ))
+            };
+            for l in 0..cz {
+                for j in 0..cy {
+                    for i in 0..cx {
+                        let mut dk = [0.0f64; 3];
+                        for u in 0..2 {
+                            for v in 0..2 {
+                                dk[0] = max64(
+                                    dk[0],
+                                    (fl(i + 1, j + u, l + v) - fl(i, j + u, l + v)).abs(),
+                                );
+                                dk[1] = max64(
+                                    dk[1],
+                                    (fl(i + u, j + 1, l + v) - fl(i + u, j, l + v)).abs(),
+                                );
+                                dk[2] = max64(
+                                    dk[2],
+                                    (fl(i + u, j + v, l + 1) - fl(i + u, j + v, l)).abs(),
+                                );
+                            }
+                        }
+                        let g = [dk[0] / h, dk[1] / h, dk[2] / h];
+                        slope = max64(slope, (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt());
+                    }
                 }
             }
         }
@@ -439,10 +495,11 @@ impl GridWarp {
             )
     }
 
-    /// The warped point `x(q)` for `q` = `p` clamped to the box, `e = |p − q|` and `Λ(q)`
+    /// The warped point `x(q)` for `q` = `p` clamped to the box, `e = |p − q|`, `Λ(q)` and the
+    /// floor `F(q)` (−`reach` without a floor)
     #[inline]
     #[must_use]
-    pub fn warp(&self, p: Vec3) -> (Vec3, f32, f32) {
+    pub fn warp(&self, p: Vec3) -> (Vec3, f32, f32, f32) {
         let d = &self.data;
         let bmin = self.box_min();
         let q = p.law_clamp(bmin, self.box_max());
@@ -457,6 +514,7 @@ impl GridWarp {
         let (nx, ny) = (nx as usize, ny as usize);
         let mut m = [0.0f32; 12];
         let mut lam = 0.0f32;
+        let mut fl = 0.0f32;
         // corner order (dx, dy, dz) = 000, 100, 010, 110, 001, 101, 011, 111
         for c in 0..8 {
             let (dx, dy, dz) = (c & 1, (c >> 1) & 1, (c >> 2) & 1);
@@ -469,22 +527,31 @@ impl GridWarp {
                 *mt += w * d.maps[base + t];
             }
             lam += w * self.node_lambda[base / GRID_WARP_NODE_FLOATS];
+            if !d.floor.is_empty() {
+                fl += w * d.floor[base / GRID_WARP_NODE_FLOATS];
+            }
         }
         let x = Vec3::new(
             m[0] * q.x + m[1] * q.y + m[2] * q.z + m[3],
             m[4] * q.x + m[5] * q.y + m[6] * q.z + m[7],
             m[8] * q.x + m[9] * q.y + m[10] * q.z + m[11],
         );
-        (x, e, lam)
+        if d.floor.is_empty() {
+            fl = -d.reach;
+        }
+        (x, e, lam, fl)
     }
 
     /// The node's value from the child's value `c` at the warped point and `e`, `Λ` from
     /// [`GridWarp::warp`]
     #[inline]
     #[must_use]
-    pub fn finish(&self, c: f32, e: f32, lam: f32) -> f32 {
+    pub fn finish(&self, c: f32, e: f32, lam: f32, fl: f32) -> f32 {
         let r = self.data.reach;
-        let d = law_min_f32(law_max_f32(c / lam, -r), r);
+        let d = law_max_f32(
+            law_min_f32(law_max_f32(c / lam, -r), r),
+            law_min_f32(law_max_f32(fl, -r), r),
+        );
         let dp = law_max_f32(d, 0.0);
         d + ((e * e + dp * dp).sqrt() - dp)
     }
@@ -515,6 +582,7 @@ mod tests {
             dims,
             maps,
             reach: 4.0 * cell,
+            floor: Vec::new(),
         }
     }
     const ID: [f32; 12] = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
@@ -524,7 +592,7 @@ mod tests {
         let w = GridWarp::new(grid([4, 5, 3], 0.1, [-0.2, -0.2, -0.1], |_| ID)).unwrap();
         assert!((w.lipschitz() - 1.0).abs() < 1e-6, "{}", w.lipschitz());
         let p = Vec3::new(0.03, 0.11, -0.05);
-        let (x, e, _) = w.warp(p);
+        let (x, e, _, _) = w.warp(p);
         assert!((x - p).length() < 1e-6 && e == 0.0);
     }
 
@@ -535,7 +603,7 @@ mod tests {
         let w = GridWarp::new(grid([3, 3, 3], 0.2, [-0.2; 3], |_| rot)).unwrap();
         assert!((w.lipschitz() - 1.0).abs() < 1e-6, "{}", w.lipschitz());
         let p = Vec3::new(0.1, 0.05, -0.07);
-        let (x, _, _) = w.warp(p);
+        let (x, _, _, _) = w.warp(p);
         let want = Vec3::new(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);
         assert!((x - want).length() < 1e-6);
     }
@@ -560,8 +628,8 @@ mod tests {
                     0.013 * ((a * b) % 7) as f32 - 0.04,
                 );
                 let dp = Vec3::new(1e-3, -0.7e-3, 0.4e-3);
-                let (x0, _, _) = w.warp(p);
-                let (x1, _, _) = w.warp(p + dp);
+                let (x0, _, _, _) = w.warp(p);
+                let (x1, _, _, _) = w.warp(p + dp);
                 seen = seen.max((x1 - x0).length() / dp.length());
                 n += 1;
             }
@@ -579,10 +647,10 @@ mod tests {
     fn outside_is_hypot_and_continuous() {
         let w = GridWarp::new(grid([2, 2, 2], 1.0, [0.0; 3], |_| ID)).unwrap();
         // the bound of an identity grid is 1 rounded up by one f32 step (an upper bound)
-        assert!((w.finish(0.3, 0.0, 1.0) - 0.3).abs() < 1e-6);
-        assert!((w.finish(-0.3, 0.0, 1.0) + 0.3).abs() < 1e-6);
-        assert!((w.finish(0.3, 0.4, 1.0) - 0.5).abs() < 1e-6);
-        assert!((w.finish(-0.3, 0.4, 1.0) - 0.1).abs() < 1e-6);
+        assert!((w.finish(0.3, 0.0, 1.0, -1e30) - 0.3).abs() < 1e-6);
+        assert!((w.finish(-0.3, 0.0, 1.0, -1e30) + 0.3).abs() < 1e-6);
+        assert!((w.finish(0.3, 0.4, 1.0, -1e30) - 0.5).abs() < 1e-6);
+        assert!((w.finish(-0.3, 0.4, 1.0, -1e30) - 0.1).abs() < 1e-6);
     }
 
     #[test]
@@ -609,6 +677,28 @@ mod tests {
         let mut d = ok;
         d.maps.iter_mut().for_each(|v| *v = 0.0);
         assert_eq!(GridWarp::new(d).unwrap_err(), GridWarpError::BadBound);
+    }
+
+    #[test]
+    fn a_reach_beyond_the_grid_covers_every_cell_without_overflow() {
+        // a finite reach far beyond any grid (k would not fit a usize add): every node bound is
+        // the largest cell bound
+        let mut d = grid([3, 4, 3], 0.05, [0.0; 3], |p| {
+            let (s, c) = alice_det_math::sin_cos(p.y * 9.0);
+            [c, 0.0, s, 0.0, 0.0, 1.0, 0.0, 0.0, -s, 0.0, c, 0.0]
+        });
+        d.reach = 1e30;
+        let w = GridWarp::new(d).expect("valid grid");
+        let lmax = w.node_lambda().iter().copied().fold(0.0f32, f32::max);
+        let lmin = w
+            .node_lambda()
+            .iter()
+            .copied()
+            .fold(f32::INFINITY, f32::min);
+        assert!(
+            lmax > 1.05 && lmin == lmax,
+            "every node sees every cell: {lmin} .. {lmax}"
+        );
     }
 
     #[test]

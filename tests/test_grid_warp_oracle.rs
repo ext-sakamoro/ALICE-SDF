@@ -40,6 +40,7 @@ fn grid_reach(
         dims,
         maps,
         reach,
+        floor: Vec::new(),
     })
     .expect("valid grid")
 }
@@ -448,4 +449,104 @@ fn the_claimed_slope_holds_where_the_bound_varies() {
         worst <= claim * (1.0 + 1e-3),
         "difference quotient {worst} above the claim {claim}"
     );
+}
+
+/// A fold: identity for x < 0.075 and a translation by −0.15 along x from x = 0.1 on, so the
+/// rest sphere (radius 0.05 at the origin) appears a second time around x = 0.15 although
+/// nothing there is the image of it (the round trip x → forward(x) does not return). The floor
+/// holds, at the nodes of the translated region, the closed-form distance to the true surface
+/// (the sphere at the origin) minus the cell diagonal, and −reach elsewhere.
+fn fold_scene(with_floor: bool) -> SdfNode {
+    let (h, r, reach) = (0.025f32, 0.05f32, 0.05f32);
+    let (dims, origin) = ([17u32, 9, 9], [-0.1f32, -0.1, -0.1]);
+    let mut maps = Vec::new();
+    let mut floor = Vec::new();
+    for k in 0..dims[2] {
+        for j in 0..dims[1] {
+            for i in 0..dims[0] {
+                let p = Vec3::from(origin) + Vec3::new(i as f32, j as f32, k as f32) * h;
+                let t = if p.x > 0.09 { -0.15 } else { 0.0 };
+                maps.extend_from_slice(&[1.0, 0.0, 0.0, t, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
+                floor.push(if p.x > 0.09 {
+                    p.length() - r - h * 3f32.sqrt()
+                } else {
+                    -reach
+                });
+            }
+        }
+    }
+    let w = GridWarp::new(GridWarpData {
+        origin,
+        cell: h,
+        dims,
+        maps,
+        reach,
+        floor: if with_floor { floor } else { Vec::new() },
+    })
+    .expect("valid grid");
+    SdfNode::sphere(r).grid_warp(w)
+}
+
+#[test]
+fn a_fold_shows_a_second_surface_without_the_floor_and_none_with_it() {
+    let phantom = Vec3::new(0.15, 0.0, 0.0);
+    assert!(
+        eval(&fold_scene(false), phantom) < 0.0,
+        "the scene must have the folded copy"
+    );
+    let node = fold_scene(true);
+    let v = eval(&node, phantom);
+    assert!(v > 0.0, "the floor must remove the folded copy: {v}");
+    // oracle: the true surface is the sphere at the origin; the value never exceeds its distance
+    // and keeps its sign, inside and outside the box
+    let mut n = 0;
+    for p in points(Vec3::new(-0.1, -0.1, -0.1), Vec3::new(0.3, 0.1, 0.1), 22) {
+        let truth = p.length() - 0.05;
+        let v = eval(&node, p);
+        assert!(
+            v <= truth + 1e-6,
+            "p {p}: value {v} above the distance {truth}"
+        );
+        assert!(
+            v == 0.0 || truth == 0.0 || v.signum() == truth.signum() || truth.abs() < 2e-3,
+            "p {p}: sign of {v} vs {truth}"
+        );
+        n += 1;
+    }
+    assert!(n > 10_000, "compared {n}");
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn the_gpu_gives_the_cpu_value_with_a_floor() {
+    use alice_sdf::compiled::GpuEvaluator;
+    let node = fold_scene(true);
+    let gpu = match GpuEvaluator::new(&node) {
+        Ok(g) => g,
+        Err(e) => {
+            assert!(
+                std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                "ALICE_SDF_REQUIRE_GPU is set but the GPU evaluator failed: {e}"
+            );
+            eprintln!("skipped: {e}");
+            return;
+        }
+    };
+    let pts = points(Vec3::new(-0.1, -0.1, -0.1), Vec3::new(0.3, 0.1, 0.1), 24);
+    let got = gpu.eval_batch(&pts).expect("gpu eval");
+    let mut worst = 0.0f32;
+    let mut floored = 0;
+    for (p, g) in pts.iter().zip(&got) {
+        let c = eval(&node, *p);
+        worst = worst.max((c - g).abs());
+        if p.x > 0.11 && c > 0.0 {
+            floored += 1;
+        }
+    }
+    assert!(
+        pts.len() > 10_000 && floored > 1000,
+        "compared {}, floored {floored}",
+        pts.len()
+    );
+    assert!(worst < 2e-6, "max |gpu − cpu| {worst}");
 }
