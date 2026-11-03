@@ -141,6 +141,7 @@ fn the_node_is_one_lipschitz_with_a_blended_grid() {
     assert!(worst > 0.5, "the field must have a slope ({worst})");
 }
 
+#[cfg(feature = "gpu")]
 #[test]
 fn the_shader_text_declares_the_data_binding_only_with_node_data() {
     use alice_sdf::compiled::{TranspileMode, WgslShader};
