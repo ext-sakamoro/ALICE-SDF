@@ -25,7 +25,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 788 items (0 Linux-only): 89 handshake, 699 local, 0 pending. Groups (count, decision):
+# 794 items (0 Linux-only): 89 handshake, 705 local, 0 pending. Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: a_file_written_under_another_det_math_is_refused_naming_both_and_the_form
@@ -74,7 +74,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      4  local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)
 #      1  local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)
 #     12  local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic
-#     21  local: writes this crate's own value; stamping the stored file is G8's
+#     23  local: writes this crate's own value; stamping the stored file is G8's
 #      2  local: parses a shader language name
 #     11  local: writes this build's tree or mesh out; stamping the file is G8's
 #      1  local: delegates to io::vdb::bake_to_vdb, which stamps the grid it writes
@@ -101,7 +101,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      4  local: writes this build's own state for a snapshot or shape hash
 #      6  handshake: gpu_readers_refuse_without_a_gpu
 #      2  handshake: msl_from_wgsl_checks_the_identifier
-#     32  local: generates shader or source text from a tree of this process
+#     34  local: generates shader or source text from a tree of this process
 #     13  local: generates shader text
 #     29  local: shader text builders over names and expressions
 #      1  local: returns the GPU adapter's name and backend as text
@@ -120,6 +120,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  handshake: ffi_load_abm_checks_the_identifier
 #      2  local: parses the .abm header and returns its stored identifier as a field; load_abm and load_abm_with_lods do the comparison
 #      1  handshake: ffi_load_lod_chain_checks_both_parts
+#      2  local: authored grid maps the reader validates and recomputes the Lipschitz bound from; no stored value is one this crate computed under its arithmetic
 
 [boundary]
 # 4 local
@@ -321,9 +322,11 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "impl::Deserialize for Timeline" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
 "impl::Deserialize for Track" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"
 
-# 21 local
+# 23 local
 "impl::Serialize for Aabb" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for BoneTransform" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for GridWarp" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for GridWarpData" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for Interpolation" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for Keyframe" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for LodChainConfig" = "local: writes this crate's own value; stamping the stored file is G8's"
@@ -916,9 +919,11 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::MslShader::from_wgsl" = "handshake: msl_from_wgsl_checks_the_identifier"
 "fn::MslShader::from_wgsl_pinned" = "handshake: msl_from_wgsl_checks_the_identifier"
 
-# 32 local
+# 34 local
 "fn::BlinkScriptShader::get_eval_function" = "local: generates shader or source text from a tree of this process"
 "fn::BlinkScriptShader::to_kernel" = "local: generates shader or source text from a tree of this process"
+"fn::DataArr::at" = "local: generates shader or source text from a tree of this process"
+"fn::GenericTranspiler::data_array" = "local: generates shader or source text from a tree of this process"
 "fn::GenericTranspiler::emit_stairs_union_inline" = "local: generates shader or source text from a tree of this process"
 "fn::GenericTranspiler::ensure_helper" = "local: generates shader or source text from a tree of this process"
 "fn::GenericTranspiler::generate_shader" = "local: generates shader or source text from a tree of this process"
@@ -1079,6 +1084,10 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "abi::ffi::io_ffi::alice_sdf_load_lod_chain" = "handshake: ffi_load_lod_chain_checks_both_parts"
 
 # `local` entries that reach a parser on purpose (scripts/api_boundary_parsers.py)
+
+# 2 local
+"impl::Deserialize for GridWarp" = "local: authored grid maps the reader validates and recomputes the Lipschitz bound from; no stored value is one this crate computed under its arithmetic"
+"impl::Deserialize for GridWarpData" = "local: authored grid maps the reader validates and recomputes the Lipschitz bound from; no stored value is one this crate computed under its arithmetic"
 [parser_exempt]
 "binding::pyo3::gpu_bake_volume" = "compiles the WGSL this crate transpiles from the given node of this process (volume::gpu_bake_volume)"
 "binding::pyo3::gpu_marching_cubes" = "compiles the WGSL this crate transpiles from the given node of this process (mesh::gpu_marching_cubes)"
