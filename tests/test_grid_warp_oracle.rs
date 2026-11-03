@@ -497,15 +497,15 @@ fn a_fold_shows_a_second_surface_without_the_floor_and_none_with_it() {
     let node = fold_scene(true);
     let v = eval(&node, phantom);
     assert!(v > 0.0, "the floor must remove the folded copy: {v}");
-    // oracle: the true surface is the sphere at the origin; the value never exceeds its distance
-    // and keeps its sign, inside and outside the box
+    // oracle: the true surface is the sphere at the origin; |value| never exceeds its distance and
+    // the value keeps its sign, inside and outside the box
     let mut n = 0;
     for p in points(Vec3::new(-0.1, -0.1, -0.1), Vec3::new(0.3, 0.1, 0.1), 22) {
         let truth = p.length() - 0.05;
         let v = eval(&node, p);
         assert!(
-            v <= truth + 1e-6,
-            "p {p}: value {v} above the distance {truth}"
+            v.abs() <= truth.abs() + 1e-6,
+            "p {p}: |value| {v} above the distance {truth}"
         );
         assert!(
             v == 0.0 || truth == 0.0 || v.signum() == truth.signum() || truth.abs() < 2e-3,
