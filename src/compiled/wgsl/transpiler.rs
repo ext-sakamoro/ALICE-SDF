@@ -103,6 +103,9 @@ impl ShaderLang for WgslLang {
             items.join(", ")
         )
     }
+    fn global_float_at_fn(name: &str, arr: &str) -> String {
+        format!("fn {name}(i: i32) -> f32 {{\n    return {arr}[i];\n}}\n")
+    }
     fn global_vec3_fn(name: &str, body: &str) -> String {
         format!("fn {name}(p: vec3<f32>) -> vec3<f32> {{\n{body}}}\n")
     }

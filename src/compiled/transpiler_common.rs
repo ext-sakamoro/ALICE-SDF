@@ -221,6 +221,9 @@ pub trait ShaderLang: private::Sealed + 'static {
     fn global_float_array(name: &str, values: &[f32]) -> String;
     /// A module-scope `vec3 name(vec3 p)` function with the given body lines.
     fn global_vec3_fn(name: &str, body: &str) -> String;
+    /// A module-scope `float name(int i)` returning `arr[i]`: one function frame holds the array
+    /// when a target lowers a dynamically indexed constant array to a local copy per access
+    fn global_float_at_fn(name: &str, arr: &str) -> String;
 }
 
 /// Float literal for shader source: shortest round-trip form with a decimal
@@ -280,6 +283,16 @@ pub struct DataArr {
 }
 
 impl DataArr {
+    /// [`DataArr::at`] through the accessor function `{name}_at` in constant mode (emitted by
+    /// [`GenericTranspiler::data_array_accessed`]), the buffer read otherwise
+    #[must_use]
+    pub fn at_fn(&self, idx: &str) -> String {
+        match self.base {
+            None => format!("{}_at({idx})", self.name),
+            Some(_) => self.at(idx),
+        }
+    }
+
     /// The element at the (integer) index expression `idx`
     #[must_use]
     pub fn at(&self, idx: &str) -> String {
@@ -321,6 +334,17 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 base: None,
             }
         }
+    }
+
+    /// [`GenericTranspiler::data_array`] with the accessor function `{name}_at` in constant mode,
+    /// for arrays read with many dynamic indices (read them with [`DataArr::at_fn`])
+    pub fn data_array_accessed(&mut self, name: &str, values: &[f32]) -> DataArr {
+        let d = self.data_array(name, values);
+        if d.base.is_none() {
+            self.globals
+                .push_str(&L::global_float_at_fn(&format!("{name}_at"), name));
+        }
+        d
     }
 
     /// Allocate the next unique variable name (d0, d1, ...).
@@ -2585,7 +2609,9 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let data = warp.data();
                 let id = self.var_counter;
                 self.var_counter += 1;
-                let arr = self.data_array(&format!("alice_gw_{id}"), &data.maps);
+                let arr = self.data_array_accessed(&format!("alice_gw_{id}"), &data.maps);
+                let lam_arr =
+                    self.data_array_accessed(&format!("alice_gwl_{id}"), warp.node_lambda());
                 let bmin = warp.box_min();
                 let bmax = warp.box_max();
                 let [nx, ny, nz] = data.dims.map(i64::from);
@@ -2626,11 +2652,12 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                         &format!("{g}.{c} - {}", L::cast_float(iv)),
                     ));
                 }
-                let base = self.next_var();
+                let (node, base) = (self.next_var(), self.next_var());
                 code.push_str(&L::decl_int(
-                    &base,
-                    &format!("({ix} + {nx} * ({iy} + {ny} * {iz})) * 12"),
+                    &node,
+                    &format!("{ix} + {nx} * ({iy} + {ny} * {iz})"),
                 ));
+                code.push_str(&L::decl_int(&base, &format!("{node} * 12")));
                 let mut w = Vec::new();
                 for c in 0..8i64 {
                     let (dx, dy, dz) = (c & 1, (c >> 1) & 1, (c >> 2) & 1);
@@ -2648,13 +2675,23 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     ));
                     w.push((wv, (dx + nx * (dy + ny * dz)) * 12));
                 }
+                // Λ(q): the node bounds blended with the same weights, in the CPU order
+                let mut lexpr = "0.0".to_owned();
+                for (wv, off) in &w {
+                    lexpr = format!(
+                        "({lexpr} + {wv} * {})",
+                        lam_arr.at_fn(&format!("{node} + {}", off / 12))
+                    );
+                }
+                let lam = self.next_var();
+                code.push_str(&L::decl_float(&lam, &lexpr));
                 let mut m = Vec::new();
                 for t in 0..12i64 {
                     let mut expr = "0.0".to_owned();
                     for (wv, off) in &w {
                         expr = format!(
                             "({expr} + {wv} * {})",
-                            arr.at(&format!("{base} + {}", off + t))
+                            arr.at_fn(&format!("{base} + {}", off + t))
                         );
                     }
                     let mv = self.next_var();
@@ -2674,9 +2711,10 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_vec3(&x, &L::vec3_ctor(&row(0), &row(1), &row(2))));
                 let dc = self.transpile_node_inner(child, &x, code);
                 let (dv, dp, out) = (self.next_var(), self.next_var(), self.next_var());
+                let r = lit(data.reach);
                 code.push_str(&L::decl_float(
                     &dv,
-                    &format!("{dc} / {}", lit(warp.lipschitz())),
+                    &format!("clamp({dc} / {lam}, -{r}, {r})"),
                 ));
                 code.push_str(&L::decl_float(&dp, &format!("max({dv}, 0.0)")));
                 code.push_str(&L::decl_float(

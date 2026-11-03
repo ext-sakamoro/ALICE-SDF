@@ -33,6 +33,7 @@ fn main() {
         cell,
         dims,
         maps,
+        reach: 4.0 * cell,
     })
     .expect("valid grid");
     println!("Lipschitz bound of the warp: {:.4}", warp.lipschitz());

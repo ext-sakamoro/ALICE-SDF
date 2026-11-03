@@ -110,6 +110,12 @@ impl ShaderLang for HlslLang {
             items.join(", ")
         )
     }
+    fn global_float_at_fn(name: &str, arr: &str) -> String {
+        format!(
+            "float {name}(int i) {{\n{}    return v;\n}}\n",
+            Self::decl_float("v", &format!("{arr}[i]"))
+        )
+    }
     fn global_vec3_fn(name: &str, body: &str) -> String {
         format!("float3 {name}(float3 p) {{\n{body}}}\n")
     }
