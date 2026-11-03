@@ -264,7 +264,30 @@ pub struct GenericTranspiler<L: ShaderLang> {
     /// Module-scope declarations the body needs (per-node data arrays and
     /// functions for lattice / heightmap nodes), emitted before `sdf_eval`.
     pub globals: String,
+    /// Node data buffer (WGSL GPU evaluation only): when `Some`, per-node data arrays are
+    /// appended here and read from the storage buffer `alice_node_data` (binding 4) instead of
+    /// being emitted as module-scope constants (see [`GenericTranspiler::data_array`])
+    pub node_data: Option<Vec<f32>>,
     _phantom: std::marker::PhantomData<L>,
+}
+
+/// A per-node data array as the emitted code reads it: a module-scope constant array, or a
+/// range of the node data buffer
+#[derive(Debug, Clone)]
+pub struct DataArr {
+    name: String,
+    base: Option<usize>,
+}
+
+impl DataArr {
+    /// The element at the (integer) index expression `idx`
+    #[must_use]
+    pub fn at(&self, idx: &str) -> String {
+        match self.base {
+            None => format!("{}[{idx}]", self.name),
+            Some(b) => format!("alice_node_data[{b} + ({idx})]"),
+        }
+    }
 }
 
 impl<L: ShaderLang> GenericTranspiler<L> {
@@ -276,7 +299,27 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             mode,
             params: Vec::new(),
             globals: String::new(),
+            node_data: None,
             _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Register a per-node data array: appended to the node data buffer when it is enabled,
+    /// otherwise emitted as a module-scope constant array named `name`.
+    pub fn data_array(&mut self, name: &str, values: &[f32]) -> DataArr {
+        if let Some(buf) = self.node_data.as_mut() {
+            let base = buf.len();
+            buf.extend_from_slice(values);
+            DataArr {
+                name: name.to_owned(),
+                base: Some(base),
+            }
+        } else {
+            self.globals.push_str(&L::global_float_array(name, values));
+            DataArr {
+                name: name.to_owned(),
+                base: None,
+            }
         }
     }
 
@@ -2458,7 +2501,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     .iter()
                     .flat_map(|c| [c.x, c.y, c.z])
                     .collect();
-                self.globals.push_str(&L::global_float_array(&arr, &flat));
+                let arr = self.data_array(&arr, &flat);
                 let cpx = (nx + 1) as usize;
                 let cpy = (ny + 1) as usize;
                 let cpz = (nz + 1) as usize;
@@ -2492,9 +2535,9 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                                 continue;
                             }
                             let cp = L::vec3_ctor(
-                                &format!("{arr}[{}]", idx * 3),
-                                &format!("{arr}[{}]", idx * 3 + 1),
-                                &format!("{arr}[{}]", idx * 3 + 2),
+                                &arr.at(&(idx * 3).to_string()),
+                                &arr.at(&(idx * 3 + 1).to_string()),
+                                &arr.at(&(idx * 3 + 2).to_string()),
                             );
                             writeln!(
                                 body,
@@ -2532,6 +2575,115 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let var = self.next_var();
                 code.push_str(&L::decl_float(&var, &format!("{d} / {corr}")));
                 var
+            }
+
+            SdfNode::GridWarp { child, warp } => {
+                // `transforms::grid_warp`: q = clamp(p, box), the 8 node maps of q's cell blended
+                // trilinearly (corner order 000, 100, 010, 110, 001, 101, 011, 111, each sum
+                // started at 0.0, the CPU order), x = M q; the child at x divided by the computed
+                // bound, extended outside the box by hypot(e, max(d, 0))
+                let data = warp.data();
+                let id = self.var_counter;
+                self.var_counter += 1;
+                let arr = self.data_array(&format!("alice_gw_{id}"), &data.maps);
+                let bmin = warp.box_min();
+                let bmax = warp.box_max();
+                let [nx, ny, nz] = data.dims.map(i64::from);
+                let p = point_var;
+                let (q, e, g) = (self.next_var(), self.next_var(), self.next_var());
+                code.push_str(&L::decl_vec3(
+                    &q,
+                    &format!(
+                        "clamp({p}, {}, {})",
+                        L::vec3_ctor(&lit(bmin.x), &lit(bmin.y), &lit(bmin.z)),
+                        L::vec3_ctor(&lit(bmax.x), &lit(bmax.y), &lit(bmax.z))
+                    ),
+                ));
+                code.push_str(&L::decl_float(&e, &format!("length({p} - {q})")));
+                code.push_str(&L::decl_vec3(
+                    &g,
+                    &format!(
+                        "({q} - {}) * {}",
+                        L::vec3_ctor(&lit(bmin.x), &lit(bmin.y), &lit(bmin.z)),
+                        lit(1.0 / data.cell)
+                    ),
+                ));
+                let (ix, iy, iz) = (self.next_var(), self.next_var(), self.next_var());
+                for (iv, c, n) in [(&ix, "x", nx), (&iy, "y", ny), (&iz, "z", nz)] {
+                    code.push_str(&L::decl_int(
+                        iv,
+                        &format!(
+                            "clamp({}, 0, {})",
+                            L::cast_int(&format!("floor({g}.{c})")),
+                            n - 2
+                        ),
+                    ));
+                }
+                let (fx, fy, fz) = (self.next_var(), self.next_var(), self.next_var());
+                for (fv, c, iv) in [(&fx, "x", &ix), (&fy, "y", &iy), (&fz, "z", &iz)] {
+                    code.push_str(&L::decl_float(
+                        fv,
+                        &format!("{g}.{c} - {}", L::cast_float(iv)),
+                    ));
+                }
+                let base = self.next_var();
+                code.push_str(&L::decl_int(
+                    &base,
+                    &format!("({ix} + {nx} * ({iy} + {ny} * {iz})) * 12"),
+                ));
+                let mut w = Vec::new();
+                for c in 0..8i64 {
+                    let (dx, dy, dz) = (c & 1, (c >> 1) & 1, (c >> 2) & 1);
+                    let f = |d: i64, v: &str| {
+                        if d == 1 {
+                            v.to_owned()
+                        } else {
+                            format!("(1.0 - {v})")
+                        }
+                    };
+                    let wv = self.next_var();
+                    code.push_str(&L::decl_float(
+                        &wv,
+                        &format!("{} * {} * {}", f(dx, &fx), f(dy, &fy), f(dz, &fz)),
+                    ));
+                    w.push((wv, (dx + nx * (dy + ny * dz)) * 12));
+                }
+                let mut m = Vec::new();
+                for t in 0..12i64 {
+                    let mut expr = "0.0".to_owned();
+                    for (wv, off) in &w {
+                        expr = format!(
+                            "({expr} + {wv} * {})",
+                            arr.at(&format!("{base} + {}", off + t))
+                        );
+                    }
+                    let mv = self.next_var();
+                    code.push_str(&L::decl_float(&mv, &expr));
+                    m.push(mv);
+                }
+                let x = self.next_var();
+                let row = |r: usize| {
+                    format!(
+                        "{} * {q}.x + {} * {q}.y + {} * {q}.z + {}",
+                        m[r * 4],
+                        m[r * 4 + 1],
+                        m[r * 4 + 2],
+                        m[r * 4 + 3]
+                    )
+                };
+                code.push_str(&L::decl_vec3(&x, &L::vec3_ctor(&row(0), &row(1), &row(2))));
+                let dc = self.transpile_node_inner(child, &x, code);
+                let (dv, dp, out) = (self.next_var(), self.next_var(), self.next_var());
+                code.push_str(&L::decl_float(
+                    &dv,
+                    &format!("{dc} / {}", lit(warp.lipschitz())),
+                ));
+                code.push_str(&L::decl_float(&dp, &format!("max({dv}, 0.0)")));
+                code.push_str(&L::decl_float(
+                    &out,
+                    &format!("{dv} + (sqrt({e} * {e} + {dp} * {dp}) - {dp})"),
+                ));
+                out
             }
 
             SdfNode::SdfSkinning { child, bones } => {
@@ -2635,8 +2787,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let id = self.var_counter;
                 self.var_counter += 1;
                 let arr = format!("alice_hm_{id}");
-                self.globals
-                    .push_str(&L::global_float_array(&arr, heightmap));
+                let arr = self.data_array(&arr, heightmap);
                 let (wm1, hm1) = (lit(*width as f32 - 1.0), lit(*height as f32 - 1.0));
                 let sc = self.param(*scale);
                 let amp = self.param(*amplitude);
@@ -2695,13 +2846,17 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_float(
                     &a,
                     &format!(
-                        "{arr}[{v0} * {wi} + {u0}] * (1.0 - {fu}) + {arr}[{v0} * {wi} + {u1}] * {fu}"
+                        "{} * (1.0 - {fu}) + {} * {fu}",
+                        arr.at(&format!("{v0} * {wi} + {u0}")),
+                        arr.at(&format!("{v0} * {wi} + {u1}"))
                     ),
                 ));
                 code.push_str(&L::decl_float(
                     &b,
                     &format!(
-                        "{arr}[{v1} * {wi} + {u0}] * (1.0 - {fu}) + {arr}[{v1} * {wi} + {u1}] * {fu}"
+                        "{} * (1.0 - {fu}) + {} * {fu}",
+                        arr.at(&format!("{v1} * {wi} + {u0}")),
+                        arr.at(&format!("{v1} * {wi} + {u1}"))
                     ),
                 ));
                 let var = self.next_var();

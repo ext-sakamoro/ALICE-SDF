@@ -286,6 +286,30 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
                 },
             ]),
         ),
+        (
+            "grid_warp",
+            // maps rotating about y with height over a box holding the warped unit box
+            unit_box().grid_warp({
+                let mut maps = Vec::new();
+                for _k in 0..5 {
+                    for j in 0..5 {
+                        for _i in 0..5 {
+                            let (s, c) = (0.3 * (j as f32 - 2.0)).sin_cos();
+                            maps.extend_from_slice(&[
+                                c, 0.0, s, 0.0, 0.0, 1.0, 0.0, 0.0, -s, 0.0, c, 0.0,
+                            ]);
+                        }
+                    }
+                }
+                alice_sdf::transforms::GridWarp::new(alice_sdf::transforms::GridWarpData {
+                    origin: [-2.0; 3],
+                    cell: 1.0,
+                    dims: [5, 5, 5],
+                    maps,
+                })
+                .expect("valid grid")
+            }),
+        ),
         // --- modifiers ---
         ("twist", unit_box().twist(1.5)),
         ("bend", unit_box().bend(0.8)),

@@ -310,7 +310,8 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         // New complex transforms: use numerical gradient
         SdfNode::ProjectiveTransform { .. }
         | SdfNode::LatticeDeform { .. }
-        | SdfNode::SdfSkinning { .. } => numerical_gradient_of(node, point),
+        | SdfNode::SdfSkinning { .. }
+        | SdfNode::GridWarp { .. } => numerical_gradient_of(node, point),
 
         // === Modifiers with analytic Jacobians ===
         SdfNode::Round { child, .. } => {

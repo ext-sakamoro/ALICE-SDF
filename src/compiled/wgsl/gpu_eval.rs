@@ -169,6 +169,8 @@ struct WgpuEngine {
     dynamic_bind_group_layout: Option<wgpu::BindGroupLayout>,
     /// [Deep Fried v2] Workgroup size used in shader (matches dispatch calculation)
     workgroup_size: u32,
+    /// Node data storage buffer (binding 4), present when the shader reads `alice_node_data`
+    node_data: Option<wgpu::Buffer>,
 }
 
 #[cfg_attr(
@@ -180,6 +182,15 @@ struct WgpuEngine {
 )]
 impl WgpuEngine {
     fn from_source(source: wgpu::ShaderSource<'_>) -> Result<Self, GpuError> {
+        Self::from_source_with_data(source, &[])
+    }
+
+    /// [`WgpuEngine::from_source`] with the node data buffer (binding 4) when `node_data` is not
+    /// empty
+    fn from_source_with_data(
+        source: wgpu::ShaderSource<'_>,
+        node_data: &[f32],
+    ) -> Result<Self, GpuError> {
         // Initialize wgpu synchronously using pollster
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
@@ -211,43 +222,56 @@ impl WgpuEngine {
         });
 
         // Create bind group layout
+        let mut layout_entries = vec![
+            // Input points buffer
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            // Output distances buffer
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            // Point count uniform
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ];
+        if !node_data.is_empty() {
+            layout_entries.push(wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            });
+        }
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("ALICE-SDF Bind Group Layout"),
-            entries: &[
-                // Input points buffer
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                // Output distances buffer
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                // Point count uniform
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
+            entries: &layout_entries,
         });
 
         // Create pipeline layout
@@ -267,6 +291,13 @@ impl WgpuEngine {
             cache: None,
         });
 
+        let node_data = (!node_data.is_empty()).then(|| {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("ALICE-SDF Node Data Buffer"),
+                contents: bytemuck::cast_slice(node_data),
+                usage: wgpu::BufferUsages::STORAGE,
+            })
+        });
         Ok(Self {
             device,
             queue,
@@ -276,6 +307,7 @@ impl WgpuEngine {
             full_pipeline: None,
             dynamic_bind_group_layout: None,
             workgroup_size: 256,
+            node_data,
         })
     }
 
@@ -427,6 +459,12 @@ impl WgpuEngine {
             }
             _ => &self.bind_group_layout,
         };
+        if let Some(data) = &self.node_data {
+            entries.push(wgpu::BindGroupEntry {
+                binding: 4,
+                resource: data.as_entire_binding(),
+            });
+        }
         self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(label),
             layout,
@@ -626,6 +664,7 @@ impl WgpuEngine {
             full_pipeline: None,
             dynamic_bind_group_layout: None,
             workgroup_size: 256,
+            node_data: None,
         })
     }
 
@@ -918,6 +957,7 @@ impl WgpuEngine {
             full_pipeline: Some(full_pipeline),
             dynamic_bind_group_layout: Some(dynamic_bind_group_layout),
             workgroup_size: shader.workgroup_size,
+            node_data: None,
         })
     }
 
@@ -1234,6 +1274,13 @@ impl GpuEvaluator {
     /// This compiles the SDF to a WGSL compute shader and creates
     /// the necessary GPU resources.
     pub fn new(node: &SdfNode) -> Result<Self, GpuError> {
+        // per-node data (lattice control points, height fields, grid warp maps) goes to the node
+        // data buffer on the wgpu engine; the Metal engine binds input / output / count / params
+        // only, so there it stays module-scope constants
+        #[cfg(not(all(target_os = "macos", feature = "msl")))]
+        let shader =
+            WgslShader::transpile_with_node_data(node, super::transpiler::TranspileMode::Hardcoded);
+        #[cfg(all(target_os = "macos", feature = "msl"))]
         let shader = WgslShader::transpile(node, super::transpiler::TranspileMode::Hardcoded);
         Self::from_shader(&shader)
     }
@@ -1243,6 +1290,29 @@ impl GpuEvaluator {
     /// The shader is this crate's own, so its text carries this crate's identifier; it is read
     /// through [`GpuEvaluator::from_wgsl_pinned`].
     pub fn from_shader(shader: &WgslShader) -> Result<Self, GpuError> {
+        if !shader.node_data.is_empty() {
+            let text = shader.to_compute_shader();
+            crate::provenance::shader_text_verdict(&text, false)?;
+            note_engine_build();
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            {
+                return Err(GpuError::InvalidFormat(
+                    "node data buffer (binding 4) is bound by the wgpu engine only; transpile with WgslShader::transpile for the Metal engine".into(),
+                ));
+            }
+            #[cfg(not(all(target_os = "macos", feature = "msl")))]
+            {
+                let mut evaluator = WgpuEngine::from_source_with_data(
+                    wgpu::ShaderSource::Wgsl(text.into()),
+                    &shader.node_data,
+                )
+                .map(|w| Self {
+                    engine: Engine::Wgpu(w),
+                })?;
+                evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
+                return Ok(evaluator);
+            }
+        }
         let mut evaluator = Self::from_wgsl_pinned(&shader.to_compute_shader())?;
         evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
         Ok(evaluator)
@@ -1454,6 +1524,11 @@ impl GpuEvaluator {
 
     /// Create a GPU evaluator from a pre-generated WGSL shader (async)
     pub async fn from_shader_async(shader: &WgslShader) -> Result<Self, GpuError> {
+        if !shader.node_data.is_empty() {
+            return Err(GpuError::InvalidFormat(
+                "node data buffer (binding 4) is bound by the synchronous constructor only (GpuEvaluator::from_shader)".into(),
+            ));
+        }
         let compute_shader = shader.to_compute_shader();
         let mut evaluator = Self::from_wgsl_async_pinned(&compute_shader).await?;
         evaluator.set_wgpu_workgroup_size(shader.workgroup_size);

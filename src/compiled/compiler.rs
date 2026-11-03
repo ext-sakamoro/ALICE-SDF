@@ -1235,6 +1235,10 @@ impl Compiler {
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
             }
 
+            SdfNode::GridWarp { .. } => {
+                unreachable!("GridWarp: refused by validate_for_compile()");
+            }
+
             SdfNode::SdfSkinning { child, bones } => {
                 // Serialize: [bone_count, (inv_bind_pose[16], current_pose[16], weight) × N]
                 let mut aux = Vec::with_capacity(1 + bones.len() * 33);
@@ -1510,6 +1514,11 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         }
         SdfNode::Bezier { .. } => {
             return Err(CompileError::UnsupportedPrimitive("Bezier".into()));
+        }
+        // Unsupported: the grid's maps are not carried by the bytecode (evaluated by `eval` and
+        // by the WGSL transpiler, which reads them from the node data buffer)
+        SdfNode::GridWarp { .. } => {
+            return Err(CompileError::UnsupportedPrimitive("GridWarp".into()));
         }
         // Unsupported: no bytecode law (previously compiled to a silent sphere)
         SdfNode::Terrain { .. } => {

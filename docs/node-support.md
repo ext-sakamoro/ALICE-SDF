@@ -126,6 +126,7 @@ GLSL, WGSL, HLSL and BlinkScript share one dispatch (`transpile_node_inner` in `
 | `ProjectiveTransform` | ok | ok | ok | err | err | ok | ok | ok | ok | err | ok | ok |
 | `LatticeDeform` | ok | everything | ok | err | err | ok | ok | ok | ok | err | ok | ok |
 | `SdfSkinning` | ok | ok | ok | err | err | ok | ok | ok | ok | err | ok | ok |
+| `GridWarp` | ok | ok | err | err | - | ok | ok | ok | ok | err | missing | missing |
 | `Twist` | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
 | `Bend` | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
 | `RepeatInfinite` | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |

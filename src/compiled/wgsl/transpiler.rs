@@ -211,12 +211,31 @@ pub struct WgslShader {
     /// [Deep Fried v2] Workgroup size for compute shaders (default 256).
     /// Set via `with_workgroup_size()` after querying device limits.
     pub workgroup_size: u32,
+    /// Node data (storage buffer `alice_node_data`, binding 4): empty unless built by
+    /// [`WgslShader::transpile_with_node_data`] for a tree with per-node data arrays
+    pub node_data: Vec<f32>,
 }
 
 impl WgslShader {
     /// Transpile an SDF node tree to WGSL with the specified mode
     pub fn transpile(node: &SdfNode, mode: TranspileMode) -> Self {
+        Self::transpile_inner(node, mode, false)
+    }
+
+    /// Transpile for GPU evaluation with per-node data arrays (lattice control points, height
+    /// fields, grid warp maps) in a storage buffer at binding 4 instead of module-scope
+    /// constants: the shader text stays small for large data. The compute shaders declare the
+    /// binding only when [`WgslShader::node_data`] is not empty, and the evaluator must bind
+    /// that data ([`crate::compiled::GpuEvaluator::from_shader`] does).
+    pub fn transpile_with_node_data(node: &SdfNode, mode: TranspileMode) -> Self {
+        Self::transpile_inner(node, mode, true)
+    }
+
+    fn transpile_inner(node: &SdfNode, mode: TranspileMode, data_buffer: bool) -> Self {
         let mut transpiler = WgslTranspiler::new(mode);
+        if data_buffer {
+            transpiler.node_data = Some(Vec::new());
+        }
         let body = transpiler.transpile_node(node, "p");
         let source = transpiler.generate_shader(&body);
 
@@ -226,6 +245,15 @@ impl WgslShader {
             param_layout: transpiler.params,
             mode,
             workgroup_size: 256, // Default; override with with_workgroup_size()
+            node_data: transpiler.node_data.unwrap_or_default(),
+        }
+    }
+
+    fn node_data_decl(&self) -> &'static str {
+        if self.node_data.is_empty() {
+            ""
+        } else {
+            "\n@group(0) @binding(4) var<storage, read> alice_node_data: array<f32>;\n"
         }
     }
 
@@ -367,7 +395,8 @@ impl WgslShader {
             | SdfNode::SurfaceRoughness { child, .. }
             | SdfNode::ProjectiveTransform { child, .. }
             | SdfNode::LatticeDeform { child, .. }
-            | SdfNode::SdfSkinning { child, .. } => {
+            | SdfNode::SdfSkinning { child, .. }
+            | SdfNode::GridWarp { child, .. } => {
                 Self::collect_materials(child, out);
             }
             // プリミティブ: 子なし
@@ -419,7 +448,7 @@ struct OutputDistance {{
 @group(0) @binding(0) var<storage, read> input_points: array<InputPoint>;
 @group(0) @binding(1) var<storage, read_write> output_distances: array<OutputDistance>;
 @group(0) @binding(2) var<uniform> point_count: u32;
-{params_decl}
+{params_decl}{data_decl}
 {sdf_func}
 
 @compute @workgroup_size({wg_size})
@@ -437,6 +466,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 ",
             mode = self.mode,
             params_decl = params_decl,
+            data_decl = self.node_data_decl(),
             sdf_func = self.source,
             wg_size = self.workgroup_size,
         )
@@ -477,7 +507,7 @@ struct Output {{
 @group(0) @binding(0) var<storage, read> input_points: array<InputPoint>;
 @group(0) @binding(1) var<storage, read_write> output: array<Output>;
 @group(0) @binding(2) var<uniform> point_count: u32;
-{params_decl}
+{params_decl}{data_decl}
 {sdf_func}
 
 fn estimate_normal(p: vec3<f32>) -> vec3<f32> {{
@@ -514,6 +544,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 ",
             mode = self.mode,
             params_decl = params_decl,
+            data_decl = self.node_data_decl(),
             sdf_func = self.source,
             wg_size = self.workgroup_size,
         )
@@ -584,6 +615,8 @@ struct WgslTranspiler {
     params: Vec<f32>,
     /// Module-scope data / functions emitted before the entry point
     globals: String,
+    /// Node data buffer (see `GenericTranspiler::node_data`)
+    node_data: Option<Vec<f32>>,
 }
 
 impl WgslTranspiler {
@@ -594,6 +627,7 @@ impl WgslTranspiler {
             mode,
             params: Vec::new(),
             globals: String::new(),
+            node_data: None,
         }
     }
 
@@ -608,8 +642,10 @@ impl WgslTranspiler {
         generic.params = std::mem::take(&mut self.params);
         generic.helper_functions = std::mem::take(&mut self.helper_functions);
         generic.globals = std::mem::take(&mut self.globals);
+        generic.node_data = self.node_data.take();
         let body = generic.transpile_node(node, point_var);
         self.globals = generic.globals;
+        self.node_data = generic.node_data;
         self.var_counter = generic.var_counter;
         self.params = generic.params;
         self.helper_functions = generic.helper_functions;

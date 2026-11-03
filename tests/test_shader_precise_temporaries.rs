@@ -815,6 +815,10 @@ const EMITTERS: [Emitter; 13] = [
                 "a literal of the transpilers' `source`, which is scanned",
             ),
             (
+                "at",
+                "an array element read inside the transpilers' `source`, which is scanned",
+            ),
+            (
                 "next_var",
                 "a local name of the transpilers' `source`, which is scanned",
             ),

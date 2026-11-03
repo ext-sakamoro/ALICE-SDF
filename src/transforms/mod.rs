@@ -4,6 +4,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+pub mod grid_warp;
 pub mod lattice;
 pub mod projective;
 mod rotate;
@@ -11,6 +12,7 @@ mod scale;
 pub mod skinning;
 mod translate;
 
+pub use grid_warp::{GridWarp, GridWarpData, GridWarpError};
 pub use lattice::lattice_deform;
 pub use projective::projective_transform;
 pub use rotate::{transform_rotate, transform_rotate_euler, transform_rotate_inverse};

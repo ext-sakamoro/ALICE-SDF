@@ -509,6 +509,10 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let (q, _) = crate::transforms::skinning::sdf_skinning(point, bones);
             eval(child, q)
         }
+        SdfNode::GridWarp { child, warp } => {
+            let (x, e) = warp.warp(point);
+            warp.finish(eval(child, x), e)
+        }
 
         // === Modifiers ===
         SdfNode::Twist { child, strength } => {
@@ -787,6 +791,7 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         }
         SdfNode::HeightmapDisplacement { child, .. } => eval_material(child, point),
         SdfNode::SurfaceRoughness { child, .. } => eval_material(child, point),
+        SdfNode::GridWarp { child, warp } => eval_material(child, warp.warp(point).0),
 
         // Primitives: no material assigned
         _ => 0,

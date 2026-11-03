@@ -1120,6 +1120,26 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 Interval::EVERYTHING
             }
         }
+        // Grid warp: the node is `eval_lipschitz(node)`-Lipschitz everywhere (the warp's computed
+        // bound divides the child, the outside extension is 1-Lipschitz), so the box's values lie
+        // within the centre's value ± L · half-diagonal.
+        SdfNode::GridWarp { .. } => {
+            let c = Vec3::new(
+                0.5 * (bounds.x.lo + bounds.x.hi),
+                0.5 * (bounds.y.lo + bounds.y.hi),
+                0.5 * (bounds.z.lo + bounds.z.hi),
+            );
+            let r = 0.5
+                * Vec3::new(
+                    bounds.x.hi - bounds.x.lo,
+                    bounds.y.hi - bounds.y.lo,
+                    bounds.z.hi - bounds.z.lo,
+                )
+                .length();
+            let v = crate::eval::eval(node, c);
+            let l = eval_lipschitz(node);
+            Interval::new(v - l * r, v + l * r)
+        }
         // LBS with fixed bones is one affine map q = A p + b (Σ w_i · bind_i ·
         // current_i / Σ w); push the box through it exactly (`affine_map`).
         SdfNode::SdfSkinning { child, bones } => match skinning_affine(bones) {
@@ -1751,6 +1771,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         // Lattice deform is the identity outside the lattice box and the
         // deformed field inside: the two disagree on the box faces.
         SdfNode::LatticeDeform { .. } => f32::INFINITY,
+        // Grid warp: the child divided by the warp's computed bound inside the box; outside, the
+        // hypot extension is 1-Lipschitz (see `transforms::grid_warp`)
+        SdfNode::GridWarp { child, .. } => eval_lipschitz(child).max(1.0),
         // SDF Skinning: LBS preserves distance (approximately)
         // One affine map: L(child) · ‖A‖ (Frobenius ≥ spectral norm).
         SdfNode::SdfSkinning { child, bones } => match skinning_affine(bones) {

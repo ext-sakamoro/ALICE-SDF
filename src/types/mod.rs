@@ -39,7 +39,7 @@ impl SdfCategory {
         match self {
             Self::Primitive => 74,
             Self::Operation => 25,
-            Self::Transform => 7,
+            Self::Transform => 8,
             Self::Modifier => 24,
         }
     }
@@ -1070,6 +1070,16 @@ pub enum SdfNode {
         bones: Vec<crate::transforms::skinning::BoneTransform>,
     },
 
+    /// Domain warp by a grid of affine maps (trilinear blend, see
+    /// [`crate::transforms::GridWarp`]); the child is evaluated at the warped point and the
+    /// distance is divided by the warp's computed Lipschitz bound
+    GridWarp {
+        /// Child node (for example a rest-pose shape posed by an inverse-skinning grid)
+        child: Arc<Self>,
+        /// The validated grid
+        warp: Arc<crate::transforms::GridWarp>,
+    },
+
     // === Modifiers ===
     /// Twist around Y-axis (radians per unit height)
     Twist {
@@ -1425,7 +1435,8 @@ impl SdfNode {
             | Self::ScaleNonUniform { .. }
             | Self::ProjectiveTransform { .. }
             | Self::LatticeDeform { .. }
-            | Self::SdfSkinning { .. } => SdfCategory::Transform,
+            | Self::SdfSkinning { .. }
+            | Self::GridWarp { .. } => SdfCategory::Transform,
 
             // === Modifiers ===
             Self::Twist { .. }
@@ -1561,6 +1572,7 @@ impl SdfNode {
             | Self::ProjectiveTransform { child, .. }
             | Self::LatticeDeform { child, .. }
             | Self::SdfSkinning { child, .. }
+            | Self::GridWarp { child, .. }
             | Self::Twist { child, .. }
             | Self::Bend { child, .. }
             | Self::RepeatInfinite { child, .. }
@@ -1663,7 +1675,7 @@ mod tests {
 
     #[test]
     fn test_category_total() {
-        assert_eq!(SdfCategory::total(), 130);
+        assert_eq!(SdfCategory::total(), 131);
     }
 
     #[test]

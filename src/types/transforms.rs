@@ -113,4 +113,14 @@ impl SdfNode {
             bones,
         }
     }
+
+    /// Domain warp by a grid of affine maps ([`crate::transforms::GridWarp`])
+    #[must_use]
+    #[inline]
+    pub fn grid_warp(self, warp: crate::transforms::GridWarp) -> Self {
+        Self::GridWarp {
+            child: Arc::new(self),
+            warp: Arc::new(warp),
+        }
+    }
 }

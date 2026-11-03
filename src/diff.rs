@@ -226,6 +226,7 @@ fn get_children(node: &SdfNode) -> Vec<&SdfNode> {
         | SdfNode::ProjectiveTransform { child, .. }
         | SdfNode::LatticeDeform { child, .. }
         | SdfNode::SdfSkinning { child, .. }
+        | SdfNode::GridWarp { child, .. }
         | SdfNode::Twist { child, .. }
         | SdfNode::Bend { child, .. }
         | SdfNode::RepeatInfinite { child, .. }
@@ -870,6 +871,10 @@ fn replace_child(node: &SdfNode, child_idx: usize, new_child: Arc<SdfNode>) -> S
         SdfNode::SdfSkinning { bones, .. } => SdfNode::SdfSkinning {
             child: new_child,
             bones: bones.clone(),
+        },
+        SdfNode::GridWarp { warp, .. } => SdfNode::GridWarp {
+            child: new_child,
+            warp: warp.clone(),
         },
 
         // ── Single-child modifiers ────────────────────────────────
