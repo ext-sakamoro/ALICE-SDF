@@ -2605,7 +2605,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 // `transforms::grid_warp`: q = clamp(p, box), the 8 node maps of q's cell blended
                 // trilinearly (corner order 000, 100, 010, 110, 001, 101, 011, 111, each sum
                 // started at 0.0, the CPU order), x = M q; the child at x divided by the computed
-                // bound, extended outside the box by hypot(e, max(d, 0))
+                // bound, extended outside the box by hypot(e, max(d, 0)) and clipped by the box
+                // (max with the box's signed distance b, the CPU order)
                 let data = warp.data();
                 let id = self.var_counter;
                 self.var_counter += 1;
@@ -2628,6 +2629,19 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     ),
                 ));
                 code.push_str(&L::decl_float(&e, &format!("length({p} - {q})")));
+                let (bw, bx) = (self.next_var(), self.next_var());
+                code.push_str(&L::decl_vec3(
+                    &bw,
+                    &format!(
+                        "max({} - {p}, {p} - {})",
+                        L::vec3_ctor(&lit(bmin.x), &lit(bmin.y), &lit(bmin.z)),
+                        L::vec3_ctor(&lit(bmax.x), &lit(bmax.y), &lit(bmax.z))
+                    ),
+                ));
+                code.push_str(&L::decl_float(
+                    &bx,
+                    &format!("{e} + min(max({bw}.x, max({bw}.y, {bw}.z)), 0.0)"),
+                ));
                 code.push_str(&L::decl_vec3(
                     &g,
                     &format!(
@@ -2736,7 +2750,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_float(&dp, &format!("max({dv}, 0.0)")));
                 code.push_str(&L::decl_float(
                     &out,
-                    &format!("{dv} + (sqrt({e} * {e} + {dp} * {dp}) - {dp})"),
+                    &format!("max({dv} + (sqrt({e} * {e} + {dp} * {dp}) - {dp}), {bx})"),
                 ));
                 out
             }

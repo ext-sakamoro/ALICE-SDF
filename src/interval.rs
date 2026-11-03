@@ -1772,7 +1772,7 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         // deformed field inside: the two disagree on the box faces.
         SdfNode::LatticeDeform { .. } => f32::INFINITY,
         // Grid warp: the child divided by the warp's computed bound inside the box; outside, the
-        // hypot extension is 1-Lipschitz (see `transforms::grid_warp`)
+        // hypot extension and the box clip are 1-Lipschitz (see `transforms::grid_warp`)
         SdfNode::GridWarp { child, warp } => {
             alice_det_math::max(eval_lipschitz(child), 1.0) + (warp.lipschitz() - 1.0)
         }

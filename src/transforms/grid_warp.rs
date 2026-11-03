@@ -10,10 +10,13 @@
 //! **Distance bound (local).** The warp's slope is bounded per cell from the stored maps when
 //! the warp is built (never read from input): `λ_c = max_i ‖A_i‖₂ + sqrt(Σ_k (D_k / h)²)`, where
 //! `D_k` bounds `‖(A_i p + b_i) − (A_j p + b_j)‖` over the cell for the 4 edges along axis `k` and
-//! `h` is the cell size. Each node holds `Λ_n`, the largest `λ_c` of the cells within
-//! `reach + h·√3` of it (an index cube that covers that ball), and `Λ(p)` is their trilinear blend.
-//! For `p` in a cell, every corner's ball contains the ball of radius `reach` around `p`, so
-//! `Λ(p)` bounds the slope of `g = child ∘ x` on that ball (a 1-Lipschitz child). The node returns
+//! `h` is the cell size. With `k = ⌈reach / h⌉`, each node holds `Λ_n`, the largest `λ_c` of the
+//! cells at most `k` cells away on every axis from any of its 8 cells, and `Λ(p)` is their
+//! trilinear blend. For `p` in a cell, a cell that has a point within `reach` of `p` is at most
+//! `k` cells away from `p`'s cell on every axis (on an axis `m` cells apart, the gap is at least
+//! `(m − 1)·h`), and `p`'s cell is one of the 8 cells of every corner, so every corner's `Λ_n`
+//! and hence `Λ(p)` bounds the slope of `g = child ∘ x` on the ball of radius `reach` around `p`
+//! (a 1-Lipschitz child). The node returns
 //! `v = clamp(g / Λ, −reach, reach)`: when `|g| / Λ < reach` no zero of `g` is nearer than
 //! `|g| / Λ`, otherwise none is nearer than `reach`, so `|v|` never exceeds the distance to the
 //! surface (sphere tracing is safe with step `v`) and is the distance itself where the warp is
@@ -21,13 +24,16 @@
 //! [`GridWarp::lipschitz`] = `max_c (1 + reach · |∇Λ|_c / min Λ_c)` (the second term from `Λ`
 //! varying, with `|g| / Λ ≤ reach`).
 //!
-//! **Outside the box.** `q` = `p` clamped to the box, `d = v(q)`, `e = |p − q|`; the
-//! node returns `d + hypot(e, max(d, 0)) − max(d, 0)`. Inside (`e = 0`) this is `d`; outside with
-//! `d ≥ 0` it is `hypot(e, d)`, a lower bound of the distance when the warped surface lies inside
-//! the box (the angle at `q` between `p` and any point of the box is at least 90°), and
-//! 1-Lipschitz (the clamp removes the gradient component along `p − q`). **Contract:** the
-//! surface of the warped child lies inside the box; outside points with `d < 0` give `d + e`
-//! (continuous, not a distance).
+//! **The box clips the shape.** The node's shape is the warped child inside the grid's box (the
+//! warp is defined only there). `q` = `p` clamped to the box, `e = |p − q|`, `d = v(q)` and `b` the
+//! box's own signed distance (`e` outside, minus the distance to the nearest face inside); the node
+//! returns `max(d + hypot(e, max(d, 0)) − max(d, 0), b)`. Inside the box this is `max(d, b)`, the
+//! intersection with the box; outside it is `hypot(e, d)` where `d ≥ 0` (a lower bound of the
+//! distance: every point of the box is at an angle of at least 90° at `q` from `p`) and `e` where
+//! `d < 0` (`q` is in the clipped shape, which lies in the box, so the distance is exactly `e`).
+//! Every piece is a lower bound of the distance to the clipped shape and the field is continuous
+//! across the box faces with the slope `max(1, Λ claim)` (the hypot removes the component of `∇d`
+//! along `p − q`, which is zero, and `e`, `b` are 1-Lipschitz).
 //!
 //! Every `a * b + c` is rounded twice (no `mul_add`), in the order the emitted shaders use.
 //!
@@ -256,7 +262,7 @@ impl GridWarp {
         })
     }
 
-    /// `Λ_n` per node (the cube of cells within `reach + h·√3`, separable max filters, then the 8
+    /// `Λ_n` per node (the cube of cells within `⌈reach / h⌉` cells, separable max filters, then the 8
     /// cells around the node) and the slope bound of the field
     fn local_bounds(d: &GridWarpData, cells: &[f64]) -> (Vec<f32>, f32) {
         let [nx, ny, nz] = d.dims.map(|v| v as usize);
@@ -265,10 +271,7 @@ impl GridWarp {
         // capped at the largest cell count: a reach beyond the grid covers every cell, and t + k
         // cannot overflow for any finite reach
         let kmax = cx.max(cy).max(cz);
-        let k = min64(
-            ((f64::from(d.reach) + h * 3f64.sqrt()) / h).ceil(),
-            kmax as f64,
-        ) as usize;
+        let k = min64((f64::from(d.reach) / h).ceil(), kmax as f64) as usize;
         let idx = |i: usize, j: usize, l: usize| i + cx * (j + cy * l);
         let mut a = cells.to_vec();
         let mut b = vec![0.0f64; a.len()];
@@ -495,8 +498,8 @@ impl GridWarp {
             )
     }
 
-    /// The warped point `x(q)` for `q` = `p` clamped to the box, `e = |p − q|`, `Λ(q)` and the
-    /// floor `F(q)` (−`reach` without a floor)
+    /// The warped point `x(q)` for `q` = `p` clamped to the box, the box's signed distance `b`
+    /// at `p` (`|p − q|` outside), `Λ(q)` and the floor `F(q)` (−`reach` without a floor)
     #[inline]
     #[must_use]
     pub fn warp(&self, p: Vec3) -> (Vec3, f32, f32, f32) {
@@ -504,6 +507,13 @@ impl GridWarp {
         let bmin = self.box_min();
         let q = p.law_clamp(bmin, self.box_max());
         let e = (p - q).length();
+        let bmax = self.box_max();
+        let w = Vec3::new(
+            law_max_f32(bmin.x - p.x, p.x - bmax.x),
+            law_max_f32(bmin.y - p.y, p.y - bmax.y),
+            law_max_f32(bmin.z - p.z, p.z - bmax.z),
+        );
+        let b = e + law_min_f32(law_max_f32(w.x, law_max_f32(w.y, w.z)), 0.0);
         let inv = 1.0 / d.cell;
         let g = (q - bmin) * inv;
         let [nx, ny, nz] = d.dims;
@@ -539,21 +549,22 @@ impl GridWarp {
         if d.floor.is_empty() {
             fl = -d.reach;
         }
-        (x, e, lam, fl)
+        (x, b, lam, fl)
     }
 
-    /// The node's value from the child's value `c` at the warped point and `e`, `Λ` from
-    /// [`GridWarp::warp`]
+    /// The node's value from the child's value `c` at the warped point and the box distance `b`,
+    /// `Λ` and the floor from [`GridWarp::warp`]
     #[inline]
     #[must_use]
-    pub fn finish(&self, c: f32, e: f32, lam: f32, fl: f32) -> f32 {
+    pub fn finish(&self, c: f32, b: f32, lam: f32, fl: f32) -> f32 {
+        let e = law_max_f32(b, 0.0);
         let r = self.data.reach;
         let d = law_max_f32(
             law_min_f32(law_max_f32(c / lam, -r), r),
             law_min_f32(law_max_f32(fl, -r), r),
         );
         let dp = law_max_f32(d, 0.0);
-        d + ((e * e + dp * dp).sqrt() - dp)
+        law_max_f32(d + ((e * e + dp * dp).sqrt() - dp), b)
     }
 }
 
@@ -592,8 +603,13 @@ mod tests {
         let w = GridWarp::new(grid([4, 5, 3], 0.1, [-0.2, -0.2, -0.1], |_| ID)).unwrap();
         assert!((w.lipschitz() - 1.0).abs() < 1e-6, "{}", w.lipschitz());
         let p = Vec3::new(0.03, 0.11, -0.05);
-        let (x, e, _, _) = w.warp(p);
-        assert!((x - p).length() < 1e-6 && e == 0.0);
+        let (x, b, _, _) = w.warp(p);
+        // inside the box (max corner (0.1, 0.2, 0.1)): b is minus the distance to the nearest
+        // face, the bottom z face 0.05 away
+        assert!(
+            (x - p).length() < 1e-6 && (b + 0.05).abs() < 1e-6,
+            "{x} {b}"
+        );
     }
 
     #[test]
@@ -644,13 +660,19 @@ mod tests {
     }
 
     #[test]
-    fn outside_is_hypot_and_continuous() {
+    fn outside_is_hypot_or_the_box_distance_and_the_box_clips() {
         let w = GridWarp::new(grid([2, 2, 2], 1.0, [0.0; 3], |_| ID)).unwrap();
-        // the bound of an identity grid is 1 rounded up by one f32 step (an upper bound)
-        assert!((w.finish(0.3, 0.0, 1.0, -1e30) - 0.3).abs() < 1e-6);
-        assert!((w.finish(-0.3, 0.0, 1.0, -1e30) + 0.3).abs() < 1e-6);
+        // deep inside the box (b = −1) the value is the child's
+        assert!((w.finish(0.3, -1.0, 1.0, -1e30) - 0.3).abs() < 1e-6);
+        assert!((w.finish(-0.3, -1.0, 1.0, -1e30) + 0.3).abs() < 1e-6);
+        // inside, 0.1 from a face: the box clips the shape
+        assert!((w.finish(-0.3, -0.1, 1.0, -1e30) + 0.1).abs() < 1e-6);
+        // outside (b = e = 0.4): hypot(e, d) where d ≥ 0, e where d < 0
         assert!((w.finish(0.3, 0.4, 1.0, -1e30) - 0.5).abs() < 1e-6);
-        assert!((w.finish(-0.3, 0.4, 1.0, -1e30) - 0.1).abs() < 1e-6);
+        assert!((w.finish(-0.3, 0.4, 1.0, -1e30) - 0.4).abs() < 1e-6);
+        // the box distance from warp(): outside along x, inside 0.25 from the nearest face
+        assert!((w.warp(Vec3::new(1.5, 0.5, 0.5)).1 - 0.5).abs() < 1e-6);
+        assert!((w.warp(Vec3::new(0.75, 0.5, 0.5)).1 + 0.25).abs() < 1e-6);
     }
 
     #[test]

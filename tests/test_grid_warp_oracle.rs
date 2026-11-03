@@ -550,3 +550,271 @@ fn the_gpu_gives_the_cpu_value_with_a_floor() {
     );
     assert!(worst < 2e-6, "max |gpu − cpu| {worst}");
 }
+
+/// oracle: the box clips the shape. A vertical capsule (axis x = 0.03, z = 0, y ±0.3, radius
+/// 0.02) leaves the box (±0.1) through its top and bottom faces; rotated about y by the grid it
+/// stays vertical, so the clipped shape is the finite cylinder (radius 0.02, |y| ≤ 0.1) about the
+/// rotated axis, whose signed distance is closed form. Every value (inside and outside the box)
+/// is at most that distance and has its sign; outside the box above the cylinder's cap the value
+/// is the distance itself (the nearest point is on the cap, inside the box).
+#[test]
+fn a_child_leaving_the_box_is_clipped_by_it() {
+    let a = 0.5f32;
+    let w = grid([5, 5, 5], 0.05, [-0.1; 3], |_| rot_y(a));
+    let node =
+        SdfNode::capsule(Vec3::new(0.03, -0.3, 0.0), Vec3::new(0.03, 0.3, 0.0), 0.02).grid_warp(w);
+    let (s, c) = alice_det_math::sin_cos(a);
+    // x = R p with R about y by a: the rest axis point (0.03, ·, 0) is posed at Rᵀ (0.03, 0, 0)
+    let ax = Vec3::new(c * 0.03, 0.0, s * 0.03);
+    let cyl = |p: Vec3| {
+        let dr = Vec3::new(p.x - ax.x, 0.0, p.z - ax.z).length() - 0.02;
+        let dy = p.y.abs() - 0.1;
+        dr.max(dy).min(0.0) + Vec3::new(dr.max(0.0), dy.max(0.0), 0.0).length()
+    };
+    let (mut n, mut cap, mut worst) = (0, 0, 0.0f32);
+    for p in points(Vec3::splat(-0.1), Vec3::splat(0.1), 20) {
+        let (v, t) = (eval(&node, p), cyl(p));
+        assert!(v <= t + 2e-6, "p {p}: value {v} above the distance {t}");
+        if t.abs() > 1e-4 {
+            assert!((v < 0.0) == (t < 0.0), "p {p}: value {v}, distance {t}");
+        }
+        // above the top face, within the cylinder's radius: the nearest point is on the cap
+        if p.y > 0.1 && Vec3::new(p.x - ax.x, 0.0, p.z - ax.z).length() < 0.02 {
+            worst = worst.max((v - t).abs());
+            cap += 1;
+        }
+        n += 1;
+    }
+    assert!(n == 8000 && cap > 5, "compared {n}, above the cap {cap}");
+    assert!(worst < 2e-6, "above the cap: max |error| {worst}");
+}
+
+/// The warp's measured slope over one cell: the largest difference quotient |x(p+δ) − x(p)| / |δ|
+/// on a 6³ lattice of points in the cell (δ along the three axes and a diagonal, 1e-4 of the cell)
+fn cell_slope(w: &GridWarp, lo: Vec3, h: f32) -> f32 {
+    let mut s = 0.0f32;
+    for i in 0..6 {
+        for j in 0..6 {
+            for k in 0..6 {
+                let p = lo + Vec3::new(i as f32 + 0.5, j as f32 + 0.5, k as f32 + 0.5) * (h / 6.0);
+                for d in [Vec3::X, Vec3::Y, Vec3::Z, Vec3::ONE.normalize()] {
+                    let dl = d * (h * 1e-4);
+                    let q = (w.warp(p + dl).0 - w.warp(p).0).length() / dl.length();
+                    s = s.max(q);
+                }
+            }
+        }
+    }
+    s
+}
+
+/// oracle (the bound's coverage, independent of the formula): at every point p, Λ(p) is at least
+/// the measured slope of the warp over every cell whose nearest point is within `reach` of p.
+/// One node is moved 4 cells (a steep spot in its 8 cells); p runs over a line of points whose
+/// distance to those cells crosses `reach` = 1.5 cells, where the nodes of p's own cell are up to
+/// reach + one cell diagonal away from the steep cells.
+#[test]
+fn the_node_bound_covers_every_cell_within_reach() {
+    let (h, n) = (0.01f32, 12u32);
+    let reach = 1.5 * h;
+    let mut maps = Vec::new();
+    for k in 0..n {
+        for j in 0..n {
+            for i in 0..n {
+                let t = if (i, j, k) == (5, 5, 5) { 4.0 * h } else { 0.0 };
+                maps.extend_from_slice(&[1.0, 0.0, 0.0, t, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
+            }
+        }
+    }
+    let w = GridWarp::new(GridWarpData {
+        origin: [0.0; 3],
+        cell: h,
+        dims: [n; 3],
+        maps,
+        reach,
+        floor: Vec::new(),
+    })
+    .expect("valid grid");
+    // the steep cells: the 8 around node (5, 5, 5), i.e. cell indices 4..=5 on each axis
+    let mut steep = Vec::new();
+    for c in 0..8u32 {
+        let lo = Vec3::new(
+            (4 + (c & 1)) as f32,
+            (4 + ((c >> 1) & 1)) as f32,
+            (4 + ((c >> 2) & 1)) as f32,
+        ) * h;
+        steep.push((lo, cell_slope(&w, lo, h)));
+    }
+    let smax = steep.iter().map(|s| s.1).fold(0.0f32, f32::max);
+    assert!(smax > 3.0, "the moved node must make a steep cell: {smax}");
+    let (mut checked, mut near_reach) = (0, 0);
+    for t in 0..400 {
+        for (dy, dz) in [(0.0f32, 0.0f32), (0.37, 0.61), (0.9, 0.2)] {
+            let p = Vec3::new(6.0 + 3.0 * (t as f32 + 0.5) / 400.0, 5.0 + dy, 5.0 + dz) * h;
+            let lam = w.warp(p).2;
+            for &(lo, s) in &steep {
+                let dist = (p - p.clamp(lo, lo + Vec3::splat(h))).length();
+                if dist < reach {
+                    assert!(
+                        lam >= s,
+                        "p {p}: Λ {lam} below the slope {s} of a cell {dist} away"
+                    );
+                    checked += 1;
+                    if dist > 0.9 * reach {
+                        near_reach += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        checked > 100 && near_reach > 10,
+        "checked {checked}, near the reach {near_reach}"
+    );
+}
+
+/// oracle: within one cell whose 8 maps share the image of the cell centre (x = A_i (p − m) + m,
+/// m the centre) but differ in their linear parts (scales 1 and 3 in a checkerboard), the warp's
+/// slope comes from the blend weights' gradient times (A_i − A_j)(p − m), largest at the corners;
+/// Λ in the cell bounds the measured slope.
+#[test]
+fn the_cell_bound_covers_linear_parts_that_differ_away_from_the_centre() {
+    let h = 0.02f32;
+    let m = Vec3::splat(0.5 * h);
+    let mut maps = Vec::new();
+    for c in 0..8u32 {
+        let s = if (c & 1) ^ ((c >> 1) & 1) ^ ((c >> 2) & 1) == 1 {
+            3.0f32
+        } else {
+            1.0
+        };
+        let b = m - m * s;
+        maps.extend_from_slice(&[s, 0.0, 0.0, b.x, 0.0, s, 0.0, b.y, 0.0, 0.0, s, b.z]);
+    }
+    let w = GridWarp::new(GridWarpData {
+        origin: [0.0; 3],
+        cell: h,
+        dims: [2; 3],
+        maps,
+        reach: h,
+        floor: Vec::new(),
+    })
+    .expect("valid grid");
+    let slope = cell_slope(&w, Vec3::ZERO, h);
+    assert!(
+        slope > 3.0,
+        "the blend must add to the largest linear part: {slope}"
+    );
+    let mut n = 0;
+    for i in 0..5 {
+        for j in 0..5 {
+            for k in 0..5 {
+                let p = Vec3::new(i as f32, j as f32, k as f32) * (h / 4.0);
+                let lam = w.warp(p).2;
+                assert!(
+                    lam >= slope,
+                    "p {p}: Λ {lam} below the measured slope {slope}"
+                );
+                n += 1;
+            }
+        }
+    }
+    assert!(n == 125, "compared {n}");
+}
+
+/// oracle: with a steep floor (node values alternating between ±0.03 one cell apart) the claimed
+/// slope still bounds the measured difference quotients, and the scene needs it (some quotient is
+/// above 1)
+#[test]
+fn the_claimed_slope_includes_a_steep_floor() {
+    let (h, n) = (0.02f32, 6u32);
+    let mut maps = Vec::new();
+    let mut floor = Vec::new();
+    for k in 0..n {
+        for j in 0..n {
+            for i in 0..n {
+                maps.extend_from_slice(&[
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+                ]);
+                floor.push(if (i + j + k) % 2 == 0 { 0.03 } else { -0.03 });
+            }
+        }
+    }
+    let w = GridWarp::new(GridWarpData {
+        origin: [0.0; 3],
+        cell: h,
+        dims: [n; 3],
+        maps,
+        reach: 0.04,
+        floor,
+    })
+    .expect("valid grid");
+    let node = SdfNode::sphere(0.02)
+        .translate(0.05, 0.05, 0.05)
+        .grid_warp(w);
+    let claim = eval_lipschitz(&node);
+    let d = 1e-4f32;
+    let (mut worst, mut cnt) = (0.0f32, 0);
+    for p in points(Vec3::splat(0.005), Vec3::splat(0.095), 16) {
+        if p.min_element() < 0.0 || p.max_element() > 0.1 {
+            continue;
+        }
+        for dir in [Vec3::X, Vec3::Y, Vec3::Z] {
+            let q = (eval(&node, p + dir * d) - eval(&node, p)).abs() / d;
+            worst = worst.max(q);
+        }
+        cnt += 1;
+    }
+    assert!(cnt > 500, "compared {cnt}");
+    assert!(worst > 1.5, "the floor must be steeper than 1: {worst}");
+    assert!(
+        worst <= claim * (1.0 + 1e-3),
+        "difference quotient {worst} above the claim {claim}"
+    );
+}
+
+/// oracle: `eval_interval` over a box contains every sampled value in it (6³ samples per box, 125
+/// boxes spanning the inside, the faces and the outside of the grid's box), on the blended grid
+#[test]
+fn the_interval_contains_the_sampled_values() {
+    use alice_sdf::interval::{eval_interval, Vec3Interval};
+    let w = grid([6, 9, 6], 0.04, [-0.1, -0.16, -0.1], |p| rot_y(p.y * 6.0));
+    let node = SdfNode::capsule(
+        Vec3::new(0.0, -0.12, 0.02),
+        Vec3::new(0.0, 0.12, 0.02),
+        0.03,
+    )
+    .grid_warp(w);
+    let (mut boxes, mut samples, mut tight) = (0, 0, 0);
+    for lo in points(Vec3::new(-0.1, -0.16, -0.1), Vec3::new(0.1, 0.16, 0.1), 5) {
+        let hi = lo + Vec3::splat(0.03);
+        let iv = eval_interval(&node, Vec3Interval::from_bounds(lo, hi));
+        let (mut vmin, mut vmax) = (f32::INFINITY, f32::NEG_INFINITY);
+        for i in 0..6 {
+            for j in 0..6 {
+                for k in 0..6 {
+                    let p = lo + (hi - lo) * Vec3::new(i as f32, j as f32, k as f32) / 5.0;
+                    let v = eval(&node, p);
+                    assert!(iv.contains(v), "box {lo}..{hi}: value {v} outside {iv:?}");
+                    vmin = vmin.min(v);
+                    vmax = vmax.max(v);
+                    samples += 1;
+                }
+            }
+        }
+        // the samples reach at least 60 % of the interval's width somewhere (the half-width
+        // matters to the test)
+        if vmax - vmin > 0.6 * (iv.hi - iv.lo) {
+            tight += 1;
+        }
+        boxes += 1;
+    }
+    assert!(
+        boxes == 125 && samples == 27000,
+        "boxes {boxes}, samples {samples}"
+    );
+    assert!(
+        tight > 0,
+        "no box where the samples span the interval: the test has no teeth"
+    );
+}

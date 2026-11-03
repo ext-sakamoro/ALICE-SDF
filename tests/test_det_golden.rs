@@ -675,6 +675,10 @@ const GOLDEN: &[(&str, &str)] = &[
         "43b86a346c5a72263761b0fabac74070e7997e9468f9481fc38daa6210d9bad0",
     ),
     (
+        "grid_warp",
+        "80db9bcc68b27bc25f7b39f1b74535fd0a702cbba23286974839db4bfc799bdc",
+    ),
+    (
         "sdf_skinning_two_bones",
         "b6ecdcaa34bd4cfcfde568a2f4be1849960e23f4712d8561e97bc0e835bb9be3",
     ),
