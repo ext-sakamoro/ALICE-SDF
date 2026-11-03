@@ -33,6 +33,8 @@
 //!
 //! Author: Moroya Sakamoto
 
+use crate::compiled::real::{law_max_f32, law_min_f32, LawVec};
+use alice_det_math::{max64, min64};
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
@@ -56,8 +58,8 @@ pub struct GridWarpData {
 }
 
 /// A validated grid warp with its Lipschitz bound (see the module doc)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "GridWarpData", into = "GridWarpData")]
+#[derive(Debug, Clone, Serialize)]
+#[serde(into = "GridWarpData")]
 pub struct GridWarp {
     data: GridWarpData,
     /// `Λ_n` per node (computed)
@@ -113,6 +115,16 @@ impl std::fmt::Display for GridWarpError {
 }
 
 impl std::error::Error for GridWarpError {}
+
+impl<'de> Deserialize<'de> for GridWarp {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "stored form other-type: the grid is read as a field of an SdfNode, whose stored tree goes through the tree loader's identifier check; this reads GridWarpData and recomputes every bound (none is read)"
+    )]
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        Self::new(GridWarpData::deserialize(de)?).map_err(serde::de::Error::custom)
+    }
+}
 
 impl TryFrom<GridWarpData> for GridWarp {
     type Error = GridWarpError;
@@ -174,8 +186,8 @@ fn spectral_norm(a: &[f32; 9]) -> f64 {
                     .map(|j| s[i][j].abs())
                     .sum::<f64>()
         })
-        .fold(0.0f64, f64::max);
-    (emax.max(0.0).sqrt() * (1.0 + 1e-9)).min(frob)
+        .fold(0.0f64, max64);
+    min64(max64(emax, 0.0).sqrt() * (1.0 + 1e-9), frob)
 }
 
 impl GridWarp {
@@ -252,7 +264,7 @@ impl GridWarp {
                                 1 => (i, u, l),
                                 _ => (i, j, u),
                             };
-                            m = m.max(a[idx(ii, jj, ll)]);
+                            m = max64(m, a[idx(ii, jj, ll)]);
                         }
                         b[idx(i, j, l)] = m;
                     }
@@ -284,7 +296,7 @@ impl GridWarp {
                         (i.wrapping_sub(1), j.wrapping_sub(1), l.wrapping_sub(1)),
                     ] {
                         if ci < cx && cj < cy && cl < cz {
-                            m = m.max(a[idx(ci, cj, cl)]);
+                            m = max64(m, a[idx(ci, cj, cl)]);
                         }
                     }
                     node[i + nx * (j + ny * l)] = up(m);
@@ -303,19 +315,19 @@ impl GridWarp {
                     for u in 0..2 {
                         for v in 0..2 {
                             dk[0] =
-                                dk[0].max((nd(i + 1, j + u, l + v) - nd(i, j + u, l + v)).abs());
+                                max64(dk[0], (nd(i + 1, j + u, l + v) - nd(i, j + u, l + v)).abs());
                             dk[1] =
-                                dk[1].max((nd(i + u, j + 1, l + v) - nd(i + u, j, l + v)).abs());
+                                max64(dk[1], (nd(i + u, j + 1, l + v) - nd(i + u, j, l + v)).abs());
                             dk[2] =
-                                dk[2].max((nd(i + u, j + v, l + 1) - nd(i + u, j + v, l)).abs());
+                                max64(dk[2], (nd(i + u, j + v, l + 1) - nd(i + u, j + v, l)).abs());
                             for w in 0..2 {
-                                lmin = lmin.min(nd(i + u, j + v, l + w));
+                                lmin = min64(lmin, nd(i + u, j + v, l + w));
                             }
                         }
                     }
                     let g = [dk[0] / h, dk[1] / h, dk[2] / h];
                     let grad = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
-                    slope = slope.max(1.0 + r * grad / lmin);
+                    slope = max64(slope, 1.0 + r * grad / lmin);
                 }
             }
         }
@@ -365,7 +377,8 @@ impl GridWarp {
                     for dz in 0..2 {
                         for dy in 0..2 {
                             for dx in 0..2 {
-                                amax = amax.max(norms[(i + dx) + nx * ((j + dy) + ny * (k + dz))]);
+                                amax =
+                                    max64(amax, norms[(i + dx) + nx * ((j + dy) + ny * (k + dz))]);
                             }
                         }
                     }
@@ -373,11 +386,11 @@ impl GridWarp {
                     for a in 0..2 {
                         for b in 0..2 {
                             dk[0] =
-                                dk[0].max(diff(at(i, j + a, k + b), at(i + 1, j + a, k + b), c));
+                                max64(dk[0], diff(at(i, j + a, k + b), at(i + 1, j + a, k + b), c));
                             dk[1] =
-                                dk[1].max(diff(at(i + a, j, k + b), at(i + a, j + 1, k + b), c));
+                                max64(dk[1], diff(at(i + a, j, k + b), at(i + a, j + 1, k + b), c));
                             dk[2] =
-                                dk[2].max(diff(at(i + a, j + b, k), at(i + a, j + b, k + 1), c));
+                                max64(dk[2], diff(at(i + a, j + b, k), at(i + a, j + b, k + 1), c));
                         }
                     }
                     let g = [dk[0] / h, dk[1] / h, dk[2] / h];
@@ -432,7 +445,7 @@ impl GridWarp {
     pub fn warp(&self, p: Vec3) -> (Vec3, f32, f32) {
         let d = &self.data;
         let bmin = self.box_min();
-        let q = p.clamp(bmin, self.box_max());
+        let q = p.law_clamp(bmin, self.box_max());
         let e = (p - q).length();
         let inv = 1.0 / d.cell;
         let g = (q - bmin) * inv;
@@ -471,8 +484,8 @@ impl GridWarp {
     #[must_use]
     pub fn finish(&self, c: f32, e: f32, lam: f32) -> f32 {
         let r = self.data.reach;
-        let d = (c / lam).clamp(-r, r);
-        let dp = d.max(0.0);
+        let d = law_min_f32(law_max_f32(c / lam, -r), r);
+        let dp = law_max_f32(d, 0.0);
         d + ((e * e + dp * dp).sqrt() - dp)
     }
 }
