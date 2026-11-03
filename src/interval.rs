@@ -1773,7 +1773,7 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         SdfNode::LatticeDeform { .. } => f32::INFINITY,
         // Grid warp: the child divided by the warp's computed bound inside the box; outside, the
         // hypot extension is 1-Lipschitz (see `transforms::grid_warp`)
-        SdfNode::GridWarp { child, .. } => eval_lipschitz(child).max(1.0),
+        SdfNode::GridWarp { child, .. } => alice_det_math::max(eval_lipschitz(child), 1.0),
         // SDF Skinning: LBS preserves distance (approximately)
         // One affine map: L(child) · ‖A‖ (Frobenius ≥ spectral norm).
         SdfNode::SdfSkinning { child, bones } => match skinning_affine(bones) {
