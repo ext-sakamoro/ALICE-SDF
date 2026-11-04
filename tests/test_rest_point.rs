@@ -16,6 +16,7 @@
 //! - the shader's `sdf_eval_rest` gives the CPU rest point (GPU, when an adapter is present;
 //!   `ALICE_SDF_REQUIRE_GPU=1` makes a missing adapter a failure)
 
+#[cfg(feature = "gpu")]
 use alice_sdf::compiled::{TranspileMode, WgslShader};
 use alice_sdf::eval::{eval, eval_rest_point};
 use alice_sdf::prelude::*;
@@ -148,6 +149,7 @@ fn a_union_takes_the_nearer_childs_rest_point() {
 fn a_twist_has_no_rest_point() {
     let node = SdfNode::box3d(0.2, 0.4, 0.2).twist(2.0);
     assert!(eval_rest_point(&node, Vec3::new(0.05, 0.1, 0.0)).is_none());
+    #[cfg(feature = "gpu")]
     assert!(WgslShader::transpile_with_rest_point(&node, TranspileMode::Hardcoded).is_err());
 }
 
