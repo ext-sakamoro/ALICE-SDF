@@ -761,22 +761,14 @@ mod tests {
         let bad = json.replacen("\"cell\":0.05", "\"cell\":-1.0", 1);
         assert!(deserialize_warp(&mut serde_json::Deserializer::from_str(&bad)).is_err());
         // a stored tree reads its grid through the same reader (the field's deserialize_with)
-        let node = crate::SdfNode::sphere(0.05).grid_warp(w.clone());
+        let node = crate::SdfNode::sphere(0.05).grid_warp(w);
         let tree = serde_json::to_string(&node).unwrap();
-        #[allow(
-            clippy::disallowed_methods,
-            reason = "stored form other-type: a test of the field reader"
-        )]
         let back_node: crate::SdfNode = serde_json::from_str(&tree).unwrap();
         let p = glam::Vec3::new(0.03, 0.02, 0.01);
         assert_eq!(
             crate::eval::eval(&back_node, p).to_bits(),
             crate::eval::eval(&node, p).to_bits()
         );
-        #[allow(
-            clippy::disallowed_methods,
-            reason = "stored form other-type: a test of the field reader"
-        )]
         let refused = serde_json::from_str::<crate::SdfNode>(&tree.replacen(
             "\"cell\":0.05",
             "\"cell\":-1.0",
