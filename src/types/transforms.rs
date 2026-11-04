@@ -40,7 +40,8 @@ impl SdfNode {
         }
     }
 
-    /// Marks this subtree's top translate and the rotate right below it as a pose ([`SdfNode::Pose`])
+    /// Marks this subtree's top translate and the rotate right below it as a pose ([`SdfNode::Pose`]);
+    /// the rest point refuses a pose over any other shape, so prefer [`SdfNode::rigid_pose`]
     #[must_use]
     #[inline]
     pub fn pose(self) -> Self {

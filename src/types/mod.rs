@@ -1259,7 +1259,7 @@ pub enum SdfNode {
         amplitude: f32,
     },
 
-    /// Marks the rigid motion directly below (one translate, then one rotate, each optional) as a pose (a part moved into a posed position, as a
+    /// Marks the rigid motion directly below (a translate over a rotate, as `rigid_pose` builds it) as a pose (a part moved into a posed position, as a
     /// rigid fill copy beside a grid warp), not as modelling (a part built in its own frame and
     /// placed into the model)
     ///

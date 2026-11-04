@@ -654,8 +654,8 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
 ///
 /// The point is in the frame of `node`. It follows the branch a union (the nearer child) or an
 /// intersection (the farther child) selects and the first operand of a subtraction; it undoes the
-/// pose nodes (the grid warp's map, and the rigid motion right below a [`SdfNode::Pose`]: one
-/// translate, then one rotate); a translate / rotate / scale elsewhere places a part built in its own frame,
+/// pose nodes (the grid warp's map, and the rigid motion right below a [`SdfNode::Pose`]: a
+/// translate over a rotate, the form `rigid_pose` builds; any other shape under a pose is `None`); a translate / rotate / scale elsewhere places a part built in its own frame,
 /// so the rest point below it is mapped back through it into `node`'s frame. `None` when the tree
 /// has a node that moves points in a way this does not follow (twist, bend, repetition, mirror, ...)
 #[must_use]
@@ -712,17 +712,19 @@ pub fn eval_rest_point(node: &SdfNode, point: Vec3) -> Option<Vec3> {
     }
 }
 
-/// The rest point below a [`SdfNode::Pose`]: its rigid motion (the translate right below it, then
-/// the rotate right below that, each when present) is undone, not mapped back; the transforms
-/// further down place the part and are treated as everywhere else
+/// The rest point below a [`SdfNode::Pose`]: its rigid motion (the translate right below it and
+/// the rotate right below that) is undone, not mapped back; the part under the rotate is treated
+/// as everywhere else. `None` for any other shape under a pose (the form `rigid_pose` builds is
+/// the only one whose motion is not ambiguous)
 fn eval_rest_point_posed(node: &SdfNode, point: Vec3) -> Option<Vec3> {
-    let (node, point) = match node {
-        SdfNode::Translate { child, offset } => (child.as_ref(), point - *offset),
-        n => (n, point),
-    };
     match node {
-        SdfNode::Rotate { child, rotation } => eval_rest_point(child, rotation.inverse() * point),
-        n => eval_rest_point(n, point),
+        SdfNode::Translate { child, offset } => match child.as_ref() {
+            SdfNode::Rotate { child, rotation } => {
+                eval_rest_point(child, rotation.inverse() * (point - *offset))
+            }
+            _ => None,
+        },
+        _ => None,
     }
 }
 

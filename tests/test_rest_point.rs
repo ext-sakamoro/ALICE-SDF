@@ -146,6 +146,67 @@ fn a_union_takes_the_nearer_childs_rest_point() {
 }
 
 #[test]
+fn a_pose_over_another_shape_has_no_rest_point() {
+    // only the rigid pose form (a translate over a rotate over the part) is a pose; any other
+    // shape under a Pose is refused rather than answered in another frame
+    let q = Quat::from_rotation_y(0.6);
+    let t = Vec3::new(0.1, -0.2, 0.05);
+    let part = || SdfNode::box3d(0.2, 0.1, 0.3);
+    let p = Vec3::new(0.25, 0.05, -0.1);
+    for (name, node) in [
+        ("translate only", part().translate_vec(t).pose()),
+        ("rotate only", part().rotate(q).pose()),
+        (
+            "translate under a rotate",
+            part().translate_vec(t).rotate(q).pose(),
+        ),
+        (
+            "material between",
+            part().rotate(q).with_material(3).translate_vec(t).pose(),
+        ),
+        ("a bare part", part().pose()),
+    ] {
+        assert!(eval_rest_point(&node, p).is_none(), "{name}");
+        #[cfg(feature = "gpu")]
+        assert!(
+            WgslShader::transpile_with_rest_point(&node, TranspileMode::Hardcoded).is_err(),
+            "{name}"
+        );
+    }
+    // the part under the rotate keeps its own placement (mapped back)
+    let placed = part().rotate(Quat::from_rotation_x(0.3)).rigid_pose(q, t);
+    let got = eval_rest_point(&placed, p).expect("rigid pose form");
+    let want = q.inverse() * (p - t);
+    assert!((got - want).length() < 1e-6, "{got} vs {want}");
+}
+
+#[test]
+fn an_intersection_takes_the_farther_and_a_subtraction_the_first_operand() {
+    let a = SdfNode::sphere(0.3).rigid_pose(Quat::from_rotation_z(0.5), Vec3::new(-0.3, 0.0, 0.0));
+    let b = SdfNode::box3d(0.25, 0.25, 0.25)
+        .rigid_pose(Quat::from_rotation_x(-0.4), Vec3::new(0.3, 0.1, 0.0));
+    let ra = |p: Vec3| Quat::from_rotation_z(0.5).inverse() * (p - Vec3::new(-0.3, 0.0, 0.0));
+    let rb = |p: Vec3| Quat::from_rotation_x(-0.4).inverse() * (p - Vec3::new(0.3, 0.1, 0.0));
+    let inter = a.clone().intersection(b.clone());
+    let sub = a.clone().subtract(b.clone());
+    let (mut na, mut nb) = (0, 0);
+    for p in lattice(8, -0.6, 0.6) {
+        let (da, db) = (eval(&a, p), eval(&b, p));
+        let want = if da >= db { ra(p) } else { rb(p) };
+        let got = eval_rest_point(&inter, p).expect("followed");
+        assert!((got - want).length() < 1e-6, "intersection p {p}");
+        if da >= db {
+            na += 1
+        } else {
+            nb += 1
+        }
+        let got = eval_rest_point(&sub, p).expect("followed");
+        assert!((got - ra(p)).length() < 1e-6, "subtraction p {p}");
+    }
+    assert!(na > 20 && nb > 20, "both operands chosen: {na} / {nb}");
+}
+
+#[test]
 fn a_twist_has_no_rest_point() {
     let node = SdfNode::box3d(0.2, 0.4, 0.2).twist(2.0);
     assert!(eval_rest_point(&node, Vec3::new(0.05, 0.1, 0.0)).is_none());
@@ -167,7 +228,17 @@ fn the_shader_rest_point_is_the_cpu_rest_point() {
                 .rotate(Quat::from_rotation_z(0.4))
                 .rigid_pose(Quat::from_rotation_x(0.3), Vec3::new(0.2, 0.0, 0.0)),
         )
-        .union(SdfNode::sphere(0.04).scale(1.2).translate(0.0, 0.25, 0.0));
+        .union(SdfNode::sphere(0.04).scale(1.2).translate(0.0, 0.25, 0.0))
+        .union(
+            SdfNode::sphere(0.06)
+                .rigid_pose(Quat::from_rotation_y(0.7), Vec3::new(-0.05, 0.1, 0.0))
+                .intersection(SdfNode::box3d(0.05, 0.05, 0.05).translate(-0.04, 0.1, 0.0)),
+        )
+        .union(
+            SdfNode::box3d(0.06, 0.03, 0.06)
+                .rigid_pose(Quat::from_rotation_x(0.2), Vec3::new(0.1, 0.15, 0.0))
+                .subtract(SdfNode::sphere(0.03).translate(0.1, 0.15, 0.0)),
+        );
     let sh =
         WgslShader::transpile_with_rest_point(&node, TranspileMode::Hardcoded).expect("followed");
     assert_eq!(sh.source.matches("fn sdf_eval_rest(").count(), 1);

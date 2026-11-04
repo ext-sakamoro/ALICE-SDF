@@ -749,29 +749,23 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         }
     }
 
-    /// The rest point below a [`SdfNode::Pose`]: its rigid motion (the translate right below it,
-    /// then the rotate right below that, each when present) is undone, not mapped back (see
-    /// [`crate::eval::eval_rest_point`])
+    /// The rest point below a [`SdfNode::Pose`]: its rigid motion (the translate right below it and
+    /// the rotate right below that) is undone, not mapped back; Err for any other shape under a
+    /// pose (see [`crate::eval::eval_rest_point`])
     fn transpile_rest_posed(
         &mut self,
         node: &SdfNode,
         point_var: &str,
         code: &mut String,
     ) -> Result<String, String> {
-        let (node, p) = match node {
-            SdfNode::Translate { child, offset } => (
-                child.as_ref(),
-                self.emit_rest_translate(*offset, point_var, code).1,
-            ),
-            n => (n, point_var.to_owned()),
-        };
-        match node {
-            SdfNode::Rotate { child, rotation } => {
+        if let SdfNode::Translate { child, offset } = node {
+            if let SdfNode::Rotate { child, rotation } = child.as_ref() {
+                let p = self.emit_rest_translate(*offset, point_var, code).1;
                 let new_p = self.emit_rest_rotate(rotation.inverse(), &p, code);
-                self.transpile_rest_inner(child, &new_p, code)
+                return self.transpile_rest_inner(child, &new_p, code);
             }
-            n => self.transpile_rest_inner(n, &p, code),
         }
+        Err("rest point: a pose is a translate over a rotate over the part (as rigid_pose builds it)".to_owned())
     }
 
     /// `point − offset` for the rest point: (the offset vec3 expression, the new point's name)
