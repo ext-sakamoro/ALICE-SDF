@@ -56,6 +56,10 @@ What the walk cannot see (known residuals, so a pass is not a proof):
   * bodies a macro generates: rust-analyzer records no reference from inside an expansion (the
     entries of such functions are listed in `[parser_unindexed]`)
   * async bodies are followed as written; the state machine the compiler builds adds no edges
+  * a function a serde attribute names (`#[serde(deserialize_with = "path")]`) runs inside the
+    type's derived deserializer: the walk uses the call edges only (scip_reach `reach_calls`), so
+    an entry that names the type does not reach it; the parse is counted where the caller hands the
+    bytes to serde_json / bincode, which is a stored-form reader of the manifest
   * a parser reached only through another crate's code (a dependency that parses internally) is
     seen only if that dependency's entry point is itself in `parsers`
 
@@ -414,7 +418,7 @@ def main(argv: list[str] | None = None) -> int:
         if sh and sh.startswith(crate + " "):
             by_desc.setdefault(sh[len(crate) + 1:], set()).add(sym)
     problems, stats = judge(cfg.get("boundary", {}), cfg.get("parsers"), cfg.get("parser_exempt", {}),
-                            cfg.get("parser_unindexed", {}), defs, an.reach,
+                            cfg.get("parser_unindexed", {}), defs, an.reach_calls,
                             {s for s in map(short, every) if s}, stored, by_desc,
                             cfg.get("parser_crates"), cfg.get("parser_not_parser", {}))
     for p in problems:

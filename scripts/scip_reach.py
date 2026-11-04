@@ -227,9 +227,17 @@ class Analysis:
         self.impl_links = 0       # trait-impl method -> in-crate trait method
         self.external_impls = 0   # trait-impl methods of traits defined outside the crate
         self.generated_items = 0  # items of types a macro invocation generates
+        # serde field / container attributes naming a function by a string
+        # (`#[serde(deserialize_with = "path")]`): resolved edges, and the paths no
+        # definition matches (each is an error: the edge would be missing silently)
+        self.serde_links = 0
+        self.serde_unresolved: list[str] = []
 
 
 IMPL_HEADER_RE = re.compile(r"\bimpl\b[^{;]*\{")
+# a serde attribute that names functions by a string path: the derive expansion calls
+# them, and rust-analyzer records no reference from the expansion (nor from the string)
+SERDE_FN_ATTR_RE = re.compile(r'\b(deserialize_with|serialize_with|with)\s*=\s*"([A-Za-z_][A-Za-z0-9_:]*)"')
 PUB_NAME_RE = re.compile(PUB_DEF + r"([A-Za-z_][A-Za-z0-9_]*)")
 
 # fuzz/ is one of SUBCRATES (kept as names for callers of the older interface)
@@ -458,6 +466,14 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
     src_defined: set[str] = set()
     texts: dict[str, tuple[list[str], list[str]]] = {}
     seen: set[tuple] = set()
+    # serde attribute paths: (file, enclosing definition symbol or None, attribute key, path)
+    # Their edges are kept apart from the call edges: the named function runs inside the
+    # type's derived (de)serializer, i.e. only when a caller (de)serializes the type, which
+    # is itself a call of serde / serde_json / bincode at that caller. Levels follow them
+    # (the function is live code); a call-graph question ("does this entry call a parser")
+    # does not (`a.reach_calls`)
+    serde_edges: dict[str, set[str]] = {}
+    serde_attrs: list[tuple[str, str | None, str, str]] = []
     # types a macro invocation defines: (file, macro name) -> {type name: type symbol}
     generated: dict[tuple[str, str], dict[str, str]] = {}
     # the arguments of that invocation, in order: (file, macro, type name) -> [arg, ...]
@@ -538,6 +554,24 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
             # innermost enclosing definition for every reference (ranges nest)
             defs.sort(key=lambda d: (d[0], (-d[1][0], -d[1][1])))
             starts = [d[0] for d in defs]
+            if is_src and idx_name == CRATE_INDEXES[0]:
+                # `#[serde(... = "path")]` inside a definition: that definition (the type, the
+                # variant or the field) reaches the named function, as its derive calls it
+                in_serde = False
+                for ln, line in enumerate(raw):
+                    at = line.find("#[serde(")
+                    if at >= 0 and _visible(code, (ln, at)):  # not in a comment, a string or cfg(test)
+                        in_serde = True
+                    if in_serde:
+                        for m in SERDE_FN_ATTR_RE.finditer(line):
+                            pos = (ln, m.start())
+                            enc = None
+                            for st, en, ds in defs:
+                                if st <= pos <= en and (enc is None or st >= enc[0]):
+                                    enc = (st, en, ds)
+                            serde_attrs.append((rel, enc[2] if enc else None, m.group(1), m.group(2)))
+                    if "]" in line:
+                        in_serde = False
             # a reached type reaches its fields and variants (`Type#field.`, `Enum#Variant.`),
             # so the types *they* name are reached too; methods (`...().`) are not members
             # in this sense: using a type or trait does not call every method on it
@@ -641,6 +675,40 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
     # model). They have no level, so they are listed and ratcheted separately
     a.unindexed = unindexed_items(root, {legacy_key(k) for k in a.items})
 
+    # serde attribute paths -> the functions they name (a `with` module names its
+    # `serialize` / `deserialize`); the edge starts at the enclosing definition, or is a
+    # root when the attribute sits outside every definition
+    def_by_desc: dict[str, set[str]] = {}
+    for d in defined:
+        sp = d.split(" ", 4)
+        if len(sp) == 5:
+            def_by_desc.setdefault(sp[4], set()).add(d)
+    for rel, ctx, key, path in serde_attrs:
+        parts = path.split("::")
+        if parts[0] in ("crate", "self"):
+            parts = parts[1:]
+        elif parts[0] == "super" or not parts:
+            a.serde_unresolved.append(f"{rel}: {key} = \"{path}\" (super paths are not resolved)")
+            continue
+        names = [parts[-1]] if key != "with" else [parts[-1] + "/serialize", parts[-1] + "/deserialize"]
+        prefix_mod = "/".join(parts[:-1])
+        found: set[str] = set()
+        for nm in names:
+            desc = (prefix_mod + "/" if prefix_mod else "") + nm + "()."
+            found |= def_by_desc.get(desc, set())
+            if not found and len(parts) == 1:
+                # an unqualified name: a function of the same module (descriptor ends with it)
+                found |= {d for ds, syms in def_by_desc.items() if ds.endswith("/" + nm + "().") for d in syms}
+        if not found:
+            a.serde_unresolved.append(f"{rel}: {key} = \"{path}\" names no function the index defines")
+            continue
+        for t in found:
+            if ctx is None:
+                roots_core.add(t)
+            else:
+                serde_edges.setdefault(ctx, set()).add(t)
+            a.serde_links += 1
+
     # Trait impls. An impl method runs only when (1) the trait method it implements
     # is reached, or the trait is defined outside the crate (Display, Default, Drop,
     # ... are called implicitly), and (2) a value of its self type exists, which is
@@ -679,14 +747,14 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
         m = TYPE_OR_MEMBER_RE.search(sym)
         return m.group(1) if m else None
 
-    def reach(start: set[str]) -> set[str]:
+    def reach(start: set[str], serde: bool = True) -> set[str]:
         live = set(start)
         stack = list(start)
         pending = set(external)  # waiting for their self type
         while True:
             while stack:
                 s = stack.pop()
-                for t in edges.get(s, ()):
+                for t in (edges.get(s, set()) | serde_edges.get(s, set())) if serde else edges.get(s, ()):
                     if t not in live:
                         live.add(t)
                         stack.append(t)
@@ -744,6 +812,7 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
             a.level[key] = "L0"
     if keep_graph:
         a.reach = reach
+        a.reach_calls = lambda start: reach(start, serde=False)
         a.roots_core = set(roots_core)
         a.roots_binding = set(roots_binding)
         a.roots_by_binding = {k: set(v) for k, v in roots_by_binding.items()}
@@ -882,6 +951,8 @@ def main(argv: list[str] | None = None) -> int:
                           "(the code compiled only for its target would be unindexed)")
     if a.impl_links == 0:
         errors.append("0 trait-impl links resolved (calls through a trait would never reach an impl)")
+    for u in a.serde_unresolved:
+        errors.append(f"serde attribute path not resolved: {u}")
     counts = {lv: sum(1 for v in a.level.values() if v == lv) for lv in ("L0", "L1", "live")}
     print(f"compared: items {len(a.items)}, "
           + "".join(f"{idx.removesuffix('.scip')} docs {a.idx_docs[idx]} items {a.idx_items[idx]}, "

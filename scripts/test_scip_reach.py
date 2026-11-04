@@ -379,6 +379,54 @@ class Levels(unittest.TestCase):
         ex = Doc("examples/e.rs", "fn main() { make(); }").ref("m/make().", 0, "make")
         self.assertEqual(levels([src, ex])["src/m.rs::via_y"], "L1")
 
+    def _serde_case(self, attr_line: str, fn_doc: "Doc") -> tuple[dict[str, str], list[str]]:
+        text = f"pub struct S {{\n{attr_line}\n    pub x: f32,\n}}"
+        src = Doc("src/lib.rs", text).define("S#", 0, "S", end_line=3).define("S#x.", 2, "x")
+        ex = Doc("examples/e.rs", "fn main() { let _ = S { x: 1.0 }; }").ref("S#", 0, "S")
+        d = build([src, fn_doc, ex])
+        a = sr.analyze(d, all_indexes(d))
+        return a.level, a.serde_unresolved
+
+    def test_serde_deserialize_with_reaches_the_named_function(self):
+        # the derive calls it and rust-analyzer records no reference: the field's
+        # attribute string is the only trace
+        m = Doc("src/m.rs", "pub fn read() {}").define("m/read().", 0, "read")
+        lv, bad = self._serde_case('    #[serde(deserialize_with = "crate::m::read")]', m)
+        self.assertEqual(lv["src/m.rs::read"], "L1")
+        self.assertEqual(bad, [])
+        m = Doc("src/m.rs", "pub fn read() {}").define("m/read().", 0, "read")
+        lv, _ = self._serde_case("    // no attribute", m)
+        self.assertEqual(lv["src/m.rs::read"], "L0")
+
+    def test_serde_with_module_reaches_its_serialize_and_deserialize(self):
+        m = (Doc("src/m.rs", "pub fn serialize() {}\npub fn deserialize() {}")
+             .define("m/serialize().", 0, "serialize").define("m/deserialize().", 1, "deserialize"))
+        lv, bad = self._serde_case('    #[serde(with = "crate::m")]', m)
+        self.assertEqual((lv["src/m.rs::serialize"], lv["src/m.rs::deserialize"]), ("L1", "L1"))
+        self.assertEqual(bad, [])
+
+    def test_serde_attribute_in_a_comment_is_not_a_reference(self):
+        m = Doc("src/m.rs", "pub fn read() {}").define("m/read().", 0, "read")
+        lv, _ = self._serde_case('    // #[serde(deserialize_with = "crate::m::read")]', m)
+        self.assertEqual(lv["src/m.rs::read"], "L0")
+
+    def test_serde_edge_is_not_a_call_edge(self):
+        # the function runs inside the derived deserializer: levels follow it, a call-graph
+        # question from code that only names the type does not
+        m = Doc("src/m.rs", "pub fn read() {}").define("m/read().", 0, "read")
+        text = 'pub struct S {\n    #[serde(deserialize_with = "crate::m::read")]\n    pub x: f32,\n}'
+        src = Doc("src/lib.rs", text).define("S#", 0, "S", end_line=3).define("S#x.", 2, "x")
+        d = build([src, m])
+        a = sr.analyze(d, all_indexes(d), keep_graph=True)
+        self.assertIn(P + "m/read().", a.reach({P + "S#"}))
+        self.assertNotIn(P + "m/read().", a.reach_calls({P + "S#"}))
+
+    def test_serde_path_naming_nothing_is_reported(self):
+        m = Doc("src/m.rs", "pub fn read() {}").define("m/read().", 0, "read")
+        _, bad = self._serde_case('    #[serde(deserialize_with = "crate::m::gone")]', m)
+        self.assertEqual(len(bad), 1)
+        self.assertIn("crate::m::gone", bad[0])
+
     def test_external_trait_impl_waits_for_its_type(self):
         # `impl Drop for X` runs only if an X exists: unreached X -> not a root
         text = "pub fn helper() {}\npub struct X;\nimpl Drop for X {\n    fn drop(&mut self) { helper(); }\n}\npub fn make() { let _x = X; }"
