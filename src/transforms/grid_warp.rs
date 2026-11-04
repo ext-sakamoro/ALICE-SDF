@@ -144,6 +144,7 @@ impl std::error::Error for GridWarpError {}
     clippy::disallowed_methods,
     reason = "stored form other-type: the grid is read as a field of an SdfNode, whose stored tree goes through the tree loader's identifier check; this reads GridWarpData and recomputes every bound (none is read)"
 )]
+// ALLOW-UNWIRED: called by the derived Deserialize of SdfNode through #[serde(deserialize_with = "crate::transforms::grid_warp::deserialize_warp")] on the GridWarp variant's warp field (src/types/mod.rs), a string the guard does not read
 pub(crate) fn deserialize_warp<'de, D: serde::Deserializer<'de>>(
     de: D,
 ) -> Result<std::sync::Arc<GridWarp>, D::Error> {
