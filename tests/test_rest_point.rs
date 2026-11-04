@@ -196,9 +196,9 @@ fn an_intersection_takes_the_farther_and_a_subtraction_the_first_operand() {
         let got = eval_rest_point(&inter, p).expect("followed");
         assert!((got - want).length() < 1e-6, "intersection p {p}");
         if da >= db {
-            na += 1
+            na += 1;
         } else {
-            nb += 1
+            nb += 1;
         }
         let got = eval_rest_point(&sub, p).expect("followed");
         assert!((got - ra(p)).length() < 1e-6, "subtraction p {p}");
