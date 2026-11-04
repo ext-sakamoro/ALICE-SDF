@@ -238,6 +238,10 @@ harness = false
 # publish per the note above). Gating the example here keeps
 # `cargo check --all-targets` (default features) green.
 [[example]]
+name = "rest_point"
+required-features = ["gpu"]
+
+[[example]]
 name = "text_to_3d_demo"
 required-features = ["font"]
 
