@@ -650,8 +650,9 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
     }
 }
 
-/// The rest point of `point`: where a colour or texture law defined on the unposed model, in the
-/// frame of `node`, reads its value. It follows the branch a union (the nearer child) or an
+/// The rest point of `point`: where a colour or texture law defined on the unposed model reads its value
+///
+/// The point is in the frame of `node`. It follows the branch a union (the nearer child) or an
 /// intersection (the farther child) selects and the first operand of a subtraction; it undoes the
 /// pose nodes (the grid warp's map, and the rigid motion right below a [`SdfNode::Pose`]: one
 /// translate, then one rotate); a translate / rotate / scale elsewhere places a part built in its own frame,

@@ -518,7 +518,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         shader
     }
 
-    /// Transpile an SDF node tree into shader code, returning the body with a final `return`.
     /// The grid warp's point computation (shared by the field and the rest point): emits `q`, the box
     /// distance and the blended map, and returns the names of (x = M q, e, b, Λ(q), F(q))
     fn emit_grid_warp_point(
@@ -745,7 +744,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             n if crate::diff::node_children(n).is_empty() => Ok(point_var.to_owned()),
             n => Err(format!(
                 "rest point: {} moves points in a way the rest point does not follow",
-                crate::diff::node_kind(n)
+                node_kind(n)
             )),
         }
     }
@@ -814,6 +813,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         new_p
     }
 
+    /// Transpile an SDF node tree into shader code, returning the body with a final `return`.
     pub fn transpile_node(&mut self, node: &SdfNode, point_var: &str) -> String {
         let mut code = String::new();
         let result_var = self.transpile_node_inner(node, point_var, &mut code);
@@ -3889,4 +3889,13 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             SdfNode::Animated { child, .. } => self.transpile_node_inner(child, point_var, code),
         }
     }
+}
+
+/// The node kind's name (the enum variant), for messages
+fn node_kind(node: &SdfNode) -> String {
+    let s = format!("{node:?}");
+    s.split(|c: char| !c.is_alphanumeric() && c != '_')
+        .next()
+        .unwrap_or("?")
+        .to_owned()
 }
