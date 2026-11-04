@@ -1259,6 +1259,18 @@ pub enum SdfNode {
         amplitude: f32,
     },
 
+    /// Marks the rigid motion directly below (one translate, then one rotate, each optional) as a pose (a part moved into a posed position, as a
+    /// rigid fill copy beside a grid warp), not as modelling (a part built in its own frame and
+    /// placed into the model)
+    ///
+    /// Transparent for the distance, the gradient, the bounds and the material: every evaluator
+    /// reads its child. Only the rest point ([`crate::eval::eval_rest_point`]) differs: it undoes
+    /// that rigid motion and maps back through every other translate / rotate / scale
+    Pose {
+        /// Child node: the pose's translate and rotate, then the part in the rest pose
+        child: Arc<Self>,
+    },
+
     /// Assign a material ID to a subtree (transparent for distance evaluation)
     WithMaterial {
         /// Child node
@@ -1459,6 +1471,7 @@ impl SdfNode {
             | Self::Shear { .. }
             | Self::Animated { .. }
             | Self::WithMaterial { .. }
+            | Self::Pose { .. }
             | Self::IcosahedralSymmetry { .. }
             | Self::IFS { .. }
             | Self::HeightmapDisplacement { .. }
@@ -1593,6 +1606,7 @@ impl SdfNode {
             | Self::Shear { child, .. }
             | Self::Animated { child, .. }
             | Self::WithMaterial { child, .. }
+            | Self::Pose { child }
             | Self::IcosahedralSymmetry { child, .. }
             | Self::IFS { child, .. }
             | Self::HeightmapDisplacement { child, .. }

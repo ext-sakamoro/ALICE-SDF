@@ -13,8 +13,12 @@ use alice_sdf::{
 use sha2::{Digest, Sha256};
 
 const GOLDEN_SOURCE: &str = include_str!("test_det_golden.rs");
-// with alice-det-math 0.5.2 at 39507d1b; 151079595… (with 0.5.1) is a previous identifier
-const RECORDED_HEX: &str = "ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f642257da4938";
+// with alice-det-math 0.5.2 at 2d01c63f and the grid warp and pose golden rows; ad04549c… (the
+// same without those rows) is the previous identifier this build still reproduces
+const RECORDED_HEX: &str = "0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f79d2f6b69a4";
+
+/// The golden rows added after `ad04549c…`: new nodes, no row of that build changed
+const ROWS_ADDED_AFTER_AD04549C: &[&str] = &["grid_warp", "pose"];
 
 fn sha(b: &[u8]) -> [u8; 32] {
     Sha256::digest(b).into()
@@ -123,7 +127,12 @@ fn check_reads_this_identifier_and_refuses_the_earlier_ones() {
         check_sdf_semantics(&SDF_SEMANTICS_ID),
         SemanticsCheck::Verified
     );
-    assert!(PREVIOUS_SDF_SEMANTICS_IDS.is_empty());
+    assert_eq!(PREVIOUS_SDF_SEMANTICS_IDS.len(), 1);
+    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[0]), AD04549C);
+    assert_eq!(
+        check_sdf_semantics(&PREVIOUS_SDF_SEMANTICS_IDS[0]),
+        SemanticsCheck::VerifiedPrevious(PREVIOUS_SDF_SEMANTICS_IDS[0])
+    );
     // the identifiers earlier releases stamped (6e98f0be with alice-det-math 0.5.2 at 39507d1b,
     // 151079595 with 0.5.1 by 7.0.0, the det-math identifiers 6.0 / 6.1 exposed) are refused
     let mut refused = 0;
@@ -208,11 +217,13 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
     let windows: Vec<&str> = WINDOWS_AT_39507D1B.iter().map(|(n, _)| *n).collect();
     let mut older: Vec<(String, String)> = rows
         .iter()
-        .filter(|(n, _)| !windows.contains(&n.as_str()))
+        .filter(|(n, _)| {
+            !windows.contains(&n.as_str()) && !ROWS_ADDED_AFTER_AD04549C.contains(&n.as_str())
+        })
         .cloned()
         .collect();
     assert_eq!(
-        older.len() + windows.len(),
+        older.len() + windows.len() + ROWS_ADDED_AFTER_AD04549C.len(),
         rows.len(),
         "every window is a row"
     );
@@ -247,7 +258,51 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
 /// The oracle that shows this build reproduces what an earlier identifier stamped:
 /// `(identifier, test file, test function)`. Empty with `PREVIOUS_SDF_SEMANTICS_IDS`; an
 /// identifier put back into the previous list needs its oracle here
-const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[];
+const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[(
+    AD04549C,
+    "tests/sdf_semantics_id.rs",
+    "the_ad04549c_rows_are_unchanged",
+)];
+
+const AD04549C: &str = "ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f642257da4938";
+
+/// `ad04549c…` is a previous identifier of this build: the golden table without the rows added
+/// after it hashes to its golden pin, and that pin folds with this build's rule and det-math
+/// entries to it. Any moved row of that build, or a row added without being listed in
+/// `ROWS_ADDED_AFTER_AD04549C`, fails here
+#[test]
+fn the_ad04549c_rows_are_unchanged() {
+    let mut rows = golden_rows();
+    let all = rows.len();
+    rows.retain(|(n, _)| !ROWS_ADDED_AFTER_AD04549C.contains(&n.as_str()));
+    assert_eq!(
+        rows.len() + ROWS_ADDED_AFTER_AD04549C.len(),
+        all,
+        "every added row is a row"
+    );
+    rows.sort();
+    let canon = rows.iter().fold(String::new(), |mut s, (n, h)| {
+        use std::fmt::Write;
+        writeln!(s, "{n}={h}").expect("writing to a String");
+        s
+    });
+    let golden = sha(canon.as_bytes());
+    assert_eq!(
+        hex(&golden),
+        "84831086d072608aa773445b0a838e5aa530c32d936fc1d6bf62ff02325b709d"
+    );
+    let pins: Vec<(&str, [u8; 32])> = SDF_SEMANTICS_PINS
+        .iter()
+        .map(|&(n, d)| {
+            if n.starts_with("golden ") {
+                (n, golden)
+            } else {
+                (n, d)
+            }
+        })
+        .collect();
+    assert_eq!(hex(&fold(&pins)), AD04549C);
+}
 
 /// Every previous identifier has an oracle that exists as a test (the file holds `#[test]` and
 /// that function), and every oracle names a previous identifier: an identifier without one, or an

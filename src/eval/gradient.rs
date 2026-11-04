@@ -492,6 +492,7 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
 
         // Material is transparent
         SdfNode::WithMaterial { child, .. } => eval_gradient(child, point),
+        SdfNode::Pose { child } => eval_gradient(child, point),
 
         #[allow(unreachable_patterns)]
         _ => numerical_gradient_of(node, point),

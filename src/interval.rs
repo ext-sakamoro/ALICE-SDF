@@ -1459,6 +1459,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         }
 
         SdfNode::WithMaterial { child, .. } => eval_interval(child, bounds),
+        SdfNode::Pose { child } => eval_interval(child, bounds),
 
         #[allow(unreachable_patterns)]
         _ => Interval::EVERYTHING,
@@ -1871,6 +1872,7 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         }
 
         SdfNode::WithMaterial { child, .. } => eval_lipschitz(child),
+        SdfNode::Pose { child } => eval_lipschitz(child),
     }
 }
 

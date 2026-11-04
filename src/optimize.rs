@@ -275,6 +275,9 @@ fn optimize_children(node: &SdfNode) -> SdfNode {
             child: Arc::new(optimize(child)),
             count: *count,
         },
+        SdfNode::Pose { child } => SdfNode::Pose {
+            child: Arc::new(optimize(child)),
+        },
         SdfNode::WithMaterial { child, material_id } => SdfNode::WithMaterial {
             child: Arc::new(optimize(child)),
             material_id: *material_id,

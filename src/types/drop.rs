@@ -92,6 +92,7 @@ impl SdfNode {
             | Self::LatticeDeform { child, .. }
             | Self::IFS { child, .. }
             | Self::WithMaterial { child, .. }
+            | Self::Pose { child }
             | Self::Animated { child, .. } => {
                 out.push(std::mem::replace(child, leaf_sentinel()));
             }

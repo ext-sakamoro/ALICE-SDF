@@ -716,44 +716,28 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 self.transpile_rest_inner(child, point_var, code)
             }
             SdfNode::Translate { child, offset } => {
-                let new_p = self.next_var();
-                let (ox, oy, oz) = (
-                    self.param(offset.x),
-                    self.param(offset.y),
-                    self.param(offset.z),
-                );
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &format!("{} - {}", point_var, L::vec3_ctor(&ox, &oy, &oz)),
-                ));
-                self.transpile_rest_inner(child, &new_p, code)
+                let (o, new_p) = self.emit_rest_translate(*offset, point_var, code);
+                let r = self.transpile_rest_inner(child, &new_p, code)?;
+                let out = self.next_var();
+                code.push_str(&L::decl_vec3(&out, &format!("{r} + {o}")));
+                Ok(out)
             }
             SdfNode::Rotate { child, rotation } => {
-                self.ensure_helper("quat_rotate");
-                let inv = rotation.inverse();
-                let new_p = self.next_var();
-                let (qx, qy, qz, qw) = (
-                    self.param(inv.x),
-                    self.param(inv.y),
-                    self.param(inv.z),
-                    self.param(inv.w),
-                );
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &format!(
-                        "quat_rotate({}, {})",
-                        point_var,
-                        L::vec4_ctor(&qx, &qy, &qz, &qw)
-                    ),
-                ));
-                self.transpile_rest_inner(child, &new_p, code)
+                let new_p = self.emit_rest_rotate(rotation.inverse(), point_var, code);
+                let r = self.transpile_rest_inner(child, &new_p, code)?;
+                Ok(self.emit_rest_rotate(*rotation, &r, code))
             }
             SdfNode::Scale { child, factor } => {
                 let new_p = self.next_var();
                 let inv = self.param(1.0 / factor);
                 code.push_str(&L::decl_vec3(&new_p, &format!("{point_var} * {inv}")));
-                self.transpile_rest_inner(child, &new_p, code)
+                let r = self.transpile_rest_inner(child, &new_p, code)?;
+                let out = self.next_var();
+                let f = self.param(*factor);
+                code.push_str(&L::decl_vec3(&out, &format!("{r} * {f}")));
+                Ok(out)
             }
+            SdfNode::Pose { child } => self.transpile_rest_posed(child, point_var, code),
             SdfNode::GridWarp { child, warp } => {
                 let (x, _, _, _, _) = self.emit_grid_warp_point(warp, point_var, code);
                 self.transpile_rest_inner(child, &x, code)
@@ -764,6 +748,70 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 crate::diff::node_kind(n)
             )),
         }
+    }
+
+    /// The rest point below a [`SdfNode::Pose`]: its rigid motion (the translate right below it,
+    /// then the rotate right below that, each when present) is undone, not mapped back (see
+    /// [`crate::eval::eval_rest_point`])
+    fn transpile_rest_posed(
+        &mut self,
+        node: &SdfNode,
+        point_var: &str,
+        code: &mut String,
+    ) -> Result<String, String> {
+        let (node, p) = match node {
+            SdfNode::Translate { child, offset } => (
+                child.as_ref(),
+                self.emit_rest_translate(*offset, point_var, code).1,
+            ),
+            n => (n, point_var.to_owned()),
+        };
+        match node {
+            SdfNode::Rotate { child, rotation } => {
+                let new_p = self.emit_rest_rotate(rotation.inverse(), &p, code);
+                self.transpile_rest_inner(child, &new_p, code)
+            }
+            n => self.transpile_rest_inner(n, &p, code),
+        }
+    }
+
+    /// `point − offset` for the rest point: (the offset vec3 expression, the new point's name)
+    fn emit_rest_translate(
+        &mut self,
+        offset: glam::Vec3,
+        point_var: &str,
+        code: &mut String,
+    ) -> (String, String) {
+        let new_p = self.next_var();
+        let (ox, oy, oz) = (
+            self.param(offset.x),
+            self.param(offset.y),
+            self.param(offset.z),
+        );
+        let o = L::vec3_ctor(&ox, &oy, &oz);
+        code.push_str(&L::decl_vec3(&new_p, &format!("{point_var} - {o}")));
+        (o, new_p)
+    }
+
+    /// `q · point` for the rest point: the new point's name
+    fn emit_rest_rotate(&mut self, q: glam::Quat, point_var: &str, code: &mut String) -> String {
+        self.ensure_helper("quat_rotate");
+        let new_p = self.next_var();
+        let (qx, qy, qz, qw) = (
+            self.param(q.x),
+            self.param(q.y),
+            self.param(q.z),
+            self.param(q.w),
+        );
+        code.push_str(&L::decl_vec3(
+            &new_p,
+            &format!(
+                "quat_rotate({}, {})",
+                point_var,
+                L::vec4_ctor(&qx, &qy, &qz, &qw)
+            ),
+        ));
+        new_p
     }
 
     pub fn transpile_node(&mut self, node: &SdfNode, point_var: &str) -> String {
@@ -3346,7 +3394,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 var
             }
 
-            SdfNode::WithMaterial { child, .. } => {
+            SdfNode::WithMaterial { child, .. } | SdfNode::Pose { child } => {
                 self.transpile_node_inner(child, point_var, code)
             }
 

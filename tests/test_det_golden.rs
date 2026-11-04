@@ -679,6 +679,10 @@ const GOLDEN: &[(&str, &str)] = &[
         "b4ffba3cf8d89dbc35b083b95725176797ed2d3876691f159bae43e0dff5630c",
     ),
     (
+        "pose",
+        "ef8a58c351ca0999bb0bd2f3adbfc3e358f363bb882ccc510f1c46619524a00e",
+    ),
+    (
         "sdf_skinning_two_bones",
         "b6ecdcaa34bd4cfcfde568a2f4be1849960e23f4712d8561e97bc0e835bb9be3",
     ),

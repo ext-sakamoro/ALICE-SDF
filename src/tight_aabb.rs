@@ -427,6 +427,7 @@ fn level_region(node: &SdfNode, xf: &Affine, delta: f32) -> Region {
         }
         // the material tag does not change the field
         SdfNode::WithMaterial { child, .. } => level_region(child, xf, delta),
+        SdfNode::Pose { child } => level_region(child, xf, delta),
         // rigid and uniform-scale transforms are folded into the accumulated map
         SdfNode::Translate { child, offset } => {
             let moved = Affine {
@@ -654,6 +655,7 @@ fn revolved_extent(node: &SdfNode, delta: f32) -> Option<(f32, f32, f32)> {
             cylinder(radius + d, half_height + d)
         }
         SdfNode::WithMaterial { child, .. } => revolved_extent(child, delta),
+        SdfNode::Pose { child } => revolved_extent(child, delta),
         SdfNode::Round { child, radius } => revolved_extent(child, delta + radius),
         SdfNode::Onion { child, thickness } => revolved_extent(child, delta + thickness),
         SdfNode::Subtraction { a, .. } => revolved_extent(a, delta),

@@ -312,6 +312,14 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
                 .expect("valid grid")
             }),
         ),
+        (
+            "pose",
+            // a rigid pose: measures as the same rotate then translate (the rest point differs)
+            unit_box().rigid_pose(
+                glam::Quat::from_rotation_y(0.6) * glam::Quat::from_rotation_x(-0.3),
+                Vec3::new(0.4, -0.2, 0.1),
+            ),
+        ),
         // --- modifiers ---
         ("twist", unit_box().twist(1.5)),
         ("bend", unit_box().bend(0.8)),

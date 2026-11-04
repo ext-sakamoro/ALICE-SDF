@@ -40,6 +40,23 @@ impl SdfNode {
         }
     }
 
+    /// Marks this subtree's top translate and the rotate right below it as a pose ([`SdfNode::Pose`])
+    #[must_use]
+    #[inline]
+    pub fn pose(self) -> Self {
+        Self::Pose {
+            child: Arc::new(self),
+        }
+    }
+
+    /// A rigid pose: rotate by `rotation`, then translate by `offset`, marked as a pose (the rest
+    /// point undoes it; the distance is that of `rotate(rotation).translate_vec(offset)`)
+    #[must_use]
+    #[inline]
+    pub fn rigid_pose(self, rotation: Quat, offset: Vec3) -> Self {
+        self.rotate(rotation).translate_vec(offset).pose()
+    }
+
     /// Rotate by Euler angles (radians)
     #[must_use]
     #[inline]

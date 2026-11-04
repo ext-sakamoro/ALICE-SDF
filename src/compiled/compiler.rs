@@ -1073,7 +1073,7 @@ impl Compiler {
             }
 
             // WithMaterial is transparent for distance evaluation
-            SdfNode::WithMaterial { child, .. } => {
+            SdfNode::WithMaterial { child, .. } | SdfNode::Pose { child } => {
                 self.compile_node(child);
             }
 
@@ -1490,7 +1490,8 @@ pub fn compute_stack_depths(node: &SdfNode) -> (usize, usize) {
         // Modifiers that don't push a coord frame (value-only modifiers)
         SdfNode::Round { child, .. }
         | SdfNode::Onion { child, .. }
-        | SdfNode::WithMaterial { child, .. } => compute_stack_depths(child),
+        | SdfNode::WithMaterial { child, .. }
+        | SdfNode::Pose { child } => compute_stack_depths(child),
 
         // Catch-all for future variants
         #[allow(unreachable_patterns)]
@@ -1575,6 +1576,7 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         | SdfNode::SineDisplacement { child, .. }
         | SdfNode::PolarRepeat { child, .. }
         | SdfNode::WithMaterial { child, .. }
+        | SdfNode::Pose { child }
         | SdfNode::Animated { child, .. }
         | SdfNode::Shear { child, .. }
         | SdfNode::ProjectiveTransform { child, .. }

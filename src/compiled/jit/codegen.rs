@@ -1043,6 +1043,7 @@ fn compile_node(
         SdfNode::SweepBezier { .. } => Err(JitError::UnsupportedNode("SweepBezier".to_string())),
 
         SdfNode::WithMaterial { child, .. } => compile_node(builder, child, x, y, z, emitter),
+        SdfNode::Pose { child } => compile_node(builder, child, x, y, z, emitter),
 
         // ============ Implementable Operations ============
         SdfNode::XOR { a, b } => {

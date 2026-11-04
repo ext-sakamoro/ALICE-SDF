@@ -264,7 +264,8 @@ fn get_children(node: &SdfNode) -> Vec<&SdfNode> {
         | SdfNode::SurfaceRoughness { child, .. }
         | SdfNode::Shear { child, .. }
         | SdfNode::Animated { child, .. }
-        | SdfNode::WithMaterial { child, .. } => vec![child.as_ref()],
+        | SdfNode::WithMaterial { child, .. }
+        | SdfNode::Pose { child } => vec![child.as_ref()],
 
         // Leaf nodes: no children
         _ => vec![],
@@ -1020,6 +1021,7 @@ fn replace_child(node: &SdfNode, child_idx: usize, new_child: Arc<SdfNode>) -> S
             speed: *speed,
             amplitude: *amplitude,
         },
+        SdfNode::Pose { .. } => SdfNode::Pose { child: new_child },
         SdfNode::WithMaterial { material_id, .. } => SdfNode::WithMaterial {
             child: new_child,
             material_id: *material_id,

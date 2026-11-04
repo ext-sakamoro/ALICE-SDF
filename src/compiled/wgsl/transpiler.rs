@@ -435,7 +435,8 @@ impl WgslShader {
             | SdfNode::ProjectiveTransform { child, .. }
             | SdfNode::LatticeDeform { child, .. }
             | SdfNode::SdfSkinning { child, .. }
-            | SdfNode::GridWarp { child, .. } => {
+            | SdfNode::GridWarp { child, .. }
+            | SdfNode::Pose { child } => {
                 Self::collect_materials(child, out);
             }
             // プリミティブ: 子なし

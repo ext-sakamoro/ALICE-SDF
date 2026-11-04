@@ -606,6 +606,7 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
 
         // Material assignment is transparent for distance evaluation
         SdfNode::WithMaterial { child, .. } => eval(child, point),
+        SdfNode::Pose { child } => eval(child, point),
 
         // New modifiers
         SdfNode::IcosahedralSymmetry { child } => {
@@ -649,11 +650,13 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
     }
 }
 
-/// The rest point of `point`: the point the tree's leaves are evaluated at, following the branch a
-/// union (the nearer child) or an intersection (the farther child) selects, the first operand of a
-/// subtraction, the grid warp's map and the translate / rotate / scale transforms. A colour or texture
-/// law defined in the rest pose reads its value there. `None` when the tree has a node that moves
-/// points in a way this does not follow (twist, bend, repetition, mirror, ...)
+/// The rest point of `point`: where a colour or texture law defined on the unposed model, in the
+/// frame of `node`, reads its value. It follows the branch a union (the nearer child) or an
+/// intersection (the farther child) selects and the first operand of a subtraction; it undoes the
+/// pose nodes (the grid warp's map, and the rigid motion right below a [`SdfNode::Pose`]: one
+/// translate, then one rotate); a translate / rotate / scale elsewhere places a part built in its own frame,
+/// so the rest point below it is mapped back through it into `node`'s frame. `None` when the tree
+/// has a node that moves points in a way this does not follow (twist, bend, repetition, mirror, ...)
 #[must_use]
 pub fn eval_rest_point(node: &SdfNode, point: Vec3) -> Option<Vec3> {
     let pick = |a: &SdfNode, b: &SdfNode, nearer: bool| {
@@ -692,12 +695,33 @@ pub fn eval_rest_point(node: &SdfNode, point: Vec3) -> Option<Vec3> {
         | SdfNode::ColumnsSubtraction { a, .. }
         | SdfNode::ExpSmoothSubtraction { a, .. } => eval_rest_point(a, point),
         SdfNode::WithMaterial { child, .. } => eval_rest_point(child, point),
-        SdfNode::Translate { child, offset } => eval_rest_point(child, point - *offset),
-        SdfNode::Rotate { child, rotation } => eval_rest_point(child, rotation.inverse() * point),
-        SdfNode::Scale { child, factor } => eval_rest_point(child, point * (1.0 / factor)),
+        SdfNode::Translate { child, offset } => {
+            eval_rest_point(child, point - *offset).map(|r| r + *offset)
+        }
+        SdfNode::Rotate { child, rotation } => {
+            eval_rest_point(child, rotation.inverse() * point).map(|r| *rotation * r)
+        }
+        SdfNode::Scale { child, factor } => {
+            eval_rest_point(child, point * (1.0 / factor)).map(|r| r * *factor)
+        }
+        SdfNode::Pose { child } => eval_rest_point_posed(child, point),
         SdfNode::GridWarp { child, warp } => eval_rest_point(child, warp.warp(point).0),
         n if crate::diff::node_children(n).is_empty() => Some(point),
         _ => None,
+    }
+}
+
+/// The rest point below a [`SdfNode::Pose`]: its rigid motion (the translate right below it, then
+/// the rotate right below that, each when present) is undone, not mapped back; the transforms
+/// further down place the part and are treated as everywhere else
+fn eval_rest_point_posed(node: &SdfNode, point: Vec3) -> Option<Vec3> {
+    let (node, point) = match node {
+        SdfNode::Translate { child, offset } => (child.as_ref(), point - *offset),
+        n => (n, point),
+    };
+    match node {
+        SdfNode::Rotate { child, rotation } => eval_rest_point(child, rotation.inverse() * point),
+        n => eval_rest_point(n, point),
     }
 }
 
@@ -709,6 +733,7 @@ pub fn eval_rest_point(node: &SdfNode, point: Vec3) -> Option<Vec3> {
 #[inline]
 pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
     match node {
+        SdfNode::Pose { child } => eval_material(child, point),
         SdfNode::WithMaterial { child, material_id } => {
             // This subtree has a material; return it
             // (nested WithMaterial: inner wins if closer)
