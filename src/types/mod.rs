@@ -1076,7 +1076,9 @@ pub enum SdfNode {
     GridWarp {
         /// Child node (for example a rest-pose shape posed by an inverse-skinning grid)
         child: Arc<Self>,
-        /// The validated grid
+        /// The validated grid (read through `transforms::grid_warp::deserialize_warp`, which
+        /// recomputes its bounds)
+        #[serde(deserialize_with = "crate::transforms::grid_warp::deserialize_warp")]
         warp: Arc<crate::transforms::GridWarp>,
     },
 

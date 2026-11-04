@@ -132,14 +132,24 @@ impl std::fmt::Display for GridWarpError {
 
 impl std::error::Error for GridWarpError {}
 
-impl<'de> Deserialize<'de> for GridWarp {
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "stored form other-type: the grid is read as a field of an SdfNode, whose stored tree goes through the tree loader's identifier check; this reads GridWarpData and recomputes every bound (none is read)"
-    )]
-    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
-        Self::new(GridWarpData::deserialize(de)?).map_err(serde::de::Error::custom)
-    }
+/// The reader of a stored grid warp: `SdfNode::GridWarp`'s `warp` field reads through it
+/// (`#[serde(deserialize_with)]`) rather than a `Deserialize` impl of [`GridWarp`], so the type has no
+/// reader that code naming the type would reach. It reads [`GridWarpData`] and recomputes every bound
+/// ([`GridWarp::new`]; none is read)
+///
+/// # Errors
+///
+/// The data does not parse, or [`GridWarp::new`] refuses it
+#[allow(
+    clippy::disallowed_methods,
+    reason = "stored form other-type: the grid is read as a field of an SdfNode, whose stored tree goes through the tree loader's identifier check; this reads GridWarpData and recomputes every bound (none is read)"
+)]
+pub(crate) fn deserialize_warp<'de, D: serde::Deserializer<'de>>(
+    de: D,
+) -> Result<std::sync::Arc<GridWarp>, D::Error> {
+    GridWarp::new(GridWarpData::deserialize(de)?)
+        .map(std::sync::Arc::new)
+        .map_err(serde::de::Error::custom)
 }
 
 impl TryFrom<GridWarpData> for GridWarp {
@@ -746,9 +756,35 @@ mod tests {
         .unwrap();
         let json = serde_json::to_string(&w).unwrap();
         assert!(!json.contains("lambda"), "the bound must not be stored");
-        let back: GridWarp = serde_json::from_str(&json).unwrap();
+        let back = deserialize_warp(&mut serde_json::Deserializer::from_str(&json)).unwrap();
         assert_eq!(back.lipschitz().to_bits(), w.lipschitz().to_bits());
         let bad = json.replacen("\"cell\":0.05", "\"cell\":-1.0", 1);
-        assert!(serde_json::from_str::<GridWarp>(&bad).is_err());
+        assert!(deserialize_warp(&mut serde_json::Deserializer::from_str(&bad)).is_err());
+        // a stored tree reads its grid through the same reader (the field's deserialize_with)
+        let node = crate::SdfNode::sphere(0.05).grid_warp(w.clone());
+        let tree = serde_json::to_string(&node).unwrap();
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "stored form other-type: a test of the field reader"
+        )]
+        let back_node: crate::SdfNode = serde_json::from_str(&tree).unwrap();
+        let p = glam::Vec3::new(0.03, 0.02, 0.01);
+        assert_eq!(
+            crate::eval::eval(&back_node, p).to_bits(),
+            crate::eval::eval(&node, p).to_bits()
+        );
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "stored form other-type: a test of the field reader"
+        )]
+        let refused = serde_json::from_str::<crate::SdfNode>(&tree.replacen(
+            "\"cell\":0.05",
+            "\"cell\":-1.0",
+            1,
+        ));
+        assert!(
+            refused.is_err(),
+            "a stored tree with an invalid grid is refused"
+        );
     }
 }

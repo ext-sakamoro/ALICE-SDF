@@ -25,7 +25,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 799 items (0 Linux-only): 89 handshake, 710 local, 0 pending. Groups (count, decision):
+# 798 items (0 Linux-only): 89 handshake, 709 local, 0 pending. Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: a_file_written_under_another_det_math_is_refused_naming_both_and_the_form
@@ -120,7 +120,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  handshake: ffi_load_abm_checks_the_identifier
 #      2  local: parses the .abm header and returns its stored identifier as a field; load_abm and load_abm_with_lods do the comparison
 #      1  handshake: ffi_load_lod_chain_checks_both_parts
-#      2  local: authored grid maps the reader validates and recomputes the Lipschitz bound from; no stored value is one this crate computed under its arithmetic
+#      1  local: authored grid maps the reader validates and recomputes the Lipschitz bound from; no stored value is one this crate computed under its arithmetic
 
 [boundary]
 # 4 local
@@ -1090,8 +1090,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # `local` entries that reach a parser on purpose (scripts/api_boundary_parsers.py)
 
-# 2 local
-"impl::Deserialize for GridWarp" = "local: authored grid maps the reader validates and recomputes the Lipschitz bound from; no stored value is one this crate computed under its arithmetic"
+# 1 local
 "impl::Deserialize for GridWarpData" = "local: authored grid maps the reader validates and recomputes the Lipschitz bound from; no stored value is one this crate computed under its arithmetic"
 [parser_exempt]
 "binding::pyo3::gpu_bake_volume" = "compiles the WGSL this crate transpiles from the given node of this process (volume::gpu_bake_volume)"
