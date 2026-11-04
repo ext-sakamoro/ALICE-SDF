@@ -2114,13 +2114,13 @@ mod tests {
     use super::*;
 
     /// The importers' verdicts map a reproduced earlier identifier to `VerifiedPrevious` and every
-    /// other one to a mismatch naming both; G6's list is empty in this build, so the mapping is
-    /// shown with an injected list
+    /// other one to a mismatch naming both, shown with an injected list (an identifier this
+    /// build's G6 list does not hold, so the injected list alone decides)
     #[test]
     fn verdicts_read_an_injected_earlier_identifier_and_refuse_others() {
         let earlier = [0x6e; 32];
         let other = [0x5a; 32];
-        assert!(crate::PREVIOUS_SDF_SEMANTICS_IDS.is_empty());
+        assert!(!crate::PREVIOUS_SDF_SEMANTICS_IDS.contains(&earlier));
         for (id, previous, want) in [
             (
                 crate::SDF_SEMANTICS_ID,
