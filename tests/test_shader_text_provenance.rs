@@ -824,6 +824,13 @@ const OTHER: &[(&str, &str, &str)] = &[
         FRAGMENT,
     ),
     ("src/compiled/transpiler_common.rs", "next_var", NOT_SHADER),
+    ("src/compiled/transpiler_common.rs", "at", NOT_SHADER),
+    ("src/compiled/transpiler_common.rs", "at_fn", NOT_SHADER),
+    (
+        "src/compiled/transpiler_common.rs",
+        "transpile_rest_inner",
+        FRAGMENT,
+    ),
     ("src/compiled/transpiler_common.rs", "param", NOT_SHADER),
     (
         "src/compiled/transpiler_common.rs",
@@ -960,6 +967,7 @@ const NO_PUBLIC_PATH: &[(&str, &str)] = &[
     ("src/compiled/transpiler_common.rs", "globals"),
     ("src/compiled/transpiler_common.rs", "transpile_node"),
     ("src/compiled/transpiler_common.rs", "transpile_node_inner"),
+    ("src/compiled/transpiler_common.rs", "transpile_rest_inner"),
 ];
 
 /// Whether the features an entry needs are enabled in this build
