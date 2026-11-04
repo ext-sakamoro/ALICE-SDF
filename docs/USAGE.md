@@ -1672,7 +1672,7 @@ Download from [GitHub Releases](https://github.com/ext-sakamoro/ALICE-SDF/releas
 
 - **Auxiliary data buffer**: `Instruction` now carries `aux_offset`/`aux_len` pointing into `CompiledSdf.aux_data`, enabling variable-length data (matrices, control points, heightmaps) for complex operations
 - **7 new compiled operations**: ProjectiveTransform, LatticeDeform, SdfSkinning, IcosahedralSymmetry, IFS, HeightmapDisplacement, SurfaceRoughness — fully implemented in both scalar and SIMD evaluators
-- **130 total SdfNode variants**: 74 primitives, 25 operations, 7 transforms, 24 modifiers
+- **132 total SdfNode variants**: 74 primitives, 25 operations, 8 transforms, 25 modifiers
 - **220 pedantic clippy warnings fixed**: raw string hashes, implicit clone, useless format, dead code, etc.
 - **5 roundtrip tests**: each new operation verified against tree-walker for correctness
 

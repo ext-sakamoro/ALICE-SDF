@@ -146,6 +146,7 @@ GLSL, WGSL, HLSL and BlinkScript share one dispatch (`transpile_node_inner` in `
 | `OctantMirror` | ok | ok | ok | ok | err | ok | ok | ok | ok | ok | ok | ok |
 | `Shear` | ok | ok | ok | err | err | ok | ok | ok | ok | ok | ok | ok |
 | `Animated` | ok | ok | ok | err | ok | ok | ok | ok | ok | ok | ok | ok |
+| `Pose` | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | missing | missing |
 | `WithMaterial` | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
 | `IcosahedralSymmetry` | ok | ok | ok | err | err | ok | ok | ok | ok | err | ok | ok |
 | `IFS` | ok | ok | ok | err | err | ok | ok | ok | ok | err | ok | ok |

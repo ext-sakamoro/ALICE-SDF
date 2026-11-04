@@ -756,7 +756,7 @@ fn category_counts_match_one_node_per_variant() {
 
 /// Variants whose tree evaluator returns the child's distance by definition, so
 /// forwarding the child is the faithful emit.
-const DISTANCE_TRANSPARENT: [&str; 2] = ["Animated", "WithMaterial"];
+const DISTANCE_TRANSPARENT: [&str; 3] = ["Animated", "Pose", "WithMaterial"];
 
 /// Every one-child variant except the distance-transparent ones has an entry
 /// that changes the distance; otherwise the transpiler columns would compare

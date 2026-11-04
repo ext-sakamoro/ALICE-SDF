@@ -40,7 +40,7 @@ impl SdfCategory {
             Self::Primitive => 74,
             Self::Operation => 25,
             Self::Transform => 8,
-            Self::Modifier => 24,
+            Self::Modifier => 25,
         }
     }
 
@@ -1689,7 +1689,7 @@ mod tests {
 
     #[test]
     fn test_category_total() {
-        assert_eq!(SdfCategory::total(), 131);
+        assert_eq!(SdfCategory::total(), 132);
     }
 
     #[test]

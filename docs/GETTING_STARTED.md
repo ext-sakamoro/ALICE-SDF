@@ -32,7 +32,7 @@ ALICE-SDF is a 3D/spatial data specialist that transmits **mathematical descript
 - **Vertex filters** - Octahedral (normal / tangent, 50-75% smaller with <1% angular error), Quaternion (rotation, largest-component + cyclic swizzle), Exponential (float mantissa + shared exponent)
 - **Triangle stripifier** - Evans-Skiena-Varshney greedy strip algorithm with 8-triangle lookahead (~48% index reduction on closed meshes), supports primitive-restart or degenerate-triangle joining
 - **Nanite-style meshlet clusters** - V2 adjacency + `cone_weight` grow with `NormalCone` (basic + `cone_apex`) for Vulkan `VK_EXT_mesh_shader` / DirectX 12 mesh shader culling
-- **74 primitives, 25 operations, 7 transforms, 24 modifiers** (130 `SdfNode` variants, counted by `SdfNode::category()`)
+- **74 primitives, 25 operations, 8 transforms, 25 modifiers** (132 `SdfNode` variants, counted by `SdfNode::category()`)
 - **Chamfer & Stairs blends** - hard-edge bevels and stepped/terraced CSG transitions
 - **Interval Arithmetic** - conservative AABB evaluation for spatial pruning and Lipschitz bound tracking
 - **Relaxed Sphere Tracing** - over-relaxation (Keinert 2014, with overshoot retreat) and Lipschitz-adaptive step sizing; `RaymarchConfig::relaxed(&node)` is required for TPMS surfaces (Gyroid, Neovius, …), whose fields are not distance-bounded
@@ -162,11 +162,12 @@ SdfNode
   |                    ColumnsUnion, ColumnsIntersection, ColumnsSubtraction,      ← hg_sdf columns
   |                    Pipe, Engrave, Groove, Tongue,                              ← hg_sdf advanced
   |                    MetricBlend                                                 ← one field inside a bubble, another outside
-  |-- Transform (7): Translate, Rotate, Scale, ScaleNonUniform,
+  |-- Transform (8): Translate, Rotate, Scale, ScaleNonUniform,
   |                   ProjectiveTransform,                                         ← perspective projection with inv_matrix
   |                   LatticeDeform,                                               ← Free-Form Deformation (FFD) grid
-  |                   SdfSkinning                                                  ← bone-weight skeletal deformation
-  |-- Modifier (24): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
+  |                   SdfSkinning,                                                 ← bone-weight skeletal deformation
+  |                   GridWarp                                                     ← grid of affine maps (pose from a sampled map back to the rest pose)
+  |-- Modifier (25): Twist, Bend, RepeatInfinite, RepeatFinite, Noise, Round, Onion, Elongate,
   |                   Mirror, Revolution, Extrude, Taper, Displacement, SineDisplacement, PolarRepeat, SweepBezier,
   |                   Shear,                                                       ← 3-axis shear deformation
   |                   OctantMirror,                                                ← 48-fold symmetry
@@ -175,7 +176,8 @@ SdfNode
   |                   HeightmapDisplacement,                                       ← heightmap-driven surface displacement
   |                   SurfaceRoughness,                                            ← FBM noise roughness
   |                   Animated,                                                    ← timeline-driven parameter animation
-  |                   WithMaterial                                                 ← PBR material assignment
+  |                   WithMaterial,                                                ← PBR material assignment
+  |                   Pose                                                         ← marks a rigid motion as a pose (for the rest point)
 ```
 
 ## Usage
