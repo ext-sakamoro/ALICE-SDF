@@ -206,6 +206,156 @@ fn an_intersection_takes_the_farther_and_a_subtraction_the_first_operand() {
     assert!(na > 20 && nb > 20, "both operands chosen: {na} / {nb}");
 }
 
+/// The two posed operands of the family tests and their rest points
+fn two_posed() -> (
+    SdfNode,
+    SdfNode,
+    impl Fn(Vec3) -> Vec3,
+    impl Fn(Vec3) -> Vec3,
+) {
+    let (qa, ta) = (Quat::from_rotation_z(0.5), Vec3::new(-0.3, 0.0, 0.0));
+    let (qb, tb) = (Quat::from_rotation_x(-0.4), Vec3::new(0.3, 0.1, 0.0));
+    (
+        SdfNode::sphere(0.3).rigid_pose(qa, ta),
+        SdfNode::box3d(0.25, 0.25, 0.25).rigid_pose(qb, tb),
+        move |p: Vec3| qa.inverse() * (p - ta),
+        move |p: Vec3| qb.inverse() * (p - tb),
+    )
+}
+
+#[test]
+fn every_union_intersection_and_subtraction_variant_follows_its_rule() {
+    let (a, b, ra, rb) = two_posed();
+    type Op = fn(SdfNode, SdfNode) -> SdfNode;
+    // (name, operation, rule): 0 = the nearer operand, 1 = the farther, 2 = the first
+    let ops: [(&str, Op, u8); 18] = [
+        ("union", |a, b| a.union(b), 0),
+        ("smooth union", |a, b| a.smooth_union(b, 0.05), 0),
+        ("chamfer union", |a, b| a.chamfer_union(b, 0.05), 0),
+        ("stairs union", |a, b| a.stairs_union(b, 0.05, 3.0), 0),
+        ("columns union", |a, b| a.columns_union(b, 0.05, 3.0), 0),
+        ("exp smooth union", |a, b| a.exp_smooth_union(b, 0.05), 0),
+        ("intersection", |a, b| a.intersection(b), 1),
+        (
+            "smooth intersection",
+            |a, b| a.smooth_intersection(b, 0.05),
+            1,
+        ),
+        (
+            "chamfer intersection",
+            |a, b| a.chamfer_intersection(b, 0.05),
+            1,
+        ),
+        (
+            "stairs intersection",
+            |a, b| a.stairs_intersection(b, 0.05, 3.0),
+            1,
+        ),
+        (
+            "columns intersection",
+            |a, b| a.columns_intersection(b, 0.05, 3.0),
+            1,
+        ),
+        (
+            "exp smooth intersection",
+            |a, b| a.exp_smooth_intersection(b, 0.05),
+            1,
+        ),
+        ("subtraction", |a, b| a.subtract(b), 2),
+        ("smooth subtraction", |a, b| a.smooth_subtract(b, 0.05), 2),
+        ("chamfer subtraction", |a, b| a.chamfer_subtract(b, 0.05), 2),
+        (
+            "stairs subtraction",
+            |a, b| a.stairs_subtract(b, 0.05, 3.0),
+            2,
+        ),
+        (
+            "columns subtraction",
+            |a, b| a.columns_subtract(b, 0.05, 3.0),
+            2,
+        ),
+        (
+            "exp smooth subtraction",
+            |a, b| a.exp_smooth_subtract(b, 0.05),
+            2,
+        ),
+    ];
+    let pts = lattice(8, -0.6, 0.6);
+    let mut compared = 0;
+    for (name, op, rule) in ops {
+        let node = op(a.clone(), b.clone());
+        let (mut sa, mut sb) = (0, 0);
+        #[cfg(feature = "gpu")]
+        let gpu = gpu_rest(&node, &pts);
+        for (i, p) in pts.iter().enumerate() {
+            let (da, db) = (eval(&a, *p), eval(&b, *p));
+            let pick_a = match rule {
+                0 => da <= db,
+                1 => da >= db,
+                _ => true,
+            };
+            if pick_a {
+                sa += 1;
+            } else {
+                sb += 1;
+            }
+            let want = if pick_a { ra(*p) } else { rb(*p) };
+            let got = eval_rest_point(&node, *p).expect("followed");
+            assert!(
+                (got - want).length() < 1e-6,
+                "{name} p {p}: {got} vs {want}"
+            );
+            #[cfg(feature = "gpu")]
+            if let Some(g) = &gpu {
+                assert!(
+                    (g[i] - got).length() < 2e-6,
+                    "{name} gpu p {p}: {} vs {got}",
+                    g[i]
+                );
+            }
+            let _ = i;
+            compared += 1;
+        }
+        if rule != 2 {
+            assert!(
+                sa > 20 && sb > 20,
+                "{name}: both operands chosen ({sa} / {sb})"
+            );
+        }
+    }
+    assert_eq!(compared, 18 * 512);
+}
+
+/// The shader's rest point at `pts` (None without an adapter unless `ALICE_SDF_REQUIRE_GPU` is set)
+#[cfg(feature = "gpu")]
+fn gpu_rest(node: &SdfNode, pts: &[Vec3]) -> Option<Vec<Vec3>> {
+    use alice_sdf::compiled::GpuEvaluator;
+    let sh =
+        WgslShader::transpile_with_rest_point(node, TranspileMode::Hardcoded).expect("followed");
+    let mut out = vec![Vec3::ZERO; pts.len()];
+    for axis in 0..3 {
+        let mut s = sh.clone();
+        s.source = s.source.replace("fn sdf_eval(", "fn sdf_eval_d(");
+        s.source.push_str(&format!(
+            "\nfn sdf_eval(p: vec3<f32>) -> f32 {{ return sdf_eval_rest(p)[{axis}]; }}\n"
+        ));
+        let g = match GpuEvaluator::from_shader(&s) {
+            Ok(g) => g,
+            Err(e) => {
+                assert!(
+                    std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+                    "no GPU: {e}"
+                );
+                return None;
+            }
+        };
+        for (o, v) in out.iter_mut().zip(g.eval_batch(pts).expect("gpu eval")) {
+            o[axis] = v;
+        }
+    }
+    Some(out)
+}
+
 #[test]
 fn a_twist_has_no_rest_point() {
     let node = SdfNode::box3d(0.2, 0.4, 0.2).twist(2.0);
