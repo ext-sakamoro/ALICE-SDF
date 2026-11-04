@@ -9,11 +9,13 @@
 //!   evaluated): the bounded union equals the plain one there, including where that operand is the
 //!   minimum
 //! - (d) every test fails when it compared nothing
+//! - (e) the bound does skip: on points far from most operands, fewer operands are evaluated than
+//!   the plain union evaluates (a bounded union that never skips is not green)
 //! - the shader with bounds gives the CPU value (GPU, `ALICE_SDF_REQUIRE_GPU=1` makes a missing
 //!   adapter a failure)
 
 use alice_sdf::bound::bounding_sphere;
-use alice_sdf::eval::{eval, eval_union_bounded};
+use alice_sdf::eval::{eval, eval_union_bounded, eval_union_bounded_stats};
 use alice_sdf::prelude::*;
 use glam::Quat;
 
@@ -148,6 +150,35 @@ fn inside_a_bound_the_operand_is_evaluated() {
         compared += 1;
     }
     assert!(compared >= 300, "compared {compared}");
+}
+
+#[test]
+fn the_bound_actually_skips_far_operands() {
+    // points near one operand and far from the others: the others' bounds are farther than the
+    // near operand's distance, so they are skipped
+    let ops = operands();
+    let node = union_of(&ops);
+    let mut rng = Rng(0x5eed_5eed_5eed_5eed);
+    let (mut evaluated, mut skipped, mut plain, mut compared) = (0usize, 0usize, 0usize, 0usize);
+    for op in &ops {
+        let (c, r) = bounding_sphere(op).expect("bounded");
+        for h in hit_points(op, c, 32, &mut rng) {
+            let (v, st) = eval_union_bounded_stats(&node, h);
+            assert_eq!(v.to_bits(), eval(&node, h).to_bits(), "value at {h}");
+            assert_eq!(st.evaluated + st.skipped, ops.len(), "every operand is counted once");
+            evaluated += st.evaluated;
+            skipped += st.skipped;
+            plain += ops.len();
+            compared += 1;
+        }
+        let _ = r;
+    }
+    assert!(compared >= ops.len() * 16, "compared {compared}");
+    assert!(skipped > 0, "the bounded union skipped no operand");
+    assert!(
+        evaluated * 2 < plain,
+        "evaluated {evaluated} of {plain}: near one operand most of the others are skipped"
+    );
 }
 
 #[cfg(feature = "gpu")]
