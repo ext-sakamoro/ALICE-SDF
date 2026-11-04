@@ -6,11 +6,11 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1039 |
+| 🟢 Not ignored | 1057 |
 | 🔴 Red by design | 1 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **1044** |
+| **Total** | **1062** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -32,7 +32,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1039)
+## 🟢 Not ignored (1057)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -46,6 +46,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_live_sdf_oracle.rs` | 21 |
 | `test_lod_nanite_meshlet_oracle.rs` | 21 |
 | `test_tight_aabb_fold_oracle.rs` | 21 |
+| `test_grid_warp_oracle.rs` | 18 |
 | `test_shape_analysis_oracle.rs` | 18 |
 | `test_shader_text_provenance.rs` | 17 |
 | `test_smooth_ops_oracle.rs` | 17 |
@@ -68,7 +69,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_tight_aabb_levelset_oracle.rs` | 11 |
 | `test_domain_modifier_oracle.rs` | 10 |
 | `test_evaluator_opcode_parity.rs` | 10 |
-| `test_grid_warp_oracle.rs` | 10 |
 | `test_metric_field_oracle.rs` | 10 |
 | `test_svo_api_oracle.rs` | 10 |
 | `test_mc_shared_vertex_oracle.rs` | 9 |
@@ -89,6 +89,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_point_transform_oracle.rs` | 8 |
 | `test_tight_aabb_elongate_oracle.rs` | 8 |
 | `test_volume_api_oracle.rs` | 8 |
+| `sdf_semantics_id.rs` | 7 |
 | `test_animation_oracle.rs` | 7 |
 | `test_field_fidelity_oracle.rs` | 7 |
 | `test_g8_meaning_id.rs` | 7 |
@@ -97,11 +98,11 @@ Per-file counts (the test names are in `tests/`):
 | `test_npr_bytecode_oracle.rs` | 7 |
 | `test_primitive_closed_form_oracle.rs` | 7 |
 | `test_raycast_oracle.rs` | 7 |
+| `test_rest_point.rs` | 7 |
 | `test_shader_no_fused_multiply_add.rs` | 7 |
 | `test_sim_bridge_oracle.rs` | 7 |
 | `test_terrain_api_oracle.rs` | 7 |
 | `deep_tree_drop.rs` | 6 |
-| `sdf_semantics_id.rs` | 6 |
 | `test_autodiff_oracle.rs` | 6 |
 | `test_diff_oracle.rs` | 6 |
 | `test_hlsl_export_oracle.rs` | 6 |
@@ -167,6 +168,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_interval_predicate_oracle.rs` | 2 |
 | `test_interval_soundness.rs` | 2 |
 | `test_live_sdf_gpu_parity.rs` | 2 |
+| `test_node_data_gpu_parity.rs` | 2 |
 | `test_tight_aabb_cover_oracle.rs` | 2 |
 | `test_transpiler_naga_validate.rs` | 2 |
 | `mesh_sign_sliver.rs` | 1 |
