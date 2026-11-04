@@ -649,6 +649,58 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
     }
 }
 
+/// The rest point of `point`: the point the tree's leaves are evaluated at, following the branch a
+/// union (the nearer child) or an intersection (the farther child) selects, the first operand of a
+/// subtraction, the grid warp's map and the translate / rotate / scale transforms. A colour or texture
+/// law defined in the rest pose reads its value there. `None` when the tree has a node that moves
+/// points in a way this does not follow (twist, bend, repetition, mirror, ...)
+#[must_use]
+pub fn eval_rest_point(node: &SdfNode, point: Vec3) -> Option<Vec3> {
+    let pick = |a: &SdfNode, b: &SdfNode, nearer: bool| {
+        let (da, db) = (eval(a, point), eval(b, point));
+        if (da <= db) == nearer {
+            eval_rest_point(a, point)
+        } else {
+            eval_rest_point(b, point)
+        }
+    };
+    match node {
+        SdfNode::Union { a, b }
+        | SdfNode::SmoothUnion { a, b, .. }
+        | SdfNode::ChamferUnion { a, b, .. }
+        | SdfNode::StairsUnion { a, b, .. }
+        | SdfNode::ColumnsUnion { a, b, .. }
+        | SdfNode::ExpSmoothUnion { a, b, .. } => pick(a, b, true),
+        SdfNode::Intersection { a, b }
+        | SdfNode::SmoothIntersection { a, b, .. }
+        | SdfNode::ChamferIntersection { a, b, .. }
+        | SdfNode::StairsIntersection { a, b, .. }
+        | SdfNode::ColumnsIntersection { a, b, .. }
+        | SdfNode::ExpSmoothIntersection { a, b, .. } => {
+            // the farther child: `>=` picks a on ties, as the shader does
+            let (da, db) = (eval(a, point), eval(b, point));
+            if da >= db {
+                eval_rest_point(a, point)
+            } else {
+                eval_rest_point(b, point)
+            }
+        }
+        SdfNode::Subtraction { a, .. }
+        | SdfNode::SmoothSubtraction { a, .. }
+        | SdfNode::ChamferSubtraction { a, .. }
+        | SdfNode::StairsSubtraction { a, .. }
+        | SdfNode::ColumnsSubtraction { a, .. }
+        | SdfNode::ExpSmoothSubtraction { a, .. } => eval_rest_point(a, point),
+        SdfNode::WithMaterial { child, .. } => eval_rest_point(child, point),
+        SdfNode::Translate { child, offset } => eval_rest_point(child, point - *offset),
+        SdfNode::Rotate { child, rotation } => eval_rest_point(child, rotation.inverse() * point),
+        SdfNode::Scale { child, factor } => eval_rest_point(child, point * (1.0 / factor)),
+        SdfNode::GridWarp { child, warp } => eval_rest_point(child, warp.warp(point).0),
+        n if crate::diff::node_children(n).is_empty() => Some(point),
+        _ => None,
+    }
+}
+
 /// Evaluate which material ID applies at a given point
 ///
 /// Walks the SDF tree and returns the material_id of the closest

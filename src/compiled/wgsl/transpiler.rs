@@ -252,6 +252,42 @@ impl WgslShader {
         }
     }
 
+    /// [`WgslShader::transpile_with_node_data`] with a second function in the same module,
+    /// `fn sdf_eval_rest(p: vec3<f32>) -> vec3<f32>`: the rest point of `p` (the point the tree's leaves
+    /// are evaluated at, through the union branch nearest `p`, the grid warp's map and the translate /
+    /// rotate / scale transforms; see [`crate::eval::eval_rest_point`], the same choices on the CPU).
+    /// A colour or texture law defined in the rest pose reads its value there. The two functions share
+    /// the node data (each array is in the buffer once)
+    ///
+    /// # Errors
+    ///
+    /// The tree has a node that moves points in a way the rest point does not follow (twist, bend,
+    /// repetition, mirror, ...)
+    pub fn transpile_with_rest_point(node: &SdfNode, mode: TranspileMode) -> Result<Self, String> {
+        use super::super::transpiler_common::{GenericTranspiler, TranspileModeLang};
+        let m = match mode {
+            TranspileMode::Hardcoded => TranspileModeLang::Hardcoded,
+            TranspileMode::Dynamic => TranspileModeLang::Dynamic,
+        };
+        let mut g: GenericTranspiler<WgslLang> = GenericTranspiler::new(m);
+        g.node_data = Some(Vec::new());
+        let body = g.transpile_node(node, "p");
+        let mut code = String::new();
+        let r = g.transpile_rest_inner(node, "p", &mut code)?;
+        let source = g.generate_shader(&body)
+            + &format!(
+                "\nfn sdf_eval_rest(p: vec3<f32>) -> vec3<f32> {{\n{code}    return {r};\n}}\n"
+            );
+        Ok(Self {
+            source,
+            helper_count: g.helper_functions.len(),
+            param_layout: g.params,
+            mode,
+            workgroup_size: 256,
+            node_data: g.node_data.unwrap_or_default(),
+        })
+    }
+
     const fn node_data_decl(&self) -> &'static str {
         if self.node_data.is_empty() {
             ""

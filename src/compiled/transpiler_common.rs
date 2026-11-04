@@ -271,6 +271,10 @@ pub struct GenericTranspiler<L: ShaderLang> {
     /// appended here and read from the storage buffer `alice_node_data` (binding 4) instead of
     /// being emitted as module-scope constants (see [`GenericTranspiler::data_array`])
     pub node_data: Option<Vec<f32>>,
+    /// Data arrays already emitted, by (length, FNV-1a of the bits): the same values are emitted once
+    /// (a second walk of the tree, e.g. the rest point, reuses the first walk's arrays), with whether
+    /// the accessor function was emitted
+    data_seen: Vec<((usize, u64), DataArr, bool)>,
     _phantom: std::marker::PhantomData<L>,
 }
 
@@ -313,6 +317,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             params: Vec::new(),
             globals: String::new(),
             node_data: None,
+            data_seen: Vec::new(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -320,6 +325,21 @@ impl<L: ShaderLang> GenericTranspiler<L> {
     /// Register a per-node data array: appended to the node data buffer when it is enabled,
     /// otherwise emitted as a module-scope constant array named `name`.
     pub fn data_array(&mut self, name: &str, values: &[f32]) -> DataArr {
+        let key = (
+            values.len(),
+            values.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, v| {
+                (h ^ u64::from(v.to_bits())).wrapping_mul(0x0000_0100_0000_01b3)
+            }),
+        );
+        if let Some((_, d, _)) = self.data_seen.iter().find(|(k, _, _)| *k == key) {
+            return d.clone();
+        }
+        let d = self.data_array_new(name, values);
+        self.data_seen.push((key, d.clone(), false));
+        d
+    }
+
+    fn data_array_new(&mut self, name: &str, values: &[f32]) -> DataArr {
         if let Some(buf) = self.node_data.as_mut() {
             let base = buf.len();
             buf.extend_from_slice(values);
@@ -340,10 +360,16 @@ impl<L: ShaderLang> GenericTranspiler<L> {
     /// for arrays read with many dynamic indices (read them with [`DataArr::at_fn`])
     pub fn data_array_accessed(&mut self, name: &str, values: &[f32]) -> DataArr {
         let d = self.data_array(name, values);
-        if d.base.is_none() {
+        let seen = self
+            .data_seen
+            .iter_mut()
+            .find(|(_, e, _)| e.name == d.name)
+            .expect("data_array registers every array");
+        if d.base.is_none() && !seen.2 {
             self.globals
-                .push_str(&L::global_float_at_fn(&format!("{name}_at"), name));
+                .push_str(&L::global_float_at_fn(&format!("{}_at", d.name), &d.name));
         }
+        seen.2 = true;
         d
     }
 
@@ -493,6 +519,253 @@ impl<L: ShaderLang> GenericTranspiler<L> {
     }
 
     /// Transpile an SDF node tree into shader code, returning the body with a final `return`.
+    /// The grid warp's point computation (shared by the field and the rest point): emits `q`, the box
+    /// distance and the blended map, and returns the names of (x = M q, e, b, Λ(q), F(q))
+    fn emit_grid_warp_point(
+        &mut self,
+        warp: &crate::transforms::GridWarp,
+        point_var: &str,
+        code: &mut String,
+    ) -> (String, String, String, String, String) {
+        let data = warp.data();
+        let id = self.var_counter;
+        self.var_counter += 1;
+        let arr = self.data_array_accessed(&format!("alice_gw_{id}"), &data.maps);
+        let lam_arr = self.data_array_accessed(&format!("alice_gwl_{id}"), warp.node_lambda());
+        let floor_arr = (!data.floor.is_empty())
+            .then(|| self.data_array_accessed(&format!("alice_gwf_{id}"), &data.floor));
+        let bmin = warp.box_min();
+        let bmax = warp.box_max();
+        let [nx, ny, nz] = data.dims.map(i64::from);
+        let p = point_var;
+        let (q, e, g) = (self.next_var(), self.next_var(), self.next_var());
+        code.push_str(&L::decl_vec3(
+            &q,
+            &format!(
+                "clamp({p}, {}, {})",
+                L::vec3_ctor(&lit(bmin.x), &lit(bmin.y), &lit(bmin.z)),
+                L::vec3_ctor(&lit(bmax.x), &lit(bmax.y), &lit(bmax.z))
+            ),
+        ));
+        code.push_str(&L::decl_float(&e, &format!("length({p} - {q})")));
+        let (bw, bx) = (self.next_var(), self.next_var());
+        code.push_str(&L::decl_vec3(
+            &bw,
+            &format!(
+                "max({} - {p}, {p} - {})",
+                L::vec3_ctor(&lit(bmin.x), &lit(bmin.y), &lit(bmin.z)),
+                L::vec3_ctor(&lit(bmax.x), &lit(bmax.y), &lit(bmax.z))
+            ),
+        ));
+        code.push_str(&L::decl_float(
+            &bx,
+            &format!("{e} + min(max({bw}.x, max({bw}.y, {bw}.z)), 0.0)"),
+        ));
+        code.push_str(&L::decl_vec3(
+            &g,
+            &format!(
+                "({q} - {}) * {}",
+                L::vec3_ctor(&lit(bmin.x), &lit(bmin.y), &lit(bmin.z)),
+                lit(1.0 / data.cell)
+            ),
+        ));
+        let (ix, iy, iz) = (self.next_var(), self.next_var(), self.next_var());
+        for (iv, c, n) in [(&ix, "x", nx), (&iy, "y", ny), (&iz, "z", nz)] {
+            code.push_str(&L::decl_int(
+                iv,
+                &format!(
+                    "clamp({}, 0, {})",
+                    L::cast_int(&format!("floor({g}.{c})")),
+                    n - 2
+                ),
+            ));
+        }
+        let (fx, fy, fz) = (self.next_var(), self.next_var(), self.next_var());
+        for (fv, c, iv) in [(&fx, "x", &ix), (&fy, "y", &iy), (&fz, "z", &iz)] {
+            code.push_str(&L::decl_float(
+                fv,
+                &format!("{g}.{c} - {}", L::cast_float(iv)),
+            ));
+        }
+        let (node, base) = (self.next_var(), self.next_var());
+        code.push_str(&L::decl_int(
+            &node,
+            &format!("{ix} + {nx} * ({iy} + {ny} * {iz})"),
+        ));
+        code.push_str(&L::decl_int(&base, &format!("{node} * 12")));
+        let mut w = Vec::new();
+        for c in 0..8i64 {
+            let (dx, dy, dz) = (c & 1, (c >> 1) & 1, (c >> 2) & 1);
+            let f = |d: i64, v: &str| {
+                if d == 1 {
+                    v.to_owned()
+                } else {
+                    format!("(1.0 - {v})")
+                }
+            };
+            let wv = self.next_var();
+            code.push_str(&L::decl_float(
+                &wv,
+                &format!("{} * {} * {}", f(dx, &fx), f(dy, &fy), f(dz, &fz)),
+            ));
+            w.push((wv, (dx + nx * (dy + ny * dz)) * 12));
+        }
+        // Λ(q): the node bounds blended with the same weights, in the CPU order
+        let mut lexpr = "0.0".to_owned();
+        for (wv, off) in &w {
+            lexpr = format!(
+                "({lexpr} + {wv} * {})",
+                lam_arr.at_fn(&format!("{node} + {}", off / 12))
+            );
+        }
+        let lam = self.next_var();
+        code.push_str(&L::decl_float(&lam, &lexpr));
+        // F(q): the floor blended with the same weights (−reach without a floor)
+        let fl = self.next_var();
+        match &floor_arr {
+            Some(fa) => {
+                let mut fexpr = "0.0".to_owned();
+                for (wv, off) in &w {
+                    fexpr = format!(
+                        "({fexpr} + {wv} * {})",
+                        fa.at_fn(&format!("{node} + {}", off / 12))
+                    );
+                }
+                code.push_str(&L::decl_float(&fl, &fexpr));
+            }
+            None => code.push_str(&L::decl_float(&fl, &format!("-{}", lit(data.reach)))),
+        }
+        let mut m = Vec::new();
+        for t in 0..12i64 {
+            let mut expr = "0.0".to_owned();
+            for (wv, off) in &w {
+                expr = format!(
+                    "({expr} + {wv} * {})",
+                    arr.at_fn(&format!("{base} + {}", off + t))
+                );
+            }
+            let mv = self.next_var();
+            code.push_str(&L::decl_float(&mv, &expr));
+            m.push(mv);
+        }
+        let x = self.next_var();
+        let row = |r: usize| {
+            format!(
+                "{} * {q}.x + {} * {q}.y + {} * {q}.z + {}",
+                m[r * 4],
+                m[r * 4 + 1],
+                m[r * 4 + 2],
+                m[r * 4 + 3]
+            )
+        };
+        code.push_str(&L::decl_vec3(&x, &L::vec3_ctor(&row(0), &row(1), &row(2))));
+        (x, e, bx, lam, fl)
+    }
+
+    /// Code for the rest point of `node` at `point_var` (the point the tree's leaves are evaluated at,
+    /// following the branch a union / intersection selects by distance, the grid warp's map and the
+    /// translate / rotate / scale transforms); the name of the vec3. Err for a node that moves points
+    /// in another way (twist, bend, repetition, mirror, ...): no rest point is invented for it
+    ///
+    /// # Errors
+    ///
+    /// A node kind the rest point does not follow
+    pub fn transpile_rest_inner(
+        &mut self,
+        node: &SdfNode,
+        point_var: &str,
+        code: &mut String,
+    ) -> Result<String, String> {
+        let pick = |t: &mut Self,
+                    a: &SdfNode,
+                    b: &SdfNode,
+                    op: &str,
+                    code: &mut String|
+         -> Result<String, String> {
+            let da = t.transpile_node_inner(a, point_var, code);
+            let db = t.transpile_node_inner(b, point_var, code);
+            let ra = t.transpile_rest_inner(a, point_var, code)?;
+            let rb = t.transpile_rest_inner(b, point_var, code)?;
+            let r = t.next_var();
+            code.push_str(&L::decl_mut_vec3(&r, &rb));
+            code.push_str(&format!("    if ({da} {op} {db}) {{ {r} = {ra}; }}\n"));
+            Ok(r)
+        };
+        match node {
+            SdfNode::Union { a, b }
+            | SdfNode::SmoothUnion { a, b, .. }
+            | SdfNode::ChamferUnion { a, b, .. }
+            | SdfNode::StairsUnion { a, b, .. }
+            | SdfNode::ColumnsUnion { a, b, .. }
+            | SdfNode::ExpSmoothUnion { a, b, .. } => pick(self, a, b, "<=", code),
+            SdfNode::Intersection { a, b }
+            | SdfNode::SmoothIntersection { a, b, .. }
+            | SdfNode::ChamferIntersection { a, b, .. }
+            | SdfNode::StairsIntersection { a, b, .. }
+            | SdfNode::ColumnsIntersection { a, b, .. }
+            | SdfNode::ExpSmoothIntersection { a, b, .. } => pick(self, a, b, ">=", code),
+            SdfNode::Subtraction { a, .. }
+            | SdfNode::SmoothSubtraction { a, .. }
+            | SdfNode::ChamferSubtraction { a, .. }
+            | SdfNode::StairsSubtraction { a, .. }
+            | SdfNode::ColumnsSubtraction { a, .. }
+            | SdfNode::ExpSmoothSubtraction { a, .. } => {
+                self.transpile_rest_inner(a, point_var, code)
+            }
+            SdfNode::WithMaterial { child, .. } => {
+                self.transpile_rest_inner(child, point_var, code)
+            }
+            SdfNode::Translate { child, offset } => {
+                let new_p = self.next_var();
+                let (ox, oy, oz) = (
+                    self.param(offset.x),
+                    self.param(offset.y),
+                    self.param(offset.z),
+                );
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &format!("{} - {}", point_var, L::vec3_ctor(&ox, &oy, &oz)),
+                ));
+                self.transpile_rest_inner(child, &new_p, code)
+            }
+            SdfNode::Rotate { child, rotation } => {
+                self.ensure_helper("quat_rotate");
+                let inv = rotation.inverse();
+                let new_p = self.next_var();
+                let (qx, qy, qz, qw) = (
+                    self.param(inv.x),
+                    self.param(inv.y),
+                    self.param(inv.z),
+                    self.param(inv.w),
+                );
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &format!(
+                        "quat_rotate({}, {})",
+                        point_var,
+                        L::vec4_ctor(&qx, &qy, &qz, &qw)
+                    ),
+                ));
+                self.transpile_rest_inner(child, &new_p, code)
+            }
+            SdfNode::Scale { child, factor } => {
+                let new_p = self.next_var();
+                let inv = self.param(1.0 / factor);
+                code.push_str(&L::decl_vec3(&new_p, &format!("{point_var} * {inv}")));
+                self.transpile_rest_inner(child, &new_p, code)
+            }
+            SdfNode::GridWarp { child, warp } => {
+                let (x, _, _, _, _) = self.emit_grid_warp_point(warp, point_var, code);
+                self.transpile_rest_inner(child, &x, code)
+            }
+            n if crate::diff::node_children(n).is_empty() => Ok(point_var.to_owned()),
+            n => Err(format!(
+                "rest point: {} moves points in a way the rest point does not follow",
+                crate::diff::node_kind(n)
+            )),
+        }
+    }
+
     pub fn transpile_node(&mut self, node: &SdfNode, point_var: &str) -> String {
         let mut code = String::new();
         let result_var = self.transpile_node_inner(node, point_var, &mut code);
@@ -2607,139 +2880,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 // started at 0.0, the CPU order), x = M q; the child at x divided by the computed
                 // bound, extended outside the box by hypot(e, max(d, 0)) and clipped by the box
                 // (max with the box's signed distance b, the CPU order)
+                let (x, e, bx, lam, fl) = self.emit_grid_warp_point(warp, point_var, code);
                 let data = warp.data();
-                let id = self.var_counter;
-                self.var_counter += 1;
-                let arr = self.data_array_accessed(&format!("alice_gw_{id}"), &data.maps);
-                let lam_arr =
-                    self.data_array_accessed(&format!("alice_gwl_{id}"), warp.node_lambda());
-                let floor_arr = (!data.floor.is_empty())
-                    .then(|| self.data_array_accessed(&format!("alice_gwf_{id}"), &data.floor));
-                let bmin = warp.box_min();
-                let bmax = warp.box_max();
-                let [nx, ny, nz] = data.dims.map(i64::from);
-                let p = point_var;
-                let (q, e, g) = (self.next_var(), self.next_var(), self.next_var());
-                code.push_str(&L::decl_vec3(
-                    &q,
-                    &format!(
-                        "clamp({p}, {}, {})",
-                        L::vec3_ctor(&lit(bmin.x), &lit(bmin.y), &lit(bmin.z)),
-                        L::vec3_ctor(&lit(bmax.x), &lit(bmax.y), &lit(bmax.z))
-                    ),
-                ));
-                code.push_str(&L::decl_float(&e, &format!("length({p} - {q})")));
-                let (bw, bx) = (self.next_var(), self.next_var());
-                code.push_str(&L::decl_vec3(
-                    &bw,
-                    &format!(
-                        "max({} - {p}, {p} - {})",
-                        L::vec3_ctor(&lit(bmin.x), &lit(bmin.y), &lit(bmin.z)),
-                        L::vec3_ctor(&lit(bmax.x), &lit(bmax.y), &lit(bmax.z))
-                    ),
-                ));
-                code.push_str(&L::decl_float(
-                    &bx,
-                    &format!("{e} + min(max({bw}.x, max({bw}.y, {bw}.z)), 0.0)"),
-                ));
-                code.push_str(&L::decl_vec3(
-                    &g,
-                    &format!(
-                        "({q} - {}) * {}",
-                        L::vec3_ctor(&lit(bmin.x), &lit(bmin.y), &lit(bmin.z)),
-                        lit(1.0 / data.cell)
-                    ),
-                ));
-                let (ix, iy, iz) = (self.next_var(), self.next_var(), self.next_var());
-                for (iv, c, n) in [(&ix, "x", nx), (&iy, "y", ny), (&iz, "z", nz)] {
-                    code.push_str(&L::decl_int(
-                        iv,
-                        &format!(
-                            "clamp({}, 0, {})",
-                            L::cast_int(&format!("floor({g}.{c})")),
-                            n - 2
-                        ),
-                    ));
-                }
-                let (fx, fy, fz) = (self.next_var(), self.next_var(), self.next_var());
-                for (fv, c, iv) in [(&fx, "x", &ix), (&fy, "y", &iy), (&fz, "z", &iz)] {
-                    code.push_str(&L::decl_float(
-                        fv,
-                        &format!("{g}.{c} - {}", L::cast_float(iv)),
-                    ));
-                }
-                let (node, base) = (self.next_var(), self.next_var());
-                code.push_str(&L::decl_int(
-                    &node,
-                    &format!("{ix} + {nx} * ({iy} + {ny} * {iz})"),
-                ));
-                code.push_str(&L::decl_int(&base, &format!("{node} * 12")));
-                let mut w = Vec::new();
-                for c in 0..8i64 {
-                    let (dx, dy, dz) = (c & 1, (c >> 1) & 1, (c >> 2) & 1);
-                    let f = |d: i64, v: &str| {
-                        if d == 1 {
-                            v.to_owned()
-                        } else {
-                            format!("(1.0 - {v})")
-                        }
-                    };
-                    let wv = self.next_var();
-                    code.push_str(&L::decl_float(
-                        &wv,
-                        &format!("{} * {} * {}", f(dx, &fx), f(dy, &fy), f(dz, &fz)),
-                    ));
-                    w.push((wv, (dx + nx * (dy + ny * dz)) * 12));
-                }
-                // Λ(q): the node bounds blended with the same weights, in the CPU order
-                let mut lexpr = "0.0".to_owned();
-                for (wv, off) in &w {
-                    lexpr = format!(
-                        "({lexpr} + {wv} * {})",
-                        lam_arr.at_fn(&format!("{node} + {}", off / 12))
-                    );
-                }
-                let lam = self.next_var();
-                code.push_str(&L::decl_float(&lam, &lexpr));
-                // F(q): the floor blended with the same weights (−reach without a floor)
-                let fl = self.next_var();
-                match &floor_arr {
-                    Some(fa) => {
-                        let mut fexpr = "0.0".to_owned();
-                        for (wv, off) in &w {
-                            fexpr = format!(
-                                "({fexpr} + {wv} * {})",
-                                fa.at_fn(&format!("{node} + {}", off / 12))
-                            );
-                        }
-                        code.push_str(&L::decl_float(&fl, &fexpr));
-                    }
-                    None => code.push_str(&L::decl_float(&fl, &format!("-{}", lit(data.reach)))),
-                }
-                let mut m = Vec::new();
-                for t in 0..12i64 {
-                    let mut expr = "0.0".to_owned();
-                    for (wv, off) in &w {
-                        expr = format!(
-                            "({expr} + {wv} * {})",
-                            arr.at_fn(&format!("{base} + {}", off + t))
-                        );
-                    }
-                    let mv = self.next_var();
-                    code.push_str(&L::decl_float(&mv, &expr));
-                    m.push(mv);
-                }
-                let x = self.next_var();
-                let row = |r: usize| {
-                    format!(
-                        "{} * {q}.x + {} * {q}.y + {} * {q}.z + {}",
-                        m[r * 4],
-                        m[r * 4 + 1],
-                        m[r * 4 + 2],
-                        m[r * 4 + 3]
-                    )
-                };
-                code.push_str(&L::decl_vec3(&x, &L::vec3_ctor(&row(0), &row(1), &row(2))));
                 let dc = self.transpile_node_inner(child, &x, code);
                 let (dv, dp, out) = (self.next_var(), self.next_var(), self.next_var());
                 let r = lit(data.reach);

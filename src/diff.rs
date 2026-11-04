@@ -190,6 +190,20 @@ fn same_variant(a: &SdfNode, b: &SdfNode) -> bool {
 }
 
 /// Extract children of an SdfNode.
+/// The children of a node (empty for a leaf)
+pub(crate) fn node_children(node: &SdfNode) -> Vec<&SdfNode> {
+    get_children(node)
+}
+
+/// The node kind's name (the enum variant), for messages
+pub(crate) fn node_kind(node: &SdfNode) -> String {
+    let s = format!("{node:?}");
+    s.split(|c: char| !c.is_alphanumeric() && c != '_')
+        .next()
+        .unwrap_or("?")
+        .to_owned()
+}
+
 fn get_children(node: &SdfNode) -> Vec<&SdfNode> {
     match node {
         // Operations with two children
