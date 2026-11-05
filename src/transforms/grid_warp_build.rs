@@ -50,6 +50,15 @@ pub enum GridWarpBuildError {
     NotFinite,
     /// The shell bound is not finite or is negative
     BadShell,
+    /// An overhang was declared without a shell (there is no floor for it to bound)
+    OverhangWithoutShell,
+    /// An overhang was declared but the rest sheet is not planar
+    NotPlanar,
+    /// The child's bounds reach past the rim farther than the declared overhang (or the
+    /// declared value is not finite and non-negative)
+    OverhangExceeded,
+    /// The child's bounds reach farther from the rest sheet's plane than the shell
+    ShellExceeded,
 }
 
 impl core::fmt::Display for GridWarpBuildError {
@@ -67,6 +76,17 @@ impl core::fmt::Display for GridWarpBuildError {
             Self::BadCell => write!(f, "the cell size is not finite and positive"),
             Self::NotFinite => write!(f, "a vertex is not finite"),
             Self::BadShell => write!(f, "the shell bound is not finite or is negative"),
+            Self::OverhangWithoutShell => write!(f, "an overhang was declared without a shell"),
+            Self::NotPlanar => write!(f, "an overhang needs a planar rest sheet"),
+            Self::OverhangExceeded => {
+                write!(
+                    f,
+                    "the child reaches past the rim farther than the declared overhang"
+                )
+            }
+            Self::ShellExceeded => {
+                write!(f, "the child reaches farther from the sheet than the shell")
+            }
         }
     }
 }
@@ -129,6 +149,56 @@ fn rest_is_planar(rest: &[Vec3], triangles: &[[u32; 3]]) -> bool {
     triangles.iter().all(|t| {
         unit_normal([v(t[0]), v(t[1]), v(t[2])]).is_some_and(|n| n.cross(n0).length() <= 1e-5)
     }) && rest.iter().all(|p| n0.dot(*p - o).abs() <= 1e-5 * scale)
+}
+
+/// Check the child's rest-space bounds against the shell and the declared overhang: every
+/// corner of the box lies within `t` of the (planar) rest sheet's plane, and its projection on
+/// the plane within `declared` of the sheet (a box holds the child, so this bounds the child).
+fn check_overhang(
+    rest: &[Vec3],
+    triangles: &[[u32; 3]],
+    o: &Overhang,
+    t: f32,
+) -> Result<(), GridWarpBuildError> {
+    let v = |i: u32| rest[i as usize];
+    let first = triangles[0];
+    let n = unit_normal([v(first[0]), v(first[1]), v(first[2])])
+        .ok_or(GridWarpBuildError::NotPlanar)?;
+    let origin = v(first[0]);
+    let tol = 1e-5 * (1.0 + (o.child_max - o.child_min).length());
+    for i in 0..8u8 {
+        let c = Vec3::new(
+            if i & 1 == 0 {
+                o.child_min.x
+            } else {
+                o.child_max.x
+            },
+            if i & 2 == 0 {
+                o.child_min.y
+            } else {
+                o.child_max.y
+            },
+            if i & 4 == 0 {
+                o.child_min.z
+            } else {
+                o.child_max.z
+            },
+        );
+        let h = n.dot(c - origin);
+        if h.abs() > t + tol {
+            return Err(GridWarpBuildError::ShellExceeded);
+        }
+        let q = c - n * h;
+        let d = triangles
+            .iter()
+            .map(|tr| point_triangle_distance_sq(q, v(tr[0]), v(tr[1]), v(tr[2])))
+            .fold(f32::INFINITY, law_min_f32)
+            .sqrt();
+        if d > o.declared + tol {
+            return Err(GridWarpBuildError::OverhangExceeded);
+        }
+    }
+    Ok(())
 }
 
 /// The rim edges (used by exactly one triangle) as (vertex, vertex, owning triangle).
@@ -231,6 +301,22 @@ pub struct WarpGrid {
     /// The caller's bound: every point of the child lies within this distance of the rest sheet
     /// (`None`: no floor, no fold handling)
     pub shell: Option<f32>,
+    /// How far the child reaches past the rest sheet's rim, checked against the child's bounds
+    /// (`None`: assume up to the shell, the most a child within `shell` of the sheet can reach)
+    pub overhang: Option<Overhang>,
+}
+
+/// The child's in-plane reach past the rest sheet's rim, with the child's rest-space bounds
+/// the builder checks it against (a planar rest sheet is required).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Overhang {
+    /// Declared reach past the rim, ≥ 0 (0: the child lies over the sheet, as a glyph inside
+    /// its box)
+    pub declared: f32,
+    /// Lower corner of a box holding the child in rest space
+    pub child_min: Vec3,
+    /// Upper corner of that box
+    pub child_max: Vec3,
 }
 
 /// Upper bound on the largest singular value of the linear part of a row-major 3×4 map: the
@@ -270,10 +356,13 @@ fn spectral_bound(m: &[f32; 12]) -> f32 {
 ///   `F_T` keeps at unit length: `|F_T(x) − F_T(f)| = |x − f| ≤ t`; if `f` is inside a rim
 ///   edge `e` (an edge of one triangle only), `x − f = a·u + b·n` with `u` the edge's outward
 ///   in-plane direction and `a² + b² ≤ t²`; `A_T` maps `u` into the posed plane and `n` to the
-///   posed unit normal, so the image lies within `t·max(|A_T u|, 1)` of the posed edge (a pull
-///   along the edge does not stretch `u`); if `f` is a rim vertex the offset may point
-///   anywhere outward, and the image lies within `σ_T·t` of the posed vertex (`σ_T` the
-///   largest over the vertex's rim triangles). So on a planar rest sheet the posed shape lies
+///   posed unit normal, so with `a ≤ m` the image lies within `√(t² + m²·max(|A_T u|² − 1, 0))`
+///   of the posed edge (a pull along the edge does not stretch `u`); if `f` is a rim vertex
+///   the offset may point anywhere outward, and the image lies within
+///   `√(t² + m²·max(σ_T² − 1, 0))` of the posed vertex (`σ_T` the largest over the vertex's
+///   rim triangles). `m` is how far the child reaches past the rim: `grid.overhang`'s declared
+///   value (checked against the child's bounds; 0 for a child over the sheet, which makes every
+///   rim term `t`) or, undeclared, `t`. So on a planar rest sheet the posed shape lies
 ///   within `t` of the posed triangles, `t·max(|A_T u|, 1)` of the posed rim edges or `σ_T·t`
 ///   of the posed rim vertices; off a planar rest sheet, within `σ_T·t` of posed `T` for each
 ///   `T` (the builder checks planarity and finds the rim from the edges);
@@ -305,6 +394,7 @@ pub fn grid_warp_from_triangles(
         cell,
         reach,
         shell,
+        overhang,
     } = *grid;
     if rest.len() != posed.len() {
         return Err(GridWarpBuildError::LengthMismatch {
@@ -361,6 +451,22 @@ pub fn grid_warp_from_triangles(
     // carry an in-plane overhang, stretched by at most σ_T (σ_T·t); off a planar rest sheet
     // every triangle takes σ_T·t
     let planar = rest_is_planar(rest, triangles);
+    // the overhang the rim terms may assume: the declared one, checked against the child's
+    // bounds, or else (undeclared) as far as the shell lets the child reach
+    let reach_past_rim = match (overhang, shell) {
+        (None, _) => None,
+        (Some(_), None) => return Err(GridWarpBuildError::OverhangWithoutShell),
+        (Some(o), Some(t)) => {
+            if !planar {
+                return Err(GridWarpBuildError::NotPlanar);
+            }
+            if !(o.declared.is_finite() && o.declared >= 0.0) {
+                return Err(GridWarpBuildError::OverhangExceeded);
+            }
+            check_overhang(rest, triangles, &o, t)?;
+            Some(law_min_f32(o.declared, t))
+        }
+    };
     // per triangle: how far its part of the shape can lie from posed T (an overhang beyond a
     // rim edge is bounded separately, against that posed edge, below)
     let reach_of: Vec<f32> = shell
@@ -414,10 +520,14 @@ pub fn grid_warp_from_triangles(
                     rim_vertex_sigma[v as usize] =
                         law_max_f32(rim_vertex_sigma[v as usize], sigmas[k]);
                 }
+                // the offset is a·u + b·n with a ≤ m (the reach past the rim) and a² + b² ≤ t²;
+                // its image has length sqrt(a²|A u|² + b²) ≤ sqrt(t² + m²·max(|A u|² − 1, 0))
+                let m = reach_past_rim.unwrap_or(t);
+                let au2 = au.length_squared();
                 (
                     posed[a as usize],
                     posed[b as usize],
-                    t * law_max_f32(au.length(), 1.0),
+                    (t * t + m * m * law_max_f32(au2 - 1.0, 0.0)).sqrt(),
                 )
             })
             .collect(),
@@ -428,7 +538,14 @@ pub fn grid_warp_from_triangles(
             .iter()
             .enumerate()
             .filter(|(_, s)| **s > 0.0)
-            .map(|(v, s)| (posed[v], s * t))
+            .map(|(v, s)| {
+                // any outward direction: |A u| ≤ σ_T
+                let m = reach_past_rim.unwrap_or(t);
+                (
+                    posed[v],
+                    (t * t + m * m * law_max_f32(s * s - 1.0, 0.0)).sqrt(),
+                )
+            })
             .collect(),
         None => Vec::new(),
     };

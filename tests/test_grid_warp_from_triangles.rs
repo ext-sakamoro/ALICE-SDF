@@ -1183,8 +1183,8 @@ fn edge_pulled() -> (Vec<Vec3>, Vec<Vec3>, Vec<[u32; 3]>) {
 
 #[test]
 fn a_child_inside_the_sheet_leaves_no_near_miss_beyond_t_when_the_overhang_is_declared() {
-    // The child (a slab over [0.1, 0.9]², 0.02 thick on each side) lies inside the sheet's
-    // footprint: its overhang past the rim is 0. Declaring it bounds every rim term by t, so no
+    // The child (a slab filling the sheet, [0, 1]², 0.02 thick on each side) reaches the rim but
+    // not past it: its overhang is 0. Declaring it bounds every rim term by t, so no
     // point farther than t + the cell diagonal from the posed sheet looks like a surface (field
     // below a tracer's hit threshold). Without the declaration the rim vertex dragged out keeps
     // σ_T·t, and such near-misses appear (the scene has teeth).
@@ -1201,20 +1201,25 @@ fn a_child_inside_the_sheet_leaves_no_near_miss_beyond_t_when_the_overhang_is_de
             shell: Some(shell),
             overhang,
         };
-        let node = slab().grid_warp(
-            GridWarp::new(grid_warp_from_triangles(&rest, &posed, &tris, &grid).expect("builds"))
+        let node = SdfNode::box3d(1.0, 1.0, 0.04)
+            .translate(0.5, 0.5, 0.0)
+            .grid_warp(
+                GridWarp::new(
+                    grid_warp_from_triangles(&rest, &posed, &tris, &grid).expect("builds"),
+                )
                 .expect("valid"),
-        );
+            );
+        // specks are a few cells across: a coarse probe grid steps over them
         let mut n = 0;
-        for k in 0..20 {
-            for j in 0..30 {
-                for i in 0..22 {
+        for k in 0..64 {
+            for j in 0..96 {
+                for i in 0..72 {
                     let p = lo
                         + (hi - lo)
                             * Vec3::new(
-                                (i as f32 + 0.5) / 22.0,
-                                (j as f32 + 0.5) / 30.0,
-                                (k as f32 + 0.5) / 20.0,
+                                (i as f32 + 0.5) / 72.0,
+                                (j as f32 + 0.5) / 96.0,
+                                (k as f32 + 0.5) / 64.0,
                             );
                     if eval(&node, p) < 2e-4 && sheet_distance(p, &posed, &tris) > band {
                         n += 1;
@@ -1226,8 +1231,8 @@ fn a_child_inside_the_sheet_leaves_no_near_miss_beyond_t_when_the_overhang_is_de
     };
     let inside = Overhang {
         declared: 0.0,
-        child_min: Vec3::new(0.1, 0.1, -0.02),
-        child_max: Vec3::new(0.9, 0.9, 0.02),
+        child_min: Vec3::new(0.0, 0.0, -0.02),
+        child_max: Vec3::new(1.0, 1.0, 0.02),
     };
     assert!(count(None) > 0, "the scene shows no near-miss to clear");
     assert_eq!(
@@ -1335,7 +1340,7 @@ fn a_child_beyond_its_declared_overhang_is_an_error() {
     };
     assert!(matches!(
         build(o, 0.03),
-        Err(GridWarpBuildError::OverhangExceeded { .. })
+        Err(GridWarpBuildError::OverhangExceeded)
     ));
     // thicker than the shell
     let o = Overhang {
@@ -1345,7 +1350,7 @@ fn a_child_beyond_its_declared_overhang_is_an_error() {
     };
     assert!(matches!(
         build(o, 0.03),
-        Err(GridWarpBuildError::ShellExceeded { .. })
+        Err(GridWarpBuildError::ShellExceeded)
     ));
     // inside: fine
     let o = Overhang {

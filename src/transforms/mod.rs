@@ -15,7 +15,7 @@ mod translate;
 
 pub use grid_warp::{GridWarp, GridWarpData, GridWarpError};
 pub use grid_warp_build::{
-    affine_posed_to_rest, grid_warp_from_triangles, GridWarpBuildError, WarpGrid,
+    affine_posed_to_rest, grid_warp_from_triangles, GridWarpBuildError, Overhang, WarpGrid,
 };
 pub use lattice::lattice_deform;
 pub use projective::projective_transform;
