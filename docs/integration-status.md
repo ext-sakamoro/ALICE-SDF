@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1359 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1091 |
-| | **total** | **2459** |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1367 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1098 |
+| | **total** | **2474** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,11 +69,12 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1359)
+## L1 — example-only (1367)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
 - `src/autodiff.rs`: `Dual`, `Dual3`, `Dual3::abs`, `Dual3::clamp`, `Dual3::constant`, `Dual3::from_val_grad`, `Dual3::gradient`, `Dual3::gradient_magnitude`, `Dual3::length2`, `Dual3::length3`, `Dual3::max`, `Dual3::min`, `Dual3::sqrt`, `Dual::abs`, `Dual::clamp`, `Dual::constant`, `Dual::cos`, `Dual::max`, `Dual::min`, `Dual::sin`, `Dual::sqrt`, `Dual::variable`, `dual3_box`, `dual3_plane`, `dual3_point`, `dual3_sphere`, `dual3_torus`, `eval_dual3`, `eval_hessian`, `eval_with_gradient`, `gaussian_curvature`, `mean_curvature`, `principal_curvatures`
+- `src/bound.rs`: `Bound::depth`, `Bound::lower`, `Bound::slack`, `bounding_sphere`
 - `src/cache/chunked.rs`: `ChunkCoord::new`, `ChunkedMeshCache::cached_chunks`, `ChunkedMeshCache::chunk_bounds`, `ChunkedMeshCache::chunks_in_bounds`, `ChunkedMeshCache::dirty_chunks`, `ChunkedMeshCache::get_chunk`, `ChunkedMeshCache::invalidate_all`, `ChunkedMeshCache::invalidate_region`, `ChunkedMeshCache::load_chunk`, `ChunkedMeshCache::merge_all`, `ChunkedMeshCache::persist_dirty`, `ChunkedMeshCache::set_chunk`, `ChunkedMeshCache::update_sdf_hash`, `ChunkedMeshCache::world_to_chunk`
 - `src/cache/mod.rs`: `CacheConfig`, `MeshCache`, `MeshCache::clear`, `MeshCache::get`, `MeshCache::get_or_generate`, `MeshCache::insert`, `MeshCache::is_empty`, `MeshCache::len`, `MeshCache::memory_usage`, `MeshCache::new`, `MeshCache::remove`, `MeshCacheKey`, `compute_cache_key`, `hash_sdf_node`
 - `src/cache_bridge.rs`: `GridPoint`, `GridPoint::from_f32`, `SdfEvalCache`, `SdfEvalCache::get`, `SdfEvalCache::hit_rate`, `SdfEvalCache::is_empty`, `SdfEvalCache::len`, `SdfEvalCache::new`, `SdfEvalCache::put`
@@ -103,7 +104,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/transpiler_common.rs`: `GenericTranspiler::transpile_rest_inner`, `shader_unsupported_nodes`
 - `src/compiled/wgsl/gpu_eval.rs`: `GpuEvalFuture`, `GpuEvalFuture::resolve`, `GpuEvalFuture::wait`, `GpuEvaluator::eval_batch`, `GpuEvaluator::eval_batch_async`, `GpuEvaluator::eval_batch_full`, `GpuEvaluator::eval_batch_submit`, `GpuEvaluator::from_glsl_compute`, `GpuEvaluator::from_glsl_compute_pinned`, `GpuEvaluator::from_shader_async`, `GpuEvaluator::from_wgsl`, `GpuEvaluator::from_wgsl_async`, `GpuEvaluator::from_wgsl_async_pinned`, `GpuEvaluator::new_async`, `GpuEvaluator::new_dynamic`, `GpuEvaluator::update_params`, `WgpuEngine::eval_batch`, `WgpuEngine::eval_batch_async`, `WgpuEngine::eval_batch_full`, `WgpuEngine::from_wgsl_async`, `WgpuEngine::new_dynamic`, `WgpuEngine::update_params`
 - `src/compiled/wgsl/gpu_metal.rs`: `MetalEngine::eval_batch`, `MetalEngine::eval_batch_full`, `MetalEngine::new_dynamic`, `MetalEngine::update_params`
-- `src/compiled/wgsl/transpiler.rs`: `WgslShader::extract_params`, `WgslShader::get_eval_function`, `WgslShader::to_compute_shader_with_normals`, `WgslShader::transpile_material`, `WgslShader::transpile_with_rest_point`, `WgslShader::with_workgroup_size`
+- `src/compiled/wgsl/transpiler.rs`: `WgslShader::extract_params`, `WgslShader::get_eval_function`, `WgslShader::to_compute_shader_with_normals`, `WgslShader::transpile_material`, `WgslShader::transpile_union_skip_count`, `WgslShader::transpile_with_rest_point`, `WgslShader::with_workgroup_size`
 - `src/constraint.rs`: `Constraint`, `ConstraintKind`, `ConstraintSolver`, `ConstraintSolver::add_constraint`, `ConstraintSolver::constraint_count`, `ConstraintSolver::distance`, `ConstraintSolver::fix`, `ConstraintSolver::get`, `ConstraintSolver::new`, `ConstraintSolver::param_count`, `ConstraintSolver::product`, `ConstraintSolver::range`, `ConstraintSolver::ratio`, `ConstraintSolver::set`, `ConstraintSolver::solve`, `ConstraintSolver::sum`, `ParamId`, `ParamId::as_index`, `ParamId::as_u32`, `ParamId::from_raw`, `SolveResult`
 - `src/crispy.rs`: `fnv1a_hash`
 - `src/destruction/debris.rs`: `DebrisConfig`, `DebrisPiece`, `generate_debris`
@@ -112,6 +113,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/diff.rs`: `DiffError`, `DiffOp`, `TreePatch`, `TreePatch::is_empty`, `TreePatch::op_count`, `TreePath`, `apply_patch`, `invert_patch`, `merge_patches`, `node_children`, `tree_diff`, `tree_hash`
 - `src/eval/mod.rs`: `eval_rest_point`, `gradient`
 - `src/eval/parallel.rs`: `eval_batch`, `eval_grid`, `eval_grid_with_normals`, `grid_coords`, `grid_index`
+- `src/eval/union_bounded.rs`: `UnionBoundStats`, `eval_union_bounded`, `eval_union_bounded_stats`
 - `src/eval_cache.rs`: `ExactEvalCache`, `ExactEvalCache::clear`, `ExactEvalCache::entries`, `ExactEvalCache::get`, `ExactEvalCache::get_or_eval`, `ExactEvalCache::hits_and_misses`, `ExactEvalCache::is_empty`, `ExactEvalCache::len`, `ExactEvalCache::new`, `ExactEvalCache::put`
 - `src/fidelity.rs`: `Fidelity`, `Fidelity::can_overshoot`, `Fidelity::safe_step_scale`, `distance_fidelity`
 - `src/gi/cone_trace.rs`: `trace_hemisphere`
