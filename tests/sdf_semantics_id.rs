@@ -22,7 +22,14 @@ const RECORDED_HEX: &str = "6d8985128a02adab7c9b92e42cf85ffd97860f54baafc51bab60
 const ROWS_ADDED_AFTER_0F6C58D0: &[&str] = &["loft", "loft_curves", "loft_nofade", "loft_faded"];
 
 /// The golden rows added after `ad04549c…`: new nodes, no row of that build changed
-const ROWS_ADDED_AFTER_AD04549C: &[&str] = &["grid_warp", "pose", "loft", "loft_curves", "loft_nofade", "loft_faded"];
+const ROWS_ADDED_AFTER_AD04549C: &[&str] = &[
+    "grid_warp",
+    "pose",
+    "loft",
+    "loft_curves",
+    "loft_nofade",
+    "loft_faded",
+];
 
 fn sha(b: &[u8]) -> [u8; 32] {
     Sha256::digest(b).into()
@@ -135,7 +142,10 @@ fn check_reads_this_identifier_and_refuses_the_earlier_ones() {
     assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[0]), ID_0F6C58D0);
     assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[1]), AD04549C);
     for id in PREVIOUS_SDF_SEMANTICS_IDS {
-        assert_eq!(check_sdf_semantics(id), SemanticsCheck::VerifiedPrevious(*id));
+        assert_eq!(
+            check_sdf_semantics(id),
+            SemanticsCheck::VerifiedPrevious(*id)
+        );
     }
     // the identifiers earlier releases stamped (6e98f0be with alice-det-math 0.5.2 at 39507d1b,
     // 151079595 with 0.5.1 by 7.0.0, the det-math identifiers 6.0 / 6.1 exposed) are refused
@@ -263,8 +273,16 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
 /// `(identifier, test file, test function)`. Empty with `PREVIOUS_SDF_SEMANTICS_IDS`; an
 /// identifier put back into the previous list needs its oracle here
 const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[
-    (ID_0F6C58D0, "tests/sdf_semantics_id.rs", "the_0f6c58d0_rows_are_unchanged"),
-    (AD04549C, "tests/sdf_semantics_id.rs", "the_ad04549c_rows_are_unchanged"),
+    (
+        ID_0F6C58D0,
+        "tests/sdf_semantics_id.rs",
+        "the_0f6c58d0_rows_are_unchanged",
+    ),
+    (
+        AD04549C,
+        "tests/sdf_semantics_id.rs",
+        "the_ad04549c_rows_are_unchanged",
+    ),
 ];
 
 const ID_0F6C58D0: &str = "0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f79d2f6b69a4";
@@ -276,7 +294,11 @@ fn the_0f6c58d0_rows_are_unchanged() {
     let mut rows = golden_rows();
     let all = rows.len();
     rows.retain(|(n, _)| !ROWS_ADDED_AFTER_0F6C58D0.contains(&n.as_str()));
-    assert_eq!(rows.len() + ROWS_ADDED_AFTER_0F6C58D0.len(), all, "every added row is a row");
+    assert_eq!(
+        rows.len() + ROWS_ADDED_AFTER_0F6C58D0.len(),
+        all,
+        "every added row is a row"
+    );
     rows.sort();
     let canon = rows.iter().fold(String::new(), |mut s, (n, h)| {
         use std::fmt::Write;
@@ -284,10 +306,19 @@ fn the_0f6c58d0_rows_are_unchanged() {
         s
     });
     let golden = sha(canon.as_bytes());
-    assert_eq!(hex(&golden), "ecfb9c749cac3ec06f9fec60bf1735ee9aff187f0d2873825895e744682750a5");
+    assert_eq!(
+        hex(&golden),
+        "ecfb9c749cac3ec06f9fec60bf1735ee9aff187f0d2873825895e744682750a5"
+    );
     let pins: Vec<(&str, [u8; 32])> = SDF_SEMANTICS_PINS
         .iter()
-        .map(|&(n, d)| if n.starts_with("golden ") { (n, golden) } else { (n, d) })
+        .map(|&(n, d)| {
+            if n.starts_with("golden ") {
+                (n, golden)
+            } else {
+                (n, d)
+            }
+        })
         .collect();
     assert_eq!(hex(&fold(&pins)), ID_0F6C58D0);
 }

@@ -9,23 +9,45 @@ use glam::{Vec2, Vec3};
 
 fn lofts() -> Vec<SdfNode> {
     let mut out = Vec::new();
-    for (m, nonuniform, curved) in [(6usize, false, false), (12, true, false), (24, false, true), (48, true, true)] {
+    for (m, nonuniform, curved) in [
+        (6usize, false, false),
+        (12, true, false),
+        (24, false, true),
+        (48, true, true),
+    ] {
         let row = |s: f32| -> Vec<Vec2> {
             (0..m)
                 .map(|k| {
                     let a = std::f32::consts::TAU * k as f32 / m as f32;
-                    Vec2::new((0.30 + 0.05 * s) * alice_det_math::cos(a), (0.20 - 0.03 * s) * alice_det_math::sin(a) + 0.02 * alice_det_math::sin(3.0 * a))
+                    Vec2::new(
+                        (0.30 + 0.05 * s) * alice_det_math::cos(a),
+                        (0.20 - 0.03 * s) * alice_det_math::sin(a)
+                            + 0.02 * alice_det_math::sin(3.0 * a),
+                    )
                 })
                 .collect()
         };
         let axis = if curved {
-            vec![Vec3::ZERO, Vec3::new(0.05, 0.5, 0.0), Vec3::new(0.15, 1.0, 0.05), Vec3::new(0.3, 1.4, 0.1)]
+            vec![
+                Vec3::ZERO,
+                Vec3::new(0.05, 0.5, 0.0),
+                Vec3::new(0.15, 1.0, 0.05),
+                Vec3::new(0.3, 1.4, 0.1),
+            ]
         } else {
-            vec![Vec3::ZERO, Vec3::new(0.0, 0.7, 0.0), Vec3::new(0.0, 1.4, 0.0)]
+            vec![
+                Vec3::ZERO,
+                Vec3::new(0.0, 0.7, 0.0),
+                Vec3::new(0.0, 1.4, 0.0),
+            ]
         };
         let rows: Vec<Vec<Vec2>> = (0..4).map(|i| row(i as f32 / 3.0)).collect();
-        let knots: Vec<f32> = (0..=m).map(|j| j as f32 + if nonuniform && j % 3 == 1 { 0.3 } else { 0.0 }).collect();
-        out.push(SdfNode::loft_curves_knots(axis, Vec3::X, knots, rows).expect("a valid curve loft"));
+        let knots: Vec<f32> = (0..=m)
+            .map(|j| j as f32 + if nonuniform && j % 3 == 1 { 0.3 } else { 0.0 })
+            .collect();
+        out.push(
+            SdfNode::loft_curves_knots(axis, Vec3::X, knots, rows).expect("a valid curve loft"),
+        );
     }
     out
 }
@@ -34,7 +56,9 @@ fn lofts() -> Vec<SdfNode> {
 fn the_curve_loft_field_is_bit_equal_after_the_lift() {
     let mut st: u64 = 11;
     let mut rnd = || {
-        st = st.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        st = st
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         ((st >> 40) as f32) / ((1u64 << 24) as f32)
     };
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;

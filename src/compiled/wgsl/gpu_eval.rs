@@ -456,14 +456,20 @@ impl WgpuEngine {
     /// The checked reads that left their proven range since the engine was built (`None` without
     /// the counter)
     fn read_hits(&self) -> Result<Option<u32>, GpuError> {
-        let Some(hits) = &self.read_hits else { return Ok(None) };
+        let Some(hits) = &self.read_hits else {
+            return Ok(None);
+        };
         let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ALICE-SDF Read Counter Staging"),
             size: 4,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("ALICE-SDF Read Counter Copy") });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("ALICE-SDF Read Counter Copy"),
+            });
         encoder.copy_buffer_to_buffer(hits, 0, &staging, 0, 4);
         self.queue.submit(std::iter::once(encoder.finish()));
         let slice = staging.slice(..);
@@ -1344,8 +1350,11 @@ impl GpuEvaluator {
     pub fn new(node: &SdfNode) -> Result<Self, GpuError> {
         // per-node data (lattice control points, height fields, grid warp maps, lofts, stacks) goes
         // to the node data buffer on both engines
-        let shader = WgslShader::try_transpile_with_node_data(node, super::transpiler::TranspileMode::Hardcoded)
-            .map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
+        let shader = WgslShader::try_transpile_with_node_data(
+            node,
+            super::transpiler::TranspileMode::Hardcoded,
+        )
+        .map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
         Self::from_shader(&shader)
     }
 
@@ -1357,20 +1366,34 @@ impl GpuEvaluator {
     ///
     /// As [`GpuEvaluator::new`], and a tree whose reads the emit cannot prove in range
     /// ([`WgslShader::try_transpile_with_node_data_checked`])
+    // ALLOW-UNWIRED: diagnostic evaluator for the on-GPU read-range oracle and for tracing a bad read
     pub fn new_checked(node: &SdfNode) -> Result<Self, GpuError> {
-        let shader = WgslShader::try_transpile_with_node_data_checked(node, super::transpiler::TranspileMode::Hardcoded)
-            .map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
+        let shader = WgslShader::try_transpile_with_node_data_checked(
+            node,
+            super::transpiler::TranspileMode::Hardcoded,
+        )
+        .map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
         let text = shader.to_compute_shader();
         crate::provenance::shader_text_verdict(&text, false)?;
         note_engine_build();
         #[cfg(all(target_os = "macos", feature = "msl"))]
         {
-            super::gpu_metal::MetalEngine::from_wgsl_with_data(&text, &shader.node_data, true).map(|m| Self { engine: Engine::Metal(m) })
+            super::gpu_metal::MetalEngine::from_wgsl_with_data(&text, &shader.node_data, true).map(
+                |m| Self {
+                    engine: Engine::Metal(m),
+                },
+            )
         }
         #[cfg(not(all(target_os = "macos", feature = "msl")))]
         {
-            let mut evaluator = WgpuEngine::from_source_checked(wgpu::ShaderSource::Wgsl(text.into()), &shader.node_data, true)
-                .map(|w| Self { engine: Engine::Wgpu(w) })?;
+            let mut evaluator = WgpuEngine::from_source_checked(
+                wgpu::ShaderSource::Wgsl(text.into()),
+                &shader.node_data,
+                true,
+            )
+            .map(|w| Self {
+                engine: Engine::Wgpu(w),
+            })?;
             evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
             Ok(evaluator)
         }
@@ -1383,6 +1406,7 @@ impl GpuEvaluator {
     /// # Errors
     ///
     /// The counter could not be read back
+    // ALLOW-UNWIRED: reads the counter of a GpuEvaluator::new_checked evaluator, diagnostic as that is
     pub fn read_hits(&self) -> Result<Option<u32>, GpuError> {
         match &self.engine {
             Engine::Wgpu(w) => w.read_hits(),
@@ -1402,8 +1426,14 @@ impl GpuEvaluator {
             note_engine_build();
             #[cfg(all(target_os = "macos", feature = "msl"))]
             {
-                let mut evaluator = super::gpu_metal::MetalEngine::from_wgsl_with_data(&text, &shader.node_data, false)
-                    .map(|m| Self { engine: Engine::Metal(m) })?;
+                let mut evaluator = super::gpu_metal::MetalEngine::from_wgsl_with_data(
+                    &text,
+                    &shader.node_data,
+                    false,
+                )
+                .map(|m| Self {
+                    engine: Engine::Metal(m),
+                })?;
                 evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
                 return Ok(evaluator);
             }

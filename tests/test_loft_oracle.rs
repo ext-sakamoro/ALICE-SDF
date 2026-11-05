@@ -39,7 +39,10 @@ fn lcg(seed: u64) -> impl FnMut() -> f32 {
 
 /// The capped cylinder along +y from y = 0 to h, radius r: closed form
 fn cylinder_reference(p: Vec3, r: f32, h: f32) -> f32 {
-    let d = Vec2::new(Vec2::new(p.x, p.z).length() - r, (p.y - h / 2.0).abs() - h / 2.0);
+    let d = Vec2::new(
+        Vec2::new(p.x, p.z).length() - r,
+        (p.y - h / 2.0).abs() - h / 2.0,
+    );
     d.x.max(d.y).min(0.0) + d.max(Vec2::ZERO).length()
 }
 
@@ -79,7 +82,13 @@ fn straight_axis(h: f32) -> Vec<Vec3> {
 #[test]
 fn a_straight_loft_of_a_constant_circle_is_the_capped_cylinder() {
     let (h, r0) = (1.5, 0.3);
-    let node = SdfNode::loft(straight_axis(h), Vec3::X, 4, vec![circle_row(r0, 4), circle_row(r0, 4)]).expect("cylinder");
+    let node = SdfNode::loft(
+        straight_axis(h),
+        Vec3::X,
+        4,
+        vec![circle_row(r0, 4), circle_row(r0, 4)],
+    )
+    .expect("cylinder");
     let mut r = lcg(1);
     let mut worst = 0.0f32;
     for _ in 0..4000 {
@@ -92,7 +101,13 @@ fn a_straight_loft_of_a_constant_circle_is_the_capped_cylinder() {
 #[test]
 fn a_straight_loft_of_a_linearly_growing_circle_is_bounded_by_the_capped_cone() {
     let (h, ra, rb) = (1.0, 0.2, 0.45);
-    let node = SdfNode::loft(straight_axis(h), Vec3::X, 2, vec![circle_row(ra, 2), circle_row(rb, 2)]).expect("cone");
+    let node = SdfNode::loft(
+        straight_axis(h),
+        Vec3::X,
+        2,
+        vec![circle_row(ra, 2), circle_row(rb, 2)],
+    )
+    .expect("cone");
     let l = 1.0 + 1.1 * (rb - ra) / h;
     let mut r = lcg(2);
     let (mut sign_bad, mut over, mut under, mut compared) = (0, 0, 0, 0);
@@ -110,16 +125,25 @@ fn a_straight_loft_of_a_linearly_growing_circle_is_bounded_by_the_capped_cone() 
         }
     }
     assert!(compared > 1000, "compared {compared}");
-    assert_eq!((sign_bad, over, under), (0, 0, 0), "sign / over / under among {compared}");
+    assert_eq!(
+        (sign_bad, over, under),
+        (0, 0, 0),
+        "sign / over / under among {compared}"
+    );
 }
 
 #[test]
 fn a_sphere_as_a_loft_vanishes_on_the_sphere() {
     // axis from y = −0.9 to 0.9 in 12 even steps, rows √(1 − y²) at the axis points
     let n = 13;
-    let ys: Vec<f32> = (0..n).map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32).collect();
+    let ys: Vec<f32> = (0..n)
+        .map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32)
+        .collect();
     let axis: Vec<Vec3> = ys.iter().map(|&y| Vec3::new(0.0, y, 0.0)).collect();
-    let rows: Vec<Vec<f32>> = ys.iter().map(|&y| circle_row((1.0 - y * y).sqrt(), 1)).collect();
+    let rows: Vec<Vec<f32>> = ys
+        .iter()
+        .map(|&y| circle_row((1.0 - y * y).sqrt(), 1))
+        .collect();
     let node = SdfNode::loft(axis, Vec3::X, 1, rows).expect("sphere");
     let mut r = lcg(4);
     let (mut worst, mut sign_bad, mut compared) = (0.0f32, 0, 0);
@@ -130,11 +154,15 @@ fn a_sphere_as_a_loft_vanishes_on_the_sphere() {
         }
         compared += 1;
         worst = worst.max(eval(&node, dir).abs());
-        sign_bad += usize::from(eval(&node, dir * 1.03) <= 0.0) + usize::from(eval(&node, dir * 0.97) >= 0.0);
+        sign_bad += usize::from(eval(&node, dir * 1.03) <= 0.0)
+            + usize::from(eval(&node, dir * 0.97) >= 0.0);
     }
     assert!(compared > 1000, "compared {compared}");
     assert!(worst < 1e-2, "largest |f| on the sphere {worst}");
-    assert_eq!(sign_bad, 0, "wrong sign 3 % off the sphere among {compared}");
+    assert_eq!(
+        sign_bad, 0,
+        "wrong sign 3 % off the sphere among {compared}"
+    );
 }
 
 /// A curved axis with sections that grow, shrink, squash and lean
@@ -182,10 +210,22 @@ fn inside_on_the_axis_and_outside_far_away() {
     let node = curved();
     for s in [0.05f32, 0.4, 0.75] {
         let p = Vec3::new(0.15 * s, 0.9 * s, 0.0);
-        assert!(eval(&node, p) < 0.0, "axis point {p:?} reads {}", eval(&node, p));
+        assert!(
+            eval(&node, p) < 0.0,
+            "axis point {p:?} reads {}",
+            eval(&node, p)
+        );
     }
-    for p in [Vec3::new(1.0, 0.5, 0.0), Vec3::new(0.0, -0.5, 0.0), Vec3::new(0.0, 1.5, 0.0)] {
-        assert!(eval(&node, p) > 0.2, "far point {p:?} reads {}", eval(&node, p));
+    for p in [
+        Vec3::new(1.0, 0.5, 0.0),
+        Vec3::new(0.0, -0.5, 0.0),
+        Vec3::new(0.0, 1.5, 0.0),
+    ] {
+        assert!(
+            eval(&node, p) > 0.2,
+            "far point {p:?} reads {}",
+            eval(&node, p)
+        );
     }
 }
 
@@ -193,15 +233,47 @@ fn inside_on_the_axis_and_outside_far_away() {
 fn malformed_input_is_refused_by_name() {
     let row = circle_row(0.2, 2);
     let ax = vec![Vec3::ZERO, Vec3::Y];
-    let err = |r: Result<SdfNode, alice_sdf::primitives::loft::LoftError>| r.err().expect("refused").to_string();
-    assert!(err(SdfNode::loft(vec![Vec3::ZERO], Vec3::X, 2, vec![row.clone(), row.clone()])).contains("axis"));
+    let err = |r: Result<SdfNode, alice_sdf::primitives::loft::LoftError>| {
+        r.err().expect("refused").to_string()
+    };
+    assert!(err(SdfNode::loft(
+        vec![Vec3::ZERO],
+        Vec3::X,
+        2,
+        vec![row.clone(), row.clone()]
+    ))
+    .contains("axis"));
     assert!(err(SdfNode::loft(ax.clone(), Vec3::X, 2, vec![row.clone()])).contains("row"));
-    assert!(err(SdfNode::loft(ax.clone(), Vec3::X, 2, vec![row.clone(), circle_row(0.2, 3)])).contains("row"));
-    assert!(err(SdfNode::loft(ax.clone(), Vec3::X, 65, vec![circle_row(0.2, 65), circle_row(0.2, 65)])).contains("harmonics"));
-    assert!(err(SdfNode::loft(ax.clone(), Vec3::Y, 2, vec![row.clone(), row.clone()])).contains("up"));
+    assert!(err(SdfNode::loft(
+        ax.clone(),
+        Vec3::X,
+        2,
+        vec![row.clone(), circle_row(0.2, 3)]
+    ))
+    .contains("row"));
+    assert!(err(SdfNode::loft(
+        ax.clone(),
+        Vec3::X,
+        65,
+        vec![circle_row(0.2, 65), circle_row(0.2, 65)]
+    ))
+    .contains("harmonics"));
+    assert!(err(SdfNode::loft(
+        ax.clone(),
+        Vec3::Y,
+        2,
+        vec![row.clone(), row.clone()]
+    ))
+    .contains("up"));
     let mut neg = row.clone();
     neg[1] = 0.3; // a0 = 0.2 with a1 = 0.3 passes through the centre
-    assert!(err(SdfNode::loft(ax.clone(), Vec3::X, 2, vec![neg, row.clone()])).contains("radius"));
+    assert!(err(SdfNode::loft(
+        ax.clone(),
+        Vec3::X,
+        2,
+        vec![neg, row.clone()]
+    ))
+    .contains("radius"));
     let nan = vec![Vec3::ZERO, Vec3::new(f32::NAN, 1.0, 0.0)];
     assert!(err(SdfNode::loft(nan, Vec3::X, 2, vec![row.clone(), row])).contains("finite"));
 }
@@ -223,8 +295,14 @@ fn the_compiled_bytecode_gives_the_trees_value() {
 fn a_cylinder_with_hemispherical_domes_is_the_capsule() {
     // radius 0.3 from y = 0 to 0.9, domes of height 0.3 at both ends: the capsule y ∈ [0, 0.9]
     let (h, r0) = (0.9, 0.3);
-    let node = SdfNode::loft_capped(straight_axis(h), Vec3::X, 3, vec![circle_row(r0, 3), circle_row(r0, 3)], [r0, r0])
-        .expect("capsule");
+    let node = SdfNode::loft_capped(
+        straight_axis(h),
+        Vec3::X,
+        3,
+        vec![circle_row(r0, 3), circle_row(r0, 3)],
+        [r0, r0],
+    )
+    .expect("capsule");
     let mut r = lcg(6);
     let (mut worst, mut sign_bad) = (0.0f32, 0);
     for _ in 0..4000 {
@@ -245,7 +323,11 @@ fn a_cylinder_with_hemispherical_domes_is_the_capsule() {
 fn a_dome_closes_a_varying_section_and_stays_one_lipschitz() {
     // the curved loft's sections with domes: the tips beyond the end planes are inside, the field
     // never grows faster than 1, and the dome reaches its height on the end tangent
-    let axis = vec![Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.05, 0.3, 0.02), Vec3::new(0.12, 0.6, 0.0)];
+    let axis = vec![
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(0.05, 0.3, 0.02),
+        Vec3::new(0.12, 0.6, 0.0),
+    ];
     let rows = vec![
         vec![0.10, 0.0, 0.01, 0.02, 0.0, 0.0, 0.004],
         vec![0.09, 0.005, 0.0, -0.015, 0.0, 0.0, 0.0],
@@ -255,9 +337,15 @@ fn a_dome_closes_a_varying_section_and_stays_one_lipschitz() {
     // the end tangent of a Catmull-Rom with reflected ends is A₁ − A₀ at the start, Aₙ₋₁ − Aₙ₋₂ at the end
     let t0 = (Vec3::new(0.0, 0.0, 0.0) - Vec3::new(0.05, 0.3, 0.02)).normalize();
     let t1 = (Vec3::new(0.12, 0.6, 0.0) - Vec3::new(0.05, 0.3, 0.02)).normalize();
-    assert!(eval(&node, t0 * 0.045) < 0.0 && eval(&node, t0 * 0.055) > 0.0, "start dome height");
+    assert!(
+        eval(&node, t0 * 0.045) < 0.0 && eval(&node, t0 * 0.055) > 0.0,
+        "start dome height"
+    );
     let e = Vec3::new(0.12, 0.6, 0.0);
-    assert!(eval(&node, e + t1 * 0.11) < 0.0 && eval(&node, e + t1 * 0.13) > 0.0, "end dome height");
+    assert!(
+        eval(&node, e + t1 * 0.11) < 0.0 && eval(&node, e + t1 * 0.13) > 0.0,
+        "end dome height"
+    );
     let mut r = lcg(7);
     let mut worst = 0.0f32;
     for _ in 0..20000 {
@@ -286,12 +374,23 @@ fn march_steps(node: &SdfNode, o: Vec3, d: Vec3) -> u32 {
 #[ignore = "measurement: march step counts of the global bound (run with --ignored --nocapture)"]
 fn march_steps_of_the_global_bound() {
     let n = 13;
-    let ys: Vec<f32> = (0..n).map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32).collect();
+    let ys: Vec<f32> = (0..n)
+        .map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32)
+        .collect();
     let axis: Vec<Vec3> = ys.iter().map(|&y| Vec3::new(0.0, y, 0.0)).collect();
-    let rows: Vec<Vec<f32>> = ys.iter().map(|&y| circle_row((1.0 - y * y).sqrt(), 1)).collect();
+    let rows: Vec<Vec<f32>> = ys
+        .iter()
+        .map(|&y| circle_row((1.0 - y * y).sqrt(), 1))
+        .collect();
     let sphere = SdfNode::loft(axis, Vec3::X, 1, rows).expect("sphere");
     let exact = SdfNode::sphere(1.0);
-    let cone = SdfNode::loft(straight_axis(1.0), Vec3::X, 2, vec![circle_row(0.2, 2), circle_row(0.45, 2)]).expect("cone");
+    let cone = SdfNode::loft(
+        straight_axis(1.0),
+        Vec3::X,
+        2,
+        vec![circle_row(0.2, 2), circle_row(0.45, 2)],
+    )
+    .expect("cone");
     let mut r = lcg(8);
     let (mut a, mut b, mut c) = (Vec::new(), Vec::new(), Vec::new());
     for _ in 0..200 {
@@ -300,11 +399,24 @@ fn march_steps_of_the_global_bound() {
         a.push(march_steps(&sphere, o, d));
         b.push(march_steps(&exact, o, d));
         let oc = Vec3::new(3.0, r() * 0.8 + 0.1, 0.0);
-        c.push(march_steps(&cone, oc, (Vec3::new(0.0, oc.y, 0.0) - oc).normalize()));
+        c.push(march_steps(
+            &cone,
+            oc,
+            (Vec3::new(0.0, oc.y, 0.0) - oc).normalize(),
+        ));
     }
-    for (name, v) in [("sphere as a loft", &mut a), ("exact sphere", &mut b), ("cone loft", &mut c)] {
+    for (name, v) in [
+        ("sphere as a loft", &mut a),
+        ("exact sphere", &mut b),
+        ("cone loft", &mut c),
+    ] {
         v.sort_unstable();
-        println!("{name}: median {} p95 {} max {}", v[v.len() / 2], v[v.len() * 95 / 100], v[v.len() - 1]);
+        println!(
+            "{name}: median {} p95 {} max {}",
+            v[v.len() / 2],
+            v[v.len() * 95 / 100],
+            v[v.len() - 1]
+        );
     }
 }
 
@@ -312,7 +424,10 @@ fn march_steps_of_the_global_bound() {
 fn the_field_is_one_lipschitz_next_to_the_polar_centre() {
     // a lobed section (a0 = 0.2, a3 = 0.06, b2 = 0.03): near the centre the polar field's angular
     // term grows like r'(θ)/ρ, which the core must hold
-    let rows = vec![vec![0.2, 0.0, 0.0, 0.0, 0.03, 0.06, 0.0], vec![0.18, 0.0, 0.0, 0.0, 0.03, 0.06, 0.0]];
+    let rows = vec![
+        vec![0.2, 0.0, 0.0, 0.0, 0.03, 0.06, 0.0],
+        vec![0.18, 0.0, 0.0, 0.0, 0.03, 0.06, 0.0],
+    ];
     let node = SdfNode::loft(straight_axis(1.0), Vec3::X, 3, rows).expect("lobed");
     let mut r = lcg(9);
     let mut worst = 0.0f32;
@@ -328,9 +443,14 @@ fn the_field_is_one_lipschitz_next_to_the_polar_centre() {
 /// The sphere as a loft (13 rows over |y| ≤ 0.9): the local bound varies from span to span
 fn sphere_loft() -> SdfNode {
     let n = 13;
-    let ys: Vec<f32> = (0..n).map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32).collect();
+    let ys: Vec<f32> = (0..n)
+        .map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32)
+        .collect();
     let axis: Vec<Vec3> = ys.iter().map(|&y| Vec3::new(0.0, y, 0.0)).collect();
-    let rows: Vec<Vec<f32>> = ys.iter().map(|&y| circle_row((1.0 - y * y).sqrt(), 1)).collect();
+    let rows: Vec<Vec<f32>> = ys
+        .iter()
+        .map(|&y| circle_row((1.0 - y * y).sqrt(), 1))
+        .collect();
     SdfNode::loft(axis, Vec3::X, 1, rows).expect("sphere")
 }
 
@@ -369,7 +489,10 @@ fn the_local_bound_is_one_lipschitz_across_span_joins_and_far_away() {
         compared += 1;
     }
     assert!(compared > 0);
-    assert!(worst <= 1.0 + 2e-3, "largest difference quotient {worst} over {compared} pairs");
+    assert!(
+        worst <= 1.0 + 2e-3,
+        "largest difference quotient {worst} over {compared} pairs"
+    );
 }
 
 #[test]
@@ -390,7 +513,11 @@ fn the_local_bound_keeps_the_sign_and_never_passes_the_surface() {
         over += usize::from(d > 0.0 && f > d + 1e-2);
     }
     assert!(compared > 10000, "compared {compared}");
-    assert_eq!((sign_bad, over), (0, 0), "wrong sign / past the surface among {compared}");
+    assert_eq!(
+        (sign_bad, over),
+        (0, 0),
+        "wrong sign / past the surface among {compared}"
+    );
 }
 
 #[test]
@@ -402,7 +529,9 @@ fn the_clamp_holds_the_field_where_the_local_bound_jumps() {
     for i in 0..10 {
         rows.push(circle_row(if i < 5 { 0.2 } else { 0.6 }, 1));
     }
-    let axis: Vec<Vec3> = (0..10).map(|i| Vec3::new(0.0, 0.1 * i as f32, 0.0)).collect();
+    let axis: Vec<Vec3> = (0..10)
+        .map(|i| Vec3::new(0.0, 0.1 * i as f32, 0.0))
+        .collect();
     let node = SdfNode::loft(axis, Vec3::X, 1, rows).expect("stepped");
     let mut r = lcg(12);
     let mut worst = 0.0f32;
@@ -471,22 +600,38 @@ fn the_local_bound_never_passes_the_lofts_own_surface() {
     // the sphere's rows and the stepped rows: outside, f never exceeds the exact distance to the
     // loft's own surface (computed here), and inside it never goes below minus that distance
     let n = 13;
-    let ys: Vec<f32> = (0..n).map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32).collect();
+    let ys: Vec<f32> = (0..n)
+        .map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32)
+        .collect();
     let sphere_r: Vec<f32> = ys.iter().map(|&y| (1.0 - y * y).sqrt()).collect();
     let step_r: Vec<f32> = (0..10).map(|i| if i < 5 { 0.2 } else { 0.6 }).collect();
     for (radii, y0, y1) in [(sphere_r, -0.9f32, 0.9f32), (step_r, 0.0, 0.9)] {
         let k = radii.len();
-        let axis: Vec<Vec3> = (0..k).map(|i| Vec3::new(0.0, y0 + (y1 - y0) * i as f32 / (k - 1) as f32, 0.0)).collect();
-        let node = SdfNode::loft(axis, Vec3::X, 1, radii.iter().map(|&r| circle_row(r, 1)).collect()).expect("circle loft");
+        let axis: Vec<Vec3> = (0..k)
+            .map(|i| Vec3::new(0.0, y0 + (y1 - y0) * i as f32 / (k - 1) as f32, 0.0))
+            .collect();
+        let node = SdfNode::loft(
+            axis,
+            Vec3::X,
+            1,
+            radii.iter().map(|&r| circle_row(r, 1)).collect(),
+        )
+        .expect("circle loft");
         let mut r = lcg(13);
         let (mut over, mut compared, mut tightest) = (0, 0, f32::INFINITY);
         for i in 0..6000 {
             // half anywhere, half within 0.03 of the rows' own radius (where the local bound is tight)
             let p = if i % 2 == 0 {
-                Vec3::new(r() * 3.0 - 1.5, y0 - 0.3 + r() * (y1 - y0 + 0.6), r() * 3.0 - 1.5)
+                Vec3::new(
+                    r() * 3.0 - 1.5,
+                    y0 - 0.3 + r() * (y1 - y0 + 0.6),
+                    r() * 3.0 - 1.5,
+                )
             } else {
                 let j = (r() * k as f32).floor().min((k - 1) as f32) as usize;
-                let y = y0 + (y1 - y0) * (j as f32 + (r() - 0.5) * 0.5).clamp(0.0, (k - 1) as f32) / (k - 1) as f32;
+                let y = y0
+                    + (y1 - y0) * (j as f32 + (r() - 0.5) * 0.5).clamp(0.0, (k - 1) as f32)
+                        / (k - 1) as f32;
                 let a = r() * std::f32::consts::TAU;
                 let rho = radii[j] + (r() - 0.5) * 0.06;
                 Vec3::new(rho * a.cos(), y, rho * a.sin())
@@ -518,15 +663,21 @@ fn the_local_bounds_margin_is_never_negative() {
             Vec3::new(0.6 * (1.0 - a.cos()), 0.6 * a.sin(), 0.0)
         })
         .collect();
-    let rows: Vec<Vec<f32>> = (0..6).map(|i| circle_row(0.13 + 0.05 * (i as f32 * 0.9).sin(), 2)).collect();
+    let rows: Vec<Vec<f32>> = (0..6)
+        .map(|i| circle_row(0.13 + 0.05 * (i as f32 * 0.9).sin(), 2))
+        .collect();
     let limb = SdfNode::loft(bent, Vec3::Z, 2, rows).expect("a bent limb");
     let n = 13;
-    let ys: Vec<f32> = (0..n).map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32).collect();
+    let ys: Vec<f32> = (0..n)
+        .map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32)
+        .collect();
     let sphere = SdfNode::loft(
         ys.iter().map(|&y| Vec3::new(0.0, y, 0.0)).collect(),
         Vec3::X,
         1,
-        ys.iter().map(|&y| circle_row((1.0 - y * y).sqrt(), 1)).collect(),
+        ys.iter()
+            .map(|&y| circle_row((1.0 - y * y).sqrt(), 1))
+            .collect(),
     )
     .expect("sphere");
     let mut checked = 0;
@@ -535,7 +686,11 @@ fn the_local_bounds_margin_is_never_negative() {
             checked += 1;
             assert!(bounds.m >= 0.0, "margin {}", bounds.m);
             let varies = bounds.knots.windows(2).any(|w| w[0] != w[1]);
-            assert!(!varies || bounds.m > 0.0, "margin {} with a varying bound", bounds.m);
+            assert!(
+                !varies || bounds.m > 0.0,
+                "margin {} with a varying bound",
+                bounds.m
+            );
         }
     }
     assert_eq!(checked, 3);
@@ -554,9 +709,17 @@ fn the_local_bounds_margin_is_never_negative() {
 /// A bent axis (mm scale) whose circle sections jump from 40 to 70 and back over two rows: one span
 /// with a high axial rate
 fn bent_jump() -> (Vec<Vec3>, Vec<f32>, SdfNode) {
-    let axis: Vec<Vec3> = (0..6).map(|i| Vec3::new(30.0 * (0.5 * i as f32).sin(), 80.0 * i as f32, 0.0)).collect();
+    let axis: Vec<Vec3> = (0..6)
+        .map(|i| Vec3::new(30.0 * (0.5 * i as f32).sin(), 80.0 * i as f32, 0.0))
+        .collect();
     let radii = vec![40.0f32, 40.0, 40.0, 70.0, 40.0, 40.0, 40.0];
-    let node = SdfNode::loft(axis.clone(), Vec3::Z, 1, radii.iter().map(|&r| circle_row(r, 1)).collect()).expect("bent jump");
+    let node = SdfNode::loft(
+        axis.clone(),
+        Vec3::Z,
+        1,
+        radii.iter().map(|&r| circle_row(r, 1)).collect(),
+    )
+    .expect("bent jump");
     (axis, radii, node)
 }
 
@@ -592,8 +755,15 @@ fn circle_loft_samples(axis: &[Vec3], radii: &[f32]) -> Vec<Vec3> {
         let t = s - i as f32;
         let i = i as isize;
         let (a, b, c, d) = (ap(i - 1), ap(i), ap(i + 1), ap(i + 2));
-        let pos = 0.5 * (2.0 * b + (c - a) * t + (2.0 * a - 5.0 * b + 4.0 * c - d) * t * t + (-a + 3.0 * b - 3.0 * c + d) * t * t * t);
-        let der = 0.5 * ((c - a) + 2.0 * (2.0 * a - 5.0 * b + 4.0 * c - d) * t + 3.0 * (-a + 3.0 * b - 3.0 * c + d) * t * t);
+        let pos = 0.5
+            * (2.0 * b
+                + (c - a) * t
+                + (2.0 * a - 5.0 * b + 4.0 * c - d) * t * t
+                + (-a + 3.0 * b - 3.0 * c + d) * t * t * t);
+        let der = 0.5
+            * ((c - a)
+                + 2.0 * (2.0 * a - 5.0 * b + 4.0 * c - d) * t
+                + 3.0 * (-a + 3.0 * b - 3.0 * c + d) * t * t);
         let tt = der.normalize();
         let nn = (Vec3::Z - tt * Vec3::Z.dot(tt)).normalize();
         let bb = tt.cross(nn);
@@ -629,8 +799,15 @@ fn far_from_a_loft_the_field_keeps_the_distance_scale() {
     let mut r = lcg(15);
     let (mut low, mut over, mut compared, mut least) = (0, 0, 0, f32::INFINITY);
     while compared < 300 {
-        let p = Vec3::new(r() * 700.0 - 350.0, r() * 700.0 - 150.0, r() * 700.0 - 350.0);
-        let d = surf.iter().map(|q| (*q - p).length()).fold(f32::INFINITY, f32::min);
+        let p = Vec3::new(
+            r() * 700.0 - 350.0,
+            r() * 700.0 - 150.0,
+            r() * 700.0 - 350.0,
+        );
+        let d = surf
+            .iter()
+            .map(|q| (*q - p).length())
+            .fold(f32::INFINITY, f32::min);
         if !(50.0..=150.0).contains(&d) {
             continue;
         }
@@ -643,7 +820,11 @@ fn far_from_a_loft_the_field_keeps_the_distance_scale() {
         low += usize::from(f < 0.5 * d);
         over += usize::from(f > d + 1.0);
     }
-    assert_eq!((low, over), (0, 0), "below half / past the surface among {compared} (least f/D {least})");
+    assert_eq!(
+        (low, over),
+        (0, 0),
+        "below half / past the surface among {compared} (least f/D {least})"
+    );
 }
 
 #[test]
@@ -677,7 +858,10 @@ fn the_normal_does_not_turn_between_small_and_large_difference_steps() {
         compared += 1;
     }
     assert!(compared > 100, "compared {compared}");
-    assert!(worst < 1.0, "largest normal turn {worst}° over {compared} surface points");
+    assert!(
+        worst < 1.0,
+        "largest normal turn {worst}° over {compared} surface points"
+    );
 }
 
 #[test]
@@ -702,21 +886,38 @@ fn gradient_norm_at_the_surface() {
         })
         .collect();
     g.sort_by(f32::total_cmp);
-    println!("|grad f| at the surface: p10 {:.3} median {:.3} p90 {:.3} ({} points)", g[g.len() / 10], g[g.len() / 2], g[g.len() * 9 / 10], g.len());
+    println!(
+        "|grad f| at the surface: p10 {:.3} median {:.3} p90 {:.3} ({} points)",
+        g[g.len() / 10],
+        g[g.len() / 2],
+        g[g.len() * 9 / 10],
+        g.len()
+    );
 }
 
 #[test]
 fn every_loft_kind_survives_a_json_round_trip_bit_for_bit() {
     let n = 13;
-    let ys: Vec<f32> = (0..n).map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32).collect();
+    let ys: Vec<f32> = (0..n)
+        .map(|i| -0.9 + 1.8 * i as f32 / (n - 1) as f32)
+        .collect();
     let sphere = SdfNode::loft(
         ys.iter().map(|&y| Vec3::new(0.0, y, 0.0)).collect(),
         Vec3::X,
         1,
-        ys.iter().map(|&y| circle_row((1.0 - y * y).sqrt(), 1)).collect(),
+        ys.iter()
+            .map(|&y| circle_row((1.0 - y * y).sqrt(), 1))
+            .collect(),
     )
     .expect("sphere");
-    let capped = SdfNode::loft_capped(straight_axis(0.9), Vec3::X, 3, vec![circle_row(0.3, 3), circle_row(0.3, 3)], [0.3, 0.2]).expect("capsule");
+    let capped = SdfNode::loft_capped(
+        straight_axis(0.9),
+        Vec3::X,
+        3,
+        vec![circle_row(0.3, 3), circle_row(0.3, 3)],
+        [0.3, 0.2],
+    )
+    .expect("capsule");
     let ellipse: Vec<Vec2> = (0..16)
         .map(|k| {
             let t = std::f32::consts::TAU * k as f32 / 16.0;
@@ -724,26 +925,54 @@ fn every_loft_kind_survives_a_json_round_trip_bit_for_bit() {
         })
         .collect();
     let curves = SdfNode::loft_curves(
-        vec![Vec3::ZERO, Vec3::new(0.05, 0.5, 0.0), Vec3::new(0.0, 1.0, 0.1)],
+        vec![
+            Vec3::ZERO,
+            Vec3::new(0.05, 0.5, 0.0),
+            Vec3::new(0.0, 1.0, 0.1),
+        ],
         Vec3::Z,
-        vec![ellipse.clone(), ellipse.iter().map(|p| *p * 1.3).collect(), ellipse.clone()],
+        vec![
+            ellipse.clone(),
+            ellipse.iter().map(|p| *p * 1.3).collect(),
+            ellipse.clone(),
+        ],
     )
     .expect("curves");
     let mut r = lcg(16);
     let mut compared = 0;
     let curves_capped = SdfNode::loft_curves_capped(
-        vec![Vec3::ZERO, Vec3::new(0.05, 0.5, 0.0), Vec3::new(0.0, 1.0, 0.1)],
+        vec![
+            Vec3::ZERO,
+            Vec3::new(0.05, 0.5, 0.0),
+            Vec3::new(0.0, 1.0, 0.1),
+        ],
         Vec3::Z,
-        vec![ellipse.clone(), ellipse.iter().map(|p| *p * 1.3).collect(), ellipse.clone()],
+        vec![
+            ellipse.clone(),
+            ellipse.iter().map(|p| *p * 1.3).collect(),
+            ellipse.clone(),
+        ],
         [[0.1, 0.0, 0.0], [0.2, 0.03, -0.02]],
     )
     .expect("capped curves");
-    for node in [sphere, capped, curved(), bent_jump().2, curves, curves_capped] {
+    for node in [
+        sphere,
+        capped,
+        curved(),
+        bent_jump().2,
+        curves,
+        curves_capped,
+    ] {
         let text = serde_json::to_string(&node).expect("serialise");
         let back: SdfNode = serde_json::from_str(&text).expect("load");
         for _ in 0..500 {
-            let p = Vec3::new(r() * 3.0 - 1.5, r() * 3.0 - 1.0, r() * 3.0 - 1.5) * if compared % 2 == 0 { 1.0 } else { 100.0 };
-            assert_eq!(eval(&node, p).to_bits(), eval(&back, p).to_bits(), "at {p:?}");
+            let p = Vec3::new(r() * 3.0 - 1.5, r() * 3.0 - 1.0, r() * 3.0 - 1.5)
+                * if compared % 2 == 0 { 1.0 } else { 100.0 };
+            assert_eq!(
+                eval(&node, p).to_bits(),
+                eval(&back, p).to_bits(),
+                "at {p:?}"
+            );
             compared += 1;
         }
     }
@@ -771,7 +1000,8 @@ fn the_field_bends_smoothly_away_from_the_surface() {
             eval(&node, *p + Vec3::Z * e) - eval(&node, *p - Vec3::Z * e),
         )
         .normalize();
-        let slope = |t: f32| (eval(&node, *p + n * (t + 0.05)) - eval(&node, *p + n * (t - 0.05))) / 0.1;
+        let slope =
+            |t: f32| (eval(&node, *p + n * (t + 0.05)) - eval(&node, *p + n * (t - 0.05))) / 0.1;
         let mut prev = slope(0.1);
         for k in 1..40 {
             let s = slope(0.1 + 0.25 * k as f32);
@@ -781,7 +1011,10 @@ fn the_field_bends_smoothly_away_from_the_surface() {
         compared += 1;
     }
     assert!(compared > 20, "compared {compared}");
-    assert!(worst < 0.05, "largest change of the directional derivative {worst}");
+    assert!(
+        worst < 0.05,
+        "largest change of the directional derivative {worst}"
+    );
 }
 
 #[test]
@@ -793,21 +1026,42 @@ fn a_tree_with_bounds_from_another_law_is_refused_on_load() {
     let text = serde_json::to_string(&node).expect("serialise");
     let mut v: serde_json::Value = serde_json::from_str(&text).expect("json");
     let b = &mut v["Loft"]["bounds"];
-    assert!(b["m"].as_f64().expect("m") > 0.0, "the test loft must carry the local correction");
+    assert!(
+        b["m"].as_f64().expect("m") > 0.0,
+        "the test loft must carry the local correction"
+    );
     let mut old = v.clone();
-    old["Loft"]["bounds"].as_object_mut().expect("bounds").remove("law");
-    old["Loft"]["bounds"].as_object_mut().expect("bounds").remove("bknots");
-    let e = serde_json::from_value::<SdfNode>(old).err().expect("an older law's bounds are refused");
+    old["Loft"]["bounds"]
+        .as_object_mut()
+        .expect("bounds")
+        .remove("law");
+    old["Loft"]["bounds"]
+        .as_object_mut()
+        .expect("bounds")
+        .remove("bknots");
+    let e = serde_json::from_value::<SdfNode>(old)
+        .err()
+        .expect("an older law's bounds are refused");
     assert!(e.to_string().contains("rebuild"), "{e}");
     // complete in shape but from another law version: refused by the version alone
     let mut other = v.clone();
     other["Loft"]["bounds"]["law"] = serde_json::json!(0);
-    let e = serde_json::from_value::<SdfNode>(other).err().expect("another law version is refused");
+    let e = serde_json::from_value::<SdfNode>(other)
+        .err()
+        .expect("another law version is refused");
     assert!(e.to_string().contains("bound law 0"), "{e}");
     let mut short = v.clone();
-    short["Loft"]["bounds"]["bknots"].as_array_mut().expect("bknots").pop();
-    let e = serde_json::from_value::<SdfNode>(short).err().expect("inconsistent widths are refused");
+    short["Loft"]["bounds"]["bknots"]
+        .as_array_mut()
+        .expect("bknots")
+        .pop();
+    let e = serde_json::from_value::<SdfNode>(short)
+        .err()
+        .expect("inconsistent widths are refused");
     assert!(e.to_string().contains("inconsistent"), "{e}");
     let back: SdfNode = serde_json::from_value(v).expect("the current law loads");
-    assert_eq!(eval(&back, Vec3::new(55.0, 210.0, 3.0)).to_bits(), eval(&node, Vec3::new(55.0, 210.0, 3.0)).to_bits());
+    assert_eq!(
+        eval(&back, Vec3::new(55.0, 210.0, 3.0)).to_bits(),
+        eval(&node, Vec3::new(55.0, 210.0, 3.0)).to_bits()
+    );
 }

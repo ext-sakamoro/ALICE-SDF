@@ -55,7 +55,11 @@ pub fn loft_curves_c() -> SdfNode {
         v
     };
     SdfNode::loft_curves(
-        vec![Vec3::new(0.0, -0.6, 0.0), Vec3::new(0.1, 0.0, 0.05), Vec3::new(0.0, 0.6, 0.0)],
+        vec![
+            Vec3::new(0.0, -0.6, 0.0),
+            Vec3::new(0.1, 0.0, 0.05),
+            Vec3::new(0.0, 0.6, 0.0),
+        ],
         Vec3::X,
         vec![c(0.4, 0.22, 0.0), c(0.36, 0.2, 10.0), c(0.32, 0.18, 20.0)],
     )
@@ -69,7 +73,11 @@ pub fn loft_curves_c() -> SdfNode {
 pub fn loft_fade(curved: bool) -> SdfNode {
     let bend = if curved { 0.15 } else { 0.0 };
     let node = SdfNode::loft(
-        vec![Vec3::new(0.0, -0.6, 0.0), Vec3::new(bend, 0.0, 0.5 * bend), Vec3::new(0.0, 0.6, 0.0)],
+        vec![
+            Vec3::new(0.0, -0.6, 0.0),
+            Vec3::new(bend, 0.0, 0.5 * bend),
+            Vec3::new(0.0, 0.6, 0.0),
+        ],
         Vec3::X,
         2,
         vec![
@@ -82,7 +90,12 @@ pub fn loft_fade(curved: bool) -> SdfNode {
     .expect("corpus fade loft");
     if let SdfNode::Loft { bounds, .. } = &node {
         assert!(bounds.m > 0.0, "the correction is off (m = {})", bounds.m);
-        assert_eq!(bounds.fade.is_some(), curved, "fade {:?} for curved = {curved}", bounds.fade);
+        assert_eq!(
+            bounds.fade.is_some(),
+            curved,
+            "fade {:?} for curved = {curved}",
+            bounds.fade
+        );
     }
     node
 }
@@ -92,14 +105,24 @@ pub fn loft_fade(curved: bool) -> SdfNode {
 /// curvature (≈ 1.05) above the widest section (0.5), which the law requires
 pub fn loft_faded() -> SdfNode {
     let node = SdfNode::loft(
-        (0..6).map(|i| Vec3::new(0.15 * (0.5 * i as f32).sin(), 0.25 * i as f32 - 0.6, 0.0)).collect(),
+        (0..6)
+            .map(|i| Vec3::new(0.15 * (0.5 * i as f32).sin(), 0.25 * i as f32 - 0.6, 0.0))
+            .collect(),
         Vec3::Z,
         1,
-        [0.3f32, 0.3, 0.3, 0.5, 0.3, 0.3, 0.3].iter().map(|&r| vec![r, 0.0, 0.0]).collect(),
+        [0.3f32, 0.3, 0.3, 0.5, 0.3, 0.3, 0.3]
+            .iter()
+            .map(|&r| vec![r, 0.0, 0.0])
+            .collect(),
     )
     .expect("corpus faded loft");
     if let SdfNode::Loft { bounds, .. } = &node {
-        assert!(bounds.fade.is_some() && bounds.m > 0.0, "fade {:?}, m {}", bounds.fade, bounds.m);
+        assert!(
+            bounds.fade.is_some() && bounds.m > 0.0,
+            "fade {:?}, m {}",
+            bounds.fade,
+            bounds.m
+        );
     }
     node
 }
@@ -236,7 +259,11 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
         (
             "loft",
             SdfNode::loft_capped(
-                vec![Vec3::new(0.0, -0.6, 0.0), Vec3::new(0.1, 0.0, 0.05), Vec3::new(0.0, 0.6, 0.0)],
+                vec![
+                    Vec3::new(0.0, -0.6, 0.0),
+                    Vec3::new(0.1, 0.0, 0.05),
+                    Vec3::new(0.0, 0.6, 0.0),
+                ],
                 Vec3::X,
                 2,
                 vec![

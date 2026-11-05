@@ -22,7 +22,10 @@ pub fn closed_polyline_crosses(pts: &[Vec2]) -> bool {
     if n < 4 {
         return false;
     }
-    let p: Vec<(f64, f64)> = pts.iter().map(|v| (f64::from(v.x), f64::from(v.y))).collect();
+    let p: Vec<(f64, f64)> = pts
+        .iter()
+        .map(|v| (f64::from(v.x), f64::from(v.y)))
+        .collect();
     let edge = |i: usize| (p[i], p[(i + 1) % n]);
     let mut order: Vec<usize> = (0..n).collect();
     let lo = |i: usize| edge(i).0 .0.min(edge(i).1 .0);
@@ -56,16 +59,32 @@ mod tests {
 
     #[test]
     fn a_square_is_simple_and_a_bowtie_crosses() {
-        let sq = [Vec2::new(0.0, 0.0), Vec2::new(1.0, 0.0), Vec2::new(1.0, 1.0), Vec2::new(0.0, 1.0)];
+        let sq = [
+            Vec2::new(0.0, 0.0),
+            Vec2::new(1.0, 0.0),
+            Vec2::new(1.0, 1.0),
+            Vec2::new(0.0, 1.0),
+        ];
         assert!(!closed_polyline_crosses(&sq));
-        let bow = [Vec2::new(0.0, 0.0), Vec2::new(1.0, 1.0), Vec2::new(1.0, 0.0), Vec2::new(0.0, 1.0)];
+        let bow = [
+            Vec2::new(0.0, 0.0),
+            Vec2::new(1.0, 1.0),
+            Vec2::new(1.0, 0.0),
+            Vec2::new(0.0, 1.0),
+        ];
         assert!(closed_polyline_crosses(&bow));
     }
 
     #[test]
     fn a_crossing_of_later_edges_is_found() {
         // edge 2 runs back down across edge 0
-        let p = [Vec2::new(0.0, 0.0), Vec2::new(2.0, 0.0), Vec2::new(2.0, 2.0), Vec2::new(1.0, -1.0), Vec2::new(0.5, 1.0)];
+        let p = [
+            Vec2::new(0.0, 0.0),
+            Vec2::new(2.0, 0.0),
+            Vec2::new(2.0, 2.0),
+            Vec2::new(1.0, -1.0),
+            Vec2::new(0.5, 1.0),
+        ];
         assert!(closed_polyline_crosses(&p));
     }
 

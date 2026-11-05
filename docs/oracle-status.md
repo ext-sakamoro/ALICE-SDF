@@ -6,11 +6,11 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1091 |
+| 🟢 Not ignored | 1163 |
 | 🔴 Red by design | 2 |
 | ⏱ Gated (runtime / diagnostic / manual) | 6 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **1099** |
+| **Total** | **1171** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -35,7 +35,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1091)
+## 🟢 Not ignored (1163)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -48,12 +48,13 @@ Per-file counts (the test names are in `tests/`):
 | `npr_shader_validate.rs` | 21 |
 | `test_live_sdf_oracle.rs` | 21 |
 | `test_lod_nanite_meshlet_oracle.rs` | 21 |
+| `test_loft_curve_oracle.rs` | 21 |
 | `test_tight_aabb_fold_oracle.rs` | 21 |
 | `test_loft_oracle.rs` | 20 |
+| `test_grid_warp_oracle.rs` | 18 |
 | `test_shape_analysis_oracle.rs` | 18 |
 | `test_shader_text_provenance.rs` | 17 |
 | `test_smooth_ops_oracle.rs` | 17 |
-| `test_loft_curve_oracle.rs` | 16 |
 | `test_mesh_winding.rs` | 16 |
 | `test_compiled_bytecode_oracle.rs` | 15 |
 | `test_io_round_trip.rs` | 15 |
@@ -84,6 +85,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_physics_bridge_determinism.rs` | 9 |
 | `test_relaxed_tracing.rs` | 9 |
 | `meshopt_reference_vectors.rs` | 8 |
+| `sdf_semantics_id.rs` | 8 |
 | `test_batch_operations.rs` | 8 |
 | `test_destruction_api_oracle.rs` | 8 |
 | `test_dual_contouring_manifold.rs` | 8 |
@@ -93,10 +95,11 @@ Per-file counts (the test names are in `tests/`):
 | `test_node_backend_matrix.rs` | 8 |
 | `test_npr_analytic.rs` | 8 |
 | `test_point_transform_oracle.rs` | 8 |
+| `test_shader_data_bounds.rs` | 8 |
 | `test_tight_aabb_elongate_oracle.rs` | 8 |
 | `test_volume_api_oracle.rs` | 8 |
-| `sdf_semantics_id.rs` | 7 |
 | `test_animation_oracle.rs` | 7 |
+| `test_bound_skip_oracle.rs` | 7 |
 | `test_field_fidelity_oracle.rs` | 7 |
 | `test_g8_meaning_id.rs` | 7 |
 | `test_g8_mesh_import.rs` | 7 |
@@ -106,14 +109,15 @@ Per-file counts (the test names are in `tests/`):
 | `test_raycast_oracle.rs` | 7 |
 | `test_shader_no_fused_multiply_add.rs` | 7 |
 | `test_sim_bridge_oracle.rs` | 7 |
+| `test_smooth_stack_load.rs` | 7 |
 | `test_terrain_api_oracle.rs` | 7 |
 | `deep_tree_drop.rs` | 6 |
 | `test_autodiff_oracle.rs` | 6 |
-| `test_bound_skip_oracle.rs` | 6 |
 | `test_diff_oracle.rs` | 6 |
 | `test_hlsl_export_oracle.rs` | 6 |
 | `test_jit_dynamic_oracle.rs` | 6 |
 | `test_live_sdf_closed_loop.rs` | 6 |
+| `test_loft_load.rs` | 6 |
 | `test_mesh_cache_model_oracle.rs` | 6 |
 | `test_mesh_codec_oracle.rs` | 6 |
 | `test_mesh_fit_hull_oracle.rs` | 6 |
@@ -122,6 +126,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_sign_topology.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
 | `test_sdf2d_oracle.rs` | 6 |
+| `test_section_simplicity.rs` | 6 |
 | `test_shader_precise_temporaries.rs` | 6 |
 | `test_asp_bridge_oracle.rs` | 5 |
 | `test_collision_oracle.rs` | 5 |
@@ -143,6 +148,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_gi_api_oracle.rs` | 4 |
 | `test_hlsl_dxc_compile.rs` | 4 |
 | `test_law_minmax_ties.rs` | 4 |
+| `test_loft_bend_refusal.rs` | 4 |
 | `test_mesh_cloud_hermite_oracle.rs` | 4 |
 | `test_metal_library_from_source_only.rs` | 4 |
 | `test_msl_metal_oracle.rs` | 4 |
@@ -177,6 +183,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_interval_soundness.rs` | 2 |
 | `test_live_sdf_gpu_parity.rs` | 2 |
 | `test_node_data_gpu_parity.rs` | 2 |
+| `test_shader_read_ranges.rs` | 2 |
 | `test_tight_aabb_cover_oracle.rs` | 2 |
 | `test_transpiler_naga_validate.rs` | 2 |
 | `mesh_sign_sliver.rs` | 1 |
@@ -184,6 +191,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_det_parity.rs` | 1 |
 | `test_gpu_fma_contraction.rs` | 1 |
 | `test_loft_lift_bits.rs` | 1 |
+| `test_loft_shader_cpu_agreement.rs` | 1 |
 | `test_metadata_order.rs` | 1 |
 | `test_npr_bytecode_gpu_parity.rs` | 1 |
 | `test_texture_shader_gpu_parity.rs` | 1 |

@@ -7,7 +7,9 @@
 //! the flat block of [`crate::primitives::loft::flatten`], a module-scope array.
 
 use crate::compiled::transpiler_common::lit;
-use crate::primitives::loft::{AXIS_NEWTON, CURVE_NEWTON, CURVE_SCAN, HEAD, PIECE_FLOATS, PIECE_PLANES, SCAN_PER_SEGMENT};
+use crate::primitives::loft::{
+    AXIS_NEWTON, CURVE_NEWTON, CURVE_SCAN, HEAD, PIECE_FLOATS, PIECE_PLANES, SCAN_PER_SEGMENT,
+};
 
 /// The statements of one loft, `fn {name}(p: V3) -> F` plus helpers, over the array `{arr}`
 fn template(name: &str, arr: &str, flat: &[f32], split: bool) -> String {
@@ -48,7 +50,11 @@ fn template(name: &str, arr: &str, flat: &[f32], split: bool) -> String {
         ax(n - 1),
         ax(n - 2)
     );
-    for (suffix, ret) in [("pos", "0.5 * (2.0 * b + k1 * t + k2 * t2 + k3 * t3)"), ("der", "0.5 * (k1 + 2.0 * k2 * t + 3.0 * k3 * t2)"), ("dd", "k2 + 3.0 * k3 * t")] {
+    for (suffix, ret) in [
+        ("pos", "0.5 * (2.0 * b + k1 * t + k2 * t2 + k3 * t3)"),
+        ("der", "0.5 * (k1 + 2.0 * k2 * t + 3.0 * k3 * t2)"),
+        ("dd", "k2 + 3.0 * k3 * t"),
+    ] {
         s += &format!(
             "fn {name}_{suffix}(s: F) -> V3 {{
     var ss: F = min(max(s, 0.0), {last});
@@ -199,7 +205,16 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
         );
     }
     if curve {
-        s += &curve_functions(name, arr, kh, kr, rb, w, kb + kr + if flat[13] > 0.0 { kr } else { 0 }, n);
+        s += &curve_functions(
+            name,
+            arr,
+            kh,
+            kr,
+            rb,
+            w,
+            kb + kr + if flat[13] > 0.0 { kr } else { 0 },
+            n,
+        );
     }
     let frame = |pfx: &str| {
         format!(
@@ -213,7 +228,11 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
         if caps[e] <= 0.0 {
             continue;
         }
-        let (se, sign, row) = if e == 0 { (lit(0.0), "-", 0) } else { (last.clone(), "", kr - 1) };
+        let (se, sign, row) = if e == 0 {
+            (lit(0.0), "-", 0)
+        } else {
+            (last.clone(), "", kr - 1)
+        };
         if curve {
             // the CPU's `curve_dome`: the end section moved toward the apex by o h/H and eroded by w,
             // (|(x, y)| − 1) min(w, H)/σ with x = (d + w)⁺/w, y = h/H, cut by −h
@@ -303,7 +322,9 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
     }
     s += &far_tail(name, flat);
     // the far bound is declared before the field that calls it (GLSL / HLSL need it first)
-    let at = s.find(&format!("fn {name}(p: V3) -> F {{")).expect("the field function");
+    let at = s
+        .find(&format!("fn {name}(p: V3) -> F {{"))
+        .expect("the field function");
     s.insert_str(at, &far_function(name, arr, flat, pieces_at(flat), split));
     s
 }
@@ -405,7 +426,11 @@ pub(crate) fn pieces_at(flat: &[f32]) -> usize {
     let curve = flat[15] != 0.0;
     let w = if curve { 2 * kh } else { 2 * kh + 1 };
     // the saturation widths B(s) (k knots) follow the L(s) knots when the correction is on
-    HEAD + 3 * n + kr * w + kr + if flat[13] > 0.0 { kr } else { 0 } + if curve { kh + 1 } else { 0 }
+    HEAD + 3 * n
+        + kr * w
+        + kr
+        + if flat[13] > 0.0 { kr } else { 0 }
+        + if curve { kh + 1 } else { 0 }
 }
 
 /// `far_bound(p, pieces)` of the CPU: min over pieces of max over its planes of `n·p − h`, a piece
@@ -426,7 +451,11 @@ fn far_function(name: &str, arr: &str, flat: &[f32], at: usize, split: bool) -> 
     let mut lb = String::new();
     for k in [0usize, 4, 8, 12, 48, 49] {
         let (lo, hi) = (at + 9 + k, at + (pieces - 1) * PIECE_FLOATS + 9 + k);
-        lb += &format!("        lb = max(lb, dot({}, p) - {arr}[o + {} @ {lo}..{hi}]);\n", plane_normal_expr(k), 9 + k);
+        lb += &format!(
+            "        lb = max(lb, dot({}, p) - {arr}[o + {} @ {lo}..{hi}]);\n",
+            plane_normal_expr(k),
+            9 + k
+        );
     }
     format!(
         "fn {name}_pn(k: I, t: V3, n: V3, b: V3) -> V3 {{
@@ -505,7 +534,11 @@ fn {name}_fb(p: V3) -> F {{
         let a = format!("{arr}_p{q}");
         s += &format!("    t = V3({a}[0 @ 0..0], {a}[1 @ 1..1], {a}[2 @ 2..2]);\n    n = V3({a}[3 @ 3..3], {a}[4 @ 4..4], {a}[5 @ 5..5]);\n    b = V3({a}[6 @ 6..6], {a}[7 @ 7..7], {a}[8 @ 8..8]);\n    lb = -3.0e38;\n");
         for k in [0usize, 4, 8, 12, 48, 49] {
-            s += &format!("    lb = max(lb, dot({}, p) - {a}[{i} @ {i}..{i}]);\n", plane_normal_expr(k), i = 9 + k);
+            s += &format!(
+                "    lb = max(lb, dot({}, p) - {a}[{i} @ {i}..{i}]);\n",
+                plane_normal_expr(k),
+                i = 9 + k
+            );
         }
         s += &format!(
             "    if (lb < best) {{\n        v = lb;\n        for (var k: I = 0; k < {planes}; k++) {{\n            v = max(v, dot({name}_pn(k, t, n, b), p) - {a}[9 + k @ 9..{e}]);\n        }}\n        best = min(best, v);\n    }}\n",
@@ -521,7 +554,16 @@ fn {name}_fb(p: V3) -> F {{
 /// `section_point`, `curve_on_span` and `curve_distance`, in the same order. `sb` is the offset of
 /// the section knots `K₀ … K_M` in the block
 #[allow(clippy::too_many_arguments)]
-fn curve_functions(name: &str, arr: &str, m: usize, kr: usize, rb: usize, w: usize, sb: usize, n: usize) -> String {
+fn curve_functions(
+    name: &str,
+    arr: &str,
+    m: usize,
+    kr: usize,
+    rb: usize,
+    w: usize,
+    sb: usize,
+    n: usize,
+) -> String {
     let mut s = String::new();
     // periodic section knot: K[r] + wraps * period, r = i mod M (Euclidean); the floor of a float
     // quotient, since GLSL leaves `%` of negative operands undefined (exact: small integers, and a
@@ -573,7 +615,15 @@ fn {name}_bw(s: F) -> V4 {{
         kr1f = lit((kr - 1) as f32),
         n1f = lit((n - 1) as f32),
     );
-    s += &closed_curve_shader(name, "i0: I, b: V4", "i0, b", &m.to_string(), m, &format!("{name}_spt"), &format!("{name}_sk"));
+    s += &closed_curve_shader(
+        name,
+        "i0: I, b: V4",
+        "i0, b",
+        &m.to_string(),
+        m,
+        &format!("{name}_spt"),
+        &format!("{name}_sk"),
+    );
     s += &format!(
         "fn {name}_cd(s: F, q: V2) -> F {{
     var i0: I = {name}_i0(s);
@@ -591,7 +641,15 @@ fn {name}_bw(s: F) -> V4 {{
 /// `m` the number of spans (a literal or a variable among the context), `pt(ctx, j)` the control point
 /// `j` (any integer, periodic) and `sk(i)` the knot `i` (the periodic extension). Emits `{name}_cs`
 /// (point and derivative), `{name}_cdd`, `{name}_on` and `{name}_ccd(ctx, q)`, the signed distance
-pub(crate) fn closed_curve_shader(name: &str, ctx_params: &str, ctx_args: &str, m: &str, m_cap: usize, pt: &str, sk: &str) -> String {
+pub(crate) fn closed_curve_shader(
+    name: &str,
+    ctx_params: &str,
+    ctx_args: &str,
+    m: &str,
+    m_cap: usize,
+    pt: &str,
+    sk: &str,
+) -> String {
     let mut s = String::new();
     // de Boor on span j: point and first derivative (V4: xy point, zw derivative), and the second
     // derivative; unrolled exactly as the CPU loops run (r = 1..=3, i = 3 down to r)
@@ -601,7 +659,11 @@ pub(crate) fn closed_curve_shader(name: &str, ctx_params: &str, ctx_args: &str, 
         deboor += &format!("    var u{k}: F = SK(j - 2 + {k});\n");
     }
     for k in 0..3 {
-        deboor += &format!("    var q{k}: V2 = (d{k1} - d{k}) * (3.0 / (u{k3} - u{k}));\n", k1 = k + 1, k3 = k + 3);
+        deboor += &format!(
+            "    var q{k}: V2 = (d{k1} - d{k}) * (3.0 / (u{k3} - u{k}));\n",
+            k1 = k + 1,
+            k3 = k + 3
+        );
     }
     deboor += "    var r0: V2 = (q1 - q0) * (2.0 / (u3 - u1));\n    var r1: V2 = (q2 - q1) * (2.0 / (u4 - u2));\n";
     deboor += "    var p0: V2 = d0;\n    var p1: V2 = d1;\n    var p2: V2 = d2;\n    var p3: V2 = d3;\n    var a: F = 0.0;\n";
@@ -624,7 +686,10 @@ pub(crate) fn closed_curve_shader(name: &str, ctx_params: &str, ctx_args: &str, 
         }
     }
     deboor += "    a = (t - u2) / (u3 - u2);\n";
-    let deboor = deboor.replace("PT", pt).replace("SK", sk).replace("CTX", ctx_args);
+    let deboor = deboor
+        .replace("PT", pt)
+        .replace("SK", sk)
+        .replace("CTX", ctx_args);
     s += &format!("fn {name}_cs({ctx_params}, j: I, t: F) -> V4 {{\n{deboor}    return V4(p3.x, p3.y, q2.x, q2.y);\n}}\n");
     s += &format!("fn {name}_cdd({ctx_params}, j: I, t: F) -> V2 {{\n{deboor}    return r0 * (1.0 - a) + r1 * a;\n}}\n");
     let scan = CURVE_SCAN;
@@ -732,7 +797,13 @@ fn render(src: &str, dialect: &str) -> String {
                         format!("{} {pn}", ty(pt))
                     })
                     .collect();
-                let ret = rest[close..].trim_start_matches(')').trim().trim_start_matches("->").trim().trim_end_matches('{').trim();
+                let ret = rest[close..]
+                    .trim_start_matches(')')
+                    .trim()
+                    .trim_start_matches("->")
+                    .trim()
+                    .trim_end_matches('{')
+                    .trim();
                 l = format!("{} {fname}({}) {{", ty(ret), params.join(", "));
             }
             // var x: T = e;   →   T x = e;
@@ -794,7 +865,12 @@ pub fn loft_functions(name: &str, arr: &str, flat: &[f32], dialect: &str) -> Str
 /// The loft's data array: in WGSL a module-scope `const` (a `var<private>` copy of a large block
 /// exhausts the per-invocation stack in some implementations), elsewhere the language's own
 /// module-scope float array
-pub fn loft_array(arr: &str, flat: &[f32], dialect: &str, default: fn(&str, &[f32]) -> String) -> String {
+pub fn loft_array(
+    arr: &str,
+    flat: &[f32],
+    dialect: &str,
+    default: fn(&str, &[f32]) -> String,
+) -> String {
     let finite = wgsl_values(flat);
     let flat = &finite[..];
     if dialect != "wgsl" && flat[16] > 0.0 {
@@ -803,7 +879,10 @@ pub fn loft_array(arr: &str, flat: &[f32], dialect: &str, default: fn(&str, &[f3
         let pieces = flat[16] as usize;
         let mut out = default(arr, &flat[..at]);
         for q in 0..pieces {
-            out += &default(&format!("{arr}_p{q}"), &flat[at + q * PIECE_FLOATS..at + (q + 1) * PIECE_FLOATS]);
+            out += &default(
+                &format!("{arr}_p{q}"),
+                &flat[at + q * PIECE_FLOATS..at + (q + 1) * PIECE_FLOATS],
+            );
         }
         let dir: Vec<f32> = DIR16.iter().flat_map(|(c, s)| [*c, *s]).collect();
         out += &default(&format!("{arr}_dir"), &dir);
@@ -830,11 +909,19 @@ pub fn wgsl_values(flat: &[f32]) -> Vec<f32> {
 /// A module-scope float array for any law's flat block, with no knowledge of its layout: in WGSL a
 /// `const` (a `var<private>` copy of a large block exhausts the per-invocation stack in some
 /// implementations), elsewhere the language's own module-scope float array
-pub fn const_array(arr: &str, flat: &[f32], dialect: &str, default: fn(&str, &[f32]) -> String) -> String {
+pub fn const_array(
+    arr: &str,
+    flat: &[f32],
+    dialect: &str,
+    default: fn(&str, &[f32]) -> String,
+) -> String {
     if dialect == "wgsl" {
         let n = flat.len();
         let items: Vec<String> = flat.iter().map(|v| lit(*v)).collect();
-        format!("const {arr}: array<f32, {n}> = array<f32, {n}>({});\n", items.join(", "))
+        format!(
+            "const {arr}: array<f32, {n}> = array<f32, {n}>({});\n",
+            items.join(", ")
+        )
     } else {
         default(arr, flat)
     }

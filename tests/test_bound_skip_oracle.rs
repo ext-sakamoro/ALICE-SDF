@@ -61,8 +61,11 @@ fn hull(seed: u64, at: Vec3) -> SdfNode {
     let mut r = lcg(seed);
     let mut node = SdfNode::polygon_2d(ellipse(0.12 + 0.05 * r(), 0.3, 24), 0.2);
     for k in 0..3 {
-        let side = SdfNode::polygon_2d(star(5 + k, 0.25, 0.18), 0.2)
-            .rotate_euler(r() * 3.0, r() * 3.0, r() * 3.0);
+        let side = SdfNode::polygon_2d(star(5 + k, 0.25, 0.18), 0.2).rotate_euler(
+            r() * 3.0,
+            r() * 3.0,
+            r() * 3.0,
+        );
         node = node.intersection(side);
     }
     node.intersection(SdfNode::plane(Vec3::new(0.0, -1.0, 0.0), 0.25))
@@ -88,7 +91,11 @@ fn body_like() -> SdfNode {
 fn union_chain() -> SdfNode {
     let st = SdfNode::section_stack(
         vec![0.0, 0.2, 0.5],
-        vec![vec![ellipse(0.2, 0.1, 30)], vec![ellipse(0.1, 0.2, 30)], vec![star(6, 0.2, 0.1)]],
+        vec![
+            vec![ellipse(0.2, 0.1, 30)],
+            vec![ellipse(0.1, 0.2, 30)],
+            vec![star(6, 0.2, 0.1)],
+        ],
     )
     .expect("stack");
     let mut node = st.translate(0.0, -0.3, 0.0);
@@ -125,12 +132,48 @@ fn limb(seed: u64, from: Vec3, to: Vec3, r0: f32, k: u32) -> SdfNode {
 /// Six lofts joined like the body's smooth parts: a smooth-union chain
 fn loft_body() -> SdfNode {
     let parts = [
-        limb(1, Vec3::new(0.0, 0.8, 0.0), Vec3::new(0.0, 1.4, 0.0), 0.14, 16),
-        limb(2, Vec3::new(0.15, 1.35, 0.0), Vec3::new(0.7, 1.35, 0.0), 0.045, 8),
-        limb(3, Vec3::new(-0.15, 1.35, 0.0), Vec3::new(-0.7, 1.35, 0.0), 0.045, 8),
-        limb(4, Vec3::new(0.08, 0.85, 0.0), Vec3::new(0.1, 0.05, 0.0), 0.06, 8),
-        limb(5, Vec3::new(-0.08, 0.85, 0.0), Vec3::new(-0.1, 0.05, 0.0), 0.06, 8),
-        limb(6, Vec3::new(0.0, 1.45, 0.0), Vec3::new(0.0, 1.62, 0.02), 0.09, 12),
+        limb(
+            1,
+            Vec3::new(0.0, 0.8, 0.0),
+            Vec3::new(0.0, 1.4, 0.0),
+            0.14,
+            16,
+        ),
+        limb(
+            2,
+            Vec3::new(0.15, 1.35, 0.0),
+            Vec3::new(0.7, 1.35, 0.0),
+            0.045,
+            8,
+        ),
+        limb(
+            3,
+            Vec3::new(-0.15, 1.35, 0.0),
+            Vec3::new(-0.7, 1.35, 0.0),
+            0.045,
+            8,
+        ),
+        limb(
+            4,
+            Vec3::new(0.08, 0.85, 0.0),
+            Vec3::new(0.1, 0.05, 0.0),
+            0.06,
+            8,
+        ),
+        limb(
+            5,
+            Vec3::new(-0.08, 0.85, 0.0),
+            Vec3::new(-0.1, 0.05, 0.0),
+            0.06,
+            8,
+        ),
+        limb(
+            6,
+            Vec3::new(0.0, 1.45, 0.0),
+            Vec3::new(0.0, 1.62, 0.02),
+            0.09,
+            12,
+        ),
     ];
     let mut node = parts[0].clone();
     for p in &parts[1..] {
@@ -219,7 +262,10 @@ fn every_bound_holds_on_the_cpu() {
                 }
             }
         }
-        assert!(checked > 10_000, "{what}: only {checked} points outside a box");
+        assert!(
+            checked > 10_000,
+            "{what}: only {checked} points outside a box"
+        );
     }
 }
 
@@ -227,10 +273,15 @@ fn every_bound_holds_on_the_cpu() {
 fn the_scenes_emit_skip_tests_and_the_reference_none() {
     for (what, node) in scenes() {
         let skip = WgslShader::transpile(&node, TranspileMode::Hardcoded).source;
-        let plain = WgslShader::transpile_without_bound_skip(&node, TranspileMode::Hardcoded).source;
+        let plain =
+            WgslShader::transpile_without_bound_skip(&node, TranspileMode::Hardcoded).source;
         let tests = skip.matches("> 0.0 &&").count();
         assert!(tests >= 4, "{what}: {tests} skip tests");
-        assert_eq!(plain.matches("> 0.0 &&").count(), 0, "{what}: the reference skips");
+        assert_eq!(
+            plain.matches("> 0.0 &&").count(),
+            0,
+            "{what}: the reference skips"
+        );
     }
 }
 
@@ -287,7 +338,13 @@ fn run_cpp(cxx: &str, dir: &Path, name: &str, emit: &str, pts: &[Vec3]) -> Vec<u
     let bin = dir.join(name);
     std::fs::write(&cpp, format!("{SHIM}\n{emit}\n{HOST_MAIN}")).expect("write");
     let out = Command::new(cxx)
-        .args(["-std=c++17", "-O1", "-ffp-contract=off", "-fno-strict-aliasing", "-w"])
+        .args([
+            "-std=c++17",
+            "-O1",
+            "-ffp-contract=off",
+            "-fno-strict-aliasing",
+            "-w",
+        ])
         .arg(&cpp)
         .arg("-o")
         .arg(&bin)
@@ -296,7 +353,11 @@ fn run_cpp(cxx: &str, dir: &Path, name: &str, emit: &str, pts: &[Vec3]) -> Vec<u
     assert!(
         out.status.success(),
         "{name}: C++ compile failed:\n{}",
-        String::from_utf8_lossy(&out.stderr).lines().take(15).collect::<Vec<_>>().join("\n")
+        String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .take(15)
+            .collect::<Vec<_>>()
+            .join("\n")
     );
     let mut payload = (pts.len() as u32).to_ne_bytes().to_vec();
     for p in pts {
@@ -304,15 +365,26 @@ fn run_cpp(cxx: &str, dir: &Path, name: &str, emit: &str, pts: &[Vec3]) -> Vec<u
             payload.extend_from_slice(&c.to_ne_bytes());
         }
     }
-    let mut child = Command::new(&bin).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().expect("spawn");
+    let mut child = Command::new(&bin)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn");
     let mut stdin = child.stdin.take().expect("stdin");
     let writer = std::thread::spawn(move || stdin.write_all(&payload));
     let mut raw = Vec::new();
-    child.stdout.take().expect("stdout").read_to_end(&mut raw).expect("read");
+    child
+        .stdout
+        .take()
+        .expect("stdout")
+        .read_to_end(&mut raw)
+        .expect("read");
     writer.join().expect("writer").expect("write");
     assert!(child.wait().expect("wait").success());
     assert_eq!(raw.len(), pts.len() * 4);
-    raw.chunks_exact(4).map(|c| u32::from_ne_bytes([c[0], c[1], c[2], c[3]])).collect()
+    raw.chunks_exact(4)
+        .map(|c| u32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
 }
 
 #[test]
@@ -323,7 +395,8 @@ fn hlsl_with_skips_equals_hlsl_without_bit_for_bit() {
     for (what, node) in scenes() {
         let pts = points(&node, 1_000_000, 2);
         let skip_src = HlslShader::transpile(&node, HlslTranspileMode::Hardcoded).source;
-        let plain_src = HlslShader::transpile_without_bound_skip(&node, HlslTranspileMode::Hardcoded).source;
+        let plain_src =
+            HlslShader::transpile_without_bound_skip(&node, HlslTranspileMode::Hardcoded).source;
         let skip = run_cpp(&cxx, &dir, &format!("{what}_skip"), &skip_src, &pts);
         let plain = run_cpp(&cxx, &dir, &format!("{what}_plain"), &plain_src, &pts);
         if let Some(i) = skip.iter().zip(&plain).position(|(a, b)| a != b) {
@@ -335,7 +408,10 @@ fn hlsl_with_skips_equals_hlsl_without_bit_for_bit() {
             );
         }
         let near = plain.iter().filter(|b| f32::from_bits(**b) < 0.05).count();
-        assert!(near > 10_000 && near < pts.len() - 10_000, "{what}: {near} near points");
+        assert!(
+            near > 10_000 && near < pts.len() - 10_000,
+            "{what}: {near} near points"
+        );
     }
 }
 
@@ -344,7 +420,10 @@ fn wgsl_with_skips_equals_wgsl_without_bit_for_bit_on_the_gpu() {
     for (what, node) in scenes() {
         let skip = WgslShader::transpile(&node, TranspileMode::Hardcoded);
         let plain = WgslShader::transpile_without_bound_skip(&node, TranspileMode::Hardcoded);
-        let (a, b) = match (GpuEvaluator::from_shader(&skip), GpuEvaluator::from_shader(&plain)) {
+        let (a, b) = match (
+            GpuEvaluator::from_shader(&skip),
+            GpuEvaluator::from_shader(&plain),
+        ) {
             (Ok(a), Ok(b)) => (a, b),
             (Err(e), _) | (_, Err(e)) => {
                 assert!(
@@ -359,7 +438,11 @@ fn wgsl_with_skips_equals_wgsl_without_bit_for_bit_on_the_gpu() {
         let ga = a.eval_batch(&pts).expect("gpu");
         let gb = b.eval_batch(&pts).expect("gpu");
         assert_eq!(ga.len(), pts.len());
-        if let Some(i) = ga.iter().zip(&gb).position(|(x, y)| x.to_bits() != y.to_bits()) {
+        if let Some(i) = ga
+            .iter()
+            .zip(&gb)
+            .position(|(x, y)| x.to_bits() != y.to_bits())
+        {
             panic!("{what}: at {:?} skip {} vs full {}", pts[i], ga[i], gb[i]);
         }
     }
@@ -374,7 +457,11 @@ fn loft_body_skips_bit_for_bit() {
     bounds(&node, &mut all);
     for (n, _) in &all {
         if let SdfNode::Loft { bounds, .. } = n {
-            assert!(bounds.m >= 0.0, "loft clamp m = {} (the emit prints `--m`)", bounds.m);
+            assert!(
+                bounds.m >= 0.0,
+                "loft clamp m = {} (the emit prints `--m`)",
+                bounds.m
+            );
         }
     }
     let mut bs = Vec::new();
@@ -391,9 +478,15 @@ fn loft_body_skips_bit_for_bit() {
     let skip = WgslShader::transpile(&node, TranspileMode::Hardcoded);
     let plain = WgslShader::transpile_without_bound_skip(&node, TranspileMode::Hardcoded);
     assert!(skip.source.matches("> 0.0 &&").count() >= 4);
-    let (a, b) = (GpuEvaluator::from_shader(&skip).expect("gpu"), GpuEvaluator::from_shader(&plain).expect("gpu"));
+    let (a, b) = (
+        GpuEvaluator::from_shader(&skip).expect("gpu"),
+        GpuEvaluator::from_shader(&plain).expect("gpu"),
+    );
     let pts = points(&node, 1_000_000, 5);
-    let (ga, gb) = (a.eval_batch(&pts).expect("gpu"), b.eval_batch(&pts).expect("gpu"));
+    let (ga, gb) = (
+        a.eval_batch(&pts).expect("gpu"),
+        b.eval_batch(&pts).expect("gpu"),
+    );
     assert!(ga.iter().zip(&gb).all(|(x, y)| x.to_bits() == y.to_bits()));
 }
 
@@ -404,7 +497,10 @@ fn the_loft_bound_holds_on_the_cpu() {
     let node = loft_body();
     let mut bs = Vec::new();
     bounds(&node, &mut bs);
-    let lofts = bs.iter().filter(|(n, _)| matches!(n, SdfNode::Loft { .. })).count();
+    let lofts = bs
+        .iter()
+        .filter(|(n, _)| matches!(n, SdfNode::Loft { .. }))
+        .count();
     assert_eq!(lofts, 6, "every loft has a bound");
     let pts = points(&node, 60_000, 6);
     let mut checked = 0usize;
@@ -431,7 +527,9 @@ fn the_loft_bound_holds_on_random_lofts() {
     let (mut checked, mut lofts) = (0usize, 0usize);
     for case in 0..48 {
         let n = 2 + (r() * 4.0) as usize;
-        let axis: Vec<Vec3> = (0..n).map(|i| Vec3::new((r() - 0.5) * 0.3, 0.3 * i as f32, (r() - 0.5) * 0.3)).collect();
+        let axis: Vec<Vec3> = (0..n)
+            .map(|i| Vec3::new((r() - 0.5) * 0.3, 0.3 * i as f32, (r() - 0.5) * 0.3))
+            .collect();
         let cap = |r: &mut dyn FnMut() -> f32| if r() < 0.5 { 0.0 } else { 0.02 + 0.08 * r() };
         let node = if case % 2 == 0 {
             let k = 1 + (r() * 3.0) as u32;
@@ -468,7 +566,10 @@ fn the_loft_bound_holds_on_random_lofts() {
         let Ok(node) = node else { continue };
         let b = lower_bound(&node).expect("a loft has a bound");
         lofts += 1;
-        let span = (0..3).map(|k| b.hi[k] - b.lo[k]).fold(0.0f32, f32::max).max(0.1);
+        let span = (0..3)
+            .map(|k| b.hi[k] - b.lo[k])
+            .fold(0.0f32, f32::max)
+            .max(0.1);
         for _ in 0..4000 {
             let reach = 0.2 + 4.0 * r() * span;
             let p = Vec3::new(
@@ -479,11 +580,19 @@ fn the_loft_bound_holds_on_random_lofts() {
             let lb = b.scale * box_dist(p, &b) - (b.margin + BOUND_SKIP_EPS);
             if lb > 0.0 {
                 let f = eval(&node, p);
-                assert!(f >= lb, "case {case}: field {f} < bound {lb} at {p:?} (scale {}, margin {})", b.scale, b.margin);
+                assert!(
+                    f >= lb,
+                    "case {case}: field {f} < bound {lb} at {p:?} (scale {}, margin {})",
+                    b.scale,
+                    b.margin
+                );
                 checked += 1;
             }
         }
     }
     assert!(lofts >= 24, "only {lofts} random lofts were valid");
-    assert!(checked >= lofts * 400, "the bound was positive at only {checked} points");
+    assert!(
+        checked >= lofts * 400,
+        "the bound was positive at only {checked} points"
+    );
 }

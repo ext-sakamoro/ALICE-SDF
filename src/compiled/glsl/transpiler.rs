@@ -300,7 +300,11 @@ impl GlslShader {
     /// # Errors
     ///
     /// As [`Self::try_transpile`]
-    pub fn try_transpile_with_version(node: &SdfNode, mode: GlslTranspileMode, version: u32) -> Result<Self, TranspileError> {
+    pub fn try_transpile_with_version(
+        node: &SdfNode,
+        mode: GlslTranspileMode,
+        version: u32,
+    ) -> Result<Self, TranspileError> {
         let mut transpiler = GlslTranspiler::new(mode);
         let body = transpiler.transpile_node(node, "p");
         TranspileError::from_reads(std::mem::take(&mut transpiler.read_errors))?;

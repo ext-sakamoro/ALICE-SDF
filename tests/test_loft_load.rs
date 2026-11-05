@@ -35,19 +35,32 @@ fn ellipse(m: usize, a: f32, b: f32) -> Vec<Vec2> {
 }
 
 fn curves() -> SdfNode {
-    let axis = vec![Vec3::ZERO, Vec3::new(0.02, 0.3, 0.0), Vec3::new(0.05, 0.6, 0.01), Vec3::new(0.06, 0.9, 0.0)];
-    let rows: Vec<Vec<Vec2>> = (0..4).map(|i| ellipse(8, 0.12 - 0.01 * i as f32, 0.08 + 0.005 * i as f32)).collect();
-    SdfNode::loft_curves_capped(axis, Vec3::Z, rows, [[0.03, 0.0, 0.0], [0.0, 0.0, 0.0]]).expect("a curve loft with a cap")
+    let axis = vec![
+        Vec3::ZERO,
+        Vec3::new(0.02, 0.3, 0.0),
+        Vec3::new(0.05, 0.6, 0.01),
+        Vec3::new(0.06, 0.9, 0.0),
+    ];
+    let rows: Vec<Vec<Vec2>> = (0..4)
+        .map(|i| ellipse(8, 0.12 - 0.01 * i as f32, 0.08 + 0.005 * i as f32))
+        .collect();
+    SdfNode::loft_curves_capped(axis, Vec3::Z, rows, [[0.03, 0.0, 0.0], [0.0, 0.0, 0.0]])
+        .expect("a curve loft with a cap")
 }
 
 fn variant(v: &mut Value) -> &mut serde_json::Map<String, Value> {
     let o = v.as_object_mut().expect("an externally tagged node");
     let key = o.keys().next().expect("the variant").clone();
-    o.get_mut(&key).and_then(Value::as_object_mut).expect("the variant's fields")
+    o.get_mut(&key)
+        .and_then(Value::as_object_mut)
+        .expect("the variant's fields")
 }
 
 fn bounds(v: &mut Value) -> &mut serde_json::Map<String, Value> {
-    variant(v).get_mut("bounds").and_then(Value::as_object_mut).expect("bounds")
+    variant(v)
+        .get_mut("bounds")
+        .and_then(Value::as_object_mut)
+        .expect("bounds")
 }
 
 fn load(v: &Value) -> Result<SdfNode, String> {
@@ -63,9 +76,15 @@ fn scale_scalar(v: &mut Value, key: &str, f: f64) {
 fn scale_elem(v: &mut Value, path: &[&str], i: usize, f: f64) {
     let mut cur = &mut *bounds(v);
     for k in &path[..path.len() - 1] {
-        cur = cur.get_mut(*k).and_then(Value::as_object_mut).unwrap_or_else(|| panic!("{k}"));
+        cur = cur
+            .get_mut(*k)
+            .and_then(Value::as_object_mut)
+            .unwrap_or_else(|| panic!("{k}"));
     }
-    let arr = cur.get_mut(path[path.len() - 1]).and_then(Value::as_array_mut).expect("an array");
+    let arr = cur
+        .get_mut(path[path.len() - 1])
+        .and_then(Value::as_array_mut)
+        .expect("an array");
     let x = arr[i].as_f64().expect("a number");
     arr[i] = Value::from(x * f + if x == 0.0 { 0.01 } else { 0.0 });
 }
@@ -115,17 +134,28 @@ fn bounds_from_other_caps_are_refused() {
     variant(&mut v).insert("caps".into(), serde_json::json!([0.0, 0.0]));
     assert!(load(&v).is_err(), "polar caps");
     let mut v = serde_json::to_value(curves()).expect("serialise");
-    variant(&mut v).insert("caps".into(), serde_json::json!([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]));
+    variant(&mut v).insert(
+        "caps".into(),
+        serde_json::json!([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]),
+    );
     assert!(load(&v).is_err(), "curve caps");
 }
 
 #[test]
 fn malformed_stored_rows_are_refused_not_panicking() {
     let mut v = serde_json::to_value(polar()).expect("serialise");
-    variant(&mut v).get_mut("rows").and_then(Value::as_array_mut).expect("rows").pop();
+    variant(&mut v)
+        .get_mut("rows")
+        .and_then(Value::as_array_mut)
+        .expect("rows")
+        .pop();
     assert!(load(&v).is_err(), "rows not a multiple of 2K + 1");
     let mut v = serde_json::to_value(curves()).expect("serialise");
-    variant(&mut v).get_mut("points").and_then(Value::as_array_mut).expect("points").pop();
+    variant(&mut v)
+        .get_mut("points")
+        .and_then(Value::as_array_mut)
+        .expect("points")
+        .pop();
     assert!(load(&v).is_err(), "points not a multiple of 2M");
 }
 

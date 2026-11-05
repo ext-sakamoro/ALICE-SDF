@@ -570,7 +570,11 @@ fn grad_polygon_2d(point: Vec3, vertices: &[Vec2], half_height: f32) -> Vec3 {
             best = d;
             near = vertices[i] + e * t;
         }
-        let c = [q.y >= vertices[i].y, q.y < vertices[j].y, e.x * w.y > e.y * w.x];
+        let c = [
+            q.y >= vertices[i].y,
+            q.y < vertices[j].y,
+            e.x * w.y > e.y * w.x,
+        ];
         if c.iter().all(|x| *x) || c.iter().all(|x| !*x) {
             s = -s;
         }
@@ -578,7 +582,11 @@ fn grad_polygon_2d(point: Vec3, vertices: &[Vec2], half_height: f32) -> Vec3 {
     }
     let off = q - near;
     let len = off.length();
-    let g2 = if len > 1e-12 { off / len * s } else { Vec2::ZERO };
+    let g2 = if len > 1e-12 {
+        off / len * s
+    } else {
+        Vec2::ZERO
+    };
     let d2 = s * best.sqrt();
     let dz = point.z.abs() - half_height;
     let gz = if point.z >= 0.0 { 1.0 } else { -1.0 };

@@ -437,7 +437,10 @@ void main() {{
             // the loft laws are long programs: their compared count and largest difference go to
             // the log, so a run shows they were measured and by how much
             if name.starts_with("loft") {
-                eprintln!("GLSL parity {name}: {} points, max |gpu - cpu| {max_abs:.3e}", pts.len());
+                eprintln!(
+                    "GLSL parity {name}: {} points, max |gpu - cpu| {max_abs:.3e}",
+                    pts.len()
+                );
             }
             if worst > 0.0 {
                 failures.push(format!("{name}: GLSL/CPU drift {worst:.3e}"));
@@ -528,7 +531,10 @@ fn every_corpus_node_matches_cpu_through_wgsl() {
         // the loft laws are long programs: their compared count and largest difference go to
         // the log, so a run shows they were measured and by how much
         if name.starts_with("loft") {
-            eprintln!("WGSL parity {name}: {} points, max |gpu - cpu| {max_abs:.3e}", pts.len());
+            eprintln!(
+                "WGSL parity {name}: {} points, max |gpu - cpu| {max_abs:.3e}",
+                pts.len()
+            );
         }
         if worst > 0.0 {
             failures.push(format!("{name}: WGSL/CPU drift {worst:.3e}"));

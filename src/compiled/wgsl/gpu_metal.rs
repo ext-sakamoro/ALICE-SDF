@@ -166,16 +166,28 @@ impl MetalEngine {
 
     /// [`MetalEngine::from_wgsl`] with the node data at `buffer(4)` (when not empty) and, when
     /// `checked`, the read counter at `buffer(5)`
-    pub(super) fn from_wgsl_with_data(wgsl: &str, node_data: &[f32], checked: bool) -> Result<Self, GpuError> {
+    pub(super) fn from_wgsl_with_data(
+        wgsl: &str,
+        node_data: &[f32],
+        checked: bool,
+    ) -> Result<Self, GpuError> {
         let device = Self::device()?;
         let distance = Kernel::compile(&device, wgsl)?;
         let queue = device.new_command_queue();
         let node_data = (!node_data.is_empty()).then(|| {
-            device.new_buffer_with_data(node_data.as_ptr().cast(), (node_data.len() * 4) as u64, MTLResourceOptions::StorageModeShared)
+            device.new_buffer_with_data(
+                node_data.as_ptr().cast(),
+                (node_data.len() * 4) as u64,
+                MTLResourceOptions::StorageModeShared,
+            )
         });
         let read_hits = checked.then(|| {
             let zero = 0u32;
-            device.new_buffer_with_data(std::ptr::addr_of!(zero).cast(), 4, MTLResourceOptions::StorageModeShared)
+            device.new_buffer_with_data(
+                std::ptr::addr_of!(zero).cast(),
+                4,
+                MTLResourceOptions::StorageModeShared,
+            )
         });
         Ok(Self {
             device,
@@ -193,7 +205,9 @@ impl MetalEngine {
     pub(super) fn read_hits(&self) -> Option<u32> {
         // SAFETY: a shared-storage buffer of 4 bytes, aligned for `u32`; every command buffer that
         // wrote it has completed (`dispatch` waits), so the GPU does not write it while it is read
-        self.read_hits.as_ref().map(|b| unsafe { *b.contents().cast::<u32>() })
+        self.read_hits
+            .as_ref()
+            .map(|b| unsafe { *b.contents().cast::<u32>() })
     }
 
     pub(super) fn new_dynamic(node: &SdfNode) -> Result<Self, GpuError> {

@@ -1111,9 +1111,20 @@ impl Compiler {
                     .push(Instruction::segment_2d(*a, *b, *thickness, *half_height));
             }
 
-            SdfNode::Loft { axis, up, harmonics, rows, caps, bounds } => {
-                let (sec, caps) = (crate::primitives::loft::LoftSection::Polar(*harmonics), *caps);
-                let flat = crate::primitives::loft::flatten(axis, *up, sec, rows, &[], caps, bounds);
+            SdfNode::Loft {
+                axis,
+                up,
+                harmonics,
+                rows,
+                caps,
+                bounds,
+            } => {
+                let (sec, caps) = (
+                    crate::primitives::loft::LoftSection::Polar(*harmonics),
+                    *caps,
+                );
+                let flat =
+                    crate::primitives::loft::flatten(axis, *up, sec, rows, &[], caps, bounds);
                 let (aux_off, aux_len) = self.push_aux(&flat);
                 let mut inst = Instruction::loft();
                 inst.aux_offset = aux_off;
@@ -1121,9 +1132,25 @@ impl Compiler {
                 self.instructions.push(inst);
             }
 
-            SdfNode::LoftCurves { axis, up, section_points, points, knots, caps, bounds } => {
+            SdfNode::LoftCurves {
+                axis,
+                up,
+                section_points,
+                points,
+                knots,
+                caps,
+                bounds,
+            } => {
                 let sec = crate::primitives::loft::LoftSection::Curve(*section_points);
-                let flat = crate::primitives::loft::flatten(axis, *up, sec, points, knots, [caps[0][0], caps[1][0]], bounds);
+                let flat = crate::primitives::loft::flatten(
+                    axis,
+                    *up,
+                    sec,
+                    points,
+                    knots,
+                    [caps[0][0], caps[1][0]],
+                    bounds,
+                );
                 let (aux_off, aux_len) = self.push_aux(&flat);
                 let mut inst = Instruction::loft();
                 inst.aux_offset = aux_off;
@@ -1549,7 +1576,9 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         }
         // no bytecode law yet (the levels and loops go to aux data next): refused, not compiled to a stand-in
         SdfNode::SmoothSectionStack(_) => {
-            return Err(CompileError::UnsupportedPrimitive("SmoothSectionStack".into()));
+            return Err(CompileError::UnsupportedPrimitive(
+                "SmoothSectionStack".into(),
+            ));
         }
         SdfNode::Bezier { .. } => {
             return Err(CompileError::UnsupportedPrimitive("Bezier".into()));

@@ -18,7 +18,12 @@ fn spline(cp: &[Vec2], t: f64) -> (f64, f64) {
     let i = t.floor() as usize % m;
     let u = t - t.floor();
     let (v, u3) = (1.0 - u, u * u * u);
-    let b = [v * v * v / 6.0, (3.0 * u3 - 6.0 * u * u + 4.0) / 6.0, (-3.0 * u3 + 3.0 * u * u + 3.0 * u + 1.0) / 6.0, u3 / 6.0];
+    let b = [
+        v * v * v / 6.0,
+        (3.0 * u3 - 6.0 * u * u + 4.0) / 6.0,
+        (-3.0 * u3 + 3.0 * u * u + 3.0 * u + 1.0) / 6.0,
+        u3 / 6.0,
+    ];
     let (mut x, mut y) = (0.0, 0.0);
     for (k, w) in b.iter().enumerate() {
         let p = cp[(i + m + k - 1) % m];
@@ -30,7 +35,9 @@ fn spline(cp: &[Vec2], t: f64) -> (f64, f64) {
 
 fn polyline_crosses(pts: &[(f64, f64)]) -> bool {
     let n = pts.len();
-    let cross = |a: (f64, f64), b: (f64, f64), c: (f64, f64)| (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
+    let cross = |a: (f64, f64), b: (f64, f64), c: (f64, f64)| {
+        (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)
+    };
     for i in 0..n {
         let (a, b) = (pts[i], pts[(i + 1) % n]);
         for j in i + 2..n {
@@ -38,7 +45,12 @@ fn polyline_crosses(pts: &[(f64, f64)]) -> bool {
                 continue;
             }
             let (c, d) = (pts[j], pts[(j + 1) % n]);
-            let (d1, d2, d3, d4) = (cross(a, b, c), cross(a, b, d), cross(c, d, a), cross(c, d, b));
+            let (d1, d2, d3, d4) = (
+                cross(a, b, c),
+                cross(a, b, d),
+                cross(c, d, a),
+                cross(c, d, b),
+            );
             if d1 * d2 < 0.0 && d3 * d4 < 0.0 {
                 return true;
             }
@@ -49,7 +61,9 @@ fn polyline_crosses(pts: &[(f64, f64)]) -> bool {
 
 fn spline_crosses(cp: &[Vec2]) -> bool {
     let n = cp.len() * 32;
-    let pts: Vec<_> = (0..n).map(|k| spline(cp, k as f64 * cp.len() as f64 / n as f64)).collect();
+    let pts: Vec<_> = (0..n)
+        .map(|k| spline(cp, k as f64 * cp.len() as f64 / n as f64))
+        .collect();
     polyline_crosses(&pts)
 }
 
@@ -81,11 +95,22 @@ fn levels(n: usize) -> Vec<f32> {
 fn the_limacon_crosses_itself() {
     // precondition of the refusals below, by the independent check
     assert!(spline_crosses(&limacon(24)));
-    let area: f32 = (0..24).map(|j| limacon(24)[j].perp_dot(limacon(24)[(j + 1) % 24])).sum();
-    assert!(area > 0.0, "the loop runs counter-clockwise, so only the crossing check can refuse it");
-    let poly: Vec<(f64, f64)> = limacon(24).iter().map(|p| (f64::from(p.x), f64::from(p.y))).collect();
+    let area: f32 = (0..24)
+        .map(|j| limacon(24)[j].perp_dot(limacon(24)[(j + 1) % 24]))
+        .sum();
+    assert!(
+        area > 0.0,
+        "the loop runs counter-clockwise, so only the crossing check can refuse it"
+    );
+    let poly: Vec<(f64, f64)> = limacon(24)
+        .iter()
+        .map(|p| (f64::from(p.x), f64::from(p.y)))
+        .collect();
     assert!(polyline_crosses(&poly));
-    assert!(!spline_crosses(&circle(0.2, 24)), "the checker passes a simple loop");
+    assert!(
+        !spline_crosses(&circle(0.2, 24)),
+        "the checker passes a simple loop"
+    );
 }
 
 #[test]
@@ -104,7 +129,11 @@ fn a_smooth_section_stack_refuses_a_self_crossing_loop() {
 
 #[test]
 fn a_curve_loft_refuses_a_self_crossing_row() {
-    let axis = vec![Vec3::ZERO, Vec3::new(0.0, 0.5, 0.0), Vec3::new(0.0, 1.0, 0.0)];
+    let axis = vec![
+        Vec3::ZERO,
+        Vec3::new(0.0, 0.5, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+    ];
     let rows = vec![circle(0.2, 24), limacon(24), circle(0.2, 24)];
     assert!(SdfNode::loft_curves(axis, Vec3::X, rows).is_err());
 }
@@ -115,7 +144,8 @@ fn crossing_pair() -> (Vec<Vec2>, Vec<Vec2>) {
     let star = |rs: [f32; 8], phase: f32| -> Vec<Vec2> {
         (0..8)
             .map(|j| {
-                let (s, c) = alice_det_math::sin_cos(std::f32::consts::TAU * j as f32 / 8.0 + phase);
+                let (s, c) =
+                    alice_det_math::sin_cos(std::f32::consts::TAU * j as f32 / 8.0 + phase);
                 Vec2::new(c, s) * rs[j]
             })
             .collect()
@@ -130,17 +160,45 @@ fn crossing_pair() -> (Vec<Vec2>, Vec<Vec2>) {
 fn a_curve_loft_refuses_rows_whose_blend_crosses_itself() {
     let (a, b) = crossing_pair();
     let mid: Vec<Vec2> = a.iter().zip(&b).map(|(x, y)| (*x + *y) * 0.5).collect();
-    assert!(!spline_crosses(&a) && !spline_crosses(&b), "both rows are simple");
-    assert!(spline_crosses(&mid), "the half-way blend crosses itself (precondition)");
-    let axis = vec![Vec3::ZERO, Vec3::new(0.0, 0.5, 0.0), Vec3::new(0.0, 1.0, 0.0), Vec3::new(0.0, 1.5, 0.0)];
+    assert!(
+        !spline_crosses(&a) && !spline_crosses(&b),
+        "both rows are simple"
+    );
+    assert!(
+        spline_crosses(&mid),
+        "the half-way blend crosses itself (precondition)"
+    );
+    let axis = vec![
+        Vec3::ZERO,
+        Vec3::new(0.0, 0.5, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec3::new(0.0, 1.5, 0.0),
+    ];
     let rows = vec![a.clone(), a, b.clone(), b];
     assert!(SdfNode::loft_curves(axis, Vec3::X, rows).is_err());
 }
 
 #[test]
 fn simple_rows_and_loops_are_accepted() {
-    let axis = vec![Vec3::ZERO, Vec3::new(0.0, 0.5, 0.0), Vec3::new(0.0, 1.0, 0.0)];
-    assert!(SdfNode::loft_curves(axis, Vec3::X, vec![circle(0.2, 24), circle(0.15, 24), circle(0.1, 24)]).is_ok());
-    assert!(SdfNode::section_stack(levels(4), (0..4).map(|_| vec![circle(0.2, 24)]).collect()).is_ok());
-    assert!(SdfNode::smooth_section_stack(levels(5), (0..5).map(|_| vec![circle(0.2, 24)]).collect(), 0.01, 0.1).is_ok());
+    let axis = vec![
+        Vec3::ZERO,
+        Vec3::new(0.0, 0.5, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+    ];
+    assert!(SdfNode::loft_curves(
+        axis,
+        Vec3::X,
+        vec![circle(0.2, 24), circle(0.15, 24), circle(0.1, 24)]
+    )
+    .is_ok());
+    assert!(
+        SdfNode::section_stack(levels(4), (0..4).map(|_| vec![circle(0.2, 24)]).collect()).is_ok()
+    );
+    assert!(SdfNode::smooth_section_stack(
+        levels(5),
+        (0..5).map(|_| vec![circle(0.2, 24)]).collect(),
+        0.01,
+        0.1
+    )
+    .is_ok());
 }

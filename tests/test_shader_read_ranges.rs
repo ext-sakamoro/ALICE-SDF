@@ -16,8 +16,8 @@
 mod common;
 
 use alice_sdf::compiled::{HlslShader, HlslTranspileMode};
-use common::loft_stack_scenes::{contraction_budget, trees};
 use alice_sdf::prelude::*;
+use common::loft_stack_scenes::{contraction_budget, trees};
 use glam::Vec2;
 use std::io::{Read, Write};
 use std::path::Path;
@@ -62,44 +62,84 @@ int main() {
 
 fn cxx() -> Option<String> {
     for cand in ["c++", "clang++", "g++"] {
-        if Command::new(cand).arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success()) {
+        if Command::new(cand)
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+        {
             return Some(cand.to_string());
         }
     }
-    assert!(std::env::var_os("ALICE_SDF_REQUIRE_CXX").is_none(), "ALICE_SDF_REQUIRE_CXX is set but no C++ compiler was found");
+    assert!(
+        std::env::var_os("ALICE_SDF_REQUIRE_CXX").is_none(),
+        "ALICE_SDF_REQUIRE_CXX is set but no C++ compiler was found"
+    );
     eprintln!("skipping: no C++ compiler");
     None
 }
 
 /// (reads, out-of-range reads) of the scene's HLSL over the points
 fn run(cxx: &str, dir: &Path, name: &str, node: &SdfNode, pts: &[Vec3]) -> (u64, u64) {
-    let counted = HlslShader::try_transpile_checked(node, HlslTranspileMode::Hardcoded).expect("the emit proves its reads").source;
-    assert!(counted.contains("ALICE_RD("), "{name}: the emit has no checked read");
+    let counted = HlslShader::try_transpile_checked(node, HlslTranspileMode::Hardcoded)
+        .expect("the emit proves its reads")
+        .source;
+    assert!(
+        counted.contains("ALICE_RD("),
+        "{name}: the emit has no checked read"
+    );
     let cpp = dir.join(format!("{name}.cpp"));
     let bin = dir.join(name);
     std::fs::write(&cpp, format!("{SHIM}\n{COUNTER}\n{counted}\n{HOST_MAIN}")).expect("write");
     let out = Command::new(cxx)
-        .args(["-std=c++17", "-O1", "-ffp-contract=off", "-fno-strict-aliasing", "-w"])
+        .args([
+            "-std=c++17",
+            "-O1",
+            "-ffp-contract=off",
+            "-fno-strict-aliasing",
+            "-w",
+        ])
         .arg(&cpp)
         .arg("-o")
         .arg(&bin)
         .output()
         .expect("compiler");
-    assert!(out.status.success(), "{name}: C++ compile failed:\n{}", String::from_utf8_lossy(&out.stderr).lines().take(15).collect::<Vec<_>>().join("\n"));
+    assert!(
+        out.status.success(),
+        "{name}: C++ compile failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .take(15)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
     let mut payload = (pts.len() as u32).to_ne_bytes().to_vec();
     for p in pts {
         for c in [p.x, p.y, p.z] {
             payload.extend_from_slice(&c.to_ne_bytes());
         }
     }
-    let mut child = Command::new(&bin).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().expect("spawn");
+    let mut child = Command::new(&bin)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn");
     let mut stdin = child.stdin.take().expect("stdin");
     let writer = std::thread::spawn(move || stdin.write_all(&payload));
     let mut text = String::new();
-    child.stdout.take().expect("stdout").read_to_string(&mut text).expect("read");
+    child
+        .stdout
+        .take()
+        .expect("stdout")
+        .read_to_string(&mut text)
+        .expect("read");
     writer.join().expect("writer").expect("write");
     assert!(child.wait().expect("wait").success());
-    let v: Vec<u64> = text.split_whitespace().map(|x| x.parse().expect("a count")).collect();
+    let v: Vec<u64> = text
+        .split_whitespace()
+        .map(|x| x.parse().expect("a count"))
+        .collect();
     (v[0], v[1])
 }
 
@@ -113,36 +153,84 @@ fn circle(r: f32, c: Vec2, m: usize) -> Vec<Vec2> {
 }
 
 fn scenes() -> Vec<(&'static str, SdfNode)> {
-    let ellipse = |a: f32, b: f32| -> Vec<Vec2> { circle(1.0, Vec2::ZERO, 12).iter().map(|p| Vec2::new(a * p.x, b * p.y)).collect() };
+    let ellipse = |a: f32, b: f32| -> Vec<Vec2> {
+        circle(1.0, Vec2::ZERO, 12)
+            .iter()
+            .map(|p| Vec2::new(a * p.x, b * p.y))
+            .collect()
+    };
     let levels: Vec<f32> = (0..8).map(|i| -0.35 + 0.1 * i as f32).collect();
     let smooth = SdfNode::smooth_section_stack(
         levels.clone(),
-        levels.iter().map(|&y| if y < 0.0 { vec![circle(0.3, Vec2::ZERO, 12)] } else { vec![circle(0.16, Vec2::new(-0.2, 0.0), 8), circle(0.16, Vec2::new(0.2, 0.0), 8)] }).collect(),
+        levels
+            .iter()
+            .map(|&y| {
+                if y < 0.0 {
+                    vec![circle(0.3, Vec2::ZERO, 12)]
+                } else {
+                    vec![
+                        circle(0.16, Vec2::new(-0.2, 0.0), 8),
+                        circle(0.16, Vec2::new(0.2, 0.0), 8),
+                    ]
+                }
+            })
+            .collect(),
         0.01,
         0.1,
     )
     .expect("smooth stack");
     let stack = SdfNode::section_stack(
         vec![0.0, 0.2, 0.4, 0.6],
-        [0.0f32, 0.2, 0.4, 0.6].iter().map(|&y| vec![circle(0.2 + 0.1 * y, Vec2::ZERO, 24), circle(0.05, Vec2::new(0.05, 0.0), 8)]).collect(),
+        [0.0f32, 0.2, 0.4, 0.6]
+            .iter()
+            .map(|&y| {
+                vec![
+                    circle(0.2 + 0.1 * y, Vec2::ZERO, 24),
+                    circle(0.05, Vec2::new(0.05, 0.0), 8),
+                ]
+            })
+            .collect(),
     )
     .expect("section stack");
     let curves = SdfNode::loft_curves_capped(
-        vec![Vec3::ZERO, Vec3::new(0.03, 0.3, 0.0), Vec3::new(0.05, 0.6, 0.02), Vec3::new(0.04, 0.9, 0.0)],
+        vec![
+            Vec3::ZERO,
+            Vec3::new(0.03, 0.3, 0.0),
+            Vec3::new(0.05, 0.6, 0.02),
+            Vec3::new(0.04, 0.9, 0.0),
+        ],
         Vec3::X,
-        vec![ellipse(0.2, 0.12), ellipse(0.18, 0.13), ellipse(0.15, 0.1), ellipse(0.1, 0.08)],
+        vec![
+            ellipse(0.2, 0.12),
+            ellipse(0.18, 0.13),
+            ellipse(0.15, 0.1),
+            ellipse(0.1, 0.08),
+        ],
         [[0.1, 0.0, 0.0], [0.15, 0.06, -0.03]],
     )
     .expect("capped curve loft");
     let polar = SdfNode::loft_capped(
-        vec![Vec3::ZERO, Vec3::new(0.02, 0.3, 0.0), Vec3::new(0.0, 0.6, 0.03)],
+        vec![
+            Vec3::ZERO,
+            Vec3::new(0.02, 0.3, 0.0),
+            Vec3::new(0.0, 0.6, 0.03),
+        ],
         Vec3::Z,
         2,
-        vec![vec![0.15, 0.01, 0.0, 0.01, 0.0], vec![0.17, 0.0, 0.01, 0.0, 0.0], vec![0.12, 0.0, 0.0, 0.0, 0.01]],
+        vec![
+            vec![0.15, 0.01, 0.0, 0.01, 0.0],
+            vec![0.17, 0.0, 0.01, 0.0, 0.0],
+            vec![0.12, 0.0, 0.0, 0.0, 0.01],
+        ],
         [0.08, 0.12],
     )
     .expect("capped polar loft");
-    vec![("smooth_stack", smooth), ("section_stack", stack), ("curve_loft", curves), ("polar_loft", polar)]
+    vec![
+        ("smooth_stack", smooth),
+        ("section_stack", stack),
+        ("curve_loft", curves),
+        ("polar_loft", polar),
+    ]
 }
 
 /// Points out to beyond every end and far field: below and above the levels and the axis ends, on
@@ -150,13 +238,19 @@ fn scenes() -> Vec<(&'static str, SdfNode)> {
 fn points(n: usize) -> Vec<Vec3> {
     let mut s: u64 = 0x2EAD_5EE5;
     let mut r = move || {
-        s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        s = s
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         ((s >> 40) as f32) / ((1u64 << 24) as f32)
     };
     (0..n)
         .map(|i| {
             let k = [0.6f32, 1.5, 6.0][i % 3];
-            Vec3::new((r() - 0.5) * 2.0 * k, (r() - 0.3) * 2.0 * k, (r() - 0.5) * 2.0 * k)
+            Vec3::new(
+                (r() - 0.5) * 2.0 * k,
+                (r() - 0.3) * 2.0 * k,
+                (r() - 0.5) * 2.0 * k,
+            )
         })
         .collect()
 }
@@ -169,8 +263,15 @@ fn every_array_read_is_inside_its_array() {
     let pts = points(30_000);
     for (name, node) in scenes() {
         let (reads, bad) = run(&cxx, &dir, name, &node, &pts);
-        assert!(reads > pts.len() as u64, "{name}: only {reads} array reads over {} points", pts.len());
-        assert_eq!(bad, 0, "{name}: {bad} of {reads} array reads outside the range the emit proved for them");
+        assert!(
+            reads > pts.len() as u64,
+            "{name}: only {reads} array reads over {} points",
+            pts.len()
+        );
+        assert_eq!(
+            bad, 0,
+            "{name}: {bad} of {reads} array reads outside the range the emit proved for them"
+        );
     }
 }
 
@@ -200,34 +301,68 @@ int main() {
 ";
 
 /// The scene's HLSL text compiled as C++ with `contract` (`off` / `fast`), its values at the points
-fn values(cxx: &str, dir: &Path, name: &str, node: &SdfNode, pts: &[Vec3], contract: &str) -> Vec<f32> {
-    let emit = HlslShader::try_transpile(node, HlslTranspileMode::Hardcoded).expect("the emit proves its reads").source;
+fn values(
+    cxx: &str,
+    dir: &Path,
+    name: &str,
+    node: &SdfNode,
+    pts: &[Vec3],
+    contract: &str,
+) -> Vec<f32> {
+    let emit = HlslShader::try_transpile(node, HlslTranspileMode::Hardcoded)
+        .expect("the emit proves its reads")
+        .source;
     let cpp = dir.join(format!("{name}_{contract}.cpp"));
     let bin = dir.join(format!("{name}_{contract}"));
     std::fs::write(&cpp, format!("{SHIM}\n{emit}\n{VALUES_MAIN}")).expect("write");
     let out = Command::new(cxx)
-        .args(["-std=c++17", "-O2", &format!("-ffp-contract={contract}"), "-fno-strict-aliasing", "-w"])
+        .args([
+            "-std=c++17",
+            "-O2",
+            &format!("-ffp-contract={contract}"),
+            "-fno-strict-aliasing",
+            "-w",
+        ])
         .arg(&cpp)
         .arg("-o")
         .arg(&bin)
         .output()
         .expect("compiler");
-    assert!(out.status.success(), "{name}: C++ compile failed:\n{}", String::from_utf8_lossy(&out.stderr).lines().take(15).collect::<Vec<_>>().join("\n"));
+    assert!(
+        out.status.success(),
+        "{name}: C++ compile failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .take(15)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
     let mut payload = (pts.len() as u32).to_ne_bytes().to_vec();
     for p in pts {
         for c in [p.x, p.y, p.z] {
             payload.extend_from_slice(&c.to_ne_bytes());
         }
     }
-    let mut child = Command::new(&bin).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().expect("spawn");
+    let mut child = Command::new(&bin)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn");
     let mut stdin = child.stdin.take().expect("stdin");
     let writer = std::thread::spawn(move || stdin.write_all(&payload));
     let mut raw = Vec::new();
-    child.stdout.take().expect("stdout").read_to_end(&mut raw).expect("read");
+    child
+        .stdout
+        .take()
+        .expect("stdout")
+        .read_to_end(&mut raw)
+        .expect("read");
     writer.join().expect("writer").expect("write");
     assert!(child.wait().expect("wait").success());
     assert_eq!(raw.len(), pts.len() * 4);
-    raw.chunks_exact(4).map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]])).collect()
+    raw.chunks_exact(4)
+        .map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
 }
 
 /// The contraction budget (`tests/common/loft_stack_scenes.rs`) is the gap measured here times 4:
@@ -248,20 +383,32 @@ fn the_contraction_gap_is_inside_its_budget() {
         let mut gap = 0.0f32;
         for (p, (a, b)) in pts.iter().zip(off.iter().zip(&fast)) {
             let c = eval(&node, *p);
-            assert!(a.is_finite() && b.is_finite(), "{name}: non-finite at {p:?}");
+            assert!(
+                a.is_finite() && b.is_finite(),
+                "{name}: non-finite at {p:?}"
+            );
             gap = gap.max((a - b).abs() / c.abs().max(1.0));
             differing += usize::from(a.to_bits() != b.to_bits());
         }
         let budget = contraction_budget(name);
-        println!("{name}: measured contraction gap {gap:e}, budget {budget:e} (x4 would be {:e})", 4.0 * gap);
+        println!(
+            "{name}: measured contraction gap {gap:e}, budget {budget:e} (x4 would be {:e})",
+            4.0 * gap
+        );
         gaps.push((name, gap, budget));
     }
     // aarch64 has fused multiply-add in the base instruction set; x86-64 without `-mfma` has nothing
     // to fuse, so there the two builds may be equal and only the budget is checked
     if cfg!(target_arch = "aarch64") {
-        assert!(differing > 0, "no value differed between the two contractions (the measurement measured nothing)");
+        assert!(
+            differing > 0,
+            "no value differed between the two contractions (the measurement measured nothing)"
+        );
     }
     for (name, gap, budget) in gaps {
-        assert!(gap * 4.0 <= budget, "{name}: the contraction gap {gap:e} times 4 is past the budget {budget:e}");
+        assert!(
+            gap * 4.0 <= budget,
+            "{name}: the contraction gap {gap:e} times 4 is past the budget {budget:e}"
+        );
     }
 }

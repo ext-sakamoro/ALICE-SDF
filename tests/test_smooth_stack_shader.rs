@@ -33,7 +33,10 @@ fn split_stack() -> SdfNode {
                 vec![circle(0.30, Vec2::ZERO, 12)]
             } else {
                 let s = 0.18 + 0.4 * y;
-                vec![circle(0.16, Vec2::new(-s, 0.0), 8), circle(0.16, Vec2::new(s, 0.0), 8)]
+                vec![
+                    circle(0.16, Vec2::new(-s, 0.0), 8),
+                    circle(0.16, Vec2::new(s, 0.0), 8),
+                ]
             }
         })
         .collect();
@@ -44,22 +47,35 @@ fn trees() -> Vec<(&'static str, SdfNode)> {
     let st = split_stack();
     vec![
         ("stack", st.clone()),
-        ("stack_rotated", st.clone().rotate(Quat::from_rotation_z(0.7) * Quat::from_rotation_x(-0.4)).translate(0.1, -0.2, 0.05)),
-        ("stack_union", st.union(SdfNode::sphere(0.2).translate(0.0, 0.45, 0.0))),
+        (
+            "stack_rotated",
+            st.clone()
+                .rotate(Quat::from_rotation_z(0.7) * Quat::from_rotation_x(-0.4))
+                .translate(0.1, -0.2, 0.05),
+        ),
+        (
+            "stack_union",
+            st.union(SdfNode::sphere(0.2).translate(0.0, 0.45, 0.0)),
+        ),
     ]
 }
 
 fn points(n: usize) -> Vec<Vec3> {
     let mut s: u64 = 0x5e55_0000_0000_0087;
     let mut r = move || {
-        s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        s = s
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         ((s >> 40) as f32) / ((1u64 << 24) as f32) * 1.6 - 0.8
     };
     (0..n).map(|_| Vec3::new(r(), r(), r())).collect()
 }
 
 fn validate(module: &naga::Module) -> Result<(), String> {
-    Validator::new(ValidationFlags::all(), Capabilities::all()).validate(module).map(|_| ()).map_err(|e| format!("{e:?}"))
+    Validator::new(ValidationFlags::all(), Capabilities::all())
+        .validate(module)
+        .map(|_| ())
+        .map_err(|e| format!("{e:?}"))
 }
 
 #[test]
@@ -67,8 +83,12 @@ fn the_stack_transpiles_to_valid_wgsl() {
     let mut n = 0;
     for (name, node) in trees() {
         let src = WgslShader::transpile(&node, TranspileMode::Hardcoded).source;
-        assert!(src.contains("alice_sss_"), "{name}: the stack's functions are not in the WGSL");
-        let module = naga::front::wgsl::parse_str(&src).unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(&src)));
+        assert!(
+            src.contains("alice_sss_"),
+            "{name}: the stack's functions are not in the WGSL"
+        );
+        let module = naga::front::wgsl::parse_str(&src)
+            .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(&src)));
         validate(&module).unwrap_or_else(|e| panic!("{name}: WGSL validation: {e}"));
         n += 1;
     }
@@ -82,11 +102,19 @@ fn the_stack_transpiles_to_valid_glsl() {
     let mut n = 0;
     for (name, node) in trees() {
         let shader = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
-        assert!(shader.source.contains("alice_sss_"), "{name}: the stack's functions are not in the GLSL");
+        assert!(
+            shader.source.contains("alice_sss_"),
+            "{name}: the stack's functions are not in the GLSL"
+        );
         let source = format!("{}\nout vec4 alice_frag;\nvoid main() {{ alice_frag = vec4(sdf_eval(vec3(0.1, 0.2, 0.3))); }}\n", shader.source);
         let mut fe = naga::front::glsl::Frontend::default();
-        let opts = naga::front::glsl::Options { stage: naga::ShaderStage::Fragment, defines: naga::FastHashMap::default() };
-        let module = fe.parse(&opts, &source).unwrap_or_else(|e| panic!("{name}: GLSL parse: {e:?}"));
+        let opts = naga::front::glsl::Options {
+            stage: naga::ShaderStage::Fragment,
+            defines: naga::FastHashMap::default(),
+        };
+        let module = fe
+            .parse(&opts, &source)
+            .unwrap_or_else(|e| panic!("{name}: GLSL parse: {e:?}"));
         validate(&module).unwrap_or_else(|e| panic!("{name}: GLSL validation: {e}"));
         n += 1;
     }
@@ -110,7 +138,10 @@ mod gpu {
     }
 
     fn no_gpu(e: &dyn std::fmt::Display) {
-        assert!(std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(), "ALICE_SDF_REQUIRE_GPU is set but the GPU path failed: {e}");
+        assert!(
+            std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+            "ALICE_SDF_REQUIRE_GPU is set but the GPU path failed: {e}"
+        );
         eprintln!("skipping the stack's GPU parity: {e}");
     }
 

@@ -33,7 +33,9 @@ const SHIM: &str = include_str!("common/hlsl_cpu_shim.h");
 fn lcg(seed: u64) -> impl FnMut() -> f32 {
     let mut s = seed;
     move || {
-        s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        s = s
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         ((s >> 40) as f32) / ((1u64 << 24) as f32)
     }
 }
@@ -42,36 +44,62 @@ fn lcg(seed: u64) -> impl FnMut() -> f32 {
 /// between knots and the saturation width varies per knot
 fn torso() -> SdfNode {
     let ellipse = |a: f32, b: f32| -> Vec<Vec2> {
-        (0..10).map(|k| {
-            let t = std::f32::consts::TAU * k as f32 / 10.0;
-            Vec2::new(a * t.cos(), b * t.sin())
-        }).collect()
+        (0..10)
+            .map(|k| {
+                let t = std::f32::consts::TAU * k as f32 / 10.0;
+                Vec2::new(a * t.cos(), b * t.sin())
+            })
+            .collect()
     };
-    let axis = (0..6).map(|i| Vec3::new(0.02 * i as f32, 0.2 * i as f32, 0.0)).collect();
-    let rows = [(0.3, 0.2), (0.34, 0.22), (0.36, 0.24), (0.3, 0.2), (0.12, 0.1), (0.08, 0.07)]
-        .iter()
-        .map(|&(a, b)| ellipse(a, b))
+    let axis = (0..6)
+        .map(|i| Vec3::new(0.02 * i as f32, 0.2 * i as f32, 0.0))
         .collect();
+    let rows = [
+        (0.3, 0.2),
+        (0.34, 0.22),
+        (0.36, 0.24),
+        (0.3, 0.2),
+        (0.12, 0.1),
+        (0.08, 0.07),
+    ]
+    .iter()
+    .map(|&(a, b)| ellipse(a, b))
+    .collect();
     SdfNode::loft_curves(axis, Vec3::Z, rows).expect("torso-like loft")
 }
 
 /// A curve loft closed by caps at both ends, one with an offset apex (the sheared dome)
 fn curve_capped() -> SdfNode {
     let ellipse = |a: f32, b: f32| -> Vec<Vec2> {
-        (0..12).map(|k| {
-            let t = std::f32::consts::TAU * k as f32 / 12.0;
-            Vec2::new(a * t.cos(), b * t.sin())
-        }).collect()
+        (0..12)
+            .map(|k| {
+                let t = std::f32::consts::TAU * k as f32 / 12.0;
+                Vec2::new(a * t.cos(), b * t.sin())
+            })
+            .collect()
     };
-    let axis = vec![Vec3::ZERO, Vec3::new(0.03, 0.3, 0.0), Vec3::new(0.05, 0.6, 0.02)];
+    let axis = vec![
+        Vec3::ZERO,
+        Vec3::new(0.03, 0.3, 0.0),
+        Vec3::new(0.05, 0.6, 0.02),
+    ];
     let rows = vec![ellipse(0.2, 0.12), ellipse(0.18, 0.13), ellipse(0.15, 0.1)];
-    SdfNode::loft_curves_capped(axis, Vec3::X, rows, [[0.1, 0.0, 0.0], [0.15, 0.06, -0.03]]).expect("capped curve loft")
+    SdfNode::loft_curves_capped(axis, Vec3::X, rows, [[0.1, 0.0, 0.0], [0.15, 0.06, -0.03]])
+        .expect("capped curve loft")
 }
 
 /// A polar loft with domes at both ends
 fn polar_capped() -> SdfNode {
-    let axis = vec![Vec3::ZERO, Vec3::new(0.02, 0.3, 0.0), Vec3::new(0.0, 0.6, 0.03)];
-    let rows = vec![vec![0.15, 0.01, 0.0], vec![0.17, 0.0, 0.01], vec![0.12, 0.0, 0.0]];
+    let axis = vec![
+        Vec3::ZERO,
+        Vec3::new(0.02, 0.3, 0.0),
+        Vec3::new(0.0, 0.6, 0.03),
+    ];
+    let rows = vec![
+        vec![0.15, 0.01, 0.0],
+        vec![0.17, 0.0, 0.01],
+        vec![0.12, 0.0, 0.0],
+    ];
     SdfNode::loft_capped(axis, Vec3::Z, 1, rows, [0.08, 0.12]).expect("capped polar loft")
 }
 
@@ -82,7 +110,12 @@ fn lofts() -> Vec<(&'static str, SdfNode)> {
         ("fade_curved", common::corpus::loft_fade(true)),
         ("faded", common::corpus::loft_faded()),
         ("torso", torso()),
-        ("torso_moved", torso().rotate_euler(0.3, -0.2, 0.5).translate(0.1, -0.3, 0.2)),
+        (
+            "torso_moved",
+            torso()
+                .rotate_euler(0.3, -0.2, 0.5)
+                .translate(0.1, -0.3, 0.2),
+        ),
         ("curve_caps", curve_capped()),
         ("polar_caps", polar_capped()),
     ]
@@ -158,7 +191,13 @@ fn compile_and_run(cxx: &str, dir: &Path, name: &str, src: &str, pts: &[Vec3]) -
     let bin: PathBuf = dir.join(name);
     std::fs::write(&cpp, src).expect("write cpp");
     let out = Command::new(cxx)
-        .args(["-std=c++17", "-O1", "-ffp-contract=off", "-fno-strict-aliasing", "-w"])
+        .args([
+            "-std=c++17",
+            "-O1",
+            "-ffp-contract=off",
+            "-fno-strict-aliasing",
+            "-w",
+        ])
         .arg(&cpp)
         .arg("-o")
         .arg(&bin)
@@ -167,7 +206,11 @@ fn compile_and_run(cxx: &str, dir: &Path, name: &str, src: &str, pts: &[Vec3]) -
     assert!(
         out.status.success(),
         "C++ compile failed:\n{}",
-        String::from_utf8_lossy(&out.stderr).lines().take(15).collect::<Vec<_>>().join("\n")
+        String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .take(15)
+            .collect::<Vec<_>>()
+            .join("\n")
     );
     let mut payload = (pts.len() as u32).to_ne_bytes().to_vec();
     for p in pts {
@@ -183,11 +226,18 @@ fn compile_and_run(cxx: &str, dir: &Path, name: &str, src: &str, pts: &[Vec3]) -
     let mut stdin = child.stdin.take().expect("stdin");
     let writer = std::thread::spawn(move || stdin.write_all(&payload));
     let mut raw = Vec::new();
-    child.stdout.take().expect("stdout").read_to_end(&mut raw).expect("read");
+    child
+        .stdout
+        .take()
+        .expect("stdout")
+        .read_to_end(&mut raw)
+        .expect("read");
     writer.join().expect("writer").expect("write");
     assert!(child.wait().expect("wait").success(), "evaluator failed");
     assert_eq!(raw.len(), pts.len() * 4);
-    raw.chunks_exact(4).map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]])).collect()
+    raw.chunks_exact(4)
+        .map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
 }
 
 #[test]
@@ -205,14 +255,20 @@ fn the_loft_hlsl_text_evaluates_the_cpu_law() {
         let (mut worst, mut at) = (0.0f32, Vec3::ZERO);
         for (p, g) in pts.iter().zip(&got) {
             let c = eval(&node, *p);
-            assert!(g.is_finite() && c.is_finite(), "{what}: non-finite at {p:?}: cpu {c}, shader {g}");
+            assert!(
+                g.is_finite() && c.is_finite(),
+                "{what}: non-finite at {p:?}: cpu {c}, shader {g}"
+            );
             let e = (c - g).abs() / c.abs().max(1.0);
             if e > worst {
                 (worst, at) = (e, *p);
             }
             compared += 1;
         }
-        assert!(worst <= TOL, "{what}: the shader differs from the CPU by {worst} (relative) at {at:?}");
+        assert!(
+            worst <= TOL,
+            "{what}: the shader differs from the CPU by {worst} (relative) at {at:?}"
+        );
     }
     assert!(compared > 0, "no point compared");
 }

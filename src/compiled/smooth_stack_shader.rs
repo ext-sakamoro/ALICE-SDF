@@ -58,7 +58,8 @@ fn template(name: &str, arr: &str, flat: &[f32]) -> String {
     let (mut lmax, mut mmax) = (1usize, 1usize);
     // the reads' index ranges from this stack's own data (fixed at emit): the descriptors `d`, their
     // loop slots `d + 1 + 2k` / `d + 2 + 2k` (`k` < count), the points `o + 2j` (`j` < m)
-    let (mut dlo, mut dhi, mut slo, mut shi, mut plo, mut phi) = (usize::MAX, 0usize, usize::MAX, 0usize, usize::MAX, 0usize);
+    let (mut dlo, mut dhi, mut slo, mut shi, mut plo, mut phi) =
+        (usize::MAX, 0usize, usize::MAX, 0usize, usize::MAX, 0usize);
     for l in 0..n {
         let d = flat[ds + l] as usize;
         let cnt = flat[d] as usize;
@@ -76,9 +77,26 @@ fn template(name: &str, arr: &str, flat: &[f32]) -> String {
     }
     let (slo1, shi1, plo1) = (slo + 1, shi - 1, plo + 1);
     let phi0 = phi - 1;
-    let (dsn, lv2, lvn3, lvn4, lv1, lvn2, lv3, lvn1) = (ds + n - 1, lv + 2, lv + n - 3, lv + n - 4, lv + 1, lv + n - 2, lv + 3, lv + n - 1);
+    let (dsn, lv2, lvn3, lvn4, lv1, lvn2, lv3, lvn1) = (
+        ds + n - 1,
+        lv + 2,
+        lv + n - 3,
+        lv + n - 4,
+        lv + 1,
+        lv + n - 2,
+        lv + 3,
+        lv + n - 1,
+    );
     let (kn1, knn3, kn2, knn2) = (kn + 1, kn + n - 3, kn + 2, kn + n - 2);
-    let curve = closed_curve_shader(name, "o: I, m: I", "o, m", "m", mmax, &format!("{name}_pt"), &format!("{name}_sk"));
+    let curve = closed_curve_shader(
+        name,
+        "o: I, m: I",
+        "o, m",
+        "m",
+        mmax,
+        &format!("{name}_pt"),
+        &format!("{name}_sk"),
+    );
     let nm3 = n - 3;
     format!(
         "fn {name}_pt(o: I, m: I, j: I) -> V2 {{

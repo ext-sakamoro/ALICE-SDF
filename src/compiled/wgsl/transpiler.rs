@@ -122,7 +122,12 @@ impl ShaderLang for WgslLang {
     ) -> String {
         use super::super::transpiler_common::lit;
         let fl = |v: &[f32]| v.iter().map(|x| lit(*x)).collect::<Vec<_>>().join(", ");
-        let il = |v: &[i32]| v.iter().map(|x| format!("{x}i")).collect::<Vec<_>>().join(", ");
+        let il = |v: &[i32]| {
+            v.iter()
+                .map(|x| format!("{x}i"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         let n = st.levels.len();
         let (nv, nl, nvs) = (st.verts.len(), st.loop_start.len(), st.vert_start.len());
         format!(
@@ -374,6 +379,7 @@ impl WgslShader {
     /// # Panics
     ///
     /// As [`Self::transpile`]
+    // ALLOW-UNWIRED: public panicking form of try_transpile_with_node_data, kept for callers of the node data buffer
     pub fn transpile_with_node_data(node: &SdfNode, mode: TranspileMode) -> Self {
         Self::try_transpile_with_node_data(node, mode).unwrap_or_else(|e| panic!("{e}"))
     }
@@ -384,7 +390,10 @@ impl WgslShader {
     /// # Errors
     ///
     /// As [`Self::try_transpile`]
-    pub fn try_transpile_with_node_data(node: &SdfNode, mode: TranspileMode) -> Result<Self, TranspileError> {
+    pub fn try_transpile_with_node_data(
+        node: &SdfNode,
+        mode: TranspileMode,
+    ) -> Result<Self, TranspileError> {
         Self::transpile_inner(node, mode, true, false)
     }
 
@@ -396,11 +405,19 @@ impl WgslShader {
     /// # Errors
     ///
     /// As [`Self::try_transpile`]
-    pub fn try_transpile_with_node_data_checked(node: &SdfNode, mode: TranspileMode) -> Result<Self, TranspileError> {
+    pub fn try_transpile_with_node_data_checked(
+        node: &SdfNode,
+        mode: TranspileMode,
+    ) -> Result<Self, TranspileError> {
         Self::transpile_inner(node, mode, true, true)
     }
 
-    fn transpile_inner(node: &SdfNode, mode: TranspileMode, data_buffer: bool, checked: bool) -> Result<Self, TranspileError> {
+    fn transpile_inner(
+        node: &SdfNode,
+        mode: TranspileMode,
+        data_buffer: bool,
+        checked: bool,
+    ) -> Result<Self, TranspileError> {
         let mut transpiler = WgslTranspiler::new(mode);
         if data_buffer {
             transpiler.node_data = Some(Vec::new());
@@ -447,7 +464,8 @@ impl WgslShader {
         let body = g.transpile_node(node, "p");
         let mut code = String::new();
         let r = g.transpile_rest_inner(node, "p", &mut code)?;
-        TranspileError::from_reads(std::mem::take(&mut g.read_errors)).map_err(|e| e.to_string())?;
+        TranspileError::from_reads(std::mem::take(&mut g.read_errors))
+            .map_err(|e| e.to_string())?;
         let source = g.generate_shader(&body)
             + &format!(
                 "\nfn sdf_eval_rest(p: vec3<f32>) -> vec3<f32> {{\n{code}    return {r};\n}}\n"
@@ -469,7 +487,10 @@ impl WgslShader {
         if self.node_data.is_empty() {
             String::new()
         } else {
-            format!("\n@group(0) @binding(4) var<storage, read> alice_node_data: array<f32, {}>;\n", self.node_data.len())
+            format!(
+                "\n@group(0) @binding(4) var<storage, read> alice_node_data: array<f32, {}>;\n",
+                self.node_data.len()
+            )
         }
     }
 

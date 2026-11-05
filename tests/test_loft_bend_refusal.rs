@@ -68,10 +68,14 @@ fn cusp_axis() -> Vec<Vec3> {
 #[test]
 fn a_bend_between_the_curvature_samples_is_refused() {
     let r = 1e-3;
-    let polar = SdfNode::loft(cusp_axis(), Vec3::Z, 1, vec![vec![r, 0.0, 0.0]; 4]).map_err(|e| e.to_string());
-    let curve = SdfNode::loft_curves(cusp_axis(), Vec3::Z, vec![circle(r); 4]).map_err(|e| e.to_string());
+    let polar = SdfNode::loft(cusp_axis(), Vec3::Z, 1, vec![vec![r, 0.0, 0.0]; 4])
+        .map_err(|e| e.to_string());
+    let curve =
+        SdfNode::loft_curves(cusp_axis(), Vec3::Z, vec![circle(r); 4]).map_err(|e| e.to_string());
     for (what, res) in [("polar", polar), ("curves", curve)] {
-        let e = res.err().unwrap_or_else(|| panic!("{what}: a section wider than the cusp's radius of curvature was accepted"));
+        let e = res.err().unwrap_or_else(|| {
+            panic!("{what}: a section wider than the cusp's radius of curvature was accepted")
+        });
         assert!(e.contains("radius of curvature"), "{what}: {e}");
     }
 }

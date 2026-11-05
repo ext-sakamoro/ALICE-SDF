@@ -287,11 +287,19 @@ impl HlslShader {
     /// # Errors
     ///
     /// As [`Self::try_transpile`]
-    pub fn try_transpile_checked(node: &SdfNode, mode: HlslTranspileMode) -> Result<Self, TranspileError> {
+    // ALLOW-UNWIRED: diagnostic entry for the per-site read-range oracle and for tracing a bad read
+    pub fn try_transpile_checked(
+        node: &SdfNode,
+        mode: HlslTranspileMode,
+    ) -> Result<Self, TranspileError> {
         Self::transpile_reads(node, mode, true)
     }
 
-    fn transpile_reads(node: &SdfNode, mode: HlslTranspileMode, checked: bool) -> Result<Self, TranspileError> {
+    fn transpile_reads(
+        node: &SdfNode,
+        mode: HlslTranspileMode,
+        checked: bool,
+    ) -> Result<Self, TranspileError> {
         let mut transpiler = HlslTranspiler::new(mode);
         transpiler.checked_reads = checked;
         let body = transpiler.transpile_node(node, "p");

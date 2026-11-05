@@ -44,7 +44,9 @@ fn edge_distances(q: Vec2, v: &[Vec2]) -> (f64, f64) {
             (p - (a + e * t)).length()
         })
         .collect();
-    let best = (0..n).min_by(|&a, &b| d[a].total_cmp(&d[b])).expect("edges");
+    let best = (0..n)
+        .min_by(|&a, &b| d[a].total_cmp(&d[b]))
+        .expect("edges");
     let other = (0..n)
         .filter(|&j| j != best && j != (best + 1) % n && j != (best + n - 1) % n)
         .map(|j| d[j])
@@ -99,10 +101,17 @@ fn reference(q: Vec2, v: &[Vec2]) -> f64 {
 }
 
 fn l_shape() -> Vec<Vec2> {
-    [(0.0, 0.0), (2.0, 0.0), (2.0, 0.6), (0.6, 0.6), (0.6, 1.6), (0.0, 1.6)]
-        .iter()
-        .map(|&(x, y)| Vec2::new(x - 0.8, y - 0.8))
-        .collect()
+    [
+        (0.0, 0.0),
+        (2.0, 0.0),
+        (2.0, 0.6),
+        (0.6, 0.6),
+        (0.6, 1.6),
+        (0.0, 1.6),
+    ]
+    .iter()
+    .map(|&(x, y)| Vec2::new(x - 0.8, y - 0.8))
+    .collect()
 }
 
 fn star(points: usize, r_out: f32, r_in: f32) -> Vec<Vec2> {
@@ -143,7 +152,12 @@ fn check_against_reference(v: &[Vec2], span: f32, seed: u64) -> f64 {
 #[test]
 fn the_square_is_the_box_closed_form() {
     let a = 0.5f32;
-    let sq = vec![Vec2::new(-a, -a), Vec2::new(a, -a), Vec2::new(a, a), Vec2::new(-a, a)];
+    let sq = vec![
+        Vec2::new(-a, -a),
+        Vec2::new(a, -a),
+        Vec2::new(a, a),
+        Vec2::new(-a, a),
+    ];
     let node = SdfNode::polygon_2d(sq, 50.0);
     let mut r = lcg(11);
     let mut worst = 0.0f32;
@@ -179,13 +193,20 @@ fn a_256_gon_reads_the_circle_within_its_sagitta() {
         let q = Vec2::new(r() * 3.0 - 1.5, r() * 3.0 - 1.5);
         worst = worst.max((slice(&node, q) - (q.length() - rad)).abs());
     }
-    assert!(worst <= sag + 2e-6, "largest difference {worst}, sagitta {sag}");
+    assert!(
+        worst <= sag + 2e-6,
+        "largest difference {worst}, sagitta {sag}"
+    );
     assert!(check_against_reference(&ngon(n, rad), 1.5, 15) < 2e-6);
 }
 
 #[test]
 fn the_gradient_is_unit_off_the_surface_and_off_the_medial_axis() {
-    for (v, span, seed) in [(l_shape(), 1.6f32, 16u64), (star(7, 1.0, 0.4), 1.4, 17), (ngon(64, 0.8), 1.4, 18)] {
+    for (v, span, seed) in [
+        (l_shape(), 1.6f32, 16u64),
+        (star(7, 1.0, 0.4), 1.4, 17),
+        (ngon(64, 0.8), 1.4, 18),
+    ] {
         let node = SdfNode::polygon_2d(v.clone(), 50.0);
         let mut r = lcg(seed);
         let h = 1e-3f32;
@@ -196,18 +217,28 @@ fn the_gradient_is_unit_off_the_surface_and_off_the_medial_axis() {
             let (d1, d2) = edge_distances(q, &v);
             // off the surface, off the medial axis between distant edges, and the same nearest feature
             // at all four difference points (a reflex corner's bisector is a kink between adjacent edges)
-            let same = [Vec2::new(h, 0.0), Vec2::new(-h, 0.0), Vec2::new(0.0, h), Vec2::new(0.0, -h)]
-                .iter()
-                .all(|o| nearest_feature(q + *o, &v) == nearest_feature(q, &v));
+            let same = [
+                Vec2::new(h, 0.0),
+                Vec2::new(-h, 0.0),
+                Vec2::new(0.0, h),
+                Vec2::new(0.0, -h),
+            ]
+            .iter()
+            .all(|o| nearest_feature(q + *o, &v) == nearest_feature(q, &v));
             if d1 < 0.02 || d2 - d1 < 0.02 || !same {
                 continue;
             }
-            let gx = (slice(&node, q + Vec2::new(h, 0.0)) - slice(&node, q - Vec2::new(h, 0.0))) / (2.0 * h);
-            let gy = (slice(&node, q + Vec2::new(0.0, h)) - slice(&node, q - Vec2::new(0.0, h))) / (2.0 * h);
+            let gx = (slice(&node, q + Vec2::new(h, 0.0)) - slice(&node, q - Vec2::new(h, 0.0)))
+                / (2.0 * h);
+            let gy = (slice(&node, q + Vec2::new(0.0, h)) - slice(&node, q - Vec2::new(0.0, h)))
+                / (2.0 * h);
             worst = worst.max((Vec2::new(gx, gy).length() - 1.0).abs());
             checked += 1;
         }
-        assert!(checked > 1000, "only {checked} points off the surface and the medial axis");
+        assert!(
+            checked > 1000,
+            "only {checked} points off the surface and the medial axis"
+        );
         assert!(worst < 2e-3, "largest | |grad| - 1 | {worst}");
     }
 }
@@ -246,22 +277,40 @@ fn the_compiled_bytecode_equals_the_tree() {
 
 #[test]
 fn the_analytic_gradient_is_unit_and_agrees_with_differences() {
-    for (v, span, seed) in [(l_shape(), 1.6f32, 21u64), (star(7, 1.0, 0.4), 1.4, 22), (ngon(64, 0.8), 1.4, 23)] {
+    for (v, span, seed) in [
+        (l_shape(), 1.6f32, 21u64),
+        (star(7, 1.0, 0.4), 1.4, 22),
+        (ngon(64, 0.8), 1.4, 23),
+    ] {
         let node = SdfNode::polygon_2d(v.clone(), 0.5);
         let mut r = lcg(seed);
         let h = 1e-3f32;
         let mut checked = 0;
         let (mut worst_unit, mut worst_fd) = (0.0f32, 0.0f32);
         for _ in 0..8000 {
-            let p = Vec3::new(r() * 2.0 * span - span, r() * 2.0 * span - span, r() * 1.6 - 0.8);
+            let p = Vec3::new(
+                r() * 2.0 * span - span,
+                r() * 2.0 * span - span,
+                r() * 1.6 - 0.8,
+            );
             let q = Vec2::new(p.x, p.y);
             let (d1, d2) = edge_distances(q, &v);
-            let same = [Vec2::new(h, 0.0), Vec2::new(-h, 0.0), Vec2::new(0.0, h), Vec2::new(0.0, -h)]
-                .iter()
-                .all(|o| nearest_feature(q + *o, &v) == nearest_feature(q, &v));
+            let same = [
+                Vec2::new(h, 0.0),
+                Vec2::new(-h, 0.0),
+                Vec2::new(0.0, h),
+                Vec2::new(0.0, -h),
+            ]
+            .iter()
+            .all(|o| nearest_feature(q + *o, &v) == nearest_feature(q, &v));
             let dz = p.z.abs() - 0.5;
             // off the surface, off both medial sets (in the plane and between side and cap)
-            if d1 < 0.02 || d2 - d1 < 0.02 || !same || dz.abs() < 0.02 || (d1 as f32 - dz.abs()).abs() < 0.02 {
+            if d1 < 0.02
+                || d2 - d1 < 0.02
+                || !same
+                || dz.abs() < 0.02
+                || (d1 as f32 - dz.abs()).abs() < 0.02
+            {
                 continue;
             }
             let g = alice_sdf::eval::eval_gradient(&node, p);
@@ -286,7 +335,9 @@ fn a_closed_spline_passes_through_its_points_and_keeps_its_sign() {
     // 8th one a control point, and its inside matches the control polygon's away from the curve
     let pts = l_shape();
     let node = SdfNode::polygon_2d_closed_spline(&pts, 8, 50.0).expect("a closed spline");
-    let SdfNode::Polygon2D { vertices, .. } = &node else { panic!("a polygon node") };
+    let SdfNode::Polygon2D { vertices, .. } = &node else {
+        panic!("a polygon node")
+    };
     assert_eq!(vertices.len(), pts.len() * 8);
     for (k, p) in pts.iter().enumerate() {
         assert_eq!(vertices[k * 8], *p, "control point {k}");
@@ -320,7 +371,9 @@ fn the_material_shader_carries_its_polygon_arrays_without_name_clashes() {
         .match_indices("alice_poly_v_")
         .map(|(i, _)| {
             let rest = &src[i..];
-            let end = rest.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).unwrap();
+            let end = rest
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .unwrap();
             &rest[..end]
         })
         .collect();
@@ -331,10 +384,14 @@ fn the_material_shader_carries_its_polygon_arrays_without_name_clashes() {
         let decls = src.matches(&format!("const {n}:")).count();
         assert_eq!(decls, 1, "{n} declared {decls} times");
     }
-    let module = naga::front::wgsl::parse_str(&src).unwrap_or_else(|e| panic!("{}", e.emit_to_string(&src)));
-    naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
-        .validate(&module)
-        .expect("valid");
+    let module =
+        naga::front::wgsl::parse_str(&src).unwrap_or_else(|e| panic!("{}", e.emit_to_string(&src)));
+    naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::all(),
+    )
+    .validate(&module)
+    .expect("valid");
 }
 
 /// A tree the size of a body made of extrusion hulls (hundreds of polygons of tens of vertices,
@@ -347,8 +404,11 @@ fn hundreds_of_large_polygons_run_on_the_gpu_and_match_the_cpu() {
     let mut level: Vec<SdfNode> = (0..400u32)
         .map(|k| {
             let (i, j) = ((k % 20) as f32, (k / 20) as f32);
-            SdfNode::polygon_2d(star(46, 0.04 + 0.002 * (k % 7) as f32, 0.02), 0.03)
-                .translate(i * 0.1, j * 0.1, 0.0)
+            SdfNode::polygon_2d(star(46, 0.04 + 0.002 * (k % 7) as f32, 0.02), 0.03).translate(
+                i * 0.1,
+                j * 0.1,
+                0.0,
+            )
         })
         .collect();
     // a balanced union, as a body's parts are, so no recursion goes 400 deep

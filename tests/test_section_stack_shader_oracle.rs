@@ -27,7 +27,9 @@
     reason = "test code: the platform libm builds the loop vertices"
 )]
 
-use alice_sdf::compiled::{GlslShader, GlslTranspileMode, GpuEvaluator, HlslShader, HlslTranspileMode};
+use alice_sdf::compiled::{
+    GlslShader, GlslTranspileMode, GpuEvaluator, HlslShader, HlslTranspileMode,
+};
 use alice_sdf::prelude::*;
 use glam::Vec2;
 use std::io::{Read, Write};
@@ -70,8 +72,14 @@ fn stack() -> SdfNode {
     SdfNode::section_stack(
         vec![0.0, 0.3, 0.55, 0.9],
         vec![
-            vec![circle(Vec2::new(-0.25, 0.0), 0.15, 24), circle(Vec2::new(0.25, 0.0), 0.15, 24)],
-            vec![circle(Vec2::new(-0.1, 0.0), 0.22, 30), circle(Vec2::new(0.1, 0.0), 0.22, 30)],
+            vec![
+                circle(Vec2::new(-0.25, 0.0), 0.15, 24),
+                circle(Vec2::new(0.25, 0.0), 0.15, 24),
+            ],
+            vec![
+                circle(Vec2::new(-0.1, 0.0), 0.22, 30),
+                circle(Vec2::new(0.1, 0.0), 0.22, 30),
+            ],
             vec![circle(Vec2::ZERO, 0.35, 40), circle(Vec2::ZERO, 0.12, 20)],
             vec![star(7, 0.3, 0.15)],
         ],
@@ -111,7 +119,11 @@ fn worst(node: &SdfNode, pts: &[Vec3], got: &[f32]) -> (f32, Vec3) {
     let mut w = (0.0f32, Vec3::ZERO);
     for (p, g) in pts.iter().zip(got) {
         let d = (eval(node, *p) - g).abs();
-        assert!(d.is_finite(), "non-finite at {p:?}: cpu {}, shader {g}", eval(node, *p));
+        assert!(
+            d.is_finite(),
+            "non-finite at {p:?}: cpu {}, shader {g}",
+            eval(node, *p)
+        );
         if d > w.0 {
             w = (d, *p);
         }
@@ -145,32 +157,46 @@ fn the_stack_has_both_signs_and_every_branch_among_the_points() {
         .iter()
         .filter(|p| (0.5..0.6).contains(&p.y) && p.x.hypot(p.z) < 0.1)
         .count();
-    assert!(inside > 500 && below > 500 && above > 500 && hole > 20, "{inside} {below} {above} {hole}");
+    assert!(
+        inside > 500 && below > 500 && above > 500 && hole > 20,
+        "{inside} {below} {above} {hole}"
+    );
 }
 
 #[test]
 fn wgsl_matches_the_cpu_on_the_gpu() {
     for (what, node) in [("stack", stack()), ("scene", scene())] {
-        let Some(gpu) = require_gpu(what, GpuEvaluator::new(&node)) else { return };
+        let Some(gpu) = require_gpu(what, GpuEvaluator::new(&node)) else {
+            return;
+        };
         let pts = points(20_000);
         let got = gpu.eval_batch(&pts).expect("gpu eval");
         let (w, at) = worst(&node, &pts, &got);
-        assert!(w < TOL, "{what}: WGSL differs from the CPU by {w} at {at:?}");
+        assert!(
+            w < TOL,
+            "{what}: WGSL differs from the CPU by {w} at {at:?}"
+        );
     }
 }
 
 #[test]
 fn glsl_matches_the_cpu_on_the_gpu() {
     for (what, node) in [("stack", stack()), ("scene", scene())] {
-        let src = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded).to_vulkan_compute_shader();
-        let Some(gpu) = require_gpu(what, GpuEvaluator::from_glsl_compute(&src).map(|c| c.into_parts().0))
-        else {
+        let src =
+            GlslShader::transpile(&node, GlslTranspileMode::Hardcoded).to_vulkan_compute_shader();
+        let Some(gpu) = require_gpu(
+            what,
+            GpuEvaluator::from_glsl_compute(&src).map(|c| c.into_parts().0),
+        ) else {
             return;
         };
         let pts = points(20_000);
         let got = gpu.eval_batch(&pts).expect("gpu eval");
         let (w, at) = worst(&node, &pts, &got);
-        assert!(w < TOL, "{what}: GLSL differs from the CPU by {w} at {at:?}");
+        assert!(
+            w < TOL,
+            "{what}: GLSL differs from the CPU by {w} at {at:?}"
+        );
     }
 }
 
@@ -227,7 +253,13 @@ fn compile_and_run(cxx: &str, dir: &Path, name: &str, src: &str, pts: &[Vec3]) -
     let bin: PathBuf = dir.join(name);
     std::fs::write(&cpp, src).expect("write cpp");
     let out = Command::new(cxx)
-        .args(["-std=c++17", "-O1", "-ffp-contract=off", "-fno-strict-aliasing", "-w"])
+        .args([
+            "-std=c++17",
+            "-O1",
+            "-ffp-contract=off",
+            "-fno-strict-aliasing",
+            "-w",
+        ])
         .arg(&cpp)
         .arg("-o")
         .arg(&bin)
@@ -236,7 +268,11 @@ fn compile_and_run(cxx: &str, dir: &Path, name: &str, src: &str, pts: &[Vec3]) -
     assert!(
         out.status.success(),
         "C++ compile failed:\n{}",
-        String::from_utf8_lossy(&out.stderr).lines().take(15).collect::<Vec<_>>().join("\n")
+        String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .take(15)
+            .collect::<Vec<_>>()
+            .join("\n")
     );
     let mut payload = (pts.len() as u32).to_ne_bytes().to_vec();
     for p in pts {
@@ -252,11 +288,18 @@ fn compile_and_run(cxx: &str, dir: &Path, name: &str, src: &str, pts: &[Vec3]) -
     let mut stdin = child.stdin.take().expect("stdin");
     let writer = std::thread::spawn(move || stdin.write_all(&payload));
     let mut raw = Vec::new();
-    child.stdout.take().expect("stdout").read_to_end(&mut raw).expect("read");
+    child
+        .stdout
+        .take()
+        .expect("stdout")
+        .read_to_end(&mut raw)
+        .expect("read");
     writer.join().expect("writer").expect("write");
     assert!(child.wait().expect("wait").success(), "evaluator failed");
     assert_eq!(raw.len(), pts.len() * 4);
-    raw.chunks_exact(4).map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]])).collect()
+    raw.chunks_exact(4)
+        .map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
 }
 
 #[test]
@@ -270,6 +313,9 @@ fn hlsl_matches_the_cpu_compiled_as_cpp() {
         let pts = points(20_000);
         let got = compile_and_run(&cxx, &dir, what, &src, &pts);
         let (w, at) = worst(&node, &pts, &got);
-        assert!(w < TOL, "{what}: HLSL differs from the CPU by {w} at {at:?}");
+        assert!(
+            w < TOL,
+            "{what}: HLSL differs from the CPU by {w} at {at:?}"
+        );
     }
 }

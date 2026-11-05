@@ -17,12 +17,19 @@
 mod common;
 
 use alice_sdf::compiled::{TranspileMode, WgslShader};
-use common::loft_stack_scenes::{big_smooth_stack, contraction_budget, trees, within_contraction_budget};
 use alice_sdf::prelude::*;
+use common::loft_stack_scenes::{
+    big_smooth_stack, contraction_budget, trees, within_contraction_budget,
+};
 
 /// The read sites the emit writes per scene (the smooth stack's, the section stack's, the two lofts',
 /// and all of them in one tree)
-const SITES: &[(&str, usize)] = &[("big_smooth_stack", 13), ("section_stack", 14), ("lofts", 89), ("all", 116)];
+const SITES: &[(&str, usize)] = &[
+    ("big_smooth_stack", 13),
+    ("section_stack", 14),
+    ("lofts", 89),
+    ("all", 116),
+];
 
 /// The WGSL array constructor's element limit
 const WGSL_ARRAY_LIMIT: usize = 32767;
@@ -62,7 +69,13 @@ fn loop_conditions(src: &str) -> Vec<String> {
 
 /// A condition `<var> < <integer literal>` or `<var> <= <integer literal>` (optional `i` / `u`)
 fn literal_bound(cond: &str) -> bool {
-    let rhs = if let Some((_, r)) = cond.split_once("<=") { r } else if let Some((_, r)) = cond.split_once('<') { r } else { return false };
+    let rhs = if let Some((_, r)) = cond.split_once("<=") {
+        r
+    } else if let Some((_, r)) = cond.split_once('<') {
+        r
+    } else {
+        return false;
+    };
     let r = rhs.trim().trim_end_matches(['i', 'u']);
     !r.is_empty() && r.chars().all(|c| c.is_ascii_digit())
 }
@@ -123,8 +136,14 @@ fn buffer_reads(src: &str) -> Vec<Option<(usize, usize)>> {
 fn the_big_stack_needs_more_than_the_array_limit() {
     // precondition: the constant path would declare an array above the limit
     let plain = WgslShader::transpile(&big_smooth_stack(), TranspileMode::Hardcoded);
-    let longest = const_array_lengths(&plain.source).into_iter().max().unwrap_or(0);
-    assert!(longest > WGSL_ARRAY_LIMIT, "the big stack's array has {longest} elements");
+    let longest = const_array_lengths(&plain.source)
+        .into_iter()
+        .max()
+        .unwrap_or(0);
+    assert!(
+        longest > WGSL_ARRAY_LIMIT,
+        "the big stack's array has {longest} elements"
+    );
 }
 
 #[test]
@@ -132,20 +151,32 @@ fn loft_and_stack_data_is_in_the_buffer_and_validates() {
     for (what, node) in trees() {
         let sh = WgslShader::transpile_with_node_data(&node, TranspileMode::Hardcoded);
         assert!(!sh.node_data.is_empty(), "{what}: no node data");
-        let longest = const_array_lengths(&sh.source).into_iter().max().unwrap_or(0);
-        assert!(longest <= WGSL_ARRAY_LIMIT, "{what}: a module-scope array of {longest} elements");
+        let longest = const_array_lengths(&sh.source)
+            .into_iter()
+            .max()
+            .unwrap_or(0);
+        assert!(
+            longest <= WGSL_ARRAY_LIMIT,
+            "{what}: a module-scope array of {longest} elements"
+        );
         for prefix in ["alice_loft_d_", "alice_sss_d_", "alice_stack_"] {
             assert!(
-                !sh.source.lines().any(|l| l.trim_start().starts_with(&format!("const {prefix}"))),
+                !sh.source
+                    .lines()
+                    .any(|l| l.trim_start().starts_with(&format!("const {prefix}"))),
                 "{what}: a module-scope {prefix} array with the node data buffer"
             );
         }
         // the compute shader declares the node data binding the module's functions read
         let text = sh.to_compute_shader();
-        let module = naga::front::wgsl::parse_str(&text).unwrap_or_else(|e| panic!("{what}: {}", e.emit_to_string(&text)));
-        naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
-            .validate(&module)
-            .unwrap_or_else(|e| panic!("{what}: {e:?}"));
+        let module = naga::front::wgsl::parse_str(&text)
+            .unwrap_or_else(|e| panic!("{what}: {}", e.emit_to_string(&text)));
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .unwrap_or_else(|e| panic!("{what}: {e:?}"));
     }
 }
 
@@ -155,7 +186,10 @@ fn every_emitted_loop_has_a_constant_trip_count() {
     for (what, node) in trees() {
         let sh = WgslShader::transpile_with_node_data(&node, TranspileMode::Hardcoded);
         for cond in loop_conditions(&sh.source) {
-            assert!(literal_bound(&cond), "{what}: a loop bounded by `{cond}`, not a literal");
+            assert!(
+                literal_bound(&cond),
+                "{what}: a loop bounded by `{cond}`, not a literal"
+            );
             checked += 1;
         }
     }
@@ -168,8 +202,14 @@ fn every_buffer_read_is_clamped_inside_the_buffer() {
     for (what, node) in trees() {
         let sh = WgslShader::transpile_with_node_data(&node, TranspileMode::Hardcoded);
         for r in buffer_reads(&sh.source) {
-            let (lo, hi) = r.unwrap_or_else(|| panic!("{what}: a read of alice_node_data that is not clamped by literals"));
-            assert!(lo <= hi && hi < sh.node_data.len(), "{what}: a read clamped to {lo}..={hi} of {}", sh.node_data.len());
+            let (lo, hi) = r.unwrap_or_else(|| {
+                panic!("{what}: a read of alice_node_data that is not clamped by literals")
+            });
+            assert!(
+                lo <= hi && hi < sh.node_data.len(),
+                "{what}: a read clamped to {lo}..={hi} of {}",
+                sh.node_data.len()
+            );
             checked += 1;
         }
     }
@@ -181,31 +221,46 @@ fn the_gpu_evaluates_the_buffer_trees_as_the_cpu() {
     use alice_sdf::compiled::GpuEvaluator;
     let mut s: u64 = 0xDA7A_B0B0;
     let mut r = move || {
-        s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        s = s
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         ((s >> 40) as f32) / ((1u64 << 24) as f32)
     };
     for (what, node) in trees() {
         let gpu = match GpuEvaluator::new(&node) {
             Ok(g) => g,
             Err(e) => {
-                assert!(std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(), "{what}: no GPU: {e}");
+                assert!(
+                    std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                    "{what}: no GPU: {e}"
+                );
                 eprintln!("skipping {what}: no GPU ({e})");
                 return;
             }
         };
-        let pts: Vec<Vec3> = (0..2048).map(|_| Vec3::new(r() * 1.6 - 0.5, r() * 1.2 - 0.4, r() * 1.6 - 0.5)).collect();
+        let pts: Vec<Vec3> = (0..2048)
+            .map(|_| Vec3::new(r() * 1.6 - 0.5, r() * 1.2 - 0.4, r() * 1.6 - 0.5))
+            .collect();
         let got = gpu.eval_batch(&pts).expect("gpu eval");
         assert_eq!(got.len(), pts.len());
         let mut worst = (0.0f32, Vec3::ZERO);
         for (p, g) in pts.iter().zip(&got) {
             let c = eval(&node, *p);
             let e = (c - g).abs() / c.abs().max(1.0);
-            assert!(e.is_finite(), "{what}: non-finite at {p:?}: cpu {c}, gpu {g}");
+            assert!(
+                e.is_finite(),
+                "{what}: non-finite at {p:?}: cpu {c}, gpu {g}"
+            );
             if e > worst.0 {
                 worst = (e, *p);
             }
         }
-        assert!(worst.0 <= 2e-5, "{what}: GPU differs from the CPU by {} at {:?}", worst.0, worst.1);
+        assert!(
+            worst.0 <= 2e-5,
+            "{what}: GPU differs from the CPU by {} at {:?}",
+            worst.0,
+            worst.1
+        );
     }
 }
 
@@ -215,26 +270,41 @@ fn no_checked_read_leaves_its_proven_range_on_the_gpu() {
     let mut gaps = Vec::new();
     let mut s: u64 = 0x5EAD_C0DE;
     let mut r = move || {
-        s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        s = s
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         ((s >> 40) as f32) / ((1u64 << 24) as f32)
     };
     for (what, node) in trees() {
-        let sh = WgslShader::try_transpile_with_node_data_checked(&node, TranspileMode::Hardcoded).expect("the emit proves its reads");
+        let sh = WgslShader::try_transpile_with_node_data_checked(&node, TranspileMode::Hardcoded)
+            .expect("the emit proves its reads");
         let gpu = match GpuEvaluator::new_checked(&node) {
             Ok(g) => g,
             Err(e) => {
-                assert!(std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(), "{what}: no GPU: {e}");
+                assert!(
+                    std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                    "{what}: no GPU: {e}"
+                );
                 eprintln!("skipping {what}: no GPU ({e})");
                 return;
             }
         };
-        let pts: Vec<Vec3> = (0..2048).map(|_| Vec3::new(r() * 3.0 - 1.0, r() * 2.4 - 0.8, r() * 3.0 - 1.0)).collect();
+        let pts: Vec<Vec3> = (0..2048)
+            .map(|_| Vec3::new(r() * 3.0 - 1.0, r() * 2.4 - 0.8, r() * 3.0 - 1.0))
+            .collect();
         let got = gpu.eval_batch(&pts).expect("gpu eval");
-        assert_eq!(gpu.read_hits().expect("the counter"), Some(0), "{what}: reads left their proven range on the GPU");
+        assert_eq!(
+            gpu.read_hits().expect("the counter"),
+            Some(0),
+            "{what}: reads left their proven range on the GPU"
+        );
         // the values: the CPU's within the parity tolerance; bit for bit with the plain shader on the
         // Metal engine (fast math off). Through wgpu the compiler may contract the two texts
         // differently, so there the plain shader is compared within the tolerance too
-        let plain = GpuEvaluator::new(&node).expect("gpu").eval_batch(&pts).expect("gpu eval");
+        let plain = GpuEvaluator::new(&node)
+            .expect("gpu")
+            .eval_batch(&pts)
+            .expect("gpu eval");
         // KNOWN-DEFECT-ARM: known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within the MEASURED contraction budget (C++ -ffp-contract=fast vs off, x4 chosen, not derived) until no wgpu backend contracts
         // the arm, only while the driver fuses: two shader texts (checked and plain) may then be
         // contracted differently; on a driver that does not fuse (the Metal engine, fast math off)
@@ -245,7 +315,10 @@ fn no_checked_read_leaves_its_proven_range_on_the_gpu() {
         let mut over = None;
         for ((p, g), q) in pts.iter().zip(&got).zip(&plain) {
             let c = eval(&node, *p);
-            assert!((c - g).abs() <= 2e-5 * c.abs().max(1.0), "{what}: checked GPU {g} vs CPU {c} at {p:?}");
+            assert!(
+                (c - g).abs() <= 2e-5 * c.abs().max(1.0),
+                "{what}: checked GPU {g} vs CPU {c} at {p:?}"
+            );
             if fuses && g.to_bits() != q.to_bits() {
                 differed += 1;
                 gap = gap.max((g - q).abs() / c.abs().max(1.0));
@@ -253,7 +326,11 @@ fn no_checked_read_leaves_its_proven_range_on_the_gpu() {
                     over = Some((*g, *q, *p));
                 }
             } else {
-                assert_eq!(g.to_bits(), q.to_bits(), "{what}: the checked shader's value differs at {p:?}");
+                assert_eq!(
+                    g.to_bits(),
+                    q.to_bits(),
+                    "{what}: the checked shader's value differs at {p:?}"
+                );
             }
         }
         // the real GPU's gap beside the budget measured on the C++ proxy
@@ -288,7 +365,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 ";
     let e = GpuEvaluator::from_wgsl(wgsl).ok()?.into_parts().0;
     let a = 1.0 + 1.0 / 4096.0;
-    let got = e.eval_batch(&[Vec3::new(a, a, -(1.0 + 1.0 / 2048.0))]).ok()?[0];
+    let got = e
+        .eval_batch(&[Vec3::new(a, a, -(1.0 + 1.0 / 2048.0))])
+        .ok()?[0];
     Some(got.to_bits() != 0.0f32.to_bits())
 }
 
@@ -299,16 +378,31 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 fn every_read_site_is_checked_and_clamped() {
     let mut counts = Vec::new();
     for (what, node) in trees() {
-        let checked_src = WgslShader::try_transpile_with_node_data_checked(&node, TranspileMode::Hardcoded).expect("the emit proves its reads").source;
-        let checked = checked_src.matches("alice_nd(").count() - checked_src.matches("fn alice_nd(").count();
-        let clamped = WgslShader::try_transpile_with_node_data(&node, TranspileMode::Hardcoded).expect("the emit proves its reads").source.matches("alice_node_data[clamp(").count();
+        let checked_src =
+            WgslShader::try_transpile_with_node_data_checked(&node, TranspileMode::Hardcoded)
+                .expect("the emit proves its reads")
+                .source;
+        let checked =
+            checked_src.matches("alice_nd(").count() - checked_src.matches("fn alice_nd(").count();
+        let clamped = WgslShader::try_transpile_with_node_data(&node, TranspileMode::Hardcoded)
+            .expect("the emit proves its reads")
+            .source
+            .matches("alice_node_data[clamp(")
+            .count();
         println!("{what}: {checked} checked, {clamped} clamped read sites");
         counts.push((what, checked, clamped));
     }
     for (what, checked, clamped) in counts {
-        assert_eq!(checked, clamped, "{what}: {checked} checked reads but {clamped} clamped reads");
+        assert_eq!(
+            checked, clamped,
+            "{what}: {checked} checked reads but {clamped} clamped reads"
+        );
         let expected = SITES.iter().find(|(n, _)| *n == what).map(|(_, c)| *c);
-        assert_eq!(Some(checked), expected, "{what}: {checked} read sites (pinned {expected:?})");
+        assert_eq!(
+            Some(checked),
+            expected,
+            "{what}: {checked} read sites (pinned {expected:?})"
+        );
     }
 }
 
@@ -321,8 +415,14 @@ fn the_contraction_arm_refuses_ten_times_its_budget() {
         for cpu in [0.25f32, 3.0] {
             let x = 0.5f32;
             let scale = cpu.abs().max(1.0);
-            assert!(within_contraction_budget(x, x + 0.99 * b * scale, cpu, b), "{what}: a gap inside the budget is refused");
-            assert!(!within_contraction_budget(x, x + 10.0 * b * scale + f32::MIN_POSITIVE, cpu, b), "{what}: ten times the budget passes");
+            assert!(
+                within_contraction_budget(x, x + 0.99 * b * scale, cpu, b),
+                "{what}: a gap inside the budget is refused"
+            );
+            assert!(
+                !within_contraction_budget(x, x + 10.0 * b * scale + f32::MIN_POSITIVE, cpu, b),
+                "{what}: ten times the budget passes"
+            );
             checked += 1;
         }
     }

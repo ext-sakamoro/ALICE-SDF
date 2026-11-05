@@ -74,8 +74,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      4  local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)
 #      1  local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)
 #      1  local: a stored stack is rebuilt on load: its TryFrom recomputes the Lipschitz bound from the stored levels and loops and refuses a stored bound that differs, so no stored value is trusted as given
-#      1  pending: open defect `smooth stack load validation`: a plain derive; the stored knots and lmax are trusted as given, the level count is not checked (a short list panics) and the loop orientation is not re-applied; the fix (rebuild on load and compare bit for bit) would refuse today's stored trees and lands with their rebuild
-#      1  pending: open defect `loft bounds recompute on load`: only the version and the block's shape are checked; the stored bounds (L, B, fade, pieces) are trusted as given; the fix (recompute on load and compare bit for bit) would refuse today's stored trees and lands with their rebuild
+#      1  local: a stored smooth stack is rebuilt on load: its TryFrom recomputes the knots and lmax from the stored levels and loops and re
+#      1  local: the stored bounds are read only inside the Loft and LoftCurves loaders, which recompute them from the stored axis, rows and
 #     12  local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic
 #     24  local: writes this crate's own value; stamping the stored file is G8's
 #      2  local: parses a shader language name
@@ -311,9 +311,9 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # 1 local
 "impl::Deserialize for SdfMetadata" = "local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)"
-"impl::Deserialize for LoftBounds" = "pending: open defect `loft bounds recompute on load`: only the version and the block's shape are checked; the stored bounds (L, B, fade, pieces) are trusted as given; the fix (recompute on load and compare bit for bit) would refuse today's stored trees and lands with their rebuild"
+"impl::Deserialize for LoftBounds" = "local: the stored bounds are read only inside the Loft and LoftCurves loaders, which recompute them from the stored axis, rows and caps and refuse a stored value that differs bit for bit, so no stored bound is trusted as given"
 "impl::Deserialize for SectionStack" = "local: a stored stack is rebuilt on load: its TryFrom recomputes the Lipschitz bound from the stored levels and loops and refuses a stored bound that differs, so no stored value is trusted as given"
-"impl::Deserialize for SmoothSectionStack" = "pending: open defect `smooth stack load validation`: a plain derive; the stored knots and lmax are trusted as given, the level count is not checked (a short list panics) and the loop orientation is not re-applied; the fix (rebuild on load and compare bit for bit) would refuse today's stored trees and lands with their rebuild"
+"impl::Deserialize for SmoothSectionStack" = "local: a stored smooth stack is rebuilt on load: its TryFrom recomputes the knots and lmax from the stored levels and loops and refuses a stored value that differs bit for bit, so no stored value is trusted as given"
 
 # 12 local
 "impl::Deserialize for BoneTransform" = "local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic"

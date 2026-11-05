@@ -49,7 +49,9 @@ fn spline(cp: &[Vec2], t: f32) -> Vec2 {
 /// crossing-number test
 fn curve_distance(q: Vec2, cp: &[Vec2]) -> f32 {
     let n = 4096 * cp.len() / 8;
-    let pts: Vec<Vec2> = (0..n).map(|i| spline(cp, cp.len() as f32 * i as f32 / n as f32)).collect();
+    let pts: Vec<Vec2> = (0..n)
+        .map(|i| spline(cp, cp.len() as f32 * i as f32 / n as f32))
+        .collect();
     let mut best = f32::INFINITY;
     let mut inside = false;
     for i in 0..n {
@@ -106,8 +108,12 @@ fn c_shape() -> Vec<Vec2> {
 }
 
 fn straight(h: f32, section: Vec<Vec2>) -> SdfNode {
-    SdfNode::loft_curves(vec![Vec3::ZERO, Vec3::new(0.0, h, 0.0)], Vec3::X, vec![section.clone(), section])
-        .expect("a straight curve loft")
+    SdfNode::loft_curves(
+        vec![Vec3::ZERO, Vec3::new(0.0, h, 0.0)],
+        Vec3::X,
+        vec![section.clone(), section],
+    )
+    .expect("a straight curve loft")
 }
 
 fn check_extrusion(cp: Vec<Vec2>, seed: u64) {
@@ -139,10 +145,16 @@ fn a_constant_ellipse_section_is_its_capped_extrusion() {
 fn a_constant_c_shaped_section_is_its_capped_extrusion() {
     let cp = c_shape();
     // the hollow is outside
-    assert!(curve_distance(Vec2::new(0.3, 0.0), &cp) > 0.0, "the reference's own C shape");
+    assert!(
+        curve_distance(Vec2::new(0.3, 0.0), &cp) > 0.0,
+        "the reference's own C shape"
+    );
     check_extrusion(cp, 3);
     let node = straight(1.2, c_shape());
-    assert!(eval(&node, Vec3::new(0.3, 0.6, 0.0)) > 0.0, "the hollow reads inside");
+    assert!(
+        eval(&node, Vec3::new(0.3, 0.6, 0.0)) > 0.0,
+        "the hollow reads inside"
+    );
 }
 
 fn curved() -> SdfNode {
@@ -155,7 +167,10 @@ fn curved() -> SdfNode {
     let rows: Vec<Vec<Vec2>> = (0..4)
         .map(|i| {
             let s = 1.0 - 0.15 * i as f32;
-            c_shape().iter().map(|p| Vec2::new(p.x * s * 0.3, p.y * (0.3 + 0.03 * i as f32))).collect()
+            c_shape()
+                .iter()
+                .map(|p| Vec2::new(p.x * s * 0.3, p.y * (0.3 + 0.03 * i as f32)))
+                .collect()
         })
         .collect();
     SdfNode::loft_curves(axis, Vec3::Z, rows).expect("a curved curve loft")
@@ -210,8 +225,16 @@ fn a_growing_section_never_passes_its_surface() {
 fn inside_on_the_axis_and_outside_far_away() {
     let node = straight(1.0, ellipse(16, 0.3, 0.2));
     assert!(eval(&node, Vec3::new(0.0, 0.5, 0.0)) < 0.0);
-    for p in [Vec3::new(1.0, 0.5, 0.0), Vec3::new(0.0, -0.5, 0.0), Vec3::new(0.0, 1.5, 0.0)] {
-        assert!(eval(&node, p) > 0.2, "far point {p:?} reads {}", eval(&node, p));
+    for p in [
+        Vec3::new(1.0, 0.5, 0.0),
+        Vec3::new(0.0, -0.5, 0.0),
+        Vec3::new(0.0, 1.5, 0.0),
+    ] {
+        assert!(
+            eval(&node, p) > 0.2,
+            "far point {p:?} reads {}",
+            eval(&node, p)
+        );
     }
 }
 
@@ -219,14 +242,41 @@ fn inside_on_the_axis_and_outside_far_away() {
 fn malformed_curve_input_is_refused_by_name() {
     let ax = vec![Vec3::ZERO, Vec3::Y];
     let e = ellipse(8, 0.2, 0.1);
-    let err = |r: Result<SdfNode, alice_sdf::primitives::loft::LoftError>| r.err().expect("refused").to_string();
-    assert!(err(SdfNode::loft_curves(vec![Vec3::ZERO], Vec3::X, vec![e.clone(), e.clone()])).contains("axis"));
+    let err = |r: Result<SdfNode, alice_sdf::primitives::loft::LoftError>| {
+        r.err().expect("refused").to_string()
+    };
+    assert!(err(SdfNode::loft_curves(
+        vec![Vec3::ZERO],
+        Vec3::X,
+        vec![e.clone(), e.clone()]
+    ))
+    .contains("axis"));
     assert!(err(SdfNode::loft_curves(ax.clone(), Vec3::X, vec![e.clone()])).contains("row"));
-    assert!(err(SdfNode::loft_curves(ax.clone(), Vec3::X, vec![e.clone(), ellipse(9, 0.2, 0.1)])).contains("control points"));
-    assert!(err(SdfNode::loft_curves(ax.clone(), Vec3::X, vec![ellipse(3, 0.2, 0.1), ellipse(3, 0.2, 0.1)])).contains("control points"));
+    assert!(err(SdfNode::loft_curves(
+        ax.clone(),
+        Vec3::X,
+        vec![e.clone(), ellipse(9, 0.2, 0.1)]
+    ))
+    .contains("control points"));
+    assert!(err(SdfNode::loft_curves(
+        ax.clone(),
+        Vec3::X,
+        vec![ellipse(3, 0.2, 0.1), ellipse(3, 0.2, 0.1)]
+    ))
+    .contains("control points"));
     let cw: Vec<Vec2> = e.iter().rev().copied().collect();
-    assert!(err(SdfNode::loft_curves(ax.clone(), Vec3::X, vec![cw.clone(), cw])).contains("counter-clockwise"));
-    assert!(err(SdfNode::loft_curves(ax.clone(), Vec3::Y, vec![e.clone(), e.clone()])).contains("up"));
+    assert!(err(SdfNode::loft_curves(
+        ax.clone(),
+        Vec3::X,
+        vec![cw.clone(), cw]
+    ))
+    .contains("counter-clockwise"));
+    assert!(err(SdfNode::loft_curves(
+        ax.clone(),
+        Vec3::Y,
+        vec![e.clone(), e.clone()]
+    ))
+    .contains("up"));
     let mut nan = e.clone();
     nan[2].x = f32::NAN;
     assert!(err(SdfNode::loft_curves(ax, Vec3::X, vec![nan, e])).contains("finite"));
@@ -257,12 +307,24 @@ fn spline_knots(cp: &[Vec2], k: &[f32], t: f32) -> Vec2 {
     };
     fn basis(kn: &dyn Fn(isize) -> f32, i: isize, p: usize, t: f32) -> f32 {
         if p == 0 {
-            return if kn(i) <= t && t < kn(i + 1) { 1.0 } else { 0.0 };
+            return if kn(i) <= t && t < kn(i + 1) {
+                1.0
+            } else {
+                0.0
+            };
         }
         let a = kn(i + p as isize) - kn(i);
         let b = kn(i + p as isize + 1) - kn(i + 1);
-        let l = if a > 0.0 { (t - kn(i)) / a * basis(kn, i, p - 1, t) } else { 0.0 };
-        let r = if b > 0.0 { (kn(i + p as isize + 1) - t) / b * basis(kn, i + 1, p - 1, t) } else { 0.0 };
+        let l = if a > 0.0 {
+            (t - kn(i)) / a * basis(kn, i, p - 1, t)
+        } else {
+            0.0
+        };
+        let r = if b > 0.0 {
+            (kn(i + p as isize + 1) - t) / b * basis(kn, i + 1, p - 1, t)
+        } else {
+            0.0
+        };
         l + r
     }
     // the span holding t is j; control point P_{j−1+k} (k = 0..3) carries the basis that starts at
@@ -283,7 +345,9 @@ fn spline_knots(cp: &[Vec2], k: &[f32], t: f32) -> Vec2 {
 fn curve_distance_knots(q: Vec2, cp: &[Vec2], k: &[f32]) -> f32 {
     let n = 512 * cp.len();
     let (k0, km) = (k[0], k[cp.len()]);
-    let pts: Vec<Vec2> = (0..n).map(|i| spline_knots(cp, k, k0 + (km - k0) * i as f32 / n as f32)).collect();
+    let pts: Vec<Vec2> = (0..n)
+        .map(|i| spline_knots(cp, k, k0 + (km - k0) * i as f32 / n as f32))
+        .collect();
     let mut best = f32::INFINITY;
     let mut inside = false;
     for i in 0..n {
@@ -305,8 +369,13 @@ fn curve_distance_knots(q: Vec2, cp: &[Vec2], k: &[f32]) -> f32 {
 
 fn check_extrusion_knots(cp: Vec<Vec2>, k: Vec<f32>, seed: u64, samples: usize) {
     let h = 1.2;
-    let node = SdfNode::loft_curves_knots(vec![Vec3::ZERO, Vec3::new(0.0, h, 0.0)], Vec3::X, k.clone(), vec![cp.clone(), cp.clone()])
-        .expect("a knotted curve loft");
+    let node = SdfNode::loft_curves_knots(
+        vec![Vec3::ZERO, Vec3::new(0.0, h, 0.0)],
+        Vec3::X,
+        k.clone(),
+        vec![cp.clone(), cp.clone()],
+    )
+    .expect("a knotted curve loft");
     let mut r = lcg(seed);
     let mut worst = 0.0f32;
     for _ in 0..samples {
@@ -343,7 +412,9 @@ fn uniform_knots_given_explicitly_match_the_uniform_mode() {
 fn a_circle_on_non_uniform_knots_is_its_capped_extrusion() {
     let m = 24;
     let cp = ellipse(m, 0.3, 0.3);
-    let k: Vec<f32> = (0..=m).map(|j| j as f32 + 0.35 * (std::f32::consts::TAU * j as f32 / m as f32).sin()).collect();
+    let k: Vec<f32> = (0..=m)
+        .map(|j| j as f32 + 0.35 * (std::f32::consts::TAU * j as f32 / m as f32).sin())
+        .collect();
     check_extrusion_knots(cp, k, 8, 600);
 }
 
@@ -354,7 +425,10 @@ fn a_c_shape_with_refined_knots_is_its_capped_extrusion() {
     let m = cp.len();
     let mut k = vec![0.0f32];
     for j in 0..m {
-        let near = j.min(m - 1 - j).min((j as isize - 14).unsigned_abs()).min((j as isize - 15).unsigned_abs());
+        let near = j
+            .min(m - 1 - j)
+            .min((j as isize - 14).unsigned_abs())
+            .min((j as isize - 15).unsigned_abs());
         k.push(k[j] + if near <= 1 { 0.3 } else { 1.0 });
     }
     check_extrusion_knots(cp, k, 9, 600);
@@ -371,12 +445,32 @@ fn three_hundred_control_points_are_supported() {
 fn malformed_knots_are_refused() {
     let ax = vec![Vec3::ZERO, Vec3::Y];
     let e = ellipse(8, 0.2, 0.1);
-    let err = |r: Result<SdfNode, alice_sdf::primitives::loft::LoftError>| r.err().expect("refused").to_string();
-    assert!(err(SdfNode::loft_curves_knots(ax.clone(), Vec3::X, vec![0.0; 9], vec![e.clone(), e.clone()])).contains("knots"));
-    assert!(err(SdfNode::loft_curves_knots(ax.clone(), Vec3::X, (0..8).map(|i| i as f32).collect(), vec![e.clone(), e.clone()])).contains("knots"));
+    let err = |r: Result<SdfNode, alice_sdf::primitives::loft::LoftError>| {
+        r.err().expect("refused").to_string()
+    };
+    assert!(err(SdfNode::loft_curves_knots(
+        ax.clone(),
+        Vec3::X,
+        vec![0.0; 9],
+        vec![e.clone(), e.clone()]
+    ))
+    .contains("knots"));
+    assert!(err(SdfNode::loft_curves_knots(
+        ax.clone(),
+        Vec3::X,
+        (0..8).map(|i| i as f32).collect(),
+        vec![e.clone(), e.clone()]
+    ))
+    .contains("knots"));
     let mut k: Vec<f32> = (0..=8).map(|i| i as f32).collect();
     k[3] = 2.0;
-    assert!(err(SdfNode::loft_curves_knots(ax, Vec3::X, k, vec![e.clone(), e])).contains("knots"));
+    assert!(err(SdfNode::loft_curves_knots(
+        ax,
+        Vec3::X,
+        k,
+        vec![e.clone(), e]
+    ))
+    .contains("knots"));
 }
 
 #[test]
@@ -412,7 +506,9 @@ fn a_small_tightly_bent_curve_loft_never_reads_past_its_own_surface() {
             Vec3::new(25.0 * (1.0 - a.cos()), 25.0 * a.sin(), 0.0)
         })
         .collect();
-    let rows: Vec<Vec<Vec2>> = (0..8).map(|i| ellipse(24, 3.5 - 0.15 * i as f32, 2.5)).collect();
+    let rows: Vec<Vec<Vec2>> = (0..8)
+        .map(|i| ellipse(24, 3.5 - 0.15 * i as f32, 2.5))
+        .collect();
     let node = SdfNode::loft_curves(axis, Vec3::Z, rows).expect("toe-like");
     let mut r = lcg(17);
     let (mut over, mut compared) = (0, 0);
@@ -437,23 +533,36 @@ fn a_small_tightly_bent_curve_loft_never_reads_past_its_own_surface() {
         compared += 1;
         over += usize::from(best.is_finite());
     }
-    assert_eq!(over, 0, "read past its own surface at {over} of {compared} points");
+    assert_eq!(
+        over, 0,
+        "read past its own surface at {over} of {compared} points"
+    );
 }
-
 
 /// A torso-like curve loft (mm): 288 control points per section, an ellipse 150 × 100 with a shallow
 /// groove at the back and the front, 24 rows along a gently bent 400 mm axis; the last three rows
 /// shrink fast (to a quarter of the width over 50 mm), so the local bound spreads several-fold along the axis
 fn torso_like() -> SdfNode {
-    let axis: Vec<Vec3> = (0..6).map(|i| Vec3::new(8.0 * (0.6 * i as f32).sin(), 80.0 * i as f32, 5.0 * (0.4 * i as f32).cos())).collect();
+    let axis: Vec<Vec3> = (0..6)
+        .map(|i| {
+            Vec3::new(
+                8.0 * (0.6 * i as f32).sin(),
+                80.0 * i as f32,
+                5.0 * (0.4 * i as f32).cos(),
+            )
+        })
+        .collect();
     let rows: Vec<Vec<Vec2>> = (0..24)
         .map(|i| {
             let top = [1.0f32, 0.7, 0.45, 0.25];
-            let s = (1.0 + 0.08 * (0.35 * i as f32).sin()) * if i >= 20 { top[i - 20] } else { 1.0 };
+            let s =
+                (1.0 + 0.08 * (0.35 * i as f32).sin()) * if i >= 20 { top[i - 20] } else { 1.0 };
             (0..288)
                 .map(|k| {
                     let t = std::f32::consts::TAU * k as f32 / 288.0;
-                    let groove = 1.0 - 0.03 * (-(t - std::f32::consts::FRAC_PI_2).powi(2) * 40.0).exp() - 0.03 * (-(t - 1.5 * std::f32::consts::PI).powi(2) * 40.0).exp();
+                    let groove = 1.0
+                        - 0.03 * (-(t - std::f32::consts::FRAC_PI_2).powi(2) * 40.0).exp()
+                        - 0.03 * (-(t - 1.5 * std::f32::consts::PI).powi(2) * 40.0).exp();
                     Vec2::new(150.0 * s * groove * t.cos(), 100.0 * groove * t.sin())
                 })
                 .collect()
@@ -477,8 +586,14 @@ fn the_normal_is_steady_on_a_torso_like_curve_loft() {
         .normalize()
     };
     if let SdfNode::LoftCurves { ref bounds, .. } = node {
-        let (lo, hi) = bounds.knots.iter().fold((f32::INFINITY, 0.0f32), |(a, b), &k| (a.min(k), b.max(k)));
-        assert!(hi > 3.0 * lo, "the local bound must spread (knots {lo}..{hi})");
+        let (lo, hi) = bounds
+            .knots
+            .iter()
+            .fold((f32::INFINITY, 0.0f32), |(a, b), &k| (a.min(k), b.max(k)));
+        assert!(
+            hi > 3.0 * lo,
+            "the local bound must spread (knots {lo}..{hi})"
+        );
     }
     let (mut worst, mut compared) = (0.0f32, 0);
     let mut turns = Vec::new();
@@ -500,7 +615,11 @@ fn the_normal_is_steady_on_a_torso_like_curve_loft() {
             }
         }
         let p = c + dir * (0.5 * (lo + hi));
-        let turn = grad(p, 0.02).dot(grad(p, 0.5)).clamp(-1.0, 1.0).acos().to_degrees();
+        let turn = grad(p, 0.02)
+            .dot(grad(p, 0.5))
+            .clamp(-1.0, 1.0)
+            .acos()
+            .to_degrees();
         worst = worst.max(turn);
         turns.push(turn);
         compared += 1;
@@ -509,7 +628,10 @@ fn the_normal_is_steady_on_a_torso_like_curve_loft() {
     let (p50, p99) = (turns[turns.len() / 2], turns[turns.len() * 99 / 100]);
     eprintln!("normal turn p50 {p50}° p99 {p99}° max {worst}° over {compared} points");
     // p50 is held here; the p99 row is the known defect below
-    assert!(p50 < 0.1, "normal turn p50 {p50}° (p99 {p99}°, max {worst}°) over {compared} surface points");
+    assert!(
+        p50 < 0.1,
+        "normal turn p50 {p50}° (p99 {p99}°, max {worst}°) over {compared} surface points"
+    );
 }
 
 #[test]
@@ -544,10 +666,20 @@ fn the_normal_is_steady_at_the_99th_percentile_on_a_torso_like_curve_loft() {
             }
         }
         let p = c + dir * (0.5 * (lo + hi));
-        turns.push(grad(p, 0.02).dot(grad(p, 0.5)).clamp(-1.0, 1.0).acos().to_degrees());
+        turns.push(
+            grad(p, 0.02)
+                .dot(grad(p, 0.5))
+                .clamp(-1.0, 1.0)
+                .acos()
+                .to_degrees(),
+        );
     }
     turns.sort_by(f32::total_cmp);
-    assert!(turns[turns.len() * 99 / 100] < 1.0, "normal turn p99 {}°", turns[turns.len() * 99 / 100]);
+    assert!(
+        turns[turns.len() * 99 / 100] < 1.0,
+        "normal turn p99 {}°",
+        turns[turns.len() * 99 / 100]
+    );
 }
 
 // ---- caps: the end section eroded toward its deepest point and sheared toward an apex offset ----
@@ -557,10 +689,18 @@ fn a_near_circle_with_hemispherical_caps_is_the_capsule() {
     // the near-circle (M = 32, radius 0.3): its curve radius r (measured here on the curve) and caps of
     // height r with no offset: the capsule of radius r between the end planes
     let cp = ellipse(32, 0.3, 0.3);
-    let r: f32 = (0..3200).map(|i| spline(&cp, 32.0 * i as f32 / 3200.0).length()).sum::<f32>() / 3200.0;
+    let r: f32 = (0..3200)
+        .map(|i| spline(&cp, 32.0 * i as f32 / 3200.0).length())
+        .sum::<f32>()
+        / 3200.0;
     let h = 0.8;
-    let node = SdfNode::loft_curves_capped(vec![Vec3::ZERO, Vec3::new(0.0, h, 0.0)], Vec3::X, vec![cp.clone(), cp], [[r, 0.0, 0.0], [r, 0.0, 0.0]])
-        .expect("capsule");
+    let node = SdfNode::loft_curves_capped(
+        vec![Vec3::ZERO, Vec3::new(0.0, h, 0.0)],
+        Vec3::X,
+        vec![cp.clone(), cp],
+        [[r, 0.0, 0.0], [r, 0.0, 0.0]],
+    )
+    .expect("capsule");
     let mut rr = lcg(20);
     let mut worst = 0.0f32;
     for _ in 0..3000 {
@@ -622,9 +762,20 @@ fn a_cap_reaches_its_height_at_the_offset_apex() {
     .expect("offset cap");
     // frame: N = +x (up = X), B = T × N = −z; the apex at (o.x, h + H, −o.y)
     let apex = Vec3::new(o.x, h + 0.3, -o.y);
-    assert!(eval(&node, apex - Vec3::Y * 0.01) < 0.0, "below the apex reads {}", eval(&node, apex - Vec3::Y * 0.01));
-    assert!(eval(&node, apex + Vec3::Y * 0.01) > 0.0, "above the apex reads {}", eval(&node, apex + Vec3::Y * 0.01));
-    assert!(eval(&node, Vec3::new(-o.x, h + 0.29, 0.0)) > 0.0, "the unshifted point near the top reads inside");
+    assert!(
+        eval(&node, apex - Vec3::Y * 0.01) < 0.0,
+        "below the apex reads {}",
+        eval(&node, apex - Vec3::Y * 0.01)
+    );
+    assert!(
+        eval(&node, apex + Vec3::Y * 0.01) > 0.0,
+        "above the apex reads {}",
+        eval(&node, apex + Vec3::Y * 0.01)
+    );
+    assert!(
+        eval(&node, Vec3::new(-o.x, h + 0.29, 0.0)) > 0.0,
+        "the unshifted point near the top reads inside"
+    );
 }
 
 #[test]
@@ -649,7 +800,10 @@ fn a_capped_loft_never_reads_past_its_own_surface() {
         compared += 1;
         over += usize::from(hit);
     }
-    assert_eq!(over, 0, "read past its own surface at {over} of {compared} points");
+    assert_eq!(
+        over, 0,
+        "read past its own surface at {over} of {compared} points"
+    );
 }
 
 #[test]
