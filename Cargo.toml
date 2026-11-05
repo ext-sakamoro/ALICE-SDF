@@ -242,6 +242,10 @@ name = "rest_point"
 required-features = ["gpu"]
 
 [[example]]
+name = "union_bounds"
+required-features = ["gpu"]
+
+[[example]]
 name = "text_to_3d_demo"
 required-features = ["font"]
 

@@ -82,6 +82,7 @@
 // Cargo.toml [lints.clippy] so tests, benches and examples share it.
 
 pub mod animation;
+pub mod bound;
 pub mod cache;
 pub mod collision;
 pub mod compiled;

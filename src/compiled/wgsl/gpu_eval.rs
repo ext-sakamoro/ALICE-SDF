@@ -1272,7 +1272,9 @@ impl GpuEvaluator {
     /// Create a new GPU evaluator for the given SDF
     ///
     /// This compiles the SDF to a WGSL compute shader and creates
-    /// the necessary GPU resources.
+    /// the necessary GPU resources. A union chain at the top skips operands by their bounding
+    /// spheres ([`WgslShader::transpile_with_union_bounds`]); the values are those of the plain
+    /// shader.
     pub fn new(node: &SdfNode) -> Result<Self, GpuError> {
         // per-node data (lattice control points, height fields, grid warp maps) goes to the node
         // data buffer on the wgpu engine; the Metal engine binds input / output / count / params
@@ -1281,7 +1283,10 @@ impl GpuEvaluator {
         let shader =
             WgslShader::transpile_with_node_data(node, super::transpiler::TranspileMode::Hardcoded);
         #[cfg(all(target_os = "macos", feature = "msl"))]
-        let shader = WgslShader::transpile(node, super::transpiler::TranspileMode::Hardcoded);
+        let shader = WgslShader::transpile_with_union_bounds(
+            node,
+            super::transpiler::TranspileMode::Hardcoded,
+        );
         Self::from_shader(&shader)
     }
 

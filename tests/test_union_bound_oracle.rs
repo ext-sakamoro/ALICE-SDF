@@ -43,7 +43,9 @@ fn operands() -> Vec<SdfNode> {
             .rotate(Quat::from_rotation_x(1.1))
             .translate(0.0, 0.5, 0.2),
         SdfNode::torus(0.2, 0.04).translate(0.1, -0.5, -0.1),
-        SdfNode::box3d(0.1, 0.1, 0.1).twist(2.0).translate(-0.2, -0.2, 0.4),
+        SdfNode::box3d(0.1, 0.1, 0.1)
+            .twist(2.0)
+            .translate(-0.2, -0.2, 0.4),
         SdfNode::sphere(0.1).scale(1.5).translate(0.6, -0.4, 0.3),
     ]
 }
@@ -122,7 +124,10 @@ fn the_bound_is_a_lower_bound_of_the_operand_distance() {
         }
         // the surface lies inside the sphere
         for h in hit_points(&op, c, 64, &mut rng) {
-            assert!((h - c).length() <= r + 1e-5, "surface point {h} outside the bound");
+            assert!(
+                (h - c).length() <= r + 1e-5,
+                "surface point {h} outside the bound"
+            );
             compared += 1;
         }
     }
@@ -135,7 +140,7 @@ fn inside_a_bound_the_operand_is_evaluated() {
     // a bound that skipped there would give the near operand's larger value
     let near = SdfNode::sphere(0.1).translate(-0.6, 0.0, 0.0);
     let far = SdfNode::box3d(0.2, 0.2, 0.2).translate(0.5, 0.0, 0.0);
-    let node = near.clone().union(far.clone());
+    let node = near.union(far.clone());
     let (c, r) = bounding_sphere(&far).expect("bounded");
     let mut rng = Rng(0xdead_beef_cafe_f00d);
     let mut compared = 0;
@@ -145,8 +150,16 @@ fn inside_a_bound_the_operand_is_evaluated() {
             continue;
         }
         let want = eval(&node, p);
-        assert_eq!(eval(&far, p).to_bits(), want.to_bits(), "the far operand is the minimum");
-        assert_eq!(eval_union_bounded(&node, p).to_bits(), want.to_bits(), "p {p}");
+        assert_eq!(
+            eval(&far, p).to_bits(),
+            want.to_bits(),
+            "the far operand is the minimum"
+        );
+        assert_eq!(
+            eval_union_bounded(&node, p).to_bits(),
+            want.to_bits(),
+            "p {p}"
+        );
         compared += 1;
     }
     assert!(compared >= 300, "compared {compared}");
@@ -165,7 +178,11 @@ fn the_bound_actually_skips_far_operands() {
         for h in hit_points(op, c, 32, &mut rng) {
             let (v, st) = eval_union_bounded_stats(&node, h);
             assert_eq!(v.to_bits(), eval(&node, h).to_bits(), "value at {h}");
-            assert_eq!(st.evaluated + st.skipped, ops.len(), "every operand is counted once");
+            assert_eq!(
+                st.evaluated + st.skipped,
+                ops.len(),
+                "every operand is counted once"
+            );
             evaluated += st.evaluated;
             skipped += st.skipped;
             plain += ops.len();
@@ -200,7 +217,10 @@ fn the_bounded_shader_gives_the_cpu_value() {
     let g = match GpuEvaluator::from_shader(&sh) {
         Ok(g) => g,
         Err(e) => {
-            assert!(std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(), "no GPU: {e}");
+            assert!(
+                std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+                "no GPU: {e}"
+            );
             return;
         }
     };
@@ -212,4 +232,84 @@ fn the_bounded_shader_gives_the_cpu_value() {
         compared += 1;
     }
     assert!(compared >= ops.len() * 128, "compared {compared}");
+}
+
+/// (f) the viewer-path shader carries the bounds and the GPU skips with them:
+/// - the rest-point shader (the viewer's) has one skip guard per bounded operand
+/// - on points near one operand, the GPU skip count summed over the points is > 0 and more than
+///   half of the operand evaluations are skipped (the CPU counts, measured on the same points)
+/// - the bounded shader's GPU values are bit-equal to the plain shader's on the GPU: skipping
+///   values greater than the result does not change `min`
+#[cfg(feature = "gpu")]
+#[test]
+fn the_viewer_shader_skips_on_the_gpu_and_keeps_the_plain_bits() {
+    use alice_sdf::compiled::{GpuEvaluator, TranspileMode, WgslShader};
+    let ops = operands();
+    let node = union_of(&ops);
+
+    // the rest point does not follow a twist: the viewer scene is the operands without it
+    let rest_ops: Vec<SdfNode> = ops
+        .iter()
+        .filter(|op| !matches!(op, SdfNode::Translate { child, .. } if matches!(child.as_ref(), SdfNode::Twist { .. })))
+        .cloned()
+        .collect();
+    assert_eq!(
+        rest_ops.len(),
+        ops.len() - 1,
+        "one twisted operand left out"
+    );
+    let rest =
+        WgslShader::transpile_with_rest_point(&union_of(&rest_ops), TranspileMode::Hardcoded)
+            .expect("the operands have rest points");
+    let guards = rest.source.matches("n_skip = n_skip + 1.0").count();
+    assert_eq!(
+        guards,
+        rest_ops.len(),
+        "one skip guard per bounded operand in the viewer shader"
+    );
+
+    let mut rng = Rng(0x7e57_0f00_dead_0001);
+    let mut pts = Vec::new();
+    for op in &ops {
+        let (c, _) = bounding_sphere(op).expect("bounded");
+        pts.extend(hit_points(op, c, 32, &mut rng));
+    }
+    assert!(pts.len() >= ops.len() * 16, "points {}", pts.len());
+
+    let count = WgslShader::transpile_union_skip_count(&node, TranspileMode::Hardcoded);
+    let gpu = |sh: &WgslShader| match GpuEvaluator::from_shader(sh) {
+        Ok(g) => Some(g.eval_batch(&pts).expect("gpu eval")),
+        Err(e) => {
+            assert!(
+                std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+                "no GPU: {e}"
+            );
+            None
+        }
+    };
+    let Some(skips) = gpu(&count) else { return };
+    let skipped: f32 = skips.iter().sum();
+    let plain_evals = (pts.len() * ops.len()) as f32;
+    assert!(skipped > 0.0, "the GPU skipped no operand");
+    assert!(
+        skipped * 2.0 > plain_evals,
+        "the GPU skipped {skipped} of {plain_evals} operand evaluations"
+    );
+
+    let bounded = gpu(&WgslShader::transpile_with_union_bounds(
+        &node,
+        TranspileMode::Hardcoded,
+    ))
+    .expect("gpu");
+    let plain = gpu(&WgslShader::transpile(&node, TranspileMode::Hardcoded)).expect("gpu");
+    let mut compared = 0;
+    for ((p, b), q) in pts.iter().zip(&bounded).zip(&plain) {
+        assert_eq!(
+            b.to_bits(),
+            q.to_bits(),
+            "p {p}: bounded {b} vs plain {q} on the GPU"
+        );
+        compared += 1;
+    }
+    assert!(compared >= ops.len() * 16, "compared {compared}");
 }

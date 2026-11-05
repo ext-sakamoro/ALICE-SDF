@@ -230,8 +230,11 @@ impl WgslShader {
     /// constants: the shader text stays small for large data. The compute shaders declare the
     /// binding only when [`WgslShader::node_data`] is not empty, and the evaluator must bind
     /// that data ([`crate::compiled::GpuEvaluator::from_shader`] does).
+    ///
+    /// A union chain at the top skips operands by their bounding spheres, as
+    /// [`WgslShader::transpile_with_union_bounds`] (the values are those of the plain shader)
     pub fn transpile_with_node_data(node: &SdfNode, mode: TranspileMode) -> Self {
-        Self::transpile_inner(node, mode, true)
+        Self::transpile_bounded(node, mode, true, UnionBoundsOutput::Value)
     }
 
     fn transpile_inner(node: &SdfNode, mode: TranspileMode, data_buffer: bool) -> Self {
@@ -271,7 +274,8 @@ impl WgslShader {
         };
         let mut g: GenericTranspiler<WgslLang> = GenericTranspiler::new(m);
         g.node_data = Some(Vec::new());
-        let body = g.transpile_node(node, "p");
+        // the bounded union body (R0): the viewer path skips far operands
+        let body = union_bounded_body(&mut g, node, UnionBoundsOutput::Value);
         let mut code = String::new();
         let r = g.transpile_rest_inner(node, "p", &mut code)?;
         let source = g.generate_shader(&body)
@@ -286,6 +290,52 @@ impl WgslShader {
             workgroup_size: 256,
             node_data: g.node_data.unwrap_or_default(),
         })
+    }
+
+    /// [`WgslShader::transpile`] with union operand bounds (R0): each operand of the union chain at
+    /// the top of `node` that has a bounding sphere ([`crate::bound::bounding_sphere`]) is
+    /// evaluated only when its lower bound ([`crate::bound::lower_bound`], the same slack) is not
+    /// greater than the minimum so far; operands without a bound are evaluated first, always.
+    /// The skipped values are greater than the result and `min` does not depend on the order of
+    /// the values it keeps, so the value is that of the plain shader. A node that is not a union
+    /// chain transpiles as [`WgslShader::transpile`]. [`crate::compiled::GpuEvaluator::new`] and
+    /// [`WgslShader::transpile_with_rest_point`] emit this form
+    pub fn transpile_with_union_bounds(node: &SdfNode, mode: TranspileMode) -> Self {
+        Self::transpile_bounded(node, mode, false, UnionBoundsOutput::Value)
+    }
+
+    /// The shader of [`WgslShader::transpile_with_union_bounds`] whose `sdf_eval` returns, in
+    /// place of the value, how many union operands its bounds skipped at the point (as `f32`):
+    /// the GPU-side measure that the bounds skip
+    pub fn transpile_union_skip_count(node: &SdfNode, mode: TranspileMode) -> Self {
+        Self::transpile_bounded(node, mode, false, UnionBoundsOutput::SkipCount)
+    }
+
+    fn transpile_bounded(
+        node: &SdfNode,
+        mode: TranspileMode,
+        data_buffer: bool,
+        out: UnionBoundsOutput,
+    ) -> Self {
+        use super::super::transpiler_common::{GenericTranspiler, TranspileModeLang};
+        let m = match mode {
+            TranspileMode::Hardcoded => TranspileModeLang::Hardcoded,
+            TranspileMode::Dynamic => TranspileModeLang::Dynamic,
+        };
+        let mut g: GenericTranspiler<WgslLang> = GenericTranspiler::new(m);
+        if data_buffer {
+            g.node_data = Some(Vec::new());
+        }
+        let body = union_bounded_body(&mut g, node, out);
+        let source = g.generate_shader(&body);
+        Self {
+            source,
+            helper_count: g.helper_functions.len(),
+            param_layout: g.params,
+            mode,
+            workgroup_size: 256,
+            node_data: g.node_data.unwrap_or_default(),
+        }
     }
 
     const fn node_data_decl(&self) -> &'static str {
@@ -641,6 +691,79 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
             sdf_func = self.source,
         )
     }
+}
+
+/// What the bounded union body returns
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnionBoundsOutput {
+    /// The SDF value
+    Value,
+    /// The number of operands the bounds skipped
+    SkipCount,
+}
+
+/// The `sdf_eval` body of the bounded union (R0, see [`WgslShader::transpile_with_union_bounds`]),
+/// ending in `return`; the plain body when `node` is not a union chain of two or more operands
+fn union_bounded_body(
+    g: &mut super::super::transpiler_common::GenericTranspiler<WgslLang>,
+    node: &SdfNode,
+    out: UnionBoundsOutput,
+) -> String {
+    use super::super::transpiler_common::lit;
+    use crate::bound::{bounding_sphere, BOUND_SLACK_REL};
+    let mut ops = Vec::new();
+    crate::eval::union_bounded::union_operands(node, &mut ops);
+    if ops.len() < 2 {
+        return match out {
+            UnionBoundsOutput::Value => g.transpile_node(node, "p"),
+            UnionBoundsOutput::SkipCount => "    return 0.0;\n".to_owned(),
+        };
+    }
+    let bounded: Vec<_> = ops.iter().map(|op| bounding_sphere(op)).collect();
+    let mut code = String::from(
+        "    var d_ub: f32 = 0.0;\n    var d_ub_set: bool = false;\n    var n_skip: f32 = 0.0;\n",
+    );
+    // unbounded operands first (they set the minimum the bounds are compared with)
+    let order = (0..ops.len())
+        .filter(|&i| bounded[i].is_none())
+        .chain((0..ops.len()).filter(|&i| bounded[i].is_some()));
+    for i in order {
+        let guarded = if let Some((c, r)) = bounded[i] {
+            let cv = format!("vec3<f32>({}, {}, {})", lit(c.x), lit(c.y), lit(c.z));
+            let rv = lit(r);
+            let slack = format!(
+                "{} * (1.0 + length(p) + {} + {})",
+                lit(BOUND_SLACK_REL),
+                lit(c.length()),
+                rv
+            );
+            writeln!(
+                code,
+                "    if (!d_ub_set || !(length(p - {cv}) - {rv} - {slack} > d_ub)) {{"
+            )
+            .unwrap();
+            true
+        } else {
+            code.push_str("    {\n");
+            false
+        };
+        let v = g.transpile_node_inner(ops[i], "p", &mut code);
+        writeln!(
+            code,
+            "        d_ub = select({v}, min(d_ub, {v}), d_ub_set);\n        d_ub_set = true;"
+        )
+        .unwrap();
+        if guarded {
+            code.push_str("    } else {\n        n_skip = n_skip + 1.0;\n    }\n");
+        } else {
+            code.push_str("    }\n");
+        }
+    }
+    match out {
+        UnionBoundsOutput::Value => code.push_str("    return d_ub;\n"),
+        UnionBoundsOutput::SkipCount => code.push_str("    return n_skip;\n"),
+    }
+    code
 }
 
 /// Internal transpiler state
