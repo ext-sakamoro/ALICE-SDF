@@ -18,6 +18,9 @@
 
 mod common;
 
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
+
 use alice_sdf::compiled::GpuEvaluator;
 use alice_sdf::prelude::*;
 use glam::Vec2;
@@ -123,7 +126,7 @@ fn bezier_at_p_zero_and_just_below_gpu_matches_cpu() {
     let Some(gpu) = gpu_or_skip(&node) else {
         return;
     };
-    let got = gpu.eval_batch(&pts).expect("gpu eval");
+    let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu eval");
     assert_eq!(got.len(), pts.len());
     for (p, g) in pts.iter().zip(&got) {
         let c = eval(&node, *p);
@@ -203,7 +206,7 @@ fn polar_axis_ties_gpu_match_cpu() {
             pts.push(Vec3::new(0.0, 0.1, -v));
             pts.push(Vec3::new(-0.0, 0.1, -v));
         }
-        let got = gpu.eval_batch(&pts).expect("gpu eval");
+        let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu eval");
         for (p, g) in pts.iter().zip(&got) {
             let c = eval(&node, *p);
             assert!(
@@ -565,7 +568,7 @@ mod glsl_axis_ties {
                 pts.push(Vec3::new(0.0, 0.1, -v));
                 pts.push(Vec3::new(-0.0, 0.1, -v));
             }
-            let got = gpu.eval_batch(&pts).expect("gpu eval");
+            let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu eval");
             for (p, g) in pts.iter().zip(&got) {
                 let c = eval(&node, *p);
                 assert!(

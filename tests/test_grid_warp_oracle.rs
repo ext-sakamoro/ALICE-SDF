@@ -10,6 +10,10 @@
 //! - the GPU (node data buffer, binding 4) gives the CPU value (`ALICE_SDF_REQUIRE_GPU` makes a
 //!   missing adapter a failure)
 
+#[cfg(feature = "gpu")]
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
+
 use alice_sdf::interval::eval_lipschitz;
 use alice_sdf::prelude::*;
 use alice_sdf::transforms::{GridWarp, GridWarpData};
@@ -208,7 +212,7 @@ fn the_gpu_gives_the_cpu_value() {
         }
     };
     let pts = points(Vec3::new(-0.1, -0.16, -0.1), Vec3::new(0.1, 0.16, 0.1), 24);
-    let got = gpu.eval_batch(&pts).expect("gpu eval");
+    let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu eval");
     assert_eq!(got.len(), pts.len());
     let mut worst = 0.0f32;
     for (p, g) in pts.iter().zip(&got) {
@@ -405,7 +409,7 @@ fn the_gpu_gives_the_cpu_value_on_the_steep_slab() {
         Vec3::new(0.025, 0.2, 0.025),
         24,
     );
-    let got = gpu.eval_batch(&pts).expect("gpu eval");
+    let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu eval");
     let mut worst = 0.0f32;
     let mut clamped = 0;
     for (p, g) in pts.iter().zip(&got) {
@@ -533,7 +537,7 @@ fn the_gpu_gives_the_cpu_value_with_a_floor() {
         }
     };
     let pts = points(Vec3::new(-0.1, -0.1, -0.1), Vec3::new(0.3, 0.1, 0.1), 24);
-    let got = gpu.eval_batch(&pts).expect("gpu eval");
+    let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu eval");
     let mut worst = 0.0f32;
     let mut floored = 0;
     for (p, g) in pts.iter().zip(&got) {

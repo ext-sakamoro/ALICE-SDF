@@ -17,6 +17,10 @@
 //!   `ALICE_SDF_REQUIRE_GPU=1` makes a missing adapter a failure)
 
 #[cfg(feature = "gpu")]
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
+
+#[cfg(feature = "gpu")]
 use alice_sdf::compiled::{TranspileMode, WgslShader};
 use alice_sdf::eval::{eval, eval_rest_point};
 use alice_sdf::prelude::*;
@@ -349,7 +353,10 @@ fn gpu_rest(node: &SdfNode, pts: &[Vec3]) -> Option<Vec<Vec3>> {
                 return None;
             }
         };
-        for (o, v) in out.iter_mut().zip(g.eval_batch(pts).expect("gpu eval")) {
+        for (o, v) in out
+            .iter_mut()
+            .zip(gpu_batches::eval_in_batches(&g, pts).expect("gpu eval"))
+        {
             o[axis] = v;
         }
     }
@@ -413,7 +420,7 @@ fn the_shader_rest_point_is_the_cpu_rest_point() {
                 return;
             }
         };
-        let got = g.eval_batch(&pts).expect("gpu eval");
+        let got = gpu_batches::eval_in_batches(&g, &pts).expect("gpu eval");
         for (p, v) in pts.iter().zip(&got) {
             let want = eval_rest_point(&node, *p).expect("followed")[axis];
             worst = worst.max((want - v).abs());
