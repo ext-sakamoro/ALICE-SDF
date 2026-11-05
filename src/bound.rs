@@ -36,7 +36,7 @@
 //! slack is `(depth + 1) · 2⁻²⁰ · M` ([`SLACK_PER_NODE`])
 //!
 //! Used by [`crate::eval::eval_union_bounded`] and
-//! [`crate::compiled::WgslShader::transpile_with_union_bounds`]: a union operand whose lower bound
+//! `WgslShader::transpile_with_union_bounds`: a union operand whose lower bound
 //! is greater than the nearest value found so far cannot be the minimum and is not evaluated
 
 use crate::types::SdfNode;
