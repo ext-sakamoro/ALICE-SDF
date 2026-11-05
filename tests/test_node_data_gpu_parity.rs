@@ -4,6 +4,9 @@
 
 #![cfg(feature = "gpu")]
 
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
+
 use alice_sdf::compiled::{GpuEvaluator, TranspileMode, WgslShader};
 use alice_sdf::prelude::*;
 
@@ -29,10 +32,8 @@ fn check(name: &str, node: &SdfNode) {
         "{name}: the table must go to the node data buffer"
     );
     let pts = points();
-    let got = GpuEvaluator::new(node)
-        .expect("gpu evaluator")
-        .eval_batch(&pts)
-        .expect("gpu eval");
+    let gpu = GpuEvaluator::new(node).expect("gpu evaluator");
+    let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu eval");
     assert_eq!(got.len(), pts.len());
     let mut worst = 0.0f32;
     for (p, v) in pts.iter().zip(&got) {
