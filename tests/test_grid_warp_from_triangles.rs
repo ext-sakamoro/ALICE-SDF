@@ -609,52 +609,81 @@ fn the_cell_diagonal_keeps_the_floor_below_the_distance_for_a_thin_shell() {
     assert!(checked > 0);
 }
 
-/// Whether a posed triangle is on the sheet's rim (has an edge no other triangle shares).
-fn rim_triangles(tris: &[[u32; 3]]) -> Vec<bool> {
-    let mut count = std::collections::BTreeMap::new();
-    for t in tris {
-        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-            *count.entry((a.min(b), a.max(b))).or_insert(0u32) += 1;
+/// Upper bound on the largest singular value of a map's linear part (Gershgorin on AᵀA), the
+/// test's own copy.
+fn stretch_bound(m: &[f32; 12]) -> f32 {
+    let a = [[m[0], m[1], m[2]], [m[4], m[5], m[6]], [m[8], m[9], m[10]]];
+    let mut w = 0.0f32;
+    for i in 0..3 {
+        let mut r = 0.0f32;
+        for j in 0..3 {
+            r += (a[0][i] * a[0][j] + a[1][i] * a[1][j] + a[2][i] * a[2][j]).abs();
         }
+        w = w.max(r);
     }
-    tris.iter()
-        .map(|t| {
-            [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])]
-                .iter()
-                .any(|(a, b)| count[&(*a.min(b), *a.max(b))] == 1)
-        })
-        .collect()
+    w.sqrt()
 }
 
 #[test]
-fn a_far_pulled_corner_does_not_disable_the_floor_inside() {
-    // the folded sheet, plus its corner (1, 0) pulled 1.5 away along x: the corner triangle
-    // stretches hugely, but the fold's ghosts are in the interior, where the shape lies within
-    // t of the posed sheet (the rest sheet is flat and the map keeps unit normals)
+fn a_far_pulled_corner_leaves_no_surface_outside_the_derived_band() {
+    // the folded sheet with its corner (1, 0) pulled 1.5 away along x. The derived bound: the
+    // part of the posed shape from triangle T lies within σ_T·t of posed T; the floor clears
+    // every inside point farther than that from every triangle (plus the cell diagonal). And it
+    // clears more than one global bound
+    // (σ = max σ_T for every triangle) would: built here from this file's own distances.
     let (rest, tris) = sheet(9);
     let mut posed = folded(&rest);
-    let corner = 8usize; // rest (1, 0)
-    posed[corner] += Vec3::new(1.5, 0.0, 0.0);
+    posed[8] += Vec3::new(1.5, 0.0, 0.0);
     let (lo, hi) = (Vec3::new(-0.4, -0.4, -0.4), Vec3::new(2.4, 1.4, 0.6));
-    let cell = 0.05;
-    let shell = 0.03;
-    let data = grid_warp_from_triangles(
+    let (cell, shell) = (0.05f32, 0.03f32);
+    let diagonal = cell * 3.0f32.sqrt();
+    let sigma: Vec<f32> = tris
+        .iter()
+        .map(|t| {
+            let r = [
+                rest[t[0] as usize],
+                rest[t[1] as usize],
+                rest[t[2] as usize],
+            ];
+            let q = [
+                posed[t[0] as usize],
+                posed[t[1] as usize],
+                posed[t[2] as usize],
+            ];
+            stretch_bound(&affine_posed_to_rest(q, r).expect("map"))
+        })
+        .collect();
+    let grid = WarpGrid {
+        box_min: lo,
+        box_max: hi,
+        cell,
+        reach: 0.3,
+        shell: Some(shell),
+    };
+    let ours = grid_warp_from_triangles(&rest, &posed, &tris, &grid).expect("builds");
+    // the global-bound floor on the same nodes: distance to the posed sheet − max σ·t − diagonal
+    let mut global = grid_warp_from_triangles(
         &rest,
         &posed,
         &tris,
         &WarpGrid {
-            box_min: lo,
-            box_max: hi,
-            cell,
-            reach: 0.3,
-            shell: Some(shell),
+            shell: None,
+            ..grid
         },
     )
     .expect("builds");
-    let node = slab().grid_warp(GridWarp::new(data).expect("valid"));
-    let rim = rim_triangles(&tris);
-    let band = shell + cell * 3.0f32.sqrt();
-    let mut ghosts = 0;
+    let sigma_max = sigma.iter().copied().fold(0.0f32, f32::max);
+    let [nx, ny, nz] = global.dims;
+    global.floor = (0..nx * ny * nz)
+        .map(|i| {
+            let (x, y, z) = (i % nx, (i / nx) % ny, i / (nx * ny));
+            let q = lo + Vec3::new(x as f32, y as f32, z as f32) * cell;
+            sheet_distance(q, &posed, &tris) - sigma_max * shell - diagonal
+        })
+        .collect();
+    let ours = slab().grid_warp(GridWarp::new(ours).expect("valid"));
+    let global = slab().grid_warp(GridWarp::new(global).expect("valid"));
+    let (mut outside_band, mut ours_far, mut global_far, mut probes) = (0, 0, 0, 0);
     for k in 0..24 {
         for j in 0..24 {
             for i in 0..36 {
@@ -665,36 +694,46 @@ fn a_far_pulled_corner_does_not_disable_the_floor_inside() {
                             (j as f32 + 0.5) / 24.0,
                             (k as f32 + 0.5) / 24.0,
                         );
-                if eval(&node, p) >= 0.0 {
-                    continue;
-                }
-                // nearest posed triangle and its distance
-                let mut best = (f32::INFINITY, 0usize);
-                for (ti, t) in tris.iter().enumerate() {
-                    let d = sheet_distance(p, &posed, &[*t]);
-                    if d < best.0 {
-                        best = (d, ti);
+                probes += 1;
+                let d_sheet = sheet_distance(p, &posed, &tris);
+                // the derived band: within σ_T·t + the cell diagonal of some posed triangle
+                let in_band = tris
+                    .iter()
+                    .zip(&sigma)
+                    .any(|(t, s)| sheet_distance(p, &posed, &[*t]) <= s * shell + diagonal);
+                // farther from the sheet than t + diagonal: a surface there is a ghost unless the
+                // band of a stretched triangle reaches it
+                let far = d_sheet > shell + diagonal;
+                if eval(&ours, p) < 0.0 {
+                    if far && !in_band {
+                        outside_band += 1;
+                    }
+                    if far {
+                        ours_far += 1;
                     }
                 }
-                if best.0 > band && !rim[best.1] {
-                    ghosts += 1;
+                if eval(&global, p) < 0.0 && far {
+                    global_far += 1;
                 }
             }
         }
     }
-    assert_eq!(
-        ghosts, 0,
-        "inside points beyond t + the cell diagonal from an interior triangle"
+    assert!(probes > 0);
+    assert_eq!(outside_band, 0, "inside points outside the derived band");
+    assert!(
+        ours_far < global_far,
+        "per-triangle bound clears no more than the global one: {ours_far} vs {global_far}"
     );
 }
 
 #[test]
 fn a_bent_rest_sheet_keeps_the_floor_below_the_distance() {
-    // Not planar at rest: the sheet is bent 90° along x = 0.5 (the right half stands up), and
-    // posed it is flat and stretched ×4 along the rest arc length. A child point just outside
-    // the convex crease is offset at 45° to each half's normal; a half's map stretches the
-    // in-plane part ×4, so it lands about 2.9·t from the posed sheet. Only per-triangle σ_T·t
-    // (not t) keeps the floor below the distance there.
+    // Not planar at rest: the sheet is bent 90° along x = 0.5 (the right half stands up).
+    // Posed, both halves are stretched ×4 and the right half is turned down instead. A child
+    // point just outside the convex crease is offset at 45° to each half's normal; the left
+    // half's map stretches the in-plane part ×4 past the crease, where the posed surface turns
+    // away, so it lands about 0.085 (≈ 2.9·t) from the posed sheet. Only σ_T·t (not t) keeps
+    // the floor below the distance there.
     let n = 9;
     let (flat, tris) = sheet(n);
     let bend = |p: Vec3| {
@@ -705,13 +744,21 @@ fn a_bent_rest_sheet_keeps_the_floor_below_the_distance() {
         }
     };
     let rest: Vec<Vec3> = flat.iter().map(|p| bend(*p)).collect();
+    // posed: the left half flat and stretched ×4 (to x = 2), the right half turned DOWN at the
+    // crease and stretched ×4 (the surface turns away from the convex side's offsets)
     let posed: Vec<Vec3> = flat
         .iter()
-        .map(|p| Vec3::new(4.0 * p.x, p.y, 0.0))
+        .map(|p| {
+            if p.x <= 0.5 {
+                Vec3::new(4.0 * p.x, p.y, 0.0)
+            } else {
+                Vec3::new(2.0, p.y, -4.0 * (p.x - 0.5))
+            }
+        })
         .collect();
     let shell = 0.03;
     let cell = 0.02;
-    let (lo, hi) = (Vec3::new(1.4, 0.0, -0.3), Vec3::new(2.6, 1.0, 0.3));
+    let (lo, hi) = (Vec3::new(1.4, 0.0, -0.6), Vec3::new(2.6, 1.0, 0.3));
     let data = grid_warp_from_triangles(
         &rest,
         &posed,

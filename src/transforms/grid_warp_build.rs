@@ -200,17 +200,19 @@ fn spectral_bound(m: &[f32; 12]) -> f32 {
 /// With `grid.shell = Some(t)` (the caller's bound: every point of the child lies within `t` of the
 /// rest sheet) each node also gets a floor ([`GridWarpData::floor`]) that removes them:
 ///
-/// - for a child point `x` whose nearest rest triangle is `T` with foot `f` (`|x − f| ≤ t`),
+/// - for a child point `x` whose nearest rest point is `f` in triangle `T` (`|x − f| ≤ t`),
 ///   the triangle's own rest → posed map `F_T` gives `|F_T(x) − F_T(f)| ≤ σ_T·|x − f| ≤ σ_T·t`
-///   with `F_T(f)` on the posed sheet and `σ_T` the largest singular value of its linear part
-///   (≥ 1: the unit normal is kept, so stretch in the plane only raises it); hence every point
-///   of the posed shape lies within `σ·t` of the posed sheet, `σ = max_T σ_T`;
-/// - so for a node `n`, `dist(n, shape) ≥ dist(n, posed sheet) − σ·t`;
+///   with `F_T(f)` on posed triangle `T` and `σ_T` the largest singular value of its linear
+///   part (≥ 1: the unit normal is kept, so stretch in the plane only raises it); so the part
+///   of the posed shape coming from `T` lies within `σ_T·t` of posed `T`;
+/// - so for a node `n`, `dist(n, shape) ≥ min_T (dist(n, posed T) − σ_T·t)`;
 /// - the node's floor is that minus the cell diagonal `√3·cell`: the distance is 1-Lipschitz,
 ///   so every corner's floor is at most the distance at any point of the cell, and so is their
 ///   trilinear blend, which [`GridWarp`](crate::transforms::GridWarp) applies as a lower bound.
 ///
 /// `σ_T` is bounded from above by the Gershgorin bound on `AᵀA` (sound, exact for a rotation).
+/// Each triangle's own bound is used, so one strongly stretched triangle (a pulled corner)
+/// does not loosen the floor away from it.
 /// `grid.shell = None` leaves the floor empty (no fold handling).
 ///
 /// # Errors
@@ -259,7 +261,7 @@ pub fn grid_warp_from_triangles(
         }
     }
     let mut tris = Vec::with_capacity(triangles.len());
-    let mut sigma = 0.0f32;
+    let mut sigmas = Vec::with_capacity(triangles.len());
     for (k, t) in triangles.iter().enumerate() {
         let mut r = [Vec3::ZERO; 3];
         let mut p = [Vec3::ZERO; 3];
@@ -277,9 +279,13 @@ pub fn grid_warp_from_triangles(
         let m = affine_posed_to_rest(r, p).ok_or(GridWarpBuildError::Degenerate { triangle: k })?;
         let forward =
             affine_posed_to_rest(p, r).ok_or(GridWarpBuildError::Degenerate { triangle: k })?;
-        sigma = law_max_f32(sigma, spectral_bound(&forward));
+        sigmas.push(spectral_bound(&forward));
         tris.push((p, m));
     }
+    // per triangle: its part of the posed shape lies within σ_T·t of posed T
+    let reach_of: Vec<f32> = shell
+        .map(|t| sigmas.iter().map(|s| s * t).collect())
+        .unwrap_or_default();
     let extent = box_max - box_min;
     let nodes = |e: f32| -> Result<u32, GridWarpBuildError> {
         let n = (e / cell).ceil() + 1.0;
@@ -303,8 +309,12 @@ pub fn grid_warp_from_triangles(
                 let q = box_min + Vec3::new(i as f32, j as f32, k as f32) * cell;
                 let mut best = 0usize;
                 let mut best_d = f32::INFINITY;
+                let mut floor_here = f32::INFINITY;
                 for (t, (p, _)) in tris.iter().enumerate() {
                     let d = point_triangle_distance_sq(q, p[0], p[1], p[2]);
+                    if let Some(r) = reach_of.get(t) {
+                        floor_here = law_min_f32(floor_here, d.sqrt() - r);
+                    }
                     // strictly smaller: a tie keeps the lower index
                     if d < best_d {
                         best_d = law_min_f32(best_d, d);
@@ -312,8 +322,8 @@ pub fn grid_warp_from_triangles(
                     }
                 }
                 maps.extend_from_slice(&tris[best].1);
-                if let Some(t) = shell {
-                    floor.push(best_d.sqrt() - sigma * t - diagonal);
+                if shell.is_some() {
+                    floor.push(floor_here - diagonal);
                 }
             }
         }
