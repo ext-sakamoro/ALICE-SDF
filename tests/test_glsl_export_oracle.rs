@@ -228,6 +228,51 @@ fn compute_shader_runs_on_the_gpu_and_matches_the_closed_form() {
     }
 }
 
+/// The parabola_segment helper from flat to tall arches, on both sides of the arch, against the CPU law
+/// (whose own truth is tests/test_parabola_segment_oracle.rs).
+#[test]
+fn compute_shader_parabola_segment_matches_the_cpu_law() {
+    let mut compared = 0usize;
+    let mut worst = 0.0f32;
+    for (w, h) in [
+        (1.0f32, 1.0f32),
+        (1.0, 0.1),
+        (1.0, 0.01),
+        (1.0, 3.0),
+        (0.2, 2.0),
+        (3.0, 0.3),
+    ] {
+        let node = SdfNode::parabola_segment(w, h, 1000.0);
+        let src = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded).to_compute_shader();
+        let Some(gpu) = gpu_or_skip("parabola_segment", &vulkanize(&src)) else {
+            return;
+        };
+        let mut pts = Vec::new();
+        for i in -15i32..=15 {
+            for j in -15i32..=20 {
+                pts.push(Vec3::new(
+                    i as f32 * 0.1 * w,
+                    j as f32 * 0.1 * h.max(w * 0.1),
+                    0.0,
+                ));
+            }
+        }
+        for k in 0..=40 {
+            let x = w * k as f32 / 40.0;
+            for o in [0.0f32, 1e-3, -1e-3, 1e-2, 0.1, 0.5, 2.0] {
+                pts.push(Vec3::new(x, h * (1.0 - (x / w) * (x / w)) + o, 0.0));
+            }
+        }
+        for (p, g) in pts.iter().zip(gpu.eval_batch(&pts).unwrap()) {
+            worst = worst.max((g - eval(&node, *p)).abs());
+            compared += 1;
+        }
+    }
+    assert!(compared > 0, "compared 0 points");
+    eprintln!("GLSL parabola_segment: {compared} points, max |shader - cpu| {worst:.3e}");
+    assert!(worst <= 2e-5, "GLSL/CPU drift {worst:.3e}");
+}
+
 #[test]
 fn extract_params_is_the_dynamic_layout_of_the_tree() {
     let la = GlslShader::extract_params(&A.node());

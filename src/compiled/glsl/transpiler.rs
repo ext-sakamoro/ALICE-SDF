@@ -1434,15 +1434,19 @@ const HELPER_SDF_PARABOLA_SEGMENT: &str = r"float sdf_parabola_segment(vec3 p, f
     ALICE_PRECISE float ww_sq = w * w;
     ALICE_PRECISE float y_arch = ph * (1.0 - px * px / ww_sq);
     bool is_in = (px <= w && py >= 0.0 && py <= y_arch);
-    ALICE_PRECISE float t = clamp(px, 0.0, w);
-    for (int i = 0; i < 8; i++) {
-        ALICE_PRECISE float ft = ph * (1.0 - t * t / ww_sq);
-        ALICE_PRECISE float dft = -2.0 * ph * t / ww_sq;
-        ALICE_PRECISE float ex = px - t;
-        ALICE_PRECISE float ey = py - ft;
-        ALICE_PRECISE float f = -ex + ey * dft;
-        ALICE_PRECISE float df = 1.0 + dft * dft + ey * (-2.0 * ph / ww_sq);
-        if (abs(df) > 1e-10) { t = clamp(t - f / df, 0.0, w); }
+    // the same solve as the CPU law (src/primitives/parabola_segment.rs): Newton from above the one root
+    ALICE_PRECISE float a = ph / ww_sq;
+    ALICE_PRECISE float k = 2.0 * a * a;
+    ALICE_PRECISE float m = 2.0 * a * (ph - py) - 1.0;
+    ALICE_PRECISE float t = w;
+    if (k > 0.0) {
+        ALICE_PRECISE float bound = sqrt(max(m / k, 0.0)) + pow(px / k, 1.0 / 3.0);
+        if (bound < w) { t = bound; }
+    }
+    for (int i = 0; i < 5; i++) {
+        ALICE_PRECISE float g = k * t * t * t - m * t - px;
+        ALICE_PRECISE float gp = 3.0 * k * t * t - m;
+        if (gp > 0.0) { t = clamp(t - g / gp, 0.0, w); }
     }
     ALICE_PRECISE float cy = ph * (1.0 - t * t / ww_sq);
     ALICE_PRECISE float d_para = length(vec2(px - t, py - cy));
