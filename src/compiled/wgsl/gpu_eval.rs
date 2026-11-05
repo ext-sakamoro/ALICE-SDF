@@ -171,6 +171,9 @@ struct WgpuEngine {
     workgroup_size: u32,
     /// Node data storage buffer (binding 4), present when the shader reads `alice_node_data`
     node_data: Option<wgpu::Buffer>,
+    /// The checked reads' counter (binding 5, one `atomic<u32>`), present for a shader from
+    /// [`WgslShader::try_transpile_with_node_data_checked`]
+    read_hits: Option<wgpu::Buffer>,
 }
 
 #[cfg_attr(
@@ -190,6 +193,15 @@ impl WgpuEngine {
     fn from_source_with_data(
         source: wgpu::ShaderSource<'_>,
         node_data: &[f32],
+    ) -> Result<Self, GpuError> {
+        Self::from_source_checked(source, node_data, false)
+    }
+
+    /// [`WgpuEngine::from_source_with_data`] with, when `checked`, the read counter at binding 5
+    fn from_source_checked(
+        source: wgpu::ShaderSource<'_>,
+        node_data: &[f32],
+        checked: bool,
     ) -> Result<Self, GpuError> {
         // Initialize wgpu synchronously using pollster
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -269,6 +281,18 @@ impl WgpuEngine {
                 count: None,
             });
         }
+        if checked {
+            layout_entries.push(wgpu::BindGroupLayoutEntry {
+                binding: 5,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            });
+        }
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("ALICE-SDF Bind Group Layout"),
             entries: &layout_entries,
@@ -298,6 +322,13 @@ impl WgpuEngine {
                 usage: wgpu::BufferUsages::STORAGE,
             })
         });
+        let read_hits = checked.then(|| {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("ALICE-SDF Read Counter"),
+                contents: bytemuck::cast_slice(&[0u32]),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            })
+        });
         Ok(Self {
             device,
             queue,
@@ -308,6 +339,7 @@ impl WgpuEngine {
             dynamic_bind_group_layout: None,
             workgroup_size: 256,
             node_data,
+            read_hits,
         })
     }
 
@@ -421,6 +453,40 @@ impl WgpuEngine {
         Ok(distances)
     }
 
+    /// The checked reads that left their proven range since the engine was built (`None` without
+    /// the counter)
+    fn read_hits(&self) -> Result<Option<u32>, GpuError> {
+        let Some(hits) = &self.read_hits else {
+            return Ok(None);
+        };
+        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ALICE-SDF Read Counter Staging"),
+            size: 4,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("ALICE-SDF Read Counter Copy"),
+            });
+        encoder.copy_buffer_to_buffer(hits, 0, &staging, 0, 4);
+        self.queue.submit(std::iter::once(encoder.finish()));
+        let slice = staging.slice(..);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        self.device.poll(wgpu::Maintain::Wait);
+        receiver
+            .recv()
+            .map_err(|_| GpuError::BufferMapping("GPU channel closed unexpectedly".to_string()))?
+            .map_err(|e| GpuError::BufferMapping(format!("{:?}", e)))?;
+        let n = bytemuck::cast_slice::<u8, u32>(&slice.get_mapped_range())[0];
+        staging.unmap();
+        Ok(Some(n))
+    }
+
     /// Bind group for the distance pipeline (`pipeline`).
     ///
     /// A Dynamic evaluator's distance pipeline is built from a shader that
@@ -463,6 +529,12 @@ impl WgpuEngine {
             entries.push(wgpu::BindGroupEntry {
                 binding: 4,
                 resource: data.as_entire_binding(),
+            });
+        }
+        if let Some(hits) = &self.read_hits {
+            entries.push(wgpu::BindGroupEntry {
+                binding: 5,
+                resource: hits.as_entire_binding(),
             });
         }
         self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -665,6 +737,7 @@ impl WgpuEngine {
             dynamic_bind_group_layout: None,
             workgroup_size: 256,
             node_data: None,
+            read_hits: None,
         })
     }
 
@@ -958,6 +1031,7 @@ impl WgpuEngine {
             dynamic_bind_group_layout: Some(dynamic_bind_group_layout),
             workgroup_size: shader.workgroup_size,
             node_data: None,
+            read_hits: None,
         })
     }
 
@@ -1276,18 +1350,69 @@ impl GpuEvaluator {
     /// spheres ([`WgslShader::transpile_with_union_bounds`]); the values are those of the plain
     /// shader.
     pub fn new(node: &SdfNode) -> Result<Self, GpuError> {
-        // per-node data (lattice control points, height fields, grid warp maps) goes to the node
-        // data buffer on the wgpu engine; the Metal engine binds input / output / count / params
-        // only, so there it stays module-scope constants
-        #[cfg(not(all(target_os = "macos", feature = "msl")))]
-        let shader =
-            WgslShader::transpile_with_node_data(node, super::transpiler::TranspileMode::Hardcoded);
-        #[cfg(all(target_os = "macos", feature = "msl"))]
-        let shader = WgslShader::transpile_with_union_bounds(
+        // per-node data (lattice control points, height fields, grid warp maps, lofts, stacks) goes
+        // to the node data buffer on both engines
+        let shader = WgslShader::try_transpile_with_node_data(
             node,
             super::transpiler::TranspileMode::Hardcoded,
-        );
+        )
+        .map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
         Self::from_shader(&shader)
+    }
+
+    /// [`GpuEvaluator::new`] with the loft and stack data reads checked: every read outside the
+    /// index range the emit proved for it is counted ([`GpuEvaluator::read_hits`]), with the same
+    /// values. For tests and diagnostics, on either engine
+    ///
+    /// # Errors
+    ///
+    /// As [`GpuEvaluator::new`], and a tree whose reads the emit cannot prove in range
+    /// ([`WgslShader::try_transpile_with_node_data_checked`])
+    pub fn new_checked(node: &SdfNode) -> Result<Self, GpuError> {
+        let shader = WgslShader::try_transpile_with_node_data_checked(
+            node,
+            super::transpiler::TranspileMode::Hardcoded,
+        )
+        .map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
+        let text = shader.to_compute_shader();
+        crate::provenance::shader_text_verdict(&text, false)?;
+        note_engine_build();
+        #[cfg(all(target_os = "macos", feature = "msl"))]
+        {
+            super::gpu_metal::MetalEngine::from_wgsl_with_data(&text, &shader.node_data, true).map(
+                |m| Self {
+                    engine: Engine::Metal(m),
+                },
+            )
+        }
+        #[cfg(not(all(target_os = "macos", feature = "msl")))]
+        {
+            let mut evaluator = WgpuEngine::from_source_checked(
+                wgpu::ShaderSource::Wgsl(text.into()),
+                &shader.node_data,
+                true,
+            )
+            .map(|w| Self {
+                engine: Engine::Wgpu(w),
+            })?;
+            evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
+            Ok(evaluator)
+        }
+    }
+
+    /// The checked reads that left their proven range in every evaluation so far (an evaluator from
+    /// [`GpuEvaluator::new_checked`]; `None` otherwise). Zero means every loft and stack read stayed
+    /// inside the range the emit proved, so the buffer clamps never changed a value
+    ///
+    /// # Errors
+    ///
+    /// The counter could not be read back
+    pub fn read_hits(&self) -> Result<Option<u32>, GpuError> {
+        match &self.engine {
+            Engine::Wgpu(w) => w.read_hits(),
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            Engine::Metal(m) => Ok(m.read_hits()),
+        }
     }
 
     /// Create a GPU evaluator from a pre-generated WGSL shader
@@ -1301,9 +1426,16 @@ impl GpuEvaluator {
             note_engine_build();
             #[cfg(all(target_os = "macos", feature = "msl"))]
             {
-                return Err(GpuError::InvalidFormat(
-                    "node data buffer (binding 4) is bound by the wgpu engine only; transpile with WgslShader::transpile for the Metal engine".into(),
-                ));
+                let mut evaluator = super::gpu_metal::MetalEngine::from_wgsl_with_data(
+                    &text,
+                    &shader.node_data,
+                    false,
+                )
+                .map(|m| Self {
+                    engine: Engine::Metal(m),
+                })?;
+                evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
+                return Ok(evaluator);
             }
             #[cfg(not(all(target_os = "macos", feature = "msl")))]
             {
