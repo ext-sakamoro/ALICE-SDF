@@ -241,6 +241,37 @@ impl GlslShader {
         }
     }
 
+    /// [`GlslShader::transpile`] and a second function, `vec2 sdf_eval_scaled(vec3 p)`: `.x` is
+    /// `sdf_eval(p)` bit for bit (the same statements), `.y` the local scale of
+    /// [`crate::eval::eval_scaled`] (where a node divided the value by a local slope bound, the
+    /// factor that undoes it; 1 elsewhere). A tracer steps on `.x` and hits on `abs(.x) * .y < ε`,
+    /// so a value shrunk by a grid warp's Λ is not taken for the surface
+    pub fn transpile_with_scale(node: &SdfNode, mode: GlslTranspileMode) -> Self {
+        use super::super::transpiler_common::{GenericTranspiler, TranspileModeLang};
+        let m = match mode {
+            GlslTranspileMode::Hardcoded => TranspileModeLang::Hardcoded,
+            GlslTranspileMode::Dynamic => TranspileModeLang::Dynamic,
+        };
+        let mut g: GenericTranspiler<GlslLang> = GenericTranspiler::new(m);
+        let sc = g.transpile_scaled(node, "p");
+        let body = format!("{}    return {};\n", sc.value_code, sc.value);
+        let source = format!(
+            "{PRECISE_MACRO}{}\nvec2 sdf_eval_scaled(vec3 p) {{\n{}{}    return vec2({}, {});\n}}\n",
+            g.generate_shader(&body),
+            sc.value_code,
+            sc.scale_code,
+            sc.value,
+            sc.scale
+        );
+        Self {
+            source,
+            helper_count: g.helper_functions.len(),
+            param_layout: g.params,
+            mode,
+            version: 450,
+        }
+    }
+
     /// Extract parameter values from an SDF node tree
     ///
     /// Returns the same parameter layout as produced by `transpile()` in Dynamic mode.

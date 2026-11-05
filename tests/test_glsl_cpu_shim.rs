@@ -391,6 +391,17 @@ fn sdf_eval_scaled_is_sdf_eval_with_the_cpu_scale() {
             .into_iter()
             .map(|p| Vec3::new(0.5 + 0.4 * p.x, 0.05 + 0.04 * p.y, 0.1 * p.z)),
     );
+    // just outside the warp's box (z = 0.3 + 1e-6): the box distance is tiny next to the value,
+    // so the value is still the child's / Λ to the last bit, but the box decides it (scale 1)
+    for j in 0..8 {
+        for i in 0..8 {
+            pts.push(Vec3::new(
+                0.05 + 0.12 * i as f32,
+                0.01 * j as f32,
+                0.3 + 1e-6,
+            ));
+        }
+    }
     let got = compile_and_run(&cxx, "scaled_corpus", &src, &pts, trees.len() * 3);
     let (mut compared, mut not_one) = (0, 0);
     let mut bad = Vec::new();
@@ -413,7 +424,7 @@ fn sdf_eval_scaled_is_sdf_eval_with_the_cpu_scale() {
             compared += 1;
         }
     }
-    assert!(compared > 95 * 128, "{compared}");
+    assert!(compared > 95 * 192, "{compared}");
     assert!(
         not_one > 100,
         "the scale was 1 almost everywhere: {not_one}"
@@ -424,4 +435,27 @@ fn sdf_eval_scaled_is_sdf_eval_with_the_cpu_scale() {
         bad.len(),
         bad[..bad.len().min(8)].join("\n")
     );
+}
+
+#[test]
+fn the_scaled_source_starts_with_the_unchanged_library() {
+    // `transpile_with_scale` adds a function after `transpile`'s output and changes nothing in it
+    let mut n = 0;
+    for (name, node) in scaled_trees() {
+        for mode in [GlslTranspileMode::Hardcoded, GlslTranspileMode::Dynamic] {
+            let plain = GlslShader::transpile(&node, mode);
+            let scaled = GlslShader::transpile_with_scale(&node, mode);
+            assert!(
+                scaled.source.starts_with(&plain.source),
+                "{name} {mode:?}: the library part differs"
+            );
+            assert!(
+                scaled.source.contains("vec2 sdf_eval_scaled(vec3 p) {"),
+                "{name}"
+            );
+            assert_eq!(scaled.param_layout, plain.param_layout, "{name} {mode:?}");
+            n += 1;
+        }
+    }
+    assert!(n > 190, "{n}");
 }

@@ -275,7 +275,109 @@ pub struct GenericTranspiler<L: ShaderLang> {
     /// (a second walk of the tree, e.g. the rest point, reuses the first walk's arrays), with whether
     /// the accessor function was emitted
     data_seen: Vec<((usize, u64), DataArr, bool)>,
+    /// When `Some`, every evaluated node instance is recorded (its result, its children, the
+    /// values its scale needs) for [`GenericTranspiler::transpile_scale`]
+    scale_trace: Option<ScaleTrace>,
     _phantom: std::marker::PhantomData<L>,
+}
+
+/// How a node's scale (`eval::eval_scaled`) follows from its children's
+#[derive(Debug, Clone, Copy)]
+enum ScaleKind {
+    /// Two operands: the operand that gives the value, else (inside a blend) the smaller scale
+    Two,
+    /// The child's scale (the value is the child's or a fixed multiple of it)
+    Child,
+    /// Non-uniform scale: the child's scale times k_max / k_min (a literal)
+    Ratio(f32),
+    /// Projective: the child's scale times |1 / w| / min(|1 / w|, L) (notes: 1 / w; L)
+    Projective(f32),
+    /// Lattice deform: the child's scale times the correction (note: the correction)
+    Lattice,
+    /// Grid warp: Λ times the child's scale where the child's term gives the value, else 1
+    /// (notes: Λ, the box distance e, the value before the box)
+    GridWarp,
+    /// Every other node: 1
+    One,
+}
+
+/// The code of a field and its scale ([`GenericTranspiler::transpile_scaled`]): `value_code` is
+/// the body of `sdf_eval` without its `return`, `scale_code` follows it and only reads values it
+/// computed
+#[derive(Debug, Clone)]
+pub(crate) struct ScaledCode {
+    /// Statements computing the value (the same as `sdf_eval`'s)
+    pub(crate) value_code: String,
+    /// Statements computing the scale from the values above
+    pub(crate) scale_code: String,
+    /// The value's name
+    pub(crate) value: String,
+    /// The scale's name or a literal
+    pub(crate) scale: String,
+}
+
+/// One evaluated node instance: what its scale needs
+#[derive(Debug, Clone)]
+struct ScaleFrame {
+    kind: ScaleKind,
+    result: String,
+    children: Vec<usize>,
+    notes: Vec<String>,
+}
+
+/// The node instances of one walk, in order, with the stack of the ones being emitted
+#[derive(Debug, Clone, Default)]
+struct ScaleTrace {
+    frames: Vec<ScaleFrame>,
+    open: Vec<usize>,
+}
+
+fn scale_kind(node: &SdfNode) -> ScaleKind {
+    use crate::compiled::real::LawMinMax;
+    match node {
+        SdfNode::Union { .. }
+        | SdfNode::Intersection { .. }
+        | SdfNode::Subtraction { .. }
+        | SdfNode::SmoothUnion { .. }
+        | SdfNode::SmoothIntersection { .. }
+        | SdfNode::SmoothSubtraction { .. }
+        | SdfNode::ChamferUnion { .. }
+        | SdfNode::ChamferIntersection { .. }
+        | SdfNode::ChamferSubtraction { .. }
+        | SdfNode::StairsUnion { .. }
+        | SdfNode::StairsIntersection { .. }
+        | SdfNode::StairsSubtraction { .. }
+        | SdfNode::XOR { .. }
+        | SdfNode::Morph { .. }
+        | SdfNode::ColumnsUnion { .. }
+        | SdfNode::ColumnsIntersection { .. }
+        | SdfNode::ColumnsSubtraction { .. }
+        | SdfNode::Pipe { .. }
+        | SdfNode::Engrave { .. }
+        | SdfNode::Groove { .. }
+        | SdfNode::Tongue { .. }
+        | SdfNode::ExpSmoothUnion { .. }
+        | SdfNode::ExpSmoothIntersection { .. }
+        | SdfNode::ExpSmoothSubtraction { .. } => ScaleKind::Two,
+        SdfNode::Translate { .. }
+        | SdfNode::Rotate { .. }
+        | SdfNode::Scale { .. }
+        | SdfNode::Pose { .. }
+        | SdfNode::WithMaterial { .. }
+        | SdfNode::SdfSkinning { .. } => ScaleKind::Child,
+        SdfNode::ScaleNonUniform { factors, .. } => {
+            // the CPU's k_max / k_min, computed the same way (`eval::eval_scaled`)
+            let k_min = factors.x.law_min(factors.y.law_min(factors.z));
+            let k_max = factors.x.law_max(factors.y.law_max(factors.z));
+            ScaleKind::Ratio(k_max / k_min)
+        }
+        SdfNode::ProjectiveTransform {
+            lipschitz_bound, ..
+        } => ScaleKind::Projective(*lipschitz_bound),
+        SdfNode::LatticeDeform { .. } => ScaleKind::Lattice,
+        SdfNode::GridWarp { .. } => ScaleKind::GridWarp,
+        _ => ScaleKind::One,
+    }
 }
 
 /// A per-node data array as the emitted code reads it: a module-scope constant array, or a
@@ -318,6 +420,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             globals: String::new(),
             node_data: None,
             data_seen: Vec::new(),
+            scale_trace: None,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -807,6 +910,93 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         new_p
     }
 
+    /// The field and its local scale (`eval::eval_scaled`) at `point_var`: the value's code exactly
+    /// as [`Self::transpile_node`] writes it, the scale's code after it, and their names. The value is the walk `sdf_eval` is made of, so it is the same bits;
+    /// the scale is a second pass over the recorded node instances that only combines values
+    /// already computed (no subtree is emitted twice)
+    pub(crate) fn transpile_scaled(&mut self, node: &SdfNode, point_var: &str) -> ScaledCode {
+        self.scale_trace = Some(ScaleTrace::default());
+        let mut value_code = String::new();
+        let value = self.transpile_node_inner(node, point_var, &mut value_code);
+        let trace = self.scale_trace.take().unwrap_or_default();
+        let mut scale_code = String::new();
+        let scale = if trace.frames.is_empty() {
+            "1.0".to_owned()
+        } else {
+            self.emit_scale(&trace, 0, &mut scale_code)
+        };
+        ScaledCode {
+            value_code,
+            scale_code,
+            value,
+            scale,
+        }
+    }
+
+    /// The scale of recorded instance `i` (see [`ScaleKind`]); its name or a literal
+    fn emit_scale(&mut self, trace: &ScaleTrace, i: usize, code: &mut String) -> String {
+        let f = &trace.frames[i];
+        let one = || "1.0".to_owned();
+        match (f.kind, f.children.as_slice(), f.notes.as_slice()) {
+            (ScaleKind::Two, &[a, b], _) => {
+                let (sa, sb) = (
+                    self.emit_scale(trace, a, code),
+                    self.emit_scale(trace, b, code),
+                );
+                let (da, db, v) = (&trace.frames[a].result, &trace.frames[b].result, &f.result);
+                let s = self.next_var();
+                let inner = L::select_expr(
+                    &format!("abs({v}) == abs({db})"),
+                    &sb,
+                    &format!("min({sa}, {sb})"),
+                );
+                code.push_str(&L::decl_float(
+                    &s,
+                    &L::select_expr(&format!("abs({v}) == abs({da})"), &sa, &inner),
+                ));
+                s
+            }
+            (ScaleKind::Child, &[c], _) => self.emit_scale(trace, c, code),
+            (ScaleKind::Ratio(r), &[c], _) => {
+                let sc = self.emit_scale(trace, c, code);
+                let s = self.next_var();
+                code.push_str(&L::decl_float(&s, &format!("{sc} * {}", lit(r))));
+                s
+            }
+            (ScaleKind::Projective(l), &[c], [inv_w]) => {
+                let sc = self.emit_scale(trace, c, code);
+                let s = self.next_var();
+                code.push_str(&L::decl_float(
+                    &s,
+                    &format!("{sc} * (abs({inv_w}) / min(abs({inv_w}), {}))", lit(l)),
+                ));
+                s
+            }
+            (ScaleKind::Lattice, &[c], [corr]) => {
+                let sc = self.emit_scale(trace, c, code);
+                let s = self.next_var();
+                code.push_str(&L::decl_float(&s, &format!("{sc} * {corr}")));
+                s
+            }
+            (ScaleKind::GridWarp, &[c], [lam, e, dv]) => {
+                let sc = self.emit_scale(trace, c, code);
+                let (own, s) = (self.next_var(), self.next_var());
+                let (dc, out) = (&trace.frames[c].result, &f.result);
+                code.push_str(&L::decl_float(&own, &format!("{dc} / {lam}")));
+                code.push_str(&L::decl_float(
+                    &s,
+                    &L::select_expr(
+                        &format!("{e} == 0.0 && {dv} == {own} && {out} == {own}"),
+                        &format!("{lam} * {sc}"),
+                        "1.0",
+                    ),
+                ));
+                s
+            }
+            _ => one(),
+        }
+    }
+
     /// Transpile an SDF node tree into shader code, returning the body with a final `return`.
     pub fn transpile_node(&mut self, node: &SdfNode, point_var: &str) -> String {
         let mut code = String::new();
@@ -819,8 +1009,48 @@ impl<L: ShaderLang> GenericTranspiler<L> {
     ///
     /// This is the single source of truth for all shader languages.
     /// Language differences are handled via the `ShaderLang` trait methods.
-    #[allow(clippy::too_many_lines)]
     pub fn transpile_node_inner(
+        &mut self,
+        node: &SdfNode,
+        point_var: &str,
+        code: &mut String,
+    ) -> String {
+        let Some(trace) = self.scale_trace.as_mut() else {
+            return self.transpile_node_value(node, point_var, code);
+        };
+        let idx = trace.frames.len();
+        if let Some(&parent) = trace.open.last() {
+            trace.frames[parent].children.push(idx);
+        }
+        trace.frames.push(ScaleFrame {
+            kind: scale_kind(node),
+            result: String::new(),
+            children: Vec::new(),
+            notes: Vec::new(),
+        });
+        trace.open.push(idx);
+        let result = self.transpile_node_value(node, point_var, code);
+        if let Some(trace) = self.scale_trace.as_mut() {
+            trace.open.pop();
+            trace.frames[idx].result.clone_from(&result);
+        }
+        result
+    }
+
+    /// Record values the scale of the node being emitted needs (no-op without a scale trace)
+    fn note_scale(&mut self, vars: &[&str]) {
+        if let Some(trace) = self.scale_trace.as_mut() {
+            if let Some(&top) = trace.open.last() {
+                trace.frames[top]
+                    .notes
+                    .extend(vars.iter().map(|v| (*v).to_owned()));
+            }
+        }
+    }
+
+    /// The value of one node (the dispatcher behind [`Self::transpile_node_inner`])
+    #[allow(clippy::too_many_lines)]
+    fn transpile_node_value(
         &mut self,
         node: &SdfNode,
         point_var: &str,
@@ -2810,6 +3040,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &format!("{} * {inv_w}", transform_point3_expr::<L>(m, point_var)),
                 ));
                 let d = self.transpile_node_inner(child, &q, code);
+                self.note_scale(&[&inv_w]);
                 let var = self.next_var();
                 code.push_str(&L::decl_float(
                     &var,
@@ -2911,6 +3142,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 .unwrap();
                 code.push_str("    }\n");
                 let d = self.transpile_node_inner(child, &q, code);
+                self.note_scale(&[&corr]);
                 let var = self.next_var();
                 code.push_str(&L::decl_float(&var, &format!("{d} / {corr}")));
                 var
@@ -2926,6 +3158,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let data = warp.data();
                 let dc = self.transpile_node_inner(child, &x, code);
                 let (dv, dp, out) = (self.next_var(), self.next_var(), self.next_var());
+                self.note_scale(&[&lam, &e, &dv]);
                 let r = lit(data.reach);
                 let lg = lit(warp.lambda_global());
                 code.push_str(&L::decl_float(
