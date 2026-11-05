@@ -119,6 +119,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **動作の変更:** `MeshBvh::closest_point` と `MeshBvh::unsigned_distance` は `MeshBvh::closest_triangle` と同じ木の歩きを通る 距離がちょうど等しい三角形が複数ある時、`closest_point` は入力の index が最小の三角形の点を返す (以前は木の歩きが先に見た方) 距離の値は変わらない `ExteriorFloodFill` の符号は帯の中で最寄りの点から外へ歩くので、同距離の点でだけ歩く向きが変わりうる `MeshBvh::signed_distance` は別の歩きのまま
 
 ### Fixed
+- GPU の device を複数 thread で作成・破棄すると、ある driver (Vulkan / EGL) の内部で永久に止まる問題: `wgpu::Instance` を process に 1 個にし、device の作成と破棄を 1 つの lock で直列化 (`src/gpu_context.rs`、`tests/test_gpu_lifecycle_oracle.rs`)
 - shader (WGSL / GLSL / HLSL / MSL / BlinkScript の共通出力) の twist: 角 `strength · y` を象限で `[−π/4, π/4]` 付近に縮約してから native の `sin` / `cos` を呼ぶ (WGSL は誤差を `[−π, π]` でだけ 2⁻¹¹ に抑える) `|strength · y| ≤ 2¹⁶ · π/2` で縮約後の角は `[−π, π]` の内側、回転は長さを `√2 · 2⁻¹¹` の内側で保つ (導出は出力の隣)
 - 試験の台帳 `docs/oracle-status.md` は、実行される試験の 1 つの腕だけが既知の欠陥を許容する印 (`// KNOWN-DEFECT-ARM: known defect: <id>: …`) を「Known defect in one arm」として数えて載せる (`scripts/gen-oracle-status.py`、試験 `scripts/test_gen_status.py`)
 - CI: Unreal の self-hosted job の作業 dir を matrix の job ごとに分けた (`E:\ci-work\ue5-<run_id>-<job-index>`) 同じ run の UE 5.7 と 5.8 の job が同じ dir を使い、片方の後片付けがもう片方の作業を消しうる形だった

@@ -30,6 +30,7 @@ use wgpu::util::DeviceExt;
 
 use super::gpu_mc_shaders;
 use crate::compiled::{GpuError, TranspileMode, WgslShader};
+use crate::gpu_context::GpuContext;
 use crate::mesh::sdf_to_mesh::lattice_point;
 use crate::mesh::{Mesh, Vertex};
 use crate::types::SdfNode;
@@ -150,29 +151,8 @@ pub fn gpu_marching_cubes_from_shader(
         }
     }
 
-    // Initialize wgpu
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-    }))
-    .ok_or(GpuError::NoAdapter)?;
-
-    let (device, queue) = pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            label: Some("ALICE-SDF GPU MC Device"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: wgpu::MemoryHints::Performance,
-        },
-        None,
-    ))
-    .map_err(|e: wgpu::RequestDeviceError| GpuError::DeviceCreation(e.to_string()))?;
+    let context = GpuContext::request("ALICE-SDF GPU MC Device")?;
+    let (device, queue) = (context.device(), context.queue());
 
     let uniforms = McUniforms {
         resolution: res,
@@ -236,7 +216,7 @@ pub fn gpu_marching_cubes_from_shader(
             label: Some(label),
             entries: &entries,
         });
-        let pipeline = create_pipeline(&device, &bgl, &module, label);
+        let pipeline = create_pipeline(device, &bgl, &module, label);
         let group_entries: Vec<_> = bindings
             .iter()
             .enumerate()
@@ -329,7 +309,7 @@ pub fn gpu_marching_cubes_from_shader(
     };
     queue.submit(std::iter::once(encoder.finish()));
 
-    let totals = read_u32_vec(&device, &totals_staging, 2)?;
+    let totals = read_u32_vec(device, &totals_staging, 2)?;
     let (total_indices, total_verts) = (totals[0] as usize, totals[1] as usize);
     if total_indices == 0 {
         return Ok(Mesh {
@@ -347,8 +327,8 @@ pub fn gpu_marching_cubes_from_shader(
     // ====== Prefix sums: cell index offsets and grid point vertex offsets ======
     let (cell_offsets_buffer, point_offsets_buffer) = match &counts_staging {
         None => (
-            dispatch_gpu_prefix_sum(&device, &queue, &cell_counts_buffer, cell_total)?,
-            dispatch_gpu_prefix_sum(&device, &queue, &point_counts_buffer, grid_total)?,
+            dispatch_gpu_prefix_sum(device, queue, &cell_counts_buffer, cell_total)?,
+            dispatch_gpu_prefix_sum(device, queue, &point_counts_buffer, grid_total)?,
         ),
         Some((c, p)) => {
             let upload = |label: &str, counts: Vec<u32>| {
@@ -368,8 +348,8 @@ pub fn gpu_marching_cubes_from_shader(
                 })
             };
             (
-                upload("Cell Offsets", read_u32_vec(&device, c, cell_total)?),
-                upload("Point Offsets", read_u32_vec(&device, p, grid_total)?),
+                upload("Cell Offsets", read_u32_vec(device, c, cell_total)?),
+                upload("Point Offsets", read_u32_vec(device, p, grid_total)?),
             )
         }
     };
@@ -427,8 +407,8 @@ pub fn gpu_marching_cubes_from_shader(
     encoder.copy_buffer_to_buffer(&index_buffer, 0, &index_staging, 0, index_bytes as u64);
     queue.submit(std::iter::once(encoder.finish()));
 
-    let gpu_verts = read_gpu_vertices(&device, &vertex_staging, total_verts)?;
-    let indices = read_u32_vec(&device, &index_staging, total_indices)?;
+    let gpu_verts = read_gpu_vertices(device, &vertex_staging, total_verts)?;
+    let indices = read_u32_vec(device, &index_staging, total_indices)?;
     let vertices = gpu_verts
         .iter()
         .map(|gv| {

@@ -546,7 +546,7 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_transpiler_naga_validate --test noise_shader_validate --test test_mesh_orientation --test test_mc_shared_vertex_oracle \
   --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity --test test_instanced_wgsl_gpu_parity --test test_grid_warp_oracle \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_shader_precise_temporaries \
-  --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle
+  --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle --test test_gpu_lifecycle_oracle
 
 step "gpu-parity: shader text semantics identifier (gpu, glsl, hlsl, volume, blinkscript, texture-fit、ci.yml の gpu-parity job と対、14 件未満で fail)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl,volume,blinkscript,texture-fit" --test test_shader_text_provenance -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log"

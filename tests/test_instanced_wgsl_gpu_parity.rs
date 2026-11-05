@@ -15,7 +15,9 @@
 mod common;
 
 use alice_sdf::animation::AnimationParams;
+use alice_sdf::compiled::GpuError;
 use alice_sdf::compiled::{CompiledSdf, InstancedSdf};
+use alice_sdf::gpu_context::{GpuContext, Held};
 use alice_sdf::prelude::*;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 use std::sync::mpsc;
@@ -66,40 +68,26 @@ fn instanced_wgsl_parses_and_validates() {
     assert!(module.entry_points.iter().any(|e| e.name == "main"));
 }
 
-struct Gpu {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+struct GpuResources {
     pipeline: wgpu::ComputePipeline,
 }
 
+struct Gpu(Held<GpuResources>);
+
 fn gpu_or_skip() -> Option<Gpu> {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-    }));
-    let Some(adapter) = adapter else {
-        assert!(
-            std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
-            "ALICE_SDF_REQUIRE_GPU is set but no GPU adapter was found"
-        );
-        eprintln!("skipping instanced WGSL GPU parity: no adapter");
-        return None;
+    let context = match GpuContext::request("instanced parity") {
+        Ok(context) => context,
+        Err(GpuError::NoAdapter) => {
+            assert!(
+                std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                "ALICE_SDF_REQUIRE_GPU is set but no GPU adapter was found"
+            );
+            eprintln!("skipping instanced WGSL GPU parity: no adapter");
+            return None;
+        }
+        Err(e) => panic!("request device: {e}"),
     };
-    let (device, queue) = pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            label: Some("instanced parity"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: wgpu::MemoryHints::Performance,
-        },
-        None,
-    ))
-    .expect("request device");
+    let device = context.device();
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("instanced sdf"),
         source: wgpu::ShaderSource::Wgsl(shader().into()),
@@ -112,16 +100,12 @@ fn gpu_or_skip() -> Option<Gpu> {
         compilation_options: wgpu::PipelineCompilationOptions::default(),
         cache: None,
     });
-    Some(Gpu {
-        device,
-        queue,
-        pipeline,
-    })
+    Some(Gpu(context.hold(GpuResources { pipeline })))
 }
 
 impl Gpu {
     fn run(&self, inst: &[AnimationParams], pts: &[Vec3]) -> Vec<f32> {
-        let dev = &self.device;
+        let dev = &self.0.context().device();
         let flat: Vec<f32> = inst
             .iter()
             .flat_map(|a| {
@@ -179,18 +163,21 @@ impl Gpu {
             .collect();
         let bind = dev.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("instanced"),
-            layout: &self.pipeline.get_bind_group_layout(0),
+            layout: &self.0.pipeline.get_bind_group_layout(0),
             entries: &entries,
         });
         let mut enc = dev.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
             let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            pass.set_pipeline(&self.pipeline);
+            pass.set_pipeline(&self.0.pipeline);
             pass.set_bind_group(0, &bind, &[]);
             pass.dispatch_workgroups((pts.len() as u32).div_ceil(256), 1, 1);
         }
         enc.copy_buffer_to_buffer(&distances, 0, &staging, 0, out_bytes);
-        self.queue.submit(std::iter::once(enc.finish()));
+        self.0
+            .context()
+            .queue()
+            .submit(std::iter::once(enc.finish()));
         let slice = staging.slice(..);
         let (tx, rx) = mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |r| {

@@ -29,6 +29,8 @@
 )]
 #![cfg(feature = "gpu")]
 
+use alice_sdf::compiled::GpuError;
+use alice_sdf::gpu_context::{GpuContext, Held};
 use alice_sdf::npr::compiled_color::{emit_wgsl_bytecode_evaluator, CompiledColorPipeline};
 use alice_sdf::npr::dsl::{NprColorContext, NprColorNode, PaletteSource};
 use glam::{Vec2, Vec3};
@@ -217,11 +219,11 @@ fn corpus() -> Vec<(&'static str, NprColorNode)> {
     ]
 }
 
-struct Gpu {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+struct GpuResources {
     pipeline: wgpu::ComputePipeline,
 }
+
+struct Gpu(Held<GpuResources>);
 
 const WORKGROUP: u32 = 64;
 
@@ -261,33 +263,19 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
 }
 
 fn gpu_or_skip() -> Option<Gpu> {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-    }));
-    let Some(adapter) = adapter else {
-        assert!(
-            std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
-            "ALICE_SDF_REQUIRE_GPU is set but no GPU adapter was found"
-        );
-        eprintln!("skipping NPR bytecode GPU parity: no adapter");
-        return None;
+    let context = match GpuContext::request("npr bytecode parity") {
+        Ok(context) => context,
+        Err(GpuError::NoAdapter) => {
+            assert!(
+                std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                "ALICE_SDF_REQUIRE_GPU is set but no GPU adapter was found"
+            );
+            eprintln!("skipping NPR bytecode GPU parity: no adapter");
+            return None;
+        }
+        Err(e) => panic!("request device: {e}"),
     };
-    let (device, queue) = pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            label: Some("npr bytecode parity"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: wgpu::MemoryHints::Performance,
-        },
-        None,
-    ))
-    .expect("request device");
+    let device = context.device();
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("npr bytecode evaluator"),
         source: wgpu::ShaderSource::Wgsl(shader_source().into()),
@@ -300,16 +288,12 @@ fn gpu_or_skip() -> Option<Gpu> {
         compilation_options: wgpu::PipelineCompilationOptions::default(),
         cache: None,
     });
-    Some(Gpu {
-        device,
-        queue,
-        pipeline,
-    })
+    Some(Gpu(context.hold(GpuResources { pipeline })))
 }
 
 impl Gpu {
     fn run(&self, words: &[u32], ctxs: &[Scalars]) -> Vec<Vec3> {
-        let dev = &self.device;
+        let dev = &self.0.context().device();
         let flat: Vec<f32> = ctxs.iter().flat_map(|s| s.as_array()).collect();
         let program = dev.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("program"),
@@ -342,7 +326,7 @@ impl Gpu {
         });
         let bind = dev.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("npr bytecode"),
-            layout: &self.pipeline.get_bind_group_layout(0),
+            layout: &self.0.pipeline.get_bind_group_layout(0),
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -365,12 +349,15 @@ impl Gpu {
         let mut enc = dev.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
             let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            pass.set_pipeline(&self.pipeline);
+            pass.set_pipeline(&self.0.pipeline);
             pass.set_bind_group(0, &bind, &[]);
             pass.dispatch_workgroups((ctxs.len() as u32).div_ceil(WORKGROUP), 1, 1);
         }
         enc.copy_buffer_to_buffer(&colors, 0, &staging, 0, out_bytes);
-        self.queue.submit(std::iter::once(enc.finish()));
+        self.0
+            .context()
+            .queue()
+            .submit(std::iter::once(enc.finish()));
         let slice = staging.slice(..);
         let (tx, rx) = mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |r| {
