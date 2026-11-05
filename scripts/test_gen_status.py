@@ -168,6 +168,27 @@ class OracleParse(unittest.TestCase):
         self.assertTrue(t["a"]["is_ignored"])
         self.assertEqual(t["a"]["ignore_reason"], "slow")
 
+    def test_a_known_defect_arm_marker_belongs_to_its_test(self):
+        t = self.names(
+            "#[test]\nfn a() {}\n#[test]\nfn b() {\n"
+            "    // KNOWN-DEFECT-ARM: known defect: X-1: the arm tolerates it\n}\n"
+        )
+        self.assertEqual(t["a"]["arm_defects"], [])
+        self.assertEqual(t["b"]["arm_defects"], ["known defect: X-1: the arm tolerates it"])
+        self.assertFalse(t["b"]["is_ignored"])
+
+    def test_a_known_defect_arm_is_listed_and_counted(self):
+        cat = {"implemented": [{"test_name": "b", "file": "t.rs", "ignore_reason": "",
+                                "arm_defects": ["known defect: X-1: the arm tolerates it"]}],
+               "partial": [], "pending": []}
+        r = oracle.generate_markdown_report(cat)
+        self.assertIn("| 🟠 Known defect in one arm (the test runs) | 1 |", r)
+        self.assertIn("- `b` (t.rs) — known defect: X-1: the arm tolerates it", r)
+
+    def test_a_plain_comment_is_not_a_known_defect_arm(self):
+        t = self.names("#[test]\nfn a() {\n    // known defect: not a marker\n}\n")
+        self.assertEqual(t["a"]["arm_defects"], [])
+
     def test_a_test_far_from_its_fn_is_not_dropped(self):
         # #[test] と fn の間が 10 行を超えても (長い should_panic / doc comment) 落とさない
         doc = "".join(f"/// line {i}\n" for i in range(15))

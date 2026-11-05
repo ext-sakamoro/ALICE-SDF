@@ -4,10 +4,12 @@
 //! (`eval_union_bounded_stats`) each point evaluates the parts whose bounding sphere could hold a
 //! value below the nearest one found so far and skips the rest, with the value bit-equal to the
 //! plain union. On the GPU the shader that counts the skips (`transpile_union_skip_count`) gives
-//! the same measure. The example prints both counts.
+//! the same measure. The example prints a part's bounding sphere, the union's bound depth and both
+//! counts.
 //!
 //! Run: `cargo run --example union_bounds --features gpu`
 
+use alice_sdf::bound::{bound, bounding_sphere, BoundTarget};
 use alice_sdf::compiled::{GpuEvaluator, TranspileMode, WgslShader};
 use alice_sdf::eval::{eval, eval_union_bounded, eval_union_bounded_stats, UnionBoundStats};
 use alice_sdf::prelude::*;
@@ -28,6 +30,14 @@ fn main() {
         .cloned()
         .reduce(|a, b| a.union(b))
         .expect("parts");
+
+    // each part's bound: the sphere its surface lies in, and the depth its rounding slack grows with
+    let (c, r) = bounding_sphere(&parts[3]).expect("a translated box is bounded");
+    let b = bound(&node, BoundTarget::Shader).expect("a union of bounded parts is bounded");
+    println!(
+        "part 3 lies in the sphere at {c} of radius {r}; the whole union's bound has depth {}",
+        b.depth()
+    );
 
     let points: Vec<Vec3> = (0..400)
         .map(|i| Vec3::new(i as f32 * 0.02 - 0.5, 0.25, 0.05))

@@ -293,8 +293,9 @@ impl WgslShader {
     }
 
     /// [`WgslShader::transpile`] with union operand bounds (R0): each operand of the union chain at
-    /// the top of `node` that has a bounding sphere ([`crate::bound::bounding_sphere`]) is
-    /// evaluated only when its lower bound ([`crate::bound::lower_bound`], the same slack) is not
+    /// the top of `node` that has a shader bound ([`crate::bound::bound`] with
+    /// [`crate::bound::BoundTarget::Shader`]) is evaluated only when its lower bound
+    /// ([`crate::bound::Bound::lower`], the same slope and slack) is not
     /// greater than the minimum so far; operands without a bound are evaluated first, always.
     /// The skipped values are greater than the result and `min` does not depend on the order of
     /// the values it keeps, so the value is that of the plain shader. A node that is not a union
@@ -710,7 +711,7 @@ fn union_bounded_body(
     out: UnionBoundsOutput,
 ) -> String {
     use super::super::transpiler_common::lit;
-    use crate::bound::{bounding_sphere, BOUND_SLACK_REL};
+    use crate::bound::{bound, BoundTarget, SLACK_PER_NODE};
     let mut ops = Vec::new();
     crate::eval::union_bounded::union_operands(node, &mut ops);
     if ops.len() < 2 {
@@ -719,7 +720,10 @@ fn union_bounded_body(
             UnionBoundsOutput::SkipCount => "    return 0.0;\n".to_owned(),
         };
     }
-    let bounded: Vec<_> = ops.iter().map(|op| bounding_sphere(op)).collect();
+    let bounded: Vec<_> = ops
+        .iter()
+        .map(|op| bound(op, BoundTarget::Shader))
+        .collect();
     let mut code = String::from(
         "    var d_ub: f32 = 0.0;\n    var d_ub_set: bool = false;\n    var n_skip: f32 = 0.0;\n",
     );
@@ -728,18 +732,20 @@ fn union_bounded_body(
         .filter(|&i| bounded[i].is_none())
         .chain((0..ops.len()).filter(|&i| bounded[i].is_some()));
     for i in order {
-        let guarded = if let Some((c, r)) = bounded[i] {
-            let cv = format!("vec3<f32>({}, {}, {})", lit(c.x), lit(c.y), lit(c.z));
-            let rv = lit(r);
+        let guarded = if let Some(b) = bounded[i] {
+            // `Bound::lower`: k |p − c| − r − (depth + 1) · 2⁻²⁰ · (1 + |p| + |c| + r)
+            let cv = format!("vec3<f32>({}, {}, {})", lit(b.c.x), lit(b.c.y), lit(b.c.z));
             let slack = format!(
                 "{} * (1.0 + length(p) + {} + {})",
-                lit(BOUND_SLACK_REL),
-                lit(c.length()),
-                rv
+                lit((b.depth as f32 + 1.0) * SLACK_PER_NODE),
+                lit(b.c.length()),
+                lit(b.r)
             );
             writeln!(
                 code,
-                "    if (!d_ub_set || !(length(p - {cv}) - {rv} - {slack} > d_ub)) {{"
+                "    if (!d_ub_set || !({} * length(p - {cv}) - {} - {slack} > d_ub)) {{",
+                lit(b.k),
+                lit(b.r)
             )
             .unwrap();
             true
