@@ -2,10 +2,17 @@
 // corpus node `twist`: HlslShader::transpile(.., Hardcoded)
 float sdf_eval(float3 p) {
     precise float d0 = 1.5 * p.y;
-    precise float d1 = cos(d0);
-    precise float d2 = sin(d0);
-    precise float3 d3 = float3(d1 * p.x - d2 * p.z, p.y, d2 * p.x + d1 * p.z);
-    precise float3 d4 = abs(d3) - float3(0.25, 0.2, 0.15);
-    precise float d5 = length(max(d4, float3(0.0, 0.0, 0.0))) + min(max(d4.x, max(d4.y, d4.z)), 0.0);
-    return d5;
+    precise float d1 = floor(d0 * 0.63661975 + 0.5);
+    precise float d2 = (d0 - d1 * 1.5703125) - d1 * 0.00048382679;
+    precise float d3 = d1 - 4.0 * floor(d1 * 0.25);
+    precise float d4 = cos(d2);
+    precise float d5 = sin(d2);
+    precise float d6 = d3 - 2.0 * floor(d3 * 0.5);
+    precise float d7 = 1.0 - 2.0 * floor(d3 * 0.5);
+    precise float d9 = d7 * ((d6 > 0.5) ? (d4) : (d5));
+    precise float d8 = d7 * ((d6 > 0.5) ? (-d5) : (d4));
+    precise float3 d10 = float3(d8 * p.x - d9 * p.z, p.y, d9 * p.x + d8 * p.z);
+    precise float3 d11 = abs(d10) - float3(0.25, 0.2, 0.15);
+    precise float d12 = length(max(d11, float3(0.0, 0.0, 0.0))) + min(max(d11.x, max(d11.y, d11.z)), 0.0);
+    return d12;
 }

@@ -8,15 +8,22 @@ float3 quat_rotate(float3 v, float4 q) {
 float sdf_eval(float3 p) {
     precise float3 d0 = p - float3(0.1, 0.1, 0.1);
     precise float d1 = 0.5 * d0.y;
-    precise float d2 = cos(d1);
-    precise float d3 = sin(d1);
-    precise float3 d4 = float3(d2 * d0.x - d3 * d0.z, d0.y, d3 * d0.x + d2 * d0.z);
-    precise float d5 = length(d4) - 0.6;
-    precise float3 d6 = quat_rotate(d4, float4(-0.0, -0.0, -0.14943814, 0.9887711));
-    precise float3 d7 = d6 - float3(0.8, 0.0, 0.0);
-    precise float d8 = length(d7) - 0.5;
-    precise float d10 = max(1.0 - abs(d5 - d8) * 5.0, 0.0);
-    precise float d9 = min(d5, d8) - d10 * d10 * (0.2 * 0.25);
-    precise float d11 = d9 - 0.05;
-    return d11;
+    precise float d2 = floor(d1 * 0.63661975 + 0.5);
+    precise float d3 = (d1 - d2 * 1.5703125) - d2 * 0.00048382679;
+    precise float d4 = d2 - 4.0 * floor(d2 * 0.25);
+    precise float d5 = cos(d3);
+    precise float d6 = sin(d3);
+    precise float d7 = d4 - 2.0 * floor(d4 * 0.5);
+    precise float d8 = 1.0 - 2.0 * floor(d4 * 0.5);
+    precise float d10 = d8 * ((d7 > 0.5) ? (d5) : (d6));
+    precise float d9 = d8 * ((d7 > 0.5) ? (-d6) : (d5));
+    precise float3 d11 = float3(d9 * d0.x - d10 * d0.z, d0.y, d10 * d0.x + d9 * d0.z);
+    precise float d12 = length(d11) - 0.6;
+    precise float3 d13 = quat_rotate(d11, float4(-0.0, -0.0, -0.14943814, 0.9887711));
+    precise float3 d14 = d13 - float3(0.8, 0.0, 0.0);
+    precise float d15 = length(d14) - 0.5;
+    precise float d17 = max(1.0 - abs(d12 - d15) * 5.0, 0.0);
+    precise float d16 = min(d12, d15) - d17 * d17 * (0.2 * 0.25);
+    precise float d18 = d16 - 0.05;
+    return d18;
 }
