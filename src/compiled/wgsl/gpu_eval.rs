@@ -2100,6 +2100,8 @@ mod tests {
         }
 
         let sphere = SdfNode::Sphere { radius: 1.0 };
+        // the field size is part of the entry in tests/test_gpu_submit_limit.rs for this many points
+        assert_eq!(sphere.node_count(), 1);
         let gpu = GpuEvaluator::new(&sphere).unwrap();
 
         // Test with a large batch

@@ -167,6 +167,8 @@ fn buffer_pool_grows_and_matches_the_closed_form() {
 
 #[test]
 fn eval_batch_auto_splits_large_batches_without_losing_points() {
+    // the field size is part of the entry in test_gpu_submit_limit.rs that allows this many points
+    assert_eq!(A.node().node_count(), 2);
     let Some(gpu) = require("auto", GpuEvaluator::new(&A.node())) else {
         return;
     };
