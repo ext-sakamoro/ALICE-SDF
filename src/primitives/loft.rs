@@ -745,7 +745,14 @@ impl<'a> Loft<'a> {
         closed_curve_distance(self.kh as isize, &|x| self.section_point(i0, &b, x), &|x| self.sknot(x), q)
     }
 
-    /// The dome at end `e` (0 at `s = 0`, 1 at `s = n − 1`): its field cut by the end's half-space
+    /// The curve dome at end `e` (0 at `s = 0`, 1 at `s = n − 1`): the end section at height `h`
+    /// moved toward the apex by `o h/H` and eroded by `w (1 − √(1 − (h/H)²))`, cut by the end's
+    /// half-space. 1-Lipschitz: in the end frame's orthonormal coordinates `(u, v, h)` the map
+    /// `p ↦ (q, h)`, `q = (u, v) − o h/H`, is linear with norm `σ = c/2 + √(1 + c²/4)` (`c = |o|/H`,
+    /// the largest singular value of `[[1, −c], [0, 1]]`); `(q, h) ↦ (d_S(q), h)` is 1-Lipschitz (the
+    /// section's signed distance is); `(d, h) ↦ |((d + w)⁺/w, h/H)|` is `1/min(w, H)`-Lipschitz (the
+    /// gradient of the norm is a unit vector scaled by `diag(1/w, 1/H)`). Scaled by `min(w, H)/σ`
+    /// the composition is 1-Lipschitz, and `max(·, −h)` keeps it so
     fn curve_dome(&self, p: Vec3, e: usize) -> f32 {
         // the end section eroded by w (1 − √(1 − (h/H)²)) and sheared by o h/H: in (x, y) =
         // (d_S(q − o h/H) + w, h) the solid is (x⁺/w)² + (y/H)² ≤ 1; the map's Jacobian has largest
@@ -758,7 +765,8 @@ impl<'a> Loft<'a> {
         let hh = self.caps[e];
         let r = p - c;
         let h = r.dot(out);
-        let q = Vec2::new(r.dot(nn), r.dot(bb)) + Vec2::new(ou, ov) * (h / hh);
+        // the section at height h is the end section moved toward the apex by o h/H
+        let q = Vec2::new(r.dot(nn), r.dot(bb)) - Vec2::new(ou, ov) * (h / hh);
         let d = self.curve_distance(s, q);
         let x = (d + w).law_max(0.0) / w;
         let y = h / hh;
@@ -1242,6 +1250,63 @@ pub fn validate_curves(axis: &[Vec3], up: Vec3, section_knots: &[f32], rows: &[V
     let reach = rmax + (0..2).map(|e| heights[e] + Vec2::new(caps[e][1], caps[e][2]).length()).fold(0.0f32, f32::law_max);
     let b = finish(axis, up, LoftSection::Curve(m as u32), &flat_rows, heights, &steps, rmax, (1.0, NO_CORE, [1.0, 1.0], reach), (section_knots, cder, [(0.0, 0.0); 2], cap_curve))?;
     Ok((flat_rows, b))
+}
+
+/// The loft field's lower bound in terms of `d = dist(p, B)`, `B` any set holding the axis curve
+/// (the box of its Bézier control points): `field(p) ≥ scale · d − margin`, as `(scale, margin)`;
+/// `None` when a factor is not positive and finite
+///
+/// Derivation (`C(s*)` the axis point the field projects `p` on, `r = p − C(s*)`, `ρ` its part
+/// across the axis, `h` along it; `|r| ≥ dist(p, curve) ≥ d`):
+/// - near field `F/L_g + (1/L(s) − 1/L_g) sat(F) ψ`: outside, `sat(F) ≥ 0`, `ψ ≥ 0` and
+///   `L(s) ≤ L_g`, so it is `≥ F/L_g`. `F ≥ |(d₂⁺, d_w⁺)|` with the section distance
+///   `d₂ ≥ (ρ − R)/ℓ₂` (polar: `(max(ρ − r(θ), core))/ℓ₂`, `r(θ) ≤ R`; curve: the curve lies in the
+///   disc of its control points, so `d₂ ≥ |q| − R` with `ℓ₂ = 1`) and the end half-spaces
+///   `d_w ≥ |h|` (`h = 0` at an interior `s*`, the stationary point of `|p − C(s)|`; at an end `h` is
+///   the distance past the end plane). So `F ≥ |((ρ − R)⁺, h)| / max(ℓ₂, 1) ≥ (|r| − R)/max(ℓ₂, 1)`:
+///   `κ = 1/(L_g max(ℓ₂, 1))`, radius `R` = the largest section radius over the rows and the phantom
+///   rows past the ends (the axis B-spline mixes them convexly)
+/// - polar dome at end `e`: `(|(ρ/r_e, h/H)| − 1)/λ_e ≥ (|r| − R_e)/(R_e λ_e)`, `R_e = max(r_e, H)`
+/// - curve dome at end `e`: in `(x, y) = ((d_S(q′) + w)⁺/w, h/H)`, `q′ = q + o h/H`, the shear
+///   `(a, b) ↦ (a − c b, b)` (`c = |o|/H`) has smallest singular value `1/σ` and `σ² ≥ 1 + c²`, so
+///   `|((a − c b − R′)⁺, b)| ≥ |r|/σ − R′` (`R′ = (R − w)⁺`) and the dome is
+///   `≥ (m/(σ² M)) (|r| − σ (R′ + M))`, `m = min(w, H)`, `M = max(w, H)`
+/// - the far bound's C1 join only adds `φ ≥ 0`, and `max(·, −h)` only raises a dome
+///
+/// Every term is `κ_i (|r_i| − R_i) ≥ κ_i d − κ_i R_i ≥ (min κ) d − max(κ_i R_i)`.
+#[must_use]
+pub fn lower_bound_factors(section: LoftSection, rows: &[f32], caps: [f32; 2], b: &LoftBounds) -> Option<(f32, f32)> {
+    let w = section.width();
+    if w == 0 || rows.len() < 2 * w || rows.len() % w != 0 {
+        return None;
+    }
+    let kr = rows.len() / w;
+    let row = |i: usize| &rows[i * w..(i + 1) * w];
+    let phantom = |a: &[f32], c: &[f32]| -> Vec<f32> { a.iter().zip(c).map(|(x, y)| 2.0 * x - y).collect() };
+    let ends = [phantom(row(0), row(1)), phantom(row(kr - 1), row(kr - 2))];
+    let all = (0..kr).map(|i| row(i).to_vec()).chain(ends);
+    let polar_r = |r: &[f32]| -> f32 { r[0].abs() + r[1..].chunks(2).map(|c| (c[0] * c[0] + c[1] * c[1]).sqrt()).sum::<f32>() };
+    let curve_r = |r: &[f32]| -> f32 { r.chunks(2).map(|c| (c[0] * c[0] + c[1] * c[1]).sqrt()).fold(0.0f32, f32::law_max) };
+    let curve = matches!(section, LoftSection::Curve(_));
+    let radius = all.map(|r| if curve { curve_r(&r) } else { polar_r(&r) }).fold(0.0f32, f32::law_max);
+    let mut terms: Vec<(f32, f32)> = vec![(1.0 / (b.l * b.l2.law_max(1.0)), radius)];
+    for e in 0..2 {
+        let hh = caps[e];
+        if hh <= 0.0 {
+            continue;
+        }
+        if curve {
+            let [_, _, cw, sigma] = b.cap_curve[e];
+            let (m, mm) = (cw.law_min(hh), cw.law_max(hh));
+            terms.push((m / (sigma * sigma * mm), sigma * ((radius - cw).law_max(0.0) + mm)));
+        } else {
+            let re = polar_r(row(if e == 0 { 0 } else { kr - 1 })).law_max(hh);
+            terms.push((1.0 / (re * b.lq[e]), re));
+        }
+    }
+    let scale = terms.iter().map(|t| t.0).fold(f32::INFINITY, f32::law_min);
+    let margin = terms.iter().map(|t| t.0 * t.1).fold(0.0f32, f32::law_max);
+    (scale.is_finite() && scale > 0.0 && margin.is_finite()).then_some((scale, margin))
 }
 
 /// Samples per section span in the simplicity check

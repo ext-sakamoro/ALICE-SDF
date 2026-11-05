@@ -420,3 +420,70 @@ fn the_loft_bound_holds_on_the_cpu() {
     }
     assert!(checked > 50_000, "only {checked} points outside a box");
 }
+
+/// Random lofts (polar and curve sections, flat ends, domes, curve caps with an offset apex, bent
+/// axes) and random points out to several reaches: the field is at least the bound wherever the
+/// bound is positive (`lower_bound_factors`' derivation), and the bound is positive at a fair share
+/// of the points (a bound that never bites would pass vacuously)
+#[test]
+fn the_loft_bound_holds_on_random_lofts() {
+    let mut r = lcg(0x10F7_B0);
+    let (mut checked, mut lofts) = (0usize, 0usize);
+    for case in 0..48 {
+        let n = 2 + (r() * 4.0) as usize;
+        let axis: Vec<Vec3> = (0..n).map(|i| Vec3::new((r() - 0.5) * 0.3, 0.3 * i as f32, (r() - 0.5) * 0.3)).collect();
+        let cap = |r: &mut dyn FnMut() -> f32| if r() < 0.5 { 0.0 } else { 0.02 + 0.08 * r() };
+        let node = if case % 2 == 0 {
+            let k = 1 + (r() * 3.0) as u32;
+            let rows: Vec<Vec<f32>> = (0..n.max(3))
+                .map(|_| {
+                    let mut row = vec![0.08 + 0.06 * r()];
+                    for _ in 0..k {
+                        row.push((r() - 0.5) * 0.02);
+                        row.push((r() - 0.5) * 0.02);
+                    }
+                    row
+                })
+                .collect();
+            let caps = [cap(&mut r), cap(&mut r)];
+            SdfNode::loft_capped(axis, Vec3::Z, k, rows, caps)
+        } else {
+            let m = 6 + (r() * 4.0) as usize;
+            let rows: Vec<Vec<Vec2>> = (0..n.max(3))
+                .map(|_| {
+                    let (a, b) = (0.06 + 0.06 * r(), 0.05 + 0.05 * r());
+                    (0..m)
+                        .map(|j| {
+                            let t = std::f32::consts::TAU * j as f32 / m as f32;
+                            Vec2::new(a * t.cos(), b * t.sin())
+                        })
+                        .collect()
+                })
+                .collect();
+            let c0 = cap(&mut r);
+            let c1 = cap(&mut r);
+            let caps = [[c0, (r() - 0.5) * c0, (r() - 0.5) * c0], [c1, 0.0, 0.0]];
+            SdfNode::loft_curves_capped(axis, Vec3::Z, rows, caps)
+        };
+        let Ok(node) = node else { continue };
+        let b = lower_bound(&node).expect("a loft has a bound");
+        lofts += 1;
+        let span = (0..3).map(|k| b.hi[k] - b.lo[k]).fold(0.0f32, f32::max).max(0.1);
+        for _ in 0..4000 {
+            let reach = 0.2 + 4.0 * r() * span;
+            let p = Vec3::new(
+                0.5 * (b.lo[0] + b.hi[0]) + (r() - 0.5) * 2.0 * reach,
+                0.5 * (b.lo[1] + b.hi[1]) + (r() - 0.5) * 2.0 * reach,
+                0.5 * (b.lo[2] + b.hi[2]) + (r() - 0.5) * 2.0 * reach,
+            );
+            let lb = b.scale * box_dist(p, &b) - (b.margin + BOUND_SKIP_EPS);
+            if lb > 0.0 {
+                let f = eval(&node, p);
+                assert!(f >= lb, "case {case}: field {f} < bound {lb} at {p:?} (scale {}, margin {})", b.scale, b.margin);
+                checked += 1;
+            }
+        }
+    }
+    assert!(lofts >= 24, "only {lofts} random lofts were valid");
+    assert!(checked >= lofts * 400, "the bound was positive at only {checked} points");
+}

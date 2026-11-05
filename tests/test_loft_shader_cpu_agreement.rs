@@ -55,6 +55,26 @@ fn torso() -> SdfNode {
     SdfNode::loft_curves(axis, Vec3::Z, rows).expect("torso-like loft")
 }
 
+/// A curve loft closed by caps at both ends, one with an offset apex (the sheared dome)
+fn curve_capped() -> SdfNode {
+    let ellipse = |a: f32, b: f32| -> Vec<Vec2> {
+        (0..12).map(|k| {
+            let t = std::f32::consts::TAU * k as f32 / 12.0;
+            Vec2::new(a * t.cos(), b * t.sin())
+        }).collect()
+    };
+    let axis = vec![Vec3::ZERO, Vec3::new(0.03, 0.3, 0.0), Vec3::new(0.05, 0.6, 0.02)];
+    let rows = vec![ellipse(0.2, 0.12), ellipse(0.18, 0.13), ellipse(0.15, 0.1)];
+    SdfNode::loft_curves_capped(axis, Vec3::X, rows, [[0.1, 0.0, 0.0], [0.15, 0.06, -0.03]]).expect("capped curve loft")
+}
+
+/// A polar loft with domes at both ends
+fn polar_capped() -> SdfNode {
+    let axis = vec![Vec3::ZERO, Vec3::new(0.02, 0.3, 0.0), Vec3::new(0.0, 0.6, 0.03)];
+    let rows = vec![vec![0.15, 0.01, 0.0], vec![0.17, 0.0, 0.01], vec![0.12, 0.0, 0.0]];
+    SdfNode::loft_capped(axis, Vec3::Z, 1, rows, [0.08, 0.12]).expect("capped polar loft")
+}
+
 fn lofts() -> Vec<(&'static str, SdfNode)> {
     vec![
         ("curves_c", common::corpus::loft_curves_c()),
@@ -63,6 +83,8 @@ fn lofts() -> Vec<(&'static str, SdfNode)> {
         ("faded", common::corpus::loft_faded()),
         ("torso", torso()),
         ("torso_moved", torso().rotate_euler(0.3, -0.2, 0.5).translate(0.1, -0.3, 0.2)),
+        ("curve_caps", curve_capped()),
+        ("polar_caps", polar_capped()),
     ]
 }
 

@@ -193,6 +193,34 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
             continue;
         }
         let (se, sign, row) = if e == 0 { (lit(0.0), "-", 0) } else { (last.clone(), "", kr - 1) };
+        if curve {
+            // the CPU's `curve_dome`: the end section moved toward the apex by o h/H and eroded by w,
+            // (|(x, y)| − 1) min(w, H)/σ with x = (d + w)⁺/w, y = h/H, cut by −h
+            let cc = &flat[19 + 4 * e..23 + 4 * e];
+            s += &format!(
+                "fn {name}_dome{e}(p: V3) -> F {{
+    var c: V3 = {name}_pos({se});
+    var dr: V3 = {name}_der({se});
+{fr}    var o: V3 = {sign}t;
+    var r: V3 = p - c;
+    var h: F = dot(r, o);
+    var q: V2 = V2(dot(r, nn), dot(r, bb)) - V2({ou}, {ov}) * (h / {cap});
+    var d: F = {name}_cd({se}, q);
+    var x: F = max(d + {w}, 0.0) / {w};
+    var y: F = h / {cap};
+    return max((sqrt(x * x + y * y) - 1.0) * {m} / {sigma}, -h);
+}}
+",
+                fr = frame(""),
+                cap = lit(caps[e]),
+                ou = lit(cc[0]),
+                ov = lit(cc[1]),
+                w = lit(cc[2]),
+                m = lit(cc[2].min(caps[e])),
+                sigma = lit(cc[3])
+            );
+            continue;
+        }
         s += &format!(
             "fn {name}_dome{e}(p: V3) -> F {{
     var c: V3 = {name}_pos({se});
