@@ -17,6 +17,10 @@
     reason = "test code: the platform libm serves as an independent reference"
 )]
 
+#[cfg(feature = "gpu")]
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
+
 use alice_sdf::prelude::*;
 use glam::Vec2;
 
@@ -439,7 +443,7 @@ fn hundreds_of_large_polygons_run_on_the_gpu_and_match_the_cpu() {
     let pts: Vec<Vec3> = (0..4000)
         .map(|_| Vec3::new(r() * 2.2 - 0.1, r() * 2.2 - 0.1, r() * 0.2 - 0.1))
         .collect();
-    let got = gpu.eval_batch(&pts).expect("gpu eval");
+    let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu eval");
     assert_eq!(got.len(), pts.len());
     let mut worst = 0.0f32;
     for (p, g) in pts.iter().zip(&got) {

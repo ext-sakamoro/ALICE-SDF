@@ -15,7 +15,7 @@
 //! # Hex form (with `alice-det-math` 0.5.2 at 2d01c63f; other generations in [`SDF_SEMANTICS_BY_DET_MATH`])
 //!
 //! ```text
-//! 6d8985128a02adab7c9b92e42cf85ffd97860f54baafc51bab6051af167824b6
+//! 238a6c6c7f344ce7f1494275f1e37d5c5f8d20ea5ce80ac48091bfb51ab6db34
 //! ```
 //!
 //! # Fold
@@ -64,7 +64,7 @@ pub const MUL_ADD_RULE: &str = "alice-sdf: Real::mul_add is a * b + c with two r
 pub const SDF_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
     (
         "golden tests/test_det_golden.rs GOLDEN",
-        hex32("f59a386772495660f3553b8d0b9f2876c69f3bcd7cef7966d00a35d958dd0c79"),
+        hex32("2dfbaf72e0c28f085ceed463605bddb387caaa41077acdbf471a013565a706d6"),
     ),
     (
         "tag max / min rule",
@@ -93,7 +93,7 @@ pub const SDF_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
     // `tests/sdf_semantics_id.rs`
     (
         hex32("a2a11b9b826227fa7a9ed8ab2c1ce63dbb07ad4c39aa2c46a363ddea6b47dbe9"),
-        hex32("6d8985128a02adab7c9b92e42cf85ffd97860f54baafc51bab6051af167824b6"),
+        hex32("238a6c6c7f344ce7f1494275f1e37d5c5f8d20ea5ce80ac48091bfb51ab6db34"),
     ),
 ];
 

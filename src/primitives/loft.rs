@@ -232,11 +232,11 @@ struct PolarStored {
 /// # Errors
 /// A row length that is not `2K + 1`, any input [`validate`] refuses, or stored bounds or rows that
 /// differ from the recomputed ones
-// ALLOW-UNWIRED: called by the derived Deserialize of SdfNode through #[serde(deserialize_with = "crate::primitives::loft::deserialize_polar")]
 #[allow(
     clippy::type_complexity,
     reason = "the variant's fields, as serde's deserialize_with takes them"
 )]
+// ALLOW-UNWIRED: called by the derived Deserialize of SdfNode through #[serde(deserialize_with = "crate::primitives::loft::deserialize_polar")]
 pub fn deserialize_polar<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> Result<(Vec<Vec3>, Vec3, u32, Vec<f32>, [f32; 2], LoftBounds), D::Error> {
@@ -276,11 +276,11 @@ struct CurvesStored {
 /// # Errors
 /// A point count that is not rows of `2M`, any input [`validate_curves`] refuses, or stored bounds
 /// or points that differ from the recomputed ones
-// ALLOW-UNWIRED: called by the derived Deserialize of SdfNode through #[serde(deserialize_with = "crate::primitives::loft::deserialize_curves")]
 #[allow(
     clippy::type_complexity,
     reason = "the variant's fields, as serde's deserialize_with takes them"
 )]
+// ALLOW-UNWIRED: called by the derived Deserialize of SdfNode through #[serde(deserialize_with = "crate::primitives::loft::deserialize_curves")]
 pub fn deserialize_curves<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> Result<

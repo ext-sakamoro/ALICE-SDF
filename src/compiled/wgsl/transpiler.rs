@@ -379,7 +379,6 @@ impl WgslShader {
     /// # Panics
     ///
     /// As [`Self::transpile`]
-    // ALLOW-UNWIRED: public panicking form of try_transpile_with_node_data, kept for callers of the node data buffer
     pub fn transpile_with_node_data(node: &SdfNode, mode: TranspileMode) -> Self {
         Self::try_transpile_with_node_data(node, mode).unwrap_or_else(|e| panic!("{e}"))
     }

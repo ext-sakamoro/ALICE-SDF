@@ -27,6 +27,9 @@
     reason = "test code: the platform libm builds the loop vertices"
 )]
 
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
+
 use alice_sdf::compiled::{
     GlslShader, GlslTranspileMode, GpuEvaluator, HlslShader, HlslTranspileMode,
 };
@@ -170,7 +173,7 @@ fn wgsl_matches_the_cpu_on_the_gpu() {
             return;
         };
         let pts = points(20_000);
-        let got = gpu.eval_batch(&pts).expect("gpu eval");
+        let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu eval");
         let (w, at) = worst(&node, &pts, &got);
         assert!(
             w < TOL,
@@ -191,7 +194,7 @@ fn glsl_matches_the_cpu_on_the_gpu() {
             return;
         };
         let pts = points(20_000);
-        let got = gpu.eval_batch(&pts).expect("gpu eval");
+        let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu eval");
         let (w, at) = worst(&node, &pts, &got);
         assert!(
             w < TOL,

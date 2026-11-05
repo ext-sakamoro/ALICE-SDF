@@ -1282,7 +1282,15 @@ jobs:
           cargo test --features "gpu,glsl,hlsl" --test test_smooth_stack_shader -- --nocapture 2>&1 | tee test_smooth_stack_shader.log
           python3 scripts/libtest_count.py test_smooth_stack_shader.log --min 4 --what "test_smooth_stack_shader"
           cargo test --features "gpu,glsl,hlsl" --test test_bound_skip_oracle -- --nocapture 2>&1 | tee test_bound_skip_oracle.log
-          python3 scripts/libtest_count.py test_bound_skip_oracle.log --min 6 --what "test_bound_skip_oracle"
+          python3 scripts/libtest_count.py test_bound_skip_oracle.log --min 7 --what "test_bound_skip_oracle"
+          cargo test --features "gpu,glsl,hlsl" --test test_shader_data_bounds -- --nocapture 2>&1 | tee test_shader_data_bounds.log
+          python3 scripts/libtest_count.py test_shader_data_bounds.log --min 8 --what "test_shader_data_bounds"
+          cargo test --features "gpu,glsl,hlsl" --test test_shader_minimal_trees -- --nocapture 2>&1 | tee test_shader_minimal_trees.log
+          python3 scripts/libtest_count.py test_shader_minimal_trees.log --min 3 --what "test_shader_minimal_trees"
+          cargo test --features "gpu,glsl,hlsl" --test test_shader_read_ranges -- --nocapture 2>&1 | tee test_shader_read_ranges.log
+          python3 scripts/libtest_count.py test_shader_read_ranges.log --min 2 --what "test_shader_read_ranges"
+          cargo test --features "gpu,glsl,hlsl" --test test_loft_shader_cpu_agreement -- --nocapture 2>&1 | tee test_loft_shader_cpu_agreement.log
+          python3 scripts/libtest_count.py test_loft_shader_cpu_agreement.log --min 1 --what "test_loft_shader_cpu_agreement"
 
       # ALICE-Law G8: the whole shader text carries the semantics identifier and the four
       # readers that compile shader text check it (tests/test_shader_text_provenance.rs). The

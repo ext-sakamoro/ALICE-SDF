@@ -287,7 +287,6 @@ impl HlslShader {
     /// # Errors
     ///
     /// As [`Self::try_transpile`]
-    // ALLOW-UNWIRED: diagnostic entry for the per-site read-range oracle and for tracing a bad read
     pub fn try_transpile_checked(
         node: &SdfNode,
         mode: HlslTranspileMode,

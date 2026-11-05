@@ -1366,7 +1366,6 @@ impl GpuEvaluator {
     ///
     /// As [`GpuEvaluator::new`], and a tree whose reads the emit cannot prove in range
     /// ([`WgslShader::try_transpile_with_node_data_checked`])
-    // ALLOW-UNWIRED: diagnostic evaluator for the on-GPU read-range oracle and for tracing a bad read
     pub fn new_checked(node: &SdfNode) -> Result<Self, GpuError> {
         let shader = WgslShader::try_transpile_with_node_data_checked(
             node,
@@ -1406,7 +1405,6 @@ impl GpuEvaluator {
     /// # Errors
     ///
     /// The counter could not be read back
-    // ALLOW-UNWIRED: reads the counter of a GpuEvaluator::new_checked evaluator, diagnostic as that is
     pub fn read_hits(&self) -> Result<Option<u32>, GpuError> {
         match &self.engine {
             Engine::Wgpu(w) => w.read_hits(),

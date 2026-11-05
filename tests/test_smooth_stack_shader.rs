@@ -8,6 +8,10 @@
     reason = "test code: the platform libm serves as an independent reference"
 )]
 
+#[cfg(feature = "gpu")]
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
+
 use alice_sdf::compiled::{TranspileMode, WgslShader};
 use alice_sdf::prelude::*;
 use glam::{Quat, Vec2};
@@ -155,7 +159,7 @@ mod gpu {
                 Ok(g) => g,
                 Err(e) => return no_gpu(&e),
             };
-            let got = gpu.eval_batch(&pts).expect("gpu eval");
+            let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu eval");
             let (w, at) = worst(&node, &got, &pts);
             eprintln!("{name}: WGSL max |gpu - cpu| = {w:.3e} over {}", pts.len());
             assert!(w <= 1e-5, "{name}: WGSL/CPU drift {w:.3e} at {at:?}");
@@ -190,7 +194,7 @@ void main() {{
                 Ok(g) => g,
                 Err(e) => return no_gpu(&e),
             };
-            let got = gpu.eval_batch(&pts).expect("gpu eval");
+            let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu eval");
             let (w, at) = worst(&node, &got, &pts);
             eprintln!("{name}: GLSL max |gpu - cpu| = {w:.3e} over {}", pts.len());
             assert!(w <= 1e-5, "{name}: GLSL/CPU drift {w:.3e} at {at:?}");

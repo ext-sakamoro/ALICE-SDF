@@ -98,6 +98,17 @@ fn template(name: &str, arr: &str, flat: &[f32]) -> String {
         &format!("{name}_sk"),
     );
     let nm3 = n - 3;
+    // the search for the span: `i == k` at the read of iteration `k`, so the read ranges over
+    // lv + 2 ..= lv + nm3, both from the loop's own bounds. At the smallest stack (4 levels) the loop
+    // has no iteration, its range is empty, and neither is emitted: `i` stays 1
+    let search = if nm3 > 1 {
+        let (lo, hi) = (lv + 2, lv + nm3);
+        format!(
+            "    for (var k: I = 1; k < {nm3}; k++) {{\n        if (yc > {arr}[{lv} + i + 1 @ {lo}..{hi}]) {{ i = i + 1; }} else {{ break; }}\n    }}\n"
+        )
+    } else {
+        String::new()
+    };
     format!(
         "fn {name}_pt(o: I, m: I, j: I) -> V2 {{
     var k: I = j - m * I(floor(F(j) / F(m)));
@@ -125,10 +136,7 @@ fn {name}(p: V3) -> F {{
     var q: V2 = V2(p.x, p.z);
     var yc: F = min(max(p.y, {y1}), {yl});
     var i: I = 1;
-    for (var k: I = 1; k < {nm3}; k++) {{
-        if (yc > {arr}[{lv} + i + 1 @ {lv2}..{lvn3}]) {{ i = i + 1; }} else {{ break; }}
-    }}
-    var ya: F = {arr}[{lv} + i - 1 @ {lv}..{lvn4}];
+{search}    var ya: F = {arr}[{lv} + i - 1 @ {lv}..{lvn4}];
     var yb: F = {arr}[{lv} + i @ {lv1}..{lvn3}];
     var yd: F = {arr}[{lv} + i + 1 @ {lv2}..{lvn2}];
     var ye: F = {arr}[{lv} + i + 2 @ {lv3}..{lvn1}];

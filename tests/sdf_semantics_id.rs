@@ -16,10 +16,17 @@ const GOLDEN_SOURCE: &str = include_str!("test_det_golden.rs");
 // with alice-det-math 0.5.2 at 2d01c63f and the grid warp, pose and loft golden rows; 0f6c58d0…
 // (without the loft rows) and ad04549c… (without those and the grid warp and pose rows) are the
 // previous identifiers this build still reproduces
-const RECORDED_HEX: &str = "6d8985128a02adab7c9b92e42cf85ffd97860f54baafc51bab6051af167824b6";
+const RECORDED_HEX: &str = "238a6c6c7f344ce7f1494275f1e37d5c5f8d20ea5ce80ac48091bfb51ab6db34";
 
 /// The golden rows added after `0f6c58d0…`: new nodes, no row of that build changed
-const ROWS_ADDED_AFTER_0F6C58D0: &[&str] = &["loft", "loft_curves", "loft_nofade", "loft_faded"];
+const ROWS_ADDED_AFTER_0F6C58D0: &[&str] = &[
+    "loft",
+    "loft_curves",
+    "loft_nofade",
+    "loft_faded",
+    "section_stack",
+    "smooth_section_stack",
+];
 
 /// The golden rows added after `ad04549c…`: new nodes, no row of that build changed
 const ROWS_ADDED_AFTER_AD04549C: &[&str] = &[
@@ -29,6 +36,8 @@ const ROWS_ADDED_AFTER_AD04549C: &[&str] = &[
     "loft_curves",
     "loft_nofade",
     "loft_faded",
+    "section_stack",
+    "smooth_section_stack",
 ];
 
 fn sha(b: &[u8]) -> [u8; 32] {

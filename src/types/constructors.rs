@@ -434,7 +434,6 @@ impl SdfNode {
     /// # Errors
     /// As [`SdfNode::loft_curves`], a negative cap height, a non-finite offset, or a capped end section
     /// with no interior
-    // ALLOW-UNWIRED: public constructor for tree builders outside this crate, as the other loft constructors
     pub fn loft_curves_capped(
         axis: Vec<Vec3>,
         up: Vec3,

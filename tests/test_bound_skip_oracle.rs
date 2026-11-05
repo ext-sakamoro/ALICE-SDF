@@ -18,6 +18,9 @@
     reason = "test code: the platform libm builds the outlines"
 )]
 
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
+
 use alice_sdf::compiled::transpiler_common::{lower_bound, LowerBound, BOUND_SKIP_EPS};
 use alice_sdf::compiled::{GpuEvaluator, HlslShader, HlslTranspileMode, TranspileMode, WgslShader};
 use alice_sdf::prelude::*;
@@ -435,8 +438,8 @@ fn wgsl_with_skips_equals_wgsl_without_bit_for_bit_on_the_gpu() {
             }
         };
         let pts = points(&node, 1_000_000, 3);
-        let ga = a.eval_batch(&pts).expect("gpu");
-        let gb = b.eval_batch(&pts).expect("gpu");
+        let ga = gpu_batches::eval_in_batches(&a, &pts).expect("gpu");
+        let gb = gpu_batches::eval_in_batches(&b, &pts).expect("gpu");
         assert_eq!(ga.len(), pts.len());
         if let Some(i) = ga
             .iter()
@@ -484,8 +487,8 @@ fn loft_body_skips_bit_for_bit() {
     );
     let pts = points(&node, 1_000_000, 5);
     let (ga, gb) = (
-        a.eval_batch(&pts).expect("gpu"),
-        b.eval_batch(&pts).expect("gpu"),
+        gpu_batches::eval_in_batches(&a, &pts).expect("gpu"),
+        gpu_batches::eval_in_batches(&b, &pts).expect("gpu"),
     );
     assert!(ga.iter().zip(&gb).all(|(x, y)| x.to_bits() == y.to_bits()));
 }

@@ -67,17 +67,33 @@ fn main() -> Result<(), String> {
         SdfNode::loft_curves_knots(axis, Vec3::X, knots, rows).map_err(|e| e.to_string())?;
     // a polar loft (Fourier radii per row), capped, and a capped curve loft
     let polar = SdfNode::loft(
-        vec![Vec3::ZERO, Vec3::new(0.02, 0.4, 0.0), Vec3::new(0.0, 0.8, 0.02)],
+        vec![
+            Vec3::ZERO,
+            Vec3::new(0.02, 0.4, 0.0),
+            Vec3::new(0.0, 0.8, 0.02),
+        ],
         Vec3::Z,
         1,
-        vec![vec![0.2, 0.01, 0.0], vec![0.22, 0.0, 0.01], vec![0.15, 0.0, 0.0]],
+        vec![
+            vec![0.2, 0.01, 0.0],
+            vec![0.22, 0.0, 0.01],
+            vec![0.15, 0.0, 0.0],
+        ],
     )
     .map_err(|e| e.to_string())?;
     let polar_capped = SdfNode::loft_capped(
-        vec![Vec3::ZERO, Vec3::new(0.02, 0.4, 0.0), Vec3::new(0.0, 0.8, 0.02)],
+        vec![
+            Vec3::ZERO,
+            Vec3::new(0.02, 0.4, 0.0),
+            Vec3::new(0.0, 0.8, 0.02),
+        ],
         Vec3::Z,
         1,
-        vec![vec![0.2, 0.01, 0.0], vec![0.22, 0.0, 0.01], vec![0.15, 0.0, 0.0]],
+        vec![
+            vec![0.2, 0.01, 0.0],
+            vec![0.22, 0.0, 0.01],
+            vec![0.15, 0.0, 0.0],
+        ],
         [0.08, 0.1],
     )
     .map_err(|e| e.to_string())?;
@@ -152,10 +168,15 @@ fn main() -> Result<(), String> {
     // needs a GPU: `-- --gpu` evaluates a small batch and reads the out-of-range count
     if std::env::args().any(|a| a == "--gpu") {
         let gpu = GpuEvaluator::new_checked(&scene).map_err(|e| e.to_string())?;
-        let pts: Vec<Vec3> = (0..64).map(|i| Vec3::new(0.05 * i as f32, 0.2, 0.0)).collect();
+        let pts: Vec<Vec3> = (0..64)
+            .map(|i| Vec3::new(0.05 * i as f32, 0.2, 0.0))
+            .collect();
         let values = gpu.eval_batch(&pts).map_err(|e| e.to_string())?;
         let hits = gpu.read_hits().map_err(|e| e.to_string())?;
-        println!("{} values, reads outside their range: {hits:?}", values.len());
+        println!(
+            "{} values, reads outside their range: {hits:?}",
+            values.len()
+        );
     }
     Ok(())
 }

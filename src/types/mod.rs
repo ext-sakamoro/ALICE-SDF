@@ -37,7 +37,7 @@ impl SdfCategory {
     /// `tests/test_node_backend_matrix.rs::category_counts_match_one_node_per_variant`.
     pub const fn count(self) -> u32 {
         match self {
-            Self::Primitive => 74,
+            Self::Primitive => 78,
             Self::Operation => 25,
             Self::Transform => 8,
             Self::Modifier => 25,

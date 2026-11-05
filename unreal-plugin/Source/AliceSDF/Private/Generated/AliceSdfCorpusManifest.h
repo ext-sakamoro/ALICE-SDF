@@ -8,8 +8,8 @@
 
 #include "CoreMinimal.h"
 
-#define ALICE_SDF_CORPUS_COUNT 158
-#define ALICE_SDF_CORPUS_SHADER_COUNT 158
+#define ALICE_SDF_CORPUS_COUNT 160
+#define ALICE_SDF_CORPUS_SHADER_COUNT 160
 #define ALICE_SDF_CORPUS_GRID_POINTS 577
 #define ALICE_SDF_CORPUS_RANDOM_POINTS 512
 
@@ -91,6 +91,8 @@ static const TCHAR* const GAliceSdfCorpusNames[ALICE_SDF_CORPUS_COUNT] = {
 	TEXT("loft_curves"),
 	TEXT("loft_nofade"),
 	TEXT("loft_faded"),
+	TEXT("section_stack"),
+	TEXT("smooth_section_stack"),
 	TEXT("annular_2d"),
 	TEXT("union"),
 	TEXT("intersection"),
@@ -253,6 +255,8 @@ static const bool GAliceSdfCorpusCompilable[ALICE_SDF_CORPUS_COUNT] = {
 	true, // loft_curves
 	true, // loft_nofade
 	true, // loft_faded
+	false, // section_stack
+	false, // smooth_section_stack
 	true, // annular_2d
 	true, // union
 	true, // intersection
@@ -414,6 +418,8 @@ static const TCHAR* const GAliceSdfCorpusShaderNames[ALICE_SDF_CORPUS_SHADER_COU
 	TEXT("loft_curves"),
 	TEXT("loft_nofade"),
 	TEXT("loft_faded"),
+	TEXT("section_stack"),
+	TEXT("smooth_section_stack"),
 	TEXT("annular_2d"),
 	TEXT("union"),
 	TEXT("intersection"),

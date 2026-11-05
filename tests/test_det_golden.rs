@@ -910,4 +910,12 @@ const GOLDEN: &[(&str, &str)] = &[
         "loft_faded",
         "b5c04e9628a30c655fe3405e410f79baa631e8d034550b990625ed960dd91987",
     ),
+    (
+        "section_stack",
+        "c6d1cf4949339cd4173b3d8a049360b91c909731217c6f5dceed63a1c14551f4",
+    ),
+    (
+        "smooth_section_stack",
+        "6a55c1a969935742641734035df5eb9d74b5d10905276b2197ab355fc7a1c3fe",
+    ),
 ];
