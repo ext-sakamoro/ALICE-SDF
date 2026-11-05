@@ -1030,7 +1030,7 @@ pub fn shear<R: Real>(p: Vec3R<R>, sh: Vec3) -> Vec3R<R> {
 /// Sweep along a quadratic Bézier in the XZ plane: `(perp distance, y, 0)`.
 ///
 /// One law with the tree path: `modifiers::sweep::bezier_distance_2d`
-/// (closed-form nearest parameter), applied per lane.
+/// (closed-form nearest parameter with Newton refinement), applied per lane.
 #[inline]
 pub fn sweep_bezier<R: Real>(p: Vec3R<R>, p0: Vec2, p1: Vec2, p2: Vec2) -> Vec3R<R> {
     let d = p.x.map2(p.z, |x, z| {

@@ -1617,9 +1617,28 @@ const HELPER_SDF_TRUNCATED_ICOSAHEDRON: &str = r"fn sdf_truncated_icosahedron(p:
 }
 ";
 
-/// IQ `sdBezier`: closed-form distance to a quadratic Bézier (mirrors
-/// `modifiers::sweep::bezier_distance_2d`, degenerate curve → segment).
-const HELPER_BEZIER_DISTANCE_2D: &str = r"fn bezier_distance_2d(q: vec2<f32>, p0: vec2<f32>, p1: vec2<f32>, p2: vec2<f32>) -> f32 {
+/// IQ `sdBezier`: closed-form distance to a quadratic Bézier with the CPU law's Newton refinement
+/// (mirrors `modifiers::sweep::bezier_distance_2d`, degenerate curve → segment).
+const HELPER_BEZIER_DISTANCE_2D: &str = r"// bezier_2d_candidate: the CPU law's `candidate` (src/modifiers/sweep.rs): the smaller of |q|^2 at t and at
+// two clamped Newton steps on q.q' = 0 from t, a step skipped where |q'|^2 + q.q'' <= 0
+fn bezier_2d_refine(d: vec2<f32>, c: vec2<f32>, b: vec2<f32>, t0: f32) -> f32 {
+    var t = t0;
+    for (var i = 0; i < 2; i = i + 1) {
+        let e = d + (c + b * t) * t;
+        let de = c + b * (2.0 * t);
+        let g = dot(e, de);
+        let gp = dot(de, de) + 2.0 * dot(e, b);
+        if (gp > 0.0) { t = clamp(t - g / gp, 0.0, 1.0); }
+    }
+    return t;
+}
+fn bezier_2d_candidate(d: vec2<f32>, c: vec2<f32>, b: vec2<f32>, t: f32) -> f32 {
+    let e0 = d + (c + b * t) * t;
+    let tr = bezier_2d_refine(d, c, b, t);
+    let e1 = d + (c + b * tr) * tr;
+    return min(dot(e0, e0), dot(e1, e1));
+}
+fn bezier_distance_2d(q: vec2<f32>, p0: vec2<f32>, p1: vec2<f32>, p2: vec2<f32>) -> f32 {
     let a = p1 - p0;
     let b = p0 - p1 * 2.0 + p2;
     let c = a * 2.0;
@@ -1646,8 +1665,7 @@ const HELPER_BEZIER_DISTANCE_2D: &str = r"fn bezier_distance_2d(q: vec2<f32>, p0
         let u = sign(x0) * pow(abs(x0), 1.0 / 3.0);
         let v = sign(x1) * pow(abs(x1), 1.0 / 3.0);
         let t = clamp(u + v - kx, 0.0, 1.0);
-        let e = d + (c + b * t) * t;
-        res = dot(e, e);
+        res = bezier_2d_candidate(d, c, b, t);
     } else {
         let z = sqrt(kx * kx - ky);
         let v = acos(clamp(qq / (p * z * 2.0), -1.0, 1.0)) / 3.0;
@@ -1655,9 +1673,7 @@ const HELPER_BEZIER_DISTANCE_2D: &str = r"fn bezier_distance_2d(q: vec2<f32>, p0
         let n = sin(v) * 1.7320508;
         let t0 = clamp((m + m) * z - kx, 0.0, 1.0);
         let t1 = clamp((-n - m) * z - kx, 0.0, 1.0);
-        let e0 = d + (c + b * t0) * t0;
-        let e1 = d + (c + b * t1) * t1;
-        res = min(dot(e0, e0), dot(e1, e1));
+        res = min(bezier_2d_candidate(d, c, b, t0), bezier_2d_candidate(d, c, b, t1));
     }
     return sqrt(res);
 }
