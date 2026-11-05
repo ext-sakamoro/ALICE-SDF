@@ -1161,7 +1161,7 @@ pub fn validate_curves(axis: &[Vec3], up: Vec3, section_knots: &[f32], rows: &[V
     // every row, and the blended sections between rows, must be simple: a crossing section has no
     // consistent inside and the field jumps across the crossing
     if let Some(at) = first_crossing_section(rows, section_knots) {
-        return err(format!("the section {at} crosses itself (every row and every blend between rows must be a simple loop)"));
+        return err(format!("the section {at} crosses itself (every section between the rows must be a simple loop)"));
     }
     // the B-spline weights are convex (along the section and along the axis), so every section point
     // lies within the largest control point length, and the section moves along the axis at most at
@@ -1264,8 +1264,8 @@ pub fn validate_curves(axis: &[Vec3], up: Vec3, section_knots: &[f32], rows: &[V
 ///   disc of its control points, so `d₂ ≥ |q| − R` with `ℓ₂ = 1`) and the end half-spaces
 ///   `d_w ≥ |h|` (`h = 0` at an interior `s*`, the stationary point of `|p − C(s)|`; at an end `h` is
 ///   the distance past the end plane). So `F ≥ |((ρ − R)⁺, h)| / max(ℓ₂, 1) ≥ (|r| − R)/max(ℓ₂, 1)`:
-///   `κ = 1/(L_g max(ℓ₂, 1))`, radius `R` = the largest section radius over the rows and the phantom
-///   rows past the ends (the axis B-spline mixes them convexly)
+///   `κ = 1/(L_g max(ℓ₂, 1))`, radius `R` = the largest section radius over the rows (every section
+///   is a convex mix of rows, the reflected rows of the end spans included)
 /// - polar dome at end `e`: `(|(ρ/r_e, h/H)| − 1)/λ_e ≥ (|r| − R_e)/(R_e λ_e)`, `R_e = max(r_e, H)`
 /// - curve dome at end `e`: in `(x, y) = ((d_S(q′) + w)⁺/w, h/H)`, `q′ = q + o h/H`, the shear
 ///   `(a, b) ↦ (a − c b, b)` (`c = |o|/H`) has smallest singular value `1/σ` and `σ² ≥ 1 + c²`, so
@@ -1282,9 +1282,10 @@ pub fn lower_bound_factors(section: LoftSection, rows: &[f32], caps: [f32; 2], b
     }
     let kr = rows.len() / w;
     let row = |i: usize| &rows[i * w..(i + 1) * w];
-    let phantom = |a: &[f32], c: &[f32]| -> Vec<f32> { a.iter().zip(c).map(|(x, y)| 2.0 * x - y).collect() };
-    let ends = [phantom(row(0), row(1)), phantom(row(kr - 1), row(kr - 2))];
-    let all = (0..kr).map(|i| row(i).to_vec()).chain(ends);
+    // the end spans read a reflected row 2R₀ − R₁, but folded into the real rows their weights
+    // (2b₀ + b₁, b₂ − b₀, b₃) are ≥ 0 with sum 1 (b₂ ≥ b₀ on [0, 1]): every section is a convex mix
+    // of real rows, so the real rows bound the radius
+    let all = (0..kr).map(|i| row(i).to_vec());
     let polar_r = |r: &[f32]| -> f32 { r[0].abs() + r[1..].chunks(2).map(|c| (c[0] * c[0] + c[1] * c[1]).sqrt()).sum::<f32>() };
     let curve_r = |r: &[f32]| -> f32 { r.chunks(2).map(|c| (c[0] * c[0] + c[1] * c[1]).sqrt()).fold(0.0f32, f32::law_max) };
     let curve = matches!(section, LoftSection::Curve(_));
@@ -1309,13 +1310,78 @@ pub fn lower_bound_factors(section: LoftSection, rows: &[f32], caps: [f32; 2], b
     (scale.is_finite() && scale > 0.0 && margin.is_finite()).then_some((scale, margin))
 }
 
+/// Bernstein coefficients on `[0, 1]` of the polynomial `Σ a_j t^j` restricted to `[u0, u1]`
+fn bernstein_on(a: &[f64], u0: f64, u1: f64) -> Vec<f64> {
+    let n = a.len() - 1;
+    let binom = |n: usize, k: usize| -> f64 { (0..k).fold(1.0, |acc, i| acc * (n - i) as f64 / (i + 1) as f64) };
+    // power basis of u for p(u0 + (u1 − u0) u)
+    let h = u1 - u0;
+    let mut c = vec![0.0f64; n + 1];
+    for (k, &ak) in a.iter().enumerate() {
+        for j in 0..=k {
+            let pw = |x: f64, e: usize| (0..e).fold(1.0f64, |acc, _| acc * x);
+            c[j] += ak * binom(k, j) * pw(u0, k - j) * pw(h, j);
+        }
+    }
+    (0..=n).map(|i| (0..=i).map(|j| binom(i, j) / binom(n, j) * c[j]).sum()).collect()
+}
+
+/// An upper bound of the axis curve's curvature `|C′ × C″| / |C′|³` that holds everywhere, not only
+/// at samples: per segment the uniform Catmull-Rom `C′ = (K₁ + 2K₂ t + 3K₃ t²)/2` gives
+/// `C′ × C″ = (2 K₁×K₂ + 6 K₁×K₃ t + 6 K₂×K₃ t²)/4` (quadratic) and `|C′|²` (quartic); on each piece
+/// of the segment the largest Bernstein coefficient norm bounds `|C′ × C″|` from above and the
+/// smallest Bernstein coefficient bounds `|C′|²` from below (a polynomial lies in the hull of its
+/// coefficients). A piece whose lower bound is not positive is halved, to a depth limit, after which
+/// the bound is infinite (the axis may stop there)
+fn axis_curvature_bound(d: &Loft) -> f32 {
+    const PIECES: usize = 8;
+    const DEPTH: u32 = 12;
+    let mut worst = 0.0f64;
+    for seg in 0..d.n - 1 {
+        let i = seg as isize;
+        let (a, b, c, e) = (d.axis_pt(i - 1), d.axis_pt(i), d.axis_pt(i + 1), d.axis_pt(i + 2));
+        let f = |v: Vec3| [f64::from(v.x), f64::from(v.y), f64::from(v.z)];
+        let (k1, k2, k3) = (f(c - a), f(2.0 * a - 5.0 * b + 4.0 * c - e), f(-a + 3.0 * b - 3.0 * c + e));
+        let cr = |u: [f64; 3], v: [f64; 3]| [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        let dt = |u: [f64; 3], v: [f64; 3]| u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+        let (c12, c13, c23) = (cr(k1, k2), cr(k1, k3), cr(k2, k3));
+        let cross: [Vec<f64>; 3] = core::array::from_fn(|x| vec![0.5 * c12[x], 1.5 * c13[x], 1.5 * c23[x]]);
+        let speed2 = vec![
+            0.25 * dt(k1, k1),
+            dt(k1, k2),
+            dt(k2, k2) + 1.5 * dt(k1, k3),
+            3.0 * dt(k2, k3),
+            2.25 * dt(k3, k3),
+        ];
+        let mut stack: Vec<(f64, f64, u32)> = (0..PIECES).map(|p| (p as f64 / PIECES as f64, (p + 1) as f64 / PIECES as f64, 0)).collect();
+        while let Some((u0, u1, depth)) = stack.pop() {
+            let den = bernstein_on(&speed2, u0, u1).into_iter().fold(f64::INFINITY, f64::min);
+            if den <= 0.0 {
+                if depth >= DEPTH {
+                    return f32::INFINITY;
+                }
+                let m = 0.5 * (u0 + u1);
+                stack.push((u0, m, depth + 1));
+                stack.push((m, u1, depth + 1));
+                continue;
+            }
+            let bc: [Vec<f64>; 3] = core::array::from_fn(|x| bernstein_on(&cross[x], u0, u1));
+            let num = (0..3).map(|i| (bc[0][i] * bc[0][i] + bc[1][i] * bc[1][i] + bc[2][i] * bc[2][i]).sqrt()).fold(0.0f64, f64::max);
+            worst = worst.max(num / (den * den.sqrt()));
+        }
+    }
+    // rounded up to f32 so the bound never drops below the f64 value
+    let w = worst as f32;
+    if f64::from(w) < worst { f32::from_bits(w.to_bits() + 1) } else { w }
+}
+
 /// Samples per section span in the simplicity check
 const SIMPLE_SAMPLES_PER_SPAN: usize = 16;
 /// Blended sections checked per row span (the rows' B-spline along the axis)
 const SIMPLE_BLENDS_PER_ROW_SPAN: usize = 8;
 
-/// The first section that crosses itself: a row, or a blend of rows at the axis weights the field
-/// uses (rows reflected past the ends as in the field); its description, or `None` when all are simple
+/// The first section that crosses itself, sampled at the axis weights the field uses (rows reflected
+/// past the ends as in the field); its description, or `None` when all are simple
 fn first_crossing_section(rows: &[Vec<Vec2>], section_knots: &[f32]) -> Option<String> {
     let m = rows[0].len();
     let kr = rows.len();
@@ -1335,11 +1401,6 @@ fn first_crossing_section(rows: &[Vec<Vec2>], section_knots: &[f32]) -> Option<S
         }
         out
     };
-    for (i, r) in rows.iter().enumerate() {
-        if super::simple_loop::closed_polyline_crosses(&sample(r)) {
-            return Some(format!("of row {i}"));
-        }
-    }
     let row = |i: isize, j: usize| -> Vec2 {
         if i < 0 {
             2.0 * rows[0][j] - rows[1][j]
@@ -1349,8 +1410,11 @@ fn first_crossing_section(rows: &[Vec<Vec2>], section_knots: &[f32]) -> Option<S
             rows[i as usize][j]
         }
     };
+    // the sections are the blends (the rows are control rows, not sections): every span at
+    // t = 0, 1/8, …, and the last span's end
     for span in 0..kr - 1 {
-        for k in 1..SIMPLE_BLENDS_PER_ROW_SPAN {
+        let last_k = if span + 2 == kr { SIMPLE_BLENDS_PER_ROW_SPAN } else { SIMPLE_BLENDS_PER_ROW_SPAN - 1 };
+        for k in 0..=last_k {
             let t = k as f32 / SIMPLE_BLENDS_PER_ROW_SPAN as f32;
             let (t2, t3, u) = (t * t, t * t * t, 1.0 - t);
             let b = [u * u * u / 6.0, (3.0 * t3 - 6.0 * t2 + 4.0) / 6.0, (-3.0 * t3 + 3.0 * t2 + 3.0 * t + 1.0) / 6.0, t3 / 6.0];
@@ -1359,7 +1423,7 @@ fn first_crossing_section(rows: &[Vec<Vec2>], section_knots: &[f32]) -> Option<S
                 .map(|j| b[0] * row(i0, j) + b[1] * row(i0 + 1, j) + b[2] * row(i0 + 2, j) + b[3] * row(i0 + 3, j))
                 .collect();
             if super::simple_loop::closed_polyline_crosses(&sample(&cp)) {
-                return Some(format!("blended between rows {span} and {} (at {t})", span + 1));
+                return Some(format!("between rows {span} and {} (at {t})", span + 1));
             }
         }
     }
@@ -1424,6 +1488,8 @@ fn finish(
         prev = Some(nn);
         samples.push((s, speed, turn));
     }
+    // the sampled curvature can miss a bend between samples; the bound holds between them
+    kappa = kappa.law_max(axis_curvature_bound(&data));
     let bend = 1.1 * kappa * rmax;
     if bend >= 1.0 {
         return err(format!("the sections (radius {rmax}) are wider than the axis's radius of curvature (curvature {kappa})"));

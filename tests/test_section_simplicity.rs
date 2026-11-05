@@ -3,7 +3,7 @@
 //! claim with a discontinuous value). Construction refuses
 //! - a self-crossing polygon loop of a `SectionStack`,
 //! - a self-crossing spline loop of a `SmoothSectionStack`,
-//! - a self-crossing curve row of a `LoftCurves`, and
+//! - a curve loft whose sections cross themselves at a crossing row, and
 //! - a pair of simple curve rows whose blend between them crosses itself.
 //!
 //! The crossings are found here by an independent check (the sampled spline's segments in f64), so
@@ -17,12 +17,8 @@ fn spline(cp: &[Vec2], t: f64) -> (f64, f64) {
     let m = cp.len();
     let i = t.floor() as usize % m;
     let u = t - t.floor();
-    let b = [
-        (1.0 - u).powi(3) / 6.0,
-        (3.0 * u.powi(3) - 6.0 * u * u + 4.0) / 6.0,
-        (-3.0 * u.powi(3) + 3.0 * u * u + 3.0 * u + 1.0) / 6.0,
-        u.powi(3) / 6.0,
-    ];
+    let (v, u3) = (1.0 - u, u * u * u);
+    let b = [v * v * v / 6.0, (3.0 * u3 - 6.0 * u * u + 4.0) / 6.0, (-3.0 * u3 + 3.0 * u * u + 3.0 * u + 1.0) / 6.0, u3 / 6.0];
     let (mut x, mut y) = (0.0, 0.0);
     for (k, w) in b.iter().enumerate() {
         let p = cp[(i + m + k - 1) % m];
