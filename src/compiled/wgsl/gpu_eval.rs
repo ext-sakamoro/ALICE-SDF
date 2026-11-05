@@ -1342,39 +1342,33 @@ impl GpuEvaluator {
     /// This compiles the SDF to a WGSL compute shader and creates
     /// the necessary GPU resources.
     pub fn new(node: &SdfNode) -> Result<Self, GpuError> {
-        // per-node data (lattice control points, height fields, grid warp maps) goes to the node
-        // data buffer on the wgpu engine; the Metal engine binds input / output / count / params
-        // only, so there it stays module-scope constants
-        #[cfg(not(all(target_os = "macos", feature = "msl")))]
-        let shader =
-            WgslShader::transpile_with_node_data(node, super::transpiler::TranspileMode::Hardcoded);
-        #[cfg(all(target_os = "macos", feature = "msl"))]
-        let shader = WgslShader::transpile(node, super::transpiler::TranspileMode::Hardcoded);
+        // per-node data (lattice control points, height fields, grid warp maps, lofts, stacks) goes
+        // to the node data buffer on both engines
+        let shader = WgslShader::try_transpile_with_node_data(node, super::transpiler::TranspileMode::Hardcoded)
+            .map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
         Self::from_shader(&shader)
     }
 
     /// [`GpuEvaluator::new`] with the loft and stack data reads checked: every read outside the
     /// index range the emit proved for it is counted ([`GpuEvaluator::read_hits`]), with the same
-    /// values. For tests and diagnostics; the wgpu engine only
+    /// values. For tests and diagnostics, on either engine
     ///
     /// # Errors
     ///
-    /// As [`GpuEvaluator::new`], a tree whose reads the emit cannot prove in range
-    /// ([`WgslShader::try_transpile_with_node_data_checked`]), and the Metal engine (macOS with the
-    /// `msl` feature), which binds no counter
+    /// As [`GpuEvaluator::new`], and a tree whose reads the emit cannot prove in range
+    /// ([`WgslShader::try_transpile_with_node_data_checked`])
     pub fn new_checked(node: &SdfNode) -> Result<Self, GpuError> {
         let shader = WgslShader::try_transpile_with_node_data_checked(node, super::transpiler::TranspileMode::Hardcoded)
             .map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
+        let text = shader.to_compute_shader();
+        crate::provenance::shader_text_verdict(&text, false)?;
+        note_engine_build();
         #[cfg(all(target_os = "macos", feature = "msl"))]
         {
-            let _ = shader;
-            Err(GpuError::InvalidFormat("checked reads are bound by the wgpu engine only".into()))
+            super::gpu_metal::MetalEngine::from_wgsl_with_data(&text, &shader.node_data, true).map(|m| Self { engine: Engine::Metal(m) })
         }
         #[cfg(not(all(target_os = "macos", feature = "msl")))]
         {
-            let text = shader.to_compute_shader();
-            crate::provenance::shader_text_verdict(&text, false)?;
-            note_engine_build();
             let mut evaluator = WgpuEngine::from_source_checked(wgpu::ShaderSource::Wgsl(text.into()), &shader.node_data, true)
                 .map(|w| Self { engine: Engine::Wgpu(w) })?;
             evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
@@ -1392,8 +1386,8 @@ impl GpuEvaluator {
     pub fn read_hits(&self) -> Result<Option<u32>, GpuError> {
         match &self.engine {
             Engine::Wgpu(w) => w.read_hits(),
-            #[allow(unreachable_patterns, reason = "the Metal engine exists on macOS with msl only")]
-            _ => Ok(None),
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            Engine::Metal(m) => Ok(m.read_hits()),
         }
     }
 
@@ -1408,9 +1402,10 @@ impl GpuEvaluator {
             note_engine_build();
             #[cfg(all(target_os = "macos", feature = "msl"))]
             {
-                return Err(GpuError::InvalidFormat(
-                    "node data buffer (binding 4) is bound by the wgpu engine only; transpile with WgslShader::transpile for the Metal engine".into(),
-                ));
+                let mut evaluator = super::gpu_metal::MetalEngine::from_wgsl_with_data(&text, &shader.node_data, false)
+                    .map(|m| Self { engine: Engine::Metal(m) })?;
+                evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
+                return Ok(evaluator);
             }
             #[cfg(not(all(target_os = "macos", feature = "msl")))]
             {

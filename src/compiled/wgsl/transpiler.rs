@@ -462,11 +462,14 @@ impl WgslShader {
         })
     }
 
-    const fn node_data_decl(&self) -> &'static str {
+    /// The node data buffer's declaration: a storage array of exactly the emitted length (no
+    /// runtime-sized array, so no backend needs its length passed at dispatch, and no constructor,
+    /// so the WGSL array-constructor limit does not apply)
+    fn node_data_decl(&self) -> String {
         if self.node_data.is_empty() {
-            ""
+            String::new()
         } else {
-            "\n@group(0) @binding(4) var<storage, read> alice_node_data: array<f32>;\n"
+            format!("\n@group(0) @binding(4) var<storage, read> alice_node_data: array<f32, {}>;\n", self.node_data.len())
         }
     }
 
