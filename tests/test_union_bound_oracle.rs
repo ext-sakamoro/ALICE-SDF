@@ -19,6 +19,9 @@ use alice_sdf::eval::{eval, eval_union_bounded, eval_union_bounded_stats};
 use alice_sdf::prelude::*;
 use glam::Quat;
 
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
+
 /// A deterministic point generator (xorshift, no dependency)
 struct Rng(u64);
 impl Rng {
@@ -224,7 +227,7 @@ fn the_bounded_shader_gives_the_cpu_value() {
             return;
         }
     };
-    let got = g.eval_batch(&pts).expect("gpu eval");
+    let got = gpu_batches::eval_in_batches(&g, &pts).expect("gpu eval");
     let mut compared = 0;
     for (p, v) in pts.iter().zip(&got) {
         let want = eval(&node, *p);
@@ -278,7 +281,7 @@ fn the_viewer_shader_skips_on_the_gpu_and_keeps_the_plain_bits() {
 
     let count = WgslShader::transpile_union_skip_count(&node, TranspileMode::Hardcoded);
     let gpu = |sh: &WgslShader| match GpuEvaluator::from_shader(sh) {
-        Ok(g) => Some(g.eval_batch(&pts).expect("gpu eval")),
+        Ok(g) => Some(gpu_batches::eval_in_batches(&g, &pts).expect("gpu eval")),
         Err(e) => {
             assert!(
                 std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
@@ -590,7 +593,7 @@ fn a_large_twist_keeps_the_plain_bits_on_the_gpu() {
         }
         pts.extend(hit_points(&tw, c, 2048, &mut rng));
         let run = |sh: &WgslShader| match GpuEvaluator::from_shader(sh) {
-            Ok(g) => Some(g.eval_batch(&pts).expect("gpu eval")),
+            Ok(g) => Some(gpu_batches::eval_in_batches(&g, &pts).expect("gpu eval")),
             Err(e) => {
                 assert!(
                     std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
@@ -832,7 +835,7 @@ fn deep_gpu() {
         .map(|_| Vec3::new(2.0, 0.0, 0.0) + rng.v(-0.2, 0.2))
         .collect();
     let run = |sh: &WgslShader, pts: &[Vec3]| match GpuEvaluator::from_shader(sh) {
-        Ok(g) => Some(g.eval_batch(pts).expect("gpu eval")),
+        Ok(g) => Some(gpu_batches::eval_in_batches(&g, pts).expect("gpu eval")),
         Err(e) => {
             assert!(
                 std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
