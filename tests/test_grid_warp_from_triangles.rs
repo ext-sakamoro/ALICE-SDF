@@ -829,3 +829,99 @@ fn a_bent_rest_sheet_keeps_the_floor_below_the_distance() {
     }
     assert!(checked > 100, "{checked}");
 }
+
+#[test]
+fn an_interior_pull_is_cleared_better_than_a_per_triangle_stretch_bound_allows() {
+    // A flat sheet pulled at an INTERIOR vertex (like a hand grabbing the middle of a cloth):
+    // the triangles around it stretch a lot (σ_T large) and fold on the far side. On a planar
+    // rest sheet a child point whose foot is inside the sheet is offset along the normal, kept
+    // at unit length, so those interior triangles bound their part of the shape by t, not
+    // σ_T·t: the floor must clear more than a floor built from σ_T·t for every triangle (built
+    // here from this file's own distances).
+    let (rest, tris) = sheet(9);
+    let mut posed = rest.clone();
+    let grab = 4 * 9 + 4; // rest (0.5, 0.5)
+    posed[grab] += Vec3::new(0.7, 0.2, 0.25);
+    let (lo, hi) = (Vec3::new(-0.4, -0.4, -0.4), Vec3::new(1.8, 1.4, 0.7));
+    let (cell, shell) = (0.05f32, 0.03f32);
+    let diagonal = cell * 3.0f32.sqrt();
+    let sigma: Vec<f32> = tris
+        .iter()
+        .map(|t| {
+            let r = [
+                rest[t[0] as usize],
+                rest[t[1] as usize],
+                rest[t[2] as usize],
+            ];
+            let q = [
+                posed[t[0] as usize],
+                posed[t[1] as usize],
+                posed[t[2] as usize],
+            ];
+            stretch_bound(&affine_posed_to_rest(q, r).expect("map"))
+        })
+        .collect();
+    let grid = WarpGrid {
+        box_min: lo,
+        box_max: hi,
+        cell,
+        reach: 0.3,
+        shell: Some(shell),
+    };
+    let ours = grid_warp_from_triangles(&rest, &posed, &tris, &grid).expect("builds");
+    let mut per_triangle = grid_warp_from_triangles(
+        &rest,
+        &posed,
+        &tris,
+        &WarpGrid {
+            shell: None,
+            ..grid
+        },
+    )
+    .expect("builds");
+    let [nx, ny, nz] = per_triangle.dims;
+    per_triangle.floor = (0..nx * ny * nz)
+        .map(|i| {
+            let (x, y, z) = (i % nx, (i / nx) % ny, i / (nx * ny));
+            let q = lo + Vec3::new(x as f32, y as f32, z as f32) * cell;
+            tris.iter()
+                .zip(&sigma)
+                .map(|(t, s)| sheet_distance(q, &posed, &[*t]) - s * shell)
+                .fold(f32::INFINITY, f32::min)
+                - diagonal
+        })
+        .collect();
+    let ours = slab().grid_warp(GridWarp::new(ours).expect("valid"));
+    let per_triangle = slab().grid_warp(GridWarp::new(per_triangle).expect("valid"));
+    let (mut ours_far, mut per_triangle_far) = (0, 0);
+    for k in 0..22 {
+        for j in 0..20 {
+            for i in 0..22 {
+                let p = lo
+                    + (hi - lo)
+                        * Vec3::new(
+                            (i as f32 + 0.5) / 22.0,
+                            (j as f32 + 0.5) / 20.0,
+                            (k as f32 + 0.5) / 22.0,
+                        );
+                if sheet_distance(p, &posed, &tris) <= shell + diagonal {
+                    continue;
+                }
+                if eval(&ours, p) < 0.0 {
+                    ours_far += 1;
+                }
+                if eval(&per_triangle, p) < 0.0 {
+                    per_triangle_far += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        per_triangle_far > 0,
+        "the scene leaves nothing for a per-triangle bound to miss"
+    );
+    assert!(
+        ours_far < per_triangle_far,
+        "the floor clears no more than σ_T·t per triangle: {ours_far} vs {per_triangle_far}"
+    );
+}
