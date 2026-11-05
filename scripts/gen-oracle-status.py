@@ -62,6 +62,11 @@ def extract_test_metadata(test_file):
     while i < len(lines):
         line = lines[i]
         stripped = line.strip()
+        m = re.match(r'//\s*KNOWN-DEFECT-ARM:\s*(known defect: .+)$', stripped)
+        if m and tests:
+            # one arm of a test that runs (not an #[ignore]) tolerates a tracked defect: the
+            # marker sits in that test's body, so it belongs to the test last read
+            tests[-1]['arm_defects'].append(m.group(1).strip())
         if stripped.startswith('//') or not stripped:
             i += 1
             continue
@@ -79,6 +84,7 @@ def extract_test_metadata(test_file):
                     'file': Path(test_file).name,
                     'is_ignored': bool(ignores),
                     'ignore_reason': _ignore_reason(ignores[0]) if ignores else '',
+                    'arm_defects': [],
                 })
         pending_attrs = []
         i += 1
@@ -122,6 +128,7 @@ def run_tests_and_categorize():
                 'test_name': test['name'],
                 'file': test['file'],
                 'ignore_reason': test['ignore_reason'],
+                'arm_defects': test['arm_defects'],
             }
 
             if test['is_ignored']:
@@ -153,6 +160,12 @@ def generate_markdown_report(categorized):
     for t in ignored:
         by_class[classify_ignored(t['ignore_reason'])].append(t)
     total = sum(len(v) for v in categorized.values())
+    arms = [
+        (t, d)
+        for v in categorized.values()
+        for t in v
+        for d in t.get('arm_defects', [])
+    ]
 
     report = f"""# ALICE-SDF Oracle Status
 
@@ -166,6 +179,7 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 | 🔴 Red by design | {len(by_class['red'])} |
 | ⏱ Gated (runtime / diagnostic / manual) | {len(by_class['gated'])} |
 | ⚪ Pending (bare `#[ignore]`) | {len(by_class['pending'])} |
+| 🟠 Known defect in one arm (the test runs) | {len(arms)} |
 | **Total** | **{total}** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
@@ -182,6 +196,20 @@ today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected
 """
         for t in sorted(by_class['red'], key=lambda x: x['test_name']):
             report += _line(t)
+        report += "\n"
+
+    if arms:
+        report += f"""## 🟠 Known defect in one arm ({len(arms)})
+
+Tests that run and assert, where one arm (a backend, a platform) tolerates a tracked defect
+within a derived bound instead of asserting the exact result. The marker is a
+`// KNOWN-DEFECT-ARM: known defect: <id>: …` comment in the test's body; the arm returns to the
+exact assert by itself once the defect is gone (see the test's doc).
+
+"""
+        for t, d in sorted(arms, key=lambda x: x[0]['test_name']):
+            short = d[:110] + ('…' if len(d) > 110 else '')
+            report += f"- `{t['test_name']}` ({t['file']}) — {short}\n"
         report += "\n"
 
     if by_class['gated']:

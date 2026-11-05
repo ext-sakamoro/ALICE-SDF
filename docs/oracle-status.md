@@ -6,11 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1060 |
+| 🟢 Not ignored | 1073 |
 | 🔴 Red by design | 1 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **1065** |
+| 🟠 Known defect in one arm (the test runs) | 1 |
+| **Total** | **1078** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -22,6 +23,15 @@ today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected
 
 - `torus_on_a_grid_plane_has_no_crossings` (test_dual_contouring_manifold.rs) — known defect: DC-TORUS-CROSS-001: torus(1.0, 0.5) at resolution 32 over ±1.6 has 1 crossing triangle pair in b…
 
+## 🟠 Known defect in one arm (1)
+
+Tests that run and assert, where one arm (a backend, a platform) tolerates a tracked defect
+within a derived bound instead of asserting the exact result. The marker is a
+`// KNOWN-DEFECT-ARM: known defect: <id>: …` comment in the test's body; the arm returns to the
+exact assert by itself once the defect is gone (see the test's doc).
+
+- `a_large_twist_keeps_the_plain_bits_on_the_gpu` (test_union_bound_oracle.rs) — known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within c…
+
 ## ⏱ Gated (4)
 
 Correct tests that are too slow for every push, or that print a measurement table.
@@ -32,7 +42,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1060)
+## 🟢 Not ignored (1073)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -58,6 +68,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_gpu_law_parity.rs` | 14 |
 | `test_io_format_oracle.rs` | 13 |
 | `test_texture_fit_oracle.rs` | 13 |
+| `test_union_bound_oracle.rs` | 13 |
 | `test_validity_oracle.rs` | 12 |
 | `mesh_bvh_closest_triangle.rs` | 11 |
 | `test_binding_oracle.rs` | 11 |

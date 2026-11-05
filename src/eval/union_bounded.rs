@@ -2,15 +2,15 @@
 //! hold a value below the nearest one found so far
 //!
 //! The operands of the top union chain (nested [`SdfNode::Union`] nodes) are visited nearest
-//! bound first; an operand whose [`crate::bound::lower_bound`] is greater than the minimum so far
+//! bound first; an operand whose [`crate::bound::Bound::lower`] is greater than the minimum so far
 //! is skipped, since its value is at least that bound. The union's law ([`sdf_union`],
 //! alice-det-math's `min`: a total order with −0 < +0 that ignores NaN) is commutative and
 //! associative, and a skipped value is strictly greater than the result, so the bounded value is
 //! bit-equal to [`crate::eval::eval`] of the same node: the SDF value is never approximated
-//! An operand without a bound ([`crate::bound::bounding_sphere`] `None`) is always evaluated
+//! An operand without a bound ([`crate::bound::bound`] `None`) is always evaluated
 
 use super::eval;
-use crate::bound::{bounding_sphere, lower_bound};
+use crate::bound::{bound, BoundTarget};
 use crate::operations::sdf_union;
 use crate::types::SdfNode;
 use glam::Vec3;
@@ -60,8 +60,8 @@ pub fn eval_union_bounded_stats(node: &SdfNode, point: Vec3) -> (f32, UnionBound
         .iter()
         .enumerate()
         .map(|(i, op)| {
-            let lb = bounding_sphere(op).map_or(f32::NEG_INFINITY, |(c, r)| {
-                let lb = lower_bound(c, r, point);
+            let lb = bound(op, BoundTarget::Cpu).map_or(f32::NEG_INFINITY, |b| {
+                let lb = b.lower(point);
                 // a NaN bound decides nothing: evaluate
                 if lb.is_nan() {
                     f32::NEG_INFINITY
