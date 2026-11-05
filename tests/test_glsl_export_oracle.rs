@@ -39,6 +39,11 @@
 use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode, RenderConfig};
 use alice_sdf::compiled::GpuEvaluator;
 use alice_sdf::prelude::*;
+#[cfg(feature = "gpu")]
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
+#[cfg(feature = "gpu")]
+use gpu_batches::eval_in_batches;
 
 const DIST_TOL: f64 = 1e-5;
 
@@ -226,6 +231,51 @@ fn compute_shader_runs_on_the_gpu_and_matches_the_closed_form() {
             &gpu.eval_batch(&pts).unwrap(),
         );
     }
+}
+
+/// The quadratic Bezier helper from near-collinear to strongly bent control points against the CPU law.
+/// The corpus leaves Bezier out (it has no bytecode law), and the CPU law's own truth is
+/// tests/test_bezier_near_straight_oracle.rs. Without the helper's Newton refinement this is off by ~4e-2.
+#[test]
+fn compute_shader_bezier_matches_the_cpu_law_from_near_straight_to_bent() {
+    let mut compared = 0usize;
+    let mut worst = 0.0f32;
+    for h in [1e-6f32, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1.0] {
+        for (a, b, c) in [
+            (Vec3::ZERO, Vec3::new(0.5, h, 0.0), Vec3::X),
+            (Vec3::ZERO, Vec3::new(0.3, h, 0.0), Vec3::X),
+            (
+                Vec3::new(3.1, 2.2, 0.4),
+                Vec3::new(3.15, 2.2 + 0.5 * h, 0.4),
+                Vec3::new(3.2, 2.2, 0.4),
+            ),
+        ] {
+            let node = SdfNode::bezier(a, b, c, 0.0);
+            let src =
+                GlslShader::transpile(&node, GlslTranspileMode::Hardcoded).to_compute_shader();
+            let Some(gpu) = gpu_or_skip("bezier", &vulkanize(&src)) else {
+                return;
+            };
+            let chord = c - a;
+            let normal = Vec3::new(-chord.y, chord.x, 0.0);
+            let mut pts = Vec::new();
+            for k in 0..=40 {
+                let t = k as f32 / 40.0;
+                let q = a * ((1.0 - t) * (1.0 - t)) + b * (2.0 * (1.0 - t) * t) + c * (t * t);
+                for o in [-1e-2f32, -1e-3, -1e-4, 0.0, 1e-4, 1e-3, 1e-2] {
+                    pts.push(q + normal * o);
+                    pts.push(q + Vec3::Z * (o * chord.length()));
+                }
+            }
+            for (p, g) in pts.iter().zip(eval_in_batches(&gpu, &pts).unwrap()) {
+                worst = worst.max((g - eval(&node, *p)).abs());
+                compared += 1;
+            }
+        }
+    }
+    assert!(compared > 0, "compared 0 points");
+    eprintln!("GLSL bezier: {compared} points, max |gpu - cpu| {worst:.3e}");
+    assert!(worst <= 2e-5, "GLSL/CPU drift {worst:.3e}");
 }
 
 #[test]
