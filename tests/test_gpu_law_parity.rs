@@ -426,15 +426,25 @@ void main() {{
             };
             let got = gpu.eval_batch(&pts).expect("gpu eval");
             let mut worst = 0.0f32;
+            let mut max_abs = 0.0f32;
             for (p, g) in pts.iter().zip(&got) {
                 let c = eval(&node, *p);
                 let tol = 1e-4 * c.abs().max(1.0);
                 let diff = (g - c).abs();
+                max_abs = max_abs.max(diff);
                 if diff > tol && diff > worst {
                     worst = diff;
                 }
             }
             checked += 1;
+            // the loft laws are long programs: their compared count and largest difference go to
+            // the log, so a run shows they were measured and by how much
+            if name.starts_with("loft") {
+                eprintln!(
+                    "GLSL parity {name}: {} points, max |gpu - cpu| {max_abs:.3e}",
+                    pts.len()
+                );
+            }
             if worst > 0.0 {
                 failures.push(format!("{name}: GLSL/CPU drift {worst:.3e}"));
             }
@@ -510,15 +520,25 @@ fn every_corpus_node_matches_cpu_through_wgsl() {
         };
         let got = gpu.eval_batch(&pts).expect("gpu eval");
         let mut worst = 0.0f32;
+        let mut max_abs = 0.0f32;
         for (p, g) in pts.iter().zip(&got) {
             let c = eval(&node, *p);
             let tol = 1e-4 * c.abs().max(1.0);
             let diff = (g - c).abs();
+            max_abs = max_abs.max(diff);
             if diff > tol && diff > worst {
                 worst = diff;
             }
         }
         checked += 1;
+        // the loft laws are long programs: their compared count and largest difference go to
+        // the log, so a run shows they were measured and by how much
+        if name.starts_with("loft") {
+            eprintln!(
+                "WGSL parity {name}: {} points, max |gpu - cpu| {max_abs:.3e}",
+                pts.len()
+            );
+        }
         if worst > 0.0 {
             failures.push(format!("{name}: WGSL/CPU drift {worst:.3e}"));
         }

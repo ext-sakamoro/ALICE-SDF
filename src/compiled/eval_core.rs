@@ -580,6 +580,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
             OpCode::Rect2D => prim!(inst, rect_2d),
             OpCode::Segment2D => prim!(inst, segment_2d),
             OpCode::Polygon2D => prim!(inst, polygon_2d),
+            OpCode::Loft => prim!(inst, loft),
             OpCode::RoundedRect2D => prim!(inst, rounded_rect_2d),
             OpCode::Annular2D => prim!(inst, annular_2d),
 

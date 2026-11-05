@@ -18,6 +18,25 @@ impl SdfNode {
         Self::Sphere { radius }
     }
 
+    /// A stack of planar closed-loop sections along local Y (levels strictly increasing, at least 2;
+    /// per level one or more closed loops in the (x, z) plane of at least 3 vertices). Err on
+    /// degenerate input
+    pub fn section_stack(levels: Vec<f32>, loops: Vec<Vec<Vec<Vec2>>>) -> Result<Self, String> {
+        crate::primitives::SectionStack::new(levels, loops).map(Self::SectionStack)
+    }
+    /// Closed spline sections stacked along local Y (levels strictly increasing, at least 4; per level
+    /// one or more closed uniform cubic B-splines in (x, z), at least 4 control points each); `r0` the
+    /// near-field radius and `eps` the bound's slope limit. Err on degenerate input
+    pub fn smooth_section_stack(
+        levels: Vec<f32>,
+        loops: Vec<Vec<Vec<Vec2>>>,
+        r0: f32,
+        eps: f32,
+    ) -> Result<Self, String> {
+        crate::primitives::SmoothSectionStack::new(levels, loops, r0, eps)
+            .map(Self::SmoothSectionStack)
+    }
+
     /// Create an axis-aligned box with the given **full** dimensions
     /// (`width` × `height` × `depth`; the node stores half of each).
     ///
@@ -334,6 +353,120 @@ impl SdfNode {
     #[inline]
     pub const fn gyroid(scale: f32, thickness: f32) -> Self {
         Self::Gyroid { scale, thickness }
+    }
+
+    /// Polar sections swept along a spline axis, both ends flat (see [`crate::primitives::loft`]).
+    ///
+    /// # Errors
+    /// See [`SdfNode::loft_capped`]
+    pub fn loft(
+        axis: Vec<Vec3>,
+        up: Vec3,
+        harmonics: u32,
+        rows: Vec<Vec<f32>>,
+    ) -> Result<Self, crate::primitives::loft::LoftError> {
+        Self::loft_capped(axis, up, harmonics, rows, [0.0, 0.0])
+    }
+
+    /// Polar sections swept along a spline axis, each end flat (`0`) or closed by a dome of that
+    /// height (see [`crate::primitives::loft`]).
+    ///
+    /// # Errors
+    /// Fewer than 2 axis points or 2 rows, a row that is not `2K + 1` long, more than
+    /// [`crate::primitives::loft::MAX_HARMONICS`] harmonics, a non-finite value, a negative cap
+    /// height, `up` parallel to the axis, a section whose radius reaches 0, or sections wider than
+    /// the axis's radius of curvature
+    pub fn loft_capped(
+        axis: Vec<Vec3>,
+        up: Vec3,
+        harmonics: u32,
+        rows: Vec<Vec<f32>>,
+        caps: [f32; 2],
+    ) -> Result<Self, crate::primitives::loft::LoftError> {
+        let (rows, bounds) = crate::primitives::loft::validate(&axis, up, harmonics, &rows, caps)?;
+        Ok(Self::Loft {
+            axis,
+            up,
+            harmonics,
+            rows,
+            caps,
+            bounds,
+        })
+    }
+
+    /// Curve sections swept along a spline axis, both ends flat: each row is the control points of
+    /// a closed counter-clockwise periodic uniform cubic B-spline in the frame's plane (see
+    /// [`crate::primitives::loft`]).
+    ///
+    /// # Errors
+    /// Fewer than 2 axis points or 2 rows, rows of different lengths or fewer than 4 (more than
+    /// [`crate::primitives::loft::MAX_CONTROL_POINTS`]) control points, a clockwise section, a
+    /// non-finite value, `up` parallel to the axis, or sections wider than the axis's radius of
+    /// curvature
+    pub fn loft_curves(
+        axis: Vec<Vec3>,
+        up: Vec3,
+        rows: Vec<Vec<glam::Vec2>>,
+    ) -> Result<Self, crate::primitives::loft::LoftError> {
+        let m = rows.first().map_or(0, Vec::len);
+        Self::loft_curves_knots(axis, up, (0..=m).map(|i| i as f32).collect(), rows)
+    }
+
+    /// As [`SdfNode::loft_curves`], on a non-uniform periodic knot vector `K0 … KM` (strictly rising,
+    /// `M + 1` values, shared by every row): span `j` runs from `Kj` to `K(j+1)`, the knots repeat
+    /// with period `KM − K0`.
+    ///
+    /// # Errors
+    /// As [`SdfNode::loft_curves`], and knots that are not `M + 1` finite strictly rising values
+    pub fn loft_curves_knots(
+        axis: Vec<Vec3>,
+        up: Vec3,
+        knots: Vec<f32>,
+        rows: Vec<Vec<glam::Vec2>>,
+    ) -> Result<Self, crate::primitives::loft::LoftError> {
+        Self::loft_curves_knots_capped(axis, up, knots, rows, [[0.0; 3]; 2])
+    }
+
+    /// As [`SdfNode::loft_curves`], each end closed by a cap `[H, o_u, o_v]` (height H; 0 = flat): the end
+    /// section eroded toward its deepest point by `w (1 − √(1 − (h/H)²))` and sheared by `o h/H` (the
+    /// apex offset in the end frame), see [`crate::primitives::loft`].
+    ///
+    /// # Errors
+    /// As [`SdfNode::loft_curves`], a negative cap height, a non-finite offset, or a capped end section
+    /// with no interior
+    pub fn loft_curves_capped(
+        axis: Vec<Vec3>,
+        up: Vec3,
+        rows: Vec<Vec<glam::Vec2>>,
+        caps: [[f32; 3]; 2],
+    ) -> Result<Self, crate::primitives::loft::LoftError> {
+        let m = rows.first().map_or(0, Vec::len);
+        Self::loft_curves_knots_capped(axis, up, (0..=m).map(|i| i as f32).collect(), rows, caps)
+    }
+
+    /// As [`SdfNode::loft_curves_knots`] with caps (see [`SdfNode::loft_curves_capped`]).
+    ///
+    /// # Errors
+    /// As [`SdfNode::loft_curves_knots`] and [`SdfNode::loft_curves_capped`]
+    pub fn loft_curves_knots_capped(
+        axis: Vec<Vec3>,
+        up: Vec3,
+        knots: Vec<f32>,
+        rows: Vec<Vec<glam::Vec2>>,
+        caps: [[f32; 3]; 2],
+    ) -> Result<Self, crate::primitives::loft::LoftError> {
+        let section_points = rows.first().map_or(0, Vec::len) as u32;
+        let (points, bounds) =
+            crate::primitives::loft::validate_curves(&axis, up, &knots, &rows, caps)?;
+        Ok(Self::LoftCurves {
+            axis,
+            up,
+            section_points,
+            points,
+            knots,
+            caps,
+            bounds,
+        })
     }
 
     /// Create the ball of a weighted norm.
@@ -750,6 +883,55 @@ impl SdfNode {
             vertices,
             half_height,
         }
+    }
+
+    /// A closed curve through `points` (a uniform closed Catmull-Rom spline) sampled to a polygon of
+    /// `per_span` vertices per span, extruded along Z. Every `per_span`-th vertex is a control point,
+    /// exactly. The distance is the polygon's (exact for the polygon, any concavity), so it reads the
+    /// spline to within the sampling chord error.
+    ///
+    /// # Errors
+    /// Fewer than 3 points, `per_span` of 0, or a non-finite point
+    pub fn polygon_2d_closed_spline(
+        points: &[Vec2],
+        per_span: u32,
+        half_height: f32,
+    ) -> Result<Self, String> {
+        if points.len() < 3 {
+            return Err(format!(
+                "a closed spline needs 3 points or more, it has {}",
+                points.len()
+            ));
+        }
+        if per_span == 0 {
+            return Err("per_span must be 1 or more".into());
+        }
+        if !points.iter().all(|p| p.is_finite()) {
+            return Err("every point must be finite".into());
+        }
+        let n = points.len();
+        let mut vertices = Vec::with_capacity(n * per_span as usize);
+        for i in 0..n {
+            let a = points[(i + n - 1) % n];
+            let b = points[i];
+            let c = points[(i + 1) % n];
+            let d = points[(i + 2) % n];
+            for k in 0..per_span {
+                let t = k as f32 / per_span as f32;
+                let t2 = t * t;
+                let t3 = t2 * t;
+                vertices.push(
+                    0.5 * (2.0 * b
+                        + (c - a) * t
+                        + (2.0 * a - 5.0 * b + 4.0 * c - d) * t2
+                        + (-a + 3.0 * b - 3.0 * c + d) * t3),
+                );
+            }
+        }
+        Ok(Self::Polygon2D {
+            vertices,
+            half_height,
+        })
     }
 
     /// Create a 2D rounded rectangle extruded along Z

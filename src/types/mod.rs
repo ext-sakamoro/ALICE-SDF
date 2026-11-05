@@ -37,7 +37,7 @@ impl SdfCategory {
     /// `tests/test_node_backend_matrix.rs::category_counts_match_one_node_per_variant`.
     pub const fn count(self) -> u32 {
         match self {
-            Self::Primitive => 74,
+            Self::Primitive => 78,
             Self::Operation => 25,
             Self::Transform => 8,
             Self::Modifier => 25,
@@ -327,6 +327,49 @@ pub enum SdfNode {
         scale: f32,
         /// Shell half-thickness
         thickness: f32,
+    },
+
+    /// Polar sections swept along a spline axis, each end flat or closed by a dome (see
+    /// [`crate::primitives::loft`] for the shape, the field and its bound). Built by
+    /// [`SdfNode::loft`] / [`SdfNode::loft_capped`], which check the input and compute `bounds`;
+    /// loading recomputes the bounds and refuses stored ones that differ.
+    #[serde(deserialize_with = "crate::primitives::loft::deserialize_polar")]
+    Loft {
+        /// Axis points (a uniform Catmull-Rom curve passes through them)
+        axis: Vec<Vec3>,
+        /// The direction the section frame's first axis leans toward
+        up: Vec3,
+        /// Harmonics per section (K)
+        harmonics: u32,
+        /// Coefficient rows, `2K + 1` each (`a0, a1, b1, …, aK, bK`), row after row
+        rows: Vec<f32>,
+        /// Dome heights at the start and the end (0 = flat)
+        caps: [f32; 2],
+        /// The bounds the field is divided by
+        bounds: crate::primitives::loft::LoftBounds,
+    },
+
+    /// Curve sections swept along a spline axis: each section a closed counter-clockwise periodic
+    /// cubic B-spline of `section_points` control points in the frame's plane, on one periodic knot
+    /// vector shared by every row (see
+    /// [`crate::primitives::loft`]). Built by [`SdfNode::loft_curves`], which checks the input and
+    /// computes `bounds`; loading recomputes the bounds and refuses stored ones that differ.
+    #[serde(deserialize_with = "crate::primitives::loft::deserialize_curves")]
+    LoftCurves {
+        /// Axis points (a uniform Catmull-Rom curve passes through them)
+        axis: Vec<Vec3>,
+        /// The direction the section frame's first axis leans toward
+        up: Vec3,
+        /// Control points per section (M)
+        section_points: u32,
+        /// Control rows, `2M` each (`u0, v0, u1, v1, …`), row after row
+        points: Vec<f32>,
+        /// The section knots `K0 … KM` shared by every row (periodic, rising)
+        knots: Vec<f32>,
+        /// Caps at the start and the end: `[H, o_u, o_v]` (height, apex offset in the end frame); H = 0 is flat
+        caps: [[f32; 3]; 2],
+        /// The bounds the field is divided by
+        bounds: crate::primitives::loft::LoftBounds,
     },
 
     /// Ball of a weighted norm — `w₁‖p‖₁ + w₂‖p‖₂ + w∞‖p‖∞ − radius`.
@@ -728,9 +771,19 @@ pub enum SdfNode {
         /// Half-depth of extrusion along Z
         half_height: f32,
     },
+    /// A stack of planar closed-loop sections along local Y, any topology per level (see
+    /// [`crate::primitives::SectionStack`]); the field interpolates the levels' 2D distances and is
+    /// divided by its Lipschitz bound
+    SectionStack(crate::primitives::SectionStack),
+    /// A closed 2D polygon extruded along Z: any vertex count, any concavity (a simple polygon); the
+    /// exact distance to its edges with the even-odd sign
+    /// Closed spline sections stacked along local Y, any number of loops per level, the levels' 2D
+    /// distances interpolated C1 along Y (see [`crate::primitives::SmoothSectionStack`]); divided by its
+    /// local Lipschitz bound, so 1-Lipschitz
+    SmoothSectionStack(crate::primitives::SmoothSectionStack),
     /// 2D Polygon (convex, up to 8 vertices) extruded along Z
     Polygon2D {
-        /// Vertices (up to 8)
+        /// Vertices, in order around the outline (either winding)
         vertices: Vec<Vec2>,
         /// Half-depth of extrusion along Z
         half_height: f32,
@@ -1411,9 +1464,13 @@ impl SdfNode {
             | Self::Rect2D { .. }
             | Self::Segment2D { .. }
             | Self::Polygon2D { .. }
+            | Self::Loft { .. }
+            | Self::LoftCurves { .. }
             | Self::RoundedRect2D { .. }
             | Self::Annular2D { .. }
-            | Self::Terrain { .. } => SdfCategory::Primitive,
+            | Self::Terrain { .. }
+            | Self::SectionStack(_)
+            | Self::SmoothSectionStack(_) => SdfCategory::Primitive,
 
             // === Operations ===
             Self::Union { .. }

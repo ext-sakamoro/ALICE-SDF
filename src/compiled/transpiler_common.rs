@@ -43,6 +43,9 @@ pub const SHADER_UNSUPPORTED: [&str; 4] = [
     "IFS",
 ];
 
+/// Polygons with more vertices than this are emitted as a vertex array and a loop function
+pub const POLYGON_2D_UNROLL_MAX: usize = 8;
+
 const fn unsupported_name(node: &SdfNode) -> Option<&'static str> {
     // Every node kind is transpiled (IFS / SdfSkinning / ProjectiveTransform
     // with literal matrices, LatticeDeform / HeightmapDisplacement as
@@ -224,7 +227,405 @@ pub trait ShaderLang: private::Sealed + 'static {
     /// A module-scope `float name(int i)` returning `arr[i]`: one function frame holds the array
     /// when a target lowers a dynamically indexed constant array to a local copy per access
     fn global_float_at_fn(name: &str, arr: &str) -> String;
+    /// A module-scope `float name(vec2 q)` function: the signed distance to the closed polygon whose
+    /// `n` vertices are the pairs of the module-scope array `arr` (the loop of `sdf_polygon_2d_xy`:
+    /// the same edge order, clamp and even-odd sign rule)
+    fn global_polygon_2d_fn(name: &str, arr: &str, n: usize) -> String;
+    /// The module-scope data and functions of a [`crate::primitives::SectionStack`]: `name(p)` is
+    /// its field (the law of `SectionStack::eval`: per level the even-odd signed distance over all
+    /// its loops, linear in y between levels, the end caps like an extrusion, divided by the bound)
+    fn global_section_stack(name: &str, st: &SectionStackData) -> String;
 }
+
+/// A [`crate::primitives::SectionStack`] flattened for a shader: level heights, every loop's
+/// vertices as (x, z) pairs, per level the range of its loops, per loop the range of its vertices
+pub struct SectionStackData {
+    /// Level heights
+    pub levels: Vec<f32>,
+    /// All vertices, (x, z) pairs, loop after loop
+    pub verts: Vec<f32>,
+    /// Level k's loops are `loop_start[k]..loop_start[k + 1]`
+    pub loop_start: Vec<i32>,
+    /// Loop l's vertices are `vert_start[l]..vert_start[l + 1]`
+    pub vert_start: Vec<i32>,
+    /// The bound the field is divided by
+    pub lipschitz: f32,
+    /// The most loops on one level and the most vertices in one loop: the emitted loops' constant
+    /// trip counts (a loop reads its count from the data and stops at these, so bad data cannot run
+    /// it past them)
+    pub max_loops: usize,
+    /// See [`SectionStackData::max_loops`]
+    pub max_verts: usize,
+}
+
+impl SectionStackData {
+    /// Flatten a stack
+    #[must_use]
+    pub fn new(st: &crate::primitives::SectionStack) -> Self {
+        let mut verts = Vec::new();
+        let mut loop_start = vec![0i32];
+        let mut vert_start = vec![0i32];
+        for level in &st.loops {
+            for lp in level {
+                for q in lp {
+                    verts.push(q.x);
+                    verts.push(q.y);
+                }
+                vert_start.push((verts.len() / 2) as i32);
+            }
+            loop_start.push((vert_start.len() - 1) as i32);
+        }
+        Self {
+            levels: st.levels.clone(),
+            verts,
+            loop_start,
+            vert_start,
+            lipschitz: st.lipschitz,
+            max_loops: st.loops.iter().map(Vec::len).max().unwrap_or(0).max(1),
+            max_verts: st
+                .loops
+                .iter()
+                .flatten()
+                .map(Vec::len)
+                .max()
+                .unwrap_or(0)
+                .max(1),
+        }
+    }
+}
+
+fn lits(v: &[f32]) -> String {
+    v.iter().map(|x| lit(*x)).collect::<Vec<_>>().join(", ")
+}
+fn ints(v: &[i32]) -> String {
+    v.iter()
+        .map(|x| x.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The section stack in a C-like shading language (GLSL / HLSL): `v2` is the vec2 type,
+/// `farr(name, values)` / `iarr(name, values)` declare constant arrays
+pub(crate) fn c_like_section_stack(
+    name: &str,
+    st: &SectionStackData,
+    v2: &str,
+    farr: &dyn Fn(&str, usize, &str) -> String,
+    iarr: &dyn Fn(&str, usize, &str) -> String,
+) -> String {
+    let n = st.levels.len();
+    let mut s = String::new();
+    s.push_str(&farr(&format!("{name}_y"), n, &lits(&st.levels)));
+    s.push_str(&farr(
+        &format!("{name}_v"),
+        st.verts.len(),
+        &lits(&st.verts),
+    ));
+    s.push_str(&iarr(
+        &format!("{name}_ls"),
+        st.loop_start.len(),
+        &ints(&st.loop_start),
+    ));
+    s.push_str(&iarr(
+        &format!("{name}_vs"),
+        st.vert_start.len(),
+        &ints(&st.vert_start),
+    ));
+    s.push_str(&format!(
+        "float {name}_d2({v2} q, int k) {{
+    float d = 1e30; // above any squared distance; not the f32 maximum, whose decimal some WGSL compilers refuse
+    float s = 1.0;
+    for (int lc = 0; lc < {lmax}; lc++) {{
+        int l = {name}_ls[k @ 0..{lsk}] + lc;
+        if (l >= {name}_ls[k + 1 @ 1..{lsk1}]) {{ break; }}
+        int a = {name}_vs[l @ 0..{vsl}];
+        int m = {name}_vs[l + 1 @ 1..{vsl1}] - a;
+        int j = m - 1;
+        for (int i = 0; i < {vmax}; i++) {{
+            if (i >= m) {{ break; }}
+            {v2} vi = {v2}({name}_v[2 * (a + i) @ 0..{v0}], {name}_v[2 * (a + i) + 1 @ 1..{v1}]);
+            {v2} vj = {v2}({name}_v[2 * (a + j) @ 0..{v0}], {name}_v[2 * (a + j) + 1 @ 1..{v1}]);
+            {v2} e = vj - vi;
+            {v2} w = q - vi;
+            float ee = dot(e, e);
+            {v2} b = w;
+            if (ee > 0.0) {{ b = w - e * clamp(dot(w, e) / ee, 0.0, 1.0); }}
+            d = min(d, dot(b, b));
+            bool c1 = q.y >= vi.y;
+            bool c2 = q.y < vj.y;
+            bool c3 = e.x * w.y > e.y * w.x;
+            if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {{ s = -s; }}
+            j = i;
+        }}
+    }}
+    return s * sqrt(d);
+}}
+float {name}(vec3_t p) {{
+    {v2} q = {v2}(p.x, p.z);
+    float y0 = {name}_y[0 @ 0..0];
+    float yn = {name}_y[{last} @ {last}..{last}];
+    float d;
+    float h;
+    if (p.y < y0) {{
+        d = {name}_d2(q, 0);
+        h = y0 - p.y;
+    }} else if (p.y > yn) {{
+        d = {name}_d2(q, {last});
+        h = p.y - yn;
+    }} else {{
+        int c = 0;
+        for (int k = 0; k < {n}; k++) {{ if ({name}_y[k @ 0..{last}] <= p.y) {{ c = k + 1; }} }}
+        int i = (c < 1 ? 1 : (c > {last} ? {last} : c)) - 1;
+        float t = (p.y - {name}_y[i @ 0..{lastm1}]) / ({name}_y[i + 1 @ 1..{last}] - {name}_y[i @ 0..{lastm1}]);
+        d = (1.0 - t) * {name}_d2(q, i) + t * {name}_d2(q, i + 1);
+        h = max(y0 - p.y, p.y - yn);
+    }}
+    float raw = min(max(d, h), 0.0) + length({v2}(max(d, 0.0), max(h, 0.0)));
+    return raw / {lip};
+}}
+",
+        last = n - 1,
+        lip = lit(st.lipschitz),
+        lmax = st.max_loops,
+        vmax = st.max_verts,
+        // the reads' index ranges: level k < n, loop l < loops, vertex a + i < vertices
+        lsk = n - 1,
+        lsk1 = n,
+        vsl = st.vert_start.len() - 2,
+        vsl1 = st.vert_start.len() - 1,
+        v0 = st.verts.len() - 2,
+        v1 = st.verts.len() - 1,
+        lastm1 = n - 2,
+    ));
+    s
+}
+
+/// A static lower bound of a subtree's field: for every point `p` with
+/// `scale * dist(p, box) - margin > 0`, the subtree's field at `p` is at least that value.
+/// `dist(p, box)` is the Euclidean distance to the axis-aligned box `lo..hi` (0 inside).
+///
+/// Proofs per node kind (`lower_bound` returns `None` for every other kind, which disables the skip
+/// over that operand):
+/// - `Polygon2D`: the exact signed distance of the extruded polygon; the prism lies in its box, so
+///   outside the box the distance to the prism is at least the distance to the box (scale 1)
+/// - `SectionStack`: outside the loops' (x, z) box every level's 2D distance is at least the 2D
+///   distance to that box, so is their interpolation; with the cap height `h` the unscaled field
+///   `max(d, h) ∧ 0 + |(d⁺, h⁺)|` is at least the 3D distance to the box; the field divides it by
+///   its Lipschitz bound `L`, hence scale `1 / L`
+/// - `Translate`: the field is the child's at `p - t`: the box moves by `t`
+/// - `Rotate`: the field is the child's at `R⁻¹ p`, and `dist(R⁻¹ p, B) = dist(p, R B) ≥
+///   dist(p, aabb(R B))`: the box of the rotated corners
+/// - `Union`: `min(a, b) ≥ min(sa·da − ma, sb·db − mb) ≥ min(sa, sb)·dist(p, hull) − max(ma, mb)`
+/// - `SmoothUnion { k }`: `smin(a, b) ≥ min(a, b) − k/4` (`h ≤ 1`): the union's bound, margin `+ k/4`
+/// - `Intersection`: `max(a, b) ≥ a` and `≥ b`: either child's bound (the smaller box)
+/// - `Subtraction`: `max(a, −b) ≥ a`: the bound of `a`
+/// - `WithMaterial`: the child's field
+/// - `Loft` / `LoftCurves`: `field ≥ scale · dist(p, box) − margin` over the box of the axis's
+///   Bézier control points, with the factors of [`crate::primitives::loft::lower_bound_factors`]
+///   (the near field over `L_g`, the domes, the far bound's join; derived there)
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LowerBound {
+    /// Box minimum corner
+    pub lo: [f32; 3],
+    /// Box maximum corner
+    pub hi: [f32; 3],
+    /// Factor on the box distance (≤ 1)
+    pub scale: f32,
+    /// Subtracted after scaling (≥ 0)
+    pub margin: f32,
+}
+
+impl LowerBound {
+    fn volume(&self) -> f32 {
+        (self.hi[0] - self.lo[0]) * (self.hi[1] - self.lo[1]) * (self.hi[2] - self.lo[2])
+    }
+    fn from_points(pts: impl Iterator<Item = glam::Vec3>, scale: f32, margin: f32) -> Option<Self> {
+        let mut lo = [f32::INFINITY; 3];
+        let mut hi = [f32::NEG_INFINITY; 3];
+        for q in pts {
+            for (k, c) in [q.x, q.y, q.z].into_iter().enumerate() {
+                lo[k] = lo[k].min(c);
+                hi[k] = hi[k].max(c);
+            }
+        }
+        (lo.iter().chain(hi.iter()).all(|c| c.is_finite()) && scale.is_finite() && scale > 0.0)
+            .then_some(Self {
+                lo,
+                hi,
+                scale,
+                margin,
+            })
+    }
+    fn corners(&self) -> impl Iterator<Item = glam::Vec3> + '_ {
+        (0..8).map(move |i| {
+            glam::Vec3::new(
+                if i & 1 == 0 { self.lo[0] } else { self.hi[0] },
+                if i & 2 == 0 { self.lo[1] } else { self.hi[1] },
+                if i & 4 == 0 { self.lo[2] } else { self.hi[2] },
+            )
+        })
+    }
+    fn hull(a: Self, b: Self, extra_margin: f32) -> Self {
+        Self {
+            lo: [
+                a.lo[0].min(b.lo[0]),
+                a.lo[1].min(b.lo[1]),
+                a.lo[2].min(b.lo[2]),
+            ],
+            hi: [
+                a.hi[0].max(b.hi[0]),
+                a.hi[1].max(b.hi[1]),
+                a.hi[2].max(b.hi[2]),
+            ],
+            scale: a.scale.min(b.scale),
+            margin: a.margin.max(b.margin) + extra_margin,
+        }
+    }
+}
+
+/// The Bézier control points of a loft axis's uniform Catmull-Rom segments (the ends' phantom
+/// points reflected): the segment between `B` and `C` (neighbours `A`, `D`) is
+/// `[B, B + (C − A)/6, C − (D − B)/6, C]` and lies in their convex hull, so the box of these points
+/// holds the axis curve
+fn loft_axis_control_points(axis: &[glam::Vec3]) -> impl Iterator<Item = glam::Vec3> + '_ {
+    let n = axis.len() as isize;
+    let pt = move |i: isize| {
+        if i < 0 {
+            2.0 * axis[0] - axis[1]
+        } else if i >= n {
+            2.0 * axis[(n - 1) as usize] - axis[(n - 2) as usize]
+        } else {
+            axis[i as usize]
+        }
+    };
+    (0..n - 1).flat_map(move |i| {
+        let (a, b, c, d) = (pt(i - 1), pt(i), pt(i + 1), pt(i + 2));
+        [b, b + (c - a) / 6.0, c - (d - b) / 6.0, c]
+    })
+}
+
+/// The static lower bound of `node`'s field, or `None` where no proof covers the node kind (see
+/// [`LowerBound`])
+#[must_use]
+pub fn lower_bound(node: &SdfNode) -> Option<LowerBound> {
+    use glam::Vec3;
+    match node {
+        SdfNode::Polygon2D {
+            vertices,
+            half_height,
+        } if vertices.len() >= 3 => LowerBound::from_points(
+            vertices.iter().flat_map(|v| {
+                [
+                    Vec3::new(v.x, v.y, -half_height.abs()),
+                    Vec3::new(v.x, v.y, half_height.abs()),
+                ]
+            }),
+            1.0,
+            0.0,
+        ),
+        SdfNode::SectionStack(st) => {
+            let (y0, yn) = (*st.levels.first()?, *st.levels.last()?);
+            LowerBound::from_points(
+                st.loops
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .flat_map(|q| [Vec3::new(q.x, y0, q.y), Vec3::new(q.x, yn, q.y)]),
+                1.0 / st.lipschitz,
+                0.0,
+            )
+        }
+        SdfNode::Translate { child, offset } => {
+            let b = lower_bound(child)?;
+            LowerBound::from_points(b.corners().map(|c| c + *offset), b.scale, b.margin)
+        }
+        SdfNode::Rotate { child, rotation } => {
+            let b = lower_bound(child)?;
+            LowerBound::from_points(b.corners().map(|c| *rotation * c), b.scale, b.margin)
+        }
+        SdfNode::WithMaterial { child, .. } => lower_bound(child),
+        SdfNode::Loft {
+            axis,
+            harmonics,
+            rows,
+            caps,
+            bounds,
+            ..
+        } if axis.len() >= 2 => {
+            let (scale, margin) = crate::primitives::loft::lower_bound_factors(
+                crate::primitives::loft::LoftSection::Polar(*harmonics),
+                rows,
+                *caps,
+                bounds,
+            )?;
+            LowerBound::from_points(loft_axis_control_points(axis), scale, margin)
+        }
+        SdfNode::LoftCurves {
+            axis,
+            section_points,
+            points,
+            caps,
+            bounds,
+            ..
+        } if axis.len() >= 2 => {
+            let (scale, margin) = crate::primitives::loft::lower_bound_factors(
+                crate::primitives::loft::LoftSection::Curve(*section_points),
+                points,
+                [caps[0][0], caps[1][0]],
+                bounds,
+            )?;
+            LowerBound::from_points(loft_axis_control_points(axis), scale, margin)
+        }
+        SdfNode::Union { a, b } => Some(LowerBound::hull(lower_bound(a)?, lower_bound(b)?, 0.0)),
+        SdfNode::SmoothUnion { a, b, k } if *k >= 0.0 && k.is_finite() => {
+            Some(LowerBound::hull(lower_bound(a)?, lower_bound(b)?, k * 0.25))
+        }
+        SdfNode::Intersection { a, b } => match (lower_bound(a), lower_bound(b)) {
+            (Some(x), Some(y)) => Some(if x.volume() <= y.volume() { x } else { y }),
+            (x, y) => x.or(y),
+        },
+        SdfNode::Subtraction { a, .. } => lower_bound(a),
+        _ => None,
+    }
+}
+
+/// Inflation of every skip box (m), absorbing the rounding of the shader's own evaluation of the
+/// operand and of the box distance, so the skip never trusts a bound the rounded field undercuts
+pub const BOUND_SKIP_EPS: f32 = 1e-4;
+
+/// Operands smaller than this many nodes are evaluated without a skip test (the test would cost
+/// about as much as the operand)
+pub const BOUND_SKIP_MIN_NODES: usize = 8;
+
+fn subtree_size(node: &SdfNode) -> usize {
+    fn walk(n: &SdfNode, acc: &mut usize) {
+        *acc += 1;
+        match n {
+            SdfNode::Union { a, b }
+            | SdfNode::Intersection { a, b }
+            | SdfNode::Subtraction { a, b }
+            | SdfNode::SmoothUnion { a, b, .. } => {
+                walk(a, acc);
+                walk(b, acc);
+            }
+            SdfNode::Translate { child, .. }
+            | SdfNode::Rotate { child, .. }
+            | SdfNode::WithMaterial { child, .. } => walk(child, acc),
+            SdfNode::SectionStack(st) => {
+                *acc += st.loops.iter().flatten().map(Vec::len).sum::<usize>() / 8
+            }
+            SdfNode::Polygon2D { vertices, .. } => *acc += vertices.len() / 8,
+            SdfNode::Loft { axis, rows, .. } => *acc += 8 + axis.len() + rows.len() / 8,
+            _ => {}
+        }
+    }
+    let mut n = 0;
+    walk(node, &mut n);
+    n
+}
+
+/// The floats of one far-bound piece in the C-like dialects' per-piece arrays
+const PIECE_FLOATS_SHADER: usize = crate::primitives::loft::PIECE_FLOATS;
 
 /// Float literal for shader source: shortest round-trip form with a decimal
 /// point (`2.0`, `0.33333334`), so the GPU sees the same f32 the CPU has.
@@ -275,6 +676,15 @@ pub struct GenericTranspiler<L: ShaderLang> {
     /// (a second walk of the tree, e.g. the rest point, reuses the first walk's arrays), with whether
     /// the accessor function was emitted
     data_seen: Vec<((usize, u64), DataArr, bool)>,
+    /// Skip union operands that are provably farther than the other operand (see
+    /// [`lower_bound`]); the result is bit-identical either way
+    pub bound_skip: bool,
+    /// Emit the loft and stack data reads as checked reads (counting reads outside their proven
+    /// index range; see [`Reads`]): tests and diagnostics only, the values are the same
+    pub checked_reads: bool,
+    /// Reads the emit could not prove in range (an emitter's range annotation outside its array):
+    /// a non-empty list refuses the tree (`try_transpile*`)
+    pub read_errors: Vec<String>,
     _phantom: std::marker::PhantomData<L>,
 }
 
@@ -284,6 +694,7 @@ pub struct GenericTranspiler<L: ShaderLang> {
 pub struct DataArr {
     name: String,
     base: Option<usize>,
+    len: usize,
 }
 
 impl DataArr {
@@ -302,9 +713,156 @@ impl DataArr {
     pub fn at(&self, idx: &str) -> String {
         match self.base {
             None => format!("{}[{idx}]", self.name),
-            Some(b) => format!("alice_node_data[{b} + ({idx})]"),
+            // clamped to this node's own range: a corrupted or stale index reads one of the node's
+            // values, never past the buffer or another node's data
+            Some(b) => format!(
+                "alice_node_data[clamp({b} + ({idx}), {b}, {})]",
+                b + self.len.max(1) - 1
+            ),
         }
     }
+
+    /// The node data buffer range `(base, len)`, or `None` for a module-scope constant array
+    #[must_use]
+    pub fn range(&self) -> Option<(usize, usize)> {
+        self.base.map(|b| (b, self.len))
+    }
+}
+
+/// A tree the shader emit refuses: data reads (of a loft's or a stack's arrays) whose index range,
+/// proven from the node's validated data at emit time, would leave their array
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TranspileError {
+    /// One line per refused read: the array, the read and its range
+    pub reads: Vec<String>,
+}
+
+impl TranspileError {
+    /// `Ok` for no refused reads, the error otherwise
+    pub(crate) fn from_reads(reads: Vec<String>) -> Result<(), Self> {
+        if reads.is_empty() {
+            Ok(())
+        } else {
+            Err(Self { reads })
+        }
+    }
+}
+
+impl std::fmt::Display for TranspileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "shader emit refused {} data read(s) outside their arrays: {}",
+            self.reads.len(),
+            self.reads.join("; ")
+        )
+    }
+}
+
+impl std::error::Error for TranspileError {}
+
+/// How an emitter's annotated reads `{arr}[expr @ lo..hi]` are written out (see [`render_reads`])
+pub(crate) enum Reads<'a> {
+    /// `arr[expr]`, a module-scope array of the dialect
+    Plain,
+    /// `alice_node_data[clamp(base + (expr), base + lo, base + hi)]`, a range of the node data buffer
+    Buffer(&'a DataArr),
+    /// `alice_nd(base + (expr), base + lo, base + hi)`: the buffer read that counts the reads outside
+    /// `lo..=hi` (WGSL, [`crate::compiled::WgslShader::try_transpile_with_node_data_checked`])
+    CheckedBuffer(&'a DataArr),
+    /// `ALICE_RD(arr, (expr), lo, hi)`: a module-scope array read through a macro the host defines
+    /// (the C-like dialects, [`crate::compiled::HlslShader::try_transpile_checked`])
+    CheckedPlain,
+}
+
+/// The emitter's reads of the array `arr` (a block of `len` values, at `offset` in the node's data
+/// for the buffer modes) written out in `mode`, `wrap` applied to each read. Every read must carry
+/// its index range `@ lo..hi` (integers, inclusive): a read without one, or a range outside `0..len`,
+/// is recorded in `errs` (the emit refuses the tree). A read whose index leaves its range is caught at
+/// run time by the checked modes; the plain buffer read clamps it to the range (GPU safety only, the
+/// checked modes show it never happens)
+pub(crate) fn render_reads(
+    src: &str,
+    arr: &str,
+    len: usize,
+    offset: usize,
+    mode: &Reads<'_>,
+    wrap: &dyn Fn(String) -> String,
+    errs: &mut Vec<String>,
+) -> String {
+    let pat = format!("{arr}[");
+    let bytes = src.as_bytes();
+    let mut out = String::with_capacity(src.len());
+    let mut i = 0;
+    while let Some(rel) = src[i..].find(&pat) {
+        let at = i + rel;
+        let prev_ident = at > 0 && (bytes[at - 1].is_ascii_alphanumeric() || bytes[at - 1] == b'_');
+        // a C-like declaration `float NAME[N]` / `int NAME[N]` is not a read
+        let decl = src[..at].ends_with("float ") || src[..at].ends_with("int ");
+        out.push_str(&src[i..at]);
+        if prev_ident || decl {
+            out.push_str(&pat);
+            i = at + pat.len();
+            continue;
+        }
+        let open = at + pat.len();
+        let (mut depth, mut j) = (1usize, open);
+        while depth > 0 && j < bytes.len() {
+            match bytes[j] {
+                b'[' => depth += 1,
+                b']' => depth -= 1,
+                _ => {}
+            }
+            j += 1;
+        }
+        let inner = &src[open..j - 1];
+        let Some((expr, range)) = inner.rsplit_once(" @ ") else {
+            errs.push(format!("{arr}: a read without its index range: [{inner}]"));
+            out.push_str(&src[at..j]);
+            i = j;
+            continue;
+        };
+        let bounds = range.split_once("..").and_then(|(a, b)| {
+            Some((
+                a.trim().parse::<usize>().ok()?,
+                b.trim().parse::<usize>().ok()?,
+            ))
+        });
+        let Some((lo, hi)) = bounds else {
+            errs.push(format!(
+                "{arr}: an index range that is not two integers: {range}"
+            ));
+            out.push_str(&src[at..j]);
+            i = j;
+            continue;
+        };
+        if lo > hi || hi >= len {
+            errs.push(format!(
+                "{arr}: the read [{expr}] ranges over {lo}..={hi}, outside the array's 0..{len}"
+            ));
+        }
+        let read = match mode {
+            Reads::Plain => format!("{arr}[{expr}]"),
+            Reads::CheckedPlain => format!("ALICE_RD({arr}, ({expr}), {lo}, {hi})"),
+            Reads::Buffer(d) | Reads::CheckedBuffer(d) => {
+                let (base, _) = d.range().expect("a buffer range");
+                let b = base + offset;
+                if matches!(mode, Reads::Buffer(_)) {
+                    format!(
+                        "alice_node_data[clamp({b} + ({expr}), {}, {})]",
+                        b + lo,
+                        b + hi
+                    )
+                } else {
+                    format!("alice_nd({b} + ({expr}), {}, {})", b + lo, b + hi)
+                }
+            }
+        };
+        out.push_str(&wrap(read));
+        i = j;
+    }
+    out.push_str(&src[i..]);
+    out
 }
 
 impl<L: ShaderLang> GenericTranspiler<L> {
@@ -318,6 +876,9 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             globals: String::new(),
             node_data: None,
             data_seen: Vec::new(),
+            bound_skip: true,
+            checked_reads: false,
+            read_errors: Vec::new(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -346,12 +907,14 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             DataArr {
                 name: name.to_owned(),
                 base: Some(base),
+                len: values.len(),
             }
         } else {
             self.globals.push_str(&L::global_float_array(name, values));
             DataArr {
                 name: name.to_owned(),
                 base: None,
+                len: values.len(),
             }
         }
     }
@@ -371,6 +934,75 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         }
         seen.2 = true;
         d
+    }
+
+    /// A loft's module-scope data and functions: in WGSL with the node data buffer the data is a
+    /// clamped range of `alice_node_data` (no module-scope array: a WGSL array constructor is limited
+    /// to 32767 elements), otherwise the loft's own module-scope arrays
+    fn loft_globals(&mut self, arr: &str, func: &str, flat: &[f32]) {
+        let funcs = crate::compiled::loft_shader::loft_functions(func, arr, flat, L::NAME);
+        if self.node_data.is_some() && L::NAME == "wgsl" {
+            let values = crate::compiled::loft_shader::wgsl_values(flat);
+            let d = self.data_array(arr, &values);
+            let src = self.render_data(&funcs, arr, values.len(), Some((&d, 0)), &|x| x);
+            self.globals.push_str(&src);
+        } else {
+            self.globals
+                .push_str(&crate::compiled::loft_shader::loft_array(
+                    arr,
+                    flat,
+                    L::NAME,
+                    L::global_float_array,
+                ));
+            let values = crate::compiled::loft_shader::wgsl_values(flat);
+            let pieces = flat[16] as usize;
+            let mut src = funcs;
+            if L::NAME != "wgsl" && pieces > 0 {
+                // the C-like dialects: the block without its pieces, each piece and the directions on
+                // their own (see `loft_shader::loft_array`)
+                src = self.render_data(
+                    &src,
+                    arr,
+                    crate::compiled::loft_shader::pieces_at(flat),
+                    None,
+                    &|x| x,
+                );
+                for q in 0..pieces {
+                    src = self.render_data(
+                        &src,
+                        &format!("{arr}_p{q}"),
+                        PIECE_FLOATS_SHADER,
+                        None,
+                        &|x| x,
+                    );
+                }
+                src = self.render_data(&src, &format!("{arr}_dir"), 32, None, &|x| x);
+            } else {
+                src = self.render_data(&src, arr, values.len(), None, &|x| x);
+            }
+            self.globals.push_str(&src);
+        }
+    }
+
+    /// An emitter's annotated reads of `arr` (`len` values) written out for this transpiler: in the
+    /// node data buffer at `(range, offset)`, or a module-scope array; checked when
+    /// [`GenericTranspiler::checked_reads`] is set. Ranges the emit cannot prove go to `read_errors`
+    fn render_data(
+        &mut self,
+        src: &str,
+        arr: &str,
+        len: usize,
+        buffer: Option<(&DataArr, usize)>,
+        wrap: &dyn Fn(String) -> String,
+    ) -> String {
+        let mode = match (buffer, self.checked_reads) {
+            (Some((d, _)), false) => Reads::Buffer(d),
+            (Some((d, _)), true) => Reads::CheckedBuffer(d),
+            (None, false) => Reads::Plain,
+            (None, true) => Reads::CheckedPlain,
+        };
+        let offset = buffer.map_or(0, |b| b.1);
+        render_reads(src, arr, len, offset, &mode, wrap, &mut self.read_errors)
     }
 
     /// Allocate the next unique variable name (d0, d1, ...).
@@ -813,6 +1445,41 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         let result_var = self.transpile_node_inner(node, point_var, &mut code);
         writeln!(code, "    return {};", result_var).unwrap();
         code
+    }
+
+    /// The bound-skip test for operand `b`: declares and returns the variable holding the
+    /// operand's lower bound at the point, or `None` when there is no proven bound, the operand is
+    /// small, skipping is switched off, or the mode is not Hardcoded (Dynamic keeps one text per
+    /// tree shape, whatever the parameters)
+    fn skip_bound(&mut self, b: &SdfNode, point_var: &str, code: &mut String) -> Option<String> {
+        if !self.bound_skip
+            || self.mode != TranspileModeLang::Hardcoded
+            || subtree_size(b) < BOUND_SKIP_MIN_NODES
+        {
+            return None;
+        }
+        let lb = lower_bound(b)?;
+        let e = BOUND_SKIP_EPS;
+        let c: Vec<String> = (0..3).map(|k| lit(0.5 * (lb.lo[k] + lb.hi[k]))).collect();
+        let h: Vec<String> = (0..3)
+            .map(|k| lit(0.5 * (lb.hi[k] - lb.lo[k]) + e))
+            .collect();
+        let v = self.next_var();
+        for (k, ax) in ["x", "y", "z"].iter().enumerate() {
+            code.push_str(&L::decl_float(
+                &format!("{v}_{ax}"),
+                &format!("max(abs({point_var}.{ax} - {}) - {}, 0.0)", c[k], h[k]),
+            ));
+        }
+        code.push_str(&L::decl_float(
+            &v,
+            &format!(
+                "{} * sqrt({v}_x * {v}_x + {v}_y * {v}_y + {v}_z * {v}_z) - {}",
+                lit(lb.scale),
+                lit(lb.margin + e)
+            ),
+        ));
+        Some(v)
     }
 
     /// The main transpilation dispatcher - converts an SdfNode tree into shader code.
@@ -2186,6 +2853,15 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             // ============ Boolean Operations ============
             SdfNode::Union { a, b } => {
                 let d_a = self.transpile_node_inner(a, point_var, code);
+                if let Some(bb) = self.skip_bound(b, point_var, code) {
+                    // b's field is ≥ bb > 0 when the test holds, and bb ≥ d_a: min(d_a, d_b) is d_a
+                    let var = self.next_var();
+                    code.push_str(&L::decl_mut_float(&var, &d_a));
+                    code.push_str(&format!("    if (!({bb} > 0.0 && {bb} >= {d_a})) {{\n"));
+                    let d_b = self.transpile_node_inner(b, point_var, code);
+                    code.push_str(&format!("    {var} = min({d_a}, {d_b});\n    }}\n"));
+                    return var;
+                }
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
                 code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
@@ -2211,6 +2887,30 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             // Division Exorcism for SmoothUnion
             SdfNode::SmoothUnion { a, b, k } => {
                 let d_a = self.transpile_node_inner(a, point_var, code);
+                if *k > 0.0 && !(k.abs() < FOLD_EPSILON) {
+                    if let Some(bb) = self.skip_bound(b, point_var, code) {
+                        // with d_b ≥ bb and fl(fl(bb − d_a)·inv_k) > 1, the shader's
+                        // fl(|d_a − d_b|·inv_k) > 1 too (rounding is monotone), so h is exactly +0
+                        // and the result is min(d_a, d_b) − 0 = d_a, bit for bit
+                        let k_str = self.param(*k);
+                        let inv_k_str = self.param(1.0 / k);
+                        let var = self.next_var();
+                        code.push_str(&L::decl_mut_float(&var, &d_a));
+                        code.push_str(&format!(
+                            "    if (!({bb} > 0.0 && ({bb} - {d_a}) * {inv_k_str} > 1.0)) {{\n"
+                        ));
+                        let d_b = self.transpile_node_inner(b, point_var, code);
+                        let h_var = self.next_var();
+                        code.push_str(&L::decl_float(
+                            &h_var,
+                            &format!("max(1.0 - abs({d_a} - {d_b}) * {inv_k_str}, 0.0)"),
+                        ));
+                        code.push_str(&format!(
+                            "    {var} = min({d_a}, {d_b}) - {h_var} * {h_var} * ({k_str} * 0.25);\n    }}\n"
+                        ));
+                        return var;
+                    }
+                }
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
@@ -3585,6 +4285,149 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 v
             }
 
+            SdfNode::SectionStack(st) => {
+                // module-scope arrays and a loop function, like a large polygon: the field of
+                // `SectionStack::eval` (no parameters, so Dynamic mode emits the same text)
+                let id = self.var_counter;
+                self.var_counter += 1;
+                let name = format!("alice_stack_{id}");
+                let data = SectionStackData::new(st);
+                let src = L::global_section_stack(&name, &data);
+                let (ny, nv, nl, ns) = (
+                    data.levels.len(),
+                    data.verts.len(),
+                    data.loop_start.len(),
+                    data.vert_start.len(),
+                );
+                if self.node_data.is_some() && L::NAME == "wgsl" {
+                    // the four arrays as one range of the node data buffer (integers stored exactly as
+                    // f32, all below 2^24), the module-scope declarations dropped
+                    let (oy, ov, ol, os) = (0, ny, ny + nv, ny + nv + nl);
+                    let mut values = data.levels.clone();
+                    values.extend_from_slice(&data.verts);
+                    values.extend(data.loop_start.iter().map(|&x| x as f32));
+                    values.extend(data.vert_start.iter().map(|&x| x as f32));
+                    let d = self.data_array(&format!("{name}_data"), &values);
+                    let src: String = src
+                        .lines()
+                        .filter(|l| !l.starts_with(&format!("const {name}_")))
+                        .map(|l| format!("{l}\n"))
+                        .collect();
+                    let src =
+                        self.render_data(&src, &format!("{name}_y"), ny, Some((&d, oy)), &|x| x);
+                    let src =
+                        self.render_data(&src, &format!("{name}_v"), nv, Some((&d, ov)), &|x| x);
+                    let src =
+                        self.render_data(&src, &format!("{name}_ls"), nl, Some((&d, ol)), &|x| {
+                            format!("i32({x})")
+                        });
+                    let src =
+                        self.render_data(&src, &format!("{name}_vs"), ns, Some((&d, os)), &|x| {
+                            format!("i32({x})")
+                        });
+                    self.globals.push_str(&src);
+                } else {
+                    let src = self.render_data(&src, &format!("{name}_y"), ny, None, &|x| x);
+                    let src = self.render_data(&src, &format!("{name}_v"), nv, None, &|x| x);
+                    let src = self.render_data(&src, &format!("{name}_ls"), nl, None, &|x| x);
+                    let src = self.render_data(&src, &format!("{name}_vs"), ns, None, &|x| x);
+                    self.globals.push_str(&src);
+                }
+                let v = self.next_var();
+                code.push_str(&L::decl_float(&v, &format!("{name}({point_var})")));
+                v
+            }
+
+            SdfNode::SmoothSectionStack(st) => {
+                // the stack's law as module-scope functions over a module-scope data array
+                // (`compiled::smooth_stack_shader`, calling the loft's closed-curve emitter)
+                let id = self.var_counter;
+                self.var_counter += 1;
+                let arr = format!("alice_sss_d_{id}");
+                let func = format!("alice_sss_{id}");
+                let flat = crate::compiled::smooth_stack_shader::flatten(st);
+                let funcs = crate::compiled::smooth_stack_shader::stack_functions(
+                    &func,
+                    &arr,
+                    &flat,
+                    L::NAME,
+                );
+                if self.node_data.is_some() && L::NAME == "wgsl" {
+                    // the node data buffer: no module-scope array (a WGSL array constructor is limited
+                    // to 32767 elements), every read a range of `alice_node_data`
+                    let d = self.data_array(&arr, &flat);
+                    let src = self.render_data(&funcs, &arr, flat.len(), Some((&d, 0)), &|x| x);
+                    self.globals.push_str(&src);
+                } else {
+                    // a plain array: the loft's array emitter reads the loft's own slots (pieces, fade)
+                    self.globals
+                        .push_str(&crate::compiled::loft_shader::const_array(
+                            &arr,
+                            &flat,
+                            L::NAME,
+                            L::global_float_array,
+                        ));
+                    let src = self.render_data(&funcs, &arr, flat.len(), None, &|x| x);
+                    self.globals.push_str(&src);
+                }
+                let var = self.next_var();
+                code.push_str(&L::decl_float(&var, &format!("{func}({point_var})")));
+                var
+            }
+
+            SdfNode::Loft {
+                axis,
+                up,
+                harmonics,
+                rows,
+                caps,
+                bounds,
+            } => {
+                let (sec, caps) = (
+                    crate::primitives::loft::LoftSection::Polar(*harmonics),
+                    *caps,
+                );
+                // the loft's law as module-scope functions over a module-scope data array
+                // (`compiled::loft_shader`, one template rendered per dialect)
+                let id = self.var_counter;
+                self.var_counter += 1;
+                let arr = format!("alice_loft_d_{id}");
+                let func = format!("alice_loft_{id}");
+                let flat =
+                    crate::primitives::loft::flatten(axis, *up, sec, rows, &[], caps, bounds);
+                self.loft_globals(&arr, &func, &flat);
+                let var = self.next_var();
+                code.push_str(&L::decl_float(&var, &format!("{func}({point_var})")));
+                var
+            }
+
+            SdfNode::LoftCurves {
+                axis,
+                up,
+                section_points,
+                points: rows,
+                knots,
+                caps,
+                bounds,
+            } => {
+                let (sec, caps) = (
+                    crate::primitives::loft::LoftSection::Curve(*section_points),
+                    [caps[0][0], caps[1][0]],
+                );
+                // the loft's law as module-scope functions over a module-scope data array
+                // (`compiled::loft_shader`, one template rendered per dialect)
+                let id = self.var_counter;
+                self.var_counter += 1;
+                let arr = format!("alice_loft_d_{id}");
+                let func = format!("alice_loft_{id}");
+                let flat =
+                    crate::primitives::loft::flatten(axis, *up, sec, rows, knots, caps, bounds);
+                self.loft_globals(&arr, &func, &flat);
+                let var = self.next_var();
+                code.push_str(&L::decl_float(&var, &format!("{func}({point_var})")));
+                var
+            }
+
             SdfNode::Polygon2D {
                 vertices,
                 half_height,
@@ -3594,6 +4437,42 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let n = vertices.len();
                 if n < 3 {
                     code.push_str(&L::decl_float(&v, "1e10"));
+                    return v;
+                }
+                if n > POLYGON_2D_UNROLL_MAX {
+                    // a module-scope vertex array and one loop function: the shader's length does not
+                    // grow with the outline (an unrolled outline of hundreds of edges makes a shader
+                    // some drivers take seconds to compile)
+                    let id = self.var_counter;
+                    self.var_counter += 1;
+                    let arr = format!("alice_poly_v_{id}");
+                    let func = format!("alice_poly_{id}");
+                    let flat: Vec<f32> = vertices.iter().flat_map(|q| [q.x, q.y]).collect();
+                    self.globals.push_str(&L::global_float_array(&arr, &flat));
+                    self.globals
+                        .push_str(&L::global_polygon_2d_fn(&func, &arr, n));
+                    code.push_str(&L::decl_float(
+                        &format!("{v}_d2d"),
+                        &format!("{func}({point_var}.xy)"),
+                    ));
+                    code.push_str(&L::decl_float(
+                        &format!("{v}_dz"),
+                        &format!("abs({point_var}.z) - {hh}"),
+                    ));
+                    code.push_str(&L::decl_float(
+                        &format!("{v}_wx"),
+                        &format!("max({v}_d2d, 0.0)"),
+                    ));
+                    code.push_str(&L::decl_float(
+                        &format!("{v}_wy"),
+                        &format!("max({v}_dz, 0.0)"),
+                    ));
+                    code.push_str(&L::decl_float(
+                        &v,
+                        &format!(
+                            "sqrt({v}_wx*{v}_wx + {v}_wy*{v}_wy) + min(max({v}_d2d, {v}_dz), 0.0)"
+                        ),
+                    ));
                     return v;
                 }
                 // Emit vertex params
@@ -3950,4 +4829,52 @@ fn node_kind(node: &SdfNode) -> String {
         .next()
         .unwrap_or("?")
         .to_owned()
+}
+
+#[cfg(test)]
+mod read_range_tests {
+    use super::{render_reads, Reads};
+
+    fn render(src: &str, len: usize) -> (String, Vec<String>) {
+        let mut errs = Vec::new();
+        let out = render_reads(src, "a", len, 0, &Reads::Plain, &|x| x, &mut errs);
+        (out, errs)
+    }
+
+    #[test]
+    fn a_read_inside_its_array_renders_without_its_range() {
+        let (out, errs) = render("x = a[i + 1 @ 1..4] + ba[2];", 5);
+        assert!(errs.is_empty(), "{errs:?}");
+        assert_eq!(out, "x = a[i + 1] + ba[2];");
+    }
+
+    #[test]
+    fn a_range_past_the_array_is_refused() {
+        let (_, errs) = render("x = a[i @ 0..5];", 5);
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert!(
+            errs[0].contains("0..=5") && errs[0].contains("0..5"),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn an_inverted_range_is_refused() {
+        let (_, errs) = render("x = a[i @ 3..2];", 5);
+        assert_eq!(errs.len(), 1, "{errs:?}");
+    }
+
+    #[test]
+    fn a_read_without_its_range_is_refused() {
+        let (_, errs) = render("x = a[i];", 5);
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert!(errs[0].contains("without its index range"), "{errs:?}");
+    }
+
+    #[test]
+    fn a_declaration_is_not_a_read() {
+        let (out, errs) = render("static const float a[5] = { 1.0 };\nx = a[0 @ 0..0];", 5);
+        assert!(errs.is_empty(), "{errs:?}");
+        assert!(out.starts_with("static const float a[5]"));
+    }
 }

@@ -19,6 +19,7 @@
 //! Author: Moroya Sakamoto
 
 use super::super::transpiler_common::ShaderLang;
+use super::super::transpiler_common::TranspileError;
 use crate::types::SdfNode;
 
 // ============================================================================
@@ -115,6 +116,25 @@ impl ShaderLang for HlslLang {
             "float {name}(int i) {{\n{}    return v;\n}}\n",
             Self::decl_float("v", &format!("{arr}[i]"))
         )
+    }
+    fn global_polygon_2d_fn(name: &str, arr: &str, n: usize) -> String {
+        format!(
+            "float {name}(float2 q) {{\n    float2 v0 = float2({arr}[0], {arr}[1]);\n    float d = dot(q - v0, q - v0);\n    float s = 1.0;\n    int j = {last};\n    for (int i = 0; i < {n}; i++) {{\n        float2 vi = float2({arr}[2 * i], {arr}[2 * i + 1]);\n        float2 vj = float2({arr}[2 * j], {arr}[2 * j + 1]);\n        float2 e = vj - vi;\n        float2 w = q - vi;\n        float2 b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);\n        d = min(d, dot(b, b));\n        bool c1 = q.y >= vi.y;\n        bool c2 = q.y < vj.y;\n        bool c3 = e.x * w.y > e.y * w.x;\n        if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {{ s = -s; }}\n        j = i;\n    }}\n    return s * sqrt(d);\n}}\n",
+            last = n - 1
+        )
+    }
+    fn global_section_stack(
+        name: &str,
+        st: &super::super::transpiler_common::SectionStackData,
+    ) -> String {
+        super::super::transpiler_common::c_like_section_stack(
+            name,
+            st,
+            "float2",
+            &|n, c, v| format!("static const float {n}[{c}] = {{ {v} }};\n"),
+            &|n, c, v| format!("static const int {n}[{c}] = {{ {v} }};\n"),
+        )
+        .replace("vec3_t", "float3")
     }
     fn global_vec3_fn(name: &str, body: &str) -> String {
         format!("float3 {name}(float3 p) {{\n{body}}}\n")
@@ -216,19 +236,80 @@ pub struct HlslShader {
 }
 
 impl HlslShader {
-    /// Transpile an SDF node tree to HLSL with the specified mode
-    pub fn transpile(node: &SdfNode, mode: HlslTranspileMode) -> Self {
+    /// [`Self::transpile`] with every union operand evaluated: no bound skip (see
+    /// [`crate::compiled::transpiler_common::lower_bound`]). The reference the skipping shader must
+    /// equal bit for bit
+    #[must_use]
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::transpile`]
+    pub fn transpile_without_bound_skip(node: &SdfNode, mode: HlslTranspileMode) -> Self {
         let mut transpiler = HlslTranspiler::new(mode);
+        transpiler.bound_skip = false;
         let body = transpiler.transpile_node(node, "p");
-
+        if let Err(e) = TranspileError::from_reads(std::mem::take(&mut transpiler.read_errors)) {
+            panic!("{e}");
+        }
         let source = transpiler.generate_shader(&body);
-
         Self {
             source,
             helper_count: transpiler.helper_functions.len(),
             param_layout: transpiler.params,
             mode,
         }
+    }
+
+    /// Transpile an SDF node tree to HLSL with the specified mode
+    ///
+    /// # Panics
+    ///
+    /// When [`Self::try_transpile`] refuses the tree (a loft or stack whose data reads the emit
+    /// cannot prove inside their arrays; not reachable for trees built through the constructors)
+    pub fn transpile(node: &SdfNode, mode: HlslTranspileMode) -> Self {
+        Self::try_transpile(node, mode).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// [`Self::transpile`], refusing a tree whose data reads the emit cannot prove in range
+    ///
+    /// # Errors
+    ///
+    /// [`TranspileError`] naming each read whose proven index range leaves its array
+    pub fn try_transpile(node: &SdfNode, mode: HlslTranspileMode) -> Result<Self, TranspileError> {
+        Self::transpile_reads(node, mode, false)
+    }
+
+    /// [`Self::try_transpile`] with every loft and stack data read written as
+    /// `ALICE_RD(array, index, lo, hi)`, a macro the host defines (`lo..=hi` the index range the
+    /// emit proved for that read): tests run the text with a counting macro to show no read leaves
+    /// its range. Not a shader for a GPU
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::try_transpile`]
+    pub fn try_transpile_checked(
+        node: &SdfNode,
+        mode: HlslTranspileMode,
+    ) -> Result<Self, TranspileError> {
+        Self::transpile_reads(node, mode, true)
+    }
+
+    fn transpile_reads(
+        node: &SdfNode,
+        mode: HlslTranspileMode,
+        checked: bool,
+    ) -> Result<Self, TranspileError> {
+        let mut transpiler = HlslTranspiler::new(mode);
+        transpiler.checked_reads = checked;
+        let body = transpiler.transpile_node(node, "p");
+        TranspileError::from_reads(std::mem::take(&mut transpiler.read_errors))?;
+        let source = transpiler.generate_shader(&body);
+        Ok(Self {
+            source,
+            helper_count: transpiler.helper_functions.len(),
+            param_layout: transpiler.params,
+            mode,
+        })
     }
 
     /// Extract parameter values from an SDF node tree
@@ -576,6 +657,10 @@ struct HlslTranspiler {
     params: Vec<f32>,
     /// Module-scope data / functions emitted before the entry point
     globals: String,
+    /// See `GenericTranspiler::bound_skip`
+    bound_skip: bool,
+    checked_reads: bool,
+    read_errors: Vec<String>,
 }
 
 impl HlslTranspiler {
@@ -586,6 +671,9 @@ impl HlslTranspiler {
             mode,
             params: Vec::new(),
             globals: String::new(),
+            bound_skip: true,
+            checked_reads: false,
+            read_errors: Vec::new(),
         }
     }
 
@@ -600,7 +688,10 @@ impl HlslTranspiler {
         generic.params = std::mem::take(&mut self.params);
         generic.helper_functions = std::mem::take(&mut self.helper_functions);
         generic.globals = std::mem::take(&mut self.globals);
+        generic.bound_skip = self.bound_skip;
+        generic.checked_reads = self.checked_reads;
         let body = generic.transpile_node(node, point_var);
+        self.read_errors.append(&mut generic.read_errors);
         self.globals = generic.globals;
         self.var_counter = generic.var_counter;
         self.params = generic.params;
