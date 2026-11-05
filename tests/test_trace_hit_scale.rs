@@ -23,7 +23,7 @@ mod common;
 
 use alice_sdf::eval::{eval, eval_scaled};
 use alice_sdf::interval::eval_lipschitz;
-use alice_sdf::raycast::{raymarch, raymarch_with_config, RaymarchConfig};
+use alice_sdf::raycast::{raymarch, raymarch_detailed, raymarch_with_config, RaymarchConfig};
 use alice_sdf::transforms::{grid_warp_from_triangles, GridWarp, WarpGrid};
 use alice_sdf::SdfNode;
 use glam::Vec3;
@@ -300,4 +300,53 @@ fn inside_a_blend_the_scale_is_the_smaller_operands() {
         inside > 50,
         "{inside} points in the blend with different operand scales"
     );
+}
+
+#[test]
+fn a_warped_scene_needs_more_steps_and_running_out_is_reported() {
+    // The cost of the stricter hit test, measured and pinned: in the squeezed scene every ray the
+    // closed-form box meets is hit within 297 steps, more than the budget `raymarch` gives (257
+    // after `with_bound`); with that budget some rays run out, and each one that is not hit says
+    // so (`RaymarchResult::ran_out`) rather than looking like a ray that met nothing.
+    let node = squeezed();
+    let default = RaymarchConfig::default().with_bound(eval_lipschitz(&node));
+    let mut enough = default;
+    enough.max_steps = 297;
+    let mut s = 0x2545_f491u32;
+    let (mut met, mut ran_out, mut silent, mut short) = (0, 0, 0, 0);
+    for _ in 0..240 {
+        let o = Vec3::new(
+            -0.2 + 1.4 * rng(&mut s),
+            -0.2 + 0.5 * rng(&mut s),
+            if rng(&mut s) < 0.5 { -0.25 } else { 0.25 },
+        );
+        let target = Vec3::new(
+            -0.1 + 1.2 * rng(&mut s),
+            -0.05 + 0.2 * rng(&mut s),
+            -0.03 + 0.06 * rng(&mut s),
+        );
+        let d = (target - o).normalize();
+        if reference_hit(o, d, 1.0, 2e-4).is_none() {
+            continue;
+        }
+        met += 1;
+        if !raymarch_detailed(&node, o, d, 1.0, &enough).hit {
+            short += 1;
+        }
+        let r = raymarch_detailed(&node, o, d, 1.0, &default);
+        if !r.hit {
+            if r.ran_out(&default, 1.0) {
+                ran_out += 1;
+            } else {
+                silent += 1;
+            }
+        }
+    }
+    assert!(met > 60, "{met}");
+    assert_eq!(short, 0, "{short} met rays not hit within 297 steps");
+    assert!(
+        ran_out > 0,
+        "the default budget was enough: the cost is not pinned"
+    );
+    assert_eq!(silent, 0, "{silent} met rays missed without running out");
 }
