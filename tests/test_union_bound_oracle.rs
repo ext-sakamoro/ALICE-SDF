@@ -410,7 +410,7 @@ fn random_trees_keep_the_bound_and_the_bits() {
             let v = eval(&n, p);
             if v.is_finite() && b.lower(p) > v {
                 viol += 1;
-                first.get_or_insert((t, p, v, b.lower(p)));
+                first.get_or_insert_with(|| (t, p, v, b.lower(p)));
             }
             if eval_union_bounded(&u, p).to_bits() != eval(&u, p).to_bits() {
                 neq += 1;
@@ -470,7 +470,9 @@ fn a_non_positive_scale_has_no_bound() {
 
 fn has_non_positive_scale(n: &SdfNode) -> bool {
     match n {
-        SdfNode::Scale { child, factor } => !(*factor > 0.0) || has_non_positive_scale(child),
+        SdfNode::Scale { child, factor } => {
+            *factor <= 0.0 || factor.is_nan() || has_non_positive_scale(child)
+        }
         SdfNode::Translate { child, .. }
         | SdfNode::Rotate { child, .. }
         | SdfNode::Twist { child, .. }
@@ -582,7 +584,7 @@ fn a_large_twist_keeps_the_plain_bits_on_the_gpu() {
         let mut pts = Vec::new();
         for _ in 0..4096 {
             let th = rng.f() * std::f32::consts::TAU;
-            let (sn, cs) = th.sin_cos();
+            let (sn, cs) = alice_det_math::sin_cos(th);
             let rad = r + 0.02 + 0.1 * rng.f();
             pts.push(c + Vec3::new(cs * rad, 0.05 * (rng.f() - 0.5), sn * rad));
         }
@@ -642,7 +644,7 @@ fn a_large_twist_keeps_the_plain_bits_on_the_gpu() {
         .translate(0.0, 2.0, 0.0);
     let at_repro = contraction_budget(repro, 2.0, 0.476_923_82 + 0.02, eval(&tw2, repro));
     assert!(
-        at_repro >= 6.0e-8 && at_repro < 6.0e-7,
+        (6.0e-8..6.0e-7).contains(&at_repro),
         "budget at the repro point {at_repro:e}"
     );
     if known_defect {
@@ -654,6 +656,7 @@ fn a_large_twist_keeps_the_plain_bits_on_the_gpu() {
 }
 
 /// The distance between one ulp-step and the next at `x`
+#[cfg(feature = "gpu")]
 fn ulp(x: f32) -> f32 {
     let a = x.abs();
     f32::from_bits(a.to_bits() + 1) - a
@@ -671,6 +674,7 @@ fn ulp(x: f32) -> f32 {
 /// point's move bounds the value's (`v_twist`, the twist operand's value, bounds the length's
 /// argument). The ring's `length`s (one sum each). The union's `min` is
 /// 1-Lipschitz in each operand: the larger of the two
+#[cfg(feature = "gpu")]
 fn contraction_budget(p: Vec3, k: f32, ring_r: f32, v_twist: f32) -> f32 {
     let l = p - Vec3::new(0.0, 2.0, 0.0);
     let rho = Vec3::new(l.x, 0.0, l.z).length();
@@ -682,7 +686,7 @@ fn contraction_budget(p: Vec3, k: f32, ring_r: f32, v_twist: f32) -> f32 {
         // a fused argument may pick the next quadrant: the native pair's own error, 2⁻¹⁰
         rho / 1024.0
     } else {
-        rho * (0.5 * ulp(n * 0.000_483_826_79) + ulp(std::f32::consts::FRAC_PI_4 + 1e-3))
+        rho * (0.5 * ulp(n * 0.000_483_826_8) + ulp(std::f32::consts::FRAC_PI_4 + 1e-3))
     };
     let dq = std::f32::consts::SQRT_2 * (rot + ang);
     // the length's argument is at most the box value outside (0 inside): two sums of squares
@@ -712,9 +716,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 }
 ";
     let e = GpuEvaluator::from_wgsl(wgsl).ok()?.into_parts().0;
-    let a = 1.0 + 2f32.powi(-12);
+    let a = 1.0 + 1.0 / 4096.0_f32;
     let got = e
-        .eval_batch(&[Vec3::new(a, a, -(1.0 + 2f32.powi(-11)))])
+        .eval_batch(&[Vec3::new(a, a, -(1.0 + 1.0 / 2048.0))])
         .ok()?[0];
     Some(got.to_bits() != 0.0f32.to_bits())
 }
@@ -880,7 +884,8 @@ fn a_shader_twist_lowers_the_slope() {
         let p = Vec3::new(d, 0.3, -0.2);
         let gap = cpu.lower(p) - gpu.lower(p);
         // two twists: 1 − (1 − δ)² ≈ 2δ of the distance
-        let want = (1.0 - (1.0 - 1.0 / 1024.0f32).powi(2)) * d;
+        let slope = 1.0 - 1.0 / 1024.0f32;
+        let want = (1.0 - slope * slope) * d;
         assert!(
             (gap - want).abs() <= 0.01 * want,
             "at distance {d}: the shader bound is {gap} below the CPU's, want ≈ {want}"

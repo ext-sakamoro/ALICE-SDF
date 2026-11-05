@@ -1,7 +1,7 @@
 //! Lower bounds of SDF subtrees: `value(p) ≥ k·|p − c| − r − slack`
 //!
 //! [`bound`] returns a [`Bound`] such that, for every point `p`, the value an evaluator computes
-//! for the node is at least [`Bound::lower`]`(p)`. The bound is a property of the evaluated value
+//! for the node is at least `Bound::lower(p)`. The bound is a property of the evaluated value
 //! (not only of the true distance), so it holds for operands whose formula is exact outside and
 //! inside (sphere, box, capsule, torus) and for the transforms that keep that (translate, unit
 //! rotate, uniform positive scale, twist, round), through unions, intersections and subtractions
@@ -59,9 +59,10 @@ pub enum BoundTarget {
     Shader,
 }
 
-/// A lower bound of a node's evaluated value, read through [`Bound::lower`] (the only entry point,
-/// so the shape of the bound can grow beyond a sphere): today `value(p) ≥ k·|p − c| − r`, up to
-/// the slack of `depth` nodes
+/// A lower bound of a node's evaluated value
+///
+/// Read through [`Bound::lower`] (the only entry point, so the shape of the bound can grow beyond
+/// a sphere): today `value(p) ≥ k·|p − c| − r`, up to the slack of `depth` nodes
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Bound {
     /// Centre
@@ -117,7 +118,8 @@ pub fn bound(node: &SdfNode, target: BoundTarget) -> Option<Bound> {
     let b = match node {
         SdfNode::Sphere { radius } => (*radius >= 0.0).then(|| leaf(Vec3::ZERO, *radius))?,
         SdfNode::Box3d { half_extents } => {
-            (half_extents.min_element() >= 0.0).then(|| leaf(Vec3::ZERO, half_extents.length()))?
+            (half_extents.x >= 0.0 && half_extents.y >= 0.0 && half_extents.z >= 0.0)
+                .then(|| leaf(Vec3::ZERO, half_extents.length()))?
         }
         SdfNode::Capsule {
             point_a,
@@ -201,7 +203,7 @@ pub fn bound(node: &SdfNode, target: BoundTarget) -> Option<Bound> {
             Bound {
                 c,
                 r,
-                k: x.k.min(y.k),
+                k: crate::compiled::real::law_min_f32(x.k, y.k),
                 depth: x.depth.max(y.depth) + 1,
             }
         }
