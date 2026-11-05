@@ -413,7 +413,8 @@ fn the_contraction_arm_refuses_ten_times_its_budget() {
     for (what, _) in trees() {
         let b = contraction_budget(what);
         for cpu in [0.25f32, 3.0] {
-            let x = 0.5f32;
+            // from 0 the gap is exactly the probe: at 0.5 its rounding could carry it past the budget
+            let x = 0.0f32;
             let scale = cpu.abs().max(1.0);
             assert!(
                 within_contraction_budget(x, x + 0.99 * b * scale, cpu, b),

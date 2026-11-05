@@ -127,6 +127,45 @@ pub fn loft_faded() -> SdfNode {
     node
 }
 
+/// A closed ring of `m` points on an axis-aligned ellipse, counter-clockwise
+fn corpus_ring(m: usize, a: f32, b: f32) -> Vec<glam::Vec2> {
+    (0..m)
+        .map(|j| {
+            let (s, c) = alice_det_math::sin_cos(std::f32::consts::TAU * j as f32 / m as f32);
+            glam::Vec2::new(a * c, b * s)
+        })
+        .collect()
+}
+
+/// A stack of three levels of polygon loops, the middle one holding two loops
+pub fn section_stack_rings() -> SdfNode {
+    SdfNode::section_stack(
+        vec![-0.4, 0.0, 0.4],
+        vec![
+            vec![corpus_ring(16, 0.3, 0.25)],
+            vec![corpus_ring(16, 0.35, 0.3), corpus_ring(8, 0.1, 0.1)],
+            vec![corpus_ring(16, 0.2, 0.15)],
+        ],
+    )
+    .expect("corpus section stack")
+}
+
+/// A smooth stack of four levels of spline loops
+pub fn smooth_section_stack_rings() -> SdfNode {
+    SdfNode::smooth_section_stack(
+        vec![-0.45, -0.15, 0.15, 0.45],
+        vec![
+            vec![corpus_ring(10, 0.3, 0.25)],
+            vec![corpus_ring(10, 0.35, 0.3)],
+            vec![corpus_ring(10, 0.3, 0.28)],
+            vec![corpus_ring(10, 0.2, 0.15)],
+        ],
+        0.01,
+        0.1,
+    )
+    .expect("corpus smooth section stack")
+}
+
 pub fn corpus() -> Vec<(&'static str, SdfNode)> {
     let a = sphere();
     let b = SdfNode::sphere(0.5).translate(0.8, 0.0, 0.0);
@@ -278,6 +317,8 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
         ("loft_curves", loft_curves_c()),
         ("loft_nofade", loft_fade(false)),
         ("loft_faded", loft_faded()),
+        ("section_stack", section_stack_rings()),
+        ("smooth_section_stack", smooth_section_stack_rings()),
         ("annular_2d", SdfNode::annular_2d(0.6, 0.1, 0.5)),
         // --- binary operations ---
         ("union", a.clone().union(b.clone())),
