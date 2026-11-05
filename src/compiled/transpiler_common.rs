@@ -314,15 +314,15 @@ pub(crate) fn c_like_section_stack(
     float d = 1e30; // above any squared distance; not the f32 maximum, whose decimal some WGSL compilers refuse
     float s = 1.0;
     for (int lc = 0; lc < {lmax}; lc++) {{
-        int l = {name}_ls[k] + lc;
-        if (l >= {name}_ls[k + 1]) {{ break; }}
-        int a = {name}_vs[l];
-        int m = {name}_vs[l + 1] - a;
+        int l = {name}_ls[k @ 0..{lsk}] + lc;
+        if (l >= {name}_ls[k + 1 @ 1..{lsk1}]) {{ break; }}
+        int a = {name}_vs[l @ 0..{vsl}];
+        int m = {name}_vs[l + 1 @ 1..{vsl1}] - a;
         int j = m - 1;
         for (int i = 0; i < {vmax}; i++) {{
             if (i >= m) {{ break; }}
-            {v2} vi = {v2}({name}_v[2 * (a + i)], {name}_v[2 * (a + i) + 1]);
-            {v2} vj = {v2}({name}_v[2 * (a + j)], {name}_v[2 * (a + j) + 1]);
+            {v2} vi = {v2}({name}_v[2 * (a + i) @ 0..{v0}], {name}_v[2 * (a + i) + 1 @ 1..{v1}]);
+            {v2} vj = {v2}({name}_v[2 * (a + j) @ 0..{v0}], {name}_v[2 * (a + j) + 1 @ 1..{v1}]);
             {v2} e = vj - vi;
             {v2} w = q - vi;
             float ee = dot(e, e);
@@ -340,8 +340,8 @@ pub(crate) fn c_like_section_stack(
 }}
 float {name}(vec3_t p) {{
     {v2} q = {v2}(p.x, p.z);
-    float y0 = {name}_y[0];
-    float yn = {name}_y[{last}];
+    float y0 = {name}_y[0 @ 0..0];
+    float yn = {name}_y[{last} @ {last}..{last}];
     float d;
     float h;
     if (p.y < y0) {{
@@ -352,9 +352,9 @@ float {name}(vec3_t p) {{
         h = p.y - yn;
     }} else {{
         int c = 0;
-        for (int k = 0; k < {n}; k++) {{ if ({name}_y[k] <= p.y) {{ c = k + 1; }} }}
+        for (int k = 0; k < {n}; k++) {{ if ({name}_y[k @ 0..{last}] <= p.y) {{ c = k + 1; }} }}
         int i = (c < 1 ? 1 : (c > {last} ? {last} : c)) - 1;
-        float t = (p.y - {name}_y[i]) / ({name}_y[i + 1] - {name}_y[i]);
+        float t = (p.y - {name}_y[i @ 0..{lastm1}]) / ({name}_y[i + 1 @ 1..{last}] - {name}_y[i @ 0..{lastm1}]);
         d = (1.0 - t) * {name}_d2(q, i) + t * {name}_d2(q, i + 1);
         h = max(y0 - p.y, p.y - yn);
     }}
@@ -366,6 +366,14 @@ float {name}(vec3_t p) {{
         lip = lit(st.lipschitz),
         lmax = st.max_loops,
         vmax = st.max_verts,
+        // the reads' index ranges: level k < n, loop l < loops, vertex a + i < vertices
+        lsk = n - 1,
+        lsk1 = n,
+        vsl = st.vert_start.len() - 2,
+        vsl1 = st.vert_start.len() - 1,
+        v0 = st.verts.len() - 2,
+        v1 = st.verts.len() - 1,
+        lastm1 = n - 2,
     ));
     s
 }
@@ -553,6 +561,9 @@ fn subtree_size(node: &SdfNode) -> usize {
     n
 }
 
+/// The floats of one far-bound piece in the C-like dialects' per-piece arrays
+const PIECE_FLOATS_SHADER: usize = crate::primitives::loft::PIECE_FLOATS;
+
 /// Float literal for shader source: shortest round-trip form with a decimal
 /// point (`2.0`, `0.33333334`), so the GPU sees the same f32 the CPU has.
 pub fn lit(v: f32) -> String {
@@ -605,6 +616,12 @@ pub struct GenericTranspiler<L: ShaderLang> {
     /// Skip union operands that are provably farther than the other operand (see
     /// [`lower_bound`]); the result is bit-identical either way
     pub bound_skip: bool,
+    /// Emit the loft and stack data reads as checked reads (counting reads outside their proven
+    /// index range; see [`Reads`]): tests and diagnostics only, the values are the same
+    pub checked_reads: bool,
+    /// Reads the emit could not prove in range (an emitter's range annotation outside its array):
+    /// a non-empty list refuses the tree (`try_transpile*`)
+    pub read_errors: Vec<String>,
     _phantom: std::marker::PhantomData<L>,
 }
 
@@ -646,10 +663,58 @@ impl DataArr {
     }
 }
 
-/// `src` with every read `{arr}[i]` of the array named `arr` (not a longer name ending in it)
-/// rewritten as `wrap(d.at(offset + (i)))`: an emitter's module-scope array moved into the node data
-/// buffer without changing the emitter
-pub(crate) fn rebase_reads(src: &str, arr: &str, d: &DataArr, offset: usize, wrap: &dyn Fn(String) -> String) -> String {
+/// A tree the shader emit refuses: data reads (of a loft's or a stack's arrays) whose index range,
+/// proven from the node's validated data at emit time, would leave their array
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TranspileError {
+    /// One line per refused read: the array, the read and its range
+    pub reads: Vec<String>,
+}
+
+impl TranspileError {
+    /// `Ok` for no refused reads, the error otherwise
+    pub(crate) fn from_reads(reads: Vec<String>) -> Result<(), Self> {
+        if reads.is_empty() { Ok(()) } else { Err(Self { reads }) }
+    }
+}
+
+impl std::fmt::Display for TranspileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "shader emit refused {} data read(s) outside their arrays: {}", self.reads.len(), self.reads.join("; "))
+    }
+}
+
+impl std::error::Error for TranspileError {}
+
+/// How an emitter's annotated reads `{arr}[expr @ lo..hi]` are written out (see [`render_reads`])
+pub(crate) enum Reads<'a> {
+    /// `arr[expr]`, a module-scope array of the dialect
+    Plain,
+    /// `alice_node_data[clamp(base + (expr), base + lo, base + hi)]`, a range of the node data buffer
+    Buffer(&'a DataArr),
+    /// `alice_nd(base + (expr), base + lo, base + hi)`: the buffer read that counts the reads outside
+    /// `lo..=hi` (WGSL, [`crate::compiled::WgslShader::try_transpile_with_node_data_checked`])
+    CheckedBuffer(&'a DataArr),
+    /// `ALICE_RD(arr, (expr), lo, hi)`: a module-scope array read through a macro the host defines
+    /// (the C-like dialects, [`crate::compiled::HlslShader::try_transpile_checked`])
+    CheckedPlain,
+}
+
+/// The emitter's reads of the array `arr` (a block of `len` values, at `offset` in the node's data
+/// for the buffer modes) written out in `mode`, `wrap` applied to each read. Every read must carry
+/// its index range `@ lo..hi` (integers, inclusive): a read without one, or a range outside `0..len`,
+/// is recorded in `errs` (the emit refuses the tree). A read whose index leaves its range is caught at
+/// run time by the checked modes; the plain buffer read clamps it to the range (GPU safety only, the
+/// checked modes show it never happens)
+pub(crate) fn render_reads(
+    src: &str,
+    arr: &str,
+    len: usize,
+    offset: usize,
+    mode: &Reads<'_>,
+    wrap: &dyn Fn(String) -> String,
+    errs: &mut Vec<String>,
+) -> String {
     let pat = format!("{arr}[");
     let bytes = src.as_bytes();
     let mut out = String::with_capacity(src.len());
@@ -657,15 +722,17 @@ pub(crate) fn rebase_reads(src: &str, arr: &str, d: &DataArr, offset: usize, wra
     while let Some(rel) = src[i..].find(&pat) {
         let at = i + rel;
         let prev_ident = at > 0 && (bytes[at - 1].is_ascii_alphanumeric() || bytes[at - 1] == b'_');
+        // a C-like declaration `float NAME[N]` / `int NAME[N]` is not a read
+        let decl = src[..at].ends_with("float ") || src[..at].ends_with("int ");
         out.push_str(&src[i..at]);
-        if prev_ident {
+        if prev_ident || decl {
             out.push_str(&pat);
             i = at + pat.len();
             continue;
         }
         let open = at + pat.len();
         let (mut depth, mut j) = (1usize, open);
-        while depth > 0 {
+        while depth > 0 && j < bytes.len() {
             match bytes[j] {
                 b'[' => depth += 1,
                 b']' => depth -= 1,
@@ -674,13 +741,42 @@ pub(crate) fn rebase_reads(src: &str, arr: &str, d: &DataArr, offset: usize, wra
             j += 1;
         }
         let inner = &src[open..j - 1];
-        let idx = if offset == 0 { inner.to_string() } else { format!("{offset} + ({inner})") };
-        out.push_str(&wrap(d.at(&idx)));
+        let Some((expr, range)) = inner.rsplit_once(" @ ") else {
+            errs.push(format!("{arr}: a read without its index range: [{inner}]"));
+            out.push_str(&src[at..j]);
+            i = j;
+            continue;
+        };
+        let bounds = range.split_once("..").and_then(|(a, b)| Some((a.trim().parse::<usize>().ok()?, b.trim().parse::<usize>().ok()?)));
+        let Some((lo, hi)) = bounds else {
+            errs.push(format!("{arr}: an index range that is not two integers: {range}"));
+            out.push_str(&src[at..j]);
+            i = j;
+            continue;
+        };
+        if lo > hi || hi >= len {
+            errs.push(format!("{arr}: the read [{expr}] ranges over {lo}..={hi}, outside the array's 0..{len}"));
+        }
+        let read = match mode {
+            Reads::Plain => format!("{arr}[{expr}]"),
+            Reads::CheckedPlain => format!("ALICE_RD({arr}, ({expr}), {lo}, {hi})"),
+            Reads::Buffer(d) | Reads::CheckedBuffer(d) => {
+                let (base, _) = d.range().expect("a buffer range");
+                let b = base + offset;
+                if matches!(mode, Reads::Buffer(_)) {
+                    format!("alice_node_data[clamp({b} + ({expr}), {}, {})]", b + lo, b + hi)
+                } else {
+                    format!("alice_nd({b} + ({expr}), {}, {})", b + lo, b + hi)
+                }
+            }
+        };
+        out.push_str(&wrap(read));
         i = j;
     }
     out.push_str(&src[i..]);
     out
 }
+
 
 impl<L: ShaderLang> GenericTranspiler<L> {
     /// Create a new transpiler in the given mode.
@@ -694,6 +790,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             node_data: None,
             data_seen: Vec::new(),
             bound_skip: true,
+            checked_reads: false,
+            read_errors: Vec::new(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -759,11 +857,40 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         if self.node_data.is_some() && L::NAME == "wgsl" {
             let values = crate::compiled::loft_shader::wgsl_values(flat);
             let d = self.data_array(arr, &values);
-            self.globals.push_str(&rebase_reads(&funcs, arr, &d, 0, &|x| x));
+            let src = self.render_data(&funcs, arr, values.len(), Some((&d, 0)), &|x| x);
+            self.globals.push_str(&src);
         } else {
             self.globals.push_str(&crate::compiled::loft_shader::loft_array(arr, flat, L::NAME, L::global_float_array));
-            self.globals.push_str(&funcs);
+            let values = crate::compiled::loft_shader::wgsl_values(flat);
+            let pieces = flat[16] as usize;
+            let mut src = funcs;
+            if L::NAME != "wgsl" && pieces > 0 {
+                // the C-like dialects: the block without its pieces, each piece and the directions on
+                // their own (see `loft_shader::loft_array`)
+                src = self.render_data(&src, arr, crate::compiled::loft_shader::pieces_at(flat), None, &|x| x);
+                for q in 0..pieces {
+                    src = self.render_data(&src, &format!("{arr}_p{q}"), PIECE_FLOATS_SHADER, None, &|x| x);
+                }
+                src = self.render_data(&src, &format!("{arr}_dir"), 32, None, &|x| x);
+            } else {
+                src = self.render_data(&src, arr, values.len(), None, &|x| x);
+            }
+            self.globals.push_str(&src);
         }
+    }
+
+    /// An emitter's annotated reads of `arr` (`len` values) written out for this transpiler: in the
+    /// node data buffer at `(range, offset)`, or a module-scope array; checked when
+    /// [`GenericTranspiler::checked_reads`] is set. Ranges the emit cannot prove go to `read_errors`
+    fn render_data(&mut self, src: &str, arr: &str, len: usize, buffer: Option<(&DataArr, usize)>, wrap: &dyn Fn(String) -> String) -> String {
+        let mode = match (buffer, self.checked_reads) {
+            (Some((d, _)), false) => Reads::Buffer(d),
+            (Some((d, _)), true) => Reads::CheckedBuffer(d),
+            (None, false) => Reads::Plain,
+            (None, true) => Reads::CheckedPlain,
+        };
+        let offset = buffer.map_or(0, |b| b.1);
+        render_reads(src, arr, len, offset, &mode, wrap, &mut self.read_errors)
     }
 
     /// Allocate the next unique variable name (d0, d1, ...).
@@ -3991,24 +4118,27 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let name = format!("alice_stack_{id}");
                 let data = SectionStackData::new(st);
                 let src = L::global_section_stack(&name, &data);
+                let (ny, nv, nl, ns) = (data.levels.len(), data.verts.len(), data.loop_start.len(), data.vert_start.len());
                 if self.node_data.is_some() && L::NAME == "wgsl" {
                     // the four arrays as one range of the node data buffer (integers stored exactly as
                     // f32, all below 2^24), the module-scope declarations dropped
-                    let (oy, ov) = (0, data.levels.len());
-                    let ol = ov + data.verts.len();
-                    let os = ol + data.loop_start.len();
+                    let (oy, ov, ol, os) = (0, ny, ny + nv, ny + nv + nl);
                     let mut values = data.levels.clone();
                     values.extend_from_slice(&data.verts);
                     values.extend(data.loop_start.iter().map(|&x| x as f32));
                     values.extend(data.vert_start.iter().map(|&x| x as f32));
                     let d = self.data_array(&format!("{name}_data"), &values);
                     let src: String = src.lines().filter(|l| !l.starts_with(&format!("const {name}_"))).map(|l| format!("{l}\n")).collect();
-                    let src = rebase_reads(&src, &format!("{name}_y"), &d, oy, &|x| x);
-                    let src = rebase_reads(&src, &format!("{name}_v"), &d, ov, &|x| x);
-                    let src = rebase_reads(&src, &format!("{name}_ls"), &d, ol, &|x| format!("i32({x})"));
-                    let src = rebase_reads(&src, &format!("{name}_vs"), &d, os, &|x| format!("i32({x})"));
+                    let src = self.render_data(&src, &format!("{name}_y"), ny, Some((&d, oy)), &|x| x);
+                    let src = self.render_data(&src, &format!("{name}_v"), nv, Some((&d, ov)), &|x| x);
+                    let src = self.render_data(&src, &format!("{name}_ls"), nl, Some((&d, ol)), &|x| format!("i32({x})"));
+                    let src = self.render_data(&src, &format!("{name}_vs"), ns, Some((&d, os)), &|x| format!("i32({x})"));
                     self.globals.push_str(&src);
                 } else {
+                    let src = self.render_data(&src, &format!("{name}_y"), ny, None, &|x| x);
+                    let src = self.render_data(&src, &format!("{name}_v"), nv, None, &|x| x);
+                    let src = self.render_data(&src, &format!("{name}_ls"), nl, None, &|x| x);
+                    let src = self.render_data(&src, &format!("{name}_vs"), ns, None, &|x| x);
                     self.globals.push_str(&src);
                 }
                 let v = self.next_var();
@@ -4027,13 +4157,15 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let funcs = crate::compiled::smooth_stack_shader::stack_functions(&func, &arr, &flat, L::NAME);
                 if self.node_data.is_some() && L::NAME == "wgsl" {
                     // the node data buffer: no module-scope array (a WGSL array constructor is limited
-                    // to 32767 elements), every read a clamped range of `alice_node_data`
+                    // to 32767 elements), every read a range of `alice_node_data`
                     let d = self.data_array(&arr, &flat);
-                    self.globals.push_str(&rebase_reads(&funcs, &arr, &d, 0, &|x| x));
+                    let src = self.render_data(&funcs, &arr, flat.len(), Some((&d, 0)), &|x| x);
+                    self.globals.push_str(&src);
                 } else {
                     // a plain array: the loft's array emitter reads the loft's own slots (pieces, fade)
                     self.globals.push_str(&crate::compiled::loft_shader::const_array(&arr, &flat, L::NAME, L::global_float_array));
-                    self.globals.push_str(&funcs);
+                    let src = self.render_data(&funcs, &arr, flat.len(), None, &|x| x);
+                    self.globals.push_str(&src);
                 }
                 let var = self.next_var();
                 code.push_str(&L::decl_float(&var, &format!("{func}({point_var})")));
@@ -4456,4 +4588,49 @@ fn node_kind(node: &SdfNode) -> String {
         .next()
         .unwrap_or("?")
         .to_owned()
+}
+
+#[cfg(test)]
+mod read_range_tests {
+    use super::{render_reads, Reads};
+
+    fn render(src: &str, len: usize) -> (String, Vec<String>) {
+        let mut errs = Vec::new();
+        let out = render_reads(src, "a", len, 0, &Reads::Plain, &|x| x, &mut errs);
+        (out, errs)
+    }
+
+    #[test]
+    fn a_read_inside_its_array_renders_without_its_range() {
+        let (out, errs) = render("x = a[i + 1 @ 1..4] + ba[2];", 5);
+        assert!(errs.is_empty(), "{errs:?}");
+        assert_eq!(out, "x = a[i + 1] + ba[2];");
+    }
+
+    #[test]
+    fn a_range_past_the_array_is_refused() {
+        let (_, errs) = render("x = a[i @ 0..5];", 5);
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert!(errs[0].contains("0..=5") && errs[0].contains("0..5"), "{errs:?}");
+    }
+
+    #[test]
+    fn an_inverted_range_is_refused() {
+        let (_, errs) = render("x = a[i @ 3..2];", 5);
+        assert_eq!(errs.len(), 1, "{errs:?}");
+    }
+
+    #[test]
+    fn a_read_without_its_range_is_refused() {
+        let (_, errs) = render("x = a[i];", 5);
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert!(errs[0].contains("without its index range"), "{errs:?}");
+    }
+
+    #[test]
+    fn a_declaration_is_not_a_read() {
+        let (out, errs) = render("static const float a[5] = { 1.0 };\nx = a[0 @ 0..0];", 5);
+        assert!(errs.is_empty(), "{errs:?}");
+        assert!(out.starts_with("static const float a[5]"));
+    }
 }

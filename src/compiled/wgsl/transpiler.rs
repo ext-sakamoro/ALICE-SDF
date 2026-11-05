@@ -14,6 +14,7 @@
 //! Author: Moroya Sakamoto
 
 use super::super::transpiler_common::ShaderLang;
+pub use super::super::transpiler_common::TranspileError;
 use crate::types::SdfNode;
 use std::fmt::Write;
 
@@ -133,15 +134,15 @@ fn {name}_d2(q: vec2<f32>, k: i32) -> f32 {{
     var d = 1e30; // above any squared distance; not the f32 maximum, whose decimal some WGSL compilers refuse
     var s = 1.0;
     for (var lc = 0i; lc < {lmax}i; lc = lc + 1) {{
-        let l = {name}_ls[k] + lc;
-        if (l >= {name}_ls[k + 1]) {{ break; }}
-        let a = {name}_vs[l];
-        let m = {name}_vs[l + 1] - a;
+        let l = {name}_ls[k @ 0..{lsk}] + lc;
+        if (l >= {name}_ls[k + 1 @ 1..{lsk1}]) {{ break; }}
+        let a = {name}_vs[l @ 0..{vsl}];
+        let m = {name}_vs[l + 1 @ 1..{vsl1}] - a;
         var j = m - 1;
         for (var i = 0i; i < {vmax}i; i = i + 1) {{
             if (i >= m) {{ break; }}
-            let vi = vec2<f32>({name}_v[2 * (a + i)], {name}_v[2 * (a + i) + 1]);
-            let vj = vec2<f32>({name}_v[2 * (a + j)], {name}_v[2 * (a + j) + 1]);
+            let vi = vec2<f32>({name}_v[2 * (a + i) @ 0..{v0}], {name}_v[2 * (a + i) + 1 @ 1..{v1}]);
+            let vj = vec2<f32>({name}_v[2 * (a + j) @ 0..{v0}], {name}_v[2 * (a + j) + 1 @ 1..{v1}]);
             let e = vj - vi;
             let w = q - vi;
             let ee = dot(e, e);
@@ -159,8 +160,8 @@ fn {name}_d2(q: vec2<f32>, k: i32) -> f32 {{
 }}
 fn {name}(p: vec3<f32>) -> f32 {{
     let q = vec2<f32>(p.x, p.z);
-    let y0 = {name}_y[0];
-    let yn = {name}_y[{last}];
+    let y0 = {name}_y[0 @ 0..0];
+    let yn = {name}_y[{last} @ {last}..{last}];
     var d: f32;
     var h: f32;
     if (p.y < y0) {{
@@ -171,9 +172,9 @@ fn {name}(p: vec3<f32>) -> f32 {{
         h = p.y - yn;
     }} else {{
         var c = 0i;
-        for (var k = 0i; k < {n}i; k = k + 1) {{ if ({name}_y[k] <= p.y) {{ c = k + 1; }} }}
+        for (var k = 0i; k < {n}i; k = k + 1) {{ if ({name}_y[k @ 0..{last}] <= p.y) {{ c = k + 1; }} }}
         let i = clamp(c, 1i, {last}i) - 1;
-        let t = (p.y - {name}_y[i]) / ({name}_y[i + 1] - {name}_y[i]);
+        let t = (p.y - {name}_y[i @ 0..{lastm1}]) / ({name}_y[i + 1 @ 1..{last}] - {name}_y[i @ 0..{lastm1}]);
         d = (1.0 - t) * {name}_d2(q, i) + t * {name}_d2(q, i + 1);
         h = max(y0 - p.y, p.y - yn);
     }}
@@ -189,6 +190,14 @@ fn {name}(p: vec3<f32>) -> f32 {{
             lip = lit(st.lipschitz),
             lmax = st.max_loops,
             vmax = st.max_verts,
+            // the reads' index ranges: level k < n, loop l < loops, vertex a + i < vertices
+            lsk = n - 1,
+            lsk1 = n,
+            vsl = st.vert_start.len() - 2,
+            vsl1 = st.vert_start.len() - 1,
+            v0 = st.verts.len() - 2,
+            v1 = st.verts.len() - 1,
+            lastm1 = n - 2,
         )
     }
     fn global_vec3_fn(name: &str, body: &str) -> String {
@@ -309,10 +318,17 @@ impl WgslShader {
     /// [`crate::compiled::transpiler_common::lower_bound`]). The reference the skipping shader must
     /// equal bit for bit
     #[must_use]
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::transpile`]
     pub fn transpile_without_bound_skip(node: &SdfNode, mode: TranspileMode) -> Self {
         let mut transpiler = WgslTranspiler::new(mode);
         transpiler.bound_skip = false;
         let body = transpiler.transpile_node(node, "p");
+        if let Err(e) = TranspileError::from_reads(std::mem::take(&mut transpiler.read_errors)) {
+            panic!("{e}");
+        }
         let source = transpiler.generate_shader(&body);
         Self {
             source,
@@ -320,12 +336,28 @@ impl WgslShader {
             param_layout: transpiler.params,
             mode,
             workgroup_size: 256,
+            node_data: Vec::new(),
         }
     }
 
     /// Transpile an SDF node tree to WGSL with the specified mode
+    ///
+    /// # Panics
+    ///
+    /// When [`Self::try_transpile`] refuses the tree: a loft or stack whose data reads the emit
+    /// cannot prove inside their arrays (not reachable for trees built through the constructors,
+    /// whose ranges derive from validated data)
     pub fn transpile(node: &SdfNode, mode: TranspileMode) -> Self {
-        Self::transpile_inner(node, mode, false)
+        Self::try_transpile(node, mode).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// [`Self::transpile`], refusing a tree whose data reads the emit cannot prove in range
+    ///
+    /// # Errors
+    ///
+    /// [`TranspileError`] naming each read whose proven index range leaves its array
+    pub fn try_transpile(node: &SdfNode, mode: TranspileMode) -> Result<Self, TranspileError> {
+        Self::transpile_inner(node, mode, false, false)
     }
 
     /// Transpile for GPU evaluation with per-node data arrays (lattice control points, height
@@ -333,26 +365,64 @@ impl WgslShader {
     /// constants: the shader text stays small for large data. The compute shaders declare the
     /// binding only when [`WgslShader::node_data`] is not empty, and the evaluator must bind
     /// that data ([`crate::compiled::GpuEvaluator::from_shader`] does).
+    ///
+    /// Every read of the buffer is clamped to the range the emit proved for it (a GPU safety net:
+    /// [`Self::try_transpile_with_node_data_checked`] shows the clamps never change a value). The
+    /// proof holds for the data in [`WgslShader::node_data`] as emitted; a caller that edits that
+    /// buffer before binding it is outside it (the clamp then keeps each read inside its range).
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::transpile`]
     pub fn transpile_with_node_data(node: &SdfNode, mode: TranspileMode) -> Self {
-        Self::transpile_inner(node, mode, true)
+        Self::try_transpile_with_node_data(node, mode).unwrap_or_else(|e| panic!("{e}"))
     }
 
-    fn transpile_inner(node: &SdfNode, mode: TranspileMode, data_buffer: bool) -> Self {
+    /// [`Self::transpile_with_node_data`], refusing a tree whose data reads the emit cannot prove in
+    /// range
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::try_transpile`]
+    pub fn try_transpile_with_node_data(node: &SdfNode, mode: TranspileMode) -> Result<Self, TranspileError> {
+        Self::transpile_inner(node, mode, true, false)
+    }
+
+    /// [`Self::try_transpile_with_node_data`] with every loft and stack data read checked: a read
+    /// outside its proven index range increments the `atomic<u32>` at `@group(0) @binding(5)`
+    /// (`alice_read_hits`) and reads the clamped index, so the values are the same. For tests and
+    /// diagnostics ([`crate::compiled::GpuEvaluator::new_checked`] binds the counter)
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::try_transpile`]
+    pub fn try_transpile_with_node_data_checked(node: &SdfNode, mode: TranspileMode) -> Result<Self, TranspileError> {
+        Self::transpile_inner(node, mode, true, true)
+    }
+
+    fn transpile_inner(node: &SdfNode, mode: TranspileMode, data_buffer: bool, checked: bool) -> Result<Self, TranspileError> {
         let mut transpiler = WgslTranspiler::new(mode);
         if data_buffer {
             transpiler.node_data = Some(Vec::new());
         }
+        transpiler.checked_reads = checked;
         let body = transpiler.transpile_node(node, "p");
-        let source = transpiler.generate_shader(&body);
+        TranspileError::from_reads(std::mem::take(&mut transpiler.read_errors))?;
+        let mut source = transpiler.generate_shader(&body);
+        if checked && source.contains("alice_nd(") {
+            source.push_str(
+                "\n@group(0) @binding(5) var<storage, read_write> alice_read_hits: atomic<u32>;\nfn alice_nd(i: i32, lo: i32, hi: i32) -> f32 {\n    if (i < lo || i > hi) { atomicAdd(&alice_read_hits, 1u); }\n    return alice_node_data[clamp(i, lo, hi)];\n}\n",
+            );
+        }
 
-        Self {
+        Ok(Self {
             source,
             helper_count: transpiler.helper_functions.len(),
             param_layout: transpiler.params,
             mode,
             workgroup_size: 256, // Default; override with with_workgroup_size()
             node_data: transpiler.node_data.unwrap_or_default(),
-        }
+        })
     }
 
     /// [`WgslShader::transpile_with_node_data`] with a second function in the same module,
@@ -377,6 +447,7 @@ impl WgslShader {
         let body = g.transpile_node(node, "p");
         let mut code = String::new();
         let r = g.transpile_rest_inner(node, "p", &mut code)?;
+        TranspileError::from_reads(std::mem::take(&mut g.read_errors)).map_err(|e| e.to_string())?;
         let source = g.generate_shader(&body)
             + &format!(
                 "\nfn sdf_eval_rest(p: vec3<f32>) -> vec3<f32> {{\n{code}    return {r};\n}}\n"
@@ -773,6 +844,10 @@ struct WgslTranspiler {
     node_data: Option<Vec<f32>>,
     /// See `GenericTranspiler::bound_skip`
     bound_skip: bool,
+    /// See `GenericTranspiler::checked_reads`
+    checked_reads: bool,
+    /// See `GenericTranspiler::read_errors`
+    read_errors: Vec<String>,
 }
 
 impl WgslTranspiler {
@@ -785,6 +860,8 @@ impl WgslTranspiler {
             globals: String::new(),
             node_data: None,
             bound_skip: true,
+            checked_reads: false,
+            read_errors: Vec::new(),
         }
     }
 
@@ -801,7 +878,9 @@ impl WgslTranspiler {
         generic.globals = std::mem::take(&mut self.globals);
         generic.node_data = self.node_data.take();
         generic.bound_skip = self.bound_skip;
+        generic.checked_reads = self.checked_reads;
         let body = generic.transpile_node(node, point_var);
+        self.read_errors.append(&mut generic.read_errors);
         self.globals = generic.globals;
         self.node_data = generic.node_data;
         self.var_counter = generic.var_counter;

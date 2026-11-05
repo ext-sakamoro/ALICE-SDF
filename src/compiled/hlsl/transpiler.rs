@@ -19,6 +19,7 @@
 //! Author: Moroya Sakamoto
 
 use super::super::transpiler_common::ShaderLang;
+use super::super::transpiler_common::TranspileError;
 use crate::types::SdfNode;
 
 // ============================================================================
@@ -239,10 +240,17 @@ impl HlslShader {
     /// [`crate::compiled::transpiler_common::lower_bound`]). The reference the skipping shader must
     /// equal bit for bit
     #[must_use]
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::transpile`]
     pub fn transpile_without_bound_skip(node: &SdfNode, mode: HlslTranspileMode) -> Self {
         let mut transpiler = HlslTranspiler::new(mode);
         transpiler.bound_skip = false;
         let body = transpiler.transpile_node(node, "p");
+        if let Err(e) = TranspileError::from_reads(std::mem::take(&mut transpiler.read_errors)) {
+            panic!("{e}");
+        }
         let source = transpiler.generate_shader(&body);
         Self {
             source,
@@ -253,18 +261,48 @@ impl HlslShader {
     }
 
     /// Transpile an SDF node tree to HLSL with the specified mode
+    ///
+    /// # Panics
+    ///
+    /// When [`Self::try_transpile`] refuses the tree (a loft or stack whose data reads the emit
+    /// cannot prove inside their arrays; not reachable for trees built through the constructors)
     pub fn transpile(node: &SdfNode, mode: HlslTranspileMode) -> Self {
+        Self::try_transpile(node, mode).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// [`Self::transpile`], refusing a tree whose data reads the emit cannot prove in range
+    ///
+    /// # Errors
+    ///
+    /// [`TranspileError`] naming each read whose proven index range leaves its array
+    pub fn try_transpile(node: &SdfNode, mode: HlslTranspileMode) -> Result<Self, TranspileError> {
+        Self::transpile_reads(node, mode, false)
+    }
+
+    /// [`Self::try_transpile`] with every loft and stack data read written as
+    /// `ALICE_RD(array, index, lo, hi)`, a macro the host defines (`lo..=hi` the index range the
+    /// emit proved for that read): tests run the text with a counting macro to show no read leaves
+    /// its range. Not a shader for a GPU
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::try_transpile`]
+    pub fn try_transpile_checked(node: &SdfNode, mode: HlslTranspileMode) -> Result<Self, TranspileError> {
+        Self::transpile_reads(node, mode, true)
+    }
+
+    fn transpile_reads(node: &SdfNode, mode: HlslTranspileMode, checked: bool) -> Result<Self, TranspileError> {
         let mut transpiler = HlslTranspiler::new(mode);
+        transpiler.checked_reads = checked;
         let body = transpiler.transpile_node(node, "p");
-
+        TranspileError::from_reads(std::mem::take(&mut transpiler.read_errors))?;
         let source = transpiler.generate_shader(&body);
-
-        Self {
+        Ok(Self {
             source,
             helper_count: transpiler.helper_functions.len(),
             param_layout: transpiler.params,
             mode,
-        }
+        })
     }
 
     /// Extract parameter values from an SDF node tree
@@ -614,6 +652,8 @@ struct HlslTranspiler {
     globals: String,
     /// See `GenericTranspiler::bound_skip`
     bound_skip: bool,
+    checked_reads: bool,
+    read_errors: Vec<String>,
 }
 
 impl HlslTranspiler {
@@ -625,6 +665,8 @@ impl HlslTranspiler {
             params: Vec::new(),
             globals: String::new(),
             bound_skip: true,
+            checked_reads: false,
+            read_errors: Vec::new(),
         }
     }
 
@@ -640,7 +682,9 @@ impl HlslTranspiler {
         generic.helper_functions = std::mem::take(&mut self.helper_functions);
         generic.globals = std::mem::take(&mut self.globals);
         generic.bound_skip = self.bound_skip;
+        generic.checked_reads = self.checked_reads;
         let body = generic.transpile_node(node, point_var);
+        self.read_errors.append(&mut generic.read_errors);
         self.globals = generic.globals;
         self.var_counter = generic.var_counter;
         self.params = generic.params;

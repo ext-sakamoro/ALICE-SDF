@@ -24,7 +24,13 @@ fn template(name: &str, arr: &str, flat: &[f32], split: bool) -> String {
     let rb = HEAD + 3 * n;
     let w = if curve { 2 * kh } else { 2 * kh + 1 };
     let kb = rb + kr * w;
-    let ax = |i: usize| format!("V3({arr}[{}], {arr}[{}], {arr}[{}])", a0 + 3 * i, a0 + 3 * i + 1, a0 + 3 * i + 2);
+    let ax = |i: usize| {
+        let (x, y, z) = (a0 + 3 * i, a0 + 3 * i + 1, a0 + 3 * i + 2);
+        format!("V3({arr}[{x} @ {x}..{x}], {arr}[{y} @ {y}..{y}], {arr}[{z} @ {z}..{z}])")
+    };
+    // the axis points' index range: `i` in 0 ..= n − 1 (the ends' phantom points are computed)
+    let (ap0, ap1, ap2) = (a0 + 3 * (n - 1), a0 + 3 * (n - 1) + 1, a0 + 3 * (n - 1) + 2);
+    let (a01, a02) = (a0 + 1, a0 + 2);
     let h = lit(1.0 / SCAN_PER_SEGMENT as f32);
     let nseg = n - 1;
     let per = SCAN_PER_SEGMENT;
@@ -34,7 +40,7 @@ fn template(name: &str, arr: &str, flat: &[f32], split: bool) -> String {
         "fn {name}_ap(i: I) -> V3 {{
     if (i < 0) {{ return 2.0 * {} - {}; }}
     if (i >= {n}) {{ return 2.0 * {} - {}; }}
-    return V3({arr}[{a0} + 3 * i], {arr}[{a0} + 3 * i + 1], {arr}[{a0} + 3 * i + 2]);
+    return V3({arr}[{a0} + 3 * i @ {a0}..{ap0}], {arr}[{a0} + 3 * i + 1 @ {a01}..{ap1}], {arr}[{a0} + 3 * i + 2 @ {a02}..{ap2}]);
 }}
 ",
         ax(0),
@@ -119,11 +125,11 @@ fn {name}_cp(p: V3) -> F {{
 }}
 fn {name}_row(j: I, c1: F, s1: F) -> F {{
     var o: I = {rb} + j * {w};
-    var r: F = {arr}[o];
+    var r: F = {arr}[o @ {rb}..{row0}];
     var ck: F = c1;
     var sk: F = s1;
     for (var k: I = 0; k < {kh}; k++) {{
-        r = r + ({arr}[o + 1 + 2 * k] * ck + {arr}[o + 2 + 2 * k] * sk);
+        r = r + ({arr}[o + 1 + 2 * k @ {rb1}..{rowa}] * ck + {arr}[o + 2 + 2 * k @ {rb2}..{rowb}] * sk);
         var nc: F = ck * c1 - sk * s1;
         sk = sk * c1 + ck * s1;
         ck = nc;
@@ -140,7 +146,7 @@ fn {name}_ll(s: F) -> F {{
     w = min(max(w, 0.0), {kr1f});
     var i: I = min(I(w), {krm2});
     var t: F = w - F(i);
-    return {arr}[{kb} + i] + ({arr}[{kb} + i + 1] - {arr}[{kb} + i]) * t;
+    return {arr}[{kb} + i @ {kb}..{kbm}] + ({arr}[{kb} + i + 1 @ {kb1}..{kbe}] - {arr}[{kb} + i @ {kb}..{kbm}]) * t;
 }}
 fn {name}_rad(s: F, c1: F, s1: F) -> F {{
     var w: F = s * {kr1f} / {n1f};
@@ -161,6 +167,16 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
         krm2 = kr - 2,
         kr1f = lit((kr - 1) as f32),
         n1f = lit((n - 1) as f32),
+        // a row read: `o = rb + j w`, `j` in 0 ..= kr − 1 (the callers reflect past the ends), `k` in 0 .. kh
+        row0 = rb + (kr - 1) * w,
+        rb1 = rb + 1,
+        rowa = rb + (kr - 1) * w + 2 * kh.max(1) - 1,
+        rb2 = rb + 2,
+        rowb = rb + (kr - 1) * w + 2 * kh.max(1),
+        // the local bound's knots at the span `i` in 0 ..= kr − 2 and its right end
+        kbm = kb + kr - 2,
+        kb1 = kb + 1,
+        kbe = kb + kr - 1,
     );
     if flat[13] > 0.0 {
         // the saturation width B(s): linear between its knots, as L(s) (the CPU's `local_b`)
@@ -170,10 +186,13 @@ fn {name}_rad(s: F, c1: F, s1: F) -> F {{
     w = min(max(w, 0.0), {kr1f});
     var i: I = min(I(w), {krm2});
     var t: F = w - F(i);
-    return {arr}[{bb} + i] + ({arr}[{bb} + i + 1] - {arr}[{bb} + i]) * t;
+    return {arr}[{bb} + i @ {bb}..{bbm}] + ({arr}[{bb} + i + 1 @ {bb1}..{bbe}] - {arr}[{bb} + i @ {bb}..{bbm}]) * t;
 }}
 ",
             bb = kb + kr,
+            bbm = kb + kr + kr - 2,
+            bb1 = kb + kr + 1,
+            bbe = kb + kr + kr - 1,
             kr1f = lit((kr - 1) as f32),
             n1f = lit((n - 1) as f32),
             krm2 = kr - 2
@@ -381,7 +400,7 @@ fn plane_normal_expr(k: usize) -> String {
 
 /// Where the pieces start in the flat block (after the axis, rows, knots and, for curve sections,
 /// the section knots): the array emit and the template both use this
-fn pieces_at(flat: &[f32]) -> usize {
+pub(crate) fn pieces_at(flat: &[f32]) -> usize {
     let (n, kh, kr) = (flat[0] as usize, flat[1] as usize, flat[2] as usize);
     let curve = flat[15] != 0.0;
     let w = if curve { 2 * kh } else { 2 * kh + 1 };
@@ -403,16 +422,18 @@ fn far_function(name: &str, arr: &str, flat: &[f32], at: usize, split: bool) -> 
     }
     let dir = flat.len();
     let inv = lit(0.707_106_77);
+    let rng = |c: usize| format!("{}..{}", at + c, at + (pieces - 1) * PIECE_FLOATS + c);
     let mut lb = String::new();
     for k in [0usize, 4, 8, 12, 48, 49] {
-        lb += &format!("        lb = max(lb, dot({}, p) - {arr}[o + {}]);\n", plane_normal_expr(k), 9 + k);
+        let (lo, hi) = (at + 9 + k, at + (pieces - 1) * PIECE_FLOATS + 9 + k);
+        lb += &format!("        lb = max(lb, dot({}, p) - {arr}[o + {} @ {lo}..{hi}]);\n", plane_normal_expr(k), 9 + k);
     }
     format!(
         "fn {name}_pn(k: I, t: V3, n: V3, b: V3) -> V3 {{
     if (k == 48) {{ return t; }}
     if (k == 49) {{ return -t; }}
     var j: I = k - 16 * (k / 16);
-    var d: V3 = n * {arr}[{dir} + 2 * j] + b * {arr}[{dir} + 2 * j + 1];
+    var d: V3 = n * {arr}[{dir} + 2 * j @ {dir}..{dir30}] + b * {arr}[{dir} + 2 * j + 1 @ {dir1}..{dir31}];
     if (k < 16) {{ return d; }}
     if (k < 32) {{ return (d + t) * {inv}; }}
     return (d - t) * {inv};
@@ -421,14 +442,14 @@ fn {name}_fb(p: V3) -> F {{
     var best: F = 3.0e38;
     for (var q: I = 0; q < {pieces}; q++) {{
         var o: I = {at} + q * {pf};
-        var t: V3 = V3({arr}[o], {arr}[o + 1], {arr}[o + 2]);
-        var n: V3 = V3({arr}[o + 3], {arr}[o + 4], {arr}[o + 5]);
-        var b: V3 = V3({arr}[o + 6], {arr}[o + 7], {arr}[o + 8]);
+        var t: V3 = V3({arr}[o @ {f0}], {arr}[o + 1 @ {f1}], {arr}[o + 2 @ {f2}]);
+        var n: V3 = V3({arr}[o + 3 @ {f3}], {arr}[o + 4 @ {f4}], {arr}[o + 5 @ {f5}]);
+        var b: V3 = V3({arr}[o + 6 @ {f6}], {arr}[o + 7 @ {f7}], {arr}[o + 8 @ {f8}]);
         var lb: F = -3.0e38;
 {lb}        if (lb >= best) {{ continue; }}
         var v: F = lb;
         for (var k: I = 0; k < {planes}; k++) {{
-            v = max(v, dot({name}_pn(k, t, n, b), p) - {arr}[o + 9 + k]);
+            v = max(v, dot({name}_pn(k, t, n, b), p) - {arr}[o + 9 + k @ {fo}..{fe}]);
         }}
         best = min(best, v);
     }}
@@ -436,7 +457,22 @@ fn {name}_fb(p: V3) -> F {{
 }}
 ",
         pf = PIECE_FLOATS,
-        planes = PIECE_PLANES
+        planes = PIECE_PLANES,
+        // the directions: `j` in 0 ..= 15; a piece's floats: `o = at + q PIECE_FLOATS`, `q` in 0 .. pieces
+        dir30 = dir + 30,
+        dir1 = dir + 1,
+        dir31 = dir + 31,
+        f0 = rng(0),
+        f1 = rng(1),
+        f2 = rng(2),
+        f3 = rng(3),
+        f4 = rng(4),
+        f5 = rng(5),
+        f6 = rng(6),
+        f7 = rng(7),
+        f8 = rng(8),
+        fo = at + 9,
+        fe = at + (pieces - 1) * PIECE_FLOATS + 9 + PIECE_PLANES - 1,
     )
 }
 
@@ -451,7 +487,7 @@ fn far_function_split(name: &str, arr: &str, pieces: usize) -> String {
     if (k == 48) {{ return t; }}
     if (k == 49) {{ return -t; }}
     var j: I = k - 16 * (k / 16);
-    var d: V3 = n * {arr}_dir[2 * j] + b * {arr}_dir[2 * j + 1];
+    var d: V3 = n * {arr}_dir[2 * j @ 0..30] + b * {arr}_dir[2 * j + 1 @ 1..31];
     if (k < 16) {{ return d; }}
     if (k < 32) {{ return (d + t) * {inv}; }}
     return (d - t) * {inv};
@@ -467,13 +503,14 @@ fn {name}_fb(p: V3) -> F {{
     );
     for q in 0..pieces {
         let a = format!("{arr}_p{q}");
-        s += &format!("    t = V3({a}[0], {a}[1], {a}[2]);\n    n = V3({a}[3], {a}[4], {a}[5]);\n    b = V3({a}[6], {a}[7], {a}[8]);\n    lb = -3.0e38;\n");
+        s += &format!("    t = V3({a}[0 @ 0..0], {a}[1 @ 1..1], {a}[2 @ 2..2]);\n    n = V3({a}[3 @ 3..3], {a}[4 @ 4..4], {a}[5 @ 5..5]);\n    b = V3({a}[6 @ 6..6], {a}[7 @ 7..7], {a}[8 @ 8..8]);\n    lb = -3.0e38;\n");
         for k in [0usize, 4, 8, 12, 48, 49] {
-            s += &format!("    lb = max(lb, dot({}, p) - {a}[{}]);\n", plane_normal_expr(k), 9 + k);
+            s += &format!("    lb = max(lb, dot({}, p) - {a}[{i} @ {i}..{i}]);\n", plane_normal_expr(k), i = 9 + k);
         }
         s += &format!(
-            "    if (lb < best) {{\n        v = lb;\n        for (var k: I = 0; k < {planes}; k++) {{\n            v = max(v, dot({name}_pn(k, t, n, b), p) - {a}[9 + k]);\n        }}\n        best = min(best, v);\n    }}\n",
-            planes = PIECE_PLANES
+            "    if (lb < best) {{\n        v = lb;\n        for (var k: I = 0; k < {planes}; k++) {{\n            v = max(v, dot({name}_pn(k, t, n, b), p) - {a}[9 + k @ 9..{e}]);\n        }}\n        best = min(best, v);\n    }}\n",
+            planes = PIECE_PLANES,
+            e = 8 + PIECE_PLANES
         );
     }
     s += "    return best;\n}\n";
@@ -493,10 +530,10 @@ fn curve_functions(name: &str, arr: &str, m: usize, kr: usize, rb: usize, w: usi
         "fn {name}_sk(i: I) -> F {{
     var wraps: I = I(floor(F(i) / {mf}));
     var r: I = i - {m} * wraps;
-    return {arr}[{sb} + r] + F(wraps) * ({arr}[{sbm}] - {arr}[{sb}]);
+    return {arr}[{sb} + r @ {sb}..{sbe}] + F(wraps) * ({arr}[{sbm} @ {sbm}..{sbm}] - {arr}[{sb} @ {sb}..{sb}]);
 }}
 fn {name}_rpa(r: I, j: I) -> V2 {{
-    return V2({arr}[{rb} + r * {w} + 2 * j], {arr}[{rb} + r * {w} + 2 * j + 1]);
+    return V2({arr}[{rb} + r * {w} + 2 * j @ {rb}..{rpx}], {arr}[{rb} + r * {w} + 2 * j + 1 @ {rb1}..{rpy}]);
 }}
 fn {name}_rp(i: I, j: I) -> V2 {{
     if (i < 0) {{ return 2.0 * {name}_rpa(0, j) - {name}_rpa(1, j); }}
@@ -526,6 +563,11 @@ fn {name}_bw(s: F) -> V4 {{
 ",
         sbm = sb + m,
         mf = lit(m as f32),
+        // the periodic knot `r` in 0 ..= m − 1; a row point: `r` in 0 ..= kr − 1, `j` in 0 ..= m − 1
+        sbe = sb + m - 1,
+        rpx = rb + (kr - 1) * w + 2 * (m - 1),
+        rb1 = rb + 1,
+        rpy = rb + (kr - 1) * w + 2 * (m - 1) + 1,
         krm1 = kr - 1,
         krm2 = kr - 2,
         kr1f = lit((kr - 1) as f32),

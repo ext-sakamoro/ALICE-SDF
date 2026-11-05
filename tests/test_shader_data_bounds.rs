@@ -255,3 +255,31 @@ fn the_gpu_evaluates_the_buffer_trees_as_the_cpu() {
         assert!(worst.0 <= 2e-5, "{what}: GPU differs from the CPU by {} at {:?}", worst.0, worst.1);
     }
 }
+
+#[test]
+fn no_checked_read_leaves_its_proven_range_on_the_gpu() {
+    use alice_sdf::compiled::GpuEvaluator;
+    let mut s: u64 = 0x5EAD_C0DE;
+    let mut r = move || {
+        s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        ((s >> 40) as f32) / ((1u64 << 24) as f32)
+    };
+    for (what, node) in trees() {
+        let sh = WgslShader::try_transpile_with_node_data_checked(&node, TranspileMode::Hardcoded).expect("the emit proves its reads");
+        let checked = sh.source.matches("alice_nd(").count();
+        assert!(checked > 20, "{what}: only {checked} checked reads in the text");
+        let gpu = match GpuEvaluator::new_checked(&node) {
+            Ok(g) => g,
+            Err(e) => {
+                assert!(std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(), "{what}: no GPU: {e}");
+                eprintln!("skipping {what}: no GPU ({e})");
+                return;
+            }
+        };
+        let pts: Vec<Vec3> = (0..2048).map(|_| Vec3::new(r() * 3.0 - 1.0, r() * 2.4 - 0.8, r() * 3.0 - 1.0)).collect();
+        let got = gpu.eval_batch(&pts).expect("gpu eval");
+        let plain = GpuEvaluator::new(&node).expect("gpu").eval_batch(&pts).expect("gpu eval");
+        assert!(got.iter().zip(&plain).all(|(a, b)| a.to_bits() == b.to_bits()), "{what}: the checked shader's values differ");
+        assert_eq!(gpu.read_hits().expect("the counter"), Some(0), "{what}: reads left their proven range on the GPU");
+    }
+}

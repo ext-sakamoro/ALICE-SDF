@@ -56,33 +56,47 @@ fn template(name: &str, arr: &str, flat: &[f32]) -> String {
     // the loops' constant trip counts: the most loops on a level and the most control points in a
     // loop (the data's counts stop the loops earlier; bad data cannot run them past these)
     let (mut lmax, mut mmax) = (1usize, 1usize);
+    // the reads' index ranges from this stack's own data (fixed at emit): the descriptors `d`, their
+    // loop slots `d + 1 + 2k` / `d + 2 + 2k` (`k` < count), the points `o + 2j` (`j` < m)
+    let (mut dlo, mut dhi, mut slo, mut shi, mut plo, mut phi) = (usize::MAX, 0usize, usize::MAX, 0usize, usize::MAX, 0usize);
     for l in 0..n {
         let d = flat[ds + l] as usize;
         let cnt = flat[d] as usize;
         lmax = lmax.max(cnt);
+        dlo = dlo.min(d);
+        dhi = dhi.max(d);
         for k in 0..cnt {
-            mmax = mmax.max(flat[d + 1 + 2 * k] as usize);
+            let (m, o) = (flat[d + 1 + 2 * k] as usize, flat[d + 2 + 2 * k] as usize);
+            mmax = mmax.max(m);
+            slo = slo.min(d + 1);
+            shi = shi.max(d + 2 + 2 * k);
+            plo = plo.min(o);
+            phi = phi.max(o + 2 * m.max(1) - 1);
         }
     }
+    let (slo1, shi1, plo1) = (slo + 1, shi - 1, plo + 1);
+    let phi0 = phi - 1;
+    let (dsn, lv2, lvn3, lvn4, lv1, lvn2, lv3, lvn1) = (ds + n - 1, lv + 2, lv + n - 3, lv + n - 4, lv + 1, lv + n - 2, lv + 3, lv + n - 1);
+    let (kn1, knn3, kn2, knn2) = (kn + 1, kn + n - 3, kn + 2, kn + n - 2);
     let curve = closed_curve_shader(name, "o: I, m: I", "o, m", "m", mmax, &format!("{name}_pt"), &format!("{name}_sk"));
     let nm3 = n - 3;
     format!(
         "fn {name}_pt(o: I, m: I, j: I) -> V2 {{
     var k: I = j - m * I(floor(F(j) / F(m)));
-    return V2({arr}[o + 2 * k], {arr}[o + 2 * k + 1]);
+    return V2({arr}[o + 2 * k @ {plo}..{phi0}], {arr}[o + 2 * k + 1 @ {plo1}..{phi}]);
 }}
 fn {name}_sk(i: I) -> F {{
     return F(i);
 }}
 {curve}fn {name}_lvl(l: I, q: V2) -> F {{
-    var dsc: I = I({arr}[{ds} + l]);
-    var cnt: I = I({arr}[dsc]);
+    var dsc: I = I({arr}[{ds} + l @ {ds}..{dsn}]);
+    var cnt: I = I({arr}[dsc @ {dlo}..{dhi}]);
     var best: F = 3.0e38;
     var sg: F = 1.0;
     for (var k: I = 0; k < {lmax}; k++) {{
         if (k >= cnt) {{ break; }}
-        var m: I = I({arr}[dsc + 1 + 2 * k]);
-        var o: I = I({arr}[dsc + 2 + 2 * k]);
+        var m: I = I({arr}[dsc + 1 + 2 * k @ {slo}..{shi1}]);
+        var o: I = I({arr}[dsc + 2 + 2 * k @ {slo1}..{shi}]);
         var d: F = {name}_ccd(o, m, q);
         if (d < 0.0) {{ sg = -sg; }}
         best = min(best, abs(d));
@@ -94,12 +108,12 @@ fn {name}(p: V3) -> F {{
     var yc: F = min(max(p.y, {y1}), {yl});
     var i: I = 1;
     for (var k: I = 1; k < {nm3}; k++) {{
-        if (yc > {arr}[{lv} + i + 1]) {{ i = i + 1; }} else {{ break; }}
+        if (yc > {arr}[{lv} + i + 1 @ {lv2}..{lvn3}]) {{ i = i + 1; }} else {{ break; }}
     }}
-    var ya: F = {arr}[{lv} + i - 1];
-    var yb: F = {arr}[{lv} + i];
-    var yd: F = {arr}[{lv} + i + 1];
-    var ye: F = {arr}[{lv} + i + 2];
+    var ya: F = {arr}[{lv} + i - 1 @ {lv}..{lvn4}];
+    var yb: F = {arr}[{lv} + i @ {lv1}..{lvn3}];
+    var yd: F = {arr}[{lv} + i + 1 @ {lv2}..{lvn2}];
+    var ye: F = {arr}[{lv} + i + 2 @ {lv3}..{lvn1}];
     var t: F = min(max((yc - yb) / (yd - yb), 0.0), 1.0);
     var dl: F = yd - yb;
     var a1: F = dl / (yd - ya);
@@ -115,7 +129,7 @@ fn {name}(p: V3) -> F {{
     f = f + (h00 - h11 * a2) * {name}_lvl(i, q);
     f = f + (h01 + h10 * a1) * {name}_lvl(i + 1, q);
     f = f + (h11 * a2) * {name}_lvl(i + 2, q);
-    var l: F = ((1.0 - t) * {arr}[{kn} + i] + t * {arr}[{kn} + i + 1]) * {e2};
+    var l: F = ((1.0 - t) * {arr}[{kn} + i @ {kn1}..{knn3}] + t * {arr}[{kn} + i + 1 @ {kn2}..{knn2}]) * {e2};
     var d2: F = f / l;
     if (abs(f) > {r0} * l) {{ d2 = sign(f) * ({r0} + (abs(f) - {r0} * l) / {lfar}); }}
     var dw: F = max({y1} - p.y, p.y - {yl});
