@@ -1561,8 +1561,10 @@ const HELPER_SDF_BLOBBY_CROSS: &str = r"fn sdf_blobby_cross(p: vec3<f32>, size: 
     let h = q * q - pp * pp * pp;
     var x: f32;
     if (h >= 0.0) {
-        let r = sqrt(h);
-        x = pow(q + r, 1.0 / 3.0) - pow(abs(q - r), 1.0 / 3.0) * sign(r - q);
+        // the cube root of q - r (which cancels near the arm tips) is pp / u: (q - r)(q + r) = pp^3
+        let u = pow(q + sqrt(h), 1.0 / 3.0);
+        x = 0.0;
+        if (u > 0.0) { x = u + pp / u; }
     } else {
         let r = sqrt(pp);
         x = 2.0 * r * cos(acos(q / (pp * r)) / 3.0);

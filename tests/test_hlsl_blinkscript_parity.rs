@@ -1013,6 +1013,58 @@ fn blinkscript_kernel_wraps_the_body_in_a_nuke_kernel() {
     );
 }
 
+/// The blobby_cross helper across its arm tips against the CPU law (whose own truth is
+/// tests/test_blobby_cross_oracle.rs).
+#[test]
+fn hlsl_blobby_cross_matches_cpu() {
+    let Some(cxx) = cxx_or_skip() else {
+        return;
+    };
+    let dir = scratch("hlsl_blobby");
+    let mut unit = 0usize;
+    let mut compared = 0usize;
+    let mut worst = 0.0f32;
+    for size in [1.0f32, 3.0] {
+        let node = SdfNode::blobby_cross(size, 1000.0);
+        let emit = HlslShader::transpile(&node, HlslTranspileMode::Hardcoded).source;
+        unit += 1;
+        let bin = compile(
+            &cxx,
+            &dir,
+            &format!("b{unit}"),
+            &translation_unit(&emit, ""),
+        )
+        .expect("the blobby_cross emit compiles");
+        let mut pts = Vec::new();
+        for i in -30i32..=30 {
+            for j in -30i32..=30 {
+                pts.push(Vec3::new(
+                    i as f32 * 0.05 * size,
+                    0.0,
+                    j as f32 * 0.05 * size,
+                ));
+            }
+        }
+        // on the axis across the arm tip, where the closed form loses digits
+        for e in [0.0f32, 1e-4, 1e-3, 1e-2, 0.1] {
+            for o in [0.0f32, 1e-4, 1e-3, 1e-2, 0.1] {
+                pts.push(Vec3::new((1.0 + e) * size, 0.0, o * size));
+                pts.push(Vec3::new((1.0 - e) * size, 0.0, o * size));
+            }
+        }
+        for (p, g) in pts
+            .iter()
+            .zip(run(&bin, &pts).expect("the blobby_cross emit runs"))
+        {
+            worst = worst.max((g - eval(&node, *p)).abs());
+            compared += 1;
+        }
+    }
+    assert!(compared > 0, "compared 0 points");
+    eprintln!("HLSL blobby_cross: {compared} points, max |shader - cpu| {worst:.3e}");
+    assert!(worst <= 2e-5, "HLSL/CPU drift {worst:.3e}");
+}
+
 // ===========================================================================
 // An independent parse: glslang's HLSL front-end + spirv-val
 // ===========================================================================

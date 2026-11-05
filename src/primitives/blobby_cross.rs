@@ -16,10 +16,13 @@ pub const BLOBBY_CROSS_HE: f32 = 0.5;
 
 /// SDF for a blobby (organic) cross shape, extruded along Y-axis
 ///
-/// Inigo Quilez's exact `sdBlobbyCross` (distance to the parabola-arm
-/// curve, obtained by solving the depressed cubic for the nearest
-/// parameter) evaluated on `|xz| / size` and scaled back by `size`, then
-/// extruded along Y. Exact SDF, Lipschitz 1.
+/// Inigo Quilez's `sdBlobbyCross` (distance to the parabola-arm curve,
+/// obtained by solving the depressed cubic for the nearest parameter)
+/// evaluated on `|xz| / size` and scaled back by `size`, then extruded along
+/// Y. Lipschitz 1. The curve runs on past the fold between the waist and the
+/// arm tip, and that part is not on the zero set, so near the arms the value
+/// is a lower bound of the distance to the surface, not the distance
+/// (0.017 at `(0.5, 0)` for `size` 1, where the surface is 0.086 away).
 ///
 /// - `size`: overall size of the blobby cross (arms reach `±size`)
 /// - `half_height`: half the extrusion height along Y
@@ -44,9 +47,14 @@ pub fn blobby_cross_2d(pos: Vec2, he: f32) -> f32 {
     let q = pos.x / (he * he * 16.0);
     let h = q * q + -(p * p * p);
     let x = if h >= 0.0 {
-        // one real root (`h = 0`: double root, avoids the 0/0 of the trig form)
-        let r = h.sqrt();
-        alice_det_math::cbrt((q - r).abs()) * -(r - q).signum() + alice_det_math::cbrt(q + r)
+        // one real root (`h = 0`: double root, avoids the 0/0 of the trig form). `q - r` cancels in f32
+        // near the arm tips; its cube root is `p / u` because `(q - r)(q + r) = p^3`
+        let u = alice_det_math::cbrt(q + h.sqrt());
+        if u > 0.0 {
+            u + p / u
+        } else {
+            0.0
+        }
     } else {
         let r = p.sqrt();
         2.0 * r * alice_det_math::cos(alice_det_math::acos(q / (p * r)) / 3.0)
