@@ -21,9 +21,12 @@
 
 mod common;
 
+use alice_sdf::compiled::CompiledSdf;
 use alice_sdf::eval::{eval, eval_scaled};
 use alice_sdf::interval::eval_lipschitz;
-use alice_sdf::raycast::{raymarch, raymarch_detailed, raymarch_with_config, RaymarchConfig};
+use alice_sdf::raycast::{
+    raymarch, raymarch_compiled, raymarch_detailed, raymarch_with_config, RaymarchConfig,
+};
 use alice_sdf::transforms::{grid_warp_from_triangles, GridWarp, WarpGrid};
 use alice_sdf::SdfNode;
 use glam::Vec3;
@@ -358,4 +361,57 @@ fn a_warped_scene_needs_more_steps_and_running_out_is_reported() {
         "the default budget was enough: the cost is not pinned"
     );
     assert_eq!(silent, 0, "{silent} met rays missed without running out");
+}
+
+/// The slab under a non-uniform scale that squeezes y to a tenth: the posed shape is the same box
+/// as the squeezed warp's, and the value is 0.1 × the child's (s = 10 above the top face).
+fn scaled_slab() -> SdfNode {
+    SdfNode::box3d(1.0, 1.0, 0.04)
+        .translate(0.5, 0.5, 0.0)
+        .scale_xyz(1.0, 0.1, 1.0)
+}
+
+/// For each ray of the grazing fan over the top face: (interpreter hit, compiled hit).
+fn grazing_hits(node: &SdfNode) -> Vec<(bool, bool)> {
+    let compiled = CompiledSdf::compile(node);
+    let eps = RaymarchConfig::default().epsilon;
+    let mut out = Vec::new();
+    for k in 0..12 {
+        let h = eps * (1.5 + 7.5 * k as f32 / 11.0);
+        for a in 0..9 {
+            let ang = (a as f32 - 4.0) * 0.012;
+            let (sn, cs) = alice_det_math::sin_cos(ang);
+            let d = Vec3::new(cs, sn, 0.0);
+            let o = Vec3::new(0.15, 0.05 - 0.3 * sn, 0.02 + h);
+            out.push((
+                raymarch(node, o, d, 0.7).is_some(),
+                raymarch_compiled(&compiled, o, d, 0.7).is_some(),
+            ));
+        }
+    }
+    out
+}
+
+#[test]
+#[ignore = "known defect: SDF-COMPILED-HIT-SCALE-001: the compiled, SIMD and JIT marchers hit on |d| < eps while the interpreter hits on |d|·s < eps, so near a surface a non-uniform scale (or projective / lattice) divides they disagree"]
+fn the_compiled_marcher_agrees_with_the_interpreter_near_a_scaled_surface() {
+    let hits = grazing_hits(&scaled_slab());
+    assert_eq!(hits.len(), 108);
+    let differ = hits.iter().filter(|(i, c)| i != c).count();
+    assert_eq!(
+        differ, 0,
+        "{differ} of 108 rays: the interpreter and the compiled marcher disagree"
+    );
+}
+
+#[test]
+fn today_the_compiled_marcher_takes_a_scaled_near_miss_for_a_hit() {
+    // Pins SDF-COMPILED-HIT-SCALE-001 as it is, so the disagreement stays covered while the
+    // oracle above is ignored: every grazing ray (1.5 to 9 eps over the top face, the value
+    // 0.1 × the distance) is a hit for the compiled marcher and none is for the interpreter.
+    // When the compiled marchers take the scaled rule this goes red: delete it and un-ignore the
+    // oracle above.
+    let hits = grazing_hits(&scaled_slab());
+    assert_eq!(hits.len(), 108);
+    assert!(hits.iter().all(|(i, c)| !i && *c), "{hits:?}");
 }
