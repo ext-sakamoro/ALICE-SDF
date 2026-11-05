@@ -11,7 +11,12 @@
 //! - posed = rest turned 90° about z: the warped SDF at p is the child at the point turned back;
 //! - a flat sheet stretched ×2 along x in its plane: the warped SDF at p is the child at
 //!   (p.x / 2, p.y, p.z) (the normal keeps its length, so thickness is kept);
-//! - bad input is an error, never a grid.
+//! - bad input is an error, never a grid;
+//! - with a shell bound (the child lies within t of the rest sheet), a folded sheet shows no
+//!   surface farther than σ·t from the posed sheet (without it, the fold makes such ghosts),
+//!   and the per-node floor stays at or below the true distance to the posed shape, on a
+//!   stretched and on a folded sheet, near and far (true distance: dense samples of the
+//!   child's rest surface carried forward through each sample's own triangle).
 //!
 //! Every evaluation goes through `SdfNode::grid_warp` and `eval`, the production path.
 //!
@@ -54,7 +59,7 @@ fn child() -> SdfNode {
 }
 
 fn warped(rest: &[Vec3], posed: &[Vec3], tris: &[[u32; 3]], lo: Vec3, hi: Vec3) -> SdfNode {
-    let data = grid_warp_from_triangles(rest, posed, tris, lo, hi, 0.05, 0.5).expect("builds");
+    let data = grid_warp_from_triangles(rest, posed, tris, lo, hi, 0.05, 0.5, None).expect("builds");
     child().grid_warp(GridWarp::new(data).expect("a valid grid"))
 }
 
@@ -118,7 +123,7 @@ fn posed_equal_rest_is_the_identity() {
     let (rest, tris) = sheet(5);
     let lo = Vec3::new(-0.6, -0.6, -0.6);
     let hi = Vec3::new(1.6, 1.6, 0.6);
-    let data = grid_warp_from_triangles(&rest, &rest, &tris, lo, hi, 0.05, 0.5).expect("builds");
+    let data = grid_warp_from_triangles(&rest, &rest, &tris, lo, hi, 0.05, 0.5, None).expect("builds");
     let id = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
     for (k, m) in data.maps.chunks(12).enumerate() {
         for (a, b) in m.iter().zip(id) {
@@ -206,7 +211,7 @@ fn bad_input_is_an_error() {
     let lo = Vec3::splat(-0.5);
     let hi = Vec3::splat(1.5);
     let b = |r: &[Vec3], p: &[Vec3], t: &[[u32; 3]], lo, hi, cell| {
-        grid_warp_from_triangles(r, p, t, lo, hi, cell, 0.5)
+        grid_warp_from_triangles(r, p, t, lo, hi, cell, 0.5, None)
     };
     assert!(matches!(
         b(&rest, &rest[1..], &tris, lo, hi, 0.1),
@@ -276,6 +281,7 @@ fn each_node_takes_the_map_of_the_nearest_triangle() {
         Vec3::new(5.6, 1.6, 0.8),
         0.05,
         0.5,
+        None,
     )
     .expect("builds");
     let node = shape.clone().grid_warp(GridWarp::new(data).expect("valid"));
@@ -287,4 +293,126 @@ fn each_node_takes_the_map_of_the_nearest_triangle() {
         }
     }
     assert!(n > 0);
+}
+
+/// A sheet folded over itself: the right half is turned back over the left and lifted 0.15
+/// (posed x = 1 − x, z = 0.15 for rest x > 0.5).
+fn folded(rest: &[Vec3]) -> Vec<Vec3> {
+    rest.iter()
+        .map(|p| if p.x > 0.5 { Vec3::new(1.0 - p.x, p.y, 0.15) } else { *p })
+        .collect()
+}
+
+/// A thin slab on the rest sheet: within 0.02 of it (the shell bound used below is 0.03).
+fn slab() -> SdfNode {
+    SdfNode::box3d(0.8, 0.8, 0.04).translate(0.5, 0.5, 0.0)
+}
+
+fn sheet_distance(p: Vec3, posed: &[Vec3], tris: &[[u32; 3]]) -> f32 {
+    // dense barycentric samples of every posed triangle (classification only)
+    let mut d = f32::INFINITY;
+    for t in tris {
+        let (a, b, c) = (posed[t[0] as usize], posed[t[1] as usize], posed[t[2] as usize]);
+        for i in 0..=16 {
+            for j in 0..=(16 - i) {
+                let (u, v) = (i as f32 / 16.0, j as f32 / 16.0);
+                d = d.min((a + (b - a) * u + (c - a) * v - p).length());
+            }
+        }
+    }
+    d
+}
+
+#[test]
+fn a_folded_sheet_has_no_ghost_with_a_shell() {
+    let (rest, tris) = sheet(9);
+    let posed = folded(&rest);
+    let (lo, hi) = (Vec3::new(-0.4, -0.4, -0.4), Vec3::new(1.4, 1.4, 0.6));
+    let cell = 0.05;
+    let shell = 0.03;
+    let ghosts = |data| {
+        let node = slab().grid_warp(GridWarp::new(data).expect("valid"));
+        let mut n = 0;
+        for k in 0..24 {
+            for j in 0..24 {
+                for i in 0..24 {
+                    let p = lo + (hi - lo) * Vec3::new(i as f32 + 0.5, j as f32 + 0.5, k as f32 + 0.5) / 24.0;
+                    // inside, yet farther from the posed sheet than the shell allows (σ = 1 here:
+                    // the fold is a rigid motion of each half)
+                    if eval(&node, p) < 0.0 && sheet_distance(p, &posed, &tris) > shell + 0.01 {
+                        n += 1;
+                    }
+                }
+            }
+        }
+        n
+    };
+    let without = grid_warp_from_triangles(&rest, &posed, &tris, lo, hi, cell, 0.3, None).expect("builds");
+    let with = grid_warp_from_triangles(&rest, &posed, &tris, lo, hi, cell, 0.3, Some(shell)).expect("builds");
+    // the scene folds: without the shell the fold makes ghost surfaces
+    assert!(ghosts(without) > 0, "the folded scene shows no ghost without a shell");
+    assert_eq!(ghosts(with), 0, "ghost surfaces remain with the shell");
+}
+
+#[test]
+fn the_floor_never_exceeds_the_distance_to_the_posed_shape() {
+    let (rest, tris) = sheet(9);
+    let shell = 0.03;
+    let stretched: Vec<Vec3> = rest.iter().map(|p| Vec3::new(2.0 * p.x, p.y, p.z)).collect();
+    let mut checked = 0;
+    for posed in [stretched, folded(&rest)] {
+        let (mut lo, mut hi) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
+        for p in &posed {
+            lo = lo.min(*p);
+            hi = hi.max(*p);
+        }
+        let (lo, hi) = (lo - Vec3::splat(0.4), hi + Vec3::splat(0.4));
+        let data = grid_warp_from_triangles(&rest, &posed, &tris, lo, hi, 0.05, 0.3, Some(shell)).expect("builds");
+        let warp = GridWarp::new(data).expect("valid");
+        // the posed shape: rest surface samples of the slab carried forward through the rest
+        // triangle under each sample (its own map, rest -> posed)
+        let mut shape = Vec::new();
+        let n = 60;
+        for k in 0..=4 {
+            for j in 0..=n {
+                for i in 0..=n {
+                    let x = Vec3::new(0.1 + 0.8 * i as f32 / n as f32, 0.1 + 0.8 * j as f32 / n as f32, -0.02 + 0.01 * k as f32);
+                    let on_face = k == 0 || k == 4 || i == 0 || i == n || j == 0 || j == n;
+                    if !on_face {
+                        continue;
+                    }
+                    let (ci, cj) = (((x.x * 8.0) as usize).min(7), ((x.y * 8.0) as usize).min(7));
+                    let fx = x.x * 8.0 - ci as f32;
+                    let fy = x.y * 8.0 - cj as f32;
+                    let t = tris[(cj * 8 + ci) * 2 + usize::from(fy > fx)];
+                    let r = [rest[t[0] as usize], rest[t[1] as usize], rest[t[2] as usize]];
+                    let q = [posed[t[0] as usize], posed[t[1] as usize], posed[t[2] as usize]];
+                    let m = affine_posed_to_rest(q, r).expect("map").map(f64::from);
+                    let y = Vec3::new(
+                        (m[0] * f64::from(x.x) + m[1] * f64::from(x.y) + m[2] * f64::from(x.z) + m[3]) as f32,
+                        (m[4] * f64::from(x.x) + m[5] * f64::from(x.y) + m[6] * f64::from(x.z) + m[7]) as f32,
+                        (m[8] * f64::from(x.x) + m[9] * f64::from(x.y) + m[10] * f64::from(x.z) + m[11]) as f32,
+                    );
+                    shape.push(y);
+                }
+            }
+        }
+        // sample spacing on the posed surface (stretch 2 doubles it): 0.8 / 60 × 2 ≈ 0.027
+        let gap = 0.03;
+        let mut rng = 0x2545_f491_4f6c_dd1du64;
+        let mut next = || {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            (rng >> 40) as f32 / (1u64 << 24) as f32
+        };
+        for _ in 0..4000 {
+            let p = lo + (hi - lo) * Vec3::new(next(), next(), next());
+            let (_, _, _, floor) = warp.warp(p);
+            let d = shape.iter().map(|y| (p - *y).length()).fold(f32::INFINITY, f32::min);
+            assert!(floor <= d + gap, "floor {floor} above the distance {d} at {p:?}");
+            checked += 1;
+        }
+    }
+    assert!(checked > 0);
 }

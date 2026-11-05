@@ -64,6 +64,7 @@ fn main() {
         Vec3::new(1.3, 1.3, 0.7),
         0.025,
         0.3,
+        None,
     )
     .expect("the sheet builds a grid");
     let warp = GridWarp::new(data).expect("a valid grid");
