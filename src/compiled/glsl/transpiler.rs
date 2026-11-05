@@ -1800,9 +1800,12 @@ const HELPER_SDF_HELIX: &str = r"float sdf_helix(vec3 p, float major_r, float mi
             ALICE_PRECISE float f2 = max(two_rr * co + 2.0 * c * c, 1e-6);
             phi = phi - clamp(f1 / f2, -1.5707963, 1.5707963);
         }
-        ALICE_PRECISE float co = cos(phi - theta);
+        // the squared radial gap as (r - R)^2 + 4rR sin^2(a/2): the cosine form cancels on the curve
+        ALICE_PRECISE float half = sin(0.5 * (phi - theta));
         ALICE_PRECISE float dy = py - c * phi;
-        ALICE_PRECISE float d2 = dy * dy + max(r * r + major_r * major_r - two_rr * co, 0.0);
+        ALICE_PRECISE float gap = r - major_r;
+        ALICE_PRECISE float radial = gap * gap + 2.0 * two_rr * (half * half);
+        ALICE_PRECISE float d2 = dy * dy + max(radial, 0.0);
         best = min(best, d2);
     }
     ALICE_PRECISE float d_tube = sqrt(best) - minor_r;
