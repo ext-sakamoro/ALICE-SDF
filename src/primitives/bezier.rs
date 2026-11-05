@@ -8,6 +8,35 @@
 use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
+/// Newton steps applied to every candidate parameter (see [`refine`])
+const NEWTON_STEPS: usize = 2;
+
+/// |q(t)|² with q(t) = B(t) − pos = dv + (cv + b·t)·t
+#[inline]
+fn d2_at(dv: Vec3, cv: Vec3, b: Vec3, t: f32) -> f32 {
+    let q = dv + (cv + b * t) * t;
+    q.dot(q)
+}
+
+/// [`NEWTON_STEPS`] clamped Newton steps on q(t)·q′(t) = 0 (q′ = cv + 2b·t, q″ = 2b) from `t`. A step
+/// is skipped where (|q|²)″/2 = |q′|² + q·q″ is not positive (Newton would climb). The closed form below
+/// picks a wrong root in f32 when |a − 2b + c| is small (cancellation after kk = 1/|a − 2b + c|²), which
+/// made the law state a distance larger than the true one (measured: 0.004022 for a point 0.000126 from
+/// a stroke with |a − 2b + c| = 0.06); the steps move every candidate to its nearest stationary point.
+#[inline]
+fn refine(dv: Vec3, cv: Vec3, b: Vec3, mut t: f32) -> f32 {
+    for _ in 0..NEWTON_STEPS {
+        let q = dv + (cv + b * t) * t;
+        let dq = cv + b * (2.0 * t);
+        let g = q.dot(dq);
+        let gp = dq.dot(dq) + 2.0 * q.dot(b);
+        if gp > 0.0 {
+            t = (t - g / gp).clamp(0.0, 1.0);
+        }
+    }
+    t
+}
+
 /// Distance from point `pos` to a quadratic Bezier curve `A→B→C`
 /// with tube `radius`.
 ///
@@ -55,7 +84,8 @@ pub fn sdf_bezier(pos: Vec3, a: Vec3, b: Vec3, c: Vec3, radius: f32) -> f32 {
         let uv_x = x0.signum() * alice_det_math::cbrt(x0.abs());
         let uv_y = x1.signum() * alice_det_math::cbrt(x1.abs());
         let t = (uv_x + uv_y - kx).clamp(0.0, 1.0);
-        (dv + (cv + ba2c * t) * t).length()
+        let tr = refine(dv, cv, ba2c, t);
+        d2_at(dv, cv, ba2c, t).law_min(d2_at(dv, cv, ba2c, tr))
     } else {
         // Three real roots — take closest
         let z = (-p2).sqrt();
@@ -66,10 +96,15 @@ pub fn sdf_bezier(pos: Vec3, a: Vec3, b: Vec3, c: Vec3, radius: f32) -> f32 {
         let t0 = ((m + m) * z + -kx).clamp(0.0, 1.0);
         let t1 = ((-n - m) * z + -kx).clamp(0.0, 1.0);
 
-        let d0 = (dv + (cv + ba2c * t0) * t0).length();
-        let d1 = (dv + (cv + ba2c * t1) * t1).length();
+        let d0 = d2_at(dv, cv, ba2c, t0).law_min(d2_at(dv, cv, ba2c, refine(dv, cv, ba2c, t0)));
+        let d1 = d2_at(dv, cv, ba2c, t1).law_min(d2_at(dv, cv, ba2c, refine(dv, cv, ba2c, t1)));
         d0.law_min(d1)
     };
+    // every candidate is a point of the curve, so the minimum never states less than the true
+    // distance beyond rounding; the refinement only removes over-statement (measured over near-straight
+    // to strongly bent quadratics: worst over-statement 5e-7 = f32 rounding, was 1.17e-3; 1 step is
+    // enough on that sweep, the second is margin)
+    let res = res.sqrt();
 
     res - radius
 }

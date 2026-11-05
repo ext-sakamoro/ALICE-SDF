@@ -815,7 +815,24 @@ const HELPER_SDF_TRIANGLE: &str = r"float sdf_triangle(float3 p, float3 a, float
 }
 ";
 
-const HELPER_SDF_BEZIER: &str = r"float sdf_bezier(float3 pos, float3 A, float3 B, float3 C, float rad) {
+// sdf_bezier_d2 / sdf_bezier_refine: the CPU law's `d2_at` / `refine` (src/primitives/bezier.rs): every
+// closed-form root is refined by 2 clamped Newton steps on q(t).q'(t) = 0 and the nearer of the two is kept
+const HELPER_SDF_BEZIER: &str = r"float sdf_bezier_d2(float3 d, float3 c, float3 b, float t) {
+    precise float3 q = d + (c + b * t) * t;
+    return dot(q, q);
+}
+float sdf_bezier_refine(float3 d, float3 c, float3 b, float t0) {
+    precise float t = t0;
+    for (int i = 0; i < 2; i++) {
+        precise float3 q = d + (c + b * t) * t;
+        precise float3 dq = c + b * (2.0 * t);
+        precise float g = dot(q, dq);
+        precise float gp = dot(dq, dq) + 2.0 * dot(q, b);
+        if (gp > 0.0) { t = clamp(t - g / gp, 0.0, 1.0); }
+    }
+    return t;
+}
+float sdf_bezier(float3 pos, float3 A, float3 B, float3 C, float rad) {
     precise float3 a = B - A;
     precise float3 b = A - 2.0 * B + C;
     precise float3 c = a * 2.0;
@@ -835,8 +852,7 @@ const HELPER_SDF_BEZIER: &str = r"float sdf_bezier(float3 pos, float3 A, float3 
         precise float2 x = (float2(sh, -sh) - q) * 0.5;
         precise float2 uv = sign(x) * pow(abs(x), float2(1.0 / 3.0, 1.0 / 3.0));
         precise float t = clamp(uv.x + uv.y - kx, 0.0, 1.0);
-        precise float3 qp = d + (c + b * t) * t;
-        res = dot(qp, qp);
+        res = min(sdf_bezier_d2(d, c, b, t), sdf_bezier_d2(d, c, b, sdf_bezier_refine(d, c, b, t)));
     } else {
         precise float z = sqrt(kx * kx - ky);
         precise float v = acos(q / (p * z * 2.0)) / 3.0;
@@ -844,9 +860,8 @@ const HELPER_SDF_BEZIER: &str = r"float sdf_bezier(float3 pos, float3 A, float3 
         precise float n = sin(v) * 1.732050808;
         precise float t0 = clamp(( m + m) * z - kx, 0.0, 1.0);
         precise float t1 = clamp((-n - m) * z - kx, 0.0, 1.0);
-        precise float3 qp0 = d + (c + b * t0) * t0;
-        precise float3 qp1 = d + (c + b * t1) * t1;
-        res = min(dot(qp0, qp0), dot(qp1, qp1));
+        res = min(min(sdf_bezier_d2(d, c, b, t0), sdf_bezier_d2(d, c, b, sdf_bezier_refine(d, c, b, t0))),
+                  min(sdf_bezier_d2(d, c, b, t1), sdf_bezier_d2(d, c, b, sdf_bezier_refine(d, c, b, t1))));
     }
     precise float alice_r = sqrt(res) - rad;
     return alice_r;

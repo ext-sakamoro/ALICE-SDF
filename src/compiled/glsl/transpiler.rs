@@ -872,7 +872,24 @@ const HELPER_SDF_TRIANGLE: &str = r"float sdf_triangle(vec3 p, vec3 a, vec3 b, v
 }
 ";
 
-const HELPER_SDF_BEZIER: &str = r"float sdf_bezier(vec3 pos, vec3 A, vec3 B, vec3 C, float r) {
+// sdf_bezier_d2 / sdf_bezier_refine: the CPU law's `d2_at` / `refine` (src/primitives/bezier.rs): every
+// closed-form root is refined by 2 clamped Newton steps on q(t).q'(t) = 0 and the nearer of the two is kept
+const HELPER_SDF_BEZIER: &str = r"float sdf_bezier_d2(vec3 d, vec3 c, vec3 b, float t) {
+    ALICE_PRECISE vec3 q = d + (c + b * t) * t;
+    return dot(q, q);
+}
+float sdf_bezier_refine(vec3 d, vec3 c, vec3 b, float t0) {
+    ALICE_PRECISE float t = t0;
+    for (int i = 0; i < 2; i++) {
+        ALICE_PRECISE vec3 q = d + (c + b * t) * t;
+        ALICE_PRECISE vec3 dq = c + b * (2.0 * t);
+        ALICE_PRECISE float g = dot(q, dq);
+        ALICE_PRECISE float gp = dot(dq, dq) + 2.0 * dot(q, b);
+        if (gp > 0.0) { t = clamp(t - g / gp, 0.0, 1.0); }
+    }
+    return t;
+}
+float sdf_bezier(vec3 pos, vec3 A, vec3 B, vec3 C, float r) {
     ALICE_PRECISE vec3 a = B - A;
     ALICE_PRECISE vec3 b = A - 2.0 * B + C;
     ALICE_PRECISE vec3 c = a * 2.0;
@@ -891,7 +908,7 @@ const HELPER_SDF_BEZIER: &str = r"float sdf_bezier(vec3 pos, vec3 A, vec3 B, vec
         ALICE_PRECISE vec2 x = (vec2(h, -h) - q) * 0.5;
         ALICE_PRECISE vec2 uv = sign(x) * pow(abs(x), vec2(1.0 / 3.0));
         ALICE_PRECISE float t = clamp(uv.x + uv.y - kx, 0.0, 1.0);
-        res = dot(d + (c + b * t) * t, d + (c + b * t) * t);
+        res = min(sdf_bezier_d2(d, c, b, t), sdf_bezier_d2(d, c, b, sdf_bezier_refine(d, c, b, t)));
     } else {
         ALICE_PRECISE float z = sqrt(kx * kx - ky);
         ALICE_PRECISE float v2 = acos(q / (p2 * z * 2.0)) / 3.0;
@@ -899,8 +916,8 @@ const HELPER_SDF_BEZIER: &str = r"float sdf_bezier(vec3 pos, vec3 A, vec3 B, vec
         ALICE_PRECISE float n = sin(v2) * 1.732050808;
         ALICE_PRECISE float t1 = clamp(( m + m) * z - kx, 0.0, 1.0);
         ALICE_PRECISE float t2 = clamp((-n - m) * z - kx, 0.0, 1.0);
-        ALICE_PRECISE float d1 = dot(d + (c + b * t1) * t1, d + (c + b * t1) * t1);
-        ALICE_PRECISE float d2 = dot(d + (c + b * t2) * t2, d + (c + b * t2) * t2);
+        ALICE_PRECISE float d1 = min(sdf_bezier_d2(d, c, b, t1), sdf_bezier_d2(d, c, b, sdf_bezier_refine(d, c, b, t1)));
+        ALICE_PRECISE float d2 = min(sdf_bezier_d2(d, c, b, t2), sdf_bezier_d2(d, c, b, sdf_bezier_refine(d, c, b, t2)));
         res = min(d1, d2);
     }
     ALICE_PRECISE float alice_r = sqrt(res) - r;
