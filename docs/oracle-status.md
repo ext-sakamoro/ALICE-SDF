@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1096 |
+| 🟢 Not ignored | 1102 |
 | 🔴 Red by design | 1 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 1 |
-| **Total** | **1101** |
+| **Total** | **1107** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -42,7 +42,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1096)
+## 🟢 Not ignored (1102)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -62,19 +62,19 @@ Per-file counts (the test names are in `tests/`):
 | `test_smooth_ops_oracle.rs` | 17 |
 | `test_mesh_winding.rs` | 16 |
 | `test_compiled_bytecode_oracle.rs` | 15 |
+| `test_hlsl_blinkscript_parity.rs` | 15 |
 | `test_io_round_trip.rs` | 15 |
 | `test_compiled_evaluation.rs` | 14 |
 | `test_degenerate_input_oracle.rs` | 14 |
 | `test_gpu_law_parity.rs` | 14 |
-| `test_hlsl_blinkscript_parity.rs` | 14 |
 | `test_io_format_oracle.rs` | 13 |
 | `test_texture_fit_oracle.rs` | 13 |
 | `test_union_bound_oracle.rs` | 13 |
+| `test_glsl_export_oracle.rs` | 12 |
 | `test_validity_oracle.rs` | 12 |
 | `mesh_bvh_closest_triangle.rs` | 11 |
 | `test_binding_oracle.rs` | 11 |
 | `test_cache_correctness.rs` | 11 |
-| `test_glsl_export_oracle.rs` | 11 |
 | `test_material_oracle.rs` | 11 |
 | `test_mesh_collision_fit_oracle.rs` | 11 |
 | `test_rendering_pipeline.rs` | 11 |
@@ -141,6 +141,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_unordered_no_iteration.rs` | 5 |
 | `mesh_bvh_sliver.rs` | 4 |
 | `test_bake_mass_oracle.rs` | 4 |
+| `test_blobby_cross_oracle.rs` | 4 |
 | `test_constraint_oracle.rs` | 4 |
 | `test_det_golden.rs` | 4 |
 | `test_dual_contouring_invariants.rs` | 4 |
