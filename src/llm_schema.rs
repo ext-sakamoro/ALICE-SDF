@@ -5,7 +5,7 @@
 //!
 //! Author: Moroya Sakamoto
 
-use crate::provenance::{sdf_load_verdict, Checked};
+use crate::provenance::{sdf_tree_load_gate, Checked};
 use crate::types::{SdfNode, SdfTree};
 
 /// Validate an SDF JSON string and return the parsed tree with its semantics status.
@@ -20,7 +20,7 @@ use crate::types::{SdfNode, SdfTree};
 pub fn validate_sdf_json(json: &str) -> Result<Checked<SdfTree>, String> {
     #[allow(
         clippy::disallowed_methods,
-        reason = "stored form checked: a serde_json::Value; the tree comes from io::json::split and sdf_load_verdict before it is returned"
+        reason = "stored form checked: a serde_json::Value; the tree comes from io::json::split and sdf_tree_load_gate before it is returned"
     )]
     let value: serde_json::Value = serde_json::from_str(json).map_err(|e| {
         format!(
@@ -32,7 +32,8 @@ pub fn validate_sdf_json(json: &str) -> Result<Checked<SdfTree>, String> {
     })?;
     let (tree, stored) =
         crate::io::json::split(value).map_err(|e| format!("SDF tree error: {e}"))?;
-    let semantics = sdf_load_verdict(stored, crate::io::json::FORMAT, true)
+    let semantics = sdf_tree_load_gate(stored, crate::io::json::FORMAT, true)
+        .and_then(|gate| gate.settle(&tree, crate::io::json::FORMAT))
         .map_err(|e| format!("semantics identifier: {e}"))?;
 
     // Validate tree is non-empty

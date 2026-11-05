@@ -312,8 +312,7 @@ fn load_asdf_checked(
         reader.read_exact(&mut header_bytes[16..])?;
     }
     let header = AsdfHeader::from_bytes(&header_bytes)?;
-    let semantics =
-        crate::provenance::sdf_load_verdict(header.semantics_id, "ASDF", allow_unpinned)?;
+    let gate = crate::provenance::sdf_tree_load_gate(header.semantics_id, "ASDF", allow_unpinned)?;
 
     // 2. Read entire body into buffer (necessary for CRC validation before deserialize)
     let mut body = Vec::new();
@@ -334,13 +333,14 @@ fn load_asdf_checked(
     // (fuzz_asdf_decode で発覚した capacity overflow panic の予防)
     #[allow(
         clippy::disallowed_methods,
-        reason = "stored form checked: the header identifier went through sdf_load_verdict before this decode"
+        reason = "stored form checked: the header identifier went through sdf_tree_load_gate before this decode, the tree through settle after it"
     )]
     let (tree, _consumed): (SdfTree, usize) = bincode::serde::decode_from_slice(
         &body,
         bincode::config::legacy().with_limit::<ASDF_BINCODE_LIMIT>(),
     )
     .map_err(|e| IoError::Serialization(e.to_string()))?;
+    let semantics = gate.settle(&tree, "ASDF")?;
     Ok(Checked::new(tree, semantics))
 }
 

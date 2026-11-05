@@ -234,7 +234,8 @@ pub mod semantics;
 pub mod eval_cache;
 pub use eval_cache::ExactEvalCache;
 pub use semantics::{
-    check_sdf_semantics, PREVIOUS_SDF_SEMANTICS_IDS, SDF_SEMANTICS_BY_DET_MATH, SDF_SEMANTICS_ID,
+    check_sdf_semantics, moved_laws_in, PREVIOUS_SDF_SEMANTICS_IDS, SDF_MOVED_LAWS_OVERSTATE_FIX,
+    SDF_SEMANTICS_BY_DET_MATH, SDF_SEMANTICS_ID, SDF_SEMANTICS_MOVED_LAWS,
 };
 
 /// Prelude - commonly used types and functions

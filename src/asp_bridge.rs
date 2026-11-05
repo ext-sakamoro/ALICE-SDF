@@ -43,7 +43,7 @@ use libasp::{
     RegionDescriptor,
 };
 
-use crate::provenance::{sdf_load_verdict, Checked, Provenance};
+use crate::provenance::{sdf_tree_load_gate, Checked, Provenance};
 use crate::types::SdfTree;
 
 /// Create an ASP I-packet containing a full SDF scene.
@@ -230,20 +230,22 @@ fn decode_checked(packet: &AspPacket, allow_unpinned: bool) -> Result<Checked<Sd
         id.copy_from_slice(&bytes[..TREE_OFFSET]);
         id
     });
-    let semantics =
-        sdf_load_verdict(stored, "ASP I-packet", allow_unpinned).map_err(|e| e.to_string())?;
+    let gate =
+        sdf_tree_load_gate(stored, "ASP I-packet", allow_unpinned).map_err(|e| e.to_string())?;
 
     #[allow(
         clippy::disallowed_methods,
-        reason = "stored form checked: the identifier in the first 32 coefficient entries went through sdf_load_verdict above"
+        reason = "stored form checked: the identifier in the first 32 coefficient entries went through sdf_tree_load_gate, the tree through settle above"
     )]
     let decoded = bincode::serde::decode_from_slice(
         &bytes[offset..],
         bincode::config::legacy().with_limit::<ASP_BINCODE_LIMIT>(),
     );
-    decoded
-        .map(|(tree, _)| Checked::new(tree, semantics))
-        .map_err(|e| format!("ASDF decode failed: {}", e))
+    let (tree, _) = decoded.map_err(|e| format!("ASDF decode failed: {}", e))?;
+    let semantics = gate
+        .settle(&tree, "ASP I-packet")
+        .map_err(|e| e.to_string())?;
+    Ok(Checked::new(tree, semantics))
 }
 
 /// Compute the ASP packet overhead for an SDF scene.

@@ -147,6 +147,67 @@ pub const PREVIOUS_SDF_SEMANTICS_IDS: &[[u8; 32]] = &[
     hex32("ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f642257da4938"),
 ];
 
+/// The tree nodes (their tags in the serialized tree) whose distance moved after the identifiers in
+/// [`SDF_SEMANTICS_MOVED_LAWS`]: each returned a distance larger than the true one, and a tracer could
+/// step through the surface. A frozen list: a later move of a law gets a new entry, not an edit.
+pub const SDF_MOVED_LAWS_OVERSTATE_FIX: &[&str] = &[
+    "Bezier",
+    "BlobbyCross",
+    "Helix",
+    "ParabolaSegment",
+    "SweepBezier",
+];
+
+/// Earlier identifiers a stored tree may still be read under, with the nodes whose distance moved
+///
+/// Every other golden row of those builds has the same bits here, so a tree that uses none of the listed
+/// nodes computes what it computed when it was written, and its identifier says so for that tree. A tree
+/// that uses one is refused (`IoError::MovedLaw`): the stored shape was tuned against a distance that no
+/// longer exists. A form without a tree (a mesh, a shader text, a state snapshot) has no nodes to look at
+/// and stays refused: those identifiers are not in [`PREVIOUS_SDF_SEMANTICS_IDS`].
+pub const SDF_SEMANTICS_MOVED_LAWS: &[([u8; 32], &[&str])] = &[
+    (
+        hex32("0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f79d2f6b69a4"),
+        SDF_MOVED_LAWS_OVERSTATE_FIX,
+    ),
+    (
+        hex32("ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f642257da4938"),
+        SDF_MOVED_LAWS_OVERSTATE_FIX,
+    ),
+];
+
+/// The entries of `laws` the tree uses, found by the node tags of its serialized form (so a node nested in
+/// any transform, modifier or container counts, and no list of variants has to follow new nodes)
+pub fn moved_laws_in(tree: &crate::types::SdfTree, laws: &[&'static str]) -> Vec<&'static str> {
+    fn walk(value: &serde_json::Value, laws: &[&'static str], found: &mut Vec<&'static str>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, inner) in map {
+                    if let Some(law) = laws.iter().find(|l| **l == key) {
+                        if !found.contains(law) {
+                            found.push(law);
+                        }
+                    }
+                    walk(inner, laws, found);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for inner in items {
+                    walk(inner, laws, found);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut found = Vec::new();
+    match serde_json::to_value(&tree.root) {
+        Ok(value) => walk(&value, laws, &mut found),
+        // a tree that cannot be looked at is not known to be free of them
+        Err(_) => found.extend_from_slice(laws),
+    }
+    found
+}
+
 /// Whether a stored identifier names what this build computes
 ///
 /// [`SDF_SEMANTICS_ID`] is `Verified`, one of [`PREVIOUS_SDF_SEMANTICS_IDS`] is

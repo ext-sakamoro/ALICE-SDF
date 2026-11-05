@@ -20,7 +20,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::io::IoError;
-use crate::provenance::{sdf_load_verdict, Checked, Provenance, KEY};
+use crate::provenance::{sdf_tree_load_gate, Checked, Provenance, KEY};
 use crate::types::SdfTree;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -58,7 +58,7 @@ pub fn split(mut value: serde_json::Value) -> Result<(SdfTree, Option<[u8; 32]>)
     };
     #[allow(
         clippy::disallowed_methods,
-        reason = "stored form checked: split returns the stored identifier with the tree; checked() and validate_sdf_json apply sdf_load_verdict"
+        reason = "stored form checked: split returns the stored identifier with the tree; checked() and validate_sdf_json apply sdf_tree_load_gate"
     )]
     let tree: SdfTree =
         serde_json::from_value(value).map_err(|e| IoError::Serialization(e.to_string()))?;
@@ -67,7 +67,7 @@ pub fn split(mut value: serde_json::Value) -> Result<(SdfTree, Option<[u8; 32]>)
 
 fn checked(value: serde_json::Value, allow_unpinned: bool) -> Result<Checked<SdfTree>, IoError> {
     let (tree, stored) = split(value)?;
-    let verdict = sdf_load_verdict(stored, FORMAT, allow_unpinned)?;
+    let verdict = sdf_tree_load_gate(stored, FORMAT, allow_unpinned)?.settle(&tree, FORMAT)?;
     Ok(Checked::new(tree, verdict))
 }
 

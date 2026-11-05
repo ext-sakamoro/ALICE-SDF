@@ -150,6 +150,20 @@ pub enum IoError {
         expected: crate::provenance::Provenance,
     },
 
+    /// A stored tree written under an earlier identifier uses a node whose distance moved since
+    /// (see [`crate::SDF_SEMANTICS_MOVED_LAWS`])
+    #[error(
+        "{format}: written under {stored}, and these nodes compute another distance now: {laws:?}"
+    )]
+    MovedLaw {
+        /// The format read
+        format: &'static str,
+        /// The identifier in the file
+        stored: crate::provenance::Provenance,
+        /// The nodes of the tree whose distance moved
+        laws: Vec<&'static str>,
+    },
+
     /// The file carries no semantics identifier (written before identifiers were stored, or by
     /// another program); read it with the `*_unverified` loader, or a mesh with the default
     /// importer (not `*_pinned`), to get it marked as such
