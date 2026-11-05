@@ -12,10 +12,11 @@
 //! pass vacuously). The GPU comparison skips without an adapter unless `ALICE_SDF_REQUIRE_GPU` is set.
 //!
 //! Author: Moroya Sakamoto
-#![cfg(feature = "gpu")]
+#![cfg(all(feature = "gpu", feature = "glsl", feature = "hlsl"))]
 
 mod common;
 
+use alice_sdf::compiled::{GlslShader, GlslTranspileMode, HlslShader, HlslTranspileMode};
 use alice_sdf::compiled::{TranspileMode, WgslShader};
 use alice_sdf::prelude::*;
 use common::loft_stack_scenes::{
@@ -182,18 +183,36 @@ fn loft_and_stack_data_is_in_the_buffer_and_validates() {
 
 #[test]
 fn every_emitted_loop_has_a_constant_trip_count() {
-    let mut checked = 0usize;
+    let mut checked = [0usize; 3];
     for (what, node) in trees() {
-        let sh = WgslShader::transpile_with_node_data(&node, TranspileMode::Hardcoded);
-        for cond in loop_conditions(&sh.source) {
-            assert!(
-                literal_bound(&cond),
-                "{what}: a loop bounded by `{cond}`, not a literal"
-            );
-            checked += 1;
+        let texts = [
+            (
+                "WGSL",
+                WgslShader::transpile_with_node_data(&node, TranspileMode::Hardcoded).source,
+            ),
+            (
+                "GLSL",
+                GlslShader::transpile(&node, GlslTranspileMode::Hardcoded).source,
+            ),
+            (
+                "HLSL",
+                HlslShader::transpile(&node, HlslTranspileMode::Hardcoded).source,
+            ),
+        ];
+        for (i, (dialect, text)) in texts.iter().enumerate() {
+            for cond in loop_conditions(text) {
+                assert!(
+                    literal_bound(&cond),
+                    "{what} {dialect}: a loop bounded by `{cond}`, not a literal"
+                );
+                checked[i] += 1;
+            }
         }
     }
-    assert!(checked >= 8, "only {checked} loops checked");
+    assert!(
+        checked.iter().all(|&n| n >= 8),
+        "only {checked:?} loops checked"
+    );
 }
 
 #[test]
