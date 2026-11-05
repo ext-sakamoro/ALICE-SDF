@@ -56,4 +56,8 @@ fn the_curve_loft_field_is_bit_equal_after_the_lift() {
     assert_eq!(h, PINNED, "the loft's field changed");
 }
 
-const PINNED: u64 = 0xe755_05f7_78a4_b115;
+// Re-pinned for the axis curvature bound that holds between samples (`loft::axis_curvature_bound`):
+// on the curved axes it reads a larger curvature than the samples did, so the local bounds L grow and
+// the field's values change (its zero set does not). Proven the only cause: with that bound switched
+// off the field hashes to the previous pin 0xe755_05f7_78a4_b115 exactly.
+const PINNED: u64 = 0xac44_fa48_1c7a_8c48;

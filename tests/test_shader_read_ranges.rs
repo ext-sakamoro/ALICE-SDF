@@ -13,7 +13,10 @@
 //! Author: Moroya Sakamoto
 #![cfg(feature = "hlsl")]
 
+mod common;
+
 use alice_sdf::compiled::{HlslShader, HlslTranspileMode};
+use common::loft_stack_scenes::{contraction_budget, trees};
 use alice_sdf::prelude::*;
 use glam::Vec2;
 use std::io::{Read, Write};
@@ -23,6 +26,7 @@ use std::process::{Command, Stdio};
 const SHIM: &str = include_str!("common/hlsl_cpu_shim.h");
 
 const COUNTER: &str = r"
+#include <cstdio>
 static unsigned long alice_reads = 0;
 static unsigned long alice_out_of_range = 0;
 template <typename T> static T alice_rd(const T *a, long i, long lo, long hi) {
@@ -167,5 +171,93 @@ fn every_array_read_is_inside_its_array() {
         let (reads, bad) = run(&cxx, &dir, name, &node, &pts);
         assert!(reads > pts.len() as u64, "{name}: only {reads} array reads over {} points", pts.len());
         assert_eq!(bad, 0, "{name}: {bad} of {reads} array reads outside the range the emit proved for them");
+    }
+}
+
+const VALUES_MAIN: &str = r"
+static bool read_exact(void *dst, unsigned long n) {
+    char *p = (char *)dst; unsigned long have = 0;
+    while (have < n) { long r = read(0, p + have, n - have); if (r <= 0) { return false; } have += (unsigned long)r; }
+    return true;
+}
+static bool write_exact(const void *src, unsigned long n) {
+    const char *p = (const char *)src; unsigned long sent = 0;
+    while (sent < n) { long r = write(1, p + sent, n - sent); if (r <= 0) { return false; } sent += (unsigned long)r; }
+    return true;
+}
+int main() {
+    ALICE_SDF_SET_BINARY_IO();
+    unsigned int count = 0;
+    if (!read_exact(&count, 4)) { return 2; }
+    for (unsigned int i = 0; i < count; ++i) {
+        float buf[3];
+        if (!read_exact(buf, 12)) { return 3; }
+        float d = sdf_eval(float3(buf[0], buf[1], buf[2]));
+        if (!write_exact(&d, 4)) { return 4; }
+    }
+    return 0;
+}
+";
+
+/// The scene's HLSL text compiled as C++ with `contract` (`off` / `fast`), its values at the points
+fn values(cxx: &str, dir: &Path, name: &str, node: &SdfNode, pts: &[Vec3], contract: &str) -> Vec<f32> {
+    let emit = HlslShader::try_transpile(node, HlslTranspileMode::Hardcoded).expect("the emit proves its reads").source;
+    let cpp = dir.join(format!("{name}_{contract}.cpp"));
+    let bin = dir.join(format!("{name}_{contract}"));
+    std::fs::write(&cpp, format!("{SHIM}\n{emit}\n{VALUES_MAIN}")).expect("write");
+    let out = Command::new(cxx)
+        .args(["-std=c++17", "-O2", &format!("-ffp-contract={contract}"), "-fno-strict-aliasing", "-w"])
+        .arg(&cpp)
+        .arg("-o")
+        .arg(&bin)
+        .output()
+        .expect("compiler");
+    assert!(out.status.success(), "{name}: C++ compile failed:\n{}", String::from_utf8_lossy(&out.stderr).lines().take(15).collect::<Vec<_>>().join("\n"));
+    let mut payload = (pts.len() as u32).to_ne_bytes().to_vec();
+    for p in pts {
+        for c in [p.x, p.y, p.z] {
+            payload.extend_from_slice(&c.to_ne_bytes());
+        }
+    }
+    let mut child = Command::new(&bin).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().expect("spawn");
+    let mut stdin = child.stdin.take().expect("stdin");
+    let writer = std::thread::spawn(move || stdin.write_all(&payload));
+    let mut raw = Vec::new();
+    child.stdout.take().expect("stdout").read_to_end(&mut raw).expect("read");
+    writer.join().expect("writer").expect("write");
+    assert!(child.wait().expect("wait").success());
+    assert_eq!(raw.len(), pts.len() * 4);
+    raw.chunks_exact(4).map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]])).collect()
+}
+
+/// The contraction budget (`tests/common/loft_stack_scenes.rs`) is the gap measured here times 4:
+/// the same text compiled with `-ffp-contract=fast` and `off` on dense points around each scene
+/// differs, relative to `max(1, |cpu|)`, by at most a quarter of the pinned budget. MEASURED, not
+/// derived; a change of the laws or the compiler that widens the gap past the budget turns red
+#[test]
+fn the_contraction_gap_is_inside_its_budget() {
+    let Some(cxx) = cxx() else { return };
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("shader_contraction_gap");
+    std::fs::create_dir_all(&dir).expect("scratch");
+    let pts = points(20_000);
+    let mut differing = 0usize;
+    let mut gaps = Vec::new();
+    for (name, node) in trees() {
+        let off = values(&cxx, &dir, name, &node, &pts, "off");
+        let fast = values(&cxx, &dir, name, &node, &pts, "fast");
+        let mut gap = 0.0f32;
+        for (p, (a, b)) in pts.iter().zip(off.iter().zip(&fast)) {
+            let c = eval(&node, *p);
+            assert!(a.is_finite() && b.is_finite(), "{name}: non-finite at {p:?}");
+            gap = gap.max((a - b).abs() / c.abs().max(1.0));
+            differing += usize::from(a.to_bits() != b.to_bits());
+        }
+        let budget = contraction_budget(name);
+        println!("{name}: measured contraction gap {gap:e}, budget {budget:e} (x4 would be {:e})", 4.0 * gap);
+        gaps.push((name, gap, budget));
+    }
+    assert!(differing > 0, "no value differed between the two contractions (the measurement measured nothing)");
+    for (name, gap, budget) in gaps {
+        assert!(gap * 4.0 <= budget, "{name}: the contraction gap {gap:e} times 4 is past the budget {budget:e}");
     }
 }
