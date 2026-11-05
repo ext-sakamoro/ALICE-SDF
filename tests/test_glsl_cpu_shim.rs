@@ -303,3 +303,125 @@ fn the_shim_runs_sdf_eval_like_the_cpu() {
         bad[..bad.len().min(8)].join("\n")
     );
 }
+
+/// The slab on a sheet squeezed to a tenth in y (Λ ≈ 10), as in `tests/test_trace_hit_scale.rs`
+fn squeezed() -> SdfNode {
+    use alice_sdf::transforms::{grid_warp_from_triangles, GridWarp, WarpGrid};
+    let n = 9usize;
+    let mut rest = Vec::new();
+    for j in 0..n {
+        for i in 0..n {
+            rest.push(Vec3::new(i as f32 / 8.0, j as f32 / 8.0, 0.0));
+        }
+    }
+    let mut tris = Vec::new();
+    for j in 0..n - 1 {
+        for i in 0..n - 1 {
+            let a = (j * n + i) as u32;
+            let (b, c, d) = (a + 1, a + n as u32, a + n as u32 + 1);
+            tris.push([a, b, d]);
+            tris.push([a, d, c]);
+        }
+    }
+    let posed: Vec<Vec3> = rest
+        .iter()
+        .map(|p| Vec3::new(p.x, 0.1 * p.y, p.z))
+        .collect();
+    let grid = WarpGrid {
+        box_min: Vec3::new(-0.3, -0.3, -0.3),
+        box_max: Vec3::new(1.3, 0.4, 0.3),
+        cell: 0.1,
+        reach: 0.3,
+        shell: None,
+        overhang: None,
+    };
+    let warp =
+        GridWarp::new(grid_warp_from_triangles(&rest, &posed, &tris, &grid).expect("builds"))
+            .expect("valid");
+    SdfNode::box3d(1.0, 1.0, 0.04)
+        .translate(0.5, 0.5, 0.0)
+        .grid_warp(warp)
+}
+
+/// The corpus and the trees whose scale is not 1: a grid warp alone, under a union, a smooth
+/// union, a subtraction, a translate and a uniform scale, and a non-uniform scale over it
+fn scaled_trees() -> Vec<(String, SdfNode)> {
+    let mut t: Vec<(String, SdfNode)> = common::corpus::corpus()
+        .into_iter()
+        .map(|(n, node)| (n.to_owned(), node))
+        .collect();
+    let ball = || SdfNode::sphere(0.3).translate(0.5, 0.05, 0.4);
+    t.push((
+        "projective_nonidentity".into(),
+        common::corpus::projective_nonidentity(),
+    ));
+    t.push(("warp".into(), squeezed()));
+    t.push(("warp_union".into(), squeezed().union(ball())));
+    t.push((
+        "warp_smooth_union".into(),
+        squeezed().smooth_union(ball(), 0.2),
+    ));
+    t.push(("warp_subtract".into(), squeezed().subtract(ball())));
+    t.push((
+        "warp_moved".into(),
+        squeezed().translate(0.1, -0.2, 0.05).scale(1.3),
+    ));
+    t.push(("scaled_warp".into(), squeezed().scale_xyz(1.0, 0.5, 2.0)));
+    t
+}
+
+#[test]
+fn sdf_eval_scaled_is_sdf_eval_with_the_cpu_scale() {
+    // oracle: `.x` is the library's own `sdf_eval` bit for bit (the same emitted body); `.y` is
+    // `eval::eval_scaled`'s scale, computed independently on the CPU
+    let Some(cxx) = cxx_or_skip() else { return };
+    let trees = scaled_trees();
+    let sources: Vec<String> = trees
+        .iter()
+        .map(|(_, n)| GlslShader::transpile_with_scale(n, GlslTranspileMode::Hardcoded).source)
+        .collect();
+    let src = program(&sources, 3, |i| {
+        format!(
+            "o[0] = t{i}::sdf_eval(p); vec2 v = t{i}::sdf_eval_scaled(p); o[1] = v.x; o[2] = v.y;"
+        )
+    });
+    let mut pts = points(64, 0x9e37_79b9);
+    pts.extend(
+        points(64, 0x1234_5678)
+            .into_iter()
+            .map(|p| Vec3::new(0.5 + 0.4 * p.x, 0.05 + 0.04 * p.y, 0.1 * p.z)),
+    );
+    let got = compile_and_run(&cxx, "scaled_corpus", &src, &pts, trees.len() * 3);
+    let (mut compared, mut not_one) = (0, 0);
+    let mut bad = Vec::new();
+    for (k, p) in pts.iter().enumerate() {
+        for (i, (name, node)) in trees.iter().enumerate() {
+            let o = &got[(k * trees.len() + i) * 3..][..3];
+            if o[1].to_bits() != o[0].to_bits() {
+                bad.push(format!(
+                    "{name} at {p:?}: sdf_eval_scaled.x {} vs sdf_eval {}",
+                    o[1], o[0]
+                ));
+            }
+            let (_, s) = alice_sdf::eval::eval_scaled(node, *p);
+            if (o[2] - s).abs() > 1e-4 * s.abs().max(1.0) {
+                bad.push(format!("{name} at {p:?}: scale glsl {} vs cpu {s}", o[2]));
+            }
+            if s != 1.0 {
+                not_one += 1;
+            }
+            compared += 1;
+        }
+    }
+    assert!(compared > 95 * 128, "{compared}");
+    assert!(
+        not_one > 100,
+        "the scale was 1 almost everywhere: {not_one}"
+    );
+    assert!(
+        bad.is_empty(),
+        "{} differ, e.g.\n{}",
+        bad.len(),
+        bad[..bad.len().min(8)].join("\n")
+    );
+}
