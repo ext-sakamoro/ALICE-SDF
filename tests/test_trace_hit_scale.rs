@@ -305,15 +305,15 @@ fn inside_a_blend_the_scale_is_the_smaller_operands() {
 #[test]
 fn a_warped_scene_needs_more_steps_and_running_out_is_reported() {
     // The cost of the stricter hit test, measured and pinned: in the squeezed scene every ray the
-    // closed-form box meets is hit within 297 steps, more than the budget `raymarch` gives (257
+    // closed-form box meets is hit by step 297 (a budget of 298), more than `raymarch` gives (257
     // after `with_bound`); with that budget some rays run out, and each one that is not hit says
     // so (`RaymarchResult::ran_out`) rather than looking like a ray that met nothing.
     let node = squeezed();
     let default = RaymarchConfig::default().with_bound(eval_lipschitz(&node));
     let mut enough = default;
-    enough.max_steps = 297;
+    enough.max_steps = 298;
     let mut s = 0x2545_f491u32;
-    let (mut met, mut ran_out, mut silent, mut short) = (0, 0, 0, 0);
+    let (mut met, mut ran_out, mut silent, mut short, mut clean) = (0, 0, 0, 0, 0);
     for _ in 0..240 {
         let o = Vec3::new(
             -0.2 + 1.4 * rng(&mut s),
@@ -327,6 +327,15 @@ fn a_warped_scene_needs_more_steps_and_running_out_is_reported() {
         );
         let d = (target - o).normalize();
         if reference_hit(o, d, 1.0, 2e-4).is_none() {
+            // a ray that meets nothing is a miss, not an unresolved ray
+            let r = raymarch_detailed(&node, o, d, 1.0, &default);
+            if !r.hit {
+                assert!(
+                    !r.ran_out(&default, 1.0),
+                    "a clean miss reported as running out"
+                );
+                clean += 1;
+            }
             continue;
         }
         met += 1;
@@ -342,8 +351,8 @@ fn a_warped_scene_needs_more_steps_and_running_out_is_reported() {
             }
         }
     }
-    assert!(met > 60, "{met}");
-    assert_eq!(short, 0, "{short} met rays not hit within 297 steps");
+    assert!(met > 60 && clean > 20, "met {met}, clean misses {clean}");
+    assert_eq!(short, 0, "{short} met rays not hit with a budget of 298");
     assert!(
         ran_out > 0,
         "the default budget was enough: the cost is not pinned"

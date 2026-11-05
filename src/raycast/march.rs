@@ -45,6 +45,15 @@ pub struct RaymarchConfig {
     /// field). The default (256) leaves ≲ 0.1 % of random rays through a
     /// thin TPMS shell unresolved — rays that graze the shell and creep by
     /// `≈ ε` per step; raise it or use `high_quality` for those.
+    ///
+    /// A tree with a grid warp (or a non-uniform scale, lattice deform or projective transform)
+    /// costs more: the interpreter marchers hit on `|d| · s < ε` (`eval_scaled`), and near a
+    /// surface where the field is the distance divided by Λ each step closes about 1 / Λ of what
+    /// is left. Measured on a sheet squeezed to a tenth (Λ ≈ 10): mean 93.4 → 139.3 steps per hit
+    /// ray, the longest hit at step 297 (a budget of 298), more than the default; raise it for
+    /// such trees, and use
+    /// [`raymarch_detailed`] with [`RaymarchResult::ran_out`] to tell an unresolved ray from a
+    /// miss.
     pub max_steps: u32,
     /// Distance threshold for surface hit
     pub epsilon: f32,
@@ -257,6 +266,16 @@ pub struct RaymarchResult {
     pub normal: Vec3,
     /// Number of steps taken
     pub steps: u32,
+}
+
+impl RaymarchResult {
+    /// Whether the march stopped because it used up `config.max_steps` before reaching
+    /// `max_distance` (the arguments it was run with) without a hit: the ray is unresolved, not a
+    /// ray that met nothing
+    #[must_use]
+    pub fn ran_out(&self, config: &RaymarchConfig, max_distance: f32) -> bool {
+        !self.hit && self.steps >= config.max_steps && self.distance < max_distance
+    }
 }
 
 // ============================================================================

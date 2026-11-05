@@ -92,11 +92,15 @@ fn main() {
     for c in &configs {
         ts.push(raymarch_compiled_with_config(&compiled, eye, dir, far, c).map(|h| h.distance));
     }
-    let detail: RaymarchResult =
-        raymarch_detailed(&scene, eye, dir, far, &RaymarchConfig::default());
+    let detail_config = RaymarchConfig::default();
+    let detail: RaymarchResult = raymarch_detailed(&scene, eye, dir, far, &detail_config);
+    // a ray that used up its steps is unresolved, not a miss (warped trees need a larger budget)
     println!(
-        "detailed: hit={} t={:.4} steps={}",
-        detail.hit, detail.distance, detail.steps
+        "detailed: hit={} t={:.4} steps={} ran_out={}",
+        detail.hit,
+        detail.distance,
+        detail.steps,
+        detail.ran_out(&detail_config, far)
     );
     ts.push(detail.hit.then_some(detail.distance));
     let rays: Vec<Ray> = (0..8)
