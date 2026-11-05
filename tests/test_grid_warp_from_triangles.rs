@@ -925,3 +925,133 @@ fn an_interior_pull_is_cleared_better_than_a_per_triangle_stretch_bound_allows()
         "the floor clears no more than σ_T·t per triangle: {ours_far} vs {per_triangle_far}"
     );
 }
+
+fn segment_distance(p: Vec3, a: Vec3, b: Vec3) -> f32 {
+    let ab = b - a;
+    let t = ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
+    (p - (a + ab * t)).length()
+}
+
+#[test]
+fn a_rim_pull_is_cleared_better_than_a_whole_stretch_bound_on_rim_edges_allows() {
+    // The folded sheet with its corner (1, 0) pulled 1.5 along x: the pull is ON the rim. An
+    // overhang past a rim edge is offset along the edge's outward in-plane direction u (and the
+    // normal); a pull along the edge does not stretch u, so the rim edge bounds its overhang by
+    // t·max(|A u|, 1), not σ_T·t (σ_T is the stretch in the worst direction, along the pull).
+    // The floor must clear more than one that uses σ_T·t on the rim edges (t on the triangles),
+    // built here from this file's own distances.
+    let (rest, tris) = sheet(9);
+    let mut posed = folded(&rest);
+    posed[8] += Vec3::new(1.5, 0.0, 0.0);
+    let (lo, hi) = (Vec3::new(-0.4, -0.4, -0.4), Vec3::new(2.4, 1.4, 0.6));
+    let (cell, shell) = (0.05f32, 0.03f32);
+    let diagonal = cell * 3.0f32.sqrt();
+    let sigma: Vec<f32> = tris
+        .iter()
+        .map(|t| {
+            let r = [
+                rest[t[0] as usize],
+                rest[t[1] as usize],
+                rest[t[2] as usize],
+            ];
+            let q = [
+                posed[t[0] as usize],
+                posed[t[1] as usize],
+                posed[t[2] as usize],
+            ];
+            stretch_bound(&affine_posed_to_rest(q, r).expect("map"))
+        })
+        .collect();
+    let mut owners = std::collections::BTreeMap::new();
+    for (k, t) in tris.iter().enumerate() {
+        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+            owners
+                .entry((a.min(b), a.max(b)))
+                .or_insert_with(Vec::new)
+                .push(k);
+        }
+    }
+    let rim_edges: Vec<(Vec3, Vec3, f32)> = owners
+        .iter()
+        .filter(|(_, v)| v.len() == 1)
+        .map(|((a, b), v)| (posed[*a as usize], posed[*b as usize], sigma[v[0]] * shell))
+        .collect();
+    let rim_triangles: std::collections::BTreeSet<usize> = owners
+        .values()
+        .filter(|v| v.len() == 1)
+        .map(|v| v[0])
+        .collect();
+    let grid = WarpGrid {
+        box_min: lo,
+        box_max: hi,
+        cell,
+        reach: 0.3,
+        shell: Some(shell),
+    };
+    let ours = grid_warp_from_triangles(&rest, &posed, &tris, &grid).expect("builds");
+    let mut whole = grid_warp_from_triangles(
+        &rest,
+        &posed,
+        &tris,
+        &WarpGrid {
+            shell: None,
+            ..grid
+        },
+    )
+    .expect("builds");
+    let [nx, ny, nz] = whole.dims;
+    whole.floor = (0..nx * ny * nz)
+        .map(|i| {
+            let (x, y, z) = (i % nx, (i / nx) % ny, i / (nx * ny));
+            let q = lo + Vec3::new(x as f32, y as f32, z as f32) * cell;
+            let on_triangles = sheet_distance(q, &posed, &tris) - shell;
+            let on_rim = rim_edges
+                .iter()
+                .map(|(a, b, r)| segment_distance(q, *a, *b) - r)
+                .fold(f32::INFINITY, f32::min);
+            on_triangles.min(on_rim) - diagonal
+        })
+        .collect();
+    let ours = slab().grid_warp(GridWarp::new(ours).expect("valid"));
+    let whole = slab().grid_warp(GridWarp::new(whole).expect("valid"));
+    let band = shell + diagonal;
+    let (mut ours_far, mut whole_far) = (0, 0);
+    for k in 0..24 {
+        for j in 0..24 {
+            for i in 0..36 {
+                let p = lo
+                    + (hi - lo)
+                        * Vec3::new(
+                            (i as f32 + 0.5) / 36.0,
+                            (j as f32 + 0.5) / 24.0,
+                            (k as f32 + 0.5) / 24.0,
+                        );
+                let (mut d, mut nearest) = (f32::INFINITY, 0);
+                for (ti, t) in tris.iter().enumerate() {
+                    let dt = sheet_distance(p, &posed, &[*t]);
+                    if dt < d {
+                        d = dt;
+                        nearest = ti;
+                    }
+                }
+                if d <= band || rim_triangles.contains(&nearest) {
+                    continue;
+                }
+                if eval(&ours, p) < 0.0 {
+                    ours_far += 1;
+                }
+                if eval(&whole, p) < 0.0 {
+                    whole_far += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        whole_far > 0,
+        "the scene leaves nothing for the whole-stretch rim bound to miss"
+    );
+    assert!(
+        ours_far < whole_far,
+        "the floor clears no more than σ_T·t on rim edges: {ours_far} vs {whole_far}"
+    );
+}
