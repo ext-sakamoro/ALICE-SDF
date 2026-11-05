@@ -256,7 +256,11 @@ fn the_contraction_gap_is_inside_its_budget() {
         println!("{name}: measured contraction gap {gap:e}, budget {budget:e} (x4 would be {:e})", 4.0 * gap);
         gaps.push((name, gap, budget));
     }
-    assert!(differing > 0, "no value differed between the two contractions (the measurement measured nothing)");
+    // aarch64 has fused multiply-add in the base instruction set; x86-64 without `-mfma` has nothing
+    // to fuse, so there the two builds may be equal and only the budget is checked
+    if cfg!(target_arch = "aarch64") {
+        assert!(differing > 0, "no value differed between the two contractions (the measurement measured nothing)");
+    }
     for (name, gap, budget) in gaps {
         assert!(gap * 4.0 <= budget, "{name}: the contraction gap {gap:e} times 4 is past the budget {budget:e}");
     }

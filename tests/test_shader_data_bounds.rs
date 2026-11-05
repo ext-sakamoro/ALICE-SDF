@@ -22,7 +22,7 @@ use alice_sdf::prelude::*;
 
 /// The read sites the emit writes per scene (the smooth stack's, the section stack's, the two lofts',
 /// and all of them in one tree)
-const SITES: &[(&str, usize)] = &[("big_smooth_stack", 0), ("section_stack", 0), ("lofts", 0), ("all", 0)];
+const SITES: &[(&str, usize)] = &[("big_smooth_stack", 13), ("section_stack", 14), ("lofts", 89), ("all", 116)];
 
 /// The WGSL array constructor's element limit
 const WGSL_ARRAY_LIMIT: usize = 32767;
