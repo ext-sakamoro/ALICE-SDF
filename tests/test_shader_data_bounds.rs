@@ -212,6 +212,7 @@ fn the_gpu_evaluates_the_buffer_trees_as_the_cpu() {
 #[test]
 fn no_checked_read_leaves_its_proven_range_on_the_gpu() {
     use alice_sdf::compiled::GpuEvaluator;
+    let mut gaps = Vec::new();
     let mut s: u64 = 0x5EAD_C0DE;
     let mut r = move || {
         s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
@@ -240,18 +241,29 @@ fn no_checked_read_leaves_its_proven_range_on_the_gpu() {
         // the two are bit for bit equal
         let fuses = gpu_fuses_a_multiply_add() == Some(true);
         let budget = contraction_budget(what);
-        let mut differed = 0usize;
+        let (mut differed, mut gap) = (0usize, 0.0f32);
+        let mut over = None;
         for ((p, g), q) in pts.iter().zip(&got).zip(&plain) {
             let c = eval(&node, *p);
             assert!((c - g).abs() <= 2e-5 * c.abs().max(1.0), "{what}: checked GPU {g} vs CPU {c} at {p:?}");
             if fuses && g.to_bits() != q.to_bits() {
-                assert!(within_contraction_budget(*g, *q, c, budget), "{what}: checked {g} vs plain {q} at {p:?}, past the budget {budget:e}");
                 differed += 1;
+                gap = gap.max((g - q).abs() / c.abs().max(1.0));
+                if !within_contraction_budget(*g, *q, c, budget) && over.is_none() {
+                    over = Some((*g, *q, *p));
+                }
             } else {
                 assert_eq!(g.to_bits(), q.to_bits(), "{what}: the checked shader's value differs at {p:?}");
             }
         }
-        eprintln!("{what}: {differed} of {} values differ within the contraction budget (fusing driver: {fuses})", pts.len());
+        // the real GPU's gap beside the budget measured on the C++ proxy
+        println!("{what}: {differed} of {} values differ, largest relative gap {gap:e}, budget {budget:e} (fusing driver: {fuses})", pts.len());
+        gaps.push((what, over, budget));
+    }
+    for (what, over, budget) in gaps {
+        if let Some((g, q, p)) = over {
+            panic!("{what}: checked {g} vs plain {q} at {p:?}, past the budget {budget:e}");
+        }
     }
 }
 
