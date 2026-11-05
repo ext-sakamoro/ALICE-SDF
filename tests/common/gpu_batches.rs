@@ -7,7 +7,8 @@
 
 use glam::Vec3;
 
-/// The most points a test sends to the GPU in one submit
+/// The most points a test sends to the GPU in one submit. Points are a proxy for work: the load of
+/// a dispatch is its points times the size of its field
 pub const MAX_POINTS_PER_SUBMIT: usize = 2048;
 
 /// `submit` over `pts` in order, at most [`MAX_POINTS_PER_SUBMIT`] points at a time, the results
