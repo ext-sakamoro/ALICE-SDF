@@ -178,31 +178,28 @@ pub const SDF_SEMANTICS_MOVED_LAWS: &[([u8; 32], &[&str])] = &[
 /// The entries of `laws` the tree uses, found by the node tags of its serialized form (so a node nested in
 /// any transform, modifier or container counts, and no list of variants has to follow new nodes)
 pub fn moved_laws_in(tree: &crate::types::SdfTree, laws: &[&'static str]) -> Vec<&'static str> {
-    fn walk(value: &serde_json::Value, laws: &[&'static str], found: &mut Vec<&'static str>) {
+    let mut found = Vec::new();
+    let Ok(root) = serde_json::to_value(&tree.root) else {
+        // a tree that cannot be looked at is not known to be free of them
+        return laws.to_vec();
+    };
+    // an explicit stack: stored trees nest deeper than a call stack should be trusted with
+    let mut pending = vec![&root];
+    while let Some(value) = pending.pop() {
         match value {
             serde_json::Value::Object(map) => {
                 for (key, inner) in map {
                     if let Some(law) = laws.iter().find(|l| **l == key) {
                         if !found.contains(law) {
-                            found.push(law);
+                            found.push(*law);
                         }
                     }
-                    walk(inner, laws, found);
+                    pending.push(inner);
                 }
             }
-            serde_json::Value::Array(items) => {
-                for inner in items {
-                    walk(inner, laws, found);
-                }
-            }
+            serde_json::Value::Array(items) => pending.extend(items),
             _ => {}
         }
-    }
-    let mut found = Vec::new();
-    match serde_json::to_value(&tree.root) {
-        Ok(value) => walk(&value, laws, &mut found),
-        // a tree that cannot be looked at is not known to be free of them
-        Err(_) => found.extend_from_slice(laws),
     }
     found
 }
