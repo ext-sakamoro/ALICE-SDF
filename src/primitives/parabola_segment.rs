@@ -12,6 +12,10 @@ use glam::{Vec2, Vec3};
 
 /// SDF for a parabolic arch segment, extruded along Z-axis
 ///
+/// Newton steps from the upper bound of the nearest parameter. Measured against an f64 truth over
+/// 62,460 points: 3 steps leave 1.6e-3, 4 and more leave only f32 rounding; the fifth is margin.
+const NEWTON_STEPS: usize = 5;
+
 /// Arch curve: y = para_height * (1 - (x/width)^2).
 /// Interior: 0 <= y <= arch curve, |x| <= width.
 /// - `width`: half-width of the arch base
@@ -33,20 +37,27 @@ pub fn sdf_parabola_segment(p: Vec3, width: f32, para_height: f32, half_depth: f
     };
     let inside = px <= w && py >= 0.0 && py <= y_arch;
 
-    // Distance to parabola curve via Newton's method
-    // Find closest point on (t, h*(1-(t/w)^2)) for t in [0, w]
+    // Nearest point of the arch: with a = h / w^2 the stationary points of the squared distance are the
+    // roots of g(t) = k t^3 - m t - px (k = 2 a^2, m = 2 a (h - py) - 1). g is convex on t >= 0 and
+    // g(0) <= 0, so it has one root on t > 0, which is the global minimum on [0, w], and Newton from any
+    // t right of the root descends to it without overshooting. sqrt(m / k) + cbrt(px / k) is above the
+    // root (substitute it into g), and the arch's end is the start when that is further or k = 0.
     let ww = w * w;
-    let mut t = super::clamp_total(px, 0.0, w);
-    for _ in 0..8 {
-        let ft = h * (1.0 - t * t / ww);
-        let dft = -2.0 * h * t / ww;
-        let ex = px - t;
-        let ey = py - ft;
-        // Minimize dist^2: d/dt[(px-t)^2 + (py-ft)^2] = -2*ex + 2*ey*dft = 0
-        let f = -ex + ey * dft;
-        let df = 1.0 + dft * dft + ey * (-2.0 * h / ww);
-        if df.abs() > 1e-10 {
-            t = super::clamp_total(t - f / df, 0.0, w);
+    let a = h / ww;
+    let k = 2.0 * a * a;
+    let m = 2.0 * a * (h - py) - 1.0;
+    let mut t = w;
+    if k > 0.0 {
+        let bound = (m / k).law_max(0.0).sqrt() + alice_det_math::cbrt(px / k);
+        if bound < w {
+            t = bound;
+        }
+    }
+    for _ in 0..NEWTON_STEPS {
+        let g = k * t * t * t - m * t - px;
+        let gp = 3.0 * k * t * t - m;
+        if gp > 0.0 {
+            t = super::clamp_total(t - g / gp, 0.0, w);
         }
     }
     let closest_y = h * (1.0 - t * t / ww);

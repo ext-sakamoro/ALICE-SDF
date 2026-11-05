@@ -1267,6 +1267,7 @@ jobs:
           --test test_node_data_gpu_parity
           --test test_union_bound_oracle
           --test test_bezier_gpu_parity
+          --test test_parabola_segment_oracle
           -- --nocapture
 
       # ALICE-Law G8: the whole shader text carries the semantics identifier and the four

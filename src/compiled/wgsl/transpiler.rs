@@ -1599,15 +1599,19 @@ const HELPER_SDF_PARABOLA_SEGMENT: &str = r"fn sdf_parabola_segment(p: vec3<f32>
     let y_arch = ph * (1.0 - px * px / ww_sq);
     var is_in = false;
     if (px <= w && py >= 0.0 && py <= y_arch) { is_in = true; }
-    var t = clamp(px, 0.0, w);
-    for (var i = 0; i < 8; i = i + 1) {
-        let ft = ph * (1.0 - t * t / ww_sq);
-        let dft = -2.0 * ph * t / ww_sq;
-        let ex = px - t;
-        let ey = py - ft;
-        let f = -ex + ey * dft;
-        let df = 1.0 + dft * dft + ey * (-2.0 * ph / ww_sq);
-        if (abs(df) > 1e-10) { t = clamp(t - f / df, 0.0, w); }
+    // the same solve as the CPU law (src/primitives/parabola_segment.rs): Newton from above the one root
+    let a = ph / ww_sq;
+    let k = 2.0 * a * a;
+    let m = 2.0 * a * (ph - py) - 1.0;
+    var t = w;
+    if (k > 0.0) {
+        let bound = sqrt(max(m / k, 0.0)) + pow(px / k, 1.0 / 3.0);
+        if (bound < w) { t = bound; }
+    }
+    for (var i = 0; i < 5; i = i + 1) {
+        let g = k * t * t * t - m * t - px;
+        let gp = 3.0 * k * t * t - m;
+        if (gp > 0.0) { t = clamp(t - g / gp, 0.0, w); }
     }
     let cy = ph * (1.0 - t * t / ww_sq);
     let d_para = length(vec2<f32>(px - t, py - cy));

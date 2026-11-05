@@ -6,15 +6,19 @@ float sdf_parabola_segment(float3 p, float w, float ph, float hd) {
     precise float ww_sq = w * w;
     precise float y_arch = ph * (1.0 - px * px / ww_sq);
     bool is_in = (px <= w && py >= 0.0 && py <= y_arch);
-    precise float t = clamp(px, 0.0, w);
-    for (int i = 0; i < 8; i++) {
-        precise float ft = ph * (1.0 - t * t / ww_sq);
-        precise float dft = -2.0 * ph * t / ww_sq;
-        precise float ex = px - t;
-        precise float ey = py - ft;
-        precise float f = -ex + ey * dft;
-        precise float df = 1.0 + dft * dft + ey * (-2.0 * ph / ww_sq);
-        if (abs(df) > 1e-10) { t = clamp(t - f / df, 0.0, w); }
+    // the same solve as the CPU law (src/primitives/parabola_segment.rs): Newton from above the one root
+    precise float a = ph / ww_sq;
+    precise float k = 2.0 * a * a;
+    precise float m = 2.0 * a * (ph - py) - 1.0;
+    precise float t = w;
+    if (k > 0.0) {
+        precise float bound = sqrt(max(m / k, 0.0)) + pow(px / k, 1.0 / 3.0);
+        if (bound < w) { t = bound; }
+    }
+    for (int i = 0; i < 5; i++) {
+        precise float g = k * t * t * t - m * t - px;
+        precise float gp = 3.0 * k * t * t - m;
+        if (gp > 0.0) { t = clamp(t - g / gp, 0.0, w); }
     }
     precise float cy = ph * (1.0 - t * t / ww_sq);
     precise float d_para = length(float2(px - t, py - cy));

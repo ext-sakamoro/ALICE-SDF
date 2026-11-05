@@ -6,22 +6,21 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1082 |
-| 🔴 Red by design | 2 |
+| 🟢 Not ignored | 1086 |
+| 🔴 Red by design | 1 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 1 |
-| **Total** | **1088** |
+| **Total** | **1091** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🔴 Red by design (2)
+## 🔴 Red by design (1)
 
 Oracles kept red on purpose: the implementation is not there yet, and a companion test pins
 today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected value is never loosened.
 
-- `parabola_segment_never_overstates_the_distance` (test_parabola_segment_oracle.rs) — known defect: PARABOLA-SEGMENT-NEWTON-001: on the convex side of the arch the Newton iteration leaves for the …
 - `torus_on_a_grid_plane_has_no_crossings` (test_dual_contouring_manifold.rs) — known defect: DC-TORUS-CROSS-001: torus(1.0, 0.5) at resolution 32 over ±1.6 has 1 crossing triangle pair in b…
 
 ## 🟠 Known defect in one arm (1)
@@ -43,7 +42,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1082)
+## 🟢 Not ignored (1086)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -67,10 +66,10 @@ Per-file counts (the test names are in `tests/`):
 | `test_compiled_evaluation.rs` | 14 |
 | `test_degenerate_input_oracle.rs` | 14 |
 | `test_gpu_law_parity.rs` | 14 |
+| `test_hlsl_blinkscript_parity.rs` | 13 |
 | `test_io_format_oracle.rs` | 13 |
 | `test_texture_fit_oracle.rs` | 13 |
 | `test_union_bound_oracle.rs` | 13 |
-| `test_hlsl_blinkscript_parity.rs` | 12 |
 | `test_validity_oracle.rs` | 12 |
 | `mesh_bvh_closest_triangle.rs` | 11 |
 | `test_binding_oracle.rs` | 11 |
@@ -81,10 +80,10 @@ Per-file counts (the test names are in `tests/`):
 | `test_tight_aabb_levelset_oracle.rs` | 11 |
 | `test_domain_modifier_oracle.rs` | 10 |
 | `test_evaluator_opcode_parity.rs` | 10 |
+| `test_glsl_export_oracle.rs` | 10 |
 | `test_metric_field_oracle.rs` | 10 |
 | `test_rest_point.rs` | 10 |
 | `test_svo_api_oracle.rs` | 10 |
-| `test_glsl_export_oracle.rs` | 9 |
 | `test_mc_shared_vertex_oracle.rs` | 9 |
 | `test_mesh_fidelity.rs` | 9 |
 | `test_mesh_query_oracle.rs` | 9 |
@@ -171,6 +170,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_minmax_signed_zero_probe.rs` | 3 |
 | `test_neural_oracle.rs` | 3 |
 | `test_optimize_stats_oracle.rs` | 3 |
+| `test_parabola_segment_oracle.rs` | 3 |
 | `test_rust_transpiler_oracle.rs` | 3 |
 | `float_environment.rs` | 2 |
 | `noise_shader_validate.rs` | 2 |
@@ -192,7 +192,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_gpu_fma_contraction.rs` | 1 |
 | `test_metadata_order.rs` | 1 |
 | `test_npr_bytecode_gpu_parity.rs` | 1 |
-| `test_parabola_segment_oracle.rs` | 1 |
 | `test_texture_shader_gpu_parity.rs` | 1 |
 
 ---
