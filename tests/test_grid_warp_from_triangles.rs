@@ -1055,3 +1055,105 @@ fn a_rim_pull_is_cleared_better_than_a_whole_stretch_bound_on_rim_edges_allows()
         "the floor clears no more than σ_T·t on rim edges: {ours_far} vs {whole_far}"
     );
 }
+
+#[test]
+fn a_corner_overhang_on_a_sheared_sheet_keeps_the_floor_below_the_distance() {
+    // Posed, the sheet is sheared so its corner closes from 90° to 20°: x' = x + cos20°·y,
+    // y' = sin20°·y. Both rest axes keep unit length (the edges' outward directions are not
+    // stretched), but a child point past the corner, offset along the diagonal, lands
+    // 2·cos10° ≈ 1.97 times farther from the corner than at rest. Only the corner vertex's own
+    // σ_T·t covers it; the edges' bound t does not, by more than the cell diagonal. The child
+    // overhangs both edges by 0.04 and is 0.005 thick on each side, within t = 0.06 of the rest
+    // sheet (sqrt(0.04² + 0.04² + 0.005²) < 0.06).
+    let (rest, tris) = sheet(9);
+    let (c, sn) = (0.939_692_6f32, 0.342_020_14f32);
+    let posed: Vec<Vec3> = rest
+        .iter()
+        .map(|p| Vec3::new(p.x + c * p.y, sn * p.y, p.z))
+        .collect();
+    let shell = 0.06;
+    let cell = 0.008;
+    let (lo, hi) = (Vec3::new(-0.25, -0.15, -0.1), Vec3::new(0.25, 0.15, 0.1));
+    let data = grid_warp_from_triangles(
+        &rest,
+        &posed,
+        &tris,
+        &WarpGrid {
+            box_min: lo,
+            box_max: hi,
+            cell,
+            reach: 0.3,
+            shell: Some(shell),
+        },
+    )
+    .expect("builds");
+    let warp = GridWarp::new(data).expect("valid");
+    let forward = |x: Vec3| {
+        let (ci, cj) = (
+            (x.x * 8.0).clamp(0.0, 7.0) as usize,
+            (x.y * 8.0).clamp(0.0, 7.0) as usize,
+        );
+        let fx = x.x * 8.0 - ci as f32;
+        let fy = x.y * 8.0 - cj as f32;
+        let t = tris[(cj * 8 + ci) * 2 + usize::from(fy > fx)];
+        let r = [
+            rest[t[0] as usize],
+            rest[t[1] as usize],
+            rest[t[2] as usize],
+        ];
+        let q = [
+            posed[t[0] as usize],
+            posed[t[1] as usize],
+            posed[t[2] as usize],
+        ];
+        let m = affine_posed_to_rest(q, r).expect("map");
+        Vec3::new(
+            m[0] * x.x + m[1] * x.y + m[2] * x.z + m[3],
+            m[4] * x.x + m[5] * x.y + m[6] * x.z + m[7],
+            m[8] * x.x + m[9] * x.y + m[10] * x.z + m[11],
+        )
+    };
+    // the child's surface near the corner (0, 0): faces of [-0.04, 0.1]² × [-0.005, 0.005]
+    let mut shape = Vec::new();
+    let n = 140;
+    for k in 0..=2 {
+        for j in 0..=n {
+            for i in 0..=n {
+                if !(k == 0 || k == 2 || i == 0 || i == n || j == 0 || j == n) {
+                    continue;
+                }
+                let x = Vec3::new(
+                    -0.04 + 0.14 * i as f32 / n as f32,
+                    -0.04 + 0.14 * j as f32 / n as f32,
+                    -0.005 + 0.005 * k as f32,
+                );
+                shape.push(forward(x));
+            }
+        }
+    }
+    // sample spacing 0.001 in rest, stretched up to 1.97 by the shear: half of the largest gap
+    let gap = 0.5 * 0.001 * 1.97 * 2.0f32.sqrt();
+    let mut checked = 0;
+    // probes at the corner's overhang: the posed images of rest points past the corner
+    for a in 0..=20 {
+        for b in 0..=20 {
+            let x = Vec3::new(
+                -0.04 + 0.04 * a as f32 / 20.0,
+                -0.04 + 0.04 * b as f32 / 20.0,
+                0.0,
+            );
+            let p = forward(x);
+            let (_, _, _, floor) = warp.warp(p);
+            let dist = shape
+                .iter()
+                .map(|s| (p - *s).length())
+                .fold(f32::INFINITY, f32::min);
+            assert!(
+                floor <= dist + gap,
+                "floor {floor} above the distance {dist} at {p:?}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 100, "{checked}");
+}

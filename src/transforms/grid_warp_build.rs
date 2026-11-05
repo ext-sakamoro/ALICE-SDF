@@ -267,15 +267,18 @@ fn spectral_bound(m: &[f32; 12]) -> f32 {
 ///   with `F_T(f)` on posed triangle `T` and `σ_T` the largest singular value of its linear
 ///   part (≥ 1: the unit normal is kept, so stretch in the plane only raises it);
 /// - if the rest sheet is planar and `f` is not on its rim, `x − f` is along the normal, which
-///   `F_T` keeps at unit length: `|F_T(x) − F_T(f)| = |x − f| ≤ t`; if `f` is on a rim edge
-///   `e` (an edge of one triangle only) the offset may lie in the plane, and the image lies
-///   within `σ_T·t` of the posed edge `e`. So on a planar rest sheet the posed shape lies
-///   within `t` of the posed triangles or within `σ_T·t` of the posed rim edges; off a planar
-///   rest sheet, within `σ_T·t` of posed `T` for each `T` (the builder checks planarity and
-///   finds the rim from the edges);
-/// - so for a node `n`, `dist(n, shape)` is at least the least of `dist(n, posed T) − t_T`
-///   over the triangles (`t_T = t` planar, `σ_T·t` otherwise) and `dist(n, posed e) − σ_T·t`
-///   over the rim edges (planar only);
+///   `F_T` keeps at unit length: `|F_T(x) − F_T(f)| = |x − f| ≤ t`; if `f` is inside a rim
+///   edge `e` (an edge of one triangle only), `x − f = a·u + b·n` with `u` the edge's outward
+///   in-plane direction and `a² + b² ≤ t²`; `A_T` maps `u` into the posed plane and `n` to the
+///   posed unit normal, so the image lies within `t·max(|A_T u|, 1)` of the posed edge (a pull
+///   along the edge does not stretch `u`); if `f` is a rim vertex the offset may point
+///   anywhere outward, and the image lies within `σ_T·t` of the posed vertex (`σ_T` the
+///   largest over the vertex's rim triangles). So on a planar rest sheet the posed shape lies
+///   within `t` of the posed triangles, `t·max(|A_T u|, 1)` of the posed rim edges or `σ_T·t`
+///   of the posed rim vertices; off a planar rest sheet, within `σ_T·t` of posed `T` for each
+///   `T` (the builder checks planarity and finds the rim from the edges);
+/// - so for a node `n`, `dist(n, shape)` is at least the least of those distances minus their
+///   bounds;
 /// - the node's floor is that minus the cell diagonal `√3·cell`: the distance is 1-Lipschitz,
 ///   so every corner's floor is at most the distance at any point of the cell, and so is their
 ///   trilinear blend, which [`GridWarp`](crate::transforms::GridWarp) applies as a lower bound.
@@ -371,12 +374,63 @@ pub fn grid_warp_from_triangles(
     // rim edges of a planar rest sheet, with the stretch bound of the triangle that owns them:
     // a child point beyond the rim has its foot on such an edge, and its image lies within
     // σ_T·t of the posed edge
+    // an overhang at a rim edge's interior is offset along the outward
+    // in-plane direction u (perpendicular to the edge) plus the normal, so its image lies within
+    // t·max(|A_T u|, 1) of the posed edge; only a rim vertex needs σ_T·t, around the vertex
+    let mut rim_vertex_sigma: Vec<f32> = vec![0.0; rest.len()];
     let rim: Vec<(Vec3, Vec3, f32)> = match shell {
         Some(t) if planar => rim_edges(triangles)
             .into_iter()
-            .map(|(a, b, k)| (posed[a as usize], posed[b as usize], sigmas[k] * t))
+            .map(|(a, b, k)| {
+                let tri = triangles[k];
+                let third = tri
+                    .iter()
+                    .copied()
+                    .find(|&v| v != a && v != b)
+                    .expect("third vertex");
+                let (ra, rb, rc) = (rest[a as usize], rest[b as usize], rest[third as usize]);
+                let n = (rb - ra).cross(rc - ra).normalize();
+                let mut u = (rb - ra).cross(n).normalize();
+                if u.dot(rc - ra) > 0.0 {
+                    u = -u;
+                }
+                let r = [
+                    rest[tri[0] as usize],
+                    rest[tri[1] as usize],
+                    rest[tri[2] as usize],
+                ];
+                let p = [
+                    posed[tri[0] as usize],
+                    posed[tri[1] as usize],
+                    posed[tri[2] as usize],
+                ];
+                let f = affine_posed_to_rest(p, r).expect("checked above");
+                let au = Vec3::new(
+                    f[0] * u.x + f[1] * u.y + f[2] * u.z,
+                    f[4] * u.x + f[5] * u.y + f[6] * u.z,
+                    f[8] * u.x + f[9] * u.y + f[10] * u.z,
+                );
+                for v in [a, b] {
+                    rim_vertex_sigma[v as usize] =
+                        law_max_f32(rim_vertex_sigma[v as usize], sigmas[k]);
+                }
+                (
+                    posed[a as usize],
+                    posed[b as usize],
+                    t * law_max_f32(au.length(), 1.0),
+                )
+            })
             .collect(),
         _ => Vec::new(),
+    };
+    let rim_vertices: Vec<(Vec3, f32)> = match shell {
+        Some(t) => rim_vertex_sigma
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| **s > 0.0)
+            .map(|(v, s)| (posed[v], s * t))
+            .collect(),
+        None => Vec::new(),
     };
     let extent = box_max - box_min;
     let nodes = |e: f32| -> Result<u32, GridWarpBuildError> {
@@ -417,6 +471,9 @@ pub fn grid_warp_from_triangles(
                 if shell.is_some() {
                     for (a, b, r) in &rim {
                         floor_here = law_min_f32(floor_here, point_segment_distance(q, *a, *b) - r);
+                    }
+                    for (v, r) in &rim_vertices {
+                        floor_here = law_min_f32(floor_here, (q - *v).length() - r);
                     }
                     floor.push(floor_here - diagonal);
                 }
