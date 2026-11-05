@@ -18,7 +18,7 @@
     reason = "the wall clock only limits how long the threads may stay blocked"
 )]
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// The only file of the crate that creates a `wgpu::Instance` or a device
 const LIFECYCLE_MODULE: &str = "src/gpu_context.rs";
@@ -26,27 +26,44 @@ const LIFECYCLE_MODULE: &str = "src/gpu_context.rs";
 /// The calls only [`LIFECYCLE_MODULE`] makes
 const LIFECYCLE_CALLS: &[&str] = &["Instance::new(", ".request_device("];
 
-/// A kept clone of these holds the device past its context
+/// With the white space gone: a kept clone of these holds the device past its context
 const KEPT_HANDLES: &[&str] = &[".device().clone()", ".queue().clone()"];
 
 /// What is scanned
 const SCANNED: &[&str] = &["src", "tests", "examples", "benches"];
 
-/// Each struct declaration of `text`, comments left out
-fn struct_declarations(text: &str) -> Vec<String> {
-    let mut found = Vec::new();
-    let mut open: Option<String> = None;
-    for line in text.lines().map(str::trim).filter(|l| !l.starts_with("//")) {
-        let starts = ["struct ", "pub struct ", "pub(crate) struct "]
-            .iter()
-            .any(|s| line.starts_with(s));
-        if open.is_none() && starts {
-            open = Some(String::new());
+/// The name of the struct or enum declared on `line`, attributes and visibility passed over
+fn declared_name(line: &str) -> Option<&str> {
+    let mut rest = line;
+    while let Some(after) = rest.strip_prefix("#[") {
+        rest = after.split_once(']')?.1.trim_start();
+    }
+    if let Some(after) = rest.strip_prefix("pub") {
+        rest = after.trim_start();
+        if rest.starts_with('(') {
+            rest = rest.split_once(')')?.1.trim_start();
         }
-        if let Some(body) = open.as_mut() {
+    }
+    let name = rest
+        .strip_prefix("struct ")
+        .or_else(|| rest.strip_prefix("enum "))?;
+    name.split(|c: char| !c.is_alphanumeric() && c != '_')
+        .next()
+}
+
+/// `(name, body)` of each struct and enum in `code`. Shader text in a string reads as a declaration
+/// too, and has no `wgpu::` or context in it.
+fn declarations(code: &[&str]) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    let mut open: Option<(String, String)> = None;
+    for line in code.iter().map(|l| l.trim()) {
+        if open.is_none() {
+            open = declared_name(line).map(|name| (name.to_string(), String::new()));
+        }
+        if let Some((_, body)) = open.as_mut() {
             body.push_str(line);
             body.push('\n');
-            if line == "}" || line.ends_with(';') || line.ends_with("{}") {
+            if line.starts_with('}') || line.ends_with(';') || line.ends_with("{}") {
                 found.push(open.take().expect("open"));
             }
         }
@@ -54,13 +71,47 @@ fn struct_declarations(text: &str) -> Vec<String> {
     found
 }
 
-/// What a source check finds in one file. Only [`LIFECYCLE_MODULE`] may have these.
+/// What the rule forbids outside [`LIFECYCLE_MODULE`] in one file, besides the calls. A borrowed
+/// field (`&'a`) ends before what it borrows, so it is not a holder.
+fn drop_order_problems(code: &[&str], decls: &[(String, String)]) -> Vec<String> {
+    let text = code.join("\n");
+    let squeezed: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    let mut problems = Vec::new();
+    for handle in KEPT_HANDLES {
+        if squeezed.contains(handle) {
+            problems.push(format!("a kept handle: {handle}"));
+        }
+    }
+    if squeezed.contains("=GpuContext;") {
+        problems.push("an alias of GpuContext".to_string());
+    }
+    for line in code.iter().map(|l| l.trim()) {
+        if line.starts_with("use wgpu::") && !line.starts_with("use wgpu::util::") {
+            problems.push(format!("a wgpu type under another name: {line}"));
+        }
+    }
+    for (name, body) in decls {
+        let holds = |what: &str| body.lines().any(|l| l.contains(what) && !l.contains("&'"));
+        if holds("GpuContext") {
+            problems.push(format!(
+                "{name} holds a context: `Held` is the one that does"
+            ));
+        }
+        if holds("wgpu::") && !squeezed.contains(&format!("Held<{name}>")) {
+            problems.push(format!(
+                "{name} holds a wgpu resource and is not `Held<{name}>`"
+            ));
+        }
+    }
+    problems
+}
+
+/// What the source check finds
 #[derive(Default)]
 struct Scan {
-    files: usize,
-    structs: usize,
-    calls: Vec<(String, &'static str)>,
-    others: Vec<(String, String)>,
+    declarations: usize,
+    calls: Vec<(PathBuf, &'static str)>,
+    problems: Vec<(String, String)>,
 }
 
 fn scan(dir: &Path, owner: &Path, found: &mut Scan) {
@@ -80,37 +131,34 @@ fn scan(dir: &Path, owner: &Path, found: &mut Scan) {
             continue;
         }
         let text = std::fs::read_to_string(&path).expect("read a source file");
+        let code: Vec<&str> = text
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect();
         let file = path.display().to_string();
-        found.files += 1;
-        for line in text.lines().filter(|l| !l.trim_start().starts_with("//")) {
+        for line in &code {
             for call in LIFECYCLE_CALLS {
                 if line.contains(call) {
-                    found.calls.push((file.clone(), call));
-                }
-            }
-            for handle in KEPT_HANDLES {
-                if line.contains(handle) && path != owner {
-                    found.others.push((file.clone(), (*handle).to_string()));
+                    found.calls.push((path.clone(), call));
                 }
             }
         }
-        let structs = struct_declarations(&text);
-        found.structs += structs.len();
+        let decls = declarations(&code);
+        found.declarations += decls.len();
         if path != owner {
-            for body in structs {
-                let beside = body.contains("Held<") && body.contains("wgpu::");
-                if body.contains("GpuContext") || beside {
-                    found.others.push((file.clone(), body));
-                }
+            for problem in drop_order_problems(&code, &decls) {
+                found.problems.push((file.clone(), problem));
             }
         }
     }
 }
 
 /// The text half of the rule. Clippy's disallowed lists hold the instance and device calls by their
-/// resolved names, aliases included. Neither sees a context returned in a tuple with a resource, a
-/// resource bound late to a local declared before its context, or a handle kept through a variable:
-/// those are for review.
+/// resolved names, aliases included, and its allow for the device call is on the one function that
+/// takes the lock as proof. A rename in wgpu of a call the module makes fails to compile there and
+/// fails this check; `create_device_from_hal` is not called, so a rename of it would drop that entry
+/// silently. Neither half sees a context returned in a tuple with a resource, a resource bound late
+/// to a local declared before its context, or a handle kept through a variable: those are for review.
 #[test]
 fn one_module_owns_the_gpu_lifecycle() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -119,24 +167,42 @@ fn one_module_owns_the_gpu_lifecycle() {
     for dir in SCANNED {
         scan(&root.join(dir), &owner, &mut found);
     }
-    assert!(
-        found.files > 0 && found.structs > 0,
-        "the check read nothing"
-    );
-    let owner = owner.display().to_string();
+    assert!(found.declarations > 0, "the check read nothing");
     let calls: Vec<_> = found
         .calls
         .iter()
         .filter(|(file, _)| *file != owner)
         .collect();
     assert!(calls.is_empty(), "outside {LIFECYCLE_MODULE}: {calls:#?}");
-    assert!(found.others.is_empty(), "drop order: {:#?}", found.others);
+    assert!(
+        found.problems.is_empty(),
+        "drop order: {:#?}",
+        found.problems
+    );
     for call in LIFECYCLE_CALLS {
         assert!(
             found.calls.iter().any(|(_, c)| c == call),
             "{LIFECYCLE_MODULE} makes no `{call}` call: the check read nothing"
         );
     }
+}
+
+/// A device is dropped in one place, the function that takes the lock as proof. A second drop would
+/// wait for the lock and run outside it, which the lock test cannot tell apart.
+#[test]
+fn the_one_device_drop_takes_the_lock_as_proof() {
+    let text =
+        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(LIFECYCLE_MODULE))
+            .expect("read the lifecycle module");
+    let drops: Vec<_> = text.match_indices("ManuallyDrop::drop(").collect();
+    assert_eq!(drops.len(), 1, "{LIFECYCLE_MODULE}: {drops:?}");
+    let before = &text[..drops[0].0];
+    let last_fn = before.rfind("fn ").expect("a function before the drop");
+    assert!(
+        before[last_fn..].starts_with("fn destroy(_held: &mut Lifecycle,"),
+        "the drop is in: {}",
+        &before[last_fn..last_fn + 40]
+    );
 }
 
 #[cfg(feature = "gpu")]

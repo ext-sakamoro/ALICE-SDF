@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1078 |
+| 🟢 Not ignored | 1079 |
 | 🔴 Red by design | 1 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 1 |
-| **Total** | **1083** |
+| **Total** | **1084** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -42,7 +42,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1078)
+## 🟢 Not ignored (1079)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -161,6 +161,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_csg_multi_oracle.rs` | 3 |
 | `test_det_near_zero_probe.rs` | 3 |
 | `test_glsl_glslang_precise.rs` | 3 |
+| `test_gpu_lifecycle_oracle.rs` | 3 |
 | `test_gpu_noise_parity.rs` | 3 |
 | `test_gpu_submit_limit.rs` | 3 |
 | `test_jit_sincos_det.rs` | 3 |
@@ -176,7 +177,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_aabb_unified_oracle.rs` | 2 |
 | `test_det_math_clamp_generation.rs` | 2 |
 | `test_det_near_zero_parity.rs` | 2 |
-| `test_gpu_lifecycle_oracle.rs` | 2 |
 | `test_instanced_wgsl_gpu_parity.rs` | 2 |
 | `test_interval_predicate_oracle.rs` | 2 |
 | `test_interval_soundness.rs` | 2 |

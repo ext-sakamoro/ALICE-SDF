@@ -1294,7 +1294,7 @@ jobs:
           set -euo pipefail
           python3 scripts/test_gpu_test_count.py
           cargo test --lib --features "gpu,gpu-mesh" test_gpu_ -- --nocapture --test-threads=1 2>&1 | tee gpu-unit.log
-          python3 scripts/gpu_test_count.py gpu-unit.log --ran 6 --max-skipped 0
+          python3 scripts/gpu_test_count.py gpu-unit.log --ran 7 --max-skipped 0
 
       # aaa 側の GPU oracle (volume の gpu_bake)。上の step とは feature 集合が違う
       # ので分けている。ALICE_SDF_REQUIRE_GPU=1 は job env で設定済なので、

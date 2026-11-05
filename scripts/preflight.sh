@@ -555,7 +555,7 @@ python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log
 step "gpu-parity: GPU unit tests ran, not skipped (6, ci.yml の GPU unit tests ran と対)"
 python3 scripts/test_gpu_test_count.py
 ALICE_SDF_REQUIRE_GPU=1 cargo test --lib --features "gpu,gpu-mesh" test_gpu_ -- --nocapture --test-threads=1 2>&1 | tee "${TMPDIR:-/tmp}/sdf-gpu-unit.log"
-python3 scripts/gpu_test_count.py "${TMPDIR:-/tmp}/sdf-gpu-unit.log" --ran 6 --max-skipped 0
+python3 scripts/gpu_test_count.py "${TMPDIR:-/tmp}/sdf-gpu-unit.log" --ran 7 --max-skipped 0
 
 step "gpu-parity: aaa (volume gpu_bake, ci.yml の GPU ↔ CPU parity (aaa — volume gpu_bake) と対)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "aaa" --test test_gi_volume_oracle --test test_volume_api_oracle

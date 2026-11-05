@@ -21,8 +21,7 @@
 
 #![allow(
     clippy::disallowed_types,
-    clippy::disallowed_methods,
-    reason = "the one module that may make an instance or a device"
+    reason = "the one module that may name the instance; the calls are allowed on their functions"
 )]
 
 use std::mem::ManuallyDrop;
@@ -31,13 +30,17 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::compiled::GpuError;
 
-/// The instance, made on first use and kept for the life of the process. Holding the lock is the
-/// only way to reach it, and creating or destroying a device needs the lock as well.
-static LIFECYCLE: Mutex<Option<wgpu::Instance>> = Mutex::new(None);
+/// What the lock guards: the instance, made on first use and kept for the life of the process.
+struct Lifecycle {
+    instance: Option<wgpu::Instance>,
+}
+
+/// The only value of [`Lifecycle`], so a `&mut Lifecycle` means the lock is held.
+static LIFECYCLE: Mutex<Lifecycle> = Mutex::new(Lifecycle { instance: None });
 
 /// Run `f` holding the lock. The guard stays in here, so no caller can let it go early. A panic in a
 /// driver call leaves nothing here half written, so a poisoned lock is still good.
-fn locked<R>(f: impl FnOnce(&mut Option<wgpu::Instance>) -> R) -> R {
+fn locked<R>(f: impl FnOnce(&mut Lifecycle) -> R) -> R {
     f(&mut LIFECYCLE.lock().unwrap_or_else(PoisonError::into_inner))
 }
 
@@ -48,10 +51,16 @@ const ADAPTER_OPTIONS: wgpu::RequestAdapterOptions<'static, 'static> =
         force_fallback_adapter: false,
     };
 
-fn new_instance() -> wgpu::Instance {
-    wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the instance is created here, under the lock its caller holds"
+)]
+fn instance(held: &mut Lifecycle) -> &wgpu::Instance {
+    held.instance.get_or_insert_with(|| {
+        wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        })
     })
 }
 
@@ -75,9 +84,30 @@ struct Serialized(ManuallyDrop<GpuDevice>);
 
 impl Drop for Serialized {
     fn drop(&mut self) {
-        // SAFETY: this is the only place the value is dropped, and `self` is not used after it.
-        locked(|_| unsafe { ManuallyDrop::drop(&mut self.0) });
+        locked(|held| destroy(held, &mut self.0));
     }
+}
+
+/// The destruction of a device. It takes `held` as proof of the lock, and is the only drop of a
+/// [`GpuDevice`].
+fn destroy(_held: &mut Lifecycle, device: &mut ManuallyDrop<GpuDevice>) {
+    // SAFETY: the one call is from `Serialized::drop`, which does not use the value after it.
+    unsafe { ManuallyDrop::drop(device) };
+}
+
+/// The creation of a device. It takes `held` as proof of the lock, and the disallowed call is
+/// allowed only here, so moving it out of the lock does not lint.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the device is created here, under the lock"
+)]
+fn create(held: &mut Lifecycle, label: &str) -> Result<GpuContext, GpuError> {
+    let adapter = pollster::block_on(instance(held).request_adapter(&ADAPTER_OPTIONS))
+        .ok_or(GpuError::NoAdapter)?;
+    let (device, queue) =
+        pollster::block_on(adapter.request_device(&device_descriptor(label), None))
+            .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
+    Ok(GpuContext::holding(device, queue))
 }
 
 /// A shared handle on a device. See the [module docs](self) for how long it must live.
@@ -92,15 +122,7 @@ impl GpuContext {
     /// held by another create or drop. On `wasm32` they wait on the browser: see
     /// [`GpuContext::request_async`].
     pub fn request(label: &str) -> Result<Self, GpuError> {
-        locked(|slot| {
-            let instance = slot.get_or_insert_with(new_instance);
-            let adapter = pollster::block_on(instance.request_adapter(&ADAPTER_OPTIONS))
-                .ok_or(GpuError::NoAdapter)?;
-            let (device, queue) =
-                pollster::block_on(adapter.request_device(&device_descriptor(label), None))
-                    .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
-            Ok(Self::holding(device, queue))
-        })
+        locked(|held| create(held, label))
     }
 
     /// [`GpuContext::request`] for an async caller. Native futures complete without yielding, so
@@ -114,8 +136,12 @@ impl GpuContext {
     /// lock is not held across it: a drop on the same thread would wait for a create that cannot
     /// finish. The browser owns the driver there, and this thread is the only caller.
     #[cfg(target_arch = "wasm32")]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "no thread waits here, and the browser owns the driver"
+    )]
     pub async fn request_async(label: &str) -> Result<Self, GpuError> {
-        let instance = locked(|slot| slot.get_or_insert_with(new_instance).clone());
+        let instance = locked(|held| instance(held).clone());
         let adapter = instance
             .request_adapter(&ADAPTER_OPTIONS)
             .await
