@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1107 |
+| 🟢 Not ignored | 1109 |
 | 🔴 Red by design | 1 |
-| ⏱ Gated (runtime / diagnostic / manual) | 4 |
+| ⏱ Gated (runtime / diagnostic / manual) | 8 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 1 |
-| **Total** | **1112** |
+| **Total** | **1118** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -32,17 +32,21 @@ exact assert by itself once the defect is gone (see the test's doc).
 
 - `a_large_twist_keeps_the_plain_bits_on_the_gpu` (test_union_bound_oracle.rs) — known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within c…
 
-## ⏱ Gated (4)
+## ⏱ Gated (8)
 
 Correct tests that are too slow for every push, or that print a measurement table.
 Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ignored`.
 
+- `a_mesh_under_an_earlier_identifier_stays_refused` (test_stored_tree_moved_laws.rs) — takes effect when the identifier moves: both earlier identifiers are still decided before this rule
+- `a_tree_with_a_moved_node_is_refused_and_named` (test_stored_tree_moved_laws.rs) — takes effect when the identifier moves: both earlier identifiers are still decided before this rule
+- `a_tree_without_a_moved_node_reads_under_each_earlier_identifier` (test_stored_tree_moved_laws.rs) — takes effect when the identifier moves: both earlier identifiers are still decided before this rule
+- `llm_json_follows_the_rule` (test_stored_tree_moved_laws.rs) — takes effect when the identifier moves: both earlier identifiers are still decided before this rule
 - `metal_default_fast_math_loses_the_sign_of_zero` (test_msl_metal_oracle.rs) — driver observation: Metal default fast math loses the sign of zero
 - `the_alembic_library_reads_the_mesh_and_the_identifier_bit_for_bit` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1107)
+## 🟢 Not ignored (1109)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -187,6 +191,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_interval_soundness.rs` | 2 |
 | `test_live_sdf_gpu_parity.rs` | 2 |
 | `test_node_data_gpu_parity.rs` | 2 |
+| `test_stored_tree_moved_laws.rs` | 2 |
 | `test_tight_aabb_cover_oracle.rs` | 2 |
 | `test_transpiler_naga_validate.rs` | 2 |
 | `mesh_sign_sliver.rs` | 1 |
