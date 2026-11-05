@@ -10,7 +10,7 @@
 //! Run: `cargo run --example grid_warp_from_triangles`
 
 use alice_sdf::eval::eval;
-use alice_sdf::transforms::{affine_posed_to_rest, grid_warp_from_triangles, GridWarp};
+use alice_sdf::transforms::{affine_posed_to_rest, grid_warp_from_triangles, GridWarp, WarpGrid};
 use alice_sdf::SdfNode;
 use glam::Vec3;
 
@@ -60,11 +60,13 @@ fn main() {
         &rest,
         &posed,
         &tris,
-        Vec3::new(-0.3, -0.3, -0.3),
-        Vec3::new(1.3, 1.3, 0.7),
-        0.025,
-        0.3,
-        None,
+        &WarpGrid {
+            box_min: Vec3::new(-0.3, -0.3, -0.3),
+            box_max: Vec3::new(1.3, 1.3, 0.7),
+            cell: 0.025,
+            reach: 0.3,
+            shell: None,
+        },
     )
     .expect("the sheet builds a grid");
     let warp = GridWarp::new(data).expect("a valid grid");
