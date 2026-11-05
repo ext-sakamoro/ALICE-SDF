@@ -11,6 +11,9 @@
 
 #![cfg(all(feature = "gpu", feature = "texture-fit"))]
 
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
+
 use alice_sdf::compiled::GpuEvaluator;
 use alice_sdf::prelude::*;
 use alice_sdf::texture::{
@@ -119,7 +122,7 @@ fn emitted_wgsl_matches_reconstruct() {
     let points: Vec<Vec3> = (0..w * h)
         .map(|i| Vec3::new((i % w) as f32 / w as f32, (i / w) as f32 / h as f32, 0.0))
         .collect();
-    let got = gpu.eval_batch(&points).expect("gpu eval");
+    let got = gpu_batches::eval_in_batches(&gpu, &points).expect("gpu eval");
     let want = reconstruct(&r, w, h);
     assert_eq!(got.len(), want.len());
 

@@ -28,6 +28,9 @@
 
 #![cfg(feature = "gpu")]
 
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
+
 use alice_sdf::compiled::{GpuError, GpuEvaluator, TranspileMode, WgslShader};
 use alice_sdf::prelude::*;
 
@@ -461,7 +464,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
         .filter(|&p| (left.dist(p) - right.dist(p)).abs() > 1e-3)
         .collect();
     assert!(pts.len() > 3000, "{} points kept", pts.len());
-    let ids = gpu.eval_batch(&pts).unwrap();
+    let ids = gpu_batches::eval_in_batches(&gpu, &pts).unwrap();
     let mut seen = [0usize; 2];
     for (&p, &id) in pts.iter().zip(&ids) {
         let want = if left.dist(p) < right.dist(p) {
