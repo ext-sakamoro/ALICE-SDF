@@ -209,6 +209,21 @@ CARGO_TERM_COLOR=always python3 scripts/test_libtest_count.py
 CARGO_TERM_COLOR=always python3 scripts/test_cargo_output_parser_check.py
 CARGO_TERM_COLOR=always python3 scripts/cargo_output_parser_check.py
 
+# Before anything compiles: the reach ledger and docs/integration-status.md fail here in minutes, not
+# at the end of a build. --quick runs it when one of its inputs differs from origin/main
+# (scripts/scip_scope.sh decides and says why when it skips); the full run always does.
+if [[ $quick -eq 1 ]]; then
+  if scope=$(scripts/scip_scope.sh); then
+    step "scip: $scope"
+    scip_reach_step 1
+  else
+    echo "skip scip reach (${scope#skip: })"
+  fi
+else
+  step "scip: L0 ratchet + docs/integration-status.md (rust-analyzer SCIP、約 4 分)"
+  scip_reach_step 0
+fi
+
 step "fmt: cargo fmt --check (core)"
 cargo fmt --check
 
@@ -347,14 +362,6 @@ fi
 if [[ $quick -eq 1 ]]; then
   step "test: cargo test --lib (--quick でも走らせる最小限)"
   cargo test --lib
-  # the scip job (reach ledger and L0 ratchet) whenever one of its inputs differs from origin/main;
-  # scripts/scip_scope.sh decides and says why when it skips
-  if scope=$(scripts/scip_scope.sh); then
-    step "scip: $scope"
-    scip_reach_step 1
-  else
-    echo "skip scip reach (${scope#skip: })"
-  fi
   echo
   echo "preflight --quick OK"
   echo "  RAN     : fmt / clippy / MSRV / feature builds / wasm target / fuzz build / cargo test --lib"
@@ -604,9 +611,6 @@ if command -v maturin >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; the
 else
   echo "skip: maturin / python3 not installed" >&2
 fi
-
-step "scip: L0 ratchet + docs/integration-status.md (rust-analyzer SCIP、約 4 分)"
-scip_reach_step 0
 
 step "release-profile.yml: goldens and the float environment in the release profile (G4 / G5)"
 for spec in test_det_golden:4: test_det_parity:1:jit test_det_near_zero_parity:2:jit test_det_near_zero_probe:3:jit float_environment:2: test_dual_contouring_manifold:6:; do
