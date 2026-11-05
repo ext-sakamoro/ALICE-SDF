@@ -223,7 +223,7 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
             p3,
             thickness,
         } => {
-            // Approximate cubic bezier distance by sampling
+            // the distance to the curve: every stationary point is found (eval_bezier_distance)
             eval_bezier_distance(point, *p0, *p1, *p2, *p3) - thickness
         }
 
@@ -425,7 +425,92 @@ fn bilinear_sample(data: &[f32; 4096], u: f32, v: f32) -> f32 {
     (bottom - top) * ty + top
 }
 
-/// Approximate distance to a cubic Bezier curve via uniform sampling.
+/// Bracketed Newton steps per stationary point of the cubic Bezier distance
+const BEZIER_NEWTON_STEPS: u32 = 16;
+/// Halvings of the parameter before a span with several sign changes is searched as it stands
+const BEZIER_MAX_DEPTH: u32 = 10;
+/// A Newton step smaller than this ends the search: the parameter's f32 rounding near t = 1
+const BEZIER_T_EPS: f32 = 1.2e-7;
+
+#[inline]
+fn dot2(v: [f32; 2]) -> f32 {
+    v[0] * v[0] + v[1] * v[1]
+}
+
+#[inline]
+fn bezier_d2(p: &[[f32; 2]; 4], t: f32) -> f32 {
+    let (u, t2) = (1.0 - t, t * t);
+    let u2 = u * u;
+    let c = |i: usize| {
+        (t2 * t) * p[3][i]
+            + ((3.0 * u * t2) * p[2][i] + ((u2 * u) * p[0][i] + (3.0 * u2 * t * p[1][i])))
+    };
+    let (x, y) = (c(0), c(1));
+    x * x + y * y
+}
+
+/// Newton steps on g(t) = q(t).q'(t) inside `[lo, hi]`, where g goes from below zero to above it (a minimum
+/// of |q|^2), halving the span when a step leaves it or the second derivative of |q|^2 is not positive.
+/// Returns the smallest |q|^2 met.
+#[allow(
+    clippy::needless_range_loop,
+    clippy::suspicious_operation_groupings,
+    reason = "the same sum over both axes of the curve"
+)]
+fn bezier_refine(p: &[[f32; 2]; 4], mut lo: f32, mut hi: f32, mut best: f32) -> f32 {
+    let mut t = lo + 0.5 * (hi - lo);
+    for _ in 0..BEZIER_NEWTON_STEPS {
+        let u = 1.0 - t;
+        let (t2, u2) = (t * t, u * u);
+        let (mut g, mut gp, mut d2) = (0.0f32, 0.0f32, 0.0f32);
+        for i in 0..2 {
+            let q = (t2 * t) * p[3][i]
+                + ((3.0 * u * t2) * p[2][i] + ((u2 * u) * p[0][i] + (3.0 * u2 * t * p[1][i])));
+            let d1 = 3.0 * u2 * (p[1][i] - p[0][i])
+                + 6.0 * u * t * (p[2][i] - p[1][i])
+                + 3.0 * t2 * (p[3][i] - p[2][i]);
+            let dd = 6.0 * u * (p[2][i] - 2.0 * p[1][i] + p[0][i])
+                + 6.0 * t * (p[3][i] - 2.0 * p[2][i] + p[1][i]);
+            g += q * d1;
+            gp += d1 * d1 + q * dd;
+            d2 += q * q;
+        }
+        if d2 < best {
+            best = d2;
+        }
+        if g > 0.0 {
+            hi = t;
+        } else {
+            lo = t;
+        }
+        let step = if gp > 0.0 { t - g / gp } else { lo };
+        let next = if step > lo && step < hi {
+            step
+        } else {
+            lo + 0.5 * (hi - lo)
+        };
+        let moved = (next - t).abs();
+        t = next;
+        if moved <= BEZIER_T_EPS {
+            break;
+        }
+    }
+    let d2 = bezier_d2(p, t);
+    if d2 < best {
+        d2
+    } else {
+        best
+    }
+}
+
+/// Distance from `point` to a cubic Bezier curve.
+///
+/// The nearest point is an end of the curve or a stationary point of |q(t)|^2, a root of the degree 5
+/// polynomial g(t) = q(t).q'(t). g is written in the Bernstein basis, where the number of sign changes of
+/// the coefficients bounds the number of roots of the span from above (zero changes: no root; one: one
+/// root) and has the parity of that number; a span with more is halved by de Casteljau. Every minimum is
+/// therefore found rather than the ones a set of samples happens to show.
+#[allow(clippy::suspicious_operation_groupings)]
 fn eval_bezier_distance(
     point: [f32; 2],
     p0: [f32; 2],
@@ -433,27 +518,66 @@ fn eval_bezier_distance(
     p2: [f32; 2],
     p3: [f32; 2],
 ) -> f32 {
-    const SAMPLES: u32 = 16;
-    let mut min_dist_sq = f32::MAX;
-
-    for i in 0..=SAMPLES {
-        let t = i as f32 / SAMPLES as f32;
-        let it = 1.0 - t;
-        let it2 = it * it;
-        let t2 = t * t;
-        let bx = (t2 * t) * p3[0]
-            + ((3.0 * it * t2) * p2[0] + ((it2 * it) * p0[0] + (3.0 * it2 * t * p1[0])));
-        let by = (t2 * t) * p3[1]
-            + ((3.0 * it * t2) * p2[1] + ((it2 * it) * p0[1] + (3.0 * it2 * t * p1[1])));
-        let dx = point[0] - bx;
-        let dy = point[1] - by;
-        let d2 = dx * dx + dy * dy;
-        if d2 < min_dist_sq {
-            min_dist_sq = d2;
+    let p = [p0, p1, p2, p3].map(|c| [c[0] - point[0], c[1] - point[1]]);
+    let d: [[f32; 2]; 3] =
+        [0, 1, 2].map(|i| [3.0 * (p[i + 1][0] - p[i][0]), 3.0 * (p[i + 1][1] - p[i][1])]);
+    // the Bernstein coefficients of the product of q (degree 3) and q' (degree 2)
+    const C3: [f32; 4] = [1.0, 3.0, 3.0, 1.0];
+    const C2: [f32; 3] = [1.0, 2.0, 1.0];
+    const C5: [f32; 6] = [1.0, 5.0, 10.0, 10.0, 5.0, 1.0];
+    let mut coef = [0.0f32; 6];
+    for (i, q) in p.iter().enumerate() {
+        for (j, v) in d.iter().enumerate() {
+            coef[i + j] += C3[i] * C2[j] * (q[0] * v[0] + q[1] * v[1]);
         }
     }
+    for (c, n) in coef.iter_mut().zip(C5) {
+        *c /= n;
+    }
 
-    min_dist_sq.sqrt()
+    let (first, last) = (dot2(p[0]), dot2(p[3]));
+    let mut best = f32::MAX;
+    for d2 in [first, last] {
+        if d2 < best {
+            best = d2;
+        }
+    }
+    // a depth-first walk: every halving replaces one span by two, so the depth bounds the stack
+    let mut stack = [([0.0f32; 6], 0.0f32, 0.0f32, 0u32); BEZIER_MAX_DEPTH as usize + 2];
+    stack[0] = (coef, 0.0, 1.0, 0);
+    let mut len = 1usize;
+    while len > 0 {
+        len -= 1;
+        let (c, lo, hi, depth) = stack[len];
+        let changes = (0..5).filter(|&k| (c[k] < 0.0) != (c[k + 1] < 0.0)).count();
+        if changes == 0 {
+            continue;
+        }
+        if changes == 1 || depth >= BEZIER_MAX_DEPTH {
+            if c[0] <= 0.0 && c[5] >= 0.0 {
+                best = bezier_refine(&p, lo, hi, best);
+            } else {
+                let d2 = bezier_d2(&p, lo + 0.5 * (hi - lo));
+                if d2 < best {
+                    best = d2;
+                }
+            }
+            continue;
+        }
+        let (mut w, mut left, mut right) = (c, [0.0f32; 6], [0.0f32; 6]);
+        for k in 0..6 {
+            left[k] = w[0];
+            right[5 - k] = w[5 - k];
+            for m in 0..5 - k {
+                w[m] += 0.5 * (w[m + 1] - w[m]);
+            }
+        }
+        let mid = lo + 0.5 * (hi - lo);
+        stack[len] = (right, mid, hi, depth + 1);
+        stack[len + 1] = (left, lo, mid, depth + 1);
+        len += 2;
+    }
+    best.sqrt()
 }
 
 // ── Constructors ─────────────────────────────────────────────
