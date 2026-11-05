@@ -141,6 +141,9 @@ impl SectionStack {
                         l.len()
                     ));
                 }
+                if super::simple_loop::closed_polyline_crosses(l) {
+                    return Err(format!("section stack: a loop at level {i} crosses itself"));
+                }
             }
         }
         let g = (0..levels.len() - 1)

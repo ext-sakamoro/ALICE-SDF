@@ -79,6 +79,7 @@ mod rounded_cylinder;
 mod rounded_x;
 mod schwarz_p;
 mod section_stack;
+pub(crate) mod simple_loop;
 mod smooth_section_stack;
 mod shapes_2d;
 mod solid_angle;

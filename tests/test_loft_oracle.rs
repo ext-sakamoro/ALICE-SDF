@@ -726,12 +726,19 @@ fn every_loft_kind_survives_a_json_round_trip_bit_for_bit() {
     let curves = SdfNode::loft_curves(
         vec![Vec3::ZERO, Vec3::new(0.05, 0.5, 0.0), Vec3::new(0.0, 1.0, 0.1)],
         Vec3::Z,
-        vec![ellipse.clone(), ellipse.iter().map(|p| *p * 1.3).collect(), ellipse],
+        vec![ellipse.clone(), ellipse.iter().map(|p| *p * 1.3).collect(), ellipse.clone()],
     )
     .expect("curves");
     let mut r = lcg(16);
     let mut compared = 0;
-    for node in [sphere, capped, curved(), bent_jump().2, curves] {
+    let curves_capped = SdfNode::loft_curves_capped(
+        vec![Vec3::ZERO, Vec3::new(0.05, 0.5, 0.0), Vec3::new(0.0, 1.0, 0.1)],
+        Vec3::Z,
+        vec![ellipse.clone(), ellipse.iter().map(|p| *p * 1.3).collect(), ellipse.clone()],
+        [[0.1, 0.0, 0.0], [0.2, 0.03, -0.02]],
+    )
+    .expect("capped curves");
+    for node in [sphere, capped, curved(), bent_jump().2, curves, curves_capped] {
         let text = serde_json::to_string(&node).expect("serialise");
         let back: SdfNode = serde_json::from_str(&text).expect("load");
         for _ in 0..500 {
@@ -740,7 +747,7 @@ fn every_loft_kind_survives_a_json_round_trip_bit_for_bit() {
             compared += 1;
         }
     }
-    assert_eq!(compared, 2500);
+    assert_eq!(compared, 3000);
 }
 
 #[test]

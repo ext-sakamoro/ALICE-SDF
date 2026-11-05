@@ -43,7 +43,13 @@ pub const SMOOTH_STACK_HAUSDORFF_SAMPLES: usize = 32;
 const WEIGHT_SAMPLES: usize = 400;
 
 /// A stack of closed spline sections along local Y
+///
+/// Loading rebuilds the stack from its levels, loops, `r0` and `eps` (the checks of
+/// [`SmoothSectionStack::new`], loops re-oriented counter-clockwise) and refuses stored knots or
+/// `lmax` that differ from the recomputed ones bit for bit: a smaller stored bound would overstate
+/// the distance and let sphere tracing step through the surface.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "SmoothSectionStackStored")]
 pub struct SmoothSectionStack {
     /// Heights of the levels (strictly increasing, at least 4)
     pub levels: Vec<f32>,
@@ -56,6 +62,31 @@ pub struct SmoothSectionStack {
     /// The near-field radius r₀ and the knot slope limit ε
     r0: f32,
     eps: f32,
+}
+
+/// The stored form of a [`SmoothSectionStack`], checked on load
+#[derive(Deserialize)]
+struct SmoothSectionStackStored {
+    levels: Vec<f32>,
+    loops: Vec<Vec<Vec<Vec2>>>,
+    knots: Vec<f32>,
+    lmax: f32,
+    r0: f32,
+    eps: f32,
+}
+
+impl TryFrom<SmoothSectionStackStored> for SmoothSectionStack {
+    type Error = String;
+    fn try_from(v: SmoothSectionStackStored) -> Result<Self, String> {
+        let s = Self::new(v.levels, v.loops, v.r0, v.eps)?;
+        let same = s.lmax.to_bits() == v.lmax.to_bits()
+            && s.knots.len() == v.knots.len()
+            && s.knots.iter().zip(&v.knots).all(|(a, b)| a.to_bits() == b.to_bits());
+        if !same {
+            return Err("smooth section stack: stored knots or lmax differ from the bound recomputed from its levels and loops; rebuild the stack".into());
+        }
+        Ok(s)
+    }
 }
 
 #[inline]
@@ -103,6 +134,12 @@ fn spline_point(lp: &[Vec2], u: f32) -> Vec2 {
 
 /// The signed area of a loop's curve (shoelace over [`SMOOTH_STACK_HAUSDORFF_SAMPLES`] points per span):
 /// positive when the curve runs counter-clockwise in (x, z)
+/// The loop's curve sampled at [`SMOOTH_STACK_HAUSDORFF_SAMPLES`] per span (the simplicity check)
+fn sampled_curve(lp: &[Vec2]) -> Vec<Vec2> {
+    let n = lp.len() * SMOOTH_STACK_HAUSDORFF_SAMPLES;
+    (0..n).map(|s| spline_point(lp, s as f32 / SMOOTH_STACK_HAUSDORFF_SAMPLES as f32)).collect()
+}
+
 fn curve_area(lp: &[Vec2]) -> f32 {
     let n = lp.len() * SMOOTH_STACK_HAUSDORFF_SAMPLES;
     let mut a = 0.0f32;
@@ -160,6 +197,9 @@ impl SmoothSectionStack {
                 }
                 if lp.iter().any(|p| !p.is_finite()) {
                     return Err(format!("smooth section stack: a non-finite control point at level {i}"));
+                }
+                if super::simple_loop::closed_polyline_crosses(&sampled_curve(lp)) {
+                    return Err(format!("smooth section stack: a loop at level {i} crosses itself"));
                 }
             }
         }

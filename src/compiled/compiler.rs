@@ -1121,9 +1121,9 @@ impl Compiler {
                 self.instructions.push(inst);
             }
 
-            SdfNode::LoftCurves { axis, up, section_points, points, knots, bounds } => {
+            SdfNode::LoftCurves { axis, up, section_points, points, knots, caps, bounds } => {
                 let sec = crate::primitives::loft::LoftSection::Curve(*section_points);
-                let flat = crate::primitives::loft::flatten(axis, *up, sec, points, knots, [0.0, 0.0], bounds);
+                let flat = crate::primitives::loft::flatten(axis, *up, sec, points, knots, [caps[0][0], caps[1][0]], bounds);
                 let (aux_off, aux_len) = self.push_aux(&flat);
                 let mut inst = Instruction::loft();
                 inst.aux_offset = aux_off;

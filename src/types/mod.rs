@@ -331,7 +331,9 @@ pub enum SdfNode {
 
     /// Polar sections swept along a spline axis, each end flat or closed by a dome (see
     /// [`crate::primitives::loft`] for the shape, the field and its bound). Built by
-    /// [`SdfNode::loft`] / [`SdfNode::loft_capped`], which check the input and compute `bounds`.
+    /// [`SdfNode::loft`] / [`SdfNode::loft_capped`], which check the input and compute `bounds`;
+    /// loading recomputes the bounds and refuses stored ones that differ.
+    #[serde(deserialize_with = "crate::primitives::loft::deserialize_polar")]
     Loft {
         /// Axis points (a uniform Catmull-Rom curve passes through them)
         axis: Vec<Vec3>,
@@ -351,7 +353,8 @@ pub enum SdfNode {
     /// cubic B-spline of `section_points` control points in the frame's plane, on one periodic knot
     /// vector shared by every row (see
     /// [`crate::primitives::loft`]). Built by [`SdfNode::loft_curves`], which checks the input and
-    /// computes `bounds`.
+    /// computes `bounds`; loading recomputes the bounds and refuses stored ones that differ.
+    #[serde(deserialize_with = "crate::primitives::loft::deserialize_curves")]
     LoftCurves {
         /// Axis points (a uniform Catmull-Rom curve passes through them)
         axis: Vec<Vec3>,
@@ -363,6 +366,8 @@ pub enum SdfNode {
         points: Vec<f32>,
         /// The section knots `K0 … KM` shared by every row (periodic, rising)
         knots: Vec<f32>,
+        /// Caps at the start and the end: `[H, o_u, o_v]` (height, apex offset in the end frame); H = 0 is flat
+        caps: [[f32; 3]; 2],
         /// The bounds the field is divided by
         bounds: crate::primitives::loft::LoftBounds,
     },

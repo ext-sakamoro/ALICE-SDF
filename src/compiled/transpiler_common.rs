@@ -3533,8 +3533,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 var
             }
 
-            SdfNode::LoftCurves { axis, up, section_points, points: rows, knots, bounds } => {
-                let (sec, caps) = (crate::primitives::loft::LoftSection::Curve(*section_points), [0.0, 0.0]);
+            SdfNode::LoftCurves { axis, up, section_points, points: rows, knots, caps, bounds } => {
+                let (sec, caps) = (crate::primitives::loft::LoftSection::Curve(*section_points), [caps[0][0], caps[1][0]]);
                 // the loft's law as module-scope functions over a module-scope data array
                 // (`compiled::loft_shader`, one template rendered per dialect)
                 let id = self.var_counter;
