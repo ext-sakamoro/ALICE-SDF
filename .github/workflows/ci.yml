@@ -1268,6 +1268,7 @@ jobs:
           --test test_union_bound_oracle
           --test test_bezier_gpu_parity
           --test test_parabola_segment_oracle
+          --test test_sweep_bezier_oracle
           -- --nocapture
 
       # The polygon / section-stack / bound-skip shader oracles need gpu + glsl + hlsl together (the

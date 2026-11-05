@@ -16,6 +16,11 @@
 
 use alice_sdf::prelude::*;
 use glam::Vec2;
+#[cfg(feature = "gpu")]
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
+#[cfg(feature = "gpu")]
+use gpu_batches::eval_in_batches;
 
 fn curve(a: [f64; 2], b: [f64; 2], c: [f64; 2], t: f64) -> [f64; 2] {
     let u = 1.0 - t;
@@ -84,7 +89,6 @@ fn the_f64_truth_matches_closed_forms() {
 const OVER_TOL: f64 = 1e-5;
 
 #[test]
-#[ignore = "known defect: SWEEP-BEZIER-OVERSTATE-001: bezier_distance_2d over-states the distance by 1.56e-2 at a near-straight curve and 3.9e-4 at a bent one (f32 closed form, no refinement)"]
 fn sweep_bezier_never_overstates_the_distance() {
     let (mut worst, mut at, mut n) = (0.0f64, String::new(), 0usize);
     for &h in &[
@@ -121,5 +125,68 @@ fn sweep_bezier_never_overstates_the_distance() {
     assert!(
         worst <= OVER_TOL,
         "over-states the distance by {worst:.3e} > {OVER_TOL:e}: {at}"
+    );
+}
+
+/// The WGSL helper against the CPU law and the truth, from near-straight to bent; with
+/// `ALICE_SDF_REQUIRE_GPU` set a missing adapter is a failure, not a skip
+#[cfg(feature = "gpu")]
+#[test]
+fn sweep_bezier_gpu_matches_the_cpu_law_and_the_truth() {
+    use alice_sdf::compiled::GpuEvaluator;
+    let (mut par, mut over, mut n) = (0.0f64, 0.0f64, 0usize);
+    for &h in &[1e-6, 1e-4, 1e-3, 0.01, 0.1, 1.0] {
+        for (a, b, c) in [
+            ([0.0, 0.0], [0.5, h], [1.0, 0.0]),
+            ([0.0, 0.0], [0.3, h], [1.0, 0.0]),
+            ([3.1, 2.2], [3.15, 2.2 + 0.5 * h], [3.2, 2.2]),
+        ] {
+            let (a, b, c) = (r(a), r(b), r(c));
+            let node = SdfNode::sphere(0.0).sweep_bezier(v2(a), v2(b), v2(c));
+            let gpu = match GpuEvaluator::new(&node) {
+                Ok(g) => g,
+                Err(e) => {
+                    assert!(
+                        std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                        "ALICE_SDF_REQUIRE_GPU is set but no GPU adapter was found: {e}"
+                    );
+                    eprintln!("skipping sweep_bezier GPU parity: {e}");
+                    return;
+                }
+            };
+            let chord = dist(a, c);
+            let (dx, dy) = ((c[0] - a[0]) / chord, (c[1] - a[1]) / chord);
+            let mut xz = Vec::new();
+            for k in 0..=40 {
+                let q = curve(a, b, c, k as f64 / 40.0);
+                for &o in &[0.0, 1e-4, -1e-4, 1e-3, -1e-3, 1e-2, -1e-2, 0.1, -0.1] {
+                    xz.push(r([q[0] - dy * o * chord, q[1] + dx * o * chord]));
+                }
+            }
+            let pts: Vec<Vec3> = xz
+                .iter()
+                .map(|p| Vec3::new(p[0] as f32, 0.0, p[1] as f32))
+                .collect();
+            assert!(pts.len() <= 2048, "{} points in one dispatch", pts.len());
+            for ((p, q), g) in pts
+                .iter()
+                .zip(&xz)
+                .zip(eval_in_batches(&gpu, &pts).expect("gpu eval"))
+            {
+                let g = f64::from(g);
+                par = par.max((g - f64::from(eval(&node, *p))).abs());
+                over = over.max(g - true_distance(a, b, c, *q));
+                n += 1;
+            }
+        }
+    }
+    assert!(n > 0, "compared 0 points");
+    eprintln!(
+        "sweep_bezier GPU: {n} points, max |gpu - cpu| {par:.3e}, worst over-statement {over:.3e}"
+    );
+    assert!(par <= 2e-5, "GPU/CPU drift {par:.3e}");
+    assert!(
+        over <= OVER_TOL,
+        "the GPU over-states the distance by {over:.3e}"
     );
 }
