@@ -1903,9 +1903,12 @@ const HELPER_SDF_HELIX: &str = r"fn sdf_helix(p: vec3<f32>, major_r: f32, minor_
             let f2 = max(two_rr * co + 2.0 * c * c, 1e-6);
             phi = phi - clamp(f1 / f2, -1.5707963, 1.5707963);
         }
-        let co = cos(phi - theta);
+        // the squared radial gap as (r - R)^2 + 4rR sin^2(a/2): the cosine form cancels on the curve
+        let half = sin(0.5 * (phi - theta));
         let dy = py - c * phi;
-        let d2 = dy * dy + max(r * r + major_r * major_r - two_rr * co, 0.0);
+        let gap = r - major_r;
+        let radial = gap * gap + 2.0 * two_rr * (half * half);
+        let d2 = dy * dy + max(radial, 0.0);
         best = min(best, d2);
     }
     let d_tube = sqrt(best) - minor_r;

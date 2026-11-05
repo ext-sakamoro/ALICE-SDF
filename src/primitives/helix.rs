@@ -37,16 +37,13 @@ fn helix_curve_dist2(r: f32, theta: f32, py: f32, major_r: f32, pitch: f32) -> f
             let f2 = (two_rr * co + (2.0 * c * c)).law_max(1e-6);
             phi -= (f1 / f2).clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
         }
-        let co = alice_det_math::cos(phi - theta);
+        let half = alice_det_math::sin(0.5 * (phi - theta));
         let dy = c * -phi + py;
-        let rr = r * r + (major_r * major_r);
-        // `rr − 2rR·cos` is the squared radial gap: exactly 0 on the curve, so
-        // in f32 it cancels to a small negative near r = R. Unclamped it made
-        // `sqrt` NaN, and `NaN.max(d_cap)` silently returned the *cap*
-        // distance — the field read −0.309 where the tube law gives −0.0999
-        // (a 0.21 error at the curve, and GPU `max` does not have to swallow
-        // NaN the same way the CPU does).
-        let d2 = dy * dy + (rr - two_rr * co).law_max(0.0);
+        let gap = r - major_r;
+        // the squared radial gap `r^2 + R^2 - 2rR cos(a)`, written as `(r - R)^2 + 4rR sin^2(a/2)`: the cosine
+        // form cancels on the curve and loses half of the digits of the distance. The clamp keeps a negative
+        // `major_r` from reaching `sqrt` as a negative
+        let d2 = dy * dy + (gap * gap + 2.0 * two_rr * (half * half)).law_max(0.0);
         best = best.law_min(d2);
     }
     best

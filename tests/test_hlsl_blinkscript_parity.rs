@@ -1013,6 +1013,50 @@ fn blinkscript_kernel_wraps_the_body_in_a_nuke_kernel() {
     );
 }
 
+/// The helix helper on and around the curve against the CPU law (whose own truth is
+/// tests/test_helix_curve_oracle.rs).
+#[test]
+fn hlsl_helix_matches_cpu() {
+    let Some(cxx) = cxx_or_skip() else {
+        return;
+    };
+    let dir = scratch("hlsl_helix");
+    let mut unit = 0usize;
+    let mut compared = 0usize;
+    let mut worst = 0.0f32;
+    for (major, pitch) in [(0.3f32, 3.0f32), (1.0, 0.5), (3.0, 0.2)] {
+        let node = SdfNode::helix(major, 0.0, pitch, 1000.0);
+        let emit = HlslShader::transpile(&node, HlslTranspileMode::Hardcoded).source;
+        unit += 1;
+        let bin = compile(
+            &cxx,
+            &dir,
+            &format!("h{unit}"),
+            &translation_unit(&emit, ""),
+        )
+        .expect("the helix emit compiles");
+        let mut pts = Vec::new();
+        for k in 0..120 {
+            let ph = -6.0 + k as f32 * 0.1037;
+            let c = pitch / std::f32::consts::TAU;
+            for o in [0.0f32, 1e-4, 1e-3, 1e-2, 0.05, -1e-4, -1e-3, -1e-2, -0.05] {
+                let m = major + o;
+                pts.push(Vec3::new(m * ph.cos(), c * ph, m * ph.sin()));
+            }
+        }
+        for (p, g) in pts
+            .iter()
+            .zip(run(&bin, &pts).expect("the helix emit runs"))
+        {
+            worst = worst.max((g - eval(&node, *p)).abs());
+            compared += 1;
+        }
+    }
+    assert!(compared > 0, "compared 0 points");
+    eprintln!("HLSL helix: {compared} points, max |shader - cpu| {worst:.3e}");
+    assert!(worst <= 2e-5, "HLSL/CPU drift {worst:.3e}");
+}
+
 /// The blobby_cross helper across its arm tips against the CPU law (whose own truth is
 /// tests/test_blobby_cross_oracle.rs).
 #[test]

@@ -267,6 +267,37 @@ fn compute_shader_blobby_cross_matches_the_cpu_law() {
     assert!(worst <= 2e-5, "GLSL/CPU drift {worst:.3e}");
 }
 
+/// The helix helper on and around the curve against the CPU law (whose own truth is
+/// tests/test_helix_curve_oracle.rs).
+#[test]
+fn compute_shader_helix_matches_the_cpu_law() {
+    let mut compared = 0usize;
+    let mut worst = 0.0f32;
+    for (major, pitch) in [(0.3f32, 3.0f32), (1.0, 0.5), (3.0, 0.2)] {
+        let node = SdfNode::helix(major, 0.0, pitch, 1000.0);
+        let src = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded).to_compute_shader();
+        let Some(gpu) = gpu_or_skip("helix", &vulkanize(&src)) else {
+            return;
+        };
+        let mut pts = Vec::new();
+        for k in 0..120 {
+            let ph = -6.0 + k as f32 * 0.1037;
+            let c = pitch / std::f32::consts::TAU;
+            for o in [0.0f32, 1e-4, 1e-3, 1e-2, 0.05, -1e-4, -1e-3, -1e-2, -0.05] {
+                let m = major + o;
+                pts.push(Vec3::new(m * ph.cos(), c * ph, m * ph.sin()));
+            }
+        }
+        for (p, g) in pts.iter().zip(gpu.eval_batch(&pts).unwrap()) {
+            worst = worst.max((g - eval(&node, *p)).abs());
+            compared += 1;
+        }
+    }
+    assert!(compared > 0, "compared 0 points");
+    eprintln!("GLSL helix: {compared} points, max |shader - cpu| {worst:.3e}");
+    assert!(worst <= 2e-5, "GLSL/CPU drift {worst:.3e}");
+}
+
 #[test]
 fn extract_params_is_the_dynamic_layout_of_the_tree() {
     let la = GlslShader::extract_params(&A.node());
