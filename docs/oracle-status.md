@@ -6,20 +6,21 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1060 |
-| 🔴 Red by design | 1 |
+| 🟢 Not ignored | 1061 |
+| 🔴 Red by design | 2 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **1065** |
+| **Total** | **1067** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🔴 Red by design (1)
+## 🔴 Red by design (2)
 
 Oracles kept red on purpose: the implementation is not there yet, and a companion test pins
 today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected value is never loosened.
 
+- `parabola_segment_never_overstates_the_distance` (test_parabola_segment_oracle.rs) — known defect: PARABOLA-SEGMENT-NEWTON-001: on the convex side of the arch the Newton iteration leaves for the …
 - `torus_on_a_grid_plane_has_no_crossings` (test_dual_contouring_manifold.rs) — known defect: DC-TORUS-CROSS-001: torus(1.0, 0.5) at resolution 32 over ±1.6 has 1 crossing triangle pair in b…
 
 ## ⏱ Gated (4)
@@ -32,7 +33,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1060)
+## 🟢 Not ignored (1061)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -177,6 +178,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_gpu_fma_contraction.rs` | 1 |
 | `test_metadata_order.rs` | 1 |
 | `test_npr_bytecode_gpu_parity.rs` | 1 |
+| `test_parabola_segment_oracle.rs` | 1 |
 | `test_texture_shader_gpu_parity.rs` | 1 |
 
 ---
