@@ -608,3 +608,177 @@ fn the_cell_diagonal_keeps_the_floor_below_the_distance_for_a_thin_shell() {
     }
     assert!(checked > 0);
 }
+
+/// Whether a posed triangle is on the sheet's rim (has an edge no other triangle shares).
+fn rim_triangles(tris: &[[u32; 3]]) -> Vec<bool> {
+    let mut count = std::collections::BTreeMap::new();
+    for t in tris {
+        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+            *count.entry((a.min(b), a.max(b))).or_insert(0u32) += 1;
+        }
+    }
+    tris.iter()
+        .map(|t| {
+            [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])]
+                .iter()
+                .any(|(a, b)| count[&(*a.min(b), *a.max(b))] == 1)
+        })
+        .collect()
+}
+
+#[test]
+fn a_far_pulled_corner_does_not_disable_the_floor_inside() {
+    // the folded sheet, plus its corner (1, 0) pulled 1.5 away along x: the corner triangle
+    // stretches hugely, but the fold's ghosts are in the interior, where the shape lies within
+    // t of the posed sheet (the rest sheet is flat and the map keeps unit normals)
+    let (rest, tris) = sheet(9);
+    let mut posed = folded(&rest);
+    let corner = 8usize; // rest (1, 0)
+    posed[corner] += Vec3::new(1.5, 0.0, 0.0);
+    let (lo, hi) = (Vec3::new(-0.4, -0.4, -0.4), Vec3::new(2.4, 1.4, 0.6));
+    let cell = 0.05;
+    let shell = 0.03;
+    let data = grid_warp_from_triangles(
+        &rest,
+        &posed,
+        &tris,
+        &WarpGrid {
+            box_min: lo,
+            box_max: hi,
+            cell,
+            reach: 0.3,
+            shell: Some(shell),
+        },
+    )
+    .expect("builds");
+    let node = slab().grid_warp(GridWarp::new(data).expect("valid"));
+    let rim = rim_triangles(&tris);
+    let band = shell + cell * 3.0f32.sqrt();
+    let mut ghosts = 0;
+    for k in 0..24 {
+        for j in 0..24 {
+            for i in 0..36 {
+                let p = lo
+                    + (hi - lo)
+                        * Vec3::new(
+                            (i as f32 + 0.5) / 36.0,
+                            (j as f32 + 0.5) / 24.0,
+                            (k as f32 + 0.5) / 24.0,
+                        );
+                if eval(&node, p) >= 0.0 {
+                    continue;
+                }
+                // nearest posed triangle and its distance
+                let mut best = (f32::INFINITY, 0usize);
+                for (ti, t) in tris.iter().enumerate() {
+                    let d = sheet_distance(p, &posed, &[*t]);
+                    if d < best.0 {
+                        best = (d, ti);
+                    }
+                }
+                if best.0 > band && !rim[best.1] {
+                    ghosts += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(
+        ghosts, 0,
+        "inside points beyond t + the cell diagonal from an interior triangle"
+    );
+}
+
+#[test]
+fn a_bent_rest_sheet_keeps_the_floor_below_the_distance() {
+    // Not planar at rest: the sheet is bent 90° along x = 0.5 (the right half stands up), and
+    // posed it is flat and stretched ×4 along the rest arc length. A child point just outside
+    // the convex crease is offset at 45° to each half's normal; a half's map stretches the
+    // in-plane part ×4, so it lands about 2.9·t from the posed sheet. Only per-triangle σ_T·t
+    // (not t) keeps the floor below the distance there.
+    let n = 9;
+    let (flat, tris) = sheet(n);
+    let bend = |p: Vec3| {
+        if p.x <= 0.5 {
+            p
+        } else {
+            Vec3::new(0.5, p.y, p.x - 0.5)
+        }
+    };
+    let rest: Vec<Vec3> = flat.iter().map(|p| bend(*p)).collect();
+    let posed: Vec<Vec3> = flat
+        .iter()
+        .map(|p| Vec3::new(4.0 * p.x, p.y, 0.0))
+        .collect();
+    let shell = 0.03;
+    let cell = 0.02;
+    let (lo, hi) = (Vec3::new(1.4, 0.0, -0.3), Vec3::new(2.6, 1.0, 0.3));
+    let data = grid_warp_from_triangles(
+        &rest,
+        &posed,
+        &tris,
+        &WarpGrid {
+            box_min: lo,
+            box_max: hi,
+            cell,
+            reach: 0.3,
+            shell: Some(shell),
+        },
+    )
+    .expect("builds");
+    let warp = GridWarp::new(data).expect("valid");
+    // child points on the convex side of the crease: the crease line x = 0.5, z = 0 offset by
+    // t along (1, 0, -1)/√2 (between the two halves' outward normals), carried forward by the
+    // left half's map (x ≤ 0.5 at the foot) and by the right half's
+    let mut shape = Vec::new();
+    for j in 0..=200 {
+        let y = 0.1 + 0.8 * j as f32 / 200.0;
+        for f in [0.0f32, 0.5, 1.0] {
+            let off = Vec3::new(1.0, 0.0, -1.0).normalize() * shell * f;
+            let x = Vec3::new(0.5, y, 0.0) + off;
+            // the cell under the crease on either side
+            for ci in [3usize, 4] {
+                let cj = ((y * 8.0) as usize).min(7);
+                for tri in [(cj * 8 + ci) * 2, (cj * 8 + ci) * 2 + 1] {
+                    let t = tris[tri];
+                    let r = [
+                        rest[t[0] as usize],
+                        rest[t[1] as usize],
+                        rest[t[2] as usize],
+                    ];
+                    let q = [
+                        posed[t[0] as usize],
+                        posed[t[1] as usize],
+                        posed[t[2] as usize],
+                    ];
+                    let m = affine_posed_to_rest(q, r).expect("map");
+                    shape.push(Vec3::new(
+                        m[0] * x.x + m[1] * x.y + m[2] * x.z + m[3],
+                        m[4] * x.x + m[5] * x.y + m[6] * x.z + m[7],
+                        m[8] * x.x + m[9] * x.y + m[10] * x.z + m[11],
+                    ));
+                }
+            }
+        }
+    }
+    let gap = 0.5 * 0.004 * 4.0;
+    let mut checked = 0;
+    for y in &shape {
+        for dz in [-0.01f32, 0.0, 0.01] {
+            let p = *y + Vec3::new(0.0, 0.0, dz);
+            if p.x < lo.x || p.x > hi.x {
+                continue;
+            }
+            let (_, _, _, floor) = warp.warp(p);
+            let d = shape
+                .iter()
+                .map(|s| (p - *s).length())
+                .fold(f32::INFINITY, f32::min);
+            assert!(
+                floor <= d + gap,
+                "floor {floor} above the distance {d} at {p:?}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 100, "{checked}");
+}
