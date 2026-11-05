@@ -1311,6 +1311,82 @@ fn sdf_load_verdict_against(
     }
 }
 
+/// The verdict on the identifier of a stored tree before its body is decoded
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TreeGate {
+    /// The identifier alone decides
+    Decided(StoredSemantics),
+    /// An earlier identifier: readable if the tree uses none of these nodes
+    IfAbsent {
+        stored: [u8; 32],
+        laws: &'static [&'static str],
+    },
+}
+
+impl TreeGate {
+    /// The verdict with the decoded tree in hand
+    pub(crate) fn settle(
+        self,
+        tree: &crate::types::SdfTree,
+        format: &'static str,
+    ) -> Result<StoredSemantics, crate::io::IoError> {
+        match self {
+            Self::Decided(semantics) => Ok(semantics),
+            Self::IfAbsent { stored, laws } => {
+                let found = crate::semantics::moved_laws_in(tree, laws);
+                if found.is_empty() {
+                    Ok(StoredSemantics::VerifiedPrevious(Provenance::new(stored)))
+                } else {
+                    Err(crate::io::IoError::MovedLaw {
+                        format,
+                        stored: Provenance::new(stored),
+                        laws: found,
+                    })
+                }
+            }
+        }
+    }
+}
+
+/// [`sdf_load_verdict`] for a form that carries a tree: an identifier in
+/// [`crate::SDF_SEMANTICS_MOVED_LAWS`] is not refused yet, the decoded tree decides ([`TreeGate::settle`])
+pub(crate) fn sdf_tree_load_gate(
+    stored: Option<[u8; 32]>,
+    format: &'static str,
+    allow_unpinned: bool,
+) -> Result<TreeGate, crate::io::IoError> {
+    sdf_tree_load_gate_against(
+        stored,
+        format,
+        allow_unpinned,
+        crate::PREVIOUS_SDF_SEMANTICS_IDS,
+        crate::SDF_SEMANTICS_MOVED_LAWS,
+    )
+}
+
+fn sdf_tree_load_gate_against(
+    stored: Option<[u8; 32]>,
+    format: &'static str,
+    allow_unpinned: bool,
+    previous: &[[u8; 32]],
+    moved: &'static [([u8; 32], &'static [&'static str])],
+) -> Result<TreeGate, crate::io::IoError> {
+    match sdf_load_verdict_against(stored, format, allow_unpinned, previous) {
+        Ok(semantics) => Ok(TreeGate::Decided(semantics)),
+        Err(refused @ crate::io::IoError::SemanticsMismatch { .. }) => {
+            let id = stored.unwrap_or([0; 32]);
+            match moved.iter().find(|(earlier, _)| *earlier == id) {
+                Some((stored, laws)) => Ok(TreeGate::IfAbsent {
+                    stored: *stored,
+                    laws,
+                }),
+                None => Err(refused),
+            }
+        }
+        Err(other) => Err(other),
+    }
+}
+
 /// The verdict of this crate's importers on an identifier read from a stored form: [`Stored::judge`]
 /// against this crate's identifier and G6's earlier ones
 ///
@@ -2443,6 +2519,93 @@ mod tests {
         assert!(matches!(
             from_bytes(b"hello"),
             Err(ProvenanceError::Unreadable(_))
+        ));
+    }
+
+    /// The rule for a stored tree, with an identifier that is neither this build's nor a previous one
+    #[test]
+    fn a_stored_tree_under_a_moved_identifier_reads_only_without_the_moved_nodes() {
+        use crate::types::{SdfNode, SdfTree};
+        const EARLIER: [u8; 32] = [0xab; 32];
+        const LAWS: &[&str] = crate::SDF_MOVED_LAWS_OVERSTATE_FIX;
+        static MOVED: &[([u8; 32], &[&str])] = &[(EARLIER, LAWS)];
+        let gate = |id| sdf_tree_load_gate_against(Some(id), "T", false, &[], MOVED);
+        let tree = |root| SdfTree::new(root);
+        let sphere = SdfNode::sphere(1.0);
+        let parabola = SdfNode::parabola_segment(0.5, 0.4, 0.2);
+
+        // without the nodes: read, as an earlier identifier that still holds for this tree
+        let plain = tree(sphere.clone().union(SdfNode::capsule(
+            glam::Vec3::ZERO,
+            glam::Vec3::Y,
+            0.1,
+        )));
+        assert_eq!(
+            gate(EARLIER).unwrap().settle(&plain, "T").unwrap(),
+            StoredSemantics::VerifiedPrevious(Provenance::new(EARLIER))
+        );
+
+        // each node refuses, alone and nested under transforms and operations, and is named
+        let v2 = glam::Vec2::new;
+        for (root, law) in [
+            (parabola.clone(), "ParabolaSegment"),
+            (SdfNode::blobby_cross(0.6, 0.2), "BlobbyCross"),
+            (SdfNode::helix(0.6, 0.1, 0.5, 0.8), "Helix"),
+            (
+                SdfNode::bezier(glam::Vec3::ZERO, glam::Vec3::Y, glam::Vec3::X, 0.1),
+                "Bezier",
+            ),
+            (
+                sphere
+                    .clone()
+                    .sweep_bezier(v2(-1.0, 0.0), v2(0.0, 1.0), v2(1.0, 0.0)),
+                "SweepBezier",
+            ),
+            (
+                sphere
+                    .clone()
+                    .union(parabola.clone().translate(1.0, 0.0, 0.0).twist(0.5)),
+                "ParabolaSegment",
+            ),
+        ] {
+            let got = gate(EARLIER).unwrap().settle(&tree(root), "T");
+            assert!(
+                matches!(&got, Err(crate::io::IoError::MovedLaw { format: "T", stored, laws })
+                    if *stored == Provenance::new(EARLIER) && laws == &[law]),
+                "{law}: {got:?}"
+            );
+        }
+
+        // another identifier is refused before the tree is looked at, whatever it holds
+        assert!(matches!(
+            gate([0xcd; 32]),
+            Err(crate::io::IoError::SemanticsMismatch { format: "T", .. })
+        ));
+        // this build's identifier and a previous one decide alone: a moved node is fine under them
+        for (id, previous, want) in [
+            (crate::SDF_SEMANTICS_ID, &[][..], StoredSemantics::Current),
+            (
+                EARLIER,
+                &[EARLIER][..],
+                StoredSemantics::VerifiedPrevious(Provenance::new(EARLIER)),
+            ),
+        ] {
+            let got = sdf_tree_load_gate_against(Some(id), "T", false, previous, MOVED).unwrap();
+            assert_eq!(got.settle(&tree(parabola.clone()), "T").unwrap(), want);
+        }
+        // no identifier follows allow_unpinned as before
+        assert!(matches!(
+            sdf_tree_load_gate_against(None, "T", false, &[], MOVED),
+            Err(crate::io::IoError::Unpinned { format: "T" })
+        ));
+        assert_eq!(
+            sdf_tree_load_gate_against(None, "T", true, &[], MOVED).unwrap(),
+            TreeGate::Decided(StoredSemantics::Unpinned)
+        );
+        // the form without a tree has no such rule: the same identifier is refused there
+        assert!(matches!(
+            sdf_load_verdict_against(Some(EARLIER), "T", false, &[]),
+            Err(crate::io::IoError::SemanticsMismatch { .. })
         ));
     }
 }
