@@ -23,54 +23,117 @@ use std::path::Path;
 /// The only file of the crate that creates a `wgpu::Instance` or a device
 const LIFECYCLE_MODULE: &str = "src/gpu_context.rs";
 
-/// The calls only [`LIFECYCLE_MODULE`] may make, and a context as a struct field, whose place among
-/// the fields would order the drop: `Held` is the one struct that holds one
-const LIFECYCLE_CALLS: &[&str] = &["Instance::new(", ".request_device(", CONTEXT_FIELD];
+/// The calls only [`LIFECYCLE_MODULE`] makes
+const LIFECYCLE_CALLS: &[&str] = &["Instance::new(", ".request_device("];
 
-const CONTEXT_FIELD: &str = ": GpuContext,";
+/// A kept clone of these holds the device past its context
+const KEPT_HANDLES: &[&str] = &[".device().clone()", ".queue().clone()"];
 
-/// What is scanned for them
+/// What is scanned
 const SCANNED: &[&str] = &["src", "tests", "examples", "benches"];
 
-/// Every `(file, call)` of `dir`'s Rust files outside comments
-fn lifecycle_sites(dir: &Path, sites: &mut Vec<(String, &'static str)>) {
-    for entry in std::fs::read_dir(dir).expect("read a source directory") {
+/// Each struct declaration of `text`, comments left out
+fn struct_declarations(text: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut open: Option<String> = None;
+    for line in text.lines().map(str::trim).filter(|l| !l.starts_with("//")) {
+        let starts = ["struct ", "pub struct ", "pub(crate) struct "]
+            .iter()
+            .any(|s| line.starts_with(s));
+        if open.is_none() && starts {
+            open = Some(String::new());
+        }
+        if let Some(body) = open.as_mut() {
+            body.push_str(line);
+            body.push('\n');
+            if line == "}" || line.ends_with(';') || line.ends_with("{}") {
+                found.push(open.take().expect("open"));
+            }
+        }
+    }
+    found
+}
+
+/// What a source check finds in one file. Only [`LIFECYCLE_MODULE`] may have these.
+#[derive(Default)]
+struct Scan {
+    files: usize,
+    structs: usize,
+    calls: Vec<(String, &'static str)>,
+    others: Vec<(String, String)>,
+}
+
+fn scan(dir: &Path, owner: &Path, found: &mut Scan) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries {
         let path = entry.expect("read a source directory entry").path();
         if path.is_dir() {
-            lifecycle_sites(&path, sites);
-        } else if path.extension().is_some_and(|e| e == "rs") {
-            if path
-                .file_name()
-                .is_some_and(|f| Path::new(file!()).ends_with(f))
-            {
-                continue;
+            scan(&path, owner, found);
+            continue;
+        }
+        let this_file = path
+            .file_name()
+            .is_some_and(|f| Path::new(file!()).ends_with(f));
+        if path.extension().is_none_or(|e| e != "rs") || this_file {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).expect("read a source file");
+        let file = path.display().to_string();
+        found.files += 1;
+        for line in text.lines().filter(|l| !l.trim_start().starts_with("//")) {
+            for call in LIFECYCLE_CALLS {
+                if line.contains(call) {
+                    found.calls.push((file.clone(), call));
+                }
             }
-            let text = std::fs::read_to_string(&path).expect("read a source file");
-            for line in text.lines().filter(|l| !l.trim_start().starts_with("//")) {
-                for call in LIFECYCLE_CALLS {
-                    if line.contains(call) {
-                        sites.push((path.display().to_string(), call));
-                    }
+            for handle in KEPT_HANDLES {
+                if line.contains(handle) && path != owner {
+                    found.others.push((file.clone(), (*handle).to_string()));
+                }
+            }
+        }
+        let structs = struct_declarations(&text);
+        found.structs += structs.len();
+        if path != owner {
+            for body in structs {
+                let beside = body.contains("Held<") && body.contains("wgpu::");
+                if body.contains("GpuContext") || beside {
+                    found.others.push((file.clone(), body));
                 }
             }
         }
     }
 }
 
+/// The text half of the rule. Clippy's disallowed lists hold the instance and device calls by their
+/// resolved names, aliases included. Neither sees a context returned in a tuple with a resource, a
+/// resource bound late to a local declared before its context, or a handle kept through a variable:
+/// those are for review.
 #[test]
 fn one_module_owns_the_gpu_lifecycle() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut sites = Vec::new();
+    let owner = root.join(LIFECYCLE_MODULE);
+    let mut found = Scan::default();
     for dir in SCANNED {
-        lifecycle_sites(&root.join(dir), &mut sites);
+        scan(&root.join(dir), &owner, &mut found);
     }
-    let owner = root.join(LIFECYCLE_MODULE).display().to_string();
-    let others: Vec<_> = sites.iter().filter(|(file, _)| *file != owner).collect();
-    assert!(others.is_empty(), "outside {LIFECYCLE_MODULE}: {others:#?}");
-    // the field is forbidden everywhere and appears nowhere, so only the calls can show the read
-    for call in LIFECYCLE_CALLS.iter().filter(|c| **c != CONTEXT_FIELD) {
+    assert!(
+        found.files > 0 && found.structs > 0,
+        "the check read nothing"
+    );
+    let owner = owner.display().to_string();
+    let calls: Vec<_> = found
+        .calls
+        .iter()
+        .filter(|(file, _)| *file != owner)
+        .collect();
+    assert!(calls.is_empty(), "outside {LIFECYCLE_MODULE}: {calls:#?}");
+    assert!(found.others.is_empty(), "drop order: {:#?}", found.others);
+    for call in LIFECYCLE_CALLS {
         assert!(
-            sites.iter().any(|(_, c)| c == call),
+            found.calls.iter().any(|(_, c)| c == call),
             "{LIFECYCLE_MODULE} makes no `{call}` call: the check read nothing"
         );
     }

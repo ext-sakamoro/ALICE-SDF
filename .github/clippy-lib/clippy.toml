@@ -205,6 +205,9 @@ disallowed-methods = [
     { path = "bincode::decode_from_reader", reason = "a bare read of a stored form skips the semantics identifier (ALICE-Law G8); read through a checked loader, or mark a reviewed site with #[allow(clippy::disallowed_methods)] with a reason starting stored form checked: / other-type: / pending: (scripts/bare_serde_reads.py)" },
     { path = "bincode::decode_from_std_read", reason = "a bare read of a stored form skips the semantics identifier (ALICE-Law G8); read through a checked loader, or mark a reviewed site with #[allow(clippy::disallowed_methods)] with a reason starting stored form checked: / other-type: / pending: (scripts/bare_serde_reads.py)" },
     { path = "bincode::borrow_decode_from_slice", reason = "a bare read of a stored form skips the semantics identifier (ALICE-Law G8); read through a checked loader, or mark a reviewed site with #[allow(clippy::disallowed_methods)] with a reason starting stored form checked: / other-type: / pending: (scripts/bare_serde_reads.py)" },
+    { path = "wgpu::Instance::new", reason = "one instance per process: use alice_sdf::gpu_context::GpuContext", allow-invalid = true },
+    { path = "wgpu::Adapter::request_device", reason = "devices are created under one lock: use alice_sdf::gpu_context::GpuContext", allow-invalid = true },
+    { path = "wgpu::Adapter::create_device_from_hal", reason = "devices are created under one lock: use alice_sdf::gpu_context::GpuContext", allow-invalid = true },
     { path = "f32::sin", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
     { path = "f32::cos", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
     { path = "f32::tan", reason = "platform libm is not cross-platform bit-exact; use alice_det_math" },
@@ -282,6 +285,7 @@ disallowed-types = [
     { path = "std::collections::hash_set::Iter", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
     { path = "std::collections::hash_set::IntoIter", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
     { path = "std::collections::hash_set::Drain", reason = "iteration order is unspecified and differs between runs (ALICE-Law G13); use BTreeMap / BTreeSet, or allow a membership-only use with its reason and list it in scripts/order_allowlist.toml" },
+    { path = "wgpu::Instance", reason = "one instance per process: use alice_sdf::gpu_context::GpuContext", allow-invalid = true },
     # disallowed-methods cannot name RandomState::default (a trait method,
     # not reachable via the implementing type's path alone); naming the type
     # itself here catches ::default() too, along with any other explicit
