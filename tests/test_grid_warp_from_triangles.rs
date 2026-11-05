@@ -58,7 +58,9 @@ fn warped(rest: &[Vec3], posed: &[Vec3], tris: &[[u32; 3]], lo: Vec3, hi: Vec3) 
     child().grid_warp(GridWarp::new(data).expect("a valid grid"))
 }
 
-/// Points well inside the box and within 0.2 of the posed surface.
+/// Points within 0.2 of the posed surface. The boxes leave a margin of 0.6 around the posed
+/// sheet, more than the shape's radius 0.3, so the box (which clips a grid warp's shape)
+/// never decides a value here.
 fn probes(map: impl Fn(Vec3) -> Vec3) -> Vec<Vec3> {
     let mut v = Vec::new();
     for j in 1..8 {
@@ -97,7 +99,11 @@ fn a_triangle_map_sends_posed_vertices_and_normal_to_rest() {
     };
     for k in 0..3 {
         let q = apply(posed[k]);
-        assert!((q - rest[k]).length() <= 1e-5, "vertex {k}: {q:?} vs {:?}", rest[k]);
+        assert!(
+            (q - rest[k]).length() <= 1e-5,
+            "vertex {k}: {q:?} vs {:?}",
+            rest[k]
+        );
     }
     let np = (posed[1] - posed[0]).cross(posed[2] - posed[0]).normalize();
     let nr = (rest[1] - rest[0]).cross(rest[2] - rest[0]).normalize();
@@ -110,8 +116,8 @@ fn a_triangle_map_sends_posed_vertices_and_normal_to_rest() {
 #[test]
 fn posed_equal_rest_is_the_identity() {
     let (rest, tris) = sheet(5);
-    let lo = Vec3::new(-0.25, -0.25, -0.25);
-    let hi = Vec3::new(1.25, 1.25, 0.25);
+    let lo = Vec3::new(-0.6, -0.6, -0.6);
+    let hi = Vec3::new(1.6, 1.6, 0.6);
     let data = grid_warp_from_triangles(&rest, &rest, &tris, lo, hi, 0.05, 0.5).expect("builds");
     let id = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
     for (k, m) in data.maps.chunks(12).enumerate() {
@@ -130,7 +136,13 @@ fn a_translated_surface_carries_the_shape() {
     let (rest, tris) = sheet(5);
     let t = Vec3::new(0.3, -0.2, 0.1);
     let posed: Vec<Vec3> = rest.iter().map(|p| *p + t).collect();
-    let node = warped(&rest, &posed, &tris, Vec3::new(0.05, -0.45, -0.15), Vec3::new(1.55, 1.05, 0.35));
+    let node = warped(
+        &rest,
+        &posed,
+        &tris,
+        Vec3::new(-0.3, -0.8, -0.5),
+        Vec3::new(1.9, 1.4, 0.7),
+    );
     for p in probes(|p| p + t) {
         assert_close(eval(&node, p), eval(&child(), p - t), 1e-4, "translation");
     }
@@ -144,7 +156,13 @@ fn a_turned_surface_carries_the_shape() {
     let back = |p: Vec3| Vec3::new(c.x + (p.y - c.y), c.y - (p.x - c.x), p.z);
     let (rest, tris) = sheet(5);
     let posed: Vec<Vec3> = rest.iter().map(|p| turn(*p)).collect();
-    let node = warped(&rest, &posed, &tris, Vec3::new(-0.25, -0.25, -0.25), Vec3::new(1.25, 1.25, 0.25));
+    let node = warped(
+        &rest,
+        &posed,
+        &tris,
+        Vec3::new(-0.6, -0.6, -0.6),
+        Vec3::new(1.6, 1.6, 0.6),
+    );
     for p in probes(turn) {
         assert_close(eval(&node, p), eval(&child(), back(p)), 1e-4, "rotation");
     }
@@ -153,16 +171,32 @@ fn a_turned_surface_carries_the_shape() {
 #[test]
 fn a_sheet_stretched_in_its_plane_keeps_its_thickness() {
     let (rest, tris) = sheet(5);
-    let posed: Vec<Vec3> = rest.iter().map(|p| Vec3::new(2.0 * p.x, p.y, p.z)).collect();
-    let node = warped(&rest, &posed, &tris, Vec3::new(-0.25, -0.25, -0.25), Vec3::new(2.25, 1.25, 0.25));
+    let posed: Vec<Vec3> = rest
+        .iter()
+        .map(|p| Vec3::new(2.0 * p.x, p.y, p.z))
+        .collect();
+    let node = warped(
+        &rest,
+        &posed,
+        &tris,
+        Vec3::new(-0.6, -0.6, -0.6),
+        Vec3::new(2.6, 1.6, 0.6),
+    );
     for p in probes(|p| Vec3::new(2.0 * p.x, p.y, p.z)) {
         let want = eval(&child(), Vec3::new(p.x / 2.0, p.y, p.z));
         let got = eval(&node, p);
         // the warp stretches distances along x by up to 2: the node returns a safe lower
         // bound of the posed distance, so compare the sign and the zero set: inside / outside
         // agree, and the value never exceeds the rest-space distance
-        assert_eq!(got < 0.0, want < 0.0, "inside/outside at {p:?}: got {got}, want {want}");
-        assert!(got.abs() <= want.abs() + 1e-4, "not a lower bound at {p:?}: {got} vs {want}");
+        assert_eq!(
+            got < 0.0,
+            want < 0.0,
+            "inside/outside at {p:?}: got {got}, want {want}"
+        );
+        assert!(
+            got.abs() <= want.abs() + 1e-4,
+            "not a lower bound at {p:?}: {got} vs {want}"
+        );
     }
 }
 
@@ -174,14 +208,83 @@ fn bad_input_is_an_error() {
     let b = |r: &[Vec3], p: &[Vec3], t: &[[u32; 3]], lo, hi, cell| {
         grid_warp_from_triangles(r, p, t, lo, hi, cell, 0.5)
     };
-    assert!(matches!(b(&rest, &rest[1..], &tris, lo, hi, 0.1), Err(GridWarpBuildError::LengthMismatch { .. })));
-    assert!(matches!(b(&rest, &rest, &[], lo, hi, 0.1), Err(GridWarpBuildError::NoTriangles)));
-    assert!(matches!(b(&rest, &rest, &[[0, 1, 99]], lo, hi, 0.1), Err(GridWarpBuildError::IndexOutOfRange { .. })));
-    assert!(matches!(b(&rest, &rest, &[[0, 0, 1]], lo, hi, 0.1), Err(GridWarpBuildError::Degenerate { triangle: 0 })));
-    assert!(matches!(b(&rest, &rest, &tris, hi, lo, 0.1), Err(GridWarpBuildError::BadBox)));
-    assert!(matches!(b(&rest, &rest, &tris, lo, hi, 0.0), Err(GridWarpBuildError::BadCell)));
-    assert!(matches!(b(&rest, &rest, &tris, lo, hi, f32::NAN), Err(GridWarpBuildError::BadCell)));
+    assert!(matches!(
+        b(&rest, &rest[1..], &tris, lo, hi, 0.1),
+        Err(GridWarpBuildError::LengthMismatch { .. })
+    ));
+    assert!(matches!(
+        b(&rest, &rest, &[], lo, hi, 0.1),
+        Err(GridWarpBuildError::NoTriangles)
+    ));
+    assert!(matches!(
+        b(&rest, &rest, &[[0, 1, 99]], lo, hi, 0.1),
+        Err(GridWarpBuildError::IndexOutOfRange { .. })
+    ));
+    assert!(matches!(
+        b(&rest, &rest, &[[0, 0, 1]], lo, hi, 0.1),
+        Err(GridWarpBuildError::Degenerate { triangle: 0 })
+    ));
+    assert!(matches!(
+        b(&rest, &rest, &tris, hi, lo, 0.1),
+        Err(GridWarpBuildError::BadBox)
+    ));
+    assert!(matches!(
+        b(&rest, &rest, &tris, lo, hi, 0.0),
+        Err(GridWarpBuildError::BadCell)
+    ));
+    assert!(matches!(
+        b(&rest, &rest, &tris, lo, hi, f32::NAN),
+        Err(GridWarpBuildError::BadCell)
+    ));
     let mut nan = rest.clone();
     nan[2].x = f32::NAN;
-    assert!(matches!(b(&rest, &nan, &tris, lo, hi, 0.1), Err(GridWarpBuildError::NotFinite)));
+    assert!(matches!(
+        b(&rest, &nan, &tris, lo, hi, 0.1),
+        Err(GridWarpBuildError::NotFinite)
+    ));
+}
+
+#[test]
+fn each_node_takes_the_map_of_the_nearest_triangle() {
+    // two separate sheets moved apart in opposite directions: a node near one must carry its
+    // map, not the other's. The sheets are 3 apart so the jump between the two maps (half way)
+    // is farther than the reach (plus a cell) from every probe: there the warp is rigid and
+    // the node returns the distance itself, not GridWarp's lower bound
+    let (a, ta) = sheet(3);
+    let b: Vec<Vec3> = a.iter().map(|p| *p + Vec3::new(4.0, 0.0, 0.0)).collect();
+    let rest: Vec<Vec3> = a.iter().chain(&b).copied().collect();
+    let off = a.len() as u32;
+    let tris: Vec<[u32; 3]> = ta
+        .iter()
+        .copied()
+        .chain(ta.iter().map(|t| [t[0] + off, t[1] + off, t[2] + off]))
+        .collect();
+    let (ua, ub) = (Vec3::new(0.0, 0.0, 0.2), Vec3::new(0.0, 0.0, -0.2));
+    let posed: Vec<Vec3> = a
+        .iter()
+        .map(|p| *p + ua)
+        .chain(b.iter().map(|p| *p + ub))
+        .collect();
+    let shape = SdfNode::sphere(0.3)
+        .translate(0.5, 0.5, 0.0)
+        .union(SdfNode::sphere(0.3).translate(4.5, 0.5, 0.0));
+    let data = grid_warp_from_triangles(
+        &rest,
+        &posed,
+        &tris,
+        Vec3::new(-0.6, -0.6, -0.8),
+        Vec3::new(5.6, 1.6, 0.8),
+        0.05,
+        0.5,
+    )
+    .expect("builds");
+    let node = shape.clone().grid_warp(GridWarp::new(data).expect("valid"));
+    let mut n = 0;
+    for (u, x0) in [(ua, 0.0f32), (ub, 4.0)] {
+        for p in probes(|p| p + Vec3::new(x0, 0.0, 0.0) + u) {
+            assert_close(eval(&node, p), eval(&shape, p - u), 1e-4, "two patches");
+            n += 1;
+        }
+    }
+    assert!(n > 0);
 }
