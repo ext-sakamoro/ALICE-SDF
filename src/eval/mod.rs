@@ -11,11 +11,13 @@
 
 pub mod gradient;
 pub mod parallel;
+pub mod scaled;
 
 use crate::compiled::real::LawMinMax;
 use crate::compiled::real::LawVec;
 pub use gradient::{eval_gradient, eval_normal};
 pub use parallel::{eval_batch, eval_batch_parallel, eval_grid, eval_grid_with_normals};
+pub use scaled::eval_scaled;
 
 use crate::modifiers::*;
 use crate::operations::*;

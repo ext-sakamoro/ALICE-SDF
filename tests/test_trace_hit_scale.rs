@@ -19,7 +19,11 @@
 //!
 //! Author: Moroya Sakamoto
 
-use alice_sdf::raycast::{raymarch, RaymarchConfig};
+mod common;
+
+use alice_sdf::eval::{eval, eval_scaled};
+use alice_sdf::interval::eval_lipschitz;
+use alice_sdf::raycast::{raymarch, raymarch_with_config, RaymarchConfig};
 use alice_sdf::transforms::{grid_warp_from_triangles, GridWarp, WarpGrid};
 use alice_sdf::SdfNode;
 use glam::Vec3;
@@ -115,30 +119,39 @@ fn a_ray_passing_over_a_squeezed_warp_does_not_hit_farther_than_mu_eps() {
     // angles in the face's plane. The squeeze divides the value there by Λ ≈ 10 and leaves the
     // distance as is (the face's normal is kept), so a hit test on the raw value reports these as
     // hits up to 10 ε away. μ = 1 here: a hit must be within ε (+ a small tolerance) of the box.
-    let node = squeezed();
+    // The same holds when the warp is one operand of a union or of a smooth union with a sphere
+    // far from the rays (the value there is the warp's, so its scale must carry through).
+    let far_ball = || SdfNode::sphere(0.3).translate(0.5, 0.05, 2.0);
+    let scenes = [
+        ("warp", squeezed()),
+        ("union", squeezed().union(far_ball())),
+        ("smooth union", squeezed().smooth_union(far_ball(), 0.05)),
+    ];
     let eps = RaymarchConfig::default().epsilon;
     let mut checked = 0;
     let mut far = Vec::new();
-    for k in 0..12 {
-        let h = eps * (1.5 + 7.5 * k as f32 / 11.0);
-        for a in 0..9 {
-            let ang = (a as f32 - 4.0) * 0.012;
-            let (sn, cs) = alice_det_math::sin_cos(ang);
-            let d = Vec3::new(cs, sn, 0.0);
-            let o = Vec3::new(0.15, 0.05 - 0.3 * sn, 0.02 + h);
-            if let Some(hit) = raymarch(&node, o, d, 0.7) {
-                let dist = posed_box(hit.point);
-                if dist > eps * 1.05 + 1e-6 {
-                    far.push((h, ang, dist));
+    for (name, node) in &scenes {
+        for k in 0..12 {
+            let h = eps * (1.5 + 7.5 * k as f32 / 11.0);
+            for a in 0..9 {
+                let ang = (a as f32 - 4.0) * 0.012;
+                let (sn, cs) = alice_det_math::sin_cos(ang);
+                let d = Vec3::new(cs, sn, 0.0);
+                let o = Vec3::new(0.15, 0.05 - 0.3 * sn, 0.02 + h);
+                if let Some(hit) = raymarch(node, o, d, 0.7) {
+                    let dist = posed_box(hit.point);
+                    if dist > eps * 1.05 + 1e-6 {
+                        far.push((*name, h, ang, dist));
+                    }
                 }
+                checked += 1;
             }
-            checked += 1;
         }
     }
-    assert_eq!(checked, 108);
+    assert_eq!(checked, 3 * 108);
     assert!(
         far.is_empty(),
-        "{} of {checked} rays hit farther than μ·ε = {eps} from the shape, e.g. (height, angle, distance) {:?}",
+        "{} of {checked} rays hit farther than μ·ε = {eps} from the shape, e.g. (scene, height, angle, distance) {:?}",
         far.len(),
         &far[..far.len().min(4)]
     );
@@ -149,8 +162,13 @@ fn every_ray_the_shape_meets_is_hit_where_it_meets_it() {
     // Random rays from around the posed box toward points near it; the reference marches the
     // closed-form box in steps of 2e-4 and bisects. The tracer must hit every ray the reference
     // hits, and not past where the reference meets it (a hit before it is a near-miss, the test
-    // above); the guard below needs some of each kind of ray.
+    // above); the guard below needs some of each kind of ray. The budget is raised: the stricter
+    // band costs steps near the surface (the field is the distance / Λ, so each step closes about
+    // 1 / Λ of what is left), which is a cost, not a hole; the default budget is what `raymarch`
+    // builds, with more steps.
     let node = squeezed();
+    let mut config = RaymarchConfig::default().with_bound(eval_lipschitz(&node));
+    config.max_steps = 4096;
     let mut s = 0x2545_f491u32;
     let (mut met, mut missed_by_both, mut checked) = (0, 0, 0);
     let mut holes = Vec::new();
@@ -167,7 +185,7 @@ fn every_ray_the_shape_meets_is_hit_where_it_meets_it() {
         );
         let d = (target - o).normalize();
         let reference = reference_hit(o, d, 1.0, 2e-4);
-        let traced = raymarch(&node, o, d, 1.0);
+        let traced = raymarch_with_config(&node, o, d, 1.0, &config);
         checked += 1;
         match (reference, traced) {
             (Some(t), Some(hit)) => {
@@ -192,5 +210,94 @@ fn every_ray_the_shape_meets_is_hit_where_it_meets_it() {
         "{} rays the shape meets were not hit there, e.g. (origin, dir, reference t, traced t) {:?}",
         holes.len(),
         &holes[..holes.len().min(3)]
+    );
+}
+
+#[test]
+fn the_value_is_eval_bit_for_bit_and_the_scale_is_one_without_a_local_factor() {
+    // d must be `eval` exactly on every tree (the step and every golden built on it stay), and a
+    // tree with no node that divides or multiplies by a local factor (grid warp, non-uniform
+    // scale, lattice deform, projective transform) must have s = 1 (its hit test is unchanged).
+    let factor = |name: &str| {
+        name.starts_with("scale_xyz")
+            || name.starts_with("projective")
+            || name.starts_with("lattice")
+            || name.starts_with("grid_warp")
+    };
+    let mut trees = common::corpus::corpus();
+    trees.push((
+        "projective_nonidentity",
+        common::corpus::projective_nonidentity(),
+    ));
+    trees.push(("grid_warp_squeezed", squeezed()));
+    let mut st = 0x9e37_79b9u32;
+    let (mut compared, mut scaled_seen) = (0usize, 0usize);
+    for (name, node) in &trees {
+        for _ in 0..64 {
+            let p = Vec3::new(
+                -1.5 + 3.0 * rng(&mut st),
+                -1.5 + 3.0 * rng(&mut st),
+                -1.5 + 3.0 * rng(&mut st),
+            );
+            let (d, scale) = eval_scaled(node, p);
+            assert_eq!(
+                d.to_bits(),
+                eval(node, p).to_bits(),
+                "{name} at {p:?}: {d} vs eval {}",
+                eval(node, p)
+            );
+            assert!(
+                scale.is_finite() && scale > 0.0,
+                "{name} at {p:?}: scale {scale}"
+            );
+            if factor(name) {
+                if scale != 1.0 {
+                    scaled_seen += 1;
+                }
+            } else {
+                assert_eq!(
+                    scale, 1.0,
+                    "{name} at {p:?}: no local factor, scale {scale}"
+                );
+            }
+            compared += 1;
+        }
+    }
+    assert!(compared > 90 * 64, "{compared}");
+    assert!(
+        scaled_seen > 20,
+        "the factor nodes never gave a scale: {scaled_seen}"
+    );
+}
+
+#[test]
+fn inside_a_blend_the_scale_is_the_smaller_operands() {
+    // Where a smooth union mixes both operands (the value is neither one's), the scale is the
+    // smaller of the two: the filter never gets stricter than either operand's own, so the blend
+    // costs no more steps than its parts (any finite scale keeps every surface; this pins the
+    // rule, which rays alone cannot observe).
+    let warp = squeezed();
+    let ball = SdfNode::sphere(0.05).translate(0.5, 0.05, 0.1);
+    let node = warp.clone().smooth_union(ball.clone(), 0.2);
+    let mut st = 0x1234_5678u32;
+    let mut inside = 0;
+    for _ in 0..400 {
+        let p = Vec3::new(
+            0.35 + 0.3 * rng(&mut st),
+            -0.05 + 0.2 * rng(&mut st),
+            0.0 + 0.12 * rng(&mut st),
+        );
+        let ((da, sa), (db, sb)) = (eval_scaled(&warp, p), eval_scaled(&ball, p));
+        let (v, s) = eval_scaled(&node, p);
+        if v.abs() != da.abs() && v.abs() != db.abs() {
+            assert_eq!(s, sa.min(sb), "at {p:?}: {s} vs operands {sa}, {sb}");
+            if sa != sb {
+                inside += 1;
+            }
+        }
+    }
+    assert!(
+        inside > 50,
+        "{inside} points in the blend with different operand scales"
     );
 }
