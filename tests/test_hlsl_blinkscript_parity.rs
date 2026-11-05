@@ -1234,3 +1234,70 @@ fn hlsl_parabola_segment_matches_cpu() {
     eprintln!("HLSL parabola_segment: {compared} points, max |shader - cpu| {worst:.3e}");
     assert!(worst <= 2e-5, "HLSL/CPU drift {worst:.3e}");
 }
+
+/// The bezier_distance_2d helper from near-straight to bent curves against the CPU law (whose own truth
+/// is tests/test_sweep_bezier_oracle.rs).
+#[test]
+fn hlsl_sweep_bezier_matches_cpu() {
+    let Some(cxx) = cxx_or_skip() else {
+        return;
+    };
+    let dir = scratch("hlsl_sweep_bezier");
+    let mut unit = 0usize;
+    let mut compared = 0usize;
+    let mut worst = 0.0f32;
+    for h in [1e-6f32, 1e-4, 1e-3, 0.01, 0.1, 1.0] {
+        for (a, b, c) in [
+            (
+                glam::Vec2::new(0.0, 0.0),
+                glam::Vec2::new(0.5, h),
+                glam::Vec2::new(1.0, 0.0),
+            ),
+            (
+                glam::Vec2::new(0.0, 0.0),
+                glam::Vec2::new(0.3, h),
+                glam::Vec2::new(1.0, 0.0),
+            ),
+            (
+                glam::Vec2::new(3.1, 2.2),
+                glam::Vec2::new(3.15, 2.2 + 0.5 * h),
+                glam::Vec2::new(3.2, 2.2),
+            ),
+        ] {
+            let node = SdfNode::sphere(0.0).sweep_bezier(a, b, c);
+            let emit = HlslShader::transpile(&node, HlslTranspileMode::Hardcoded).source;
+            unit += 1;
+            let bin = compile(
+                &cxx,
+                &dir,
+                &format!("s{unit}"),
+                &translation_unit(&emit, ""),
+            )
+            .expect("the sweep_bezier emit compiles");
+            let (chord, dx, dy) = {
+                let (ex, ez) = (c.x - a.x, c.y - a.y);
+                let l = (ex * ex + ez * ez).sqrt();
+                (l, ex / l, ez / l)
+            };
+            let mut pts = Vec::new();
+            for k in 0..=40 {
+                let t = k as f32 / 40.0;
+                let u = 1.0 - t;
+                let q = a * (u * u) + b * (2.0 * u * t) + c * (t * t);
+                for o in [0.0f32, 1e-4, -1e-4, 1e-3, -1e-3, 1e-2, -1e-2, 0.1, -0.1] {
+                    pts.push(Vec3::new(q.x - dy * o * chord, 0.0, q.y + dx * o * chord));
+                }
+            }
+            for (p, g) in pts
+                .iter()
+                .zip(run(&bin, &pts).expect("the sweep_bezier emit runs"))
+            {
+                worst = worst.max((g - eval(&node, *p)).abs());
+                compared += 1;
+            }
+        }
+    }
+    assert!(compared > 0, "compared 0 points");
+    eprintln!("HLSL sweep_bezier: {compared} points, max |shader - cpu| {worst:.3e}");
+    assert!(worst <= 2e-5, "HLSL/CPU drift {worst:.3e}");
+}

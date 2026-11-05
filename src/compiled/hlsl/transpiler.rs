@@ -1568,9 +1568,31 @@ const HELPER_SDF_TRUNCATED_ICOSAHEDRON: &str = r"float sdf_truncated_icosahedron
 }
 ";
 
-/// IQ `sdBezier`: closed-form distance to a quadratic Bézier (mirrors
-/// `modifiers::sweep::bezier_distance_2d`, degenerate curve → segment).
-const HELPER_BEZIER_DISTANCE_2D: &str = r"float bezier_distance_2d(float2 q, float2 p0, float2 p1, float2 p2) {
+/// IQ `sdBezier`: closed-form distance to a quadratic Bézier with the CPU law's Newton refinement
+/// (mirrors `modifiers::sweep::bezier_distance_2d`, degenerate curve → segment).
+const HELPER_BEZIER_DISTANCE_2D: &str = r"// bezier_2d_candidate: the CPU law's `candidate` (src/modifiers/sweep.rs): the smaller of |q|^2 at t and at
+// two clamped Newton steps on q.q' = 0 from t, a step skipped where |q'|^2 + q.q'' <= 0
+float bezier_2d_refine(float2 d, float2 c, float2 b, float t0) {
+    precise float t = t0;
+    for (int i = 0; i < 2; i++) {
+        precise float2 e = d + (c + b * t) * t;
+        precise float2 de = c + b * (2.0 * t);
+        precise float g = dot(e, de);
+        precise float gp = dot(de, de) + 2.0 * dot(e, b);
+        if (gp > 0.0) { t = clamp(t - g / gp, 0.0, 1.0); }
+    }
+    return t;
+}
+float bezier_2d_candidate(float2 d, float2 c, float2 b, float t) {
+    precise float2 e0 = d + (c + b * t) * t;
+    precise float tr = bezier_2d_refine(d, c, b, t);
+    precise float2 e1 = d + (c + b * tr) * tr;
+    precise float d0 = dot(e0, e0);
+    precise float d1 = dot(e1, e1);
+    precise float alice_r = min(d0, d1);
+    return alice_r;
+}
+float bezier_distance_2d(float2 q, float2 p0, float2 p1, float2 p2) {
     precise float2 a = p1 - p0;
     precise float2 b = p0 - p1 * 2.0 + p2;
     precise float2 c = a * 2.0;
@@ -1598,8 +1620,7 @@ const HELPER_BEZIER_DISTANCE_2D: &str = r"float bezier_distance_2d(float2 q, flo
         precise float u = sign(x0) * pow(abs(x0), 1.0 / 3.0);
         precise float v = sign(x1) * pow(abs(x1), 1.0 / 3.0);
         precise float t = clamp(u + v - kx, 0.0, 1.0);
-        precise float2 e = d + (c + b * t) * t;
-        res = dot(e, e);
+        res = bezier_2d_candidate(d, c, b, t);
     } else {
         precise float z = sqrt(kx * kx - ky);
         precise float v = acos(clamp(qq / (p * z * 2.0), -1.0, 1.0)) / 3.0;
@@ -1607,9 +1628,7 @@ const HELPER_BEZIER_DISTANCE_2D: &str = r"float bezier_distance_2d(float2 q, flo
         precise float n = sin(v) * 1.7320508;
         precise float t0 = clamp((m + m) * z - kx, 0.0, 1.0);
         precise float t1 = clamp((-n - m) * z - kx, 0.0, 1.0);
-        precise float2 e0 = d + (c + b * t0) * t0;
-        precise float2 e1 = d + (c + b * t1) * t1;
-        res = min(dot(e0, e0), dot(e1, e1));
+        res = min(bezier_2d_candidate(d, c, b, t0), bezier_2d_candidate(d, c, b, t1));
     }
     precise float alice_r = sqrt(res);
     return alice_r;
