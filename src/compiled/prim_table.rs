@@ -330,6 +330,12 @@ pub trait PrimTable: Real {
         p: Vec3R<Self>,
         scale_correction: Self,
     ) -> Self;
+    fn loft(
+        inst: &Instruction,
+        aux_data: &[f32],
+        p: Vec3R<Self>,
+        scale_correction: Self,
+    ) -> Self;
     fn polygon_2d(
         inst: &Instruction,
         aux_data: &[f32],

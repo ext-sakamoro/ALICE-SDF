@@ -271,6 +271,13 @@ impl Compiler {
                 unreachable!("Triangle: validated by validate_for_compile()");
             }
 
+            SdfNode::SectionStack(_) => {
+                unreachable!("SectionStack: validated by validate_for_compile()");
+            }
+            SdfNode::SmoothSectionStack(_) => {
+                unreachable!("SmoothSectionStack: validated by validate_for_compile()");
+            }
+
             SdfNode::Bezier { .. } => {
                 unreachable!("Bezier: validated by validate_for_compile()");
             }
@@ -1104,6 +1111,26 @@ impl Compiler {
                     .push(Instruction::segment_2d(*a, *b, *thickness, *half_height));
             }
 
+            SdfNode::Loft { axis, up, harmonics, rows, caps, bounds } => {
+                let (sec, caps) = (crate::primitives::loft::LoftSection::Polar(*harmonics), *caps);
+                let flat = crate::primitives::loft::flatten(axis, *up, sec, rows, &[], caps, bounds);
+                let (aux_off, aux_len) = self.push_aux(&flat);
+                let mut inst = Instruction::loft();
+                inst.aux_offset = aux_off;
+                inst.aux_len = aux_len;
+                self.instructions.push(inst);
+            }
+
+            SdfNode::LoftCurves { axis, up, section_points, points, knots, caps, bounds } => {
+                let sec = crate::primitives::loft::LoftSection::Curve(*section_points);
+                let flat = crate::primitives::loft::flatten(axis, *up, sec, points, knots, [caps[0][0], caps[1][0]], bounds);
+                let (aux_off, aux_len) = self.push_aux(&flat);
+                let mut inst = Instruction::loft();
+                inst.aux_offset = aux_off;
+                inst.aux_len = aux_len;
+                self.instructions.push(inst);
+            }
+
             SdfNode::Polygon2D {
                 vertices,
                 half_height,
@@ -1413,6 +1440,8 @@ pub fn compute_stack_depths(node: &SdfNode) -> (usize, usize) {
         | SdfNode::Rect2D { .. }
         | SdfNode::Segment2D { .. }
         | SdfNode::Polygon2D { .. }
+        | SdfNode::Loft { .. }
+        | SdfNode::LoftCurves { .. }
         | SdfNode::RoundedRect2D { .. }
         | SdfNode::Annular2D { .. }
         | SdfNode::Terrain { .. } => (1, 0),
@@ -1512,6 +1541,15 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         // Unsupported primitives (exceed params[6] limit)
         SdfNode::Triangle { .. } => {
             return Err(CompileError::UnsupportedPrimitive("Triangle".into()));
+        }
+        // no bytecode law yet (its levels and loops live in aux data, the next step): refused, not
+        // compiled to a stand-in
+        SdfNode::SectionStack(_) => {
+            return Err(CompileError::UnsupportedPrimitive("SectionStack".into()));
+        }
+        // no bytecode law yet (the levels and loops go to aux data next): refused, not compiled to a stand-in
+        SdfNode::SmoothSectionStack(_) => {
+            return Err(CompileError::UnsupportedPrimitive("SmoothSectionStack".into()));
         }
         SdfNode::Bezier { .. } => {
             return Err(CompileError::UnsupportedPrimitive("Bezier".into()));
@@ -1657,6 +1695,8 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         | SdfNode::Rect2D { .. }
         | SdfNode::Segment2D { .. }
         | SdfNode::Polygon2D { .. }
+        | SdfNode::Loft { .. }
+        | SdfNode::LoftCurves { .. }
         | SdfNode::RoundedRect2D { .. }
         | SdfNode::Annular2D { .. } => {}
     }

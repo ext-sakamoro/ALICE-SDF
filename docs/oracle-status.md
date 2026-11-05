@@ -6,33 +6,36 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1060 |
-| 🔴 Red by design | 1 |
-| ⏱ Gated (runtime / diagnostic / manual) | 4 |
+| 🟢 Not ignored | 1091 |
+| 🔴 Red by design | 2 |
+| ⏱ Gated (runtime / diagnostic / manual) | 6 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| **Total** | **1065** |
+| **Total** | **1099** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🔴 Red by design (1)
+## 🔴 Red by design (2)
 
 Oracles kept red on purpose: the implementation is not there yet, and a companion test pins
 today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected value is never loosened.
 
+- `the_normal_is_steady_at_the_99th_percentile_on_a_torso_like_curve_loft` (test_loft_curve_oracle.rs) — known defect: LOFT-NORMAL-P99 — where L(s) jumps (the shrinking top), the band B(s) is narrow and the normal t…
 - `torus_on_a_grid_plane_has_no_crossings` (test_dual_contouring_manifold.rs) — known defect: DC-TORUS-CROSS-001: torus(1.0, 0.5) at resolution 32 over ±1.6 has 1 crossing triangle pair in b…
 
-## ⏱ Gated (4)
+## ⏱ Gated (6)
 
 Correct tests that are too slow for every push, or that print a measurement table.
 Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ignored`.
 
+- `gradient_norm_at_the_surface` (test_loft_oracle.rs) — measurement: |∇f| at the surface of the bent mm-scale loft (run with --ignored --nocapture)
+- `march_steps_of_the_global_bound` (test_loft_oracle.rs) — measurement: march step counts of the global bound (run with --ignored --nocapture)
 - `metal_default_fast_math_loses_the_sign_of_zero` (test_msl_metal_oracle.rs) — driver observation: Metal default fast math loses the sign of zero
 - `the_alembic_library_reads_the_mesh_and_the_identifier_bit_for_bit` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1060)
+## 🟢 Not ignored (1091)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -46,10 +49,11 @@ Per-file counts (the test names are in `tests/`):
 | `test_live_sdf_oracle.rs` | 21 |
 | `test_lod_nanite_meshlet_oracle.rs` | 21 |
 | `test_tight_aabb_fold_oracle.rs` | 21 |
-| `test_grid_warp_oracle.rs` | 18 |
+| `test_loft_oracle.rs` | 20 |
 | `test_shape_analysis_oracle.rs` | 18 |
 | `test_shader_text_provenance.rs` | 17 |
 | `test_smooth_ops_oracle.rs` | 17 |
+| `test_loft_curve_oracle.rs` | 16 |
 | `test_mesh_winding.rs` | 16 |
 | `test_compiled_bytecode_oracle.rs` | 15 |
 | `test_io_round_trip.rs` | 15 |
@@ -65,6 +69,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_hlsl_blinkscript_parity.rs` | 11 |
 | `test_material_oracle.rs` | 11 |
 | `test_mesh_collision_fit_oracle.rs` | 11 |
+| `test_polygon_2d_general_oracle.rs` | 11 |
 | `test_rendering_pipeline.rs` | 11 |
 | `test_tight_aabb_levelset_oracle.rs` | 11 |
 | `test_domain_modifier_oracle.rs` | 10 |
@@ -104,6 +109,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_terrain_api_oracle.rs` | 7 |
 | `deep_tree_drop.rs` | 6 |
 | `test_autodiff_oracle.rs` | 6 |
+| `test_bound_skip_oracle.rs` | 6 |
 | `test_diff_oracle.rs` | 6 |
 | `test_hlsl_export_oracle.rs` | 6 |
 | `test_jit_dynamic_oracle.rs` | 6 |
@@ -143,6 +149,8 @@ Per-file counts (the test names are in `tests/`):
 | `test_neural_mlp_closed_form.rs` | 4 |
 | `test_new_modifiers.rs` | 4 |
 | `test_sdf_eval_cache_oracle.rs` | 4 |
+| `test_section_stack_shader_oracle.rs` | 4 |
+| `test_smooth_stack_shader.rs` | 4 |
 | `test_soa_oracle.rs` | 4 |
 | `test_svo_query_oracle.rs` | 4 |
 | `npr_bytecode_wgsl_validate.rs` | 3 |
@@ -175,6 +183,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_asdf_roundtrip_parity.rs` | 1 |
 | `test_det_parity.rs` | 1 |
 | `test_gpu_fma_contraction.rs` | 1 |
+| `test_loft_lift_bits.rs` | 1 |
 | `test_metadata_order.rs` | 1 |
 | `test_npr_bytecode_gpu_parity.rs` | 1 |
 | `test_texture_shader_gpu_parity.rs` | 1 |

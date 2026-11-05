@@ -136,6 +136,19 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         SdfNode::InfiniteCone { angle } => sdf_infinite_cone(point, *angle),
         SdfNode::Gyroid { scale, thickness } => sdf_gyroid(point, *scale, *thickness),
 
+        SdfNode::Loft { axis, up, harmonics, rows, caps, bounds } => {
+            crate::primitives::loft::sdf_loft(point, axis, *up, crate::primitives::loft::LoftSection::Polar(*harmonics), rows, &[], *caps, bounds)
+        }
+        SdfNode::LoftCurves { axis, up, section_points, points, knots, caps, bounds } => crate::primitives::loft::sdf_loft(
+            point,
+            axis,
+            *up,
+            crate::primitives::loft::LoftSection::Curve(*section_points),
+            points,
+            knots,
+            [caps[0][0], caps[1][0]],
+            bounds,
+        ),
         SdfNode::MetricBall {
             radius,
             w_l1,
@@ -296,6 +309,8 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             thickness,
             half_height,
         } => sdf_segment_2d(point, *a, *b, *thickness, *half_height),
+        SdfNode::SectionStack(st) => st.eval(point),
+        SdfNode::SmoothSectionStack(st) => st.eval(point),
         SdfNode::Polygon2D {
             vertices,
             half_height,

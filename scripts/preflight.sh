@@ -548,6 +548,16 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_shader_precise_temporaries \
   --test test_rest_point --test test_node_data_gpu_parity
 
+step "gpu-parity: polygon / section stack / bound skip shader oracles (ci.yml の同名 step と対、file ごとに件数未満で fail)"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_polygon_2d_general_oracle -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_polygon_2d_general_oracle.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_polygon_2d_general_oracle.log" --min 11 --what "test_polygon_2d_general_oracle"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_section_stack_shader_oracle -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_section_stack_shader_oracle.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_section_stack_shader_oracle.log" --min 4 --what "test_section_stack_shader_oracle"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_smooth_stack_shader -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_smooth_stack_shader.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_smooth_stack_shader.log" --min 4 --what "test_smooth_stack_shader"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_bound_skip_oracle -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_bound_skip_oracle.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_bound_skip_oracle.log" --min 6 --what "test_bound_skip_oracle"
+
 step "gpu-parity: shader text semantics identifier (gpu, glsl, hlsl, volume, blinkscript, texture-fit、ci.yml の gpu-parity job と対、14 件未満で fail)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl,volume,blinkscript,texture-fit" --test test_shader_text_provenance -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log" --min 14 --what "shader text provenance tests (gpu, glsl, hlsl, volume, blinkscript, texture-fit)"

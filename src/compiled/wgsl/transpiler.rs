@@ -92,6 +92,9 @@ impl ShaderLang for WgslLang {
     fn decl_int(name: &str, expr: &str) -> String {
         format!("    let {name}: i32 = {expr};\n")
     }
+    // `const`, not `var<private>`: a private array is copied per invocation, and a body-sized
+    // tree (hundreds of polygon arrays) exceeds the per-thread stack in some backends; GLSL and
+    // HLSL already emit constant arrays
     fn global_float_array(name: &str, values: &[f32]) -> String {
         let n = values.len();
         let items: Vec<String> = values
@@ -99,12 +102,94 @@ impl ShaderLang for WgslLang {
             .map(|v| super::super::transpiler_common::lit(*v))
             .collect();
         format!(
-            "var<private> {name}: array<f32, {n}> = array<f32, {n}>({});\n",
+            "const {name}: array<f32, {n}> = array<f32, {n}>({});\n",
             items.join(", ")
         )
     }
     fn global_float_at_fn(name: &str, arr: &str) -> String {
         format!("fn {name}(i: i32) -> f32 {{\n    return {arr}[i];\n}}\n")
+    }
+    fn global_polygon_2d_fn(name: &str, arr: &str, n: usize) -> String {
+        format!(
+            "fn {name}(q: vec2<f32>) -> f32 {{\n    let v0 = vec2<f32>({arr}[0], {arr}[1]);\n    var d = dot(q - v0, q - v0);\n    var s = 1.0;\n    var j = {last}i;\n    for (var i = 0i; i < {n}i; i = i + 1i) {{\n        let vi = vec2<f32>({arr}[2 * i], {arr}[2 * i + 1]);\n        let vj = vec2<f32>({arr}[2 * j], {arr}[2 * j + 1]);\n        let e = vj - vi;\n        let w = q - vi;\n        let b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);\n        d = min(d, dot(b, b));\n        let c1 = q.y >= vi.y;\n        let c2 = q.y < vj.y;\n        let c3 = e.x * w.y > e.y * w.x;\n        if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {{ s = -s; }}\n        j = i;\n    }}\n    return s * sqrt(d);\n}}\n",
+            last = n - 1
+        )
+    }
+    fn global_section_stack(
+        name: &str,
+        st: &super::super::transpiler_common::SectionStackData,
+    ) -> String {
+        use super::super::transpiler_common::lit;
+        let fl = |v: &[f32]| v.iter().map(|x| lit(*x)).collect::<Vec<_>>().join(", ");
+        let il = |v: &[i32]| v.iter().map(|x| format!("{x}i")).collect::<Vec<_>>().join(", ");
+        let n = st.levels.len();
+        let (nv, nl, nvs) = (st.verts.len(), st.loop_start.len(), st.vert_start.len());
+        format!(
+            "const {name}_y: array<f32, {n}> = array<f32, {n}>({ys});
+const {name}_v: array<f32, {nv}> = array<f32, {nv}>({vs});
+const {name}_ls: array<i32, {nl}> = array<i32, {nl}>({lss});
+const {name}_vs: array<i32, {nvs}> = array<i32, {nvs}>({vss});
+fn {name}_d2(q: vec2<f32>, k: i32) -> f32 {{
+    var d = 1e30; // above any squared distance; not the f32 maximum, whose decimal some WGSL compilers refuse
+    var s = 1.0;
+    for (var lc = 0i; lc < {lmax}i; lc = lc + 1) {{
+        let l = {name}_ls[k] + lc;
+        if (l >= {name}_ls[k + 1]) {{ break; }}
+        let a = {name}_vs[l];
+        let m = {name}_vs[l + 1] - a;
+        var j = m - 1;
+        for (var i = 0i; i < {vmax}i; i = i + 1) {{
+            if (i >= m) {{ break; }}
+            let vi = vec2<f32>({name}_v[2 * (a + i)], {name}_v[2 * (a + i) + 1]);
+            let vj = vec2<f32>({name}_v[2 * (a + j)], {name}_v[2 * (a + j) + 1]);
+            let e = vj - vi;
+            let w = q - vi;
+            let ee = dot(e, e);
+            var b = w;
+            if (ee > 0.0) {{ b = w - e * clamp(dot(w, e) / ee, 0.0, 1.0); }}
+            d = min(d, dot(b, b));
+            let c1 = q.y >= vi.y;
+            let c2 = q.y < vj.y;
+            let c3 = e.x * w.y > e.y * w.x;
+            if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {{ s = -s; }}
+            j = i;
+        }}
+    }}
+    return s * sqrt(d);
+}}
+fn {name}(p: vec3<f32>) -> f32 {{
+    let q = vec2<f32>(p.x, p.z);
+    let y0 = {name}_y[0];
+    let yn = {name}_y[{last}];
+    var d: f32;
+    var h: f32;
+    if (p.y < y0) {{
+        d = {name}_d2(q, 0i);
+        h = y0 - p.y;
+    }} else if (p.y > yn) {{
+        d = {name}_d2(q, {last}i);
+        h = p.y - yn;
+    }} else {{
+        var c = 0i;
+        for (var k = 0i; k < {n}i; k = k + 1) {{ if ({name}_y[k] <= p.y) {{ c = k + 1; }} }}
+        let i = clamp(c, 1i, {last}i) - 1;
+        let t = (p.y - {name}_y[i]) / ({name}_y[i + 1] - {name}_y[i]);
+        d = (1.0 - t) * {name}_d2(q, i) + t * {name}_d2(q, i + 1);
+        h = max(y0 - p.y, p.y - yn);
+    }}
+    let raw = min(max(d, h), 0.0) + length(vec2<f32>(max(d, 0.0), max(h, 0.0)));
+    return raw / {lip};
+}}
+",
+            ys = fl(&st.levels),
+            vs = fl(&st.verts),
+            lss = il(&st.loop_start),
+            vss = il(&st.vert_start),
+            last = n - 1,
+            lip = lit(st.lipschitz),
+            lmax = st.max_loops,
+            vmax = st.max_verts,
+        )
     }
     fn global_vec3_fn(name: &str, body: &str) -> String {
         format!("fn {name}(p: vec3<f32>) -> vec3<f32> {{\n{body}}}\n")
@@ -220,6 +305,24 @@ pub struct WgslShader {
 }
 
 impl WgslShader {
+    /// [`Self::transpile`] with every union operand evaluated: no bound skip (see
+    /// [`crate::compiled::transpiler_common::lower_bound`]). The reference the skipping shader must
+    /// equal bit for bit
+    #[must_use]
+    pub fn transpile_without_bound_skip(node: &SdfNode, mode: TranspileMode) -> Self {
+        let mut transpiler = WgslTranspiler::new(mode);
+        transpiler.bound_skip = false;
+        let body = transpiler.transpile_node(node, "p");
+        let source = transpiler.generate_shader(&body);
+        Self {
+            source,
+            helper_count: transpiler.helper_functions.len(),
+            param_layout: transpiler.params,
+            mode,
+            workgroup_size: 256,
+        }
+    }
+
     /// Transpile an SDF node tree to WGSL with the specified mode
     pub fn transpile(node: &SdfNode, mode: TranspileMode) -> Self {
         Self::transpile_inner(node, mode, false)
@@ -322,6 +425,14 @@ impl WgslShader {
         // メイン transpile で使われるヘルパーを事前収集（重複排除用）
         let main_shader = Self::transpile(node, mode);
         let main_source = &main_shader.source;
+        // module 先頭の配列・関数 (頂点の多い Polygon2D 等) の名前は var_counter
+        // から作るので、サブ関数は main の続きの番号から始めて衝突させない
+        let mut next_var = {
+            let mut t = WgslTranspiler::new(mode);
+            let _ = t.transpile_node(node, "p");
+            t.var_counter
+        };
+        let mut globals_all = String::new();
 
         // 各サブツリーを個別にトランスパイル
         let mut helpers_all = String::new();
@@ -332,8 +443,11 @@ impl WgslShader {
 
         for (i, (mid, child)) in materials.iter().enumerate() {
             let mut transpiler = WgslTranspiler::new(mode);
+            transpiler.var_counter = next_var;
             let fn_name = format!("sdf_mat_sub_{}", i);
             let inner_body = transpiler.transpile_node(child, "p");
+            next_var = transpiler.var_counter;
+            globals_all.push_str(&transpiler.globals);
 
             // ヘルパーを収集（メインソースに既に含まれるものはスキップ）
             for helper in &transpiler.helper_functions {
@@ -367,7 +481,7 @@ impl WgslShader {
 
         body.push_str("    return mat_id;\n}\n");
 
-        format!("{}{}{}", helpers_all, eval_fns, body)
+        format!("{}{}{}{}", helpers_all, globals_all, eval_fns, body)
     }
 
     /// SdfNode ツリーから WithMaterial サブツリーを再帰的に収集
@@ -657,6 +771,8 @@ struct WgslTranspiler {
     globals: String,
     /// Node data buffer (see `GenericTranspiler::node_data`)
     node_data: Option<Vec<f32>>,
+    /// See `GenericTranspiler::bound_skip`
+    bound_skip: bool,
 }
 
 impl WgslTranspiler {
@@ -668,6 +784,7 @@ impl WgslTranspiler {
             params: Vec::new(),
             globals: String::new(),
             node_data: None,
+            bound_skip: true,
         }
     }
 
@@ -683,6 +800,7 @@ impl WgslTranspiler {
         generic.helper_functions = std::mem::take(&mut self.helper_functions);
         generic.globals = std::mem::take(&mut self.globals);
         generic.node_data = self.node_data.take();
+        generic.bound_skip = self.bound_skip;
         let body = generic.transpile_node(node, point_var);
         self.globals = generic.globals;
         self.node_data = generic.node_data;

@@ -38,6 +38,72 @@ pub fn square_verts() -> Vec<Vec2> {
 }
 
 /// Every compilable SdfNode variant with non-trivial parameters.
+/// A curve-section loft on a curved axis: a C shape (not star-shaped, its hollow outside) whose
+/// arcs thin and turn from row to row
+pub fn loft_curves_c() -> SdfNode {
+    let c = |ro: f32, ri: f32, turn: f32| -> Vec<Vec2> {
+        let mut v = Vec::new();
+        let n = 7;
+        for k in 0..=n {
+            let t = (50.0 + 260.0 * k as f32 / n as f32 + turn).to_radians();
+            v.push(Vec2::new(ro * t.cos(), ro * t.sin()));
+        }
+        for k in 0..=n {
+            let t = (310.0 - 260.0 * k as f32 / n as f32 + turn).to_radians();
+            v.push(Vec2::new(ri * t.cos(), ri * t.sin()));
+        }
+        v
+    };
+    SdfNode::loft_curves(
+        vec![Vec3::new(0.0, -0.6, 0.0), Vec3::new(0.1, 0.0, 0.05), Vec3::new(0.0, 0.6, 0.0)],
+        Vec3::X,
+        vec![c(0.4, 0.22, 0.0), c(0.36, 0.2, 10.0), c(0.32, 0.18, 20.0)],
+    )
+    .expect("corpus curve loft")
+}
+
+/// A polar loft whose radius varies along the axis, so its local bound varies and the saturated
+/// correction is on; on a curved axis the correction fades out (`fade` finite), on a straight one
+/// it does not (`fade` = the no-fade value). Panics when the law gives the other case, so the entry
+/// keeps covering the branch it is named for
+pub fn loft_fade(curved: bool) -> SdfNode {
+    let bend = if curved { 0.15 } else { 0.0 };
+    let node = SdfNode::loft(
+        vec![Vec3::new(0.0, -0.6, 0.0), Vec3::new(bend, 0.0, 0.5 * bend), Vec3::new(0.0, 0.6, 0.0)],
+        Vec3::X,
+        2,
+        vec![
+            vec![0.25, 0.0, 0.03, 0.04, 0.0],
+            vec![0.4, 0.03, 0.0, -0.04, 0.02],
+            vec![0.2, 0.0, -0.02, 0.02, 0.0],
+            vec![0.35, 0.02, 0.01, 0.0, -0.02],
+        ],
+    )
+    .expect("corpus fade loft");
+    if let SdfNode::Loft { bounds, .. } = &node {
+        assert!(bounds.m > 0.0, "the correction is off (m = {})", bounds.m);
+        assert_eq!(bounds.fade.is_some(), curved, "fade {:?} for curved = {curved}", bounds.fade);
+    }
+    node
+}
+
+/// A loft on a bent axis whose radius bulges in the middle, so the local bound varies and the
+/// correction fades out away from the axis (`fade` is `Some`); the bend keeps the radius of
+/// curvature (≈ 1.05) above the widest section (0.5), which the law requires
+pub fn loft_faded() -> SdfNode {
+    let node = SdfNode::loft(
+        (0..6).map(|i| Vec3::new(0.15 * (0.5 * i as f32).sin(), 0.25 * i as f32 - 0.6, 0.0)).collect(),
+        Vec3::Z,
+        1,
+        [0.3f32, 0.3, 0.3, 0.5, 0.3, 0.3, 0.3].iter().map(|&r| vec![r, 0.0, 0.0]).collect(),
+    )
+    .expect("corpus faded loft");
+    if let SdfNode::Loft { bounds, .. } = &node {
+        assert!(bounds.fade.is_some() && bounds.m > 0.0, "fade {:?}, m {}", bounds.fade, bounds.m);
+    }
+    node
+}
+
 pub fn corpus() -> Vec<(&'static str, SdfNode)> {
     let a = sphere();
     let b = SdfNode::sphere(0.5).translate(0.8, 0.0, 0.0);
@@ -167,6 +233,24 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
             },
         ),
         ("polygon_2d", SdfNode::polygon_2d(square_verts(), 0.5)),
+        (
+            "loft",
+            SdfNode::loft_capped(
+                vec![Vec3::new(0.0, -0.6, 0.0), Vec3::new(0.1, 0.0, 0.05), Vec3::new(0.0, 0.6, 0.0)],
+                Vec3::X,
+                2,
+                vec![
+                    vec![0.4, 0.0, 0.05, 0.06, 0.0],
+                    vec![0.35, 0.03, 0.0, -0.04, 0.02],
+                    vec![0.3, 0.0, -0.03, 0.03, 0.0],
+                ],
+                [0.0, 0.25],
+            )
+            .expect("corpus loft"),
+        ),
+        ("loft_curves", loft_curves_c()),
+        ("loft_nofade", loft_fade(false)),
+        ("loft_faded", loft_faded()),
         ("annular_2d", SdfNode::annular_2d(0.6, 0.1, 0.5)),
         // --- binary operations ---
         ("union", a.clone().union(b.clone())),
