@@ -123,16 +123,10 @@ fn main() -> Result<(), String> {
             WgslShader::transpile(&scene, TranspileMode::Hardcoded)
                 .source
                 .len(),
-            WgslShader::transpile_without_bound_skip(&scene, TranspileMode::Hardcoded)
-                .source
-                .len(),
         ),
         (
             "GLSL",
             GlslShader::transpile(&scene, GlslTranspileMode::Hardcoded)
-                .source
-                .len(),
-            GlslShader::transpile_without_bound_skip(&scene, GlslTranspileMode::Hardcoded)
                 .source
                 .len(),
         ),
@@ -141,13 +135,10 @@ fn main() -> Result<(), String> {
             HlslShader::transpile(&scene, HlslTranspileMode::Hardcoded)
                 .source
                 .len(),
-            HlslShader::transpile_without_bound_skip(&scene, HlslTranspileMode::Hardcoded)
-                .source
-                .len(),
         ),
     ];
-    for (lang, skip, plain) in sizes {
-        println!("{lang}: {skip} bytes with the bound skip, {plain} without");
+    for (lang, bytes) in sizes {
+        println!("{lang}: {bytes} bytes");
     }
     // the fallible emits report a read they cannot prove in range; the checked ones count, at run
     // time, each read outside its proven range

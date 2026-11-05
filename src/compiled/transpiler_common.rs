@@ -400,230 +400,6 @@ float {name}(vec3_t p) {{
     s
 }
 
-/// A static lower bound of a subtree's field: for every point `p` with
-/// `scale * dist(p, box) - margin > 0`, the subtree's field at `p` is at least that value.
-/// `dist(p, box)` is the Euclidean distance to the axis-aligned box `lo..hi` (0 inside).
-///
-/// Proofs per node kind (`lower_bound` returns `None` for every other kind, which disables the skip
-/// over that operand):
-/// - `Polygon2D`: the exact signed distance of the extruded polygon; the prism lies in its box, so
-///   outside the box the distance to the prism is at least the distance to the box (scale 1)
-/// - `SectionStack`: outside the loops' (x, z) box every level's 2D distance is at least the 2D
-///   distance to that box, so is their interpolation; with the cap height `h` the unscaled field
-///   `max(d, h) ∧ 0 + |(d⁺, h⁺)|` is at least the 3D distance to the box; the field divides it by
-///   its Lipschitz bound `L`, hence scale `1 / L`
-/// - `Translate`: the field is the child's at `p - t`: the box moves by `t`
-/// - `Rotate`: the field is the child's at `R⁻¹ p`, and `dist(R⁻¹ p, B) = dist(p, R B) ≥
-///   dist(p, aabb(R B))`: the box of the rotated corners
-/// - `Union`: `min(a, b) ≥ min(sa·da − ma, sb·db − mb) ≥ min(sa, sb)·dist(p, hull) − max(ma, mb)`
-/// - `SmoothUnion { k }`: `smin(a, b) ≥ min(a, b) − k/4` (`h ≤ 1`): the union's bound, margin `+ k/4`
-/// - `Intersection`: `max(a, b) ≥ a` and `≥ b`: either child's bound (the smaller box)
-/// - `Subtraction`: `max(a, −b) ≥ a`: the bound of `a`
-/// - `WithMaterial`: the child's field
-/// - `Loft` / `LoftCurves`: `field ≥ scale · dist(p, box) − margin` over the box of the axis's
-///   Bézier control points, with the factors of [`crate::primitives::loft::lower_bound_factors`]
-///   (the near field over `L_g`, the domes, the far bound's join; derived there)
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct LowerBound {
-    /// Box minimum corner
-    pub lo: [f32; 3],
-    /// Box maximum corner
-    pub hi: [f32; 3],
-    /// Factor on the box distance (≤ 1)
-    pub scale: f32,
-    /// Subtracted after scaling (≥ 0)
-    pub margin: f32,
-}
-
-impl LowerBound {
-    fn volume(&self) -> f32 {
-        (self.hi[0] - self.lo[0]) * (self.hi[1] - self.lo[1]) * (self.hi[2] - self.lo[2])
-    }
-    fn from_points(pts: impl Iterator<Item = glam::Vec3>, scale: f32, margin: f32) -> Option<Self> {
-        let mut lo = [f32::INFINITY; 3];
-        let mut hi = [f32::NEG_INFINITY; 3];
-        for q in pts {
-            for (k, c) in [q.x, q.y, q.z].into_iter().enumerate() {
-                lo[k] = lo[k].min(c);
-                hi[k] = hi[k].max(c);
-            }
-        }
-        (lo.iter().chain(hi.iter()).all(|c| c.is_finite()) && scale.is_finite() && scale > 0.0)
-            .then_some(Self {
-                lo,
-                hi,
-                scale,
-                margin,
-            })
-    }
-    fn corners(&self) -> impl Iterator<Item = glam::Vec3> + '_ {
-        (0..8).map(move |i| {
-            glam::Vec3::new(
-                if i & 1 == 0 { self.lo[0] } else { self.hi[0] },
-                if i & 2 == 0 { self.lo[1] } else { self.hi[1] },
-                if i & 4 == 0 { self.lo[2] } else { self.hi[2] },
-            )
-        })
-    }
-    fn hull(a: Self, b: Self, extra_margin: f32) -> Self {
-        Self {
-            lo: [
-                a.lo[0].min(b.lo[0]),
-                a.lo[1].min(b.lo[1]),
-                a.lo[2].min(b.lo[2]),
-            ],
-            hi: [
-                a.hi[0].max(b.hi[0]),
-                a.hi[1].max(b.hi[1]),
-                a.hi[2].max(b.hi[2]),
-            ],
-            scale: a.scale.min(b.scale),
-            margin: a.margin.max(b.margin) + extra_margin,
-        }
-    }
-}
-
-/// The Bézier control points of a loft axis's uniform Catmull-Rom segments (the ends' phantom
-/// points reflected): the segment between `B` and `C` (neighbours `A`, `D`) is
-/// `[B, B + (C − A)/6, C − (D − B)/6, C]` and lies in their convex hull, so the box of these points
-/// holds the axis curve
-fn loft_axis_control_points(axis: &[glam::Vec3]) -> impl Iterator<Item = glam::Vec3> + '_ {
-    let n = axis.len() as isize;
-    let pt = move |i: isize| {
-        if i < 0 {
-            2.0 * axis[0] - axis[1]
-        } else if i >= n {
-            2.0 * axis[(n - 1) as usize] - axis[(n - 2) as usize]
-        } else {
-            axis[i as usize]
-        }
-    };
-    (0..n - 1).flat_map(move |i| {
-        let (a, b, c, d) = (pt(i - 1), pt(i), pt(i + 1), pt(i + 2));
-        [b, b + (c - a) / 6.0, c - (d - b) / 6.0, c]
-    })
-}
-
-/// The static lower bound of `node`'s field, or `None` where no proof covers the node kind (see
-/// [`LowerBound`])
-#[must_use]
-pub fn lower_bound(node: &SdfNode) -> Option<LowerBound> {
-    use glam::Vec3;
-    match node {
-        SdfNode::Polygon2D {
-            vertices,
-            half_height,
-        } if vertices.len() >= 3 => LowerBound::from_points(
-            vertices.iter().flat_map(|v| {
-                [
-                    Vec3::new(v.x, v.y, -half_height.abs()),
-                    Vec3::new(v.x, v.y, half_height.abs()),
-                ]
-            }),
-            1.0,
-            0.0,
-        ),
-        SdfNode::SectionStack(st) => {
-            let (y0, yn) = (*st.levels.first()?, *st.levels.last()?);
-            LowerBound::from_points(
-                st.loops
-                    .iter()
-                    .flatten()
-                    .flatten()
-                    .flat_map(|q| [Vec3::new(q.x, y0, q.y), Vec3::new(q.x, yn, q.y)]),
-                1.0 / st.lipschitz,
-                0.0,
-            )
-        }
-        SdfNode::Translate { child, offset } => {
-            let b = lower_bound(child)?;
-            LowerBound::from_points(b.corners().map(|c| c + *offset), b.scale, b.margin)
-        }
-        SdfNode::Rotate { child, rotation } => {
-            let b = lower_bound(child)?;
-            LowerBound::from_points(b.corners().map(|c| *rotation * c), b.scale, b.margin)
-        }
-        SdfNode::WithMaterial { child, .. } => lower_bound(child),
-        SdfNode::Loft {
-            axis,
-            harmonics,
-            rows,
-            caps,
-            bounds,
-            ..
-        } if axis.len() >= 2 => {
-            let (scale, margin) = crate::primitives::loft::lower_bound_factors(
-                crate::primitives::loft::LoftSection::Polar(*harmonics),
-                rows,
-                *caps,
-                bounds,
-            )?;
-            LowerBound::from_points(loft_axis_control_points(axis), scale, margin)
-        }
-        SdfNode::LoftCurves {
-            axis,
-            section_points,
-            points,
-            caps,
-            bounds,
-            ..
-        } if axis.len() >= 2 => {
-            let (scale, margin) = crate::primitives::loft::lower_bound_factors(
-                crate::primitives::loft::LoftSection::Curve(*section_points),
-                points,
-                [caps[0][0], caps[1][0]],
-                bounds,
-            )?;
-            LowerBound::from_points(loft_axis_control_points(axis), scale, margin)
-        }
-        SdfNode::Union { a, b } => Some(LowerBound::hull(lower_bound(a)?, lower_bound(b)?, 0.0)),
-        SdfNode::SmoothUnion { a, b, k } if *k >= 0.0 && k.is_finite() => {
-            Some(LowerBound::hull(lower_bound(a)?, lower_bound(b)?, k * 0.25))
-        }
-        SdfNode::Intersection { a, b } => match (lower_bound(a), lower_bound(b)) {
-            (Some(x), Some(y)) => Some(if x.volume() <= y.volume() { x } else { y }),
-            (x, y) => x.or(y),
-        },
-        SdfNode::Subtraction { a, .. } => lower_bound(a),
-        _ => None,
-    }
-}
-
-/// Inflation of every skip box (m), absorbing the rounding of the shader's own evaluation of the
-/// operand and of the box distance, so the skip never trusts a bound the rounded field undercuts
-pub const BOUND_SKIP_EPS: f32 = 1e-4;
-
-/// Operands smaller than this many nodes are evaluated without a skip test (the test would cost
-/// about as much as the operand)
-pub const BOUND_SKIP_MIN_NODES: usize = 8;
-
-fn subtree_size(node: &SdfNode) -> usize {
-    fn walk(n: &SdfNode, acc: &mut usize) {
-        *acc += 1;
-        match n {
-            SdfNode::Union { a, b }
-            | SdfNode::Intersection { a, b }
-            | SdfNode::Subtraction { a, b }
-            | SdfNode::SmoothUnion { a, b, .. } => {
-                walk(a, acc);
-                walk(b, acc);
-            }
-            SdfNode::Translate { child, .. }
-            | SdfNode::Rotate { child, .. }
-            | SdfNode::WithMaterial { child, .. } => walk(child, acc),
-            SdfNode::SectionStack(st) => {
-                *acc += st.loops.iter().flatten().map(Vec::len).sum::<usize>() / 8
-            }
-            SdfNode::Polygon2D { vertices, .. } => *acc += vertices.len() / 8,
-            SdfNode::Loft { axis, rows, .. } => *acc += 8 + axis.len() + rows.len() / 8,
-            _ => {}
-        }
-    }
-    let mut n = 0;
-    walk(node, &mut n);
-    n
-}
-
 /// The floats of one far-bound piece in the C-like dialects' per-piece arrays
 const PIECE_FLOATS_SHADER: usize = crate::primitives::loft::PIECE_FLOATS;
 
@@ -676,9 +452,6 @@ pub struct GenericTranspiler<L: ShaderLang> {
     /// (a second walk of the tree, e.g. the rest point, reuses the first walk's arrays), with whether
     /// the accessor function was emitted
     data_seen: Vec<((usize, u64), DataArr, bool)>,
-    /// Skip union operands that are provably farther than the other operand (see
-    /// [`lower_bound`]); the result is bit-identical either way
-    pub bound_skip: bool,
     /// Emit the loft and stack data reads as checked reads (counting reads outside their proven
     /// index range; see [`Reads`]): tests and diagnostics only, the values are the same
     pub checked_reads: bool,
@@ -876,7 +649,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             globals: String::new(),
             node_data: None,
             data_seen: Vec::new(),
-            bound_skip: true,
             checked_reads: false,
             read_errors: Vec::new(),
             _phantom: std::marker::PhantomData,
@@ -1445,41 +1217,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         let result_var = self.transpile_node_inner(node, point_var, &mut code);
         writeln!(code, "    return {};", result_var).unwrap();
         code
-    }
-
-    /// The bound-skip test for operand `b`: declares and returns the variable holding the
-    /// operand's lower bound at the point, or `None` when there is no proven bound, the operand is
-    /// small, skipping is switched off, or the mode is not Hardcoded (Dynamic keeps one text per
-    /// tree shape, whatever the parameters)
-    fn skip_bound(&mut self, b: &SdfNode, point_var: &str, code: &mut String) -> Option<String> {
-        if !self.bound_skip
-            || self.mode != TranspileModeLang::Hardcoded
-            || subtree_size(b) < BOUND_SKIP_MIN_NODES
-        {
-            return None;
-        }
-        let lb = lower_bound(b)?;
-        let e = BOUND_SKIP_EPS;
-        let c: Vec<String> = (0..3).map(|k| lit(0.5 * (lb.lo[k] + lb.hi[k]))).collect();
-        let h: Vec<String> = (0..3)
-            .map(|k| lit(0.5 * (lb.hi[k] - lb.lo[k]) + e))
-            .collect();
-        let v = self.next_var();
-        for (k, ax) in ["x", "y", "z"].iter().enumerate() {
-            code.push_str(&L::decl_float(
-                &format!("{v}_{ax}"),
-                &format!("max(abs({point_var}.{ax} - {}) - {}, 0.0)", c[k], h[k]),
-            ));
-        }
-        code.push_str(&L::decl_float(
-            &v,
-            &format!(
-                "{} * sqrt({v}_x * {v}_x + {v}_y * {v}_y + {v}_z * {v}_z) - {}",
-                lit(lb.scale),
-                lit(lb.margin + e)
-            ),
-        ));
-        Some(v)
     }
 
     /// The main transpilation dispatcher - converts an SdfNode tree into shader code.
@@ -2853,15 +2590,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             // ============ Boolean Operations ============
             SdfNode::Union { a, b } => {
                 let d_a = self.transpile_node_inner(a, point_var, code);
-                if let Some(bb) = self.skip_bound(b, point_var, code) {
-                    // b's field is ≥ bb > 0 when the test holds, and bb ≥ d_a: min(d_a, d_b) is d_a
-                    let var = self.next_var();
-                    code.push_str(&L::decl_mut_float(&var, &d_a));
-                    code.push_str(&format!("    if (!({bb} > 0.0 && {bb} >= {d_a})) {{\n"));
-                    let d_b = self.transpile_node_inner(b, point_var, code);
-                    code.push_str(&format!("    {var} = min({d_a}, {d_b});\n    }}\n"));
-                    return var;
-                }
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
                 code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
@@ -2887,30 +2615,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             // Division Exorcism for SmoothUnion
             SdfNode::SmoothUnion { a, b, k } => {
                 let d_a = self.transpile_node_inner(a, point_var, code);
-                if *k > 0.0 && !(k.abs() < FOLD_EPSILON) {
-                    if let Some(bb) = self.skip_bound(b, point_var, code) {
-                        // with d_b ≥ bb and fl(fl(bb − d_a)·inv_k) > 1, the shader's
-                        // fl(|d_a − d_b|·inv_k) > 1 too (rounding is monotone), so h is exactly +0
-                        // and the result is min(d_a, d_b) − 0 = d_a, bit for bit
-                        let k_str = self.param(*k);
-                        let inv_k_str = self.param(1.0 / k);
-                        let var = self.next_var();
-                        code.push_str(&L::decl_mut_float(&var, &d_a));
-                        code.push_str(&format!(
-                            "    if (!({bb} > 0.0 && ({bb} - {d_a}) * {inv_k_str} > 1.0)) {{\n"
-                        ));
-                        let d_b = self.transpile_node_inner(b, point_var, code);
-                        let h_var = self.next_var();
-                        code.push_str(&L::decl_float(
-                            &h_var,
-                            &format!("max(1.0 - abs({d_a} - {d_b}) * {inv_k_str}, 0.0)"),
-                        ));
-                        code.push_str(&format!(
-                            "    {var} = min({d_a}, {d_b}) - {h_var} * {h_var} * ({k_str} * 0.25);\n    }}\n"
-                        ));
-                        return var;
-                    }
-                }
                 let d_b = self.transpile_node_inner(b, point_var, code);
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {

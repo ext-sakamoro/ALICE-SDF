@@ -1282,8 +1282,6 @@ jobs:
           python3 scripts/libtest_count.py test_section_stack_shader_oracle.log --min 4 --what "test_section_stack_shader_oracle"
           cargo test --features "gpu,glsl,hlsl" --test test_smooth_stack_shader -- --nocapture 2>&1 | tee test_smooth_stack_shader.log
           python3 scripts/libtest_count.py test_smooth_stack_shader.log --min 4 --what "test_smooth_stack_shader"
-          cargo test --features "gpu,glsl,hlsl" --test test_bound_skip_oracle -- --nocapture 2>&1 | tee test_bound_skip_oracle.log
-          python3 scripts/libtest_count.py test_bound_skip_oracle.log --min 7 --what "test_bound_skip_oracle"
           cargo test --features "gpu,glsl,hlsl" --test test_shader_data_bounds -- --nocapture 2>&1 | tee test_shader_data_bounds.log
           python3 scripts/libtest_count.py test_shader_data_bounds.log --min 8 --what "test_shader_data_bounds"
           cargo test --features "gpu,glsl,hlsl" --test test_shader_minimal_trees -- --nocapture 2>&1 | tee test_shader_minimal_trees.log

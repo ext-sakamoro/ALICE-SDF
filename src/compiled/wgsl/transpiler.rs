@@ -319,32 +319,6 @@ pub struct WgslShader {
 }
 
 impl WgslShader {
-    /// [`Self::transpile`] with every union operand evaluated: no bound skip (see
-    /// [`crate::compiled::transpiler_common::lower_bound`]). The reference the skipping shader must
-    /// equal bit for bit
-    #[must_use]
-    ///
-    /// # Panics
-    ///
-    /// As [`Self::transpile`]
-    pub fn transpile_without_bound_skip(node: &SdfNode, mode: TranspileMode) -> Self {
-        let mut transpiler = WgslTranspiler::new(mode);
-        transpiler.bound_skip = false;
-        let body = transpiler.transpile_node(node, "p");
-        if let Err(e) = TranspileError::from_reads(std::mem::take(&mut transpiler.read_errors)) {
-            panic!("{e}");
-        }
-        let source = transpiler.generate_shader(&body);
-        Self {
-            source,
-            helper_count: transpiler.helper_functions.len(),
-            param_layout: transpiler.params,
-            mode,
-            workgroup_size: 256,
-            node_data: Vec::new(),
-        }
-    }
-
     /// Transpile an SDF node tree to WGSL with the specified mode
     ///
     /// # Panics
@@ -989,8 +963,6 @@ struct WgslTranspiler {
     globals: String,
     /// Node data buffer (see `GenericTranspiler::node_data`)
     node_data: Option<Vec<f32>>,
-    /// See `GenericTranspiler::bound_skip`
-    bound_skip: bool,
     /// See `GenericTranspiler::checked_reads`
     checked_reads: bool,
     /// See `GenericTranspiler::read_errors`
@@ -1006,7 +978,6 @@ impl WgslTranspiler {
             params: Vec::new(),
             globals: String::new(),
             node_data: None,
-            bound_skip: true,
             checked_reads: false,
             read_errors: Vec::new(),
         }
@@ -1024,7 +995,6 @@ impl WgslTranspiler {
         generic.helper_functions = std::mem::take(&mut self.helper_functions);
         generic.globals = std::mem::take(&mut self.globals);
         generic.node_data = self.node_data.take();
-        generic.bound_skip = self.bound_skip;
         generic.checked_reads = self.checked_reads;
         let body = generic.transpile_node(node, point_var);
         self.read_errors.append(&mut generic.read_errors);
