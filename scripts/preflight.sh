@@ -546,7 +546,7 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_transpiler_naga_validate --test noise_shader_validate --test test_mesh_orientation --test test_mc_shared_vertex_oracle \
   --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity --test test_instanced_wgsl_gpu_parity --test test_grid_warp_oracle \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_shader_precise_temporaries \
-  --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle --test test_bezier_gpu_parity --test test_parabola_segment_oracle --test test_sweep_bezier_oracle --test test_blobby_cross_oracle
+  --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle --test test_bezier_gpu_parity --test test_parabola_segment_oracle --test test_sweep_bezier_oracle --test test_blobby_cross_oracle --test test_helix_curve_oracle
 
 step "gpu-parity: polygon / section stack / bound skip shader oracles (ci.yml の同名 step と対、file ごとに件数未満で fail)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_polygon_2d_general_oracle -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_polygon_2d_general_oracle.log"
