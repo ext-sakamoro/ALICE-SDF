@@ -52,6 +52,7 @@ this file or listed twice, or when a linked file does not exist.
 | `soa` | structure-of-arrays point buffers for batch SIMD evaluation |  |  |
 | `incremental` | changes a parameter of a `CompiledSdf` in place, without recompiling |  | [`incremental_param_index`](../examples/incremental_param_index.rs) |
 | `interval` | interval arithmetic over a box, with bounds rounded outward |  |  |
+| `bound` | lower bounds of a subtree's value (`Bound::lower`), for the CPU and the shaders; a union skips an operand whose bound is above the nearest value found (`eval::eval_union_bounded`, `WgslShader::transpile_with_union_bounds`) |  | [`union_bounds`](../examples/union_bounds.rs) |
 | `autodiff` | forward-mode automatic differentiation with dual numbers; Hessian and mean curvature |  |  |
 | `tight_aabb` | the smallest box that contains the surface, from interval bounds propagated through the tree |  |  |
 | `unordered` | `UnorderedMap` / `UnorderedSet`: hash collections without iteration (lookup, insertion, removal, size, and aggregates in key order), so no result depends on hash order |  | [`unordered_collections`](../examples/unordered_collections.rs) |
