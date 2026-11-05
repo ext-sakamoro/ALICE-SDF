@@ -376,7 +376,7 @@ fn the_check_refuses_what_it_should() {
 
 #[test]
 fn batches_keep_the_order_and_the_limit() {
-    let pts: Vec<Vec3> = (0..2 * MAX_POINTS_PER_SUBMIT + 1)
+    let pts: Vec<Vec3> = (0..=(2 * MAX_POINTS_PER_SUBMIT))
         .map(|i| Vec3::splat(i as f32))
         .collect();
     let (mut submits_seen, mut largest) = (0usize, 0usize);
