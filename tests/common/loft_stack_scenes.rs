@@ -63,11 +63,13 @@ pub fn trees() -> Vec<(&'static str, SdfNode)> {
 
 /// The largest gap between the scene's HLSL text compiled as C++ with `-ffp-contract=fast` and
 /// with `-ffp-contract=off`, relative to `max(1, |cpu|)`, over the dense points of
-/// `test_shader_read_ranges.rs::the_contraction_gap_is_inside_its_budget`, times 4. MEASURED, not
-/// derived (no forward error analysis of these laws exists): it stands for what a compiler that
-/// fuses `a * b + c` may change, and is the bound the wgpu arm of
+/// `test_shader_read_ranges.rs::the_contraction_gap_is_inside_its_budget`, times 4, rounded up over
+/// an aarch64 gcc and an arm64 clang build. MEASURED, not derived (no forward error analysis of
+/// these laws exists), and the factor 4 is chosen, not derived: a margin for sites a driver fuses
+/// that the C++ compiler did not. Removed when no wgpu backend contracts. It stands for what a compiler that fuses `a * b + c` may change, and is the
+/// bound the wgpu arm of
 /// `test_shader_data_bounds.rs::no_checked_read_leaves_its_proven_range_on_the_gpu` tolerates
-pub const CONTRACTION_BUDGET: &[(&str, f32)] = &[("big_smooth_stack", 0.0), ("section_stack", 0.0), ("lofts", 0.0), ("all", 0.0)];
+pub const CONTRACTION_BUDGET: &[(&str, f32)] = &[("big_smooth_stack", 9.1e-7), ("section_stack", 9.3e-7), ("lofts", 1.06e-6), ("all", 9.6e-7)];
 
 /// The measured contraction budget of a scene
 #[must_use]

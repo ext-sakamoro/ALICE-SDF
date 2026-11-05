@@ -235,7 +235,7 @@ fn no_checked_read_leaves_its_proven_range_on_the_gpu() {
         // Metal engine (fast math off). Through wgpu the compiler may contract the two texts
         // differently, so there the plain shader is compared within the tolerance too
         let plain = GpuEvaluator::new(&node).expect("gpu").eval_batch(&pts).expect("gpu eval");
-        // KNOWN-DEFECT-ARM: known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within the MEASURED contraction budget (C++ -ffp-contract=fast vs off, x4) until no wgpu backend contracts
+        // KNOWN-DEFECT-ARM: known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within the MEASURED contraction budget (C++ -ffp-contract=fast vs off, x4 chosen, not derived) until no wgpu backend contracts
         // the arm, only while the driver fuses: two shader texts (checked and plain) may then be
         // contracted differently; on a driver that does not fuse (the Metal engine, fast math off)
         // the two are bit for bit equal
