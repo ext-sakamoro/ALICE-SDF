@@ -2584,7 +2584,26 @@ impl<L: ShaderLang> GenericTranspiler<L> {
 
             // ============ Modifiers ============
             SdfNode::Twist { child, strength } => {
+                // The native `sin` / `cos` are bounded (WGSL: 2⁻¹¹ absolute) only on [−π, π], so
+                // the angle `a = strength · y` is reduced by quadrants first:
+                //   n = floor(a · 2/π + 0.5),  r = (a − n·P1) − n·P2,  P1 = 1.5703125 (201/128,
+                //   8 significant bits), P2 = fl(π/2 − P1) = 4.8382679e-4
+                // `n·P1` is exact while |n| ≤ 2¹⁶ (8 + 16 ≤ 24 bits) and `a − n·P1` is a single
+                // rounding, so |r − (a − n·π/2)| ≤ |n|·(|π/2 − P1 − P2| + ulp(n·P2)) + ulp(r)
+                // ≤ 2¹⁶ · 2⁻³⁴ + 2⁻²⁴ ≈ 4e-6: r ∈ [−π/4 − 4e-6, π/4 + 4e-6] ⊂ [−π, π] for
+                // |a| ≤ 2¹⁶ · π/2 (≈ 1.03e5). The quadrant q = n mod 4 picks (sin, cos) of r or
+                // their swap / negation exactly (a select and a ±1 product), so c² + s² is that of
+                // the native pair on r: √(c² + s²) ∈ [1 − √2·2⁻¹¹, 1 + √2·2⁻¹¹], the twist's
+                // factor in `bound::SHADER_TWIST_DELTA`. The angle itself is within ~4e-6 of the
+                // CPU's (|a| up to 1.03e5); outside that range the reduction is not derived
                 let angle_var = self.next_var();
+                let n_var = self.next_var();
+                let r_var = self.next_var();
+                let q_var = self.next_var();
+                let c0_var = self.next_var();
+                let s0_var = self.next_var();
+                let odd_var = self.next_var();
+                let sg_var = self.next_var();
                 let c_var = self.next_var();
                 let s_var = self.next_var();
                 let new_p = self.next_var();
@@ -2593,8 +2612,47 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &angle_var,
                     &format!("{} * {}.y", str_val, point_var),
                 ));
-                code.push_str(&L::decl_float(&c_var, &format!("cos({})", angle_var)));
-                code.push_str(&L::decl_float(&s_var, &format!("sin({})", angle_var)));
+                code.push_str(&L::decl_float(
+                    &n_var,
+                    &format!("floor({angle_var} * 0.63661975 + 0.5)"),
+                ));
+                code.push_str(&L::decl_float(
+                    &r_var,
+                    &format!("({angle_var} - {n_var} * 1.5703125) - {n_var} * 0.00048382679"),
+                ));
+                code.push_str(&L::decl_float(
+                    &q_var,
+                    &format!("{n_var} - 4.0 * floor({n_var} * 0.25)"),
+                ));
+                code.push_str(&L::decl_float(&c0_var, &format!("cos({r_var})")));
+                code.push_str(&L::decl_float(&s0_var, &format!("sin({r_var})")));
+                code.push_str(&L::decl_float(
+                    &odd_var,
+                    &format!("{q_var} - 2.0 * floor({q_var} * 0.5)"),
+                ));
+                code.push_str(&L::decl_float(
+                    &sg_var,
+                    &format!("1.0 - 2.0 * floor({q_var} * 0.5)"),
+                ));
+                // q = 0: (s0, c0); 1: (c0, −s0); 2: (−s0, −c0); 3: (−c0, s0)  (sin, cos of r + q·π/2)
+                code.push_str(&L::decl_float(
+                    &s_var,
+                    &format!(
+                        "{sg_var} * {}",
+                        L::select_float(&format!("{odd_var} > 0.5"), &c0_var, &s0_var)
+                    ),
+                ));
+                code.push_str(&L::decl_float(
+                    &c_var,
+                    &format!(
+                        "{sg_var} * {}",
+                        L::select_float(
+                            &format!("{odd_var} > 0.5"),
+                            &format!("-{s0_var}"),
+                            &c0_var
+                        )
+                    ),
+                ));
                 code.push_str(&L::decl_vec3(
                     &new_p,
                     &L::vec3_ctor(
