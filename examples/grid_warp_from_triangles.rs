@@ -66,6 +66,7 @@ fn main() {
             cell: 0.025,
             reach: 0.3,
             shell: None,
+            overhang: None,
         },
     )
     .expect("the sheet builds a grid");

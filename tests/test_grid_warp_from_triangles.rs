@@ -24,7 +24,8 @@
 
 use alice_sdf::eval::eval;
 use alice_sdf::transforms::{
-    affine_posed_to_rest, grid_warp_from_triangles, GridWarp, GridWarpBuildError, WarpGrid,
+    affine_posed_to_rest, grid_warp_from_triangles, GridWarp, GridWarpBuildError, Overhang,
+    WarpGrid,
 };
 use alice_sdf::SdfNode;
 use glam::Vec3;
@@ -69,6 +70,7 @@ fn warped(rest: &[Vec3], posed: &[Vec3], tris: &[[u32; 3]], lo: Vec3, hi: Vec3) 
             cell: 0.05,
             reach: 0.5,
             shell: None,
+            overhang: None,
         },
     )
     .expect("builds");
@@ -145,6 +147,7 @@ fn posed_equal_rest_is_the_identity() {
             cell: 0.05,
             reach: 0.5,
             shell: None,
+            overhang: None,
         },
     )
     .expect("builds");
@@ -245,6 +248,7 @@ fn bad_input_is_an_error() {
                 cell,
                 reach: 0.5,
                 shell: None,
+                overhang: None,
             },
         )
     };
@@ -318,6 +322,7 @@ fn each_node_takes_the_map_of_the_nearest_triangle() {
             cell: 0.05,
             reach: 0.5,
             shell: None,
+            overhang: None,
         },
     )
     .expect("builds");
@@ -408,6 +413,7 @@ fn a_folded_sheet_has_no_ghost_with_a_shell() {
             cell,
             reach: 0.3,
             shell: None,
+            overhang: None,
         },
     )
     .expect("builds");
@@ -421,6 +427,7 @@ fn a_folded_sheet_has_no_ghost_with_a_shell() {
             cell,
             reach: 0.3,
             shell: Some(shell),
+            overhang: None,
         },
     )
     .expect("builds");
@@ -463,6 +470,7 @@ fn the_floor_never_exceeds_the_distance_to_the_posed_shape() {
                 cell,
                 reach: 0.3,
                 shell: Some(shell),
+                overhang: None,
             },
         )
         .expect("builds");
@@ -579,6 +587,7 @@ fn the_cell_diagonal_keeps_the_floor_below_the_distance_for_a_thin_shell() {
             cell: 0.08,
             reach: 0.3,
             shell: Some(shell),
+            overhang: None,
         },
     )
     .expect("builds");
@@ -659,6 +668,7 @@ fn a_far_pulled_corner_leaves_no_surface_outside_the_derived_band() {
         cell,
         reach: 0.3,
         shell: Some(shell),
+        overhang: None,
     };
     let ours = grid_warp_from_triangles(&rest, &posed, &tris, &grid).expect("builds");
     // the global-bound floor on the same nodes: distance to the posed sheet − max σ·t − diagonal
@@ -769,6 +779,7 @@ fn a_bent_rest_sheet_keeps_the_floor_below_the_distance() {
             cell,
             reach: 0.3,
             shell: Some(shell),
+            overhang: None,
         },
     )
     .expect("builds");
@@ -867,6 +878,7 @@ fn an_interior_pull_is_cleared_better_than_a_per_triangle_stretch_bound_allows()
         cell,
         reach: 0.3,
         shell: Some(shell),
+        overhang: None,
     };
     let ours = grid_warp_from_triangles(&rest, &posed, &tris, &grid).expect("builds");
     let mut per_triangle = grid_warp_from_triangles(
@@ -987,6 +999,7 @@ fn a_rim_pull_is_cleared_better_than_a_whole_stretch_bound_on_rim_edges_allows()
         cell,
         reach: 0.3,
         shell: Some(shell),
+        overhang: None,
     };
     let ours = grid_warp_from_triangles(&rest, &posed, &tris, &grid).expect("builds");
     let mut whole = grid_warp_from_triangles(
@@ -1084,6 +1097,7 @@ fn a_corner_overhang_on_a_sheared_sheet_keeps_the_floor_below_the_distance() {
             cell,
             reach: 0.3,
             shell: Some(shell),
+            overhang: None,
         },
     )
     .expect("builds");
@@ -1156,4 +1170,238 @@ fn a_corner_overhang_on_a_sheared_sheet_keeps_the_floor_below_the_distance() {
         }
     }
     assert!(checked > 100, "{checked}");
+}
+
+/// A flat 9×9 sheet whose top-edge middle vertex (rest (0.5, 1)) is pulled 0.6 outward (+y):
+/// a rim vertex dragged out, as a hand grabbing a glyph's box edge.
+fn edge_pulled() -> (Vec<Vec3>, Vec<Vec3>, Vec<[u32; 3]>) {
+    let (rest, tris) = sheet(9);
+    let mut posed = rest.clone();
+    posed[8 * 9 + 4] += Vec3::new(0.0, 0.6, 0.0);
+    (rest, posed, tris)
+}
+
+#[test]
+fn a_child_inside_the_sheet_leaves_no_near_miss_beyond_t_when_the_overhang_is_declared() {
+    // The child (a slab over [0.1, 0.9]², 0.02 thick on each side) lies inside the sheet's
+    // footprint: its overhang past the rim is 0. Declaring it bounds every rim term by t, so no
+    // point farther than t + the cell diagonal from the posed sheet looks like a surface (field
+    // below a tracer's hit threshold). Without the declaration the rim vertex dragged out keeps
+    // σ_T·t, and such near-misses appear (the scene has teeth).
+    let (rest, posed, tris) = edge_pulled();
+    let (lo, hi) = (Vec3::new(-0.4, -0.4, -0.4), Vec3::new(1.4, 2.0, 0.4));
+    let (cell, shell) = (0.05f32, 0.03f32);
+    let band = shell + cell * 3.0f32.sqrt();
+    let count = |overhang: Option<Overhang>| {
+        let grid = WarpGrid {
+            box_min: lo,
+            box_max: hi,
+            cell,
+            reach: 0.3,
+            shell: Some(shell),
+            overhang,
+        };
+        let node = slab().grid_warp(
+            GridWarp::new(grid_warp_from_triangles(&rest, &posed, &tris, &grid).expect("builds"))
+                .expect("valid"),
+        );
+        let mut n = 0;
+        for k in 0..20 {
+            for j in 0..30 {
+                for i in 0..22 {
+                    let p = lo
+                        + (hi - lo)
+                            * Vec3::new(
+                                (i as f32 + 0.5) / 22.0,
+                                (j as f32 + 0.5) / 30.0,
+                                (k as f32 + 0.5) / 20.0,
+                            );
+                    if eval(&node, p) < 2e-4 && sheet_distance(p, &posed, &tris) > band {
+                        n += 1;
+                    }
+                }
+            }
+        }
+        n
+    };
+    let inside = Overhang {
+        declared: 0.0,
+        child_min: Vec3::new(0.1, 0.1, -0.02),
+        child_max: Vec3::new(0.9, 0.9, 0.02),
+    };
+    assert!(count(None) > 0, "the scene shows no near-miss to clear");
+    assert_eq!(
+        count(Some(inside)),
+        0,
+        "near-misses beyond t + diagonal with the overhang declared 0"
+    );
+}
+
+#[test]
+fn a_declared_overhang_keeps_the_floor_below_the_distance() {
+    // The stretched (×4) scene of the_floor_never_exceeds_the_distance_to_the_posed_shape, with
+    // the child's overhang (0.02 past the x edges) declared: the rim terms then use 0.02, not t,
+    // and the floor must still stay below the distance to the posed shape.
+    let (rest, tris) = sheet(9);
+    let shell = 0.03;
+    let posed: Vec<Vec3> = rest
+        .iter()
+        .map(|p| Vec3::new(4.0 * p.x, p.y, p.z))
+        .collect();
+    let (lo, hi) = (Vec3::new(-0.4, -0.4, -0.4), Vec3::new(4.4, 1.4, 0.4));
+    let overhang = Overhang {
+        declared: 0.02,
+        child_min: Vec3::new(-0.02, 0.1, -0.02),
+        child_max: Vec3::new(1.02, 0.9, 0.02),
+    };
+    let grid = WarpGrid {
+        box_min: lo,
+        box_max: hi,
+        cell: 0.02,
+        reach: 0.3,
+        shell: Some(shell),
+        overhang: Some(overhang),
+    };
+    let warp =
+        GridWarp::new(grid_warp_from_triangles(&rest, &posed, &tris, &grid).expect("builds"))
+            .expect("valid");
+    let mut shape = Vec::new();
+    let (nx, ny, nz) = (260, 200, 8);
+    for k in 0..=nz {
+        for j in 0..=ny {
+            for i in 0..=nx {
+                if !(k == 0 || k == nz || i == 0 || i == nx || j == 0 || j == ny) {
+                    continue;
+                }
+                let x = Vec3::new(
+                    -0.02 + 1.04 * i as f32 / nx as f32,
+                    0.1 + 0.8 * j as f32 / ny as f32,
+                    -0.02 + 0.04 * k as f32 / nz as f32,
+                );
+                shape.push(Vec3::new(4.0 * x.x, x.y, x.z));
+            }
+        }
+    }
+    let gap = 0.5 * (0.016f32 * 0.016 + 0.004 * 0.004 + 0.005 * 0.005).sqrt();
+    let mut checked = 0;
+    for y in shape.iter().filter(|y| y.x < 0.2 || y.x > 3.8) {
+        for d in [
+            Vec3::new(-0.03, 0.0, 0.0),
+            Vec3::new(0.03, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 0.03),
+            Vec3::ZERO,
+        ] {
+            let p = *y + d;
+            let (_, _, _, floor) = warp.warp(p);
+            let dist = shape
+                .iter()
+                .map(|s| (p - *s).length())
+                .fold(f32::INFINITY, f32::min);
+            assert!(
+                floor <= dist + gap,
+                "floor {floor} above the distance {dist} at {p:?}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 100, "{checked}");
+}
+
+#[test]
+fn a_child_beyond_its_declared_overhang_is_an_error() {
+    let (rest, tris) = sheet(9);
+    let lo = Vec3::splat(-0.5);
+    let hi = Vec3::splat(1.5);
+    let build = |o: Overhang, shell: f32| {
+        grid_warp_from_triangles(
+            &rest,
+            &rest,
+            &tris,
+            &WarpGrid {
+                box_min: lo,
+                box_max: hi,
+                cell: 0.1,
+                reach: 0.3,
+                shell: Some(shell),
+                overhang: Some(o),
+            },
+        )
+    };
+    // past the rim by 0.05 while 0.02 is declared
+    let o = Overhang {
+        declared: 0.02,
+        child_min: Vec3::new(-0.05, 0.1, -0.01),
+        child_max: Vec3::new(0.9, 0.9, 0.01),
+    };
+    assert!(matches!(
+        build(o, 0.03),
+        Err(GridWarpBuildError::OverhangExceeded { .. })
+    ));
+    // thicker than the shell
+    let o = Overhang {
+        declared: 0.0,
+        child_min: Vec3::new(0.1, 0.1, -0.05),
+        child_max: Vec3::new(0.9, 0.9, 0.05),
+    };
+    assert!(matches!(
+        build(o, 0.03),
+        Err(GridWarpBuildError::ShellExceeded { .. })
+    ));
+    // inside: fine
+    let o = Overhang {
+        declared: 0.0,
+        child_min: Vec3::new(0.1, 0.1, -0.02),
+        child_max: Vec3::new(0.9, 0.9, 0.02),
+    };
+    assert!(build(o, 0.03).is_ok());
+    // an overhang needs a planar rest sheet
+    let bent: Vec<Vec3> = rest
+        .iter()
+        .map(|p| {
+            if p.x <= 0.5 {
+                *p
+            } else {
+                Vec3::new(0.5, p.y, p.x - 0.5)
+            }
+        })
+        .collect();
+    let o = Overhang {
+        declared: 0.0,
+        child_min: Vec3::new(0.1, 0.1, -0.01),
+        child_max: Vec3::new(0.4, 0.9, 0.01),
+    };
+    let r = grid_warp_from_triangles(
+        &bent,
+        &bent,
+        &tris,
+        &WarpGrid {
+            box_min: lo,
+            box_max: hi,
+            cell: 0.1,
+            reach: 0.3,
+            shell: Some(0.03),
+            overhang: Some(o),
+        },
+    );
+    assert!(matches!(r, Err(GridWarpBuildError::NotPlanar)));
+    // an overhang without a shell is an error too (there is no floor to bound)
+    let o = Overhang {
+        declared: 0.0,
+        child_min: Vec3::new(0.1, 0.1, -0.01),
+        child_max: Vec3::new(0.9, 0.9, 0.01),
+    };
+    let r = grid_warp_from_triangles(
+        &rest,
+        &rest,
+        &tris,
+        &WarpGrid {
+            box_min: lo,
+            box_max: hi,
+            cell: 0.1,
+            reach: 0.3,
+            shell: None,
+            overhang: Some(o),
+        },
+    );
+    assert!(matches!(r, Err(GridWarpBuildError::OverhangWithoutShell)));
 }
