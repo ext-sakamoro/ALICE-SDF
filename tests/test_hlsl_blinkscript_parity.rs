@@ -637,6 +637,57 @@ fn hlsl_hardcoded_matches_cpu_for_every_corpus_node() {
     );
 }
 
+/// The quadratic Bezier helper from near-collinear to strongly bent control points. The corpus leaves
+/// Bezier out (it has no bytecode law); the CPU law's own truth is
+/// tests/test_bezier_near_straight_oracle.rs. Without the helper's Newton refinement this drifts by ~4e-2.
+#[test]
+fn hlsl_bezier_matches_cpu_from_near_straight_to_bent() {
+    let Some(cxx) = cxx_or_skip() else {
+        return;
+    };
+    let dir = scratch("hlsl_bezier");
+    let mut compared = 0usize;
+    let mut worst = 0.0f32;
+    let mut at = String::new();
+    for (i, h) in [1e-6f32, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1.0].into_iter().enumerate() {
+        for (j, (a, b, c)) in [
+            (Vec3::ZERO, Vec3::new(0.5, h, 0.0), Vec3::X),
+            (Vec3::ZERO, Vec3::new(0.3, h, 0.0), Vec3::X),
+            (Vec3::new(3.1, 2.2, 0.4), Vec3::new(3.15, 2.2 + 0.5 * h, 0.4), Vec3::new(3.2, 2.2, 0.4)),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let node = SdfNode::bezier(a, b, c, 0.0);
+            let emit = HlslShader::transpile(&node, HlslTranspileMode::Hardcoded).source;
+            let bin = compile(&cxx, &dir, &format!("b{i}_{j}"), &translation_unit(&emit, ""))
+                .expect("the Bezier emit compiles");
+            let chord = c - a;
+            let normal = Vec3::new(-chord.y, chord.x, 0.0);
+            let mut pts = Vec::new();
+            for k in 0..=40 {
+                let t = k as f32 / 40.0;
+                let q = a * ((1.0 - t) * (1.0 - t)) + b * (2.0 * (1.0 - t) * t) + c * (t * t);
+                for o in [-1e-2f32, -1e-3, -1e-4, 0.0, 1e-4, 1e-3, 1e-2] {
+                    pts.push(q + normal * o);
+                    pts.push(q + Vec3::Z * (o * chord.length()));
+                }
+            }
+            for (p, g) in pts.iter().zip(run(&bin, &pts).expect("the Bezier emit runs")) {
+                let cpu = eval(&node, *p);
+                if (g - cpu).abs() > worst {
+                    worst = (g - cpu).abs();
+                    at = format!("a {a:?} b {b:?} c {c:?} p {p:?}: hlsl {g} cpu {cpu}");
+                }
+                compared += 1;
+            }
+        }
+    }
+    assert!(compared > 0, "compared 0 points");
+    eprintln!("HLSL bezier: {compared} points, max |hlsl - cpu| {worst:.3e} ({at})");
+    assert!(worst <= 2e-5, "HLSL/CPU drift {worst:.3e}");
+}
+
 /// `ProjectiveTransform` away from the identity through the HLSL transpiler,
 /// Hardcoded and Dynamic, held to `TIGHT_TOL` like every non-exempt corpus
 /// node. The corpus entry is the identity, which a transpiler that forwards
