@@ -111,6 +111,68 @@ pub fn affine_posed_to_rest(rest: [Vec3; 3], posed: [Vec3; 3]) -> Option<[f32; 1
     m.iter().all(|v| v.is_finite()).then_some(m)
 }
 
+/// Whether every rest triangle lies in one plane (normals parallel and every vertex on the
+/// first triangle's plane, to within 1e-5 relative to the sheet's size).
+fn rest_is_planar(rest: &[Vec3], triangles: &[[u32; 3]]) -> bool {
+    let Some(first) = triangles.first() else {
+        return false;
+    };
+    let v = |i: u32| rest[i as usize];
+    let Some(n0) = unit_normal([v(first[0]), v(first[1]), v(first[2])]) else {
+        return false;
+    };
+    let o = v(first[0]);
+    let scale = rest
+        .iter()
+        .map(|p| (*p - o).length())
+        .fold(1.0f32, law_max_f32);
+    triangles.iter().all(|t| {
+        unit_normal([v(t[0]), v(t[1]), v(t[2])]).is_some_and(|n| n.cross(n0).length() <= 1e-5)
+    }) && rest.iter().all(|p| n0.dot(*p - o).abs() <= 1e-5 * scale)
+}
+
+/// The rim edges (used by exactly one triangle) as (vertex, vertex, owning triangle).
+fn rim_edges(triangles: &[[u32; 3]]) -> Vec<(u32, u32, usize)> {
+    let key = |a: u32, b: u32| if a < b { (a, b) } else { (b, a) };
+    let mut edges: Vec<((u32, u32), usize)> = triangles
+        .iter()
+        .enumerate()
+        .flat_map(|(k, t)| {
+            [
+                (key(t[0], t[1]), k),
+                (key(t[1], t[2]), k),
+                (key(t[2], t[0]), k),
+            ]
+        })
+        .collect();
+    edges.sort_unstable();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < edges.len() {
+        let mut j = i + 1;
+        while j < edges.len() && edges[j].0 == edges[i].0 {
+            j += 1;
+        }
+        if j - i == 1 {
+            out.push((edges[i].0 .0, edges[i].0 .1, edges[i].1));
+        }
+        i = j;
+    }
+    out
+}
+
+/// Distance from `p` to the segment `ab`.
+fn point_segment_distance(p: Vec3, a: Vec3, b: Vec3) -> f32 {
+    let ab = b - a;
+    let l2 = ab.length_squared();
+    let t = if l2 > 0.0 {
+        ((p - a).dot(ab) / l2).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    (p - (a + ab * t)).length()
+}
+
 /// Squared distance from `p` to the triangle `abc` (closest point by Voronoi regions).
 fn point_triangle_distance_sq(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> f32 {
     let ab = b - a;
@@ -203,16 +265,24 @@ fn spectral_bound(m: &[f32; 12]) -> f32 {
 /// - for a child point `x` whose nearest rest point is `f` in triangle `T` (`|x − f| ≤ t`),
 ///   the triangle's own rest → posed map `F_T` gives `|F_T(x) − F_T(f)| ≤ σ_T·|x − f| ≤ σ_T·t`
 ///   with `F_T(f)` on posed triangle `T` and `σ_T` the largest singular value of its linear
-///   part (≥ 1: the unit normal is kept, so stretch in the plane only raises it); so the part
-///   of the posed shape coming from `T` lies within `σ_T·t` of posed `T`;
-/// - so for a node `n`, `dist(n, shape) ≥ min_T (dist(n, posed T) − σ_T·t)`;
+///   part (≥ 1: the unit normal is kept, so stretch in the plane only raises it);
+/// - if the rest sheet is planar and `f` is not on its rim, `x − f` is along the normal, which
+///   `F_T` keeps at unit length: `|F_T(x) − F_T(f)| = |x − f| ≤ t`; if `f` is on a rim edge
+///   `e` (an edge of one triangle only) the offset may lie in the plane, and the image lies
+///   within `σ_T·t` of the posed edge `e`. So on a planar rest sheet the posed shape lies
+///   within `t` of the posed triangles or within `σ_T·t` of the posed rim edges; off a planar
+///   rest sheet, within `σ_T·t` of posed `T` for each `T` (the builder checks planarity and
+///   finds the rim from the edges);
+/// - so for a node `n`, `dist(n, shape)` is at least the least of `dist(n, posed T) − t_T`
+///   over the triangles (`t_T = t` planar, `σ_T·t` otherwise) and `dist(n, posed e) − σ_T·t`
+///   over the rim edges (planar only);
 /// - the node's floor is that minus the cell diagonal `√3·cell`: the distance is 1-Lipschitz,
 ///   so every corner's floor is at most the distance at any point of the cell, and so is their
 ///   trilinear blend, which [`GridWarp`](crate::transforms::GridWarp) applies as a lower bound.
 ///
 /// `σ_T` is bounded from above by the Gershgorin bound on `AᵀA` (sound, exact for a rotation).
 /// Each triangle's own bound is used, so one strongly stretched triangle (a pulled corner)
-/// does not loosen the floor away from it.
+/// does not loosen the floor elsewhere.
 /// `grid.shell = None` leaves the floor empty (no fold handling).
 ///
 /// # Errors
@@ -282,10 +352,32 @@ pub fn grid_warp_from_triangles(
         sigmas.push(spectral_bound(&forward));
         tris.push((p, m));
     }
-    // per triangle: its part of the posed shape lies within σ_T·t of posed T
+    // per triangle, how far its part of the shape can lie from it: on a planar rest sheet a
+    // child point whose foot is inside the sheet is offset along the normal, which the map
+    // keeps at unit length (t); only a rim triangle (an edge no other triangle shares) can
+    // carry an in-plane overhang, stretched by at most σ_T (σ_T·t); off a planar rest sheet
+    // every triangle takes σ_T·t
+    let planar = rest_is_planar(rest, triangles);
+    // per triangle: how far its part of the shape can lie from posed T (an overhang beyond a
+    // rim edge is bounded separately, against that posed edge, below)
     let reach_of: Vec<f32> = shell
-        .map(|t| sigmas.iter().map(|s| s * t).collect())
+        .map(|t| {
+            sigmas
+                .iter()
+                .map(|s| if planar { t } else { s * t })
+                .collect()
+        })
         .unwrap_or_default();
+    // rim edges of a planar rest sheet, with the stretch bound of the triangle that owns them:
+    // a child point beyond the rim has its foot on such an edge, and its image lies within
+    // σ_T·t of the posed edge
+    let rim: Vec<(Vec3, Vec3, f32)> = match shell {
+        Some(t) if planar => rim_edges(triangles)
+            .into_iter()
+            .map(|(a, b, k)| (posed[a as usize], posed[b as usize], sigmas[k] * t))
+            .collect(),
+        _ => Vec::new(),
+    };
     let extent = box_max - box_min;
     let nodes = |e: f32| -> Result<u32, GridWarpBuildError> {
         let n = (e / cell).ceil() + 1.0;
@@ -323,6 +415,9 @@ pub fn grid_warp_from_triangles(
                 }
                 maps.extend_from_slice(&tris[best].1);
                 if shell.is_some() {
+                    for (a, b, r) in &rim {
+                        floor_here = law_min_f32(floor_here, point_segment_distance(q, *a, *b) - r);
+                    }
                     floor.push(floor_here - diagonal);
                 }
             }
