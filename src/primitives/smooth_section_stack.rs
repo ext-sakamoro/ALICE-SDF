@@ -61,6 +61,22 @@ pub struct SmoothSectionStack {
     /// The near-field radius r₀ and the knot slope limit ε
     r0: f32,
     eps: f32,
+    /// Local bound (0 = the knot-smoothing bound above): each knot is the largest per-interval bound
+    /// within `reach` of its two intervals and the value is `clamp(f / L(y), −reach, reach)`
+    #[serde(default, skip_serializing_if = "is_zero")]
+    reach: f32,
+    /// The field's slope claim (1 with the knot-smoothing bound, else
+    /// `1 + reach · max |L'| / min L` per interval)
+    #[serde(skip)]
+    slope: f32,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "the signature serde asks for"
+)]
+fn is_zero(x: &f32) -> bool {
+    x.to_bits() == 0
 }
 
 /// The stored form of a [`SmoothSectionStack`], checked on load
@@ -72,6 +88,8 @@ struct SmoothSectionStackStored {
     lmax: f32,
     r0: f32,
     eps: f32,
+    #[serde(default)]
+    reach: f32,
 }
 
 /// Read a stack through its checks ([`SmoothSectionStack::new`]; the stored bound must match)
@@ -94,7 +112,11 @@ pub fn deserialize_stack<'de, D: serde::Deserializer<'de>>(
 impl TryFrom<SmoothSectionStackStored> for SmoothSectionStack {
     type Error = String;
     fn try_from(v: SmoothSectionStackStored) -> Result<Self, String> {
-        let s = Self::new(v.levels, v.loops, v.r0, v.eps)?;
+        let s = if v.reach == 0.0 {
+            Self::new(v.levels, v.loops, v.r0, v.eps)?
+        } else {
+            Self::new_local(v.levels, v.loops, v.reach)?
+        };
         let same = s.lmax.to_bits() == v.lmax.to_bits()
             && s.knots.len() == v.knots.len()
             && s.knots
@@ -229,6 +251,28 @@ pub fn levels_hausdorff_bound(a: &[Vec<Vec2>], b: &[Vec<Vec2>]) -> f32 {
     one(a, b).law_max(one(b, a))
 }
 
+/// Per-interval bounds `L_i` on `[y_i, y_{i+1}]` (index 1 ..= n−3, the others 0)
+fn interval_bounds(levels: &[f32], loops: &[Vec<Vec<Vec2>>]) -> Vec<f32> {
+    let n = levels.len();
+    let hs: Vec<f32> = (0..n - 1)
+        .map(|j| levels_hausdorff_bound(&loops[j], &loops[j + 1]))
+        .collect();
+    // per-interval bounds on [y_i, y_{i+1}], i = 1 .. n−3
+    let mut li = vec![0.0f32; n - 1];
+    for i in 1..n - 2 {
+        let mut worst = 0.0f32;
+        for k in 0..=WEIGHT_SAMPLES {
+            let (w, wd) = hermite(levels, i, k as f32 / WEIGHT_SAMPLES as f32);
+            let s: f32 = w.iter().map(|x| x.abs()).sum();
+            let (c0, c1, c2) = (-wd[0], -(wd[0] + wd[1]), -(wd[0] + wd[1] + wd[2]));
+            let a = c0.abs() * hs[i - 1] + c1.abs() * hs[i] + c2.abs() * hs[i + 1];
+            worst = worst.law_max((s * s + a * a).sqrt());
+        }
+        li[i] = worst;
+    }
+    li
+}
+
 impl SmoothSectionStack {
     /// A stack from its levels and loops, with the near-field radius `r0` (> 0) and the knot slope
     /// limit `eps` (0 < ε < 1); Err on degenerate input
@@ -293,22 +337,7 @@ impl SmoothSectionStack {
                 }
             }
         }
-        let hs: Vec<f32> = (0..n - 1)
-            .map(|j| levels_hausdorff_bound(&loops[j], &loops[j + 1]))
-            .collect();
-        // per-interval bounds on [y_i, y_{i+1}], i = 1 .. n−3
-        let mut li = vec![0.0f32; n - 1];
-        for i in 1..n - 2 {
-            let mut worst = 0.0f32;
-            for k in 0..=WEIGHT_SAMPLES {
-                let (w, wd) = hermite(&levels, i, k as f32 / WEIGHT_SAMPLES as f32);
-                let s: f32 = w.iter().map(|x| x.abs()).sum();
-                let (c0, c1, c2) = (-wd[0], -(wd[0] + wd[1]), -(wd[0] + wd[1] + wd[2]));
-                let a = c0.abs() * hs[i - 1] + c1.abs() * hs[i] + c2.abs() * hs[i + 1];
-                worst = worst.law_max((s * s + a * a).sqrt());
-            }
-            li[i] = worst;
-        }
+        let li = interval_bounds(&levels, &loops);
         let lmax = li.iter().fold(0.0f32, |a, &b| a.law_max(b));
         let mut knots: Vec<f32> = (0..n)
             .map(|i| li[i.saturating_sub(1).max(1).min(n - 3)].law_max(li[i.max(1).min(n - 3)]))
@@ -331,7 +360,76 @@ impl SmoothSectionStack {
             lmax,
             r0,
             eps,
+            reach: 0.0,
+            slope: 1.0,
         })
+    }
+
+    /// A stack with the local bound: knot `i` is the largest per-interval bound over the intervals
+    /// that meet `[y_{i−1} − reach, y_{i+1} + reach]`, so for `y` in `[y_i, y_{i+1}]` both knots bound
+    /// the field's slope on the ball of radius `reach` around the point; the value is
+    /// `clamp(f / L(y), −reach, reach)` (never more than the distance to the surface, the distance's
+    /// own scale where the levels change slowly nearby). Err on degenerate input or `reach` ≤ 0
+    pub fn new_local(
+        levels: Vec<f32>,
+        loops: Vec<Vec<Vec<Vec2>>>,
+        reach: f32,
+    ) -> Result<Self, String> {
+        if !(reach.is_finite() && reach > 0.0) {
+            return Err("smooth section stack: reach must be > 0".into());
+        }
+        let base = Self::new(levels, loops, reach, 0.5)?;
+        let n = base.levels.len();
+        let y = &base.levels;
+        let li = interval_bounds(y, &base.loops);
+        let mut knots = vec![0.0f32; n];
+        for (i, kn) in knots.iter_mut().enumerate() {
+            let lo = y[i.saturating_sub(1)] - reach;
+            let hi = y[(i + 1).min(n - 1)] + reach;
+            for k in 1..n - 2 {
+                if y[k + 1] >= lo && y[k] <= hi {
+                    *kn = kn.law_max(li[k]);
+                }
+            }
+        }
+        // neighbouring knots differ by at most K · D / s (s = reach / 3): |L'| / L stays ≤ 1 / s, so the
+        // f · L' / L² part of the gradient is at most |f / L| / s near the surface (no visible step in
+        // the shading where the levels' bounds jump), while a large bound spreads only ~s per e-fold
+        let sm = reach / 3.0;
+        for _ in 0..2 * n {
+            for i in 0..n - 1 {
+                let lim = knots[i].law_min(knots[i + 1]) * (y[i + 1] - y[i]) / sm;
+                if knots[i + 1] < knots[i] - lim {
+                    knots[i + 1] = knots[i] - lim;
+                }
+                if knots[i] < knots[i + 1] - lim {
+                    knots[i] = knots[i + 1] - lim;
+                }
+            }
+        }
+        let mut slope = 1.0f32;
+        for i in 1..n - 2 {
+            let dk = (knots[i + 1] - knots[i]).abs() / (y[i + 1] - y[i]);
+            slope = slope.law_max(1.0 + reach * dk / knots[i].law_min(knots[i + 1]));
+        }
+        Ok(Self {
+            knots,
+            reach,
+            slope,
+            ..base
+        })
+    }
+
+    /// The local bound's reach (0 for the knot-smoothing bound)
+    #[must_use]
+    pub fn reach(&self) -> f32 {
+        self.reach
+    }
+
+    /// The field's slope claim (1 for the knot-smoothing bound)
+    #[must_use]
+    pub fn slope_claim(&self) -> f32 {
+        self.slope
     }
 
     /// The bound's knots at the levels
@@ -368,7 +466,12 @@ impl SmoothSectionStack {
         for (k, wk) in w.iter().enumerate() {
             f += wk * sdf_spline_loops_2d(q, &self.loops[i - 1 + k]);
         }
-        let l = ((1.0 - t) * self.knots[i] + t * self.knots[i + 1]) * (1.0 + 2.0 * self.eps);
+        let e = if self.reach > 0.0 {
+            1.0
+        } else {
+            1.0 + 2.0 * self.eps
+        };
+        let l = ((1.0 - t) * self.knots[i] + t * self.knots[i + 1]) * e;
         (f, l)
     }
 
@@ -379,7 +482,9 @@ impl SmoothSectionStack {
         let q = Vec2::new(p.x, p.z);
         let (f, l) = self.raw(p.y, q);
         let lfar = self.lmax * (1.0 + 2.0 * self.eps);
-        let d2 = if f.abs() <= self.r0 * l {
+        let d2 = if self.reach > 0.0 {
+            (f / l).law_max(-self.reach).law_min(self.reach)
+        } else if f.abs() <= self.r0 * l {
             f / l
         } else {
             f.signum() * (self.r0 + (f.abs() - self.r0 * l) / lfar)
@@ -659,5 +764,149 @@ mod tests {
             );
             assert_eq!(a.eval(p).to_bits(), b.eval(p).to_bits());
         }
+    }
+
+    // oracle (closed form): a constant stack of one circle with the local bound is the circle extruded
+    // and capped, in units of the knot L (constant here), clamped to ±reach: compared where the
+    // unclamped and the clamped values are both seen
+    #[test]
+    fn a_local_constant_stack_is_the_clamped_extruded_circle() {
+        let lp = circle(1.0, Vec2::ZERO, 32);
+        let reach = 0.3;
+        let st =
+            SmoothSectionStack::new_local(vec![0.0, 1.0, 2.0, 3.0, 4.0], vec![vec![lp]; 5], reach)
+                .unwrap();
+        let l = st.knots()[2];
+        assert!(
+            st.knots().iter().all(|&k| k == l),
+            "constant stack, constant knots {:?}",
+            st.knots()
+        );
+        let (mut n, mut clamped) = (0, 0);
+        for &(x, z) in &[
+            (0.0f32, 0.0f32),
+            (0.5, 0.2),
+            (0.9, 0.1),
+            (1.1, -0.1),
+            (1.4, -0.3),
+            (0.0, 1.9),
+        ] {
+            for &y in &[0.5f32, 1.5, 2.3, 3.6] {
+                let dc = (x * x + z * z).sqrt() - 1.0;
+                let dw = (1.0 - y).max(y - 3.0);
+                let a = (dc / l).clamp(-reach, reach);
+                let want = a.max(dw).min(0.0) + Vec2::new(a.max(0.0), dw.max(0.0)).length();
+                let got = st.eval(Vec3::new(x, y, z));
+                assert!(
+                    (got - want).abs() < 4e-3 / l,
+                    "({x}, {y}, {z}): got {got} want {want}"
+                );
+                if (dc / l).abs() > reach {
+                    clamped += 1;
+                }
+                n += 1;
+            }
+        }
+        assert!(n == 24 && clamped >= 4, "compared {n}, clamped {clamped}");
+    }
+
+    /// Zero-set samples of `f`: bisection on every sign change along lines in x and lines in y (steps
+    /// of `h` across, `h / 4` along), over the box `xs` × `ys` × `zs`
+    fn zero_set(
+        f: &dyn Fn(Vec3) -> f32,
+        ys: (f32, f32),
+        xs: (f32, f32),
+        zs: (f32, f32),
+        h: f32,
+    ) -> Vec<Vec3> {
+        let mut out = Vec::new();
+        let steps = |a: f32, b: f32| ((b - a) / h).round() as usize;
+        // one line from p0 along unit axis `dir` over `len`
+        let mut line = |p0: Vec3, dir: Vec3, len: f32| {
+            let n = (len / h).round() as usize * 4;
+            let mut prev = (0.0f32, f(p0));
+            for k in 1..=n {
+                let t = k as f32 * h / 4.0;
+                let v = f(p0 + dir * t);
+                if (v < 0.0) != (prev.1 < 0.0) {
+                    let (mut a, mut b) = (prev.0, t);
+                    for _ in 0..30 {
+                        let m = 0.5 * (a + b);
+                        if (f(p0 + dir * m) < 0.0) == (prev.1 < 0.0) {
+                            a = m
+                        } else {
+                            b = m
+                        }
+                    }
+                    out.push(p0 + dir * (0.5 * (a + b)));
+                }
+                prev = (t, v);
+            }
+        };
+        for iz in 0..=steps(zs.0, zs.1) {
+            let z = zs.0 + iz as f32 * h;
+            for iy in 0..=steps(ys.0, ys.1) {
+                line(
+                    Vec3::new(xs.0, ys.0 + iy as f32 * h, z),
+                    Vec3::X,
+                    xs.1 - xs.0,
+                );
+            }
+            for ix in 0..=steps(xs.0, xs.1) {
+                line(
+                    Vec3::new(xs.0 + ix as f32 * h, ys.0, z),
+                    Vec3::Y,
+                    ys.1 - ys.0,
+                );
+            }
+        }
+        out
+    }
+
+    // oracle (the sphere-tracing contract, independent of the bound's formula): |value| never exceeds
+    // the distance to the field's own zero set (sampled by bisection; the sampling gap is added). The
+    // stack flares at one level (radius 0.5 → 1.5 → 0.5 over one level spacing of 0.1, a thin disc at
+    // y ≈ 1.2), so below and above the disc, within the reach but outside the knots' own intervals, the plain
+    // cylinder's value would overshoot the distance up to the disc: the knots must take the disc's
+    // interval bounds over the reach
+    #[test]
+    fn a_local_stack_never_gives_more_than_the_distance_beside_a_bulge() {
+        let levels: Vec<f32> = (0..25).map(|i| 0.1 * i as f32).collect();
+        let loops: Vec<Vec<Vec<Vec2>>> = (0..25)
+            .map(|i| vec![circle(if i == 12 { 1.5 } else { 0.5 }, Vec2::ZERO, 24)])
+            .collect();
+        let reach = 0.5;
+        let st = SmoothSectionStack::new_local(levels, loops, reach).unwrap();
+        let f = |p: Vec3| st.eval(p);
+        let h = 0.01;
+        let zs = zero_set(&f, (0.1, 2.3), (-2.0, 2.0), (-0.02, 0.02), h);
+        assert!(zs.len() > 300, "zero-set samples {}", zs.len());
+        let gap = h * 1.5;
+        let (mut n, mut tight) = (0, 0);
+        // two bands: below the disc (y 0.62 ..= 1.1) and above it (1.3 ..= 1.78)
+        for iy in 0..30 {
+            for ix in 0..30 {
+                let y = if iy < 15 {
+                    0.62 + 0.48 * iy as f32 / 14.0
+                } else {
+                    1.3 + 0.48 * (iy - 15) as f32 / 14.0
+                };
+                let p = Vec3::new(0.6 + 1.0 * ix as f32 / 29.0, y, 0.0);
+                let v = f(p);
+                let d = zs
+                    .iter()
+                    .map(|z| (*z - p).length())
+                    .fold(f32::INFINITY, f32::min);
+                assert!(
+                    v.abs() <= d + gap,
+                    "p {p}: value {v}, distance to the zero set {d}"
+                );
+                if v.abs() > 0.5 * d && d > 0.05 {
+                    tight += 1;
+                }
+                n += 1;
+            }
+        }
+        assert!(n == 900 && tight > 50, "compared {n}, tight {tight}");
     }
 }

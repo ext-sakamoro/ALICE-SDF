@@ -20,6 +20,8 @@ use crate::primitives::SmoothSectionStack;
 pub(crate) fn flatten(st: &SmoothSectionStack) -> Vec<f32> {
     let n = st.levels.len();
     let (lmax, r0, eps) = st.shader_params();
+    // the local bound is carried as eps = −reach (eps is in (0, 1) otherwise)
+    let eps = if st.reach() > 0.0 { -st.reach() } else { eps };
     let mut out = vec![n as f32, lmax, r0, eps];
     out.extend_from_slice(&st.levels);
     out.extend_from_slice(st.knots());
@@ -51,7 +53,16 @@ fn template(name: &str, arr: &str, flat: &[f32]) -> String {
     let (lv, kn, ds) = (4, 4 + n, 4 + 2 * n);
     let lfar = lit(flat[1] * (1.0 + 2.0 * flat[3]));
     let r0 = lit(flat[2]);
-    let e2 = lit(1.0 + 2.0 * flat[3]);
+    let local = flat[3] < 0.0;
+    let e2 = lit(if local { 1.0 } else { 1.0 + 2.0 * flat[3] });
+    let clampline = if local {
+        let r = lit(-flat[3]);
+        format!("d2 = min(max(d2, -{r}), {r});")
+    } else {
+        format!(
+            "if (abs(f) > {r0} * l) {{ d2 = sign(f) * ({r0} + (abs(f) - {r0} * l) / {lfar}); }}"
+        )
+    };
     let (y1, yl) = (lit(flat[lv + 1]), lit(flat[lv + n - 2]));
     // the loops' constant trip counts: the most loops on a level and the most control points in a
     // loop (the data's counts stop the loops earlier; bad data cannot run them past these)
@@ -157,7 +168,7 @@ fn {name}(p: V3) -> F {{
     f = f + (h11 * a2) * {name}_lvl(i + 2, q);
     var l: F = ((1.0 - t) * {arr}[{kn} + i @ {kn1}..{knn3}] + t * {arr}[{kn} + i + 1 @ {kn2}..{knn2}]) * {e2};
     var d2: F = f / l;
-    if (abs(f) > {r0} * l) {{ d2 = sign(f) * ({r0} + (abs(f) - {r0} * l) / {lfar}); }}
+    {clampline}
     var dw: F = max({y1} - p.y, p.y - {yl});
     var ow: V2 = V2(max(d2, 0.0), max(dw, 0.0));
     return min(max(d2, dw), 0.0) + length(ow);

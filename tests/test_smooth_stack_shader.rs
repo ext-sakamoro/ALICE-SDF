@@ -30,6 +30,17 @@ fn circle(r: f32, c: Vec2, m: usize) -> Vec<Vec2> {
 }
 
 fn split_stack() -> SdfNode {
+    let (levels, loops) = split_data();
+    SdfNode::smooth_section_stack(levels, loops, 0.01, 0.1).expect("a valid stack")
+}
+
+/// The same stack with the local bound over a reach of 0.05 (the clamp in the emit)
+fn split_stack_local() -> SdfNode {
+    let (levels, loops) = split_data();
+    SdfNode::smooth_section_stack_local(levels, loops, 0.05).expect("a valid stack")
+}
+
+fn split_data() -> (Vec<f32>, Vec<Vec<Vec<Vec2>>>) {
     let levels: Vec<f32> = (0..8).map(|i| -0.35 + 0.1 * i as f32).collect();
     let loops: Vec<Vec<Vec<Vec2>>> = levels
         .iter()
@@ -45,13 +56,14 @@ fn split_stack() -> SdfNode {
             }
         })
         .collect();
-    SdfNode::smooth_section_stack(levels, loops, 0.01, 0.1).expect("a valid stack")
+    (levels, loops)
 }
 
 fn trees() -> Vec<(&'static str, SdfNode)> {
     let st = split_stack();
     vec![
         ("stack", st.clone()),
+        ("stack_local", split_stack_local()),
         (
             "stack_rotated",
             st.clone()
@@ -97,7 +109,7 @@ fn the_stack_transpiles_to_valid_wgsl() {
         validate(&module).unwrap_or_else(|e| panic!("{name}: WGSL validation: {e}"));
         n += 1;
     }
-    assert_eq!(n, 3, "every tree validated");
+    assert_eq!(n, 4, "every tree validated");
 }
 
 #[cfg(feature = "glsl")]
@@ -123,7 +135,7 @@ fn the_stack_transpiles_to_valid_glsl() {
         validate(&module).unwrap_or_else(|e| panic!("{name}: GLSL validation: {e}"));
         n += 1;
     }
-    assert_eq!(n, 3, "every tree validated");
+    assert_eq!(n, 4, "every tree validated");
 }
 
 #[cfg(feature = "gpu")]

@@ -179,6 +179,24 @@ fn scenes() -> Vec<(&'static str, SdfNode)> {
         0.1,
     )
     .expect("smooth stack");
+    let smooth_local = SdfNode::smooth_section_stack_local(
+        levels.clone(),
+        levels
+            .iter()
+            .map(|&y| {
+                if y < 0.0 {
+                    vec![circle(0.3, Vec2::ZERO, 12)]
+                } else {
+                    vec![
+                        circle(0.16, Vec2::new(-0.2, 0.0), 8),
+                        circle(0.16, Vec2::new(0.2, 0.0), 8),
+                    ]
+                }
+            })
+            .collect(),
+        0.05,
+    )
+    .expect("local smooth stack");
     let stack = SdfNode::section_stack(
         vec![0.0, 0.2, 0.4, 0.6],
         [0.0f32, 0.2, 0.4, 0.6]
@@ -227,6 +245,7 @@ fn scenes() -> Vec<(&'static str, SdfNode)> {
     .expect("capped polar loft");
     vec![
         ("smooth_stack", smooth),
+        ("smooth_stack_local", smooth_local),
         ("section_stack", stack),
         ("curve_loft", curves),
         ("polar_loft", polar),

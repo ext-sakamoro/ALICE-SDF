@@ -46,6 +46,52 @@ fn a_stored_stack_loads_back_equal() {
     );
 }
 
+fn local_stack() -> SdfNode {
+    let levels: Vec<f32> = (0..7).map(|i| -0.3 + 0.1 * i as f32).collect();
+    let loops = levels
+        .iter()
+        .map(|&y| vec![circle(0.2 + 0.1 * y, Vec2::new(0.05 * y, 0.0), 10)])
+        .collect();
+    SdfNode::smooth_section_stack_local(levels, loops, 0.05).expect("a valid stack")
+}
+
+#[test]
+fn a_stack_with_no_reach_is_stored_as_before() {
+    let mut v = serde_json::to_value(stack()).expect("serialise");
+    assert!(!body(&mut v).contains_key("reach"));
+    assert_eq!(body(&mut v).len(), 6, "levels, loops, knots, lmax, r0, eps");
+}
+
+#[test]
+fn a_local_stack_loads_back_equal_with_the_same_field() {
+    let s = local_stack();
+    let v = serde_json::to_value(&s).expect("serialise");
+    let back = load(&v).expect("a stack as built loads");
+    let SdfNode::SmoothSectionStack(st) = &back else {
+        panic!("a stack")
+    };
+    assert!(st.reach() > 0.0 && st.slope_claim() >= 1.0);
+    assert_eq!(serde_json::to_value(&back).expect("serialise"), v);
+    for i in 0..64 {
+        let p = Vec3::new(0.01 * i as f32 - 0.3, 0.007 * i as f32 - 0.2, 0.1);
+        assert_eq!(
+            alice_sdf::eval::eval(&s, p).to_bits(),
+            alice_sdf::eval::eval(&back, p).to_bits()
+        );
+    }
+}
+
+#[test]
+fn a_changed_or_bad_reach_is_refused_on_load() {
+    let mut v = serde_json::to_value(local_stack()).expect("serialise");
+    for bad in [0.1, -0.05, 0.0] {
+        body(&mut v).insert("reach".into(), serde_json::json!(bad));
+        assert!(load(&v).is_err(), "reach {bad} loaded");
+    }
+    body(&mut v).remove("reach");
+    assert!(load(&v).is_err(), "local knots without a reach loaded");
+}
+
 #[test]
 fn a_smaller_stored_lmax_is_refused() {
     let mut v = serde_json::to_value(stack()).expect("serialise");

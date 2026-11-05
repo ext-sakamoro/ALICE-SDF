@@ -864,7 +864,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         // divided by its own Lipschitz bound at construction: 1-Lipschitz
         SdfNode::SectionStack(_) => ia_lipschitz(node, bounds, 1.0),
         // divided by its own local Lipschitz bound at construction: 1-Lipschitz
-        SdfNode::SmoothSectionStack(_) => ia_lipschitz(node, bounds, 1.0),
+        SdfNode::SmoothSectionStack(st) => ia_lipschitz(node, bounds, st.slope_claim()),
         // the field is already divided by its bound: 1-Lipschitz
         SdfNode::Loft { .. } | SdfNode::LoftCurves { .. } => ia_lipschitz(node, bounds, 1.0),
         SdfNode::RoundedRect2D { .. } | SdfNode::Annular2D { .. } => {
@@ -1608,8 +1608,8 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
     match node {
         // Exact SDFs (|∇f| = 1 almost everywhere, L = 1); a section stack is divided by its own
         // bound at construction, so it is 1-Lipschitz
+        SdfNode::SmoothSectionStack(st) => st.slope_claim(),
         SdfNode::SectionStack(_)
-        | SdfNode::SmoothSectionStack(_)
         | SdfNode::Sphere { .. }
         | SdfNode::Box3d { .. }
         | SdfNode::Cylinder { .. }

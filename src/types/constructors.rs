@@ -37,6 +37,22 @@ impl SdfNode {
             .map(Self::SmoothSectionStack)
     }
 
+    /// [`Self::smooth_section_stack`] with the local bound over `reach`
+    /// ([`crate::primitives::SmoothSectionStack::new_local`]): the steps follow the levels near the
+    /// point instead of the stack's largest bound, the value is clamped to `±reach`
+    ///
+    /// # Errors
+    ///
+    /// Degenerate input or `reach` ≤ 0
+    pub fn smooth_section_stack_local(
+        levels: Vec<f32>,
+        loops: Vec<Vec<Vec<Vec2>>>,
+        reach: f32,
+    ) -> Result<Self, String> {
+        crate::primitives::SmoothSectionStack::new_local(levels, loops, reach)
+            .map(Self::SmoothSectionStack)
+    }
+
     /// Create an axis-aligned box with the given **full** dimensions
     /// (`width` × `height` × `depth`; the node stores half of each).
     ///
