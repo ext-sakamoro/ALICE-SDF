@@ -702,7 +702,7 @@ fn contraction_budget(p: Vec3, k: f32, ring_r: f32, v_twist: f32) -> f32 {
 /// a = b = 1 + 2⁻¹² and c = −(1 + 2⁻¹¹) two roundings give 0 and one gives 2⁻²⁴ (the
 /// discriminator of `tests/test_gpu_fma_contraction.rs`), or fuses inside a builtin depending on
 /// what else the shader computes: `length(p.xz)` next to `length(p)` shares `x * x`, which gave
-/// other bits at 117 of 1024 points on a driver that fuses. `None` without a GPU
+/// other bits at 428 of 4096 points on a driver that fuses. `None` without a GPU
 #[cfg(feature = "gpu")]
 fn gpu_fuses_a_multiply_add() -> Option<bool> {
     use alice_sdf::compiled::GpuEvaluator;

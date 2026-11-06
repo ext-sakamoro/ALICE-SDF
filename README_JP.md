@@ -114,7 +114,7 @@ CPU の評価器 (木の評価器、コンパイル済みスカラー、8 幅 SI
 | `tests/test_gpu_law_parity.rs` | WGSL を CPU と許容誤差内で比較、`atan2` の軸上の値は厳密に一致 | Linux、ソフトウェア Vulkan (lavapipe) |
 <!-- claim-test: tree_evaluator_bits_match_recorded_hashes -->
 
-**GPU** GPU の値は CPU に対して許容差の領域で、bit 一致ではない (`sqrt` / `sin` / `cos` は driver のもの) driver に止めさせるのは `a * b + c` の融合で、同じ shader は他に何を計算していても同じ bit を返す `gpu_context::contraction(path, backend)` と `GpuEvaluator::contraction()` が経路ごとに答えるので、これが要る結果は確かめて拒否できる
+**GPU** GPU の値は CPU に対して許容差の領域で、bit 一致ではない (和と積は一致するが、除算 / `sqrt` / `sin` / `cos` は driver のもの) driver に止めさせるのは `a * b + c` の融合で、同じ shader は他に何を計算していても同じ bit を返す `gpu_context::contraction(path, backend)` と `GpuEvaluator::contraction()` が経路ごとに答えるので、これが要る結果は確かめて拒否できる
 
 | 経路 | Vulkan | Metal | DX12, GL | browser |
 |------|--------|-------|----------|---------|

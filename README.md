@@ -120,7 +120,7 @@ in the evaluator and law directories.
 <!-- claim-test: tree_evaluator_bits_match_recorded_hashes -->
 
 **GPU.** A GPU's values are a tolerance domain against the CPU, not bit-equal to
-it: sums and products match, but its `sqrt`, `sin` and `cos` are the driver's. What
+it: sums and products match, but its division, `sqrt`, `sin` and `cos` are the driver's. What
 the driver is kept from doing is fusing `a * b + c`, so one shader gives the same
 bits whatever else it computes. `gpu_context::contraction(path, backend)` and
 `GpuEvaluator::contraction()` answer for each path, so a result that needs this can

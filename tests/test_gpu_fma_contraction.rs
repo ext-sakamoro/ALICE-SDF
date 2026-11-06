@@ -20,7 +20,7 @@
 //!
 //! A driver also fuses inside a builtin, and whether it does depends on what else the shader
 //! computes: `length(p.xz)` next to `length(p)` shares `x * x`. Measured on Vulkan before the
-//! builtins were written out: 79 to 353 of 4096 values differ, by the builtin. So the second test
+//! builtins were written out: 259 to 1330 of 4096 values differ, by the builtin. So the second test
 //! compares each builtin alone with the same builtin in such a shader, and with its written-out
 //! form.
 //!
@@ -190,18 +190,20 @@ fn a_builtin_does_not_depend_on_what_else_the_shader_computes() {
 #[test]
 fn the_answer_per_path_and_backend() {
     use alice_sdf::gpu_context::{contraction, Contraction, GpuPath};
-    use wgpu::Backend;
     for path in [GpuPath::Evaluator, GpuPath::WgpuShader] {
-        assert_eq!(contraction(path, Backend::Vulkan), Contraction::Forbidden);
-        assert_eq!(contraction(path, Backend::Dx12), Contraction::Refused);
-        assert_eq!(contraction(path, Backend::Gl), Contraction::Refused);
         assert_eq!(
-            contraction(path, Backend::BrowserWebGpu),
+            contraction(path, wgpu::Backend::Vulkan),
+            Contraction::Forbidden
+        );
+        assert_eq!(contraction(path, wgpu::Backend::Dx12), Contraction::Refused);
+        assert_eq!(contraction(path, wgpu::Backend::Gl), Contraction::Refused);
+        assert_eq!(
+            contraction(path, wgpu::Backend::BrowserWebGpu),
             Contraction::NotControlled
         );
     }
     assert_eq!(
-        contraction(GpuPath::WgpuShader, Backend::Metal),
+        contraction(GpuPath::WgpuShader, wgpu::Backend::Metal),
         Contraction::NotControlled
     );
     let metal_evaluator = if cfg!(target_os = "macos") {
@@ -210,7 +212,7 @@ fn the_answer_per_path_and_backend() {
         Contraction::NotControlled
     };
     assert_eq!(
-        contraction(GpuPath::Evaluator, Backend::Metal),
+        contraction(GpuPath::Evaluator, wgpu::Backend::Metal),
         metal_evaluator
     );
 }
