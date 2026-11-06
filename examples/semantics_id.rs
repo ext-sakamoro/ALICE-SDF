@@ -8,7 +8,7 @@
 
 use alice_sdf::semantics::{sdf_semantics_id_for, MAX_MIN_RULE, MUL_ADD_RULE, SDF_SEMANTICS_PINS};
 use alice_sdf::{
-    check_sdf_semantics, PREVIOUS_SDF_SEMANTICS_IDS, SDF_SEMANTICS_BY_DET_MATH, SDF_SEMANTICS_ID,
+    check_sdf_semantics, SDF_SEMANTICS_BY_DET_MATH, SDF_SEMANTICS_ID, SDF_SEMANTICS_MOVED_LAWS,
 };
 
 fn hex(b: &[u8; 32]) -> String {
@@ -35,7 +35,7 @@ fn main() {
     }
 
     // a stored identifier, as a reader would find it next to the data
-    for stored in [SDF_SEMANTICS_ID, PREVIOUS_SDF_SEMANTICS_IDS[0], [0u8; 32]] {
+    for stored in [SDF_SEMANTICS_ID, SDF_SEMANTICS_MOVED_LAWS[0].0, [0u8; 32]] {
         let check = check_sdf_semantics(&stored);
         println!(
             "{} -> {check:?} (reproducible: {})",

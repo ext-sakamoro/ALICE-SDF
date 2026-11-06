@@ -3402,13 +3402,13 @@ fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
 // paint tool would write it (no identifier), and the heightmap writer's output for it:
 //   heightmap_plain.png    34151b0d0efbd9f7fa65ccc76299d474e00ad48ddfe2b40ecfed7916f0db8098
 //   heightmap_plain.jpg    3b8303187e7a141798d8c3a8c72b26da9795da077b87fcc00856a717afc7dbcd
-//   heightmap_stamped.png  69be34438c12facb7a072677481f8131ff59676a77c4a4922673abb65b7e1ceb
+//   heightmap_stamped.png  5059c5ebd00fab848615ed4b35d9acfb8d4f40215029e8ea3ef1398bad273eb9
 //                          Heightmap::from_image_bytes(plain.png, &HeightmapImageConfig::new(
 //                          40.0, 16.0, 12.0)).to_png(..) (16-bit grey, the identifier in tEXt)
 //   heightmap_stamped_ad04549c.png
 //                          e13af87f802f9dde3dbb1af755b841ee15f3eb2946cf02c05bdd362a179b2308
-//                          the same written by the build whose identifier was ad04549c…, now a
-//                          previous identifier (read as VerifiedPrevious)
+//                          the same written by the build whose identifier was ad04549c…, refused
+//                          since the distance laws moved (an image has no tree to look at)
 // ---------------------------------------------------------------------------------------------
 
 /// The CRC-32 of a PNG chunk (its type and data), for building malformed images in the tests
@@ -3542,19 +3542,21 @@ fn heightmap_images_carry_and_check_the_identifier() {
     std::fs::remove_file(&path).ok();
     assert_eq!(pinned.heights, back.heights);
 
-    // the same image written under the previous identifier ad04549c… (the build before the grid
-    // warp and pose golden rows) reads as VerifiedPrevious with the same heights
+    // the same image written under ad04549c…, before the distance laws moved: an image has no tree
+    // to show it used none of them, so it is refused; the shared judge given that identifier reads it
     let previous = std::fs::read(fixture("heightmap_stamped_ad04549c.png")).unwrap();
-    let (old, status) = Heightmap::from_image_bytes(&previous, &cfg)
-        .unwrap()
-        .into_parts();
+    assert!(matches!(
+        Heightmap::from_image_bytes(&previous, &cfg).err(),
+        Some(io::IoError::SemanticsMismatch { .. } | io::IoError::MeaningMismatch { .. })
+    ));
+    let (stored, _) = alice_sdf::SDF_SEMANTICS_MOVED_LAWS[1];
     assert_eq!(
-        status,
-        StoredSemantics::VerifiedPrevious(Provenance::new(
-            alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]
-        ))
+        provenance::from_bytes(&previous)
+            .unwrap()
+            .judge(&Provenance::sdf(), &[stored])
+            .unwrap(),
+        StoredSemantics::VerifiedPrevious(Provenance::new(stored))
     );
-    assert_eq!(old.heights, back.heights);
 
     // an earlier identifier this build no longer reproduces is refused (the shared judge given
     // it reads it as VerifiedPrevious); another is refused, naming both
