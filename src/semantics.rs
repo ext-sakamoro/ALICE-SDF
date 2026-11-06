@@ -179,6 +179,37 @@ pub const SDF_SEMANTICS_MOVED_LAWS: &[([u8; 32], &[&str])] = &[
     ),
 ];
 
+/// The nodes (their tags in the serialized tree) the golden table gained with the lofts: no build under an
+/// earlier identifier could have computed them
+pub const SDF_NODES_ADDED_WITH_LOFTS: &[&str] =
+    &["Loft", "LoftCurves", "SectionStack", "SmoothSectionStack"];
+
+/// The same for an identifier from before the grid warp and the pose as well
+pub const SDF_NODES_ADDED_WITH_WARP_AND_LOFTS: &[&str] = &[
+    "GridWarp",
+    "Loft",
+    "LoftCurves",
+    "Pose",
+    "SectionStack",
+    "SmoothSectionStack",
+];
+
+/// Earlier identifiers a stored tree may be read under, with the nodes that did not exist there
+///
+/// A stamp says which build computed a tree, so a tree holding a node its build did not have was not
+/// computed by that build, whatever else it holds: it is refused (`IoError::NodeAfterIdentifier`). A node
+/// added later gets into every row here (`tests/test_stored_tree_moved_laws.rs` fails until it does).
+pub const SDF_SEMANTICS_ABSENT_NODES: &[([u8; 32], &[&str])] = &[
+    (
+        hex32("0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f79d2f6b69a4"),
+        SDF_NODES_ADDED_WITH_LOFTS,
+    ),
+    (
+        hex32("ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f642257da4938"),
+        SDF_NODES_ADDED_WITH_WARP_AND_LOFTS,
+    ),
+];
+
 /// The entries of `laws` the tree uses, found by the node tags of its serialized form (so a node nested in
 /// any transform, modifier or container counts, and no list of variants has to follow new nodes)
 pub fn moved_laws_in(tree: &crate::types::SdfTree, laws: &[&'static str]) -> Vec<&'static str> {

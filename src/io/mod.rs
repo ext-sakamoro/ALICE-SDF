@@ -164,6 +164,18 @@ pub enum IoError {
         laws: Vec<&'static str>,
     },
 
+    /// A stored tree holds a node that did not exist under its identifier, so that build did not compute
+    /// it (see [`crate::SDF_SEMANTICS_ABSENT_NODES`]); rebuild the tree from its source
+    #[error("{format}: stamped {stored}, and that build had no such nodes: {nodes:?}")]
+    NodeAfterIdentifier {
+        /// The format read
+        format: &'static str,
+        /// The identifier in the file
+        stored: crate::provenance::Provenance,
+        /// The nodes of the tree that build did not have
+        nodes: Vec<&'static str>,
+    },
+
     /// The file carries no semantics identifier (written before identifiers were stored, or by
     /// another program); read it with the `*_unverified` loader, or a mesh with the default
     /// importer (not `*_pinned`), to get it marked as such

@@ -1320,6 +1320,8 @@ pub(crate) enum TreeGate {
     IfAbsent {
         stored: [u8; 32],
         laws: &'static [&'static str],
+        /// The nodes that build did not have
+        newer: &'static [&'static str],
     },
 }
 
@@ -1332,7 +1334,19 @@ impl TreeGate {
     ) -> Result<StoredSemantics, crate::io::IoError> {
         match self {
             Self::Decided(semantics) => Ok(semantics),
-            Self::IfAbsent { stored, laws } => {
+            Self::IfAbsent {
+                stored,
+                laws,
+                newer,
+            } => {
+                let nodes = crate::semantics::moved_laws_in(tree, newer);
+                if !nodes.is_empty() {
+                    return Err(crate::io::IoError::NodeAfterIdentifier {
+                        format,
+                        stored: Provenance::new(stored),
+                        nodes,
+                    });
+                }
                 let found = crate::semantics::moved_laws_in(tree, laws);
                 if found.is_empty() {
                     Ok(StoredSemantics::VerifiedPrevious(Provenance::new(stored)))
@@ -1361,6 +1375,7 @@ pub(crate) fn sdf_tree_load_gate(
         allow_unpinned,
         crate::PREVIOUS_SDF_SEMANTICS_IDS,
         crate::SDF_SEMANTICS_MOVED_LAWS,
+        crate::SDF_SEMANTICS_ABSENT_NODES,
     )
 }
 
@@ -1370,6 +1385,7 @@ fn sdf_tree_load_gate_against(
     allow_unpinned: bool,
     previous: &[[u8; 32]],
     moved: &'static [([u8; 32], &'static [&'static str])],
+    absent: &'static [([u8; 32], &'static [&'static str])],
 ) -> Result<TreeGate, crate::io::IoError> {
     match sdf_load_verdict_against(stored, format, allow_unpinned, previous) {
         Ok(semantics) => Ok(TreeGate::Decided(semantics)),
@@ -1379,6 +1395,10 @@ fn sdf_tree_load_gate_against(
                 Some((stored, laws)) => Ok(TreeGate::IfAbsent {
                     stored: *stored,
                     laws,
+                    newer: absent
+                        .iter()
+                        .find(|(earlier, _)| earlier == stored)
+                        .map_or(&[], |(_, nodes)| nodes),
                 }),
                 None => Err(refused),
             }
@@ -2529,7 +2549,7 @@ mod tests {
         const EARLIER: [u8; 32] = [0xab; 32];
         const LAWS: &[&str] = crate::SDF_MOVED_LAWS_OVERSTATE_FIX;
         static MOVED: &[([u8; 32], &[&str])] = &[(EARLIER, LAWS)];
-        let gate = |id| sdf_tree_load_gate_against(Some(id), "T", false, &[], MOVED);
+        let gate = |id| sdf_tree_load_gate_against(Some(id), "T", false, &[], MOVED, &[]);
         let tree = |root| SdfTree::new(root);
         let sphere = SdfNode::sphere(1.0);
         let parabola = SdfNode::parabola_segment(0.5, 0.4, 0.2);
@@ -2590,16 +2610,17 @@ mod tests {
                 StoredSemantics::VerifiedPrevious(Provenance::new(EARLIER)),
             ),
         ] {
-            let got = sdf_tree_load_gate_against(Some(id), "T", false, previous, MOVED).unwrap();
+            let got =
+                sdf_tree_load_gate_against(Some(id), "T", false, previous, MOVED, &[]).unwrap();
             assert_eq!(got.settle(&tree(parabola.clone()), "T").unwrap(), want);
         }
         // no identifier follows allow_unpinned as before
         assert!(matches!(
-            sdf_tree_load_gate_against(None, "T", false, &[], MOVED),
+            sdf_tree_load_gate_against(None, "T", false, &[], MOVED, &[]),
             Err(crate::io::IoError::Unpinned { format: "T" })
         ));
         assert_eq!(
-            sdf_tree_load_gate_against(None, "T", true, &[], MOVED).unwrap(),
+            sdf_tree_load_gate_against(None, "T", true, &[], MOVED, &[]).unwrap(),
             TreeGate::Decided(StoredSemantics::Unpinned)
         );
         // the form without a tree has no such rule: the same identifier is refused there

@@ -235,6 +235,7 @@ pub mod eval_cache;
 pub use eval_cache::ExactEvalCache;
 pub use semantics::{
     check_sdf_semantics, moved_laws_in, PREVIOUS_SDF_SEMANTICS_IDS, SDF_MOVED_LAWS_OVERSTATE_FIX,
+    SDF_NODES_ADDED_WITH_LOFTS, SDF_NODES_ADDED_WITH_WARP_AND_LOFTS, SDF_SEMANTICS_ABSENT_NODES,
     SDF_SEMANTICS_BY_DET_MATH, SDF_SEMANTICS_ID, SDF_SEMANTICS_MOVED_LAWS,
 };
 
