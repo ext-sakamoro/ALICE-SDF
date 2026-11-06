@@ -309,7 +309,7 @@ pub fn gpu_marching_cubes_from_shader(
     };
     queue.submit(std::iter::once(encoder.finish()));
 
-    let totals = read_u32_vec(device, &totals_staging, 2)?;
+    let totals = read_u32_vec(&context, &totals_staging, 2)?;
     let (total_indices, total_verts) = (totals[0] as usize, totals[1] as usize);
     if total_indices == 0 {
         return Ok(Mesh {
@@ -348,8 +348,8 @@ pub fn gpu_marching_cubes_from_shader(
                 })
             };
             (
-                upload("Cell Offsets", read_u32_vec(device, c, cell_total)?),
-                upload("Point Offsets", read_u32_vec(device, p, grid_total)?),
+                upload("Cell Offsets", read_u32_vec(&context, c, cell_total)?),
+                upload("Point Offsets", read_u32_vec(&context, p, grid_total)?),
             )
         }
     };
@@ -407,8 +407,8 @@ pub fn gpu_marching_cubes_from_shader(
     encoder.copy_buffer_to_buffer(&index_buffer, 0, &index_staging, 0, index_bytes as u64);
     queue.submit(std::iter::once(encoder.finish()));
 
-    let gpu_verts = read_gpu_vertices(device, &vertex_staging, total_verts)?;
-    let indices = read_u32_vec(device, &index_staging, total_indices)?;
+    let gpu_verts = read_gpu_vertices(&context, &vertex_staging, total_verts)?;
+    let indices = read_u32_vec(&context, &index_staging, total_indices)?;
     let vertices = gpu_verts
         .iter()
         .map(|gv| {
@@ -666,20 +666,16 @@ fn gpu_prefix_sum_recursive(
 
 /// Read a Vec<u32> from a mapped staging buffer
 fn read_u32_vec(
-    device: &wgpu::Device,
+    context: &GpuContext,
     staging: &wgpu::Buffer,
     count: usize,
 ) -> Result<Vec<u32>, GpuError> {
     let slice = staging.slice(..);
-    let (sender, receiver) = futures_channel::oneshot::channel();
+    let (sender, receiver) = std::sync::mpsc::channel();
     slice.map_async(wgpu::MapMode::Read, move |result| {
         let _ = sender.send(result);
     });
-    device.poll(wgpu::Maintain::Wait);
-
-    pollster::block_on(receiver)
-        .map_err(|e| GpuError::BufferMapping(format!("Channel error: {}", e)))?
-        .map_err(|e| GpuError::BufferMapping(format!("Map error: {:?}", e)))?;
+    context.wait_for_mapping(&receiver)?;
 
     let result = {
         let mapped = slice.get_mapped_range();
@@ -700,20 +696,16 @@ fn read_u32_vec(
 
 /// Read GpuVertex array from a mapped staging buffer
 fn read_gpu_vertices(
-    device: &wgpu::Device,
+    context: &GpuContext,
     staging: &wgpu::Buffer,
     count: usize,
 ) -> Result<Vec<GpuVertex>, GpuError> {
     let slice = staging.slice(..);
-    let (sender, receiver) = futures_channel::oneshot::channel();
+    let (sender, receiver) = std::sync::mpsc::channel();
     slice.map_async(wgpu::MapMode::Read, move |result| {
         let _ = sender.send(result);
     });
-    device.poll(wgpu::Maintain::Wait);
-
-    pollster::block_on(receiver)
-        .map_err(|e| GpuError::BufferMapping(format!("Channel error: {}", e)))?
-        .map_err(|e| GpuError::BufferMapping(format!("Map error: {:?}", e)))?;
+    context.wait_for_mapping(&receiver)?;
 
     let result = {
         let mapped = slice.get_mapped_range();

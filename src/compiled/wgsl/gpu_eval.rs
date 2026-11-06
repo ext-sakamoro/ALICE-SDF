@@ -34,28 +34,6 @@ use super::transpiler::WgslShader;
 use crate::gpu_context::{GpuContext, Held};
 use crate::types::SdfNode;
 
-/// How long a read waits for its mapping after `poll` has returned. `poll` runs the mapping callback
-/// itself when the work is done, so only a wait that gave up (wgpu stops at 60 s) gets this far
-const MAP_AFTER_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
-
-/// What a read does with its mapping result after the wait: a result that has not arrived means the
-/// GPU work has not finished, and its output must not be read
-fn mapped_after_wait(
-    result: Result<Result<(), wgpu::BufferAsyncError>, std::sync::mpsc::RecvTimeoutError>,
-) -> Result<(), GpuError> {
-    use std::sync::mpsc::RecvTimeoutError::{Disconnected, Timeout};
-    match result {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(e)) => Err(GpuError::BufferMapping(format!("{e:?}"))),
-        Err(Timeout) => Err(GpuError::BufferMapping(
-            "the GPU work did not finish within the wait: its output is not read".to_string(),
-        )),
-        Err(Disconnected) => Err(GpuError::BufferMapping(
-            "GPU channel closed unexpectedly".to_string(),
-        )),
-    }
-}
-
 /// Bytes past the output for the dispatch marker (the output's stride, so the output stays a whole array)
 const MARKER_BYTES: u64 = 16;
 
@@ -488,9 +466,7 @@ impl WgpuEngine {
             let _ = sender.send(result);
         });
 
-        self.context().device().poll(wgpu::Maintain::Wait);
-
-        mapped_after_wait(receiver.recv_timeout(MAP_AFTER_WAIT))?;
+        self.wait_for_mapping(&receiver)?;
 
         let data = buffer_slice.get_mapped_range();
         let end = output_buffer_size as usize;
@@ -508,6 +484,20 @@ impl WgpuEngine {
     /// still be running, so this engine refuses further work ([`Self::check_usable`]) instead of reading more
     fn check_finished(&self, data: &[u8], end: usize, nonce: u32) -> Result<(), GpuError> {
         let r = dispatch_finished(data, end, nonce);
+        if r.is_err() {
+            self.unusable
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+            self.context().abandon();
+        }
+        r
+    }
+
+    /// [`GpuContext::wait_for_mapping`], and on an error this engine refuses further work
+    fn wait_for_mapping(
+        &self,
+        mapped: &std::sync::mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>,
+    ) -> Result<(), GpuError> {
+        let r = self.context().wait_for_mapping(mapped);
         if r.is_err() {
             self.unusable
                 .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -586,8 +576,7 @@ impl WgpuEngine {
         slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = sender.send(result);
         });
-        self.context().device().poll(wgpu::Maintain::Wait);
-        mapped_after_wait(receiver.recv_timeout(MAP_AFTER_WAIT))?;
+        self.wait_for_mapping(&receiver)?;
         let n = {
             let data = slice.get_mapped_range();
             self.check_finished(&data, 4, nonce)?;
@@ -746,9 +735,7 @@ impl WgpuEngine {
             let _ = sender.send(result);
         });
 
-        self.context().device().poll(wgpu::Maintain::Wait);
-
-        mapped_after_wait(receiver.recv_timeout(MAP_AFTER_WAIT))?;
+        self.wait_for_mapping(&receiver)?;
 
         let data = buffer_slice.get_mapped_range();
         let end = read_size as usize;
@@ -956,21 +943,13 @@ impl WgpuEngine {
 
         // Map buffer asynchronously
         let buffer_slice = staging_buffer.slice(..);
-        let (sender, mut receiver) = futures_channel::oneshot::channel();
+        let (sender, receiver) = std::sync::mpsc::channel();
 
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = sender.send(result);
         });
 
-        // Poll device until mapping is complete
-        self.context().device().poll(wgpu::Maintain::Wait);
-
-        // The mapping result: `poll` has returned, so it is there unless the wait gave up
-        mapped_after_wait(match receiver.try_recv() {
-            Ok(Some(result)) => Ok(result),
-            Ok(None) => Err(std::sync::mpsc::RecvTimeoutError::Timeout),
-            Err(_) => Err(std::sync::mpsc::RecvTimeoutError::Disconnected),
-        })?;
+        self.wait_for_mapping(&receiver)?;
 
         let data = buffer_slice.get_mapped_range();
         let end = output_buffer_size as usize;
@@ -1318,9 +1297,7 @@ impl WgpuEngine {
             let _ = sender.send(result);
         });
 
-        self.context().device().poll(wgpu::Maintain::Wait);
-
-        mapped_after_wait(receiver.recv_timeout(MAP_AFTER_WAIT))?;
+        self.wait_for_mapping(&receiver)?;
 
         let data = buffer_slice.get_mapped_range();
         let end = output_buffer_size as usize;
@@ -1787,6 +1764,20 @@ impl GpuEvaluator {
         }
     }
 
+    /// Set how long a read on this evaluator waits for its GPU work before it returns an error.
+    /// The default is 10 minutes. A first dispatch can take long on a driver that compiles the
+    /// shader there. After that error the evaluator refuses further work and its device is kept for
+    /// the life of the process, because the work may still be running.
+    ///
+    /// The Metal engine waits for its command buffer without a limit, and this does not change it.
+    pub fn set_wait_limit(&self, limit: std::time::Duration) {
+        match &self.engine {
+            Engine::Wgpu(w) => w.context().set_wait_limit(limit),
+            #[cfg(all(feature = "msl", target_vendor = "apple"))]
+            Engine::Metal(_) => {}
+        }
+    }
+
     /// Get information about the GPU being used
     pub fn device_info(&self) -> String {
         match &self.engine {
@@ -2224,19 +2215,6 @@ mod tests {
         assert!(dispatch_finished(&bytes(6), 8, 7).is_err());
         // no room for a marker
         assert!(dispatch_finished(&bytes(7)[..10], 8, 7).is_err());
-    }
-
-    #[test]
-    fn a_read_refuses_output_whose_work_has_not_finished() {
-        use std::sync::mpsc::RecvTimeoutError::{Disconnected, Timeout};
-        assert!(mapped_after_wait(Ok(Ok(()))).is_ok());
-        let e = mapped_after_wait(Err(Timeout)).unwrap_err().to_string();
-        assert!(e.contains("did not finish"), "{e}");
-        let e = mapped_after_wait(Err(Disconnected))
-            .unwrap_err()
-            .to_string();
-        assert!(e.contains("channel closed"), "{e}");
-        assert!(mapped_after_wait(Ok(Err(wgpu::BufferAsyncError))).is_err());
     }
 
     use crate::eval::eval;
