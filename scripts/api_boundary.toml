@@ -25,7 +25,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 798 items (0 Linux-only): 89 handshake, 709 local, 0 pending. Groups (count, decision):
+# 808 items (0 Linux-only): 89 handshake, 719 local, 0 pending. Groups (count, decision):
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: a_file_written_under_another_det_math_is_refused_naming_both_and_the_form
@@ -74,7 +74,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      4  local: the type's field layout, not a stored-form reader; mesh files are read by the importers, which check the identifier, and the library clippy configuration forbids a bare serde read in this crate (scripts/bare_serde_reads.py)
 #      1  local: the type's field layout, not a stored-form reader; it is read only inside the SdfTree loaders, which check the identifier, and no reader in this crate reads it by bare serde (scripts/bare_serde_reads.py)
 #     12  local: authored settings (names, flags, colours, key values, poses) the reader uses as given; none is a value this crate computed under its arithmetic
-#     23  local: writes this crate's own value; stamping the stored file is G8's
+#     24  local: writes this crate's own value; stamping the stored file is G8's
 #      2  local: parses a shader language name
 #     11  local: writes this build's tree or mesh out; stamping the file is G8's
 #      1  local: delegates to io::vdb::bake_to_vdb, which stamps the grid it writes
@@ -101,9 +101,10 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      4  local: writes this build's own state for a snapshot or shape hash
 #      6  handshake: gpu_readers_refuse_without_a_gpu
 #      2  handshake: msl_from_wgsl_checks_the_identifier
-#     38  local: generates shader or source text from a tree of this process
+#     32  local: generates shader or source text from a tree of this process
 #     13  local: generates shader text
-#     30  local: shader text builders over names and expressions
+#     31  local: shader text builders over names and expressions
+#      5  local: builds a node from the caller's numbers in memory and refuses degenerate input by name; no stored or transmitted form is decoded
 #      1  local: returns the GPU adapter's name and backend as text
 #      2  local: compiles a tree of this process to machine code
 #     19  local: names, labels or asset paths of authored settings
@@ -341,6 +342,9 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "impl::Serialize for SdfMetadata" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for SdfNode" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for SdfTree" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for LoftBounds" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for SectionStack" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for SmoothSectionStack" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for TextureSlot" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for Timeline" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for Track" = "local: writes this crate's own value; stamping the stored file is G8's"
@@ -991,7 +995,14 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::func_signature" = "local: shader text builders over names and expressions"
 "fn::global_float_array" = "local: shader text builders over names and expressions"
 "fn::global_float_at_fn" = "local: shader text builders over names and expressions"
+"fn::global_polygon_2d_fn" = "local: shader text builders over names and expressions"
+"fn::global_section_stack" = "local: shader text builders over names and expressions"
 "fn::global_vec3_fn" = "local: shader text builders over names and expressions"
+"fn::SdfNode::polygon_2d_closed_spline" = "local: builds a node from the caller's numbers in memory and refuses degenerate input by name; no stored or transmitted form is decoded"
+"fn::SdfNode::section_stack" = "local: builds a node from the caller's numbers in memory and refuses degenerate input by name; no stored or transmitted form is decoded"
+"fn::SdfNode::smooth_section_stack" = "local: builds a node from the caller's numbers in memory and refuses degenerate input by name; no stored or transmitted form is decoded"
+"fn::SectionStack::new" = "local: builds a node from the caller's numbers in memory and refuses degenerate input by name; no stored or transmitted form is decoded"
+"fn::SmoothSectionStack::new" = "local: builds a node from the caller's numbers in memory and refuses degenerate input by name; no stored or transmitted form is decoded"
 "fn::helper_source" = "local: shader text builders over names and expressions"
 "fn::mix_expr" = "local: shader text builders over names and expressions"
 "fn::modulo_expr" = "local: shader text builders over names and expressions"
