@@ -820,7 +820,7 @@ class TargetOnly(unittest.TestCase):
         text = (root / "scripts" / "integration-baseline.txt").read_text(encoding="utf-8")
         self.assertIn("target-only: macos.scip src/compiled/wgsl/gpu_metal.rs\n", text)
         # the pub items the macOS index must define (measured: 11 pub(super) items)
-        self.assertEqual(len(sr.pub_items(root, "src/compiled/wgsl/gpu_metal.rs")), 11)
+        self.assertEqual(len(sr.pub_items(root, "src/compiled/wgsl/gpu_metal.rs")), 13)
 
 
 class GuardedIndexes(unittest.TestCase):

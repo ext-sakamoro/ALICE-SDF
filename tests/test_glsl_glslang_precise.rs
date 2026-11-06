@@ -34,7 +34,7 @@ mod common;
 
 use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode};
 use alice_sdf::modifiers::HASH_NOISE_GLSL;
-use common::corpus::corpus;
+use common::corpus::gate_corpus as corpus;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -185,6 +185,7 @@ fn every_multiply_feeding_an_add_is_no_contraction() {
     let (mut units, mut pairs, mut control) = (0, 0, 0);
     let mut per_emitter: Vec<(&str, usize)> = Vec::new();
     let mut problems = Vec::new();
+    let mut read: Vec<String> = Vec::new();
     for (name, node) in corpus() {
         for (tag, mode) in [
             ("hardcoded", GlslTranspileMode::Hardcoded),
@@ -221,6 +222,7 @@ fn every_multiply_feeding_an_add_is_no_contraction() {
                 match compile(&glslang, &dir, &file, &src, args) {
                     Ok(listing) => {
                         units += 1;
+                        read.push(name.to_string());
                         let c = read_contraction(&listing);
                         pairs += c.pairs;
                         match per_emitter.iter_mut().find(|e| e.0 == emitter) {
@@ -263,6 +265,7 @@ fn every_multiply_feeding_an_add_is_no_contraction() {
     eprintln!(
         "glslang: {units} units, {pairs} multiply-to-add pairs read, per emitter {per_emitter:?}; NoContraction with ALICE_PRECISE empty: {control}"
     );
+    common::corpus::check_prime_sized_compiled("glslang", &read);
     assert!(
         units > 0 && pairs > 0,
         "compared nothing: {units} units, {pairs} pairs"
