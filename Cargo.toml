@@ -61,7 +61,7 @@ image = ["dep:image", "dep:png"]  # PNG / JPEG decoding (heightmap import, textu
 python = ["dep:pyo3", "dep:numpy"]
 godot = ["dep:godot"]  # Godot 4.x GDExtension integration
 jit = ["dep:cranelift-codegen", "dep:cranelift-frontend", "dep:cranelift-jit", "dep:cranelift-module", "dep:cranelift-native"]
-gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck", "dep:futures-channel", "dep:ash"]
+gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck", "dep:ash"]
 volume = ["gpu"]  # 3D volume texture baking
 gpu-mesh = ["gpu"]  # GPU Marching Cubes mesh generation
 svo = []  # Sparse Voxel Octree
@@ -171,7 +171,6 @@ cranelift-native = { version = "0.113", optional = true }
 wgpu = { version = "24", optional = true, features = ["glsl"] }
 pollster = { version = "0.4", optional = true }
 bytemuck = { version = "1.21", features = ["derive"], optional = true }
-futures-channel = { version = "0.3", optional = true }
 
 # MSL (Metal Shading Language) emit, optional
 # WGSL の emit を単一 source にして naga が MSL に落とす (src/compiled/msl)

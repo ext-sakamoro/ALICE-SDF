@@ -1148,7 +1148,6 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "cranelift-module" = "module handling for this crate's own IR (jit)"
 "cranelift-native" = "detects the host's instruction set (jit)"
 "crc32fast" = "checksums bytes this crate is writing or has read through its own readers"
-"futures-channel" = "in-process channels for the GPU readback"
 "glam" = "vector and matrix types of the API"
 "godot" = "the Godot binding framework; values come from the engine in the same process"
 "js-sys" = "JavaScript bindings of the wasm module; values come from the page in the same process"
