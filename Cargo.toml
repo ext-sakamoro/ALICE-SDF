@@ -61,7 +61,7 @@ image = ["dep:image", "dep:png"]  # PNG / JPEG decoding (heightmap import, textu
 python = ["dep:pyo3", "dep:numpy"]
 godot = ["dep:godot"]  # Godot 4.x GDExtension integration
 jit = ["dep:cranelift-codegen", "dep:cranelift-frontend", "dep:cranelift-jit", "dep:cranelift-module", "dep:cranelift-native"]
-gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck", "dep:futures-channel", "dep:ash"]
+gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck", "dep:futures-channel", "dep:ash", "dep:naga", "naga/wgsl-in", "naga/glsl-in", "naga/spv-out", "naga/msl-out", "dep:metal"]
 volume = ["gpu"]  # 3D volume texture baking
 gpu-mesh = ["gpu"]  # GPU Marching Cubes mesh generation
 svo = []  # Sparse Voxel Octree
@@ -71,7 +71,7 @@ terrain = []  # Terrain system (heightmap + erosion + caves)
 gi = ["svo"]  # Cone tracing global illumination
 hlsl = []  # HLSL transpiler for UE5/DirectX
 glsl = []  # GLSL transpiler for Unity/OpenGL/Vulkan
-msl = ["gpu", "dep:naga", "dep:metal"]  # MSL emit for Metal/Apple (WGSL -> naga -> MSL、法則は WGSL 単一 source)
+msl = ["gpu"]  # MSL emit for Metal/Apple (WGSL -> naga -> MSL、法則は WGSL 単一 source)
 rust = []  # Rust source emit (fn sdf / fn normal) bit-identical to eval_compiled, for build.rs
 blinkscript = ["hlsl"]  # BlinkScript transpiler for Foundry Nuke (delegates to HLSL body)
 # Bridge features. codec / physics / asp / sdf-cache resolve to the sibling
@@ -177,10 +177,7 @@ futures-channel = { version = "0.3", optional = true }
 # WGSL の emit を単一 source にして naga が MSL に落とす (src/compiled/msl)
 # 法則の写しを 4 本目に増やさないための設計判断: transpiler_common に
 # 手書きの MslLang は足さない (ShaderLang は sealed のまま 3 実装)
-naga = { version = "24", default-features = false, features = [
-    "wgsl-in",
-    "msl-out",
-], optional = true }
+naga = { version = "24", default-features = false, optional = true }
 
 # Image loading (optional, for texture-fit)
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }

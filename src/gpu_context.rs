@@ -64,10 +64,37 @@ fn instance(held: &mut Lifecycle) -> &wgpu::Instance {
     })
 }
 
-fn device_descriptor(label: &str) -> wgpu::DeviceDescriptor<'_> {
+/// The feature [`GpuContext::shader_module`] reads a marked SPIR-V module through, requested where
+/// the adapter has it (the Vulkan backend).
+#[cfg(not(target_arch = "wasm32"))]
+const SPIRV_PASSTHROUGH: wgpu::Features = wgpu::Features::SPIRV_SHADER_PASSTHROUGH;
+
+/// The adapter with SPIR-V passthrough when the default choice lacks it: a machine with both DX12
+/// and Vulkan on one GPU keeps working where the DX12 path would be refused
+/// ([`GpuContext::shader_module`]). The best device type wins, as in the default choice.
+#[cfg(not(target_arch = "wasm32"))]
+fn prefer_passthrough(instance: &wgpu::Instance, chosen: wgpu::Adapter) -> wgpu::Adapter {
+    if chosen.features().contains(SPIRV_PASSTHROUGH) {
+        return chosen;
+    }
+    let rank = |adapter: &wgpu::Adapter| match adapter.get_info().device_type {
+        wgpu::DeviceType::DiscreteGpu => 3,
+        wgpu::DeviceType::IntegratedGpu => 2,
+        wgpu::DeviceType::VirtualGpu | wgpu::DeviceType::Other => 1,
+        wgpu::DeviceType::Cpu => 0,
+    };
+    instance
+        .enumerate_adapters(wgpu::Backends::all())
+        .into_iter()
+        .filter(|adapter| adapter.features().contains(SPIRV_PASSTHROUGH))
+        .max_by_key(rank)
+        .unwrap_or(chosen)
+}
+
+fn device_descriptor(label: &str, features: wgpu::Features) -> wgpu::DeviceDescriptor<'_> {
     wgpu::DeviceDescriptor {
         label: Some(label),
-        required_features: wgpu::Features::empty(),
+        required_features: features,
         required_limits: wgpu::Limits::default(),
         memory_hints: wgpu::MemoryHints::Performance,
     }
@@ -77,6 +104,7 @@ fn device_descriptor(label: &str) -> wgpu::DeviceDescriptor<'_> {
 struct GpuDevice {
     device: wgpu::Device,
     queue: wgpu::Queue,
+    backend: wgpu::Backend,
 }
 
 /// Destroys what it holds inside the lock
@@ -102,12 +130,100 @@ fn destroy(_held: &mut Lifecycle, device: &mut ManuallyDrop<GpuDevice>) {
     reason = "the device is created here, under the lock"
 )]
 fn create(held: &mut Lifecycle, label: &str) -> Result<GpuContext, GpuError> {
-    let adapter = pollster::block_on(instance(held).request_adapter(&ADAPTER_OPTIONS))
+    let instance = instance(held);
+    let adapter = pollster::block_on(instance.request_adapter(&ADAPTER_OPTIONS))
         .ok_or(GpuError::NoAdapter)?;
-    let (device, queue) =
-        pollster::block_on(adapter.request_device(&device_descriptor(label), None))
-            .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
-    Ok(GpuContext::holding(device, queue))
+    let adapter = prefer_passthrough(instance, adapter);
+    let backend = adapter.get_info().backend;
+    let (device, queue) = pollster::block_on(adapter.request_device(
+        &device_descriptor(label, adapter.features() & SPIRV_PASSTHROUGH),
+        None,
+    ))
+    .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
+    Ok(GpuContext::holding(device, queue, backend))
+}
+
+/// The SPIR-V of a shader source, its floating-point arithmetic marked `NoContraction`. The writer
+/// options are wgpu's own for the Vulkan backend, except that the bounds checks stay on where wgpu
+/// would drop them for a robust device: a passthrough module cannot ask which it is on.
+#[cfg(not(target_arch = "wasm32"))]
+fn no_contraction_spirv(source: wgpu::ShaderSource<'_>) -> Result<Vec<u32>, GpuError> {
+    use naga::back::spv;
+    use naga::proc::{BoundsCheckPolicies, BoundsCheckPolicy};
+    let failed = |e: String| GpuError::ShaderCompilation(e);
+    let module = match source {
+        wgpu::ShaderSource::Wgsl(text) => {
+            naga::front::wgsl::parse_str(&text).map_err(|e| failed(e.emit_to_string(&text)))?
+        }
+        wgpu::ShaderSource::Glsl {
+            shader,
+            stage,
+            defines,
+        } => naga::front::glsl::Frontend::default()
+            .parse(&naga::front::glsl::Options { stage, defines }, &shader)
+            .map_err(|e| failed(e.emit_to_string(&shader)))?,
+        _ => return Err(failed("unsupported shader source".to_owned())),
+    };
+    let info = naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::default(),
+    )
+    .validate(&module)
+    .map_err(|e| failed(format!("{e:?}")))?;
+    let options = spv::Options {
+        lang_version: (1, 0),
+        flags: spv::WriterFlags::empty(),
+        bounds_check_policies: BoundsCheckPolicies {
+            index: BoundsCheckPolicy::Restrict,
+            buffer: BoundsCheckPolicy::Restrict,
+            image_load: BoundsCheckPolicy::Restrict,
+            binding_array: BoundsCheckPolicy::Unchecked,
+        },
+        zero_initialize_workgroup_memory: spv::ZeroInitializeWorkgroupMemoryMode::Polyfill,
+        ..spv::Options::default()
+    };
+    let words = spv::write_vec(&module, &info, &options, None)
+        .map_err(|e| failed(format!("SPIR-V writer: {e}")))?;
+    crate::compiled::wgsl::spirv_no_contraction::mark_no_contraction(&words)
+        .map_err(|e| failed(format!("SPIR-V pass: {e:?}")))
+}
+
+/// Whether a driver can fuse `a * b + c` on a path: what a result that needs the same bits
+/// everywhere checks before it trusts the path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Contraction {
+    /// The driver is forbidden to: the shader is marked SPIR-V, or MSL with fast math off.
+    Forbidden,
+    /// The path runs and the driver may fuse, so its bits can depend on the driver and on what else
+    /// the shader computes.
+    NotControlled,
+    /// The path refuses to compile a shader on this backend.
+    Refused,
+}
+
+/// A way a shader reaches the driver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpuPath {
+    /// `GpuEvaluator` from WGSL, a tree or a shader: on macOS it runs as MSL with fast math off,
+    /// not through wgpu.
+    Evaluator,
+    /// A shader through wgpu: the volume bake, marching cubes and `GpuEvaluator` from GLSL compute.
+    WgpuShader,
+}
+
+/// The answer for `path` on `backend`.
+#[must_use]
+pub fn contraction(path: GpuPath, backend: wgpu::Backend) -> Contraction {
+    match (backend, path) {
+        (wgpu::Backend::Vulkan, _) => Contraction::Forbidden,
+        (wgpu::Backend::Metal, GpuPath::Evaluator) if cfg!(target_os = "macos") => {
+            Contraction::Forbidden
+        }
+        // no MSL input and no fast-math setting through wgpu; in a browser the browser owns the
+        // compiler
+        (wgpu::Backend::Metal | wgpu::Backend::BrowserWebGpu, _) => Contraction::NotControlled,
+        _ => Contraction::Refused,
+    }
 }
 
 /// A shared handle on a device. See the [module docs](self) for how long it must live.
@@ -217,11 +333,67 @@ impl GpuContext {
             .request_adapter(&ADAPTER_OPTIONS)
             .await
             .ok_or(GpuError::NoAdapter)?;
+        let backend = adapter.get_info().backend;
         let (device, queue) = adapter
-            .request_device(&device_descriptor(label), None)
+            .request_device(&device_descriptor(label, wgpu::Features::empty()), None)
             .await
             .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
-        Ok(Self::holding(device, queue))
+        Ok(Self::holding(device, queue, backend))
+    }
+
+    /// Compile a shader. On a device with SPIR-V passthrough the builtins with a sum inside are
+    /// written out and every floating-point arithmetic result is marked `NoContraction` (see
+    /// `compiled::wgsl::spirv_no_contraction`), so the driver cannot fuse `a * b + c`.
+    ///
+    /// DX12 and GL have no such path and are refused rather than run with contraction. Metal through
+    /// wgpu and a browser run as they are, and say so: see [`Contraction`].
+    ///
+    /// # Errors
+    /// [`GpuError::ShaderCompilation`] when the source does not parse or validate, or holds a
+    /// builtin with no expansion; [`GpuError::BackendWithoutContractionControl`] on DX12 or GL.
+    pub(crate) fn shader_module(
+        &self,
+        label: &str,
+        source: wgpu::ShaderSource<'_>,
+    ) -> Result<wgpu::ShaderModule, GpuError> {
+        let device = self.device();
+        #[cfg(not(target_arch = "wasm32"))]
+        if device.features().contains(SPIRV_PASSTHROUGH) {
+            let words = no_contraction_spirv(source)?;
+            // SAFETY: naga wrote the module from IR its validator accepted, and the pass only adds
+            // decorations to it. Every pipeline built on it names an explicit layout.
+            return Ok(unsafe {
+                device.create_shader_module_spirv(&wgpu::ShaderModuleDescriptorSpirV {
+                    label: Some(label),
+                    source: words.into(),
+                })
+            });
+        }
+        // a Vulkan device always has the feature through `create`; without it the table's answer
+        // would not hold, so it is refused too
+        if self.0 .0.backend == wgpu::Backend::Vulkan
+            || contraction(GpuPath::WgpuShader, self.0 .0.backend) == Contraction::Refused
+        {
+            return Err(GpuError::BackendWithoutContractionControl(
+                self.0 .0.backend.to_string(),
+            ));
+        }
+        Ok(device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(label),
+            source,
+        }))
+    }
+
+    /// The device's backend
+    #[must_use]
+    pub fn backend(&self) -> wgpu::Backend {
+        self.0 .0.backend
+    }
+
+    /// Whether the driver of this device can fuse `a * b + c` on `path` ([`contraction`]).
+    #[must_use]
+    pub fn contraction(&self, path: GpuPath) -> Contraction {
+        contraction(path, self.0 .0.backend)
     }
 
     /// The device
@@ -245,8 +417,9 @@ impl GpuContext {
         }
     }
 
-    fn holding(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+    fn holding(device: wgpu::Device, queue: wgpu::Queue, backend: wgpu::Backend) -> Self {
         Self(Arc::new(Serialized(ManuallyDrop::new(GpuDevice {
+            backend,
             device,
             queue,
         }))))

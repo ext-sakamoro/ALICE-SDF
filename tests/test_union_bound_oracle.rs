@@ -551,22 +551,22 @@ fn a_nan_operand_keeps_the_bits() {
 /// and heights, an off-axis child, points on the guard sphere's shell and near the surface: the
 /// bounded GPU values are bit-equal to the plain shader's
 ///
-/// Known defect `g3-vulkan-nocontraction`, the arm of a fusing driver: a wgpu driver that fuses
-/// `a * b + c` (Vulkan; Metal through wgpu, which compiles with fast math) does it per pipeline (the
-/// emitted shader does not forbid it), so the same operand can round differently in the two
-/// shaders. Measured on one Vulkan GPU at k 2, p [0.17136355, 2.0207052, -0.5316945]
-/// (bounded 0.05508475, plain 0.05508481: 6e-8, one ulp of the twisted coordinates). When the
-/// probe [`gpu_fuses_a_multiply_add`] finds the driver fusing, the values must agree within the
-/// fusing's own budget ([`contraction_budget`], ~1e-7 here, the measured 6e-8 inside it) and the
-/// known defect is printed; once the driver path forbids contraction (the MSL engine of the `msl`
-/// feature does today) the probe finds no fusion and the bit-equal assert applies. The CPU is a
-/// bit-equal assert always
+/// A driver fuses per pipeline where it is allowed to, also inside `length` and `dot`, so the same
+/// operand can round differently in the two shaders. Measured on one Vulkan GPU at k 2,
+/// p [0.17136355, 2.0207052, -0.5316945], bounded 0.05508475, plain 0.05508481: the first value to
+/// differ is `length(d.xz)`, on the same input bits, because the guard's `length(d)` shares `x * x`.
+/// Marked, written-out arithmetic ends that (`GpuContext::shader_module`), so this asserts bits.
+///
+/// Known defect `gpu-wgpu-metal-contraction`, the arm of a fusing driver: on a path with no such
+/// control, the probe [`gpu_fuses_a_multiply_add`] finds it fusing and the values must agree within
+/// the fusing's own budget ([`contraction_budget`], ~1e-7 here). The CPU is a bit-equal assert
+/// always
 #[cfg(feature = "gpu")]
 #[test]
 fn a_large_twist_keeps_the_plain_bits_on_the_gpu() {
     use alice_sdf::compiled::{GpuEvaluator, TranspileMode, WgslShader};
-    // KNOWN-DEFECT-ARM: known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within contraction_budget until the driver path forbids contraction
-    // the known defect's arm, see the doc: only while the driver fuses (Vulkan; Metal through wgpu)
+    // KNOWN-DEFECT-ARM: known defect: gpu-wgpu-metal-contraction: a fusing wgpu driver, on a path with no control over it, is tolerated within the rounding budget
+    // the known defect's arm, see the doc: only while the driver fuses
     let known_defect = gpu_fuses_a_multiply_add() == Some(true);
     let mut differed = 0;
     let mut rng = Rng(0x7015_7015_7015_7015);
@@ -652,7 +652,7 @@ fn a_large_twist_keeps_the_plain_bits_on_the_gpu() {
     );
     if known_defect {
         eprintln!(
-            "known defect: g3-vulkan-nocontraction: the driver fuses a multiply-add, {differed} of \
+            "known defect: gpu-wgpu-metal-contraction: the driver fuses a multiply-add, {differed} of \
              {compared} values differ within the rounding budget"
         );
     }
@@ -700,7 +700,9 @@ fn contraction_budget(p: Vec3, k: f32, ring_r: f32, v_twist: f32) -> f32 {
 
 /// Whether the GPU behind `GpuEvaluator` rounds `a * b + c` once (fused): with
 /// a = b = 1 + 2⁻¹² and c = −(1 + 2⁻¹¹) two roundings give 0 and one gives 2⁻²⁴ (the
-/// discriminator of `tests/test_gpu_fma_contraction.rs`). `None` without a GPU
+/// discriminator of `tests/test_gpu_fma_contraction.rs`), or fuses inside a builtin depending on
+/// what else the shader computes: `length(p.xz)` next to `length(p)` shares `x * x`, which gave
+/// other bits at 428 of 4096 points on a driver that fuses. `None` without a GPU
 #[cfg(feature = "gpu")]
 fn gpu_fuses_a_multiply_add() -> Option<bool> {
     use alice_sdf::compiled::GpuEvaluator;
@@ -710,7 +712,7 @@ struct OutputDistance { distance: f32, _pad1: f32, _pad2: f32, _pad3: f32, }
 @group(0) @binding(1) var<storage, read_write> output_distances: array<OutputDistance>;
 @group(0) @binding(2) var<uniform> point_count: u32;
 fn sdf_eval(p: vec3<f32>) -> f32 { return p.x * p.y + p.z; }
-@compute @workgroup_size(64)
+@compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let idx = global_id.x;
     if (idx >= point_count) { return; }
@@ -723,7 +725,36 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let got = e
         .eval_batch(&[Vec3::new(a, a, -(1.0 + 1.0 / 2048.0))])
         .ok()?[0];
-    Some(got.to_bits() != 0.0f32.to_bits())
+    if got.to_bits() != 0.0f32.to_bits() {
+        return Some(true);
+    }
+    let mut rng = Rng(0x7015_0000_0000_0001);
+    let pts: Vec<Vec3> = (0..1024)
+        .map(|_| {
+            Vec3::new(
+                rng.f() * 4.0 - 2.0,
+                rng.f() * 4.0 - 2.0,
+                rng.f() * 4.0 - 2.0,
+            )
+        })
+        .collect();
+    let body = |b: &str| wgsl.replace("p.x * p.y + p.z", b);
+    let values = |b: &str| -> Option<Vec<f32>> {
+        GpuEvaluator::from_wgsl(&body(b))
+            .ok()?
+            .into_parts()
+            .0
+            .eval_batch(&pts[..1024])
+            .ok()
+    };
+    let alone = values("length(p.xz)")?;
+    let beside = values("select(length(p.xz), -1.0, length(p) > 1.0e30)")?;
+    Some(
+        alone
+            .iter()
+            .zip(&beside)
+            .any(|(a, b)| a.to_bits() != b.to_bits()),
+    )
 }
 
 /// How much the deep operand's twin is grown: more than one node's slack on the shell
