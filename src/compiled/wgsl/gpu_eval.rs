@@ -158,7 +158,7 @@ const PARAM_BUFFER_SIZE: u64 = 1024 * 16;
 /// The wgpu backend of [`GpuEvaluator`]: every target, and macOS without the `msl`
 /// feature (where Metal contracts `a * b + c`, see the module docs).
 #[cfg_attr(
-    all(target_os = "macos", feature = "msl"),
+    target_os = "macos",
     allow(
         dead_code,
         reason = "on macOS with msl the WGSL constructors build the Metal engine; wgpu is left for from_glsl_compute"
@@ -182,7 +182,7 @@ struct WgpuResources {
 type WgpuEngine = Held<WgpuResources>;
 
 #[cfg_attr(
-    all(target_os = "macos", feature = "msl"),
+    target_os = "macos",
     allow(
         dead_code,
         reason = "on macOS with msl the WGSL constructors build the Metal engine; wgpu is left for from_glsl_compute"
@@ -1122,7 +1122,7 @@ const fn optimal_chunk_size(total_points: usize) -> usize {
 /// By reusing buffers, `eval_batch_pooled` can be 2-5x faster than
 /// `eval_batch` for repeated calls with similar-sized batches.
 #[cfg_attr(
-    all(target_os = "macos", feature = "msl"),
+    target_os = "macos",
     allow(
         dead_code,
         reason = "on macOS with msl the WGSL constructors build the Metal engine; wgpu is left for from_glsl_compute"
@@ -1141,7 +1141,7 @@ struct WgpuPoolBuffers {
 type WgpuPool = Held<WgpuPoolBuffers>;
 
 #[cfg_attr(
-    all(target_os = "macos", feature = "msl"),
+    target_os = "macos",
     allow(
         dead_code,
         reason = "on macOS with msl the WGSL constructors build the Metal engine; wgpu is left for from_glsl_compute"
@@ -1226,14 +1226,14 @@ impl std::fmt::Debug for WgpuPool {
 /// The backend a [`GpuEvaluator`] runs on.
 enum Engine {
     #[cfg_attr(
-        all(target_os = "macos", feature = "msl", not(feature = "glsl")),
+        all(target_os = "macos", not(feature = "glsl")),
         allow(
             dead_code,
-            reason = "on macOS with msl only from_glsl_compute builds the wgpu engine"
+            reason = "on macOS only from_glsl_compute builds the wgpu engine"
         )
     )]
     Wgpu(WgpuEngine),
-    #[cfg(all(target_os = "macos", feature = "msl"))]
+    #[cfg(target_os = "macos")]
     Metal(super::gpu_metal::MetalEngine),
 }
 
@@ -1261,10 +1261,10 @@ impl GpuEvaluator {
         // per-node data (lattice control points, height fields, grid warp maps) goes to the node
         // data buffer on the wgpu engine; the Metal engine binds input / output / count / params
         // only, so there it stays module-scope constants
-        #[cfg(not(all(target_os = "macos", feature = "msl")))]
+        #[cfg(not(target_os = "macos"))]
         let shader =
             WgslShader::transpile_with_node_data(node, super::transpiler::TranspileMode::Hardcoded);
-        #[cfg(all(target_os = "macos", feature = "msl"))]
+        #[cfg(target_os = "macos")]
         let shader = WgslShader::transpile_with_union_bounds(
             node,
             super::transpiler::TranspileMode::Hardcoded,
@@ -1281,13 +1281,13 @@ impl GpuEvaluator {
             let text = shader.to_compute_shader();
             crate::provenance::shader_text_verdict(&text, false)?;
             note_engine_build();
-            #[cfg(all(target_os = "macos", feature = "msl"))]
+            #[cfg(target_os = "macos")]
             {
                 return Err(GpuError::InvalidFormat(
                     "node data buffer (binding 4) is bound by the wgpu engine only; transpile with WgslShader::transpile for the Metal engine".into(),
                 ));
             }
-            #[cfg(not(all(target_os = "macos", feature = "msl")))]
+            #[cfg(not(target_os = "macos"))]
             {
                 let mut evaluator = WgpuEngine::from_source_with_data(
                     wgpu::ShaderSource::Wgsl(text.into()),
@@ -1337,13 +1337,13 @@ impl GpuEvaluator {
 
     fn build_from_wgsl(wgsl_source: &str) -> Result<Self, GpuError> {
         note_engine_build();
-        #[cfg(all(target_os = "macos", feature = "msl"))]
+        #[cfg(target_os = "macos")]
         {
             super::gpu_metal::MetalEngine::from_wgsl(wgsl_source).map(|m| Self {
                 engine: Engine::Metal(m),
             })
         }
-        #[cfg(not(all(target_os = "macos", feature = "msl")))]
+        #[cfg(not(target_os = "macos"))]
         {
             WgpuEngine::from_source(wgpu::ShaderSource::Wgsl(wgsl_source.into())).map(|w| Self {
                 engine: Engine::Wgpu(w),
@@ -1406,7 +1406,7 @@ impl GpuEvaluator {
     fn set_wgpu_workgroup_size(&mut self, size: u32) {
         match &mut self.engine {
             Engine::Wgpu(w) => w.workgroup_size = size,
-            #[cfg(all(target_os = "macos", feature = "msl"))]
+            #[cfg(target_os = "macos")]
             Engine::Metal(_) => {}
         }
     }
@@ -1419,8 +1419,21 @@ impl GpuEvaluator {
     pub fn eval_batch(&self, points: &[Vec3]) -> Result<Vec<f32>, GpuError> {
         match &self.engine {
             Engine::Wgpu(w) => w.eval_batch(points),
-            #[cfg(all(target_os = "macos", feature = "msl"))]
+            #[cfg(target_os = "macos")]
             Engine::Metal(m) => m.eval_batch(points),
+        }
+    }
+
+    /// Whether this evaluator's driver can fuse `a * b + c`, so a caller that needs the same bits
+    /// everywhere can refuse by checking.
+    #[must_use]
+    pub fn contraction(&self) -> crate::gpu_context::Contraction {
+        match &self.engine {
+            Engine::Wgpu(w) => w
+                .context()
+                .contraction(crate::gpu_context::GpuPath::WgpuShader),
+            #[cfg(target_os = "macos")]
+            Engine::Metal(_) => crate::gpu_context::Contraction::Forbidden,
         }
     }
 
@@ -1428,7 +1441,7 @@ impl GpuEvaluator {
     pub fn device_info(&self) -> String {
         match &self.engine {
             Engine::Wgpu(_) => "WebGPU Device (via wgpu)".to_string(),
-            #[cfg(all(target_os = "macos", feature = "msl"))]
+            #[cfg(target_os = "macos")]
             Engine::Metal(m) => m.device_info(),
         }
     }
@@ -1440,7 +1453,7 @@ impl GpuEvaluator {
     pub fn create_buffer_pool(&self, initial_capacity: usize) -> GpuBufferPool {
         match &self.engine {
             Engine::Wgpu(w) => GpuBufferPool::from_wgpu(w.create_buffer_pool(initial_capacity)),
-            #[cfg(all(target_os = "macos", feature = "msl"))]
+            #[cfg(target_os = "macos")]
             Engine::Metal(m) => GpuBufferPool::from_metal(m.create_buffer_pool(initial_capacity)),
         }
     }
@@ -1460,9 +1473,9 @@ impl GpuEvaluator {
     ) -> Result<Vec<f32>, GpuError> {
         let result = match (&self.engine, &mut pool.buffers) {
             (Engine::Wgpu(w), PoolBuffers::Wgpu(p)) => w.eval_batch_pooled(points, p),
-            #[cfg(all(target_os = "macos", feature = "msl"))]
+            #[cfg(target_os = "macos")]
             (Engine::Metal(m), PoolBuffers::Metal(p)) => m.eval_batch_pooled(points, p),
-            #[cfg(all(target_os = "macos", feature = "msl"))]
+            #[cfg(target_os = "macos")]
             _ => panic!("GpuBufferPool was created by an evaluator on another backend"),
         };
         pool.sync_capacity();
@@ -1555,7 +1568,7 @@ impl GpuEvaluator {
     }
 
     #[cfg_attr(
-        all(target_os = "macos", feature = "msl"),
+        target_os = "macos",
         allow(
             clippy::unused_async,
             clippy::unused_async_trait_impl,
@@ -1563,11 +1576,11 @@ impl GpuEvaluator {
         )
     )]
     async fn build_from_wgsl_async(wgsl_source: &str) -> Result<Self, GpuError> {
-        #[cfg(all(target_os = "macos", feature = "msl"))]
+        #[cfg(target_os = "macos")]
         {
             Self::build_from_wgsl(wgsl_source)
         }
-        #[cfg(not(all(target_os = "macos", feature = "msl")))]
+        #[cfg(not(target_os = "macos"))]
         {
             note_engine_build();
             WgpuEngine::from_wgsl_async(wgsl_source)
@@ -1585,7 +1598,7 @@ impl GpuEvaluator {
     pub async fn eval_batch_async(&self, points: &[Vec3]) -> Result<Vec<f32>, GpuError> {
         match &self.engine {
             Engine::Wgpu(w) => w.eval_batch_async(points).await,
-            #[cfg(all(target_os = "macos", feature = "msl"))]
+            #[cfg(target_os = "macos")]
             Engine::Metal(m) => m.eval_batch(points),
         }
     }
@@ -1597,13 +1610,13 @@ impl GpuEvaluator {
     /// In Dynamic mode, SDF parameters (radius, size, blend ratio, etc.)
     /// can be updated at 60fps without shader recompilation via `update_params()`.
     pub fn new_dynamic(node: &SdfNode) -> Result<Self, GpuError> {
-        #[cfg(all(target_os = "macos", feature = "msl"))]
+        #[cfg(target_os = "macos")]
         {
             super::gpu_metal::MetalEngine::new_dynamic(node).map(|m| Self {
                 engine: Engine::Metal(m),
             })
         }
-        #[cfg(not(all(target_os = "macos", feature = "msl")))]
+        #[cfg(not(target_os = "macos"))]
         {
             WgpuEngine::new_dynamic(node).map(|w| Self {
                 engine: Engine::Wgpu(w),
@@ -1623,7 +1636,7 @@ impl GpuEvaluator {
     pub fn update_params(&self, node: &SdfNode) {
         match &self.engine {
             Engine::Wgpu(w) => w.update_params(node),
-            #[cfg(all(target_os = "macos", feature = "msl"))]
+            #[cfg(target_os = "macos")]
             Engine::Metal(m) => m.update_params(node),
         }
     }
@@ -1638,7 +1651,7 @@ impl GpuEvaluator {
     pub fn eval_batch_full(&self, points: &[Vec3]) -> Result<Vec<(f32, Vec3)>, GpuError> {
         match &self.engine {
             Engine::Wgpu(w) => w.eval_batch_full(points),
-            #[cfg(all(target_os = "macos", feature = "msl"))]
+            #[cfg(target_os = "macos")]
             Engine::Metal(m) => m.eval_batch_full(points),
         }
     }
@@ -1670,14 +1683,14 @@ impl GpuEvaluator {
 /// The buffers behind a [`GpuBufferPool`], on the backend of the evaluator that made it.
 enum PoolBuffers {
     #[cfg_attr(
-        all(target_os = "macos", feature = "msl", not(feature = "glsl")),
+        all(target_os = "macos", not(feature = "glsl")),
         allow(
             dead_code,
-            reason = "on macOS with msl only from_glsl_compute builds the wgpu engine"
+            reason = "on macOS only from_glsl_compute builds the wgpu engine"
         )
     )]
     Wgpu(WgpuPool),
-    #[cfg(all(target_os = "macos", feature = "msl"))]
+    #[cfg(target_os = "macos")]
     Metal(super::gpu_metal::MetalPool),
 }
 
@@ -1706,7 +1719,7 @@ impl GpuBufferPool {
         }
     }
 
-    #[cfg(all(target_os = "macos", feature = "msl"))]
+    #[cfg(target_os = "macos")]
     const fn from_metal(pool: super::gpu_metal::MetalPool) -> Self {
         Self {
             capacity: pool.capacity(),
@@ -1718,7 +1731,7 @@ impl GpuBufferPool {
     fn sync_capacity(&mut self) {
         self.capacity = match &self.buffers {
             PoolBuffers::Wgpu(p) => p.capacity,
-            #[cfg(all(target_os = "macos", feature = "msl"))]
+            #[cfg(target_os = "macos")]
             PoolBuffers::Metal(p) => p.capacity(),
         };
     }

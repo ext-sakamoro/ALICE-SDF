@@ -72,7 +72,7 @@
 //! Author: Moroya Sakamoto
 
 mod gpu_eval;
-#[cfg(all(target_os = "macos", feature = "msl"))]
+#[cfg(target_os = "macos")]
 mod gpu_metal;
 #[cfg(feature = "gpu")]
 pub(crate) mod spirv_no_contraction;

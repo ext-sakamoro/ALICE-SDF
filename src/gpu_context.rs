@@ -188,6 +188,44 @@ fn no_contraction_spirv(source: wgpu::ShaderSource<'_>) -> Result<Vec<u32>, GpuE
         .map_err(|e| failed(format!("SPIR-V pass: {e:?}")))
 }
 
+/// Whether a driver can fuse `a * b + c` on a path: what a result that needs the same bits
+/// everywhere checks before it trusts the path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Contraction {
+    /// The driver is forbidden to: the shader is marked SPIR-V, or MSL with fast math off.
+    Forbidden,
+    /// The path runs and the driver may fuse, so its bits can depend on the driver and on what else
+    /// the shader computes.
+    NotControlled,
+    /// The path refuses to compile a shader on this backend.
+    Refused,
+}
+
+/// A way a shader reaches the driver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpuPath {
+    /// `GpuEvaluator` from WGSL, a tree or a shader: on macOS it runs as MSL with fast math off,
+    /// not through wgpu.
+    Evaluator,
+    /// A shader through wgpu: the volume bake, marching cubes and `GpuEvaluator` from GLSL compute.
+    WgpuShader,
+}
+
+/// The answer for `path` on `backend`.
+#[must_use]
+pub fn contraction(path: GpuPath, backend: wgpu::Backend) -> Contraction {
+    match (backend, path) {
+        (wgpu::Backend::Vulkan, _) => Contraction::Forbidden,
+        (wgpu::Backend::Metal, GpuPath::Evaluator) if cfg!(target_os = "macos") => {
+            Contraction::Forbidden
+        }
+        // no MSL input and no fast-math setting through wgpu; in a browser the browser owns the
+        // compiler
+        (wgpu::Backend::Metal | wgpu::Backend::BrowserWebGpu, _) => Contraction::NotControlled,
+        _ => Contraction::Refused,
+    }
+}
+
 /// A shared handle on a device. See the [module docs](self) for how long it must live.
 #[derive(Clone)]
 pub struct GpuContext(Arc<Serialized>);
@@ -236,8 +274,8 @@ impl GpuContext {
     /// written out and every floating-point arithmetic result is marked `NoContraction` (see
     /// `compiled::wgsl::spirv_no_contraction`), so the driver cannot fuse `a * b + c`.
     ///
-    /// DX12 and GL have no such path and are refused rather than run with contraction. In a browser
-    /// the browser owns the compiler, so the path is not covered and runs as it is.
+    /// DX12 and GL have no such path and are refused rather than run with contraction. Metal through
+    /// wgpu and a browser run as they are, and say so: see [`Contraction`].
     ///
     /// # Errors
     /// [`GpuError::ShaderCompilation`] when the source does not parse or validate, or holds a
@@ -260,15 +298,31 @@ impl GpuContext {
                 })
             });
         }
-        match self.0 .0.backend {
-            wgpu::Backend::Dx12 | wgpu::Backend::Gl => Err(
-                GpuError::BackendWithoutContractionControl(self.0 .0.backend.to_string()),
-            ),
-            _ => Ok(device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(label),
-                source,
-            })),
+        // a Vulkan device always has the feature through `create`; without it the table's answer
+        // would not hold, so it is refused too
+        if self.0 .0.backend == wgpu::Backend::Vulkan
+            || contraction(GpuPath::WgpuShader, self.0 .0.backend) == Contraction::Refused
+        {
+            return Err(GpuError::BackendWithoutContractionControl(
+                self.0 .0.backend.to_string(),
+            ));
         }
+        Ok(device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(label),
+            source,
+        }))
+    }
+
+    /// The device's backend
+    #[must_use]
+    pub fn backend(&self) -> wgpu::Backend {
+        self.0 .0.backend
+    }
+
+    /// Whether the driver of this device can fuse `a * b + c` on `path` ([`contraction`]).
+    #[must_use]
+    pub fn contraction(&self, path: GpuPath) -> Contraction {
+        contraction(path, self.0 .0.backend)
     }
 
     /// The device

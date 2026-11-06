@@ -11,9 +11,12 @@
 //! `#pragma METAL fp contract(off)` first) does not fuse
 //! (`tests/test_msl_metal_oracle.rs`). With the `msl` feature on macOS
 //! `GpuEvaluator` runs on Metal through `MslShader` (fast math off), and this is a
-//! normal test there. On Linux `GpuEvaluator` reads marked SPIR-V through Vulkan passthrough
-//! (`src/compiled/wgsl/spirv_no_contraction.rs`), and these are normal tests there too. On the
-//! other wgpu paths they stay ignored as a known gap.
+//! normal test there, and `GpuEvaluator` runs that way on macOS whenever `gpu` is on. On Linux it
+//! reads marked SPIR-V through Vulkan passthrough (`src/compiled/wgsl/spirv_no_contraction.rs`),
+//! and these are normal tests there too. Windows has no device in CI and stays ignored.
+//!
+//! What cannot be controlled says so: `gpu_context::contraction` answers per path and backend, and
+//! the last test holds that answer against the driver.
 //!
 //! A driver also fuses inside a builtin, and whether it does depends on what else the shader
 //! computes: `length(p.xz)` next to `length(p)` shares `x * x`. Measured on Vulkan before the
@@ -39,7 +42,7 @@ struct OutputDistance {{ distance: f32, _pad1: f32, _pad2: f32, _pad3: f32, }}
 @group(0) @binding(1) var<storage, read_write> output_distances: array<OutputDistance>;
 @group(0) @binding(2) var<uniform> point_count: u32;
 fn sdf_eval(p: vec3<f32>) -> f32 {{ return {body}; }}
-@compute @workgroup_size(64)
+@compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     let idx = global_id.x;
     if (idx >= point_count) {{ return; }}
@@ -70,8 +73,8 @@ const FORMS: [(&str, f32); 3] = [
 
 #[test]
 #[cfg_attr(
-    not(any(target_os = "linux", all(target_os = "macos", feature = "msl"))),
-    ignore = "src gap: gpu fma contraction (wgpu path: Metal without msl contracts; DX12 and GL unmeasured)"
+    not(any(target_os = "linux", target_os = "macos")),
+    ignore = "src gap: gpu fma contraction (no device on this target in CI; DX12 and GL are refused)"
 )]
 fn gpu_evaluator_does_not_fuse_a_multiply_add() {
     let pts = [discriminator()];
@@ -123,7 +126,7 @@ const BUILTINS: [(&str, &str); 7] = [
 #[test]
 #[cfg_attr(
     not(target_os = "linux"),
-    ignore = "src gap: gpu fma contraction (a builtin's sum is written out only on the Vulkan path)"
+    ignore = "src gap: gpu fma contraction (a builtin's sum is written out only on the Vulkan path; MSL with fast math off is measured by the test above)"
 )]
 fn a_builtin_does_not_depend_on_what_else_the_shader_computes() {
     let mut state = 0x1234_5678_u64;
@@ -182,4 +185,78 @@ fn a_builtin_does_not_depend_on_what_else_the_shader_computes() {
         }
     }
     assert_eq!(compared, BUILTINS.len() * pts.len());
+}
+
+#[test]
+fn the_answer_per_path_and_backend() {
+    use alice_sdf::gpu_context::{contraction, Contraction, GpuPath};
+    use wgpu::Backend;
+    for path in [GpuPath::Evaluator, GpuPath::WgpuShader] {
+        assert_eq!(contraction(path, Backend::Vulkan), Contraction::Forbidden);
+        assert_eq!(contraction(path, Backend::Dx12), Contraction::Refused);
+        assert_eq!(contraction(path, Backend::Gl), Contraction::Refused);
+        assert_eq!(
+            contraction(path, Backend::BrowserWebGpu),
+            Contraction::NotControlled
+        );
+    }
+    assert_eq!(
+        contraction(GpuPath::WgpuShader, Backend::Metal),
+        Contraction::NotControlled
+    );
+    let metal_evaluator = if cfg!(target_os = "macos") {
+        Contraction::Forbidden
+    } else {
+        Contraction::NotControlled
+    };
+    assert_eq!(
+        contraction(GpuPath::Evaluator, Backend::Metal),
+        metal_evaluator
+    );
+}
+
+/// GLSL compute reaches the driver through wgpu on every backend, so on Metal it is the known gap
+/// and on Vulkan it is forbidden: the query must say which, and the driver must not contradict it.
+#[cfg(feature = "glsl")]
+#[test]
+fn the_wgpu_path_answers_for_itself() {
+    use alice_sdf::gpu_context::Contraction;
+    let src = "#version 450
+layout(local_size_x = 256) in;
+struct InputPoint { float x; float y; float z; float pad; };
+struct OutputDistance { float distance; float pad1; float pad2; float pad3; };
+layout(std430, set = 0, binding = 0) readonly buffer I { InputPoint input_points[]; };
+layout(std430, set = 0, binding = 1) buffer O { OutputDistance output_distances[]; };
+layout(std140, set = 0, binding = 2) uniform C { uint point_count; };
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= point_count) { return; }
+    InputPoint p = input_points[idx];
+    output_distances[idx].distance = p.x * p.y + p.z;
+}
+";
+    let evaluator = match GpuEvaluator::from_glsl_compute(src).map(|c| c.into_parts().0) {
+        Ok(e) => e,
+        Err(e) => {
+            assert!(
+                std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                "ALICE_SDF_REQUIRE_GPU is set but no GPU device was found: {e}"
+            );
+            eprintln!("skipping: {e}");
+            return;
+        }
+    };
+    let got = evaluator
+        .eval_batch(&[discriminator()])
+        .expect("eval on the GPU")[0];
+    match evaluator.contraction() {
+        Contraction::Forbidden => assert_eq!(got.to_bits(), 0.0f32.to_bits(), "got {got:e}"),
+        // KNOWN-DEFECT-ARM: known defect: gpu-wgpu-metal-contraction: wgpu's Metal path has no way to turn fast math off
+        Contraction::NotControlled => {
+            eprintln!(
+                "known defect: gpu-wgpu-metal-contraction: this path may fuse; it gave {got:e}"
+            );
+        }
+        Contraction::Refused => panic!("a refused path compiled a shader"),
+    }
 }
