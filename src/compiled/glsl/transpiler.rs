@@ -19,6 +19,7 @@
 //! Author: Moroya Sakamoto
 
 use super::super::transpiler_common::ShaderLang;
+use super::super::transpiler_common::TranspileError;
 use crate::types::SdfNode;
 
 // ============================================================================
@@ -112,6 +113,31 @@ impl ShaderLang for GlslLang {
             "float {name}(int i) {{\n{}    return v;\n}}\n",
             Self::decl_float("v", &format!("{arr}[i]"))
         )
+    }
+    fn global_polygon_2d_fn(name: &str, arr: &str, n: usize) -> String {
+        super::super::loft_shader::precise_c_like(
+            &format!(
+            "float {name}(vec2 q) {{\n    vec2 v0 = vec2({arr}[0], {arr}[1]);\n    float d = dot(q - v0, q - v0);\n    float s = 1.0;\n    int j = {last};\n    for (int i = 0; i < {n}; i++) {{\n        vec2 vi = vec2({arr}[2 * i], {arr}[2 * i + 1]);\n        vec2 vj = vec2({arr}[2 * j], {arr}[2 * j + 1]);\n        vec2 e = vj - vi;\n        vec2 w = q - vi;\n        vec2 b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);\n        d = min(d, dot(b, b));\n        bool c1 = q.y >= vi.y;\n        bool c2 = q.y < vj.y;\n        bool c3 = e.x * w.y > e.y * w.x;\n        if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {{ s = -s; }}\n        j = i;\n    }}\n    return s * sqrt(d);\n}}\n",
+            last = n - 1
+            ),
+            "ALICE_PRECISE",
+        )
+    }
+    fn global_section_stack(
+        name: &str,
+        st: &super::super::transpiler_common::SectionStackData,
+    ) -> String {
+        super::super::loft_shader::precise_c_like(
+            &super::super::transpiler_common::c_like_section_stack(
+                name,
+                st,
+                "vec2",
+                &|n, c, v| format!("const float {n}[{c}] = float[{c}]({v});\n"),
+                &|n, c, v| format!("const int {n}[{c}] = int[{c}]({v});\n"),
+            ),
+            "ALICE_PRECISE",
+        )
+        .replace("vec3_t", "vec3")
     }
     fn global_vec3_fn(name: &str, body: &str) -> String {
         format!("vec3 {name}(vec3 p) {{\n{body}}}\n")
@@ -216,6 +242,12 @@ pub struct GlslShader {
 
 impl GlslShader {
     /// Transpile an SDF node tree to GLSL with the specified mode
+    ///
+    /// # Panics
+    ///
+    /// When [`Self::try_transpile_with_version`] refuses the tree (a loft or stack whose data reads
+    /// the emit cannot prove inside their arrays; not reachable for trees built through the
+    /// constructors)
     pub fn transpile(node: &SdfNode, mode: GlslTranspileMode) -> Self {
         Self::transpile_with_version(node, mode, 450)
     }
@@ -226,19 +258,47 @@ impl GlslShader {
     /// contraction of `a * b + c` into one rounding). The qualifier is `precise`
     /// from GLSL 4.00 and GLSL ES 3.20; with an older `version` (330, or GLSL ES
     /// 3.00 as in `render_pipeline`) it is empty and the driver may contract.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::transpile`]
     pub fn transpile_with_version(node: &SdfNode, mode: GlslTranspileMode, version: u32) -> Self {
+        Self::try_transpile_with_version(node, mode, version).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// [`Self::transpile`], refusing a tree whose data reads the emit cannot prove in range
+    ///
+    /// # Errors
+    ///
+    /// [`TranspileError`] naming each read whose proven index range leaves its array
+    pub fn try_transpile(node: &SdfNode, mode: GlslTranspileMode) -> Result<Self, TranspileError> {
+        Self::try_transpile_with_version(node, mode, 450)
+    }
+
+    /// [`Self::transpile_with_version`], refusing a tree whose data reads the emit cannot prove in
+    /// range
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::try_transpile`]
+    pub fn try_transpile_with_version(
+        node: &SdfNode,
+        mode: GlslTranspileMode,
+        version: u32,
+    ) -> Result<Self, TranspileError> {
         let mut transpiler = GlslTranspiler::new(mode);
         let body = transpiler.transpile_node(node, "p");
+        TranspileError::from_reads(std::mem::take(&mut transpiler.read_errors))?;
 
         let source = transpiler.generate_shader(&body);
 
-        Self {
+        Ok(Self {
             source,
             helper_count: transpiler.helper_functions.len(),
             param_layout: transpiler.params,
             mode,
             version,
-        }
+        })
     }
 
     /// Extract parameter values from an SDF node tree
@@ -620,6 +680,8 @@ struct GlslTranspiler {
     params: Vec<f32>,
     /// Module-scope data / functions emitted before the entry point
     globals: String,
+    checked_reads: bool,
+    read_errors: Vec<String>,
 }
 
 impl GlslTranspiler {
@@ -630,6 +692,8 @@ impl GlslTranspiler {
             mode,
             params: Vec::new(),
             globals: String::new(),
+            checked_reads: false,
+            read_errors: Vec::new(),
         }
     }
 
@@ -644,7 +708,9 @@ impl GlslTranspiler {
         generic.params = std::mem::take(&mut self.params);
         generic.helper_functions = std::mem::take(&mut self.helper_functions);
         generic.globals = std::mem::take(&mut self.globals);
+        generic.checked_reads = self.checked_reads;
         let body = generic.transpile_node(node, point_var);
+        self.read_errors.append(&mut generic.read_errors);
         self.globals = generic.globals;
         self.var_counter = generic.var_counter;
         self.params = generic.params;

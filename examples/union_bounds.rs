@@ -63,6 +63,12 @@ fn main() {
         points.len() * parts.len()
     );
 
+    let bounded = WgslShader::transpile_with_union_bounds(&node, TranspileMode::Hardcoded);
+    println!(
+        "the bounded shader guards {} parts",
+        bounded.source.matches("!d_ub_set ||").count()
+    );
+
     let counter = WgslShader::transpile_union_skip_count(&node, TranspileMode::Hardcoded);
     match GpuEvaluator::from_shader(&counter) {
         Ok(g) => {
