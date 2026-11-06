@@ -1217,6 +1217,12 @@ impl Instruction {
         inst
     }
 
+    /// Create a loft instruction (its data goes in aux_data)
+    #[inline]
+    pub const fn loft() -> Self {
+        Self::new(OpCode::Loft)
+    }
+
     /// Create a polygon 2D instruction
     #[inline]
     pub const fn polygon_2d(half_height: f32) -> Self {
