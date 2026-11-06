@@ -192,6 +192,7 @@ impl WgpuEngine {
         source: wgpu::ShaderSource<'_>,
         node_data: &[f32],
     ) -> Result<Self, GpuError> {
+        let workgroup_size = declared_workgroup_size(&source)?;
         let context = GpuContext::request("ALICE-SDF Device")?;
         let device = context.device();
 
@@ -284,7 +285,7 @@ impl WgpuEngine {
             param_buffer: None,
             full_pipeline: None,
             dynamic_bind_group_layout: None,
-            workgroup_size: 256,
+            workgroup_size,
             node_data,
         }))
     }
@@ -565,6 +566,8 @@ impl WgpuEngine {
 
     /// Create a GPU evaluator from raw WGSL source (async)
     async fn from_wgsl_async(wgsl_source: &str) -> Result<Self, GpuError> {
+        let workgroup_size =
+            declared_workgroup_size(&wgpu::ShaderSource::Wgsl(wgsl_source.into()))?;
         let context = GpuContext::request_async("ALICE-SDF Device").await?;
         let device = context.device();
 
@@ -634,7 +637,7 @@ impl WgpuEngine {
             param_buffer: None,
             full_pipeline: None,
             dynamic_bind_group_layout: None,
-            workgroup_size: 256,
+            workgroup_size,
             node_data: None,
         }))
     }
@@ -1216,6 +1219,64 @@ impl std::fmt::Debug for WgpuPool {
                 &(self.capacity * std::mem::size_of::<GpuOutputDistance>()),
             )
             .finish_non_exhaustive()
+    }
+}
+
+/// The `x` of the `@workgroup_size` of the compute entry point `main`, since a dispatch is counted in
+/// these: a size other than the shader's own leaves points unevaluated, at 0, with no error. An
+/// override counts with its default, which is what the pipeline runs with.
+///
+/// # Errors
+/// [`GpuError::ShaderCompilation`] when the source does not parse, has no such entry point, or its
+/// size is an override with no constant default.
+fn declared_workgroup_size(source: &wgpu::ShaderSource<'_>) -> Result<u32, GpuError> {
+    let failed = GpuError::ShaderCompilation;
+    let module = match source {
+        wgpu::ShaderSource::Wgsl(text) => {
+            wgpu::naga::front::wgsl::parse_str(text).map_err(|e| failed(e.emit_to_string(text)))?
+        }
+        #[cfg(feature = "glsl")]
+        wgpu::ShaderSource::Glsl {
+            shader,
+            stage,
+            defines,
+        } => wgpu::naga::front::glsl::Frontend::default()
+            .parse(
+                &wgpu::naga::front::glsl::Options {
+                    stage: *stage,
+                    defines: defines.clone(),
+                },
+                shader,
+            )
+            .map_err(|e| failed(e.emit_to_string(shader)))?,
+        _ => return Err(failed("unsupported shader source".to_owned())),
+    };
+    let entry = module
+        .entry_points
+        .iter()
+        .find(|e| e.name == "main" && e.stage == wgpu::naga::ShaderStage::Compute)
+        .ok_or_else(|| failed("no compute entry point `main`".to_owned()))?;
+    let Some(overrides) = entry.workgroup_size_overrides else {
+        return Ok(entry.workgroup_size[0]);
+    };
+    let Some(x) = overrides[0] else {
+        return Ok(entry.workgroup_size[0]);
+    };
+    let unknown = || failed("`@workgroup_size` is an override with no constant default".to_owned());
+    let mut expression = &module.global_expressions[x];
+    if let wgpu::naga::Expression::Override(handle) = expression {
+        let init = module.overrides[*handle].init.ok_or_else(unknown)?;
+        expression = &module.global_expressions[init];
+    }
+    match expression {
+        wgpu::naga::Expression::Literal(wgpu::naga::Literal::U32(v)) => Ok(*v),
+        wgpu::naga::Expression::Literal(wgpu::naga::Literal::I32(v)) => {
+            u32::try_from(*v).map_err(|_| unknown())
+        }
+        wgpu::naga::Expression::Literal(wgpu::naga::Literal::AbstractInt(v)) => {
+            u32::try_from(*v).map_err(|_| unknown())
+        }
+        _ => Err(unknown()),
     }
 }
 
