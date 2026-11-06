@@ -33,6 +33,48 @@ use wgpu::util::DeviceExt;
 use super::transpiler::WgslShader;
 use crate::types::SdfNode;
 
+/// How long a read waits for its mapping after `poll` has returned. `poll` runs the mapping callback
+/// itself when the work is done, so only a wait that gave up (wgpu stops at 60 s) gets this far
+const MAP_AFTER_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// What a read does with its mapping result after the wait: a result that has not arrived means the
+/// GPU work has not finished, and its output must not be read
+fn mapped_after_wait(
+    result: Result<Result<(), wgpu::BufferAsyncError>, std::sync::mpsc::RecvTimeoutError>,
+) -> Result<(), GpuError> {
+    use std::sync::mpsc::RecvTimeoutError::{Disconnected, Timeout};
+    match result {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(GpuError::BufferMapping(format!("{e:?}"))),
+        Err(Timeout) => Err(GpuError::BufferMapping(
+            "the GPU work did not finish within the wait: its output is not read".to_string(),
+        )),
+        Err(Disconnected) => Err(GpuError::BufferMapping(
+            "GPU channel closed unexpectedly".to_string(),
+        )),
+    }
+}
+
+/// Bytes past the output for the dispatch marker (the output's stride, so the output stays a whole array)
+const MARKER_BYTES: u64 = 16;
+
+/// Whether a read's mapped bytes hold its dispatch's marker at `end`. wgpu's wait gives up after 60 s and
+/// the mapping then completes as though the work had finished (`Device::maintain` does not look at the
+/// wait's result), with the output still zeros: the mapping is no proof, the marker is. It is written
+/// after the output and is new for each dispatch, so a reused staging buffer cannot pass with the last one
+fn dispatch_finished(data: &[u8], end: usize, nonce: u32) -> Result<(), GpuError> {
+    let found = data
+        .get(end..end + 4)
+        .map(|b| u32::from_ne_bytes([b[0], b[1], b[2], b[3]]));
+    if found == Some(nonce) {
+        Ok(())
+    } else {
+        Err(GpuError::BufferMapping(format!(
+            "the GPU work did not finish: dispatch marker {found:?}, expected {nonce}; its output is not read and the device should not be used again"
+        )))
+    }
+}
+
 /// Error type for GPU evaluation
 #[derive(Error, Debug)]
 pub enum GpuError {
@@ -163,6 +205,12 @@ struct WgpuEngine {
     bind_group_layout: wgpu::BindGroupLayout,
     /// Dynamic parameter buffer (present in Dynamic mode)
     param_buffer: Option<wgpu::Buffer>,
+    /// Digest of the tree's Dynamic-mode shape: `update_params` refuses another (present in Dynamic mode)
+    dynamic_shape: Option<[u8; 32]>,
+    /// The last dispatch's marker ([`WgpuEngine::stamp_finished`])
+    dispatch_marker: std::sync::atomic::AtomicU32,
+    /// A dispatch did not finish: the device may still be running its commands and is not used again
+    unusable: std::sync::atomic::AtomicBool,
     /// Distance + normals pipeline (present in Dynamic mode)
     full_pipeline: Option<wgpu::ComputePipeline>,
     /// Bind group layout for 4-binding pipelines
@@ -171,6 +219,9 @@ struct WgpuEngine {
     workgroup_size: u32,
     /// Node data storage buffer (binding 4), present when the shader reads `alice_node_data`
     node_data: Option<wgpu::Buffer>,
+    /// The checked reads' counter (binding 5, one `atomic<u32>`), present for a shader from
+    /// [`WgslShader::try_transpile_with_node_data_checked`]
+    read_hits: Option<wgpu::Buffer>,
 }
 
 #[cfg_attr(
@@ -190,6 +241,15 @@ impl WgpuEngine {
     fn from_source_with_data(
         source: wgpu::ShaderSource<'_>,
         node_data: &[f32],
+    ) -> Result<Self, GpuError> {
+        Self::from_source_checked(source, node_data, false)
+    }
+
+    /// [`WgpuEngine::from_source_with_data`] with, when `checked`, the read counter at binding 5
+    fn from_source_checked(
+        source: wgpu::ShaderSource<'_>,
+        node_data: &[f32],
+        checked: bool,
     ) -> Result<Self, GpuError> {
         // Initialize wgpu synchronously using pollster
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -269,6 +329,18 @@ impl WgpuEngine {
                 count: None,
             });
         }
+        if checked {
+            layout_entries.push(wgpu::BindGroupLayoutEntry {
+                binding: 5,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            });
+        }
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("ALICE-SDF Bind Group Layout"),
             entries: &layout_entries,
@@ -298,16 +370,29 @@ impl WgpuEngine {
                 usage: wgpu::BufferUsages::STORAGE,
             })
         });
+        let read_hits = checked.then(|| {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("ALICE-SDF Read Counter"),
+                contents: bytemuck::cast_slice(&[0u32, 0u32]),
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_SRC
+                    | wgpu::BufferUsages::COPY_DST,
+            })
+        });
         Ok(Self {
             device,
             queue,
             pipeline,
             bind_group_layout,
             param_buffer: None,
+            dynamic_shape: None,
+            dispatch_marker: std::sync::atomic::AtomicU32::new(0),
+            unusable: std::sync::atomic::AtomicBool::new(false),
             full_pipeline: None,
             dynamic_bind_group_layout: None,
             workgroup_size: 256,
             node_data,
+            read_hits,
         })
     }
 
@@ -317,6 +402,7 @@ impl WgpuEngine {
     /// For small numbers of points, CPU evaluation may be faster due to
     /// GPU dispatch overhead.
     pub fn eval_batch(&self, points: &[Vec3]) -> Result<Vec<f32>, GpuError> {
+        self.check_usable()?;
         if points.is_empty() {
             return Ok(Vec::new());
         }
@@ -339,15 +425,17 @@ impl WgpuEngine {
         let output_buffer_size = (point_count * std::mem::size_of::<GpuOutputDistance>()) as u64;
         let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Output Distances Buffer"),
-            size: output_buffer_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            size: output_buffer_size + MARKER_BYTES,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
         // Create staging buffer for reading results
         let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Staging Buffer"),
-            size: output_buffer_size,
+            size: output_buffer_size + MARKER_BYTES,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -393,6 +481,12 @@ impl WgpuEngine {
 
         // Copy output to staging buffer
         encoder.copy_buffer_to_buffer(&output_buffer, 0, &staging_buffer, 0, output_buffer_size);
+        let nonce = self.stamp_finished(
+            &mut encoder,
+            &output_buffer,
+            &staging_buffer,
+            output_buffer_size,
+        );
 
         // Submit commands
         self.queue.submit(std::iter::once(encoder.finish()));
@@ -406,19 +500,104 @@ impl WgpuEngine {
 
         self.device.poll(wgpu::Maintain::Wait);
 
-        receiver
-            .recv()
-            .map_err(|_| GpuError::BufferMapping("GPU channel closed unexpectedly".to_string()))?
-            .map_err(|e| GpuError::BufferMapping(format!("{:?}", e)))?;
+        mapped_after_wait(receiver.recv_timeout(MAP_AFTER_WAIT))?;
 
         let data = buffer_slice.get_mapped_range();
-        let output: &[GpuOutputDistance] = bytemuck::cast_slice(&data);
+        let end = output_buffer_size as usize;
+        self.check_finished(&data, end, nonce)?;
+        let output: &[GpuOutputDistance] = bytemuck::cast_slice(&data[..end]);
         let distances: Vec<f32> = output.iter().map(|d| d.distance).collect();
 
         drop(data);
         staging_buffer.unmap();
 
         Ok(distances)
+    }
+
+    /// [`dispatch_finished`], remembering a failure: after it wgpu has released work the device may
+    /// still be running, so this engine refuses further work ([`Self::check_usable`]) instead of reading more
+    fn check_finished(&self, data: &[u8], end: usize, nonce: u32) -> Result<(), GpuError> {
+        let r = dispatch_finished(data, end, nonce);
+        if r.is_err() {
+            self.unusable
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        r
+    }
+
+    /// Err once a dispatch of this engine did not finish
+    fn check_usable(&self) -> Result<(), GpuError> {
+        if self.unusable.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(GpuError::BufferMapping(
+                "an earlier dispatch did not finish: this evaluator is not usable, create another"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Add to `encoder` the writing of a new marker at `end` of `output` and its copy to `end` of `staging`,
+    /// after the output's own copy: the changes of `output`'s use order them after the dispatch.
+    /// The marker ([`dispatch_finished`])
+    fn stamp_finished(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        output: &wgpu::Buffer,
+        staging: &wgpu::Buffer,
+        end: u64,
+    ) -> u32 {
+        let nonce = self
+            .dispatch_marker
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            .wrapping_add(1)
+            .max(1);
+        let source = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("ALICE-SDF Dispatch Marker"),
+                contents: bytemuck::cast_slice(&[nonce]),
+                usage: wgpu::BufferUsages::COPY_SRC,
+            });
+        encoder.copy_buffer_to_buffer(&source, 0, output, end, 4);
+        encoder.copy_buffer_to_buffer(output, end, staging, end, 4);
+        nonce
+    }
+
+    /// The checked reads that left their proven range since the engine was built (`None` without
+    /// the counter)
+    fn read_hits(&self) -> Result<Option<u32>, GpuError> {
+        self.check_usable()?;
+        let Some(hits) = &self.read_hits else {
+            return Ok(None);
+        };
+        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ALICE-SDF Read Counter Staging"),
+            size: 8,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("ALICE-SDF Read Counter Copy"),
+            });
+        encoder.copy_buffer_to_buffer(hits, 0, &staging, 0, 4);
+        let nonce = self.stamp_finished(&mut encoder, hits, &staging, 4);
+        self.queue.submit(std::iter::once(encoder.finish()));
+        let slice = staging.slice(..);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        self.device.poll(wgpu::Maintain::Wait);
+        mapped_after_wait(receiver.recv_timeout(MAP_AFTER_WAIT))?;
+        let n = {
+            let data = slice.get_mapped_range();
+            self.check_finished(&data, 4, nonce)?;
+            bytemuck::cast_slice::<u8, u32>(&data[..4])[0]
+        };
+        staging.unmap();
+        Ok(Some(n))
     }
 
     /// Bind group for the distance pipeline (`pipeline`).
@@ -465,6 +644,12 @@ impl WgpuEngine {
                 resource: data.as_entire_binding(),
             });
         }
+        if let Some(hits) = &self.read_hits {
+            entries.push(wgpu::BindGroupEntry {
+                binding: 5,
+                resource: hits.as_entire_binding(),
+            });
+        }
         self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(label),
             layout,
@@ -489,6 +674,7 @@ impl WgpuEngine {
         points: &[Vec3],
         pool: &mut WgpuPool,
     ) -> Result<Vec<f32>, GpuError> {
+        self.check_usable()?;
         if points.is_empty() {
             return Ok(Vec::new());
         }
@@ -539,11 +725,17 @@ impl WgpuEngine {
 
         let read_size = (point_count * std::mem::size_of::<GpuOutputDistance>()) as u64;
         encoder.copy_buffer_to_buffer(&pool.output_buffer, 0, &pool.staging_buffer, 0, read_size);
+        let nonce = self.stamp_finished(
+            &mut encoder,
+            &pool.output_buffer,
+            &pool.staging_buffer,
+            read_size,
+        );
 
         self.queue.submit(std::iter::once(encoder.finish()));
 
         // Read results
-        let buffer_slice = pool.staging_buffer.slice(..read_size);
+        let buffer_slice = pool.staging_buffer.slice(..read_size + MARKER_BYTES);
         let (sender, receiver) = std::sync::mpsc::channel();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = sender.send(result);
@@ -551,18 +743,19 @@ impl WgpuEngine {
 
         self.device.poll(wgpu::Maintain::Wait);
 
-        receiver
-            .recv()
-            .map_err(|_| GpuError::BufferMapping("GPU channel closed unexpectedly".to_string()))?
-            .map_err(|e| GpuError::BufferMapping(format!("{:?}", e)))?;
+        mapped_after_wait(receiver.recv_timeout(MAP_AFTER_WAIT))?;
 
         let data = buffer_slice.get_mapped_range();
-        let output: &[GpuOutputDistance] = bytemuck::cast_slice(&data);
+        let end = read_size as usize;
+        // the pool is used again: its staging buffer is unmapped whatever the marker says
+        let finished = self.check_finished(&data, end, nonce);
+        let output: &[GpuOutputDistance] = bytemuck::cast_slice(&data[..end]);
         let distances: Vec<f32> = output[..point_count].iter().map(|d| d.distance).collect();
 
         drop(data);
         pool.staging_buffer.unmap();
 
+        finished?;
         Ok(distances)
     }
 
@@ -661,10 +854,14 @@ impl WgpuEngine {
             pipeline,
             bind_group_layout,
             param_buffer: None,
+            dynamic_shape: None,
+            dispatch_marker: std::sync::atomic::AtomicU32::new(0),
+            unusable: std::sync::atomic::AtomicBool::new(false),
             full_pipeline: None,
             dynamic_bind_group_layout: None,
             workgroup_size: 256,
             node_data: None,
+            read_hits: None,
         })
     }
 
@@ -672,7 +869,13 @@ impl WgpuEngine {
     ///
     /// This is the async version that allows CPU work while GPU computes.
     /// Use this for optimal CPU/GPU overlap in real-time applications.
+    #[allow(
+        clippy::unused_async,
+        clippy::unused_async_trait_impl,
+        reason = "the public signature is async; `poll` waits for the work, so nothing is left to await"
+    )]
     pub async fn eval_batch_async(&self, points: &[Vec3]) -> Result<Vec<f32>, GpuError> {
+        self.check_usable()?;
         if points.is_empty() {
             return Ok(Vec::new());
         }
@@ -695,15 +898,17 @@ impl WgpuEngine {
         let output_buffer_size = (point_count * std::mem::size_of::<GpuOutputDistance>()) as u64;
         let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Output Distances Buffer"),
-            size: output_buffer_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            size: output_buffer_size + MARKER_BYTES,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
         // Create staging buffer for reading results
         let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Staging Buffer"),
-            size: output_buffer_size,
+            size: output_buffer_size + MARKER_BYTES,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -747,13 +952,19 @@ impl WgpuEngine {
 
         // Copy output to staging buffer
         encoder.copy_buffer_to_buffer(&output_buffer, 0, &staging_buffer, 0, output_buffer_size);
+        let nonce = self.stamp_finished(
+            &mut encoder,
+            &output_buffer,
+            &staging_buffer,
+            output_buffer_size,
+        );
 
         // Submit commands (non-blocking)
         self.queue.submit(std::iter::once(encoder.finish()));
 
         // Map buffer asynchronously
         let buffer_slice = staging_buffer.slice(..);
-        let (sender, receiver) = futures_channel::oneshot::channel();
+        let (sender, mut receiver) = futures_channel::oneshot::channel();
 
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = sender.send(result);
@@ -762,14 +973,17 @@ impl WgpuEngine {
         // Poll device until mapping is complete
         self.device.poll(wgpu::Maintain::Wait);
 
-        // Wait for mapping result
-        receiver
-            .await
-            .map_err(|_| GpuError::BufferMapping("Channel closed".to_string()))?
-            .map_err(|e| GpuError::BufferMapping(format!("{:?}", e)))?;
+        // The mapping result: `poll` has returned, so it is there unless the wait gave up
+        mapped_after_wait(match receiver.try_recv() {
+            Ok(Some(result)) => Ok(result),
+            Ok(None) => Err(std::sync::mpsc::RecvTimeoutError::Timeout),
+            Err(_) => Err(std::sync::mpsc::RecvTimeoutError::Disconnected),
+        })?;
 
         let data = buffer_slice.get_mapped_range();
-        let output: &[GpuOutputDistance] = bytemuck::cast_slice(&data);
+        let end = output_buffer_size as usize;
+        self.check_finished(&data, end, nonce)?;
+        let output: &[GpuOutputDistance] = bytemuck::cast_slice(&data[..end]);
         let distances: Vec<f32> = output.iter().map(|d| d.distance).collect();
 
         drop(data);
@@ -787,6 +1001,7 @@ impl WgpuEngine {
     pub fn new_dynamic(node: &SdfNode) -> Result<Self, GpuError> {
         use super::transpiler::TranspileMode;
         let shader = WgslShader::transpile(node, TranspileMode::Dynamic);
+        let shape = WgslShader::dynamic_shape(node).0;
 
         // Build distance-only compute shader (4 bindings)
         let compute_source = shader.to_compute_shader();
@@ -954,10 +1169,14 @@ impl WgpuEngine {
             pipeline,
             bind_group_layout,
             param_buffer: Some(param_buffer),
+            dynamic_shape: Some(shape),
+            dispatch_marker: std::sync::atomic::AtomicU32::new(0),
+            unusable: std::sync::atomic::AtomicBool::new(false),
             full_pipeline: Some(full_pipeline),
             dynamic_bind_group_layout: Some(dynamic_bind_group_layout),
             workgroup_size: shader.workgroup_size,
             node_data: None,
+            read_hits: None,
         })
     }
 
@@ -966,12 +1185,24 @@ impl WgpuEngine {
     /// Traverses the node tree in the same order as transpilation to extract
     /// current values, then uploads them to the GPU via `write_buffer`.
     ///
-    /// This is a zero-latency operation suitable for 60fps animation.
+    /// No shader is recompiled, but the tree is transpiled again to read its values and check its shape:
+    /// about 70 µs for 65 primitives (fit for 60fps animation) and 16 ms for a loft of 64,000 values
+    /// (a frame at 60fps).
     ///
     /// # Panics
-    /// Panics if the evaluator was not created with `new_dynamic()`.
+    /// Panics if the evaluator was not created with `new_dynamic()`, or if `node` differs from the tree
+    /// it was created with in anything but parameter values (its form, or non-parameter data such as
+    /// a loft's rows or a stack's sections, which are compiled into the shader): recreate the
+    /// evaluator for that tree.
     pub fn update_params(&self, node: &SdfNode) {
-        let params = WgslShader::extract_params(node);
+        let (shape, params) = WgslShader::dynamic_shape(node);
+        let expected = self
+            .dynamic_shape
+            .expect("update_params requires Dynamic mode (use new_dynamic)");
+        assert!(
+            shape == expected,
+            "update_params: the tree differs from the evaluator's in more than parameter values"
+        );
         let mut padded = params;
         while !padded.len().is_multiple_of(4) {
             padded.push(0.0);
@@ -994,6 +1225,7 @@ impl WgpuEngine {
     /// # Panics
     /// Panics if the evaluator was not created with `new_dynamic()`.
     pub fn eval_batch_full(&self, points: &[Vec3]) -> Result<Vec<(f32, Vec3)>, GpuError> {
+        self.check_usable()?;
         if points.is_empty() {
             return Ok(Vec::new());
         }
@@ -1025,14 +1257,16 @@ impl WgpuEngine {
         let output_buffer_size = (point_count * std::mem::size_of::<GpuOutputFull>()) as u64;
         let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Output Full Buffer"),
-            size: output_buffer_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            size: output_buffer_size + MARKER_BYTES,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
         let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Staging Buffer (Full)"),
-            size: output_buffer_size,
+            size: output_buffer_size + MARKER_BYTES,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -1086,6 +1320,12 @@ impl WgpuEngine {
         }
 
         encoder.copy_buffer_to_buffer(&output_buffer, 0, &staging_buffer, 0, output_buffer_size);
+        let nonce = self.stamp_finished(
+            &mut encoder,
+            &output_buffer,
+            &staging_buffer,
+            output_buffer_size,
+        );
         self.queue.submit(std::iter::once(encoder.finish()));
 
         let buffer_slice = staging_buffer.slice(..);
@@ -1096,13 +1336,12 @@ impl WgpuEngine {
 
         self.device.poll(wgpu::Maintain::Wait);
 
-        receiver
-            .recv()
-            .map_err(|_| GpuError::BufferMapping("GPU channel closed unexpectedly".to_string()))?
-            .map_err(|e| GpuError::BufferMapping(format!("{:?}", e)))?;
+        mapped_after_wait(receiver.recv_timeout(MAP_AFTER_WAIT))?;
 
         let data = buffer_slice.get_mapped_range();
-        let output: &[GpuOutputFull] = bytemuck::cast_slice(&data);
+        let end = output_buffer_size as usize;
+        self.check_finished(&data, end, nonce)?;
+        let output: &[GpuOutputFull] = bytemuck::cast_slice(&data[..end]);
         let results: Vec<(f32, Vec3)> = output
             .iter()
             .map(|o| (o.dist, Vec3::new(o.nx, o.ny, o.nz)))
@@ -1182,14 +1421,16 @@ impl WgpuPool {
 
         let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Pool Output Buffer"),
-            size: output_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            size: output_size + MARKER_BYTES,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
         let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Pool Staging Buffer"),
-            size: output_size,
+            size: output_size + MARKER_BYTES,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -1276,18 +1517,69 @@ impl GpuEvaluator {
     /// spheres ([`WgslShader::transpile_with_union_bounds`]); the values are those of the plain
     /// shader.
     pub fn new(node: &SdfNode) -> Result<Self, GpuError> {
-        // per-node data (lattice control points, height fields, grid warp maps) goes to the node
-        // data buffer on the wgpu engine; the Metal engine binds input / output / count / params
-        // only, so there it stays module-scope constants
-        #[cfg(not(all(target_os = "macos", feature = "msl")))]
-        let shader =
-            WgslShader::transpile_with_node_data(node, super::transpiler::TranspileMode::Hardcoded);
-        #[cfg(all(target_os = "macos", feature = "msl"))]
-        let shader = WgslShader::transpile_with_union_bounds(
+        // per-node data (lattice control points, height fields, grid warp maps, lofts, stacks) goes
+        // to the node data buffer on both engines
+        let shader = WgslShader::try_transpile_with_node_data(
             node,
             super::transpiler::TranspileMode::Hardcoded,
-        );
+        )
+        .map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
         Self::from_shader(&shader)
+    }
+
+    /// [`GpuEvaluator::new`] with the loft and stack data reads checked: every read outside the
+    /// index range the emit proved for it is counted ([`GpuEvaluator::read_hits`]), with the same
+    /// values. For tests and diagnostics, on either engine
+    ///
+    /// # Errors
+    ///
+    /// As [`GpuEvaluator::new`], and a tree whose reads the emit cannot prove in range
+    /// ([`WgslShader::try_transpile_with_node_data_checked`])
+    pub fn new_checked(node: &SdfNode) -> Result<Self, GpuError> {
+        let shader = WgslShader::try_transpile_with_node_data_checked(
+            node,
+            super::transpiler::TranspileMode::Hardcoded,
+        )
+        .map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
+        let text = shader.to_compute_shader();
+        crate::provenance::shader_text_verdict(&text, false)?;
+        note_engine_build();
+        #[cfg(all(target_os = "macos", feature = "msl"))]
+        {
+            super::gpu_metal::MetalEngine::from_wgsl_with_data(&text, &shader.node_data, true).map(
+                |m| Self {
+                    engine: Engine::Metal(m),
+                },
+            )
+        }
+        #[cfg(not(all(target_os = "macos", feature = "msl")))]
+        {
+            let mut evaluator = WgpuEngine::from_source_checked(
+                wgpu::ShaderSource::Wgsl(text.into()),
+                &shader.node_data,
+                true,
+            )
+            .map(|w| Self {
+                engine: Engine::Wgpu(w),
+            })?;
+            evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
+            Ok(evaluator)
+        }
+    }
+
+    /// The checked reads that left their proven range in every evaluation so far (an evaluator from
+    /// [`GpuEvaluator::new_checked`]; `None` otherwise). Zero means every loft and stack read stayed
+    /// inside the range the emit proved, so the buffer clamps never changed a value
+    ///
+    /// # Errors
+    ///
+    /// The counter could not be read back
+    pub fn read_hits(&self) -> Result<Option<u32>, GpuError> {
+        match &self.engine {
+            Engine::Wgpu(w) => w.read_hits(),
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            Engine::Metal(m) => Ok(m.read_hits()),
+        }
     }
 
     /// Create a GPU evaluator from a pre-generated WGSL shader
@@ -1301,9 +1593,16 @@ impl GpuEvaluator {
             note_engine_build();
             #[cfg(all(target_os = "macos", feature = "msl"))]
             {
-                return Err(GpuError::InvalidFormat(
-                    "node data buffer (binding 4) is bound by the wgpu engine only; transpile with WgslShader::transpile for the Metal engine".into(),
-                ));
+                let mut evaluator = super::gpu_metal::MetalEngine::from_wgsl_with_data(
+                    &text,
+                    &shader.node_data,
+                    false,
+                )
+                .map(|m| Self {
+                    engine: Engine::Metal(m),
+                })?;
+                evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
+                return Ok(evaluator);
             }
             #[cfg(not(all(target_os = "macos", feature = "msl")))]
             {
@@ -1634,10 +1933,15 @@ impl GpuEvaluator {
     /// Traverses the node tree in the same order as transpilation to extract
     /// current values, then uploads them to the GPU.
     ///
-    /// This is a zero-latency operation suitable for 60fps animation.
+    /// No shader is recompiled, but the tree is transpiled again to read its values and check its shape:
+    /// about 70 µs for 65 primitives (fit for 60fps animation) and 16 ms for a loft of 64,000 values
+    /// (a frame at 60fps).
     ///
     /// # Panics
-    /// Panics if the evaluator was not created with `new_dynamic()`.
+    /// Panics if the evaluator was not created with `new_dynamic()`, or if `node` differs from the tree
+    /// it was created with in anything but parameter values (its form, or non-parameter data such as
+    /// a loft's rows or a stack's sections, which are compiled into the shader): recreate the
+    /// evaluator for that tree.
     pub fn update_params(&self, node: &SdfNode) {
         match &self.engine {
             Engine::Wgpu(w) => w.update_params(node),
@@ -1838,6 +2142,57 @@ impl std::fmt::Debug for GpuEvaluator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_engine_whose_dispatch_did_not_finish_refuses_further_work() {
+        if !crate::gpu_test_support::gpu_ready("an_engine_whose_dispatch_did_not_finish") {
+            return;
+        }
+        let gpu = GpuEvaluator::new(&SdfNode::Sphere { radius: 1.0 }).unwrap();
+        #[allow(
+            irrefutable_let_patterns,
+            reason = "the Metal engine exists on one target only"
+        )]
+        let Engine::Wgpu(w) = &gpu.engine
+        else {
+            return;
+        };
+        assert!(gpu.eval_batch(&[Vec3::ZERO]).is_ok());
+        assert!(w.check_finished(&[0; 4], 0, 7).is_err());
+        let e = gpu.eval_batch(&[Vec3::ZERO]).unwrap_err().to_string();
+        assert!(e.contains("not usable"), "{e}");
+    }
+
+    #[test]
+    fn a_read_needs_its_own_dispatch_marker() {
+        let bytes = |m: u32| {
+            let mut v = vec![0u8; 8];
+            v.extend_from_slice(&m.to_ne_bytes());
+            v
+        };
+        assert!(dispatch_finished(&bytes(7), 8, 7).is_ok());
+        // the zeros of work that did not finish
+        let e = dispatch_finished(&bytes(0), 8, 7).unwrap_err().to_string();
+        assert!(e.contains("did not finish"), "{e}");
+        // the last dispatch's marker in a reused staging buffer
+        assert!(dispatch_finished(&bytes(6), 8, 7).is_err());
+        // no room for a marker
+        assert!(dispatch_finished(&bytes(7)[..10], 8, 7).is_err());
+    }
+
+    #[test]
+    fn a_read_refuses_output_whose_work_has_not_finished() {
+        use std::sync::mpsc::RecvTimeoutError::{Disconnected, Timeout};
+        assert!(mapped_after_wait(Ok(Ok(()))).is_ok());
+        let e = mapped_after_wait(Err(Timeout)).unwrap_err().to_string();
+        assert!(e.contains("did not finish"), "{e}");
+        let e = mapped_after_wait(Err(Disconnected))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("channel closed"), "{e}");
+        assert!(mapped_after_wait(Ok(Err(wgpu::BufferAsyncError))).is_err());
+    }
+
     use crate::eval::eval;
 
     /// A refused text starts no engine build (so no device is requested): the verdict comes from
