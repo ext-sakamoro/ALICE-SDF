@@ -114,6 +114,15 @@ CPU の評価器 (木の評価器、コンパイル済みスカラー、8 幅 SI
 | `tests/test_gpu_law_parity.rs` | WGSL を CPU と許容誤差内で比較、`atan2` の軸上の値は厳密に一致 | Linux、ソフトウェア Vulkan (lavapipe) |
 <!-- claim-test: tree_evaluator_bits_match_recorded_hashes -->
 
+**GPU** GPU の値は CPU に対して許容差の領域で、bit 一致ではない (和と積は一致するが、除算 / `sqrt` / `sin` / `cos` は driver のもの) driver に止めさせるのは `a * b + c` の融合で、同じ shader は他に何を計算していても同じ bit を返す `gpu_context::contraction(path, backend)` と `GpuEvaluator::contraction()` が経路ごとに答えるので、これが要る結果は確かめて拒否できる
+
+| 経路 | Vulkan | Metal | DX12, GL | browser |
+|------|--------|-------|----------|---------|
+| `GpuEvaluator` (WGSL / 木 / shader から) | 禁止 | macOS で禁止 | 拒否 | 制御なし |
+| volume bake / marching cubes / `GpuEvaluator` (GLSL compute から) | 禁止 | 制御なし | 拒否 | 制御なし |
+
+wgpu 経由の Metal には fast math を切る手段が無い browser は browser が compiler を持つので、ここからは対象にできない
+
 **対象外** `wasm32` は CI でビルドするが、上のテストは実行していない GPU
 シェーダー (WGSL / GLSL / HLSL / Metal) は許容誤差の領域で、ビット一致の対象では
 ない 基本演算が IEEE 754 に従わないターゲットや、fast-math 系のフラグを付けた

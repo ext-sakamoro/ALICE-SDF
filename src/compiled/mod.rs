@@ -199,7 +199,7 @@ pub mod glsl;
 ///
 /// Derived from the WGSL emit through naga rather than hand-written as a fourth
 /// `ShaderLang`, so the 56 shader helpers keep a single source of law.
-#[cfg(feature = "msl")]
+#[cfg(any(feature = "msl", all(target_os = "macos", feature = "gpu")))]
 pub mod msl;
 
 #[cfg(feature = "blinkscript")]
