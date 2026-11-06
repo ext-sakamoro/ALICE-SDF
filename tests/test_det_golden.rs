@@ -894,4 +894,28 @@ const GOLDEN: &[(&str, &str)] = &[
         "infinite_cylinder_r0_subnormal",
         "9f648ada5d9fdfc89282d8e4f9cd659b6df83ece847148c3ae83fa33bc31f1c9",
     ),
+    (
+        "loft",
+        "6258dee5099a782ffff6963c7ea7a572bac024bbeeb4e4861758375adba7bcbe",
+    ),
+    (
+        "loft_curves",
+        "2b0407e8a915d5d90b720ffe0e0c0752b35625e890ce7dd762e4a4fd41a1c9aa",
+    ),
+    (
+        "loft_nofade",
+        "57a5d5c9944234eebcd91f0ec8b45f68119f83006e6a4d1c9b125e2a01d0c113",
+    ),
+    (
+        "loft_faded",
+        "23cc904f280eb82037ed5bdb95313df50888520ca2c3265b84d9951bc53ab2f4",
+    ),
+    (
+        "section_stack",
+        "c6d1cf4949339cd4173b3d8a049360b91c909731217c6f5dceed63a1c14551f4",
+    ),
+    (
+        "smooth_section_stack",
+        "6a55c1a969935742641734035df5eb9d74b5d10905276b2197ab355fc7a1c3fe",
+    ),
 ];

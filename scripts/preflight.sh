@@ -454,6 +454,7 @@ if command -v "${ALICE_SDF_DXC:-dxc}" >/dev/null 2>&1; then
   step "test: HLSL outputs compiled by dxc (hlsl-dxc.yml と対)"
   ALICE_SDF_REQUIRE_DXC=1 cargo test --features hlsl --test test_hlsl_dxc_compile -- --nocapture
 else
+  echo "PREFLIGHT-SKIP: HLSL dxc compile gate: no dxc on this host, checked by hlsl-dxc.yml"
   step "SKIPPED: HLSL dxc compile gate (dxc が無い、ALICE_SDF_DXC で指定可) — 0 件 compile、CI の hlsl-dxc.yml が検査する"
 fi
 # GLSL の全出力を glslang で SPIR-V にし、ALICE_PRECISE が NoContraction になることを確かめる (hlsl-dxc.yml の glslang の step と対)
@@ -461,6 +462,7 @@ if command -v "${ALICE_SDF_GLSLANG:-glslang}" >/dev/null 2>&1; then
   step "test: GLSL outputs compiled by glslang, NoContraction (hlsl-dxc.yml と対)"
   ALICE_SDF_REQUIRE_GLSLANG=1 cargo test --features glsl --test test_glsl_glslang_precise -- --nocapture
 else
+  echo "PREFLIGHT-SKIP: GLSL glslang gate: no glslang on this host, checked by hlsl-dxc.yml"
   step "SKIPPED: GLSL glslang gate (glslang が無い、ALICE_SDF_GLSLANG で指定可) — 0 件 compile、CI の hlsl-dxc.yml が検査する"
 fi
 
@@ -473,6 +475,8 @@ cargo test --lib --features "ffi,hlsl,glsl"
 if [ "$(uname -s)" = "Darwin" ]; then
   step "test: MSL -> Metal oracle (corpus compile + CPU parity, macOS のみ)"
   ALICE_SDF_REQUIRE_METAL=1 cargo test --features msl --test test_msl_metal_oracle -- --nocapture
+  step "test: update_params on the Metal engine (msl、ci.yml の macOS step と対)"
+  ALICE_SDF_REQUIRE_GPU=1 cargo test --features msl --test test_gpu_dynamic_shape -- --nocapture
   step "test: shader text semantics identifier (msl、ci.yml の macOS step と対、9 件未満で fail)"
   cargo test --features msl --test test_shader_text_provenance -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-shader-text-provenance-msl.log"
   python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-shader-text-provenance-msl.log" --min 13 --what "shader text provenance tests (msl)"
@@ -548,6 +552,26 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_shader_precise_temporaries \
   --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle --test test_gpu_lifecycle_oracle
 
+step "gpu-parity: polygon / section stack shader oracles (ci.yml の同名 step と対、file ごとに件数未満で fail)"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_polygon_2d_general_oracle -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_polygon_2d_general_oracle.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_polygon_2d_general_oracle.log" --min 11 --what "test_polygon_2d_general_oracle"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_section_stack_shader_oracle -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_section_stack_shader_oracle.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_section_stack_shader_oracle.log" --min 4 --what "test_section_stack_shader_oracle"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_smooth_stack_shader -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_smooth_stack_shader.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_smooth_stack_shader.log" --min 4 --what "test_smooth_stack_shader"
+ALICE_SDF_REQUIRE_GPU=1 CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo test --release --features "gpu,glsl,hlsl" --test test_shader_data_bounds -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_shader_data_bounds.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_shader_data_bounds.log" --min 8 --what "test_shader_data_bounds"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_shader_minimal_trees -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_shader_minimal_trees.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_shader_minimal_trees.log" --min 3 --what "test_shader_minimal_trees"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_gpu_dynamic_shape -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_gpu_dynamic_shape.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_gpu_dynamic_shape.log" --min 2 --what "test_gpu_dynamic_shape"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_shader_integer_wraps -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_shader_integer_wraps.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_shader_integer_wraps.log" --min 2 --what "test_shader_integer_wraps"
+ALICE_SDF_REQUIRE_GPU=1 CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo test --release --features "gpu,glsl,hlsl" --test test_shader_read_ranges -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_shader_read_ranges.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_shader_read_ranges.log" --min 2 --what "test_shader_read_ranges"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_loft_shader_cpu_agreement -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_loft_shader_cpu_agreement.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_loft_shader_cpu_agreement.log" --min 1 --what "test_loft_shader_cpu_agreement"
+
 step "gpu-parity: shader text semantics identifier (gpu, glsl, hlsl, volume, blinkscript, texture-fit、ci.yml の gpu-parity job と対、14 件未満で fail)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl,volume,blinkscript,texture-fit" --test test_shader_text_provenance -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log" --min 14 --what "shader text provenance tests (gpu, glsl, hlsl, volume, blinkscript, texture-fit)"
@@ -575,6 +599,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
   ALICE_SDF_REQUIRE_GPU=1 cargo run -q --example bake_assets --features gpu-mesh -- bake "$bake_out/gpu"
   ALICE_SDF_REQUIRE_GPU=1 scripts/bake_teeth.sh "$bake_out/gpu" gpu-mesh
 else
+  echo "PREFLIGHT-SKIP: bake GPU part: no Metal on this host, checked by bake.yml"
   step "SKIPPED: bake GPU part (Metal が無い host) — 0 scene を GPU で mesh 化、CI の bake.yml が lavapipe で検査する"
 fi
 rm -rf "$bake_out"
