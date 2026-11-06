@@ -41,7 +41,7 @@
 mod common;
 
 use alice_sdf::compiled::hlsl::{HlslShader, HlslTranspileMode};
-use common::corpus::corpus;
+use common::corpus::gate_corpus as corpus;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -299,6 +299,15 @@ fn dxc_compiles_every_hlsl_output_for_every_corpus_node() {
         failed.join("\n")
     );
     assert!(compiled > 0, "dxc compiled 0 units");
+    common::corpus::check_prime_sized_compiled(
+        "dxc",
+        &units
+            .iter()
+            .zip(&results)
+            .filter(|(_, r)| r.is_ok())
+            .map(|(u, _)| u.name.clone())
+            .collect::<Vec<_>>(),
+    );
     assert_eq!(
         compiled,
         corpus().len() * 2 * OUTPUTS,
@@ -630,9 +639,11 @@ fn dxil_of_every_output_is_not_contractible() {
     let mut per_output_pairs: Vec<(String, usize)> = Vec::new();
     let mut fmad = 0;
     let mut problems = Vec::new();
+    let mut read: Vec<String> = Vec::new();
     for unit in &units {
         match dxil_listing(&dxc, &dir, unit) {
             Ok(listing) => {
+                read.push(unit.name.clone());
                 let o = output(&unit.name);
                 let n = fmad_count(&listing);
                 fmad += n;
@@ -673,6 +684,7 @@ fn dxil_of_every_output_is_not_contractible() {
         units.len()
     );
     assert!(!units.is_empty(), "0 units compiled");
+    common::corpus::check_prime_sized_compiled("dxc listings", &read);
     for (o, p) in &per_output_pairs {
         assert!(
             *p > 0,
