@@ -22,10 +22,15 @@ fn circle(r: f32, c: Vec2, m: usize) -> Vec<Vec2> {
 /// A column whose section jumps sideways between two close levels, so that one interval's bound is
 /// far larger than the others'
 fn jumping() -> SdfNode {
-    let levels: Vec<f32> = (0..24).map(|i| 0.04 * i as f32).collect();
-    let loops = (0..24)
+    jumping_at(0.04, 24)
+}
+
+/// [`jumping`] with `n` levels `dy` apart
+fn jumping_at(dy: f32, n: usize) -> SdfNode {
+    let levels: Vec<f32> = (0..n).map(|i| dy * i as f32).collect();
+    let loops = (0..n)
         .map(|i| {
-            let x = if i < 12 { 0.0 } else { 0.12 };
+            let x = if i < n / 2 { 0.0 } else { 0.12 };
             vec![circle(0.2, Vec2::new(x, 0.0), 10)]
         })
         .collect();
@@ -37,33 +42,6 @@ fn stack(node: &SdfNode) -> &alice_sdf::primitives::SmoothSectionStack {
         SdfNode::SmoothSectionStack(st) => st,
         _ => panic!("a stack"),
     }
-}
-
-#[test]
-fn neighbouring_knots_differ_by_the_stated_limit_and_the_jump_spreads() {
-    let node = jumping();
-    let st = stack(&node);
-    let k = st.knots();
-    let (lo, hi) = k
-        .iter()
-        .fold((f32::INFINITY, 0.0f32), |(a, b), &x| (a.min(x), b.max(x)));
-    assert!(hi > 2.0 * lo, "the bound must vary (knots {lo}..{hi})");
-    let mut limited = 0;
-    for i in 0..k.len() - 1 {
-        let d = st.levels[i + 1] - st.levels[i];
-        let lim = k[i].min(k[i + 1]) * d / (REACH / 3.0);
-        assert!(
-            (k[i + 1] - k[i]).abs() <= lim * (1.0 + 1e-5),
-            "knots {i}, {}: {} past {lim}",
-            i + 1,
-            (k[i + 1] - k[i]).abs()
-        );
-        // the raw window takes the large bound or not: a step wider than the limit shows the limit acted
-        if (k[i + 1] - k[i]).abs() > 0.99 * lim {
-            limited += 1;
-        }
-    }
-    assert!(limited > 0, "no pair at the limit: the limit is not tested");
 }
 
 #[test]
@@ -118,4 +96,78 @@ fn the_lipschitz_report_and_the_interval_use_the_claim() {
         width >= plain * claim * 0.999,
         "width {width} for slope {claim}, unit slope {plain}"
     );
+}
+
+/// The binary form is positional: a stack with and without a reach comes back the same, with a node
+/// stored after it
+#[test]
+fn both_bounds_survive_the_binary_form() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let levels: Vec<f32> = (0..8).map(|i| 0.05 * i as f32).collect();
+    let loops = |_: usize| (0..8).map(|_| vec![circle(0.2, Vec2::ZERO, 10)]).collect::<Vec<_>>();
+    let global = SdfNode::smooth_section_stack(levels.clone(), loops(0), 0.01, 0.1).expect("global");
+    let local = SdfNode::smooth_section_stack_local(levels, loops(0), REACH).expect("local");
+    for (name, node) in [("global", global), ("local", local)] {
+        let tree = SdfTree::new(node.union(SdfNode::sphere(0.25)));
+        let path = dir.join(format!("stack_{name}.asdf"));
+        alice_sdf::io::save_asdf(&tree, &path).expect("save");
+        let back = alice_sdf::io::load_asdf(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
+        for i in 0..200 {
+            let t = i as f32 * 0.01;
+            let p = Vec3::new(t - 1.0, t * 0.4, 0.1);
+            let (a, b) = (alice_sdf::eval::eval(&tree.root, p), alice_sdf::eval::eval(&back.root, p));
+            assert_eq!(a.to_bits(), b.to_bits(), "{name} at {p}");
+        }
+    }
+}
+
+/// Stepping by the value over the slope claim against a fixed small step: the same rays hit, and the
+/// stepping never lands past the first crossing. Independent of the bound: the reference reads only
+/// the sign of the field
+#[test]
+fn stepping_agrees_with_a_fixed_small_step() {
+    for (dy, n) in [(0.04, 24), (0.008, 48), (0.002, 160)] {
+        let node = jumping_at(dy, n);
+        let claim = stack(&node).slope_claim();
+        let top = dy * (n as f32 - 1.0);
+        let h = 2e-4f32;
+        let (mut hits, mut later) = (0, 0);
+        for iy in 0..40 {
+            for iz in 0..20 {
+                let o = Vec3::new(-0.6, top * (iy as f32 + 0.5) / 40.0, -0.28 + 0.028 * iz as f32);
+                let dir = Vec3::X;
+                let mut rt = None;
+                let mut t = 0.0f32;
+                while t < 1.4 {
+                    if alice_sdf::eval::eval(&node, o + dir * t) <= 0.0 {
+                        rt = Some(t);
+                        break;
+                    }
+                    t += h;
+                }
+                let mut st = None;
+                let mut t = 0.0f32;
+                for _ in 0..4096 {
+                    if t >= 1.4 {
+                        break;
+                    }
+                    let d = alice_sdf::eval::eval(&node, o + dir * t);
+                    if d < 1e-4 {
+                        st = Some(t);
+                        break;
+                    }
+                    t += d / claim;
+                }
+                if let Some(a) = rt {
+                    hits += 1;
+                    let b = st.unwrap_or_else(|| panic!("dy {dy}: the stepping missed a crossing at {a}, from {o}"));
+                    if b > a + 2.0 * h {
+                        later += 1;
+                    }
+                }
+            }
+        }
+        assert!(hits > 0, "dy {dy}: no ray hit");
+        assert_eq!(later, 0, "dy {dy}: {later} of {hits} rays landed past the crossing");
+    }
 }

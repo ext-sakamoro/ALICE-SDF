@@ -251,6 +251,46 @@ pub fn levels_hausdorff_bound(a: &[Vec<Vec2>], b: &[Vec<Vec2>]) -> f32 {
     one(a, b).law_max(one(b, a))
 }
 
+/// At each level, the largest interval bound within `reach` of its two intervals
+fn raw_knots(y: &[f32], li: &[f32], reach: f32) -> Vec<f32> {
+    let n = y.len();
+    let mut knots = vec![0.0f32; n];
+    for (i, kn) in knots.iter_mut().enumerate() {
+        let lo = y[i.saturating_sub(1)] - reach;
+        let hi = y[(i + 1).min(n - 1)] + reach;
+        for k in 1..n - 2 {
+            if y[k + 1] >= lo && y[k] <= hi {
+                *kn = kn.law_max(li[k]);
+            }
+        }
+    }
+    knots
+}
+
+/// The smallest knot within the limit of a neighbour at `high`, `dy` away: `high − v ≤ v · dy / s`.
+/// `high / (1 + dy / s)` reaches the limit up to rounding; the rounding is taken upward, so the limit
+/// holds in `f32` as well
+fn knot_floor(high: f32, dy: f32, s: f32) -> f32 {
+    let mut v = high / (1.0 + dy / s);
+    while high - v > v * dy / s {
+        v = f32::from_bits(v.to_bits() + 1);
+    }
+    v
+}
+
+/// Raise the knots to the least values with every neighbouring pair within the limit: one sweep up
+/// carries the bounds upward and one sweep down carries them downward, and the raising is monotone,
+/// so the result is the same fixed point whatever the order
+fn spread_knots(knots: &mut [f32], y: &[f32], s: f32) {
+    let n = knots.len();
+    for i in 0..n - 1 {
+        knots[i + 1] = knots[i + 1].law_max(knot_floor(knots[i], y[i + 1] - y[i], s));
+    }
+    for i in (0..n - 1).rev() {
+        knots[i] = knots[i].law_max(knot_floor(knots[i + 1], y[i + 1] - y[i], s));
+    }
+}
+
 /// Per-interval bounds `L_i` on `[y_i, y_{i+1}]` (index 1 ..= n−3, the others 0)
 fn interval_bounds(levels: &[f32], loops: &[Vec<Vec<Vec2>>]) -> Vec<f32> {
     let n = levels.len();
@@ -382,31 +422,13 @@ impl SmoothSectionStack {
         let n = base.levels.len();
         let y = &base.levels;
         let li = interval_bounds(y, &base.loops);
-        let mut knots = vec![0.0f32; n];
-        for (i, kn) in knots.iter_mut().enumerate() {
-            let lo = y[i.saturating_sub(1)] - reach;
-            let hi = y[(i + 1).min(n - 1)] + reach;
-            for k in 1..n - 2 {
-                if y[k + 1] >= lo && y[k] <= hi {
-                    *kn = kn.law_max(li[k]);
-                }
-            }
-        }
+        let mut knots = raw_knots(y, &li, reach);
         // neighbouring knots differ by at most K · D / s (s = reach / 3): |L'| / L stays ≤ 1 / s, so the
         // f · L' / L² part of the gradient is at most |f / L| / s near the surface (no visible step in
-        // the shading where the levels' bounds jump), while a large bound spreads only ~s per e-fold
-        let sm = reach / 3.0;
-        for _ in 0..2 * n {
-            for i in 0..n - 1 {
-                let lim = knots[i].law_min(knots[i + 1]) * (y[i + 1] - y[i]) / sm;
-                if knots[i + 1] < knots[i] - lim {
-                    knots[i + 1] = knots[i] - lim;
-                }
-                if knots[i] < knots[i + 1] - lim {
-                    knots[i] = knots[i + 1] - lim;
-                }
-            }
-        }
+        // the shading where the levels' bounds jump). A knot only ever rises (never below the bound
+        // over its reach), to the smallest value within the limit of its neighbour, so a large bound
+        // falls by 1 + D / s per level, one e-fold about every s
+        spread_knots(&mut knots, y, reach / 3.0);
         let mut slope = 1.0f32;
         for i in 1..n - 2 {
             let dk = (knots[i + 1] - knots[i]).abs() / (y[i + 1] - y[i]);
@@ -499,6 +521,122 @@ impl SmoothSectionStack {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A column with one sideways jump: `n` levels `dy` apart (a power of two, so the mirrored column's
+    /// level differences are the same bits)
+    fn jump_column(dy: f32, n: usize) -> (Vec<f32>, Vec<Vec<Vec<Vec2>>>) {
+        let levels = (0..n).map(|i| dy * i as f32).collect();
+        let loops = (0..n)
+            .map(|i| {
+                let x = if i < n / 2 { 0.0 } else { 0.12 };
+                vec![circle(0.2, Vec2::new(x, 0.0), 10)]
+            })
+            .collect();
+        (levels, loops)
+    }
+
+    const REACH: f32 = 0.03;
+    const SPACINGS: [(f32, usize); 4] = [(1.0 / 512.0, 160), (1.0 / 256.0, 96), (1.0 / 128.0, 48), (1.0 / 64.0, 32)];
+
+    fn raw_of(st: &SmoothSectionStack) -> Vec<f32> {
+        raw_knots(&st.levels, &interval_bounds(&st.levels, &st.loops), REACH)
+    }
+
+    #[test]
+    fn a_knot_is_never_below_the_bound_over_its_reach() {
+        for (dy, n) in SPACINGS {
+            let (y, l) = jump_column(dy, n);
+            let st = SmoothSectionStack::new_local(y, l, REACH).unwrap();
+            for (i, (k, r)) in st.knots.iter().zip(raw_of(&st)).enumerate() {
+                assert!(*k >= r, "dy {dy} knot {i}: {k} below {r}");
+            }
+        }
+    }
+
+    /// Upper side, exact in `f32`: the gap is within the limit. Lower side, on a pair where the limit
+    /// raised the knot: the gap is at the limit up to the rounding of `high − v` and `v · dy / s`, about
+    /// 2⁻²⁴ each, relative to the gap `high · r / (1 + r)`: 4 · 2⁻²⁴ · (1 + r) / r
+    #[test]
+    fn neighbouring_knots_are_within_the_limit_and_at_it_where_it_acts() {
+        for (dy, n) in SPACINGS {
+            let (y, l) = jump_column(dy, n);
+            let st = SmoothSectionStack::new_local(y.clone(), l, REACH).unwrap();
+            let raw = raw_of(&st);
+            let s = REACH / 3.0;
+            let r = dy / s;
+            let budget = 4.0 * 2f32.powi(-24) * (1.0 + r) / r;
+            let mut acted = 0;
+            for i in 0..n - 1 {
+                let (a, b) = (st.knots[i], st.knots[i + 1]);
+                let d = y[i + 1] - y[i];
+                let lim = a.min(b) * d / s;
+                let gap = (b - a).abs();
+                assert!(gap <= lim, "dy {dy} pair {i}: gap {gap} past {lim}");
+                let low = if a < b { i } else { i + 1 };
+                if a != b && st.knots[low] > raw[low] {
+                    acted += 1;
+                    assert!(gap >= lim * (1.0 - budget), "dy {dy} pair {i}: gap {} of the limit", gap / lim);
+                }
+            }
+            assert!(acted > 0, "dy {dy}: the limit never acted");
+        }
+    }
+
+    #[test]
+    fn the_mirrored_column_has_the_mirrored_knots_and_another_sweep_changes_nothing() {
+        for (dy, n) in SPACINGS {
+            let (y, l) = jump_column(dy, n);
+            let st = SmoothSectionStack::new_local(y.clone(), l.clone(), REACH).unwrap();
+            let mut swept = st.knots.clone();
+            spread_knots(&mut swept, &y, REACH / 3.0);
+            let bits = |v: &[f32]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+            assert_eq!(bits(&swept), bits(&st.knots), "dy {dy}: not a fixed point");
+            let mut lm = l;
+            lm.reverse();
+            let m = SmoothSectionStack::new_local(y, lm, REACH).unwrap();
+            let mut back = m.knots.clone();
+            back.reverse();
+            assert_eq!(bits(&back), bits(&st.knots), "dy {dy}: the mirrored column differs");
+        }
+    }
+
+    /// Measured without the bound: the steepest finite difference of the field over the intervals a
+    /// knot's reach covers, on points around the sections
+    #[test]
+    fn every_knot_bounds_the_measured_slope_over_its_reach() {
+        for (dy, n) in SPACINGS {
+            let (y, l) = jump_column(dy, n);
+            let st = SmoothSectionStack::new_local(y.clone(), l, REACH).unwrap();
+            let h = 2e-4f32;
+            let mut slope = vec![0.0f32; n];
+            for (k, sl) in slope.iter_mut().enumerate().take(n - 2).skip(1) {
+                for a in 0..8 {
+                    let py = y[k] + (y[k + 1] - y[k]) * (a as f32 + 0.5) / 8.0;
+                    for ix in 0..16 {
+                        for iz in 0..8 {
+                            let q = Vec2::new(-0.3 + 0.045 * ix as f32, -0.3 + 0.08 * iz as f32);
+                            let f = |p: f32, c: Vec2| st.raw(p, c).0;
+                            let gy = (f(py + h, q) - f(py - h, q)) / (2.0 * h);
+                            let gx = (f(py, q + Vec2::X * h) - f(py, q - Vec2::X * h)) / (2.0 * h);
+                            let gz = (f(py, q + Vec2::Y * h) - f(py, q - Vec2::Y * h)) / (2.0 * h);
+                            *sl = sl.max((gx * gx + gy * gy + gz * gz).sqrt());
+                        }
+                    }
+                }
+            }
+            let mut tightest = f32::INFINITY;
+            for i in 0..n {
+                let (lo, hi) = (y[i.saturating_sub(1)] - REACH, y[(i + 1).min(n - 1)] + REACH);
+                let m = (1..n - 2).filter(|&k| y[k + 1] >= lo && y[k] <= hi).map(|k| slope[k]).fold(0.0, f32::max);
+                assert!(st.knots[i] * 1.001 >= m, "dy {dy} knot {i}: {} below the measured {m}", st.knots[i]);
+                if m > 0.0 {
+                    tightest = tightest.min(st.knots[i] / m);
+                }
+            }
+            println!("dy {dy}: smallest knot / measured slope {tightest}");
+            assert!(tightest.is_finite());
+        }
+    }
 
     fn circle(r: f32, c: Vec2, m: usize) -> Vec<Vec2> {
         // control points of a closed uniform cubic B-spline close to a circle of radius r: the control polygon
