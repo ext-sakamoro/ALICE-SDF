@@ -700,7 +700,9 @@ fn contraction_budget(p: Vec3, k: f32, ring_r: f32, v_twist: f32) -> f32 {
 
 /// Whether the GPU behind `GpuEvaluator` rounds `a * b + c` once (fused): with
 /// a = b = 1 + 2⁻¹² and c = −(1 + 2⁻¹¹) two roundings give 0 and one gives 2⁻²⁴ (the
-/// discriminator of `tests/test_gpu_fma_contraction.rs`). `None` without a GPU
+/// discriminator of `tests/test_gpu_fma_contraction.rs`), or fuses inside a builtin depending on
+/// what else the shader computes: `length(p.xz)` next to `length(p)` shares `x * x`, and on a
+/// driver that fuses it gave other bits at 32 of 1024 points. `None` without a GPU
 #[cfg(feature = "gpu")]
 fn gpu_fuses_a_multiply_add() -> Option<bool> {
     use alice_sdf::compiled::GpuEvaluator;
@@ -723,7 +725,36 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let got = e
         .eval_batch(&[Vec3::new(a, a, -(1.0 + 1.0 / 2048.0))])
         .ok()?[0];
-    Some(got.to_bits() != 0.0f32.to_bits())
+    if got.to_bits() != 0.0f32.to_bits() {
+        return Some(true);
+    }
+    let mut rng = Rng(0x7015_0000_0000_0001);
+    let pts: Vec<Vec3> = (0..1024)
+        .map(|_| {
+            Vec3::new(
+                rng.f() * 4.0 - 2.0,
+                rng.f() * 4.0 - 2.0,
+                rng.f() * 4.0 - 2.0,
+            )
+        })
+        .collect();
+    let body = |b: &str| wgsl.replace("p.x * p.y + p.z", b);
+    let values = |b: &str| -> Option<Vec<f32>> {
+        GpuEvaluator::from_wgsl(&body(b))
+            .ok()?
+            .into_parts()
+            .0
+            .eval_batch(&pts[..1024])
+            .ok()
+    };
+    let alone = values("length(p.xz)")?;
+    let beside = values("select(length(p.xz), -1.0, length(p) > 1.0e30)")?;
+    Some(
+        alone
+            .iter()
+            .zip(&beside)
+            .any(|(a, b)| a.to_bits() != b.to_bits()),
+    )
 }
 
 /// How much the deep operand's twin is grown: more than one node's slack on the shell

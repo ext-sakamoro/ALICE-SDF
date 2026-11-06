@@ -11,9 +11,15 @@
 //! `#pragma METAL fp contract(off)` first) does not fuse
 //! (`tests/test_msl_metal_oracle.rs`). With the `msl` feature on macOS
 //! `GpuEvaluator` runs on Metal through `MslShader` (fast math off), and this is a
-//! normal test there; on the wgpu path (macOS without `msl`, and every other
-//! target, where Vulkan, DX12 and GL are not measured) it stays ignored as a
-//! known gap, to be run by hand on those backends.
+//! normal test there. On Linux `GpuEvaluator` reads marked SPIR-V through Vulkan passthrough
+//! (`src/compiled/wgsl/spirv_no_contraction.rs`), and these are normal tests there too. On the
+//! other wgpu paths they stay ignored as a known gap.
+//!
+//! A driver also fuses inside a builtin, and whether it does depends on what else the shader
+//! computes: `length(p.xz)` next to `length(p)` shares `x * x`. Measured on Vulkan before the
+//! builtins were written out: 79 to 353 of 4096 values differ, by the builtin. So the second test
+//! compares each builtin alone with the same builtin in such a shader, and with its written-out
+//! form.
 //!
 //! Author: Moroya Sakamoto
 #![allow(
@@ -64,8 +70,8 @@ const FORMS: [(&str, f32); 3] = [
 
 #[test]
 #[cfg_attr(
-    not(all(target_os = "macos", feature = "msl")),
-    ignore = "src gap: gpu fma contraction (wgpu path: Metal without msl contracts; Vulkan, DX12 and GL unmeasured)"
+    not(any(target_os = "linux", all(target_os = "macos", feature = "msl"))),
+    ignore = "src gap: gpu fma contraction (wgpu path: Metal without msl contracts; DX12 and GL unmeasured)"
 )]
 fn gpu_evaluator_does_not_fuse_a_multiply_add() {
     let pts = [discriminator()];
@@ -95,4 +101,85 @@ fn gpu_evaluator_does_not_fuse_a_multiply_add() {
         compared += 1;
     }
     assert_eq!(compared, FORMS.len());
+}
+
+/// A builtin, and the same value written out in marked arithmetic.
+const BUILTINS: [(&str, &str); 7] = [
+    ("length(p.xz)", "sqrt(p.x * p.x + p.z * p.z)"),
+    ("length(p)", "sqrt(p.x * p.x + p.y * p.y + p.z * p.z)"),
+    ("dot(p, p)", "p.x * p.x + p.y * p.y + p.z * p.z"),
+    (
+        "distance(p, vec3<f32>(0.1, 0.2, 0.3))",
+        "sqrt((p.x - 0.1) * (p.x - 0.1) + (p.y - 0.2) * (p.y - 0.2) + (p.z - 0.3) * (p.z - 0.3))",
+    ),
+    (
+        "normalize(p).x",
+        "p.x / sqrt(p.x * p.x + p.y * p.y + p.z * p.z)",
+    ),
+    ("cross(p, p.zxy).y", "p.z * p.z - p.x * p.y"),
+    ("mix(p.x, p.y, p.z)", "p.x * (1.0 - p.z) + p.y * p.z"),
+];
+
+#[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "src gap: gpu fma contraction (a builtin's sum is written out only on the Vulkan path)"
+)]
+fn a_builtin_does_not_depend_on_what_else_the_shader_computes() {
+    let mut state = 0x1234_5678_u64;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        2.0 * ((state >> 40) as f32 / (1u64 << 24) as f32) - 1.0
+    };
+    let pts: Vec<Vec3> = (0..1024)
+        .map(|_| Vec3::new(2.0 * next(), 2.0 * next(), 2.0 * next()))
+        .collect();
+    // never taken, so only what the shader computes changes, and it shares `x * x`
+    let beside = |body: &str| {
+        format!("select({body}, -1.0, length(p.xz) + length(p.xy) + length(p) > 1.0e30)")
+    };
+    let run = |body: &str| -> Option<Vec<f32>> {
+        match GpuEvaluator::from_wgsl(&kernel_wgsl(body)) {
+            Ok(e) => Some(
+                e.into_parts()
+                    .0
+                    .eval_batch(&pts[..1024])
+                    .expect("eval on the GPU"),
+            ),
+            Err(e) => {
+                assert!(
+                    std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                    "ALICE_SDF_REQUIRE_GPU is set but no GPU device was found: {e}"
+                );
+                eprintln!("skipping: no GPU device ({e})");
+                None
+            }
+        }
+    };
+    let mut compared = 0;
+    for (builtin, written) in BUILTINS {
+        let Some(alone) = run(builtin) else { return };
+        let in_context = run(&beside(builtin)).expect("the device was there");
+        let out = run(written).expect("the device was there");
+        for (i, p) in pts.iter().enumerate() {
+            assert_eq!(
+                alone[i].to_bits(),
+                in_context[i].to_bits(),
+                "`{builtin}` at {p}: {} alone, {} beside other lengths",
+                alone[i],
+                in_context[i]
+            );
+            assert_eq!(
+                alone[i].to_bits(),
+                out[i].to_bits(),
+                "`{builtin}` at {p}: {}, written out `{written}` gives {}",
+                alone[i],
+                out[i]
+            );
+            compared += 1;
+        }
+    }
+    assert_eq!(compared, BUILTINS.len() * pts.len());
 }

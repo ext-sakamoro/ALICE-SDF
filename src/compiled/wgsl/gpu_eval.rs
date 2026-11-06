@@ -49,6 +49,13 @@ pub enum GpuError {
     #[error("Shader compilation error: {0}")]
     ShaderCompilation(String),
 
+    /// The device's backend has no way to keep `a * b + c` at two roundings
+    #[error(
+        "the {0} backend cannot forbid the driver from fusing a * b + c, so a shader would not \
+         give the same bits; use a Vulkan device"
+    )]
+    BackendWithoutContractionControl(String),
+
     /// Buffer mapping error
     #[error("Buffer mapping error: {0}")]
     BufferMapping(String),

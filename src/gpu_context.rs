@@ -69,6 +69,28 @@ fn instance(held: &mut Lifecycle) -> &wgpu::Instance {
 #[cfg(not(target_arch = "wasm32"))]
 const SPIRV_PASSTHROUGH: wgpu::Features = wgpu::Features::SPIRV_SHADER_PASSTHROUGH;
 
+/// The adapter with SPIR-V passthrough when the default choice lacks it: a machine with both DX12
+/// and Vulkan on one GPU keeps working where the DX12 path would be refused
+/// ([`GpuContext::shader_module`]). The best device type wins, as in the default choice.
+#[cfg(not(target_arch = "wasm32"))]
+fn prefer_passthrough(instance: &wgpu::Instance, chosen: wgpu::Adapter) -> wgpu::Adapter {
+    if chosen.features().contains(SPIRV_PASSTHROUGH) {
+        return chosen;
+    }
+    let rank = |adapter: &wgpu::Adapter| match adapter.get_info().device_type {
+        wgpu::DeviceType::DiscreteGpu => 3,
+        wgpu::DeviceType::IntegratedGpu => 2,
+        wgpu::DeviceType::VirtualGpu | wgpu::DeviceType::Other => 1,
+        wgpu::DeviceType::Cpu => 0,
+    };
+    instance
+        .enumerate_adapters(wgpu::Backends::all())
+        .into_iter()
+        .filter(|adapter| adapter.features().contains(SPIRV_PASSTHROUGH))
+        .max_by_key(rank)
+        .unwrap_or(chosen)
+}
+
 fn device_descriptor(label: &str, features: wgpu::Features) -> wgpu::DeviceDescriptor<'_> {
     wgpu::DeviceDescriptor {
         label: Some(label),
@@ -82,6 +104,7 @@ fn device_descriptor(label: &str, features: wgpu::Features) -> wgpu::DeviceDescr
 struct GpuDevice {
     device: wgpu::Device,
     queue: wgpu::Queue,
+    backend: wgpu::Backend,
 }
 
 /// Destroys what it holds inside the lock
@@ -107,14 +130,17 @@ fn destroy(_held: &mut Lifecycle, device: &mut ManuallyDrop<GpuDevice>) {
     reason = "the device is created here, under the lock"
 )]
 fn create(held: &mut Lifecycle, label: &str) -> Result<GpuContext, GpuError> {
-    let adapter = pollster::block_on(instance(held).request_adapter(&ADAPTER_OPTIONS))
+    let instance = instance(held);
+    let adapter = pollster::block_on(instance.request_adapter(&ADAPTER_OPTIONS))
         .ok_or(GpuError::NoAdapter)?;
+    let adapter = prefer_passthrough(instance, adapter);
+    let backend = adapter.get_info().backend;
     let (device, queue) = pollster::block_on(adapter.request_device(
         &device_descriptor(label, adapter.features() & SPIRV_PASSTHROUGH),
         None,
     ))
     .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
-    Ok(GpuContext::holding(device, queue))
+    Ok(GpuContext::holding(device, queue, backend))
 }
 
 /// The SPIR-V of a shader source, its floating-point arithmetic marked `NoContraction`. The writer
@@ -198,19 +224,24 @@ impl GpuContext {
             .request_adapter(&ADAPTER_OPTIONS)
             .await
             .ok_or(GpuError::NoAdapter)?;
+        let backend = adapter.get_info().backend;
         let (device, queue) = adapter
             .request_device(&device_descriptor(label, wgpu::Features::empty()), None)
             .await
             .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
-        Ok(Self::holding(device, queue))
+        Ok(Self::holding(device, queue, backend))
     }
 
-    /// Compile a shader. On a device with SPIR-V passthrough every floating-point arithmetic
-    /// result is marked `NoContraction` (see [`crate::compiled::wgsl::spirv_no_contraction`]), so
-    /// the driver cannot fuse `a * b + c`.
+    /// Compile a shader. On a device with SPIR-V passthrough the builtins with a sum inside are
+    /// written out and every floating-point arithmetic result is marked `NoContraction` (see
+    /// `compiled::wgsl::spirv_no_contraction`), so the driver cannot fuse `a * b + c`.
+    ///
+    /// DX12 and GL have no such path and are refused rather than run with contraction. In a browser
+    /// the browser owns the compiler, so the path is not covered and runs as it is.
     ///
     /// # Errors
-    /// [`GpuError::ShaderCompilation`] when the source does not parse or validate.
+    /// [`GpuError::ShaderCompilation`] when the source does not parse or validate, or holds a
+    /// builtin with no expansion; [`GpuError::BackendWithoutContractionControl`] on DX12 or GL.
     pub fn shader_module(
         &self,
         label: &str,
@@ -229,10 +260,15 @@ impl GpuContext {
                 })
             });
         }
-        Ok(device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(label),
-            source,
-        }))
+        match self.0 .0.backend {
+            wgpu::Backend::Dx12 | wgpu::Backend::Gl => Err(
+                GpuError::BackendWithoutContractionControl(self.0 .0.backend.to_string()),
+            ),
+            _ => Ok(device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(label),
+                source,
+            })),
+        }
     }
 
     /// The device
@@ -256,8 +292,9 @@ impl GpuContext {
         }
     }
 
-    fn holding(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+    fn holding(device: wgpu::Device, queue: wgpu::Queue, backend: wgpu::Backend) -> Self {
         Self(Arc::new(Serialized(ManuallyDrop::new(GpuDevice {
+            backend,
             device,
             queue,
         }))))
