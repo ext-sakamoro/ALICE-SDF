@@ -41,7 +41,7 @@
 mod common;
 
 use alice_sdf::compiled::hlsl::{HlslShader, HlslTranspileMode};
-use common::corpus::corpus;
+use common::corpus::gate_corpus as corpus;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 

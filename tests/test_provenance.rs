@@ -3402,7 +3402,7 @@ fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
 // paint tool would write it (no identifier), and the heightmap writer's output for it:
 //   heightmap_plain.png    34151b0d0efbd9f7fa65ccc76299d474e00ad48ddfe2b40ecfed7916f0db8098
 //   heightmap_plain.jpg    3b8303187e7a141798d8c3a8c72b26da9795da077b87fcc00856a717afc7dbcd
-//   heightmap_stamped.png  69be34438c12facb7a072677481f8131ff59676a77c4a4922673abb65b7e1ceb
+//   heightmap_stamped.png  82c9bc5ac1f8f0a107efa4e0cc6e1a5c165a863ee74177f48625c3d79259d57b
 //                          Heightmap::from_image_bytes(plain.png, &HeightmapImageConfig::new(
 //                          40.0, 16.0, 12.0)).to_png(..) (16-bit grey, the identifier in tEXt)
 //   heightmap_stamped_ad04549c.png
@@ -3551,7 +3551,10 @@ fn heightmap_images_carry_and_check_the_identifier() {
     assert_eq!(
         status,
         StoredSemantics::VerifiedPrevious(Provenance::new(
-            alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS[0]
+            *alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS
+                .iter()
+                .find(|id| id.starts_with(&[0xad, 0x04, 0x54, 0x9c]))
+                .expect("ad04549c… is a previous identifier")
         ))
     );
     assert_eq!(old.heights, back.heights);
