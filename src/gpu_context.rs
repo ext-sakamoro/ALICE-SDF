@@ -64,10 +64,15 @@ fn instance(held: &mut Lifecycle) -> &wgpu::Instance {
     })
 }
 
-fn device_descriptor(label: &str) -> wgpu::DeviceDescriptor<'_> {
+/// The feature [`GpuContext::shader_module`] reads a marked SPIR-V module through, requested where
+/// the adapter has it (the Vulkan backend).
+#[cfg(not(target_arch = "wasm32"))]
+const SPIRV_PASSTHROUGH: wgpu::Features = wgpu::Features::SPIRV_SHADER_PASSTHROUGH;
+
+fn device_descriptor(label: &str, features: wgpu::Features) -> wgpu::DeviceDescriptor<'_> {
     wgpu::DeviceDescriptor {
         label: Some(label),
-        required_features: wgpu::Features::empty(),
+        required_features: features,
         required_limits: wgpu::Limits::default(),
         memory_hints: wgpu::MemoryHints::Performance,
     }
@@ -104,10 +109,57 @@ fn destroy(_held: &mut Lifecycle, device: &mut ManuallyDrop<GpuDevice>) {
 fn create(held: &mut Lifecycle, label: &str) -> Result<GpuContext, GpuError> {
     let adapter = pollster::block_on(instance(held).request_adapter(&ADAPTER_OPTIONS))
         .ok_or(GpuError::NoAdapter)?;
-    let (device, queue) =
-        pollster::block_on(adapter.request_device(&device_descriptor(label), None))
-            .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
+    let (device, queue) = pollster::block_on(adapter.request_device(
+        &device_descriptor(label, adapter.features() & SPIRV_PASSTHROUGH),
+        None,
+    ))
+    .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
     Ok(GpuContext::holding(device, queue))
+}
+
+/// The SPIR-V of a shader source, its floating-point arithmetic marked `NoContraction`. The writer
+/// options are wgpu's own for the Vulkan backend, except that the bounds checks stay on where wgpu
+/// would drop them for a robust device: a passthrough module cannot ask which it is on.
+#[cfg(not(target_arch = "wasm32"))]
+fn no_contraction_spirv(source: wgpu::ShaderSource<'_>) -> Result<Vec<u32>, GpuError> {
+    use naga::back::spv;
+    use naga::proc::{BoundsCheckPolicies, BoundsCheckPolicy};
+    let failed = |e: String| GpuError::ShaderCompilation(e);
+    let module = match source {
+        wgpu::ShaderSource::Wgsl(text) => {
+            naga::front::wgsl::parse_str(&text).map_err(|e| failed(e.emit_to_string(&text)))?
+        }
+        wgpu::ShaderSource::Glsl {
+            shader,
+            stage,
+            defines,
+        } => naga::front::glsl::Frontend::default()
+            .parse(&naga::front::glsl::Options { stage, defines }, &shader)
+            .map_err(|e| failed(e.emit_to_string(&shader)))?,
+        _ => return Err(failed("unsupported shader source".to_owned())),
+    };
+    let info = naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::default(),
+    )
+    .validate(&module)
+    .map_err(|e| failed(format!("{e:?}")))?;
+    let options = spv::Options {
+        lang_version: (1, 0),
+        flags: spv::WriterFlags::empty(),
+        bounds_check_policies: BoundsCheckPolicies {
+            index: BoundsCheckPolicy::Restrict,
+            buffer: BoundsCheckPolicy::Restrict,
+            image_load: BoundsCheckPolicy::Restrict,
+            binding_array: BoundsCheckPolicy::Unchecked,
+        },
+        zero_initialize_workgroup_memory: spv::ZeroInitializeWorkgroupMemoryMode::Polyfill,
+        ..spv::Options::default()
+    };
+    let words = spv::write_vec(&module, &info, &options, None)
+        .map_err(|e| failed(format!("SPIR-V writer: {e}")))?;
+    crate::compiled::wgsl::spirv_no_contraction::mark_no_contraction(&words)
+        .map_err(|e| failed(format!("SPIR-V pass: {e:?}")))
 }
 
 /// A shared handle on a device. See the [module docs](self) for how long it must live.
@@ -147,10 +199,40 @@ impl GpuContext {
             .await
             .ok_or(GpuError::NoAdapter)?;
         let (device, queue) = adapter
-            .request_device(&device_descriptor(label), None)
+            .request_device(&device_descriptor(label, wgpu::Features::empty()), None)
             .await
             .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
         Ok(Self::holding(device, queue))
+    }
+
+    /// Compile a shader. On a device with SPIR-V passthrough every floating-point arithmetic
+    /// result is marked `NoContraction` (see [`crate::compiled::wgsl::spirv_no_contraction`]), so
+    /// the driver cannot fuse `a * b + c`.
+    ///
+    /// # Errors
+    /// [`GpuError::ShaderCompilation`] when the source does not parse or validate.
+    pub fn shader_module(
+        &self,
+        label: &str,
+        source: wgpu::ShaderSource<'_>,
+    ) -> Result<wgpu::ShaderModule, GpuError> {
+        let device = self.device();
+        #[cfg(not(target_arch = "wasm32"))]
+        if device.features().contains(SPIRV_PASSTHROUGH) {
+            let words = no_contraction_spirv(source)?;
+            // SAFETY: naga wrote the module from IR its validator accepted, and the pass only adds
+            // decorations to it. Every pipeline built on it names an explicit layout.
+            return Ok(unsafe {
+                device.create_shader_module_spirv(&wgpu::ShaderModuleDescriptorSpirV {
+                    label: Some(label),
+                    source: words.into(),
+                })
+            });
+        }
+        Ok(device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(label),
+            source,
+        }))
     }
 
     /// The device

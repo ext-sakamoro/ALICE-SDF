@@ -196,10 +196,7 @@ impl WgpuEngine {
         let device = context.device();
 
         // Create shader module
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("ALICE-SDF Shader"),
-            source,
-        });
+        let shader_module = context.shader_module("ALICE-SDF Shader", source)?;
 
         // Create bind group layout
         let mut layout_entries = vec![
@@ -569,10 +566,10 @@ impl WgpuEngine {
         let device = context.device();
 
         // Create shader module
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("ALICE-SDF Shader"),
-            source: wgpu::ShaderSource::Wgsl(wgsl_source.into()),
-        });
+        let shader_module = context.shader_module(
+            "ALICE-SDF Shader",
+            wgpu::ShaderSource::Wgsl(wgsl_source.into()),
+        )?;
 
         // Create bind group layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -833,10 +830,10 @@ impl WgpuEngine {
         });
 
         // Distance-only pipeline
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("ALICE-SDF Dynamic Shader"),
-            source: wgpu::ShaderSource::Wgsl(compute_source.into()),
-        });
+        let shader_module = context.shader_module(
+            "ALICE-SDF Dynamic Shader",
+            wgpu::ShaderSource::Wgsl(compute_source.into()),
+        )?;
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("ALICE-SDF Dynamic Pipeline"),
             layout: Some(&pipeline_layout),
@@ -847,10 +844,10 @@ impl WgpuEngine {
         });
 
         // Distance + Normals pipeline
-        let full_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("ALICE-SDF Full Shader"),
-            source: wgpu::ShaderSource::Wgsl(full_source.into()),
-        });
+        let full_module = context.shader_module(
+            "ALICE-SDF Full Shader",
+            wgpu::ShaderSource::Wgsl(full_source.into()),
+        )?;
         let full_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("ALICE-SDF Full Pipeline"),
             layout: Some(&pipeline_layout),

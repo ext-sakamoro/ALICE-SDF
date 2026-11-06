@@ -74,6 +74,8 @@
 mod gpu_eval;
 #[cfg(all(target_os = "macos", feature = "msl"))]
 mod gpu_metal;
+#[cfg(feature = "gpu")]
+pub(crate) mod spirv_no_contraction;
 mod transpiler;
 
 pub use gpu_eval::{GpuBufferPool, GpuError, GpuEvalFuture, GpuEvaluator};
