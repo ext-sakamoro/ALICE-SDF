@@ -459,3 +459,106 @@ fn the_scaled_source_starts_with_the_unchanged_library() {
     }
     assert!(n > 190, "{n}");
 }
+
+/// A box under two pulls, in the plane
+fn pulled() -> (SdfNode, alice_sdf::transforms::BellPull) {
+    let pull = alice_sdf::transforms::BellPull::new(
+        [[0.5, 0.5, 0.2, -0.1], [-0.2, 0.3, -0.05, 0.1]],
+        0.34,
+    )
+    .expect("one to one");
+    (SdfNode::box3d(0.8, 0.8, 0.16).translate(0.2, 0.2, 0.0), pull)
+}
+
+#[test]
+fn a_bell_pull_in_the_shader_is_the_bell_pull_on_the_cpu() {
+    // oracle: eval_scaled, computed on the CPU. Literal values, and the live source with the uniforms
+    // set to the same values
+    let Some(cxx) = cxx_or_skip() else { return };
+    let (child, pull) = pulled();
+    let tree = child.bell_pull(pull);
+    let literal = GlslShader::transpile_with_scale(&tree, GlslTranspileMode::Hardcoded).source;
+    let live = GlslShader::transpile_with_live_pull(&tree).source;
+    assert!(live.contains("uniform vec4 uPull;") && !literal.contains("uPull"));
+    let [a, b] = pull.pulls();
+    let set = format!(
+        "static vec4 uPull = vec4({:e}f, {:e}f, {:e}f, {:e}f);\nstatic vec4 uPull2 = vec4({:e}f, {:e}f, {:e}f, {:e}f);\nstatic float uPullSigma = {:e}f;",
+        a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3], pull.sigma()
+    );
+    let live = live
+        .replace("uniform vec4 uPull;\nuniform vec4 uPull2;\nuniform float uPullSigma;", &set);
+    assert!(!live.contains("uniform"), "the uniforms were not replaced");
+    let src = program(&[literal, live], 2, |i| {
+        format!("vec2 v = t{i}::sdf_eval_scaled(p); o[0] = v.x; o[1] = v.y;")
+    });
+    let mut pts = points(128, 0x7fed_7fed);
+    pts.extend(
+        points(128, 0x5bd1_e995)
+            .into_iter()
+            .map(|p| Vec3::new(0.4 + 0.5 * p.x, 0.4 + 0.5 * p.y, 0.1 * p.z)),
+    );
+    let got = compile_and_run(&cxx, "bell_pull", &src, &pts, 4);
+    let mut bad = Vec::new();
+    for (k, p) in pts.iter().enumerate() {
+        let (d, s) = alice_sdf::eval::eval_scaled(&tree, *p);
+        for i in 0..2 {
+            let (gd, gs) = (got[k * 4 + i * 2], got[k * 4 + i * 2 + 1]);
+            if (gd - d).abs() > 1e-4 * d.abs().max(1.0) || (gs - s).abs() > 1e-4 * s.abs().max(1.0) {
+                bad.push(format!("source {i} at {p:?}: ({gd}, {gs}) vs ({d}, {s})"));
+            }
+        }
+    }
+    assert!(bad.is_empty(), "{} differ, e.g.\n{}", bad.len(), bad[..bad.len().min(8)].join("\n"));
+    // nothing moved is the child, value and scale
+    let still = alice_sdf::transforms::BellPull::new([[0.0; 4]; 2], 0.34).unwrap();
+    let (c, _) = pulled();
+    for p in points(64, 0x1234_abcd) {
+        let (d, s) = alice_sdf::eval::eval_scaled(&c.clone().bell_pull(still), p);
+        assert_eq!(d.to_bits(), eval(&c, p).to_bits(), "{p:?}");
+        assert_eq!(s, 1.0);
+    }
+}
+
+#[test]
+fn a_bell_pull_that_could_fold_is_refused() {
+    use alice_sdf::transforms::{BellPull, BellPullError};
+    // |v| = 0.6 with σ 0.34: slope 0.6 · 0.6065 / 0.34 = 1.07
+    assert!(matches!(
+        BellPull::new([[0.0, 0.0, 0.6, 0.0], [0.0; 4]], 0.34),
+        Err(BellPullError::Folds(s)) if (s - 1.0704).abs() < 1e-3
+    ));
+    assert!(BellPull::new([[0.0, 0.0, 0.46, 0.0], [0.0; 4]], 0.34).is_ok());
+    assert_eq!(BellPull::new([[0.0; 4]; 2], 0.0), Err(BellPullError::Bad));
+    assert_eq!(BellPull::new([[f32::NAN, 0.0, 0.0, 0.0], [0.0; 4]], 0.3), Err(BellPullError::Bad));
+    // stored: read through the same check
+    let json = r#"{"pulls":[[0,0,0.6,0],[0,0,0,0]],"sigma":0.34}"#;
+    assert!(serde_json::from_str::<BellPull>(json).is_err());
+    let (child, pull) = pulled();
+    let tree = child.bell_pull(pull);
+    let round: SdfNode = serde_json::from_str(&serde_json::to_string(&tree).unwrap()).unwrap();
+    let p = Vec3::new(0.4, 0.3, 0.05);
+    assert_eq!(eval(&round, p).to_bits(), eval(&tree, p).to_bits());
+}
+
+#[test]
+fn a_bell_pull_never_steps_past_the_surface() {
+    // sampled slope of the value and scale, against nothing from the law's bound: the value's slope
+    // stays at or below 1 for a 1-Lipschitz child, so a step equal to the value cannot cross
+    let (child, pull) = pulled();
+    let tree = child.bell_pull(pull);
+    let (mut worst, mut compared) = (0.0f32, 0);
+    let pts = points(4000, 0xabcd_0123);
+    let dirs = points(4000, 0x0123_abcd);
+    for (p, d) in pts.iter().zip(&dirs) {
+        let d = d.normalize_or_zero();
+        if d == Vec3::ZERO {
+            continue;
+        }
+        let (a, b) = (eval(&tree, *p), eval(&tree, *p + d * 2e-3));
+        worst = worst.max((a - b).abs() / 2e-3);
+        compared += 1;
+    }
+    assert!(compared > 3000, "{compared}");
+    assert!(worst <= 1.0 + 1e-2, "slope {worst}");
+    assert!(worst > 0.3, "the check saw almost no slope: {worst}");
+}

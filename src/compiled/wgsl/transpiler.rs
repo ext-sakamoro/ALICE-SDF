@@ -436,6 +436,7 @@ impl WgslShader {
             | SdfNode::LatticeDeform { child, .. }
             | SdfNode::SdfSkinning { child, .. }
             | SdfNode::GridWarp { child, .. }
+            | SdfNode::BellPull { child, .. }
             | SdfNode::Pose { child } => {
                 Self::collect_materials(child, out);
             }

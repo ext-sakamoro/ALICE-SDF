@@ -272,6 +272,33 @@ impl GlslShader {
         }
     }
 
+    /// [`GlslShader::transpile_with_scale`] for a tree with a [`crate::transforms::BellPull`] the page
+    /// moves every frame: its values are the uniforms `uPull`, `uPull2` (`vec4`) and `uPullSigma`
+    /// (`float`), declared by this source; `uPullSigma` must be set and above 0
+    #[must_use]
+    pub fn transpile_with_live_pull(node: &SdfNode) -> Self {
+        use super::super::transpiler_common::{GenericTranspiler, TranspileModeLang};
+        let mut g: GenericTranspiler<GlslLang> = GenericTranspiler::new(TranspileModeLang::Hardcoded);
+        g.live_pull = true;
+        let sc = g.transpile_scaled(node, "p");
+        let body = format!("{}    return {};\n", sc.value_code, sc.value);
+        let source = format!(
+            "{PRECISE_MACRO}uniform vec4 uPull;\nuniform vec4 uPull2;\nuniform float uPullSigma;\n{}\nvec2 sdf_eval_scaled(vec3 p) {{\n{}{}    return vec2({}, {});\n}}\n",
+            g.generate_shader(&body),
+            sc.value_code,
+            sc.scale_code,
+            sc.value,
+            sc.scale
+        );
+        Self {
+            source,
+            helper_count: g.helper_functions.len(),
+            param_layout: g.params,
+            mode: GlslTranspileMode::Hardcoded,
+            version: 300,
+        }
+    }
+
     /// Extract parameter values from an SDF node tree
     ///
     /// Returns the same parameter layout as produced by `transpile()` in Dynamic mode.

@@ -1082,6 +1082,16 @@ pub enum SdfNode {
         warp: Arc<crate::transforms::GridWarp>,
     },
 
+    /// Domain warp by Gaussian bells where the shape is pressed (see
+    /// [`crate::transforms::BellPull`]); one to one by construction, and the distance is divided by
+    /// its slope bound
+    BellPull {
+        /// Child node
+        child: Arc<Self>,
+        /// The pulls
+        pull: crate::transforms::BellPull,
+    },
+
     // === Modifiers ===
     /// Twist around Y-axis (radians per unit height)
     Twist {
@@ -1450,7 +1460,8 @@ impl SdfNode {
             | Self::ProjectiveTransform { .. }
             | Self::LatticeDeform { .. }
             | Self::SdfSkinning { .. }
-            | Self::GridWarp { .. } => SdfCategory::Transform,
+            | Self::GridWarp { .. }
+            | Self::BellPull { .. } => SdfCategory::Transform,
 
             // === Modifiers ===
             Self::Twist { .. }
@@ -1588,6 +1599,7 @@ impl SdfNode {
             | Self::LatticeDeform { child, .. }
             | Self::SdfSkinning { child, .. }
             | Self::GridWarp { child, .. }
+            | Self::BellPull { child, .. }
             | Self::Twist { child, .. }
             | Self::Bend { child, .. }
             | Self::RepeatInfinite { child, .. }

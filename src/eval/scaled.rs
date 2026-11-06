@@ -157,6 +157,11 @@ pub fn eval_scaled(node: &SdfNode, point: Vec3) -> (f32, f32) {
             // where the child's term gives the value it is c / Λ; elsewhere a posed distance
             (d, if child_term { lam * s } else { 1.0 })
         }
+        SdfNode::BellPull { child, pull } => {
+            let (c, s) = eval_scaled(child, pull.back(point));
+            let lam = pull.lambda();
+            (c / lam, lam * s)
+        }
         SdfNode::Pose { child } | SdfNode::WithMaterial { child, .. } => eval_scaled(child, point),
         _ => (eval(node, point), 1.0),
     }

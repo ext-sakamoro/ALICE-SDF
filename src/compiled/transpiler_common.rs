@@ -271,6 +271,8 @@ pub struct GenericTranspiler<L: ShaderLang> {
     /// appended here and read from the storage buffer `alice_node_data` (binding 4) instead of
     /// being emitted as module-scope constants (see [`GenericTranspiler::data_array`])
     pub node_data: Option<Vec<f32>>,
+    /// A bell pull's values come from uniforms the page sets every frame
+    pub live_pull: bool,
     /// Data arrays already emitted, by (length, FNV-1a of the bits): the same values are emitted once
     /// (a second walk of the tree, e.g. the rest point, reuses the first walk's arrays), with whether
     /// the accessor function was emitted
@@ -297,6 +299,8 @@ enum ScaleKind {
     /// Grid warp: Λ times the child's scale where the child's term gives the value, else 1
     /// (notes: Λ, the box distance e, the value before the box)
     GridWarp,
+    /// The child's scale times the bound variable noted
+    Times,
     /// Every other node: 1
     One,
 }
@@ -376,6 +380,7 @@ fn scale_kind(node: &SdfNode) -> ScaleKind {
         } => ScaleKind::Projective(*lipschitz_bound),
         SdfNode::LatticeDeform { .. } => ScaleKind::Lattice,
         SdfNode::GridWarp { .. } => ScaleKind::GridWarp,
+        SdfNode::BellPull { .. } => ScaleKind::Times,
         _ => ScaleKind::One,
     }
 }
@@ -419,6 +424,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             params: Vec::new(),
             globals: String::new(),
             node_data: None,
+            live_pull: false,
             data_seen: Vec::new(),
             scale_trace: None,
             _phantom: std::marker::PhantomData,
@@ -619,6 +625,58 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         shader.push_str(body);
         shader.push_str("}\n");
         shader
+    }
+
+    /// The bell pull's point and bound: with `live_pull` read from the uniforms `uPull`, `uPull2` and
+    /// `uPullSigma` the page sets, otherwise the node's values; the names of (x, Λ)
+    fn emit_bell_pull_point(
+        &mut self,
+        pull: &crate::transforms::BellPull,
+        point_var: &str,
+        code: &mut String,
+    ) -> (String, String) {
+        let [a, b] = pull.pulls();
+        let (ua, ub, sigma) = if self.live_pull {
+            ("uPull".to_owned(), "uPull2".to_owned(), "uPullSigma".to_owned())
+        } else {
+            let v4 = |u: [f32; 4]| L::vec4_ctor(&lit(u[0]), &lit(u[1]), &lit(u[2]), &lit(u[3]));
+            (v4(a), v4(b), lit(pull.sigma()))
+        };
+        let p = point_var;
+        let mut carried = Vec::new();
+        for u in [&ua, &ub] {
+            let (r, w) = (self.next_var(), self.next_var());
+            code.push_str(&L::decl_vec3(
+                &r,
+                &L::vec3_ctor(
+                    &format!("{p}.x - {u}.x - {u}.z"),
+                    &format!("{p}.y - {u}.y - {u}.w"),
+                    "0.0",
+                ),
+            ));
+            code.push_str(&L::decl_float(
+                &w,
+                &format!("exp(-dot({r}, {r}) / (2.0 * {sigma} * {sigma}))"),
+            ));
+            carried.push(w);
+        }
+        let x = self.next_var();
+        let (wa, wb) = (&carried[0], &carried[1]);
+        code.push_str(&L::decl_vec3(
+            &x,
+            &L::vec3_ctor(
+                &format!("{p}.x - {ua}.z * {wa} - {ub}.z * {wb}"),
+                &format!("{p}.y - {ua}.w * {wa} - {ub}.w * {wb}"),
+                &format!("{p}.z"),
+            ),
+        ));
+        let lam = self.next_var();
+        let len = |u: &str| format!("length({})", L::vec2_ctor(&format!("{u}.z"), &format!("{u}.w")));
+        code.push_str(&L::decl_float(
+            &lam,
+            &format!("1.0 + ({} + {}) * {} / {sigma}", len(&ua), len(&ub), lit(crate::transforms::bell_pull::BELL_SLOPE)),
+        ));
+        (x, lam)
     }
 
     /// The grid warp's point computation (shared by the field and the rest point): emits `q`, the box
@@ -844,6 +902,10 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let (x, _, _, _, _) = self.emit_grid_warp_point(warp, point_var, code);
                 self.transpile_rest_inner(child, &x, code)
             }
+            SdfNode::BellPull { child, pull } => {
+                let (x, _) = self.emit_bell_pull_point(pull, point_var, code);
+                self.transpile_rest_inner(child, &x, code)
+            }
             n if crate::diff::node_children(n).is_empty() => Ok(point_var.to_owned()),
             n => Err(format!(
                 "rest point: {} moves points in a way the rest point does not follow",
@@ -976,6 +1038,12 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let sc = self.emit_scale(trace, c, code);
                 let s = self.next_var();
                 code.push_str(&L::decl_float(&s, &format!("{sc} * {corr}")));
+                s
+            }
+            (ScaleKind::Times, &[c], [lam]) => {
+                let sc = self.emit_scale(trace, c, code);
+                let s = self.next_var();
+                code.push_str(&L::decl_float(&s, &format!("{lam} * {sc}")));
                 s
             }
             (ScaleKind::GridWarp, &[c], [lam, e, dv]) => {
@@ -3172,6 +3240,16 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &out,
                     &format!("max({dv} + (sqrt({e} * {e} + {dp} * {dp}) - {dp}), {bx})"),
                 ));
+                out
+            }
+
+            SdfNode::BellPull { child, pull } => {
+                // `transforms::bell_pull`: the child at x(p), divided by the slope bound
+                let (x, lam) = self.emit_bell_pull_point(pull, point_var, code);
+                let dc = self.transpile_node_inner(child, &x, code);
+                let out = self.next_var();
+                self.note_scale(&[&lam]);
+                code.push_str(&L::decl_float(&out, &format!("{dc} / {lam}")));
                 out
             }
 

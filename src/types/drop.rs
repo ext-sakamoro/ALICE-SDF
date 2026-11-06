@@ -69,6 +69,7 @@ impl SdfNode {
             | Self::ProjectiveTransform { child, .. }
             | Self::SdfSkinning { child, .. }
             | Self::GridWarp { child, .. }
+            | Self::BellPull { child, .. }
             | Self::Round { child, .. }
             | Self::Onion { child, .. }
             | Self::Elongate { child, .. }

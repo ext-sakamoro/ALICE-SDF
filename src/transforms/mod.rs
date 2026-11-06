@@ -12,7 +12,9 @@ mod rotate;
 mod scale;
 pub mod skinning;
 mod translate;
+pub mod bell_pull;
 
+pub use bell_pull::{BellPull, BellPullData, BellPullError};
 pub use grid_warp::{GridWarp, GridWarpData, GridWarpError};
 pub use grid_warp_build::{
     affine_posed_to_rest, grid_warp_from_triangles, GridWarpBuildError, Overhang, WarpGrid,
