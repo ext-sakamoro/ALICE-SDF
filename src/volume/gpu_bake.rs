@@ -196,15 +196,11 @@ pub fn gpu_bake_volume_from_shader(
 
     // Readback
     let buffer_slice = staging_buffer.slice(..);
-    let (sender, receiver) = futures_channel::oneshot::channel();
+    let (sender, receiver) = std::sync::mpsc::channel();
     buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
         let _ = sender.send(result);
     });
-    device.poll(wgpu::Maintain::Wait);
-
-    pollster::block_on(receiver)
-        .map_err(|e| GpuError::BufferMapping(format!("Channel error: {}", e)))?
-        .map_err(|e| GpuError::BufferMapping(format!("Map error: {:?}", e)))?;
+    context.wait_for_mapping(&receiver)?;
 
     let mapped = buffer_slice.get_mapped_range();
     let data: Vec<f32> = bytemuck::cast_slice(&mapped).to_vec();
@@ -374,15 +370,11 @@ pub fn gpu_bake_volume_with_normals(
     queue.submit(std::iter::once(encoder.finish()));
 
     let buffer_slice = staging_buffer.slice(..);
-    let (sender, receiver) = futures_channel::oneshot::channel();
+    let (sender, receiver) = std::sync::mpsc::channel();
     buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
         let _ = sender.send(result);
     });
-    device.poll(wgpu::Maintain::Wait);
-
-    pollster::block_on(receiver)
-        .map_err(|e| GpuError::BufferMapping(format!("Channel error: {}", e)))?
-        .map_err(|e| GpuError::BufferMapping(format!("Map error: {:?}", e)))?;
+    context.wait_for_mapping(&receiver)?;
 
     let mapped = buffer_slice.get_mapped_range();
     let data: Vec<VoxelDistGrad> = bytemuck::cast_slice(&mapped).to_vec();
