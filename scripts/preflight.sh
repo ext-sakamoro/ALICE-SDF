@@ -78,7 +78,7 @@ need actionlint "brew install actionlint"
 need cargo-semver-checks "cargo install cargo-semver-checks --version 0.50.0 --locked"
 need cargo-deny "cargo install cargo-deny --locked"
 need cargo-machete "cargo install cargo-machete --locked"
-rustup toolchain list | grep -q "^${MSRV}" || { echo "missing toolchain ${MSRV} (rustup toolchain install ${MSRV})" >&2; exit 1; }
+grep -q "^${MSRV}" <<<"$(rustup toolchain list)" || { echo "missing toolchain ${MSRV} (rustup toolchain install ${MSRV})" >&2; exit 1; }
 
 # ── ci.yml ────────────────────────────────────────────────────────────────
 
@@ -92,6 +92,8 @@ python3 scripts/test_check_eol.py
 python3 scripts/check_eol.py
 python3 scripts/test_workflow_concurrency.py
 python3 scripts/workflow_concurrency.py
+python3 scripts/test_check_pipe_grep_q.py
+python3 scripts/check_pipe_grep_q.py
 
 step "changed paths: oracle + trigger lint (no on.push paths off main, pattern files = pull_request paths)"
 python3 scripts/test_changed_paths.py
@@ -228,7 +230,7 @@ relint; RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --features "$LINT_FEAT
 # code, ...)"), here also for the x86_64 target the Linux / Windows runners use
 step "clippy: library code with .github/clippy-lib (max / min forbidden), host and x86_64"
 relint; CLIPPY_CONF_DIR=.github/clippy-lib RUSTFLAGS="-Dwarnings" cargo clippy --lib --features "$LINT_FEATURES"
-rustup target list --installed | grep -q x86_64-apple-darwin || rustup target add x86_64-apple-darwin
+grep -q x86_64-apple-darwin <<<"$(rustup target list --installed)" || rustup target add x86_64-apple-darwin
 relint; CLIPPY_CONF_DIR=.github/clippy-lib RUSTFLAGS="-Dwarnings" cargo clippy --lib --target x86_64-apple-darwin --features "glsl,hlsl,gpu,jit,ffi"
 step "clippy: library code on wasm32 (max / min forbidden)"
 rustup target add wasm32-unknown-unknown >/dev/null 2>&1 || true
@@ -243,7 +245,7 @@ python3 scripts/clippy_lib_hidden_check.py --features "$LINT_FEATURES"
 # Linux / Windows runners are x86_64; arch-gated bodies (SIMD dispatch) lint
 # differently there (missing_const_for_fn, dead_code on aarch64-only paths).
 step "clippy: strict on x86_64 (Linux / Windows runner arch, default + gpu)"
-rustup target list --installed | grep -q x86_64-apple-darwin || rustup target add x86_64-apple-darwin
+grep -q x86_64-apple-darwin <<<"$(rustup target list --installed)" || rustup target add x86_64-apple-darwin
 relint; RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --target x86_64-apple-darwin --features "glsl,hlsl,gpu,jit,ffi"
 
 step "clippy: feature-gated examples build (gpu / glsl / hlsl / blinkscript / msl / rust)"
@@ -267,7 +269,7 @@ cargo build --lib --no-default-features --features "unity"
 cargo build --lib --no-default-features --features "unreal"
 
 step "wasm: build (wasm feature, wasm32 target)"
-rustup target list --installed | grep -q wasm32-unknown-unknown || rustup target add wasm32-unknown-unknown
+grep -q wasm32-unknown-unknown <<<"$(rustup target list --installed)" || rustup target add wasm32-unknown-unknown
 cargo build --lib --no-default-features --features wasm --target wasm32-unknown-unknown
 cargo build --lib --no-default-features --features wasm
 

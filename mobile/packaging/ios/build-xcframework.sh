@@ -49,7 +49,7 @@ if [ "$WITH_VISIONOS" = "true" ]; then
     echo ">>> Building $target (nightly + -Z build-std)..."
     # visionOS の Rust target は Tier 3 で nightly + -Z build-std=panic_abort,std が必要
     (cd "$WRAPPER_DIR" && \
-      rustup target list --installed | grep -q "$target" || rustup +nightly target add "$target" || true)
+      grep -q "$target" <<<"$(rustup target list --installed)" || rustup +nightly target add "$target" || true)
     (cd "$WRAPPER_DIR" && \
       cargo +nightly build --release --target "$target" \
       -Z build-std=panic_abort,std \

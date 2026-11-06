@@ -537,6 +537,10 @@ jobs:
         run: |
           python scripts/test_workflow_concurrency.py
           python scripts/workflow_concurrency.py
+      - name: check_pipe_grep_q (test, then check)
+        run: |
+          python scripts/test_check_pipe_grep_q.py
+          python scripts/check_pipe_grep_q.py
       - name: wiring-guard oracle (検査器自身の試験)
         run: python scripts/test_wiring_guard.py
       - name: wiring-guard (新規の未配線 / 理由の無い dead_code が無い)
@@ -1412,7 +1416,8 @@ jobs:
 
       - name: Smoke /version
         run: |
-          curl -fsS http://localhost:8787/version | grep -q "alice-sdf-server"
+          VERSION=$(curl -fsS http://localhost:8787/version)
+          grep -q "alice-sdf-server" <<<"$VERSION"
 
       - name: Smoke /eval (sphere)
         run: |
@@ -1420,7 +1425,7 @@ jobs:
             -H 'Content-Type: application/json' \
             -d '{"shape":"sphere","point":[2.0,0,0],"params":{"radius":1.0}}')
           echo "Response: $RESULT"
-          echo "$RESULT" | grep -q '"distance":1'
+          grep -q '"distance":1' <<<"$RESULT"
 
       - name: Smoke /op (smooth_union)
         run: |
@@ -1428,7 +1433,7 @@ jobs:
             -H 'Content-Type: application/json' \
             -d '{"op":"smooth_union","a":0.3,"b":-0.2,"k":0.1}')
           echo "Response: $RESULT"
-          echo "$RESULT" | grep -q '"distance"'
+          grep -q '"distance"' <<<"$RESULT"
 
       - name: Smoke /mesh (sphere, res=16)
         run: |
