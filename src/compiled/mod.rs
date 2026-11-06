@@ -177,8 +177,18 @@ mod simd;
 /// Shared shader transpiler framework (ShaderLang trait + GenericTranspiler)
 #[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
 pub mod transpiler_common;
+
+/// The loft's law as shader source (one template rendered per dialect)
+#[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
+pub mod loft_shader;
+/// The smooth section stack's law as shader source (the loft template's notation)
+#[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
+pub mod smooth_stack_shader;
 #[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
 pub use transpiler_common::shader_unsupported_nodes;
+#[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
+#[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
+pub use transpiler_common::TranspileError;
 #[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
 #[allow(deprecated)] // re-export kept until the next major
 pub use transpiler_common::SHADER_UNSUPPORTED;
