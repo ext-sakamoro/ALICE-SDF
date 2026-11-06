@@ -531,6 +531,16 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
             let r = params[0] + params[1];
             AabbPacked::new(Vec3::new(-r, -r, -params[2]), Vec3::new(r, r, params[2]))
         }
+        OpCode::Loft => {
+            let off = inst.aux_offset as usize;
+            match aux_data.get(off..off + inst.aux_len as usize) {
+                Some(flat) if flat.len() >= 7 => {
+                    let (mn, mx) = crate::primitives::loft::aabb_flat(flat);
+                    AabbPacked::new(mn, mx)
+                }
+                _ => AabbPacked::empty(),
+            }
+        }
         OpCode::Polygon2D => {
             // Vertices live in aux_data as flat [x0, y0, x1, y1, ...]
             let off = inst.aux_offset as usize;
