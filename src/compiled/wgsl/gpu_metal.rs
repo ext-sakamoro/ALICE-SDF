@@ -148,6 +148,13 @@ pub(super) struct MetalEngine {
     /// Replaced whole by `update_params` (a fresh buffer copied from the
     /// values), so no buffer memory is written in place.
     params: Option<Mutex<metal::Buffer>>,
+    /// Digest of the tree's Dynamic-mode shape: `update_params` refuses another
+    dynamic_shape: Option<[u8; 32]>,
+    /// The node data (`buffer(4)`): lattice control points, height fields, grid warps, lofts and
+    /// stacks, read from a fixed-length storage array
+    node_data: Option<metal::Buffer>,
+    /// The checked reads' counter (`buffer(5)`, one `atomic_uint`)
+    read_hits: Option<metal::Buffer>,
 }
 
 impl MetalEngine {
@@ -156,16 +163,54 @@ impl MetalEngine {
     }
 
     pub(super) fn from_wgsl(wgsl: &str) -> Result<Self, GpuError> {
+        Self::from_wgsl_with_data(wgsl, &[], false)
+    }
+
+    /// [`MetalEngine::from_wgsl`] with the node data at `buffer(4)` (when not empty) and, when
+    /// `checked`, the read counter at `buffer(5)`
+    pub(super) fn from_wgsl_with_data(
+        wgsl: &str,
+        node_data: &[f32],
+        checked: bool,
+    ) -> Result<Self, GpuError> {
         let device = Self::device()?;
         let distance = Kernel::compile(&device, wgsl)?;
         let queue = device.new_command_queue();
+        let node_data = (!node_data.is_empty()).then(|| {
+            device.new_buffer_with_data(
+                node_data.as_ptr().cast(),
+                (node_data.len() * 4) as u64,
+                MTLResourceOptions::StorageModeShared,
+            )
+        });
+        let read_hits = checked.then(|| {
+            let zero = 0u32;
+            device.new_buffer_with_data(
+                std::ptr::addr_of!(zero).cast(),
+                4,
+                MTLResourceOptions::StorageModeShared,
+            )
+        });
         Ok(Self {
             device,
             queue,
             distance,
             full: None,
             params: None,
+            dynamic_shape: None,
+            node_data,
+            read_hits,
         })
+    }
+
+    /// The checked reads that left their proven range since the engine was built (`None` without
+    /// the counter)
+    pub(super) fn read_hits(&self) -> Option<u32> {
+        // SAFETY: a shared-storage buffer of 4 bytes, aligned for `u32`; every command buffer that
+        // wrote it has completed (`dispatch` waits), so the GPU does not write it while it is read
+        self.read_hits
+            .as_ref()
+            .map(|b| unsafe { *b.contents().cast::<u32>() })
     }
 
     pub(super) fn new_dynamic(node: &SdfNode) -> Result<Self, GpuError> {
@@ -181,6 +226,9 @@ impl MetalEngine {
             distance,
             full: Some(full),
             params: Some(Mutex::new(params)),
+            dynamic_shape: Some(WgslShader::dynamic_shape(node).0),
+            node_data: None,
+            read_hits: None,
         })
     }
 
@@ -210,7 +258,12 @@ impl MetalEngine {
             .params
             .as_ref()
             .expect("update_params requires Dynamic mode (use new_dynamic)");
-        let fresh = Self::param_buffer(&self.device, WgslShader::extract_params(node));
+        let (shape, values) = WgslShader::dynamic_shape(node);
+        assert!(
+            Some(shape) == self.dynamic_shape,
+            "update_params: the tree differs from the evaluator's in more than parameter values"
+        );
+        let fresh = Self::param_buffer(&self.device, values);
         *params
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = fresh;
@@ -307,6 +360,12 @@ impl MetalEngine {
         enc.set_buffer(2, Some(&count_buf), 0);
         if let Some(params) = &params {
             enc.set_buffer(3, Some(params), 0);
+        }
+        if let Some(data) = &self.node_data {
+            enc.set_buffer(4, Some(data), 0);
+        }
+        if let Some(hits) = &self.read_hits {
+            enc.set_buffer(5, Some(hits), 0);
         }
         enc.set_buffer(kernel.sizes_slot, Some(&sizes_buf), 0);
         let groups = (n as u64).div_ceil(kernel.threads);

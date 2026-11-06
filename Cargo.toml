@@ -262,6 +262,10 @@ required-features = ["hlsl"]
 # Emits a scene as dependency-free Rust (`fn sdf` / `fn normal`), the
 # build.rs use case of the `rust` feature.
 [[example]]
+name = "closed_sections"
+required-features = ["gpu", "glsl", "hlsl"]
+
+[[example]]
 name = "rust_transpile"
 required-features = ["rust"]
 
