@@ -237,6 +237,8 @@ fn run_api_tour() {
 
     // Persistent buffers: allocated once, grown on demand, chunked above 256K.
     let gpu = GpuEvaluator::new(&node).expect("GPU evaluator");
+    // a read that waits longer than this returns an error (the default is 10 minutes)
+    gpu.set_wait_limit(std::time::Duration::from_secs(120));
     let mut pool: GpuBufferPool = gpu.create_buffer_pool(512);
     let d = gpu.eval_batch_pooled(&pts, &mut pool).unwrap();
     assert_close("eval_batch_pooled", &d, want(r, c));

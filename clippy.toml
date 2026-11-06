@@ -35,6 +35,7 @@
 # `disallowed_methods` into a red gate for the library, the tests, the examples
 # and the benches alike. Pinned by tests/test_det_golden.rs on every OS lane.
 disallowed-methods = [
+    { path = "wgpu::Device::poll", reason = "a read waits with GpuContext::wait_for_mapping: Maintain::Wait stops at 60 s and then treats running work as finished" },
     { path = "wgpu::Instance::new", reason = "one instance per process: use alice_sdf::gpu_context::GpuContext", allow-invalid = true },
     { path = "wgpu::Adapter::request_device", reason = "devices are created under one lock: use alice_sdf::gpu_context::GpuContext", allow-invalid = true },
     { path = "wgpu::Adapter::create_device_from_hal", reason = "devices are created under one lock: use alice_sdf::gpu_context::GpuContext", allow-invalid = true },
