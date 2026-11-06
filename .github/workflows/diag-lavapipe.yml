@@ -1,0 +1,51 @@
+name: Diagnostic lavapipe large dispatch
+on:
+  push:
+    branches: ['diag/**']
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+permissions:
+  contents: read
+jobs:
+  large-dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      ALICE_SDF_REQUIRE_GPU: "1"
+      WGPU_BACKEND: vulkan
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Mesa software Vulkan (lavapipe)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1 vulkan-tools
+          icd=$(find /usr/share/vulkan/icd.d -name "lvp_icd*.json" | head -1)
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          VK_ICD_FILENAMES="$icd" vulkaninfo --summary | tee /tmp/vulkaninfo.txt | head -40
+          grep -qi llvmpipe /tmp/vulkaninfo.txt
+      - name: The body in each array form, one process each
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p /tmp/dump
+          DIAG_DUMP=/tmp/dump DIAG_NODE=body DIAG_POINTS=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" --test test_glsl_large_dispatch_diag one_case -- --nocapture 2>&1 | grep CASE
+          B=$(cargo test --no-run --features "gpu,glsl,gpu-mesh,texture-fit" --test test_glsl_large_dispatch_diag 2>&1 | grep -o 'target/debug/deps/test_glsl_large_dispatch_diag-[0-9a-f]*' | head -1)
+          run() {
+            echo "CASE start $1"
+            shift
+            env "$@" DIAG_POINTS=64 DIAG_LIMIT_S=280 timeout 320 "$B" one_case --nocapture 2>&1 | grep -E "CASE|panicked|timed out|stack" | grep -v 'now a variable' | cut -c1-220
+            echo "CASE end rc=${PIPESTATUS[0]}"
+          }
+          echo "CASE start the signal check: const loft past a 5 s limit"
+          DIAG_WGSL=const DIAG_NODE=loft DIAG_POINTS=64 DIAG_LIMIT_S=5 timeout 150 "$B" one_case --nocapture 2>&1 | grep -E "CASE|panicked|timed out" | cut -c1-220
+          echo "CASE end signal check rc=${PIPESTATUS[0]}"
+          run "wgsl buffer body" DIAG_WGSL=buffer DIAG_NODE=body
+          run "wgsl private body" DIAG_WGSL=private DIAG_NODE=body
+          run "glsl var body" DIAG_GLSL_VAR=1 DIAG_NODE=body
+          run "wgsl const body" DIAG_WGSL=const DIAG_NODE=body
+          run "glsl const body" DIAG_NODE=body

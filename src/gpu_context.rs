@@ -30,7 +30,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, PoisonError};
 #[cfg(not(target_arch = "wasm32"))]
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::compiled::GpuError;
 
@@ -111,16 +111,26 @@ impl From<std::sync::mpsc::TryRecvError> for NotTaken {
     }
 }
 
-/// Poll and look for the mapping until it arrives or `elapsed` passes `limit`. The mapping is looked
-/// for before the limit, so a result that is there is never refused, with a limit of zero as well.
-/// After about a millisecond of yielding it sleeps between polls, so a long wait costs no core
+/// Polls made without a pause before a wait starts to sleep, so a short dispatch costs no sleep
+#[cfg(not(target_arch = "wasm32"))]
+const POLLS_WITHOUT_PAUSE: u32 = 1000;
+
+/// The pause between later polls. A long wait costs no core, and the limit is counted in these, so
+/// no clock is read: it is a lower bound on the time waited
+#[cfg(not(target_arch = "wasm32"))]
+const POLL_PAUSE: Duration = Duration::from_micros(500);
+
+/// Poll and look for the mapping until it arrives or the pauses reach `limit`. The mapping is looked
+/// for before the limit, so a result that is there is never refused, with a limit of zero as well
 #[cfg(not(target_arch = "wasm32"))]
 fn wait_until(
     mut poll: impl FnMut(),
     mut take: impl FnMut() -> Result<Result<(), wgpu::BufferAsyncError>, NotTaken>,
-    elapsed: impl Fn() -> Duration,
+    mut pause: impl FnMut(Duration),
     limit: Duration,
 ) -> Waited {
+    let mut polls = 0u32;
+    let mut paused = Duration::ZERO;
     loop {
         poll();
         match take() {
@@ -128,14 +138,15 @@ fn wait_until(
             Err(NotTaken::Closed) => return Waited::Closed,
             Err(NotTaken::Empty) => {}
         }
-        let waited = elapsed();
-        if waited >= limit {
+        if paused >= limit {
             return Waited::OverLimit;
         }
-        if waited < Duration::from_millis(1) {
+        if polls < POLLS_WITHOUT_PAUSE {
+            polls += 1;
             std::thread::yield_now();
         } else {
-            std::thread::sleep(Duration::from_micros(200));
+            pause(POLL_PAUSE);
+            paused += POLL_PAUSE;
         }
     }
 }
@@ -255,20 +266,19 @@ impl GpuContext {
     #[cfg(not(target_arch = "wasm32"))]
     #[allow(
         clippy::disallowed_methods,
-        reason = "the one place that polls: the wait is bounded here, by the clock of a blocking call"
+        reason = "the one place that polls: the wait is bounded here"
     )]
     pub(crate) fn wait_for_mapping(
         &self,
         mapped: &Receiver<Result<(), wgpu::BufferAsyncError>>,
     ) -> Result<(), GpuError> {
         let limit = Duration::from_millis(self.0.wait_limit_ms.load(Ordering::Relaxed));
-        let started = Instant::now();
         let waited = wait_until(
             || {
                 self.device().poll(wgpu::Maintain::Poll);
             },
-            || mapped.try_recv().map_err(|e| e.into()),
-            || started.elapsed(),
+            || mapped.try_recv().map_err(NotTaken::from),
+            std::thread::sleep,
             limit,
         );
         self.after_wait(waited, limit)
@@ -372,19 +382,10 @@ impl<T, C> DerefMut for Held<T, C> {
 
 #[cfg(test)]
 mod tests {
-    use super::{locked, wait_until, GpuContext, Held, NotTaken, Waited};
+    use super::{locked, wait_until, GpuContext, Held, NotTaken, Waited, POLLS_WITHOUT_PAUSE};
     use std::sync::mpsc::{channel, RecvTimeoutError};
     use std::sync::Mutex;
     use std::time::Duration;
-
-    /// A clock that moves by one millisecond for each look at it
-    fn ticking() -> impl Fn() -> Duration {
-        let now = std::cell::Cell::new(0u64);
-        move || {
-            now.set(now.get() + 1);
-            Duration::from_millis(now.get())
-        }
-    }
 
     #[test]
     fn a_wait_returns_the_mapping_when_it_arrives_and_polls_until_then() {
@@ -398,35 +399,44 @@ mod tests {
                     Ok(Ok(()))
                 }
             },
-            ticking(),
+            |_| {},
             Duration::from_secs(1),
         );
         assert_eq!(waited, Waited::Mapped(Ok(())));
         assert_eq!(polls.get(), 5);
     }
 
+    /// The count of polls and pauses is the limit's: 20 ms at 0.5 ms a pause, with the look that
+    /// finds the limit reached
     #[test]
     fn a_wait_ends_at_its_limit_and_not_before() {
-        let polls = std::cell::Cell::new(0);
+        let polls = std::cell::Cell::new(0u32);
+        let paused = std::cell::Cell::new(Duration::ZERO);
         let waited = wait_until(
             || polls.set(polls.get() + 1),
             || Err(NotTaken::Empty),
-            ticking(),
-            Duration::from_millis(40),
+            |d| paused.set(paused.get() + d),
+            Duration::from_millis(20),
         );
         assert_eq!(waited, Waited::OverLimit);
-        assert_eq!(
-            polls.get(),
-            40,
-            "one poll for each millisecond of the clock"
-        );
+        assert_eq!(paused.get(), Duration::from_millis(20));
+        assert_eq!(polls.get(), POLLS_WITHOUT_PAUSE + 40 + 1);
     }
 
     /// A mapping that is there is taken at any limit: the limit bounds the wait, not the result
     #[test]
     fn a_wait_takes_a_mapping_that_is_there_at_a_limit_of_zero() {
-        let waited = wait_until(|| {}, || Ok(Ok(())), ticking(), Duration::ZERO);
+        let waited = wait_until(|| {}, || Ok(Ok(())), |_| {}, Duration::ZERO);
         assert_eq!(waited, Waited::Mapped(Ok(())));
+        let polls = std::cell::Cell::new(0);
+        let none = wait_until(
+            || polls.set(polls.get() + 1),
+            || Err(NotTaken::Empty),
+            |_| {},
+            Duration::ZERO,
+        );
+        assert_eq!(none, Waited::OverLimit);
+        assert_eq!(polls.get(), 1, "a limit of zero looks once");
     }
 
     #[test]
@@ -434,14 +444,14 @@ mod tests {
         let closed = wait_until(
             || {},
             || Err(NotTaken::Closed),
-            ticking(),
+            |_| {},
             Duration::from_secs(1),
         );
         assert_eq!(closed, Waited::Closed);
         let failed = wait_until(
             || {},
             || Ok(Err(wgpu::BufferAsyncError)),
-            ticking(),
+            |_| {},
             Duration::from_secs(1),
         );
         assert_eq!(failed, Waited::Mapped(Err(wgpu::BufferAsyncError)));
