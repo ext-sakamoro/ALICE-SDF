@@ -247,7 +247,10 @@ cargo run --example new_transforms
 **Solution:** Ensure bone weights sum to ~1.0
 
 **Problem:** No deformation
-**Solution:** Check that current_pose differs from inv_bind_pose
+**Solution:** Check that `current_pose · inv_bind_pose` is not the identity
+
+**Problem:** The part does not bend at a joint
+**Solution:** The weights are the same at every point, so the node is one affine map; use `GridWarp` to bend
 
 ## Documentation
 

@@ -119,6 +119,9 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **動作の変更:** `MeshBvh::closest_point` と `MeshBvh::unsigned_distance` は `MeshBvh::closest_triangle` と同じ木の歩きを通る 距離がちょうど等しい三角形が複数ある時、`closest_point` は入力の index が最小の三角形の点を返す (以前は木の歩きが先に見た方) 距離の値は変わらない `ExteriorFloodFill` の符号は帯の中で最寄りの点から外へ歩くので、同距離の点でだけ歩く向きが変わりうる `MeshBvh::signed_distance` は別の歩きのまま
 
 ### Fixed
+- **動作の変更:** `SdfSkinning` が骨の写像を逆向きに読んでいた問題: `inv_bind_pose · current_pose · p` を読んでいたので、+2 動かした骨で部品が -2 へ動いていた 今は `S = current_pose · inv_bind_pose` の逆 `S⁻¹` を読み、部品は骨と同じ向きに動く evaluator / compiled / shader / 区間が同じ式だったので、backend 間の比較では見えていなかった 恒等の骨は同じ bit、それ以外は値が変わる 逆行列を持たない骨は参加しない 以前の値を再現する手段は置かない、公開済みの版 (6.1.0 以前) は修正されない
+- `SDF_SEMANTICS_ID` を `6dbd7174…` にした (`sdf_skinning_two_bones` の golden 行が動いた、他の行は同じ bit) `PREVIOUS_SDF_SEMANTICS_IDS` は空になり、`0f6c58d0…` と `ad04549c…` で書かれたものは読込で拒否する 動いた行がこの 1 行だけであることは `tests/sdf_semantics_id.rs` が示す
+- `eval_lipschitz` の `SdfSkinning`: Frobenius norm (回転で √3) をやめ、spectral norm の上界にした 剛体の姿勢で 1 を返す 重みは位置によらず 1 つの affine 写像なので、位置で曲がる関節は表せない (`tests/test_skinning_bend_oracle.rs` の既知の欠陥、曲げるのは `GridWarp`)
 - GPU の device を複数 thread で作成・破棄すると、ある driver (Vulkan / EGL) の内部で永久に止まる問題: `wgpu::Instance` を process に 1 個にし、device の作成と破棄を 1 つの lock で直列化 (`src/gpu_context.rs`、`tests/test_gpu_lifecycle_oracle.rs`)
 - shader (WGSL / GLSL / HLSL / MSL / BlinkScript の共通出力) の twist: 角 `strength · y` を象限で `[−π/4, π/4]` 付近に縮約してから native の `sin` / `cos` を呼ぶ (WGSL は誤差を `[−π, π]` でだけ 2⁻¹¹ に抑える) `|strength · y| ≤ 2¹⁶ · π/2` で縮約後の角は `[−π, π]` の内側、回転は長さを `√2 · 2⁻¹¹` の内側で保つ (導出は出力の隣)
 - 試験の台帳 `docs/oracle-status.md` は、実行される試験の 1 つの腕だけが既知の欠陥を許容する印 (`// KNOWN-DEFECT-ARM: known defect: <id>: …`) を「Known defect in one arm」として数えて載せる (`scripts/gen-oracle-status.py`、試験 `scripts/test_gen_status.py`)
