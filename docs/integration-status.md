@@ -118,6 +118,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/fidelity.rs`: `Fidelity`, `Fidelity::can_overshoot`, `Fidelity::safe_step_scale`, `distance_fidelity`
 - `src/gi/cone_trace.rs`: `trace_hemisphere`
 - `src/gi/irradiance.rs`: `IrradianceGrid::get_probe`, `IrradianceGrid::get_probe_mut`, `IrradianceGrid::memory_bytes`, `IrradianceGrid::probe_count`, `IrradianceGrid::sample`, `IrradianceProbe::evaluate`, `SH1::evaluate`
+- `src/gpu_context.rs`: `GpuContext::request_async`
 - `src/heatmap.rs`: `ColorMap`, `Heatmap`, `Heatmap::inside_pixel_count`, `Heatmap::sample`, `Heatmap::surface_pixel_count`, `HeatmapConfig`, `SlicePlane`, `generate_heatmap`, `heatmap_to_rgba`
 - `src/incremental.rs`: `IncrementalError`, `InstructionSlot`, `InstructionSlot::new`, `ParamDependencyIndex`, `ParamDependencyIndex::affected_aabb`, `ParamDependencyIndex::apply`, `ParamDependencyIndex::apply_all`, `ParamDependencyIndex::bind`, `ParamDependencyIndex::binding_count`, `ParamDependencyIndex::bindings_of`, `ParamDependencyIndex::dirty_aabb`, `ParamDependencyIndex::dirty_instructions`, `ParamDependencyIndex::dirty_params`, `ParamDependencyIndex::invalidate_chunked_cache`, `ParamDependencyIndex::is_dirty`, `ParamDependencyIndex::mark_clean`, `ParamDependencyIndex::new`, `ParamDependencyIndex::param_count`, `ParamDependencyIndex::refit_bvh`, `ParamDependencyIndex::refit_bvh_partial`
 - `src/interval.rs`: `Interval::intersect`, `Interval::overlaps`

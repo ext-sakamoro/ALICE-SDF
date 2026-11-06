@@ -550,7 +550,7 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_transpiler_naga_validate --test noise_shader_validate --test test_mesh_orientation --test test_mc_shared_vertex_oracle \
   --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity --test test_instanced_wgsl_gpu_parity --test test_grid_warp_oracle \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_shader_precise_temporaries \
-  --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle
+  --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle --test test_gpu_lifecycle_oracle
 
 step "gpu-parity: polygon / section stack shader oracles (ci.yml の同名 step と対、file ごとに件数未満で fail)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_polygon_2d_general_oracle -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_polygon_2d_general_oracle.log"
@@ -576,10 +576,10 @@ step "gpu-parity: shader text semantics identifier (gpu, glsl, hlsl, volume, bli
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl,volume,blinkscript,texture-fit" --test test_shader_text_provenance -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log" --min 14 --what "shader text provenance tests (gpu, glsl, hlsl, volume, blinkscript, texture-fit)"
 
-step "gpu-parity: GPU unit tests ran, not skipped (6, ci.yml の GPU unit tests ran と対)"
+step "gpu-parity: GPU unit tests ran, not skipped (ci.yml の GPU unit tests ran と対)"
 python3 scripts/test_gpu_test_count.py
 ALICE_SDF_REQUIRE_GPU=1 cargo test --lib --features "gpu,gpu-mesh" test_gpu_ -- --nocapture --test-threads=1 2>&1 | tee "${TMPDIR:-/tmp}/sdf-gpu-unit.log"
-python3 scripts/gpu_test_count.py "${TMPDIR:-/tmp}/sdf-gpu-unit.log" --ran 6 --max-skipped 0
+python3 scripts/gpu_test_count.py "${TMPDIR:-/tmp}/sdf-gpu-unit.log" --ran 7 --max-skipped 0
 
 step "gpu-parity: aaa (volume gpu_bake, ci.yml の GPU ↔ CPU parity (aaa — volume gpu_bake) と対)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "aaa" --test test_gi_volume_oracle --test test_volume_api_oracle

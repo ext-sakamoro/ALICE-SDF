@@ -31,6 +31,7 @@ use thiserror::Error;
 use wgpu::util::DeviceExt;
 
 use super::transpiler::WgslShader;
+use crate::gpu_context::{GpuContext, Held};
 use crate::types::SdfNode;
 
 /// How long a read waits for its mapping after `poll` has returned. `poll` runs the mapping callback
@@ -198,9 +199,7 @@ const PARAM_BUFFER_SIZE: u64 = 1024 * 16;
         reason = "on macOS with msl the WGSL constructors build the Metal engine; wgpu is left for from_glsl_compute"
     )
 )]
-struct WgpuEngine {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+struct WgpuResources {
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     /// Dynamic parameter buffer (present in Dynamic mode)
@@ -223,6 +222,8 @@ struct WgpuEngine {
     /// [`WgslShader::try_transpile_with_node_data_checked`]
     read_hits: Option<wgpu::Buffer>,
 }
+
+type WgpuEngine = Held<WgpuResources>;
 
 #[cfg_attr(
     all(target_os = "macos", feature = "msl"),
@@ -251,29 +252,8 @@ impl WgpuEngine {
         node_data: &[f32],
         checked: bool,
     ) -> Result<Self, GpuError> {
-        // Initialize wgpu synchronously using pollster
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }))
-        .ok_or(GpuError::NoAdapter)?;
-
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("ALICE-SDF Device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::Performance,
-            },
-            None,
-        ))
-        .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
+        let context = GpuContext::request("ALICE-SDF Device")?;
+        let device = context.device();
 
         // Create shader module
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -379,9 +359,7 @@ impl WgpuEngine {
                     | wgpu::BufferUsages::COPY_DST,
             })
         });
-        Ok(Self {
-            device,
-            queue,
+        Ok(context.hold(WgpuResources {
             pipeline,
             bind_group_layout,
             param_buffer: None,
@@ -393,7 +371,7 @@ impl WgpuEngine {
             workgroup_size: 256,
             node_data,
             read_hits,
-        })
+        }))
     }
 
     /// Evaluate the SDF at multiple points using the GPU
@@ -401,7 +379,7 @@ impl WgpuEngine {
     /// This is highly efficient for large numbers of points (1000+).
     /// For small numbers of points, CPU evaluation may be faster due to
     /// GPU dispatch overhead.
-    pub fn eval_batch(&self, points: &[Vec3]) -> Result<Vec<f32>, GpuError> {
+    fn eval_batch(&self, points: &[Vec3]) -> Result<Vec<f32>, GpuError> {
         self.check_usable()?;
         if points.is_empty() {
             return Ok(Vec::new());
@@ -413,41 +391,49 @@ impl WgpuEngine {
         let input_data: Vec<GpuInputPoint> = points.iter().map(|&p| p.into()).collect();
 
         // Create input buffer
-        let input_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Input Points Buffer"),
-                contents: bytemuck::cast_slice(&input_data),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let input_buffer =
+            self.context()
+                .device()
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Input Points Buffer"),
+                    contents: bytemuck::cast_slice(&input_data),
+                    usage: wgpu::BufferUsages::STORAGE,
+                });
 
         // Create output buffer
         let output_buffer_size = (point_count * std::mem::size_of::<GpuOutputDistance>()) as u64;
-        let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Output Distances Buffer"),
-            size: output_buffer_size + MARKER_BYTES,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let output_buffer = self
+            .context()
+            .device()
+            .create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Output Distances Buffer"),
+                size: output_buffer_size + MARKER_BYTES,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_SRC
+                    | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
 
         // Create staging buffer for reading results
-        let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Staging Buffer"),
-            size: output_buffer_size + MARKER_BYTES,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let staging_buffer = self
+            .context()
+            .device()
+            .create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Staging Buffer"),
+                size: output_buffer_size + MARKER_BYTES,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
 
         // Create uniform buffer for point count
-        let count_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Point Count Buffer"),
-                contents: bytemuck::cast_slice(&[point_count as u32]),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
+        let count_buffer =
+            self.context()
+                .device()
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Point Count Buffer"),
+                    contents: bytemuck::cast_slice(&[point_count as u32]),
+                    usage: wgpu::BufferUsages::UNIFORM,
+                });
 
         // Create bind group
         let bind_group = self.distance_bind_group(
@@ -458,11 +444,12 @@ impl WgpuEngine {
         );
 
         // Create command encoder
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("ALICE-SDF Command Encoder"),
-            });
+        let mut encoder =
+            self.context()
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("ALICE-SDF Command Encoder"),
+                });
 
         // Dispatch compute shader
         {
@@ -489,7 +476,9 @@ impl WgpuEngine {
         );
 
         // Submit commands
-        self.queue.submit(std::iter::once(encoder.finish()));
+        self.context()
+            .queue()
+            .submit(std::iter::once(encoder.finish()));
 
         // Read results
         let buffer_slice = staging_buffer.slice(..);
@@ -498,7 +487,7 @@ impl WgpuEngine {
             let _ = sender.send(result);
         });
 
-        self.device.poll(wgpu::Maintain::Wait);
+        self.context().device().poll(wgpu::Maintain::Wait);
 
         mapped_after_wait(receiver.recv_timeout(MAP_AFTER_WAIT))?;
 
@@ -551,13 +540,14 @@ impl WgpuEngine {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             .wrapping_add(1)
             .max(1);
-        let source = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("ALICE-SDF Dispatch Marker"),
-                contents: bytemuck::cast_slice(&[nonce]),
-                usage: wgpu::BufferUsages::COPY_SRC,
-            });
+        let source =
+            self.context()
+                .device()
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("ALICE-SDF Dispatch Marker"),
+                    contents: bytemuck::cast_slice(&[nonce]),
+                    usage: wgpu::BufferUsages::COPY_SRC,
+                });
         encoder.copy_buffer_to_buffer(&source, 0, output, end, 4);
         encoder.copy_buffer_to_buffer(output, end, staging, end, 4);
         nonce
@@ -570,26 +560,32 @@ impl WgpuEngine {
         let Some(hits) = &self.read_hits else {
             return Ok(None);
         };
-        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("ALICE-SDF Read Counter Staging"),
-            size: 8,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("ALICE-SDF Read Counter Copy"),
+        let staging = self
+            .context()
+            .device()
+            .create_buffer(&wgpu::BufferDescriptor {
+                label: Some("ALICE-SDF Read Counter Staging"),
+                size: 8,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
             });
+        let mut encoder =
+            self.context()
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("ALICE-SDF Read Counter Copy"),
+                });
         encoder.copy_buffer_to_buffer(hits, 0, &staging, 0, 4);
         let nonce = self.stamp_finished(&mut encoder, hits, &staging, 4);
-        self.queue.submit(std::iter::once(encoder.finish()));
+        self.context()
+            .queue()
+            .submit(std::iter::once(encoder.finish()));
         let slice = staging.slice(..);
         let (sender, receiver) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = sender.send(result);
         });
-        self.device.poll(wgpu::Maintain::Wait);
+        self.context().device().poll(wgpu::Maintain::Wait);
         mapped_after_wait(receiver.recv_timeout(MAP_AFTER_WAIT))?;
         let n = {
             let data = slice.get_mapped_range();
@@ -650,11 +646,13 @@ impl WgpuEngine {
                 resource: hits.as_entire_binding(),
             });
         }
-        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(label),
-            layout,
-            entries: &entries,
-        })
+        self.context()
+            .device()
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some(label),
+                layout,
+                entries: &entries,
+            })
     }
 
     /// Create a persistent buffer pool for repeated evaluations
@@ -662,14 +660,14 @@ impl WgpuEngine {
     /// Avoids buffer allocation overhead when calling `eval_batch` many times.
     /// The pool reuses GPU buffers, only re-allocating when capacity is exceeded.
     fn create_buffer_pool(&self, initial_capacity: usize) -> WgpuPool {
-        WgpuPool::new(&self.device, initial_capacity)
+        WgpuPool::new(self.context(), initial_capacity)
     }
 
     /// Evaluate using a persistent buffer pool (avoids re-allocation)
     ///
     /// This is significantly faster than `eval_batch` for repeated calls
     /// with similar-sized point batches (e.g., marching cubes, raymarching).
-    pub fn eval_batch_pooled(
+    fn eval_batch_pooled(
         &self,
         points: &[Vec3],
         pool: &mut WgpuPool,
@@ -682,15 +680,18 @@ impl WgpuEngine {
         let point_count = points.len();
 
         // Ensure pool has enough capacity
-        pool.ensure_capacity(&self.device, point_count);
+        pool.ensure_capacity(self.context(), point_count);
 
         // Write input data
         let input_data: Vec<GpuInputPoint> = points.iter().map(|&p| p.into()).collect();
-        self.queue
-            .write_buffer(&pool.input_buffer, 0, bytemuck::cast_slice(&input_data));
+        self.context().queue().write_buffer(
+            &pool.input_buffer,
+            0,
+            bytemuck::cast_slice(&input_data),
+        );
 
         // Write point count
-        self.queue.write_buffer(
+        self.context().queue().write_buffer(
             &pool.count_buffer,
             0,
             bytemuck::cast_slice(&[point_count as u32]),
@@ -705,11 +706,12 @@ impl WgpuEngine {
         );
 
         // Dispatch
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("ALICE-SDF Pooled Encoder"),
-            });
+        let mut encoder =
+            self.context()
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("ALICE-SDF Pooled Encoder"),
+                });
 
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -732,7 +734,9 @@ impl WgpuEngine {
             read_size,
         );
 
-        self.queue.submit(std::iter::once(encoder.finish()));
+        self.context()
+            .queue()
+            .submit(std::iter::once(encoder.finish()));
 
         // Read results
         let buffer_slice = pool.staging_buffer.slice(..read_size + MARKER_BYTES);
@@ -741,7 +745,7 @@ impl WgpuEngine {
             let _ = sender.send(result);
         });
 
-        self.device.poll(wgpu::Maintain::Wait);
+        self.context().device().poll(wgpu::Maintain::Wait);
 
         mapped_after_wait(receiver.recv_timeout(MAP_AFTER_WAIT))?;
 
@@ -760,33 +764,9 @@ impl WgpuEngine {
     }
 
     /// Create a GPU evaluator from raw WGSL source (async)
-    pub async fn from_wgsl_async(wgsl_source: &str) -> Result<Self, GpuError> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            })
-            .await
-            .ok_or(GpuError::NoAdapter)?;
-
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("ALICE-SDF Device"),
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::default(),
-                    memory_hints: wgpu::MemoryHints::Performance,
-                },
-                None,
-            )
-            .await
-            .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
+    async fn from_wgsl_async(wgsl_source: &str) -> Result<Self, GpuError> {
+        let context = GpuContext::request_async("ALICE-SDF Device").await?;
+        let device = context.device();
 
         // Create shader module
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -848,9 +828,7 @@ impl WgpuEngine {
             cache: None,
         });
 
-        Ok(Self {
-            device,
-            queue,
+        Ok(context.hold(WgpuResources {
             pipeline,
             bind_group_layout,
             param_buffer: None,
@@ -862,7 +840,7 @@ impl WgpuEngine {
             workgroup_size: 256,
             node_data: None,
             read_hits: None,
-        })
+        }))
     }
 
     /// Evaluate the SDF at multiple points using the GPU (async)
@@ -874,7 +852,7 @@ impl WgpuEngine {
         clippy::unused_async_trait_impl,
         reason = "the public signature is async; `poll` waits for the work, so nothing is left to await"
     )]
-    pub async fn eval_batch_async(&self, points: &[Vec3]) -> Result<Vec<f32>, GpuError> {
+    async fn eval_batch_async(&self, points: &[Vec3]) -> Result<Vec<f32>, GpuError> {
         self.check_usable()?;
         if points.is_empty() {
             return Ok(Vec::new());
@@ -886,41 +864,49 @@ impl WgpuEngine {
         let input_data: Vec<GpuInputPoint> = points.iter().map(|&p| p.into()).collect();
 
         // Create input buffer
-        let input_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Input Points Buffer"),
-                contents: bytemuck::cast_slice(&input_data),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let input_buffer =
+            self.context()
+                .device()
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Input Points Buffer"),
+                    contents: bytemuck::cast_slice(&input_data),
+                    usage: wgpu::BufferUsages::STORAGE,
+                });
 
         // Create output buffer
         let output_buffer_size = (point_count * std::mem::size_of::<GpuOutputDistance>()) as u64;
-        let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Output Distances Buffer"),
-            size: output_buffer_size + MARKER_BYTES,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let output_buffer = self
+            .context()
+            .device()
+            .create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Output Distances Buffer"),
+                size: output_buffer_size + MARKER_BYTES,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_SRC
+                    | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
 
         // Create staging buffer for reading results
-        let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Staging Buffer"),
-            size: output_buffer_size + MARKER_BYTES,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let staging_buffer = self
+            .context()
+            .device()
+            .create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Staging Buffer"),
+                size: output_buffer_size + MARKER_BYTES,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
 
         // Create uniform buffer for point count
-        let count_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Point Count Buffer"),
-                contents: bytemuck::cast_slice(&[point_count as u32]),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
+        let count_buffer =
+            self.context()
+                .device()
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Point Count Buffer"),
+                    contents: bytemuck::cast_slice(&[point_count as u32]),
+                    usage: wgpu::BufferUsages::UNIFORM,
+                });
 
         // Create bind group
         let bind_group = self.distance_bind_group(
@@ -931,11 +917,12 @@ impl WgpuEngine {
         );
 
         // Create command encoder
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("ALICE-SDF Command Encoder"),
-            });
+        let mut encoder =
+            self.context()
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("ALICE-SDF Command Encoder"),
+                });
 
         // Dispatch compute shader
         {
@@ -960,7 +947,9 @@ impl WgpuEngine {
         );
 
         // Submit commands (non-blocking)
-        self.queue.submit(std::iter::once(encoder.finish()));
+        self.context()
+            .queue()
+            .submit(std::iter::once(encoder.finish()));
 
         // Map buffer asynchronously
         let buffer_slice = staging_buffer.slice(..);
@@ -971,7 +960,7 @@ impl WgpuEngine {
         });
 
         // Poll device until mapping is complete
-        self.device.poll(wgpu::Maintain::Wait);
+        self.context().device().poll(wgpu::Maintain::Wait);
 
         // The mapping result: `poll` has returned, so it is there unless the wait gave up
         mapped_after_wait(match receiver.try_recv() {
@@ -998,7 +987,7 @@ impl WgpuEngine {
     ///
     /// In Dynamic mode, SDF parameters (radius, size, blend ratio, etc.)
     /// can be updated at 60fps without shader recompilation via `update_params()`.
-    pub fn new_dynamic(node: &SdfNode) -> Result<Self, GpuError> {
+    fn new_dynamic(node: &SdfNode) -> Result<Self, GpuError> {
         use super::transpiler::TranspileMode;
         let shader = WgslShader::transpile(node, TranspileMode::Dynamic);
         let shape = WgslShader::dynamic_shape(node).0;
@@ -1008,28 +997,8 @@ impl WgpuEngine {
         // Build distance+normals compute shader (4 bindings)
         let full_source = shader.to_compute_shader_with_normals();
 
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }))
-        .ok_or(GpuError::NoAdapter)?;
-
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("ALICE-SDF Device (Dynamic)"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::Performance,
-            },
-            None,
-        ))
-        .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
+        let context = GpuContext::request("ALICE-SDF Device (Dynamic)")?;
+        let device = context.device();
 
         // 4-binding layout (shared by both pipelines)
         let dynamic_bind_group_layout =
@@ -1163,9 +1132,7 @@ impl WgpuEngine {
             ],
         });
 
-        Ok(Self {
-            device,
-            queue,
+        Ok(context.hold(WgpuResources {
             pipeline,
             bind_group_layout,
             param_buffer: Some(param_buffer),
@@ -1177,7 +1144,7 @@ impl WgpuEngine {
             workgroup_size: shader.workgroup_size,
             node_data: None,
             read_hits: None,
-        })
+        }))
     }
 
     /// Update SDF parameters without recompiling shaders
@@ -1194,7 +1161,7 @@ impl WgpuEngine {
     /// it was created with in anything but parameter values (its form, or non-parameter data such as
     /// a loft's rows or a stack's sections, which are compiled into the shader): recreate the
     /// evaluator for that tree.
-    pub fn update_params(&self, node: &SdfNode) {
+    fn update_params(&self, node: &SdfNode) {
         let (shape, params) = WgslShader::dynamic_shape(node);
         let expected = self
             .dynamic_shape
@@ -1208,7 +1175,7 @@ impl WgpuEngine {
             padded.push(0.0);
         }
         padded.resize(PARAM_BUFFER_SIZE as usize / 4, 0.0);
-        self.queue.write_buffer(
+        self.context().queue().write_buffer(
             self.param_buffer
                 .as_ref()
                 .expect("update_params requires Dynamic mode (use new_dynamic)"),
@@ -1224,7 +1191,7 @@ impl WgpuEngine {
     ///
     /// # Panics
     /// Panics if the evaluator was not created with `new_dynamic()`.
-    pub fn eval_batch_full(&self, points: &[Vec3]) -> Result<Vec<(f32, Vec3)>, GpuError> {
+    fn eval_batch_full(&self, points: &[Vec3]) -> Result<Vec<(f32, Vec3)>, GpuError> {
         self.check_usable()?;
         if points.is_empty() {
             return Ok(Vec::new());
@@ -1246,67 +1213,79 @@ impl WgpuEngine {
         let point_count = points.len();
         let input_data: Vec<GpuInputPoint> = points.iter().map(|&p| p.into()).collect();
 
-        let input_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Input Points Buffer (Full)"),
-                contents: bytemuck::cast_slice(&input_data),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let input_buffer =
+            self.context()
+                .device()
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Input Points Buffer (Full)"),
+                    contents: bytemuck::cast_slice(&input_data),
+                    usage: wgpu::BufferUsages::STORAGE,
+                });
 
         let output_buffer_size = (point_count * std::mem::size_of::<GpuOutputFull>()) as u64;
-        let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Output Full Buffer"),
-            size: output_buffer_size + MARKER_BYTES,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Staging Buffer (Full)"),
-            size: output_buffer_size + MARKER_BYTES,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let count_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Point Count Buffer"),
-                contents: bytemuck::cast_slice(&[point_count as u32]),
-                usage: wgpu::BufferUsages::UNIFORM,
+        let output_buffer = self
+            .context()
+            .device()
+            .create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Output Full Buffer"),
+                size: output_buffer_size + MARKER_BYTES,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_SRC
+                    | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
             });
 
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("ALICE-SDF Full Bind Group"),
-            layout: dyn_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: input_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: output_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: count_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: param_buf.as_entire_binding(),
-                },
-            ],
-        });
-
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("ALICE-SDF Full Encoder"),
+        let staging_buffer = self
+            .context()
+            .device()
+            .create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Staging Buffer (Full)"),
+                size: output_buffer_size + MARKER_BYTES,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
             });
+
+        let count_buffer =
+            self.context()
+                .device()
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Point Count Buffer"),
+                    contents: bytemuck::cast_slice(&[point_count as u32]),
+                    usage: wgpu::BufferUsages::UNIFORM,
+                });
+
+        let bind_group = self
+            .context()
+            .device()
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("ALICE-SDF Full Bind Group"),
+                layout: dyn_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: input_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: output_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: count_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: param_buf.as_entire_binding(),
+                    },
+                ],
+            });
+
+        let mut encoder =
+            self.context()
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("ALICE-SDF Full Encoder"),
+                });
 
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -1326,7 +1305,9 @@ impl WgpuEngine {
             &staging_buffer,
             output_buffer_size,
         );
-        self.queue.submit(std::iter::once(encoder.finish()));
+        self.context()
+            .queue()
+            .submit(std::iter::once(encoder.finish()));
 
         let buffer_slice = staging_buffer.slice(..);
         let (sender, receiver) = std::sync::mpsc::channel();
@@ -1334,7 +1315,7 @@ impl WgpuEngine {
             let _ = sender.send(result);
         });
 
-        self.device.poll(wgpu::Maintain::Wait);
+        self.context().device().poll(wgpu::Maintain::Wait);
 
         mapped_after_wait(receiver.recv_timeout(MAP_AFTER_WAIT))?;
 
@@ -1389,7 +1370,7 @@ const fn optimal_chunk_size(total_points: usize) -> usize {
         reason = "on macOS with msl the WGSL constructors build the Metal engine; wgpu is left for from_glsl_compute"
     )
 )]
-struct WgpuPool {
+struct WgpuPoolBuffers {
     /// Current capacity (number of points)
     capacity: usize,
     input_buffer: wgpu::Buffer,
@@ -1397,6 +1378,9 @@ struct WgpuPool {
     staging_buffer: wgpu::Buffer,
     count_buffer: wgpu::Buffer,
 }
+
+/// A pool can outlive its evaluator, and its buffers hold the device
+type WgpuPool = Held<WgpuPoolBuffers>;
 
 #[cfg_attr(
     all(target_os = "macos", feature = "msl"),
@@ -1407,7 +1391,8 @@ struct WgpuPool {
 )]
 impl WgpuPool {
     /// Create a new buffer pool with the given initial capacity
-    fn new(device: &wgpu::Device, capacity: usize) -> Self {
+    fn new(context: &GpuContext, capacity: usize) -> Self {
+        let device = context.device();
         let cap = capacity.max(256); // Minimum 256 points
         let input_size = (cap * std::mem::size_of::<GpuInputPoint>()) as u64;
         let output_size = (cap * std::mem::size_of::<GpuOutputDistance>()) as u64;
@@ -1442,27 +1427,27 @@ impl WgpuPool {
             mapped_at_creation: false,
         });
 
-        Self {
+        context.clone().hold(WgpuPoolBuffers {
             capacity: cap,
             input_buffer,
             output_buffer,
             staging_buffer,
             count_buffer,
-        }
+        })
     }
 
     /// Ensure the pool can hold at least `required` points
     ///
     /// If the current capacity is insufficient, new larger buffers are allocated.
     /// Uses 1.5x growth factor to amortize allocation cost.
-    fn ensure_capacity(&mut self, device: &wgpu::Device, required: usize) {
+    fn ensure_capacity(&mut self, context: &GpuContext, required: usize) {
         if required <= self.capacity {
             return;
         }
 
         // Grow by 1.5x or to required size, whichever is larger
         let new_cap = (self.capacity * 3 / 2).max(required);
-        *self = Self::new(device, new_cap);
+        *self = Self::new(context, new_cap);
     }
 }
 
@@ -1720,7 +1705,7 @@ impl GpuEvaluator {
 
     /// The wgpu path dispatches with the transpiler's workgroup size; the Metal
     /// path reads it from the kernel itself.
-    const fn set_wgpu_workgroup_size(&mut self, size: u32) {
+    fn set_wgpu_workgroup_size(&mut self, size: u32) {
         match &mut self.engine {
             Engine::Wgpu(w) => w.workgroup_size = size,
             #[cfg(all(target_os = "macos", feature = "msl"))]
@@ -2021,7 +2006,7 @@ pub struct GpuBufferPool {
 }
 
 impl GpuBufferPool {
-    const fn from_wgpu(pool: WgpuPool) -> Self {
+    fn from_wgpu(pool: WgpuPool) -> Self {
         Self {
             capacity: pool.capacity,
             buffers: PoolBuffers::Wgpu(pool),
@@ -2037,7 +2022,7 @@ impl GpuBufferPool {
     }
 
     /// Mirror the backend pool's capacity after it may have grown.
-    const fn sync_capacity(&mut self) {
+    fn sync_capacity(&mut self) {
         self.capacity = match &self.buffers {
             PoolBuffers::Wgpu(p) => p.capacity,
             #[cfg(all(target_os = "macos", feature = "msl"))]

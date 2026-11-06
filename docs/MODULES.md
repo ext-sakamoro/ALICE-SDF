@@ -51,6 +51,7 @@ this file or listed twice, or when a linked file does not exist.
 | `compiled` | `CompiledSdf`: the tree flattened to bytecode, with scalar, 8-wide SIMD and BVH evaluators; the JIT and the transpilers live under it (see [below](#shader-and-source-transpilers)) |  |  |
 | `soa` | structure-of-arrays point buffers for batch SIMD evaluation |  |  |
 | `incremental` | changes a parameter of a `CompiledSdf` in place, without recompiling |  | [`incremental_param_index`](../examples/incremental_param_index.rs) |
+| `gpu_context` | The one `wgpu::Instance`; devices are created and destroyed under one lock | `gpu` | |
 | `interval` | interval arithmetic over a box, with bounds rounded outward |  |  |
 | `bound` | lower bounds of a subtree's value (`Bound::lower`), for the CPU and the shaders; a union skips an operand whose bound is above the nearest value found (`eval::eval_union_bounded`, `WgslShader::transpile_with_union_bounds`) |  | [`union_bounds`](../examples/union_bounds.rs) |
 | `autodiff` | forward-mode automatic differentiation with dual numbers; Hessian and mean curvature |  |  |

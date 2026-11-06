@@ -1270,6 +1270,7 @@ jobs:
           --test test_rest_point
           --test test_node_data_gpu_parity
           --test test_union_bound_oracle
+          --test test_gpu_lifecycle_oracle
           -- --nocapture
 
       # The polygon / section-stack shader oracles need gpu + glsl + hlsl together (the
@@ -1320,13 +1321,13 @@ jobs:
       # `gpu-test: ran` or `gpu-test: skipped` (`gpu_test_support` in src/lib.rs). Here a device
       # exists and ALICE_SDF_REQUIRE_GPU=1 makes a skip fail; the count makes sure the
       # six tests ran at all (a filter that matches nothing also says ok)
-      - name: GPU unit tests ran, not skipped (6)
+      - name: GPU unit tests ran, not skipped
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/test_gpu_test_count.py
           cargo test --lib --features "gpu,gpu-mesh" test_gpu_ -- --nocapture --test-threads=1 2>&1 | tee gpu-unit.log
-          python3 scripts/gpu_test_count.py gpu-unit.log --ran 6 --max-skipped 0
+          python3 scripts/gpu_test_count.py gpu-unit.log --ran 7 --max-skipped 0
 
       # aaa 側の GPU oracle (volume の gpu_bake)。上の step とは feature 集合が違う
       # ので分けている。ALICE_SDF_REQUIRE_GPU=1 は job env で設定済なので、

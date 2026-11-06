@@ -125,15 +125,13 @@ mod gpu_test_support {
     }
 
     fn probe() -> Result<(), String> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .ok_or_else(|| "no adapter".to_string())?;
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
+        crate::gpu_context::GpuContext::request("ALICE-SDF test probe")
             .map(|_| ())
-            .map_err(|e| format!("device creation failed: {e}"))
+            .map_err(|e| e.to_string())
     }
 }
+#[cfg(feature = "gpu")]
+pub mod gpu_context;
 pub mod interval;
 pub mod io;
 pub mod llm_schema;

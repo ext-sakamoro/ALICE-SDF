@@ -17,6 +17,7 @@ use wgpu::util::DeviceExt;
 
 use super::{BakeConfig, Volume3D, VoxelDistGrad};
 use crate::compiled::{GpuError, TranspileMode, WgslShader};
+use crate::gpu_context::GpuContext;
 use crate::types::SdfNode;
 
 /// Uniform buffer for volume bake parameters (48 bytes, 16-byte aligned)
@@ -69,29 +70,8 @@ pub fn gpu_bake_volume_from_shader(
     // Generate 3D volume bake shader
     let compute_source = shader.to_volume_shader();
 
-    // Initialize wgpu
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-    }))
-    .ok_or(GpuError::NoAdapter)?;
-
-    let (device, queue) = pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            label: Some("ALICE-SDF Volume Bake Device"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: wgpu::MemoryHints::Performance,
-        },
-        None,
-    ))
-    .map_err(|e: wgpu::RequestDeviceError| GpuError::DeviceCreation(e.to_string()))?;
+    let context = GpuContext::request("ALICE-SDF Volume Bake Device")?;
+    let (device, queue) = (context.device(), context.queue());
 
     // Create shader module
     let shader_module: wgpu::ShaderModule =
@@ -276,29 +256,8 @@ pub fn gpu_bake_volume_with_normals(
 
     let compute_source = generate_volume_bake_shader_with_normals(&shader);
 
-    // Initialize wgpu
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-    }))
-    .ok_or(GpuError::NoAdapter)?;
-
-    let (device, queue) = pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            label: Some("ALICE-SDF Volume Bake Device"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: wgpu::MemoryHints::Performance,
-        },
-        None,
-    ))
-    .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
+    let context = GpuContext::request("ALICE-SDF Volume Bake Device")?;
+    let (device, queue) = (context.device(), context.queue());
 
     let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Volume Bake Normal Shader"),

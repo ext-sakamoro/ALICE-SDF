@@ -10,7 +10,7 @@ permissions:
 jobs:
   large-dispatch:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 35
     env:
       ALICE_SDF_REQUIRE_GPU: "1"
       WGPU_BACKEND: vulkan
@@ -27,37 +27,39 @@ jobs:
           echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
           VK_ICD_FILENAMES="$icd" vulkaninfo --summary | tee /tmp/vulkaninfo.txt | head -40
           grep -qi llvmpipe /tmp/vulkaninfo.txt
-      - name: Large dispatches, one test alone
-        continue-on-error: true
-        timeout-minutes: 8
-        run: cargo test --features "gpu,glsl,gpu-mesh,texture-fit" --test test_glsl_large_dispatch_diag large_dispatches -- --nocapture --test-threads=1
-      - name: SPIR-V of the GLSL path validated
+      - name: The parity lane, with the stacks of a dispatch that does not finish
         continue-on-error: true
         shell: bash
         run: |
-          sudo apt-get install -y --no-install-recommends spirv-tools
-          cargo install naga-cli --version "$(awk '/name = "naga"/{getline; gsub(/[^0-9.]/,""); print; exit}' Cargo.lock)" --locked || true
-          mkdir -p /tmp/dump
-          for n in loft loft_curves; do
-            DIAG_DUMP=/tmp/dump DIAG_NODE=$n DIAG_POINTS=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" --test test_glsl_large_dispatch_diag one_case -- --nocapture 2>&1 | grep CASE || true
-            naga "/tmp/dump/$n.comp" "/tmp/dump/$n.spv" 2>&1 | tail -3 || true
-            spirv-val --target-env vulkan1.1 "/tmp/dump/$n.spv" && echo "CASE spirv-val $n ok" || echo "CASE spirv-val $n FAILED"
-            spirv-dis "/tmp/dump/$n.spv" > "/tmp/dump/$n.txt" && echo "CASE $n: $(wc -l < "/tmp/dump/$n.txt") lines, $(grep -c OpLoad "/tmp/dump/$n.txt") loads, $(grep -c 'Function %' "/tmp/dump/$n.txt") function vars, $(grep -c OpConstantComposite "/tmp/dump/$n.txt") composites"
-          done
-      - name: Reduced cases, one process each
-        continue-on-error: true
-        shell: bash
-        run: |
-          B=$(cargo test --no-run --features "gpu,glsl,gpu-mesh,texture-fit" --test test_glsl_large_dispatch_diag 2>&1 | grep -o 'target/debug/deps/test_glsl_large_dispatch_diag-[0-9a-f]*' | head -1)
-          for threads in default 1; do
-            for c in "loft 64" "loft 256" "loft 257" "loft 1024" "loft_curves 1" "loft_curves 64" "loft_curves 256" "mini 64" "mini 1024"; do
-              read -r node pts <<< "$c"
-              echo "CASE start threads=$threads $node $pts"
-              if [ "$threads" = default ]; then
-                DIAG_NODE=$node DIAG_POINTS=$pts timeout 90 "$B" one_case --nocapture 2>&1 | grep -E "CASE|panicked|timed out" | cut -c1-160
-              else
-                LP_NUM_THREADS=1 DIAG_NODE=$node DIAG_POINTS=$pts timeout 90 "$B" one_case --nocapture 2>&1 | grep -E "CASE|panicked|timed out" | cut -c1-160
+          sudo apt-get install -y --no-install-recommends gdb
+          B=$(cargo test --no-run --features "gpu,glsl,gpu-mesh,texture-fit" --test test_gpu_law_parity 2>&1 | grep -oE 'target/debug/deps/test_gpu_law_parity-[0-9a-f]+' | head -1)
+          test -n "$B"
+          for run in 1 2 3 serial; do
+            log="/tmp/lane-$run.log"
+            args=(--nocapture)
+            if [ "$run" = serial ]; then args+=(--test-threads=1); fi
+            "$B" "${args[@]}" > "$log" 2>&1 &
+            pid=$!
+            last=""
+            same=0
+            for _ in $(seq 1 72); do
+              kill -0 "$pid" 2>/dev/null || break
+              sleep 5
+              now=$(grep -cE 'parity .*(dispatching|points|results)|^test ' "$log" || true)
+              if [ "$now" = "$last" ]; then same=$((same + 5)); else same=0; last="$now"; fi
+              if [ "$same" -ge 40 ]; then
+                echo "CASE run=$run stuck for $same s after: $(grep -E 'GLSL parity' "$log" | tail -1)"
+                for dump in 1 2; do
+                  echo "STACK run=$run dump=$dump"
+                  sudo gdb -p "$pid" -batch -ex "info threads" -ex "thread apply all bt 25" 2>&1 | grep -vE '^(warning|\[New LWP|Reading symbols)' | cut -c1-170
+                  sleep 5
+                done
+                break
               fi
-              echo "CASE end threads=$threads $node $pts rc=${PIPESTATUS[0]}"
             done
+            kill -9 "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null
+            echo "CASE run=$run rc=$?"
+            echo "ORDER run=$run"
+            grep -E 'GLSL parity|did not finish|^test result' "$log" | cut -c1-170
           done
