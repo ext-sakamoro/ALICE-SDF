@@ -429,9 +429,7 @@ void main() {{
             // unfinished dispatch shows which node it was
             let long = name.starts_with("loft") || name.contains("stack");
             let started = std::time::Instant::now();
-            if long {
-                eprintln!("GLSL parity {name}: dispatching");
-            }
+            eprintln!("GLSL parity {name}: dispatching");
             let got = if long {
                 gpu_batches::eval_in_small_batches(&gpu, &pts, 64)
             } else {
