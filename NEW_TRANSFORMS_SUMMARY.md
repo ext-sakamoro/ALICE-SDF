@@ -48,7 +48,8 @@ Added 3 new Transform variants to ALICE-SDF, bringing the total Transform count 
 - Linear Blend Skinning (LBS) for character animation
 - Multi-bone support with per-bone weights
 - Inverse bind pose + current pose matrix composition
-- Approximately distance-preserving (Lipschitz ≈ 1.0)
+- One affine map: the weights are the same at every point, so it poses a part and does not bend one
+- `eval_lipschitz` reports the slope, 1 for a rigid pose
 
 **Key Features:**
 - BoneTransform struct with inv_bind_pose, current_pose, weight

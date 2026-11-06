@@ -1140,8 +1140,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let l = eval_lipschitz(node);
             Interval::new(v - l * r, v + l * r)
         }
-        // LBS with fixed bones is one affine map q = A p + b (Σ w_i · bind_i ·
-        // current_i / Σ w); push the box through it exactly (`affine_map`).
+        // Fixed bones are one affine map q = A p + b (Σ w_i · S_i⁻¹ / Σ w); push the box through
+        // it exactly (`affine_map`).
         SdfNode::SdfSkinning { child, bones } => match skinning_affine(bones) {
             Some((a, b)) => eval_interval(child, bounds.affine(&a, b)),
             None => eval_interval(child, bounds),
@@ -1777,10 +1777,11 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         SdfNode::GridWarp { child, warp } => {
             alice_det_math::max(eval_lipschitz(child), 1.0) + (warp.lipschitz() - 1.0)
         }
-        // SDF Skinning: LBS preserves distance (approximately)
-        // One affine map: L(child) · ‖A‖ (Frobenius ≥ spectral norm).
+        // SDF Skinning is one affine map: L(child) · ‖A‖₂, exact for a rigid pose
         SdfNode::SdfSkinning { child, bones } => match skinning_affine(bones) {
-            Some((a, _)) => eval_lipschitz(child) * a.iter().map(|v| v * v).sum::<f32>().sqrt(),
+            Some((a, _)) => {
+                eval_lipschitz(child) * crate::transforms::skinning::spectral_norm_bound(&a)
+            }
             None => eval_lipschitz(child),
         },
 
@@ -2000,22 +2001,16 @@ fn taper_bound_interval(d: Interval, p: Vec3Interval, factor: f32, reach: [f32; 
 }
 
 /// The single affine map `q = A p + b` a fixed-pose skinning node applies
-/// (`sdf_skinning`: Σ w_i · bind_i(current_i(p)) / Σ w over bones with
-/// w ≥ 1e-6); `None` when no bone carries weight (identity).
+/// (`sdf_skinning`: Σ w_i · S_i⁻¹ / Σ w over the bones that take part); `None` when none does
+/// (identity).
 fn skinning_affine(
     bones: &[crate::transforms::skinning::BoneTransform],
 ) -> Option<([f32; 9], Vec3)> {
     use glam::Mat4;
-    let active: Vec<_> = bones.iter().filter(|b| b.weight >= 1e-6).collect();
-    let total: f32 = active.iter().map(|b| b.weight).sum();
-    if active.is_empty() || total <= 1e-6 {
-        return None;
-    }
+    let (active, total) = crate::transforms::skinning::active_bones(bones)?;
     let mut m = Mat4::ZERO;
-    for b in &active {
-        let combined =
-            Mat4::from_cols_array(&b.inv_bind_pose) * Mat4::from_cols_array(&b.current_pose);
-        m += combined * (b.weight / total);
+    for (map, weight) in &active {
+        m += Mat4::from_cols_array(map) * (*weight / total);
     }
     let c = m.to_cols_array();
     Some((

@@ -1240,13 +1240,18 @@ impl Compiler {
             }
 
             SdfNode::SdfSkinning { child, bones } => {
-                // Serialize: [bone_count, (inv_bind_pose[16], current_pose[16], weight) × N]
-                let mut aux = Vec::with_capacity(1 + bones.len() * 33);
-                aux.push(bones.len() as f32);
-                for bone in bones {
-                    aux.extend_from_slice(&bone.inv_bind_pose);
-                    aux.extend_from_slice(&bone.current_pose);
-                    aux.push(bone.weight);
+                // [bone_count, total, (S⁻¹[16], weight) × N]; no bone takes part: count 0
+                let mut aux = Vec::with_capacity(2 + bones.len() * 17);
+                match crate::transforms::skinning::active_bones(bones) {
+                    Some((active, total)) => {
+                        aux.push(active.len() as f32);
+                        aux.push(total);
+                        for (map, weight) in &active {
+                            aux.extend_from_slice(map);
+                            aux.push(*weight);
+                        }
+                    }
+                    None => aux.extend_from_slice(&[0.0, 0.0]),
                 }
                 let (aux_off, aux_len) = self.push_aux(&aux);
                 let inst_idx = self.instructions.len();

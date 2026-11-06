@@ -6,21 +6,22 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1080 |
-| 🔴 Red by design | 1 |
+| 🟢 Not ignored | 1082 |
+| 🔴 Red by design | 2 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 1 |
-| **Total** | **1085** |
+| **Total** | **1088** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🔴 Red by design (1)
+## 🔴 Red by design (2)
 
 Oracles kept red on purpose: the implementation is not there yet, and a companion test pins
 today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected value is never loosened.
 
+- `a_bend_is_rigid_away_from_the_joint` (test_skinning_bend_oracle.rs) — known defect: sdf-skinning-constant-weights: the weight is the same at every point, so the node is one affine …
 - `torus_on_a_grid_plane_has_no_crossings` (test_dual_contouring_manifold.rs) — known defect: DC-TORUS-CROSS-001: torus(1.0, 0.5) at resolution 32 over ±1.6 has 1 crossing triangle pair in b…
 
 ## 🟠 Known defect in one arm (1)
@@ -42,7 +43,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1080)
+## 🟢 Not ignored (1082)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -182,6 +183,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_interval_soundness.rs` | 2 |
 | `test_live_sdf_gpu_parity.rs` | 2 |
 | `test_node_data_gpu_parity.rs` | 2 |
+| `test_skinning_bend_oracle.rs` | 2 |
 | `test_tight_aabb_cover_oracle.rs` | 2 |
 | `test_transpiler_naga_validate.rs` | 2 |
 | `mesh_sign_sliver.rs` | 1 |

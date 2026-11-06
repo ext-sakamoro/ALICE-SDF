@@ -138,6 +138,17 @@ pub enum IoError {
         /// The meaning identifier of this crate's identifier (hex)
         expected: String,
     },
+    /// A stored tree carries an earlier identifier this build reproduces except for one node, and
+    /// the tree has that node (see [`crate::semantics::SKINNING_FREE_SDF_SEMANTICS_IDS`])
+    #[error("{format}: the tree was stored under {stored}, and {node} has changed meaning since")]
+    SemanticsMovedForNode {
+        /// The format read
+        format: &'static str,
+        /// The identifier in the file
+        stored: crate::provenance::Provenance,
+        /// The node whose values moved
+        node: &'static str,
+    },
     /// The file carries a semantics identifier that is neither this crate's nor one it still
     /// reproduces (see [`crate::provenance`])
     #[error("{format}: semantics identifier mismatch: stored {stored}, expected {expected}")]
