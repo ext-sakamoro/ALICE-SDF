@@ -92,6 +92,8 @@ python3 scripts/test_check_eol.py
 python3 scripts/check_eol.py
 python3 scripts/test_workflow_concurrency.py
 python3 scripts/workflow_concurrency.py
+python3 scripts/test_workflow_pipefail.py
+python3 scripts/workflow_pipefail.py
 python3 scripts/test_check_pipe_grep_q.py
 python3 scripts/check_pipe_grep_q.py
 

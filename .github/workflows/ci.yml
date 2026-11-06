@@ -537,6 +537,10 @@ jobs:
         run: |
           python scripts/test_workflow_concurrency.py
           python scripts/workflow_concurrency.py
+      - name: workflow_pipefail (test, then check)
+        run: |
+          python scripts/test_workflow_pipefail.py
+          python scripts/workflow_pipefail.py
       - name: check_pipe_grep_q (test, then check)
         run: |
           python scripts/test_check_pipe_grep_q.py
@@ -1395,6 +1399,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable

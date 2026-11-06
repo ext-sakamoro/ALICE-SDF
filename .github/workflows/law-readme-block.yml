@@ -30,8 +30,9 @@ jobs:
         with:
           persist-credentials: false
       - name: ALICE-Law at the pinned revision
+        shell: bash
         run: |
-          pin=$(grep -oE 'law-integration:begin law=[0-9a-f]{40}' README.md | head -n 1 | cut -d= -f2)
+          pin=$(grep -oE 'law-integration:begin law=[0-9a-f]{40}' README.md | head -n 1 | cut -d= -f2) || { echo "README.md has no law-integration block"; exit 1; }
           test -n "$pin" || { echo "README.md has no law-integration block"; exit 1; }
           git clone --quiet --filter=blob:none https://github.com/ext-sakamoro/ALICE-Law.git "$RUNNER_TEMP/law"
           git -C "$RUNNER_TEMP/law" cat-file -e "${pin}^{commit}"

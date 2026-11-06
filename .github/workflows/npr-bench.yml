@@ -16,6 +16,9 @@ jobs:
   npr-bench:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout PR
         uses: actions/checkout@v5

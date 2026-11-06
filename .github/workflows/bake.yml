@@ -126,6 +126,7 @@ jobs:
 
       - name: Summary
         if: always()
+        shell: bash
         run: |
           {
             echo "### Bake output"
