@@ -157,6 +157,8 @@ pub enum OpCode {
     Annular2D = 120,
     /// MetricBall: `params[0]` = radius, `params[1..4]` = weights (l1, l2, linf)
     MetricBall = 121,
+    /// Loft: sections swept along a spline axis; the flat block in aux_data (`primitives::loft::flatten`)
+    Loft = 122,
 
     // === Binary Operations (pop 2, push 1) ===
     /// Union: min(a, b)
@@ -464,6 +466,7 @@ impl OpCode {
             | Self::Polygon2D
             | Self::RoundedRect2D
             | Self::MetricBall
+            | Self::Loft
             | Self::Annular2D => OpKind::Primitive,
             Self::Union
             | Self::MetricBlend
