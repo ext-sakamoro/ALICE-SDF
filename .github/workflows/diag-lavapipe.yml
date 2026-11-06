@@ -1,0 +1,69 @@
+name: Diagnostic lavapipe large dispatch
+on:
+  push:
+    branches: ['diag/**']
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+permissions:
+  contents: read
+jobs:
+  large-dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ALICE_SDF_REQUIRE_GPU: "1"
+      WGPU_BACKEND: vulkan
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Mesa software Vulkan (lavapipe)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1 vulkan-tools
+          icd=$(find /usr/share/vulkan/icd.d -name "lvp_icd*.json" | head -1)
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          VK_ICD_FILENAMES="$icd" vulkaninfo --summary | tee /tmp/vulkaninfo.txt | head -40
+          grep -qi llvmpipe /tmp/vulkaninfo.txt
+      - name: SPIR-V of each path, counted
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          sudo apt-get install -y --no-install-recommends spirv-tools glslang-tools
+          cargo install naga-cli --version "$(awk '/name = "naga"/{getline; gsub(/[^0-9.]/,""); print; exit}' Cargo.lock)" --locked
+          F="gpu,glsl,gpu-mesh,texture-fit"
+          mkdir -p /tmp/dump
+          B=$(cargo test --no-run --features "$F" --test test_glsl_large_dispatch_diag 2>&1 | grep -o 'target/debug/deps/test_glsl_large_dispatch_diag-[0-9a-f]*' | head -1)
+          stats() {
+            spirv-val --target-env vulkan1.1 "$2" && v=ok || v=FAILED
+            spirv-dis "$2" > "$2.txt"
+            echo "CASE stats $1: val $v, $(wc -l < "$2.txt") lines, $(grep -c 'OpVariable .* Function' "$2.txt") function vars, $(grep -c ' OpLoad ' "$2.txt") loads, $(grep -c 'OpStore ' "$2.txt") stores, $(grep -c 'OpConstantComposite' "$2.txt") composites, $(grep -c 'OpAccessChain' "$2.txt") chains, $(grep -c 'OpFunctionCall' "$2.txt") calls, $(grep -c 'OpFunction ' "$2.txt") functions"
+            grep -E 'OpTypeArray' "$2.txt" | head -6 | cut -c1-80
+          }
+          for n in loft loft_curves; do
+            DIAG_DUMP=/tmp/dump DIAG_NODE=$n DIAG_POINTS=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" --test test_glsl_large_dispatch_diag one_case -- --nocapture 2>&1 | grep CASE
+            naga --input-kind glsl --shader-stage compute "/tmp/dump/$n.comp" "/tmp/dump/$n.naga.spv"
+            stats "$n glsl naga" "/tmp/dump/$n.naga.spv"
+            glslangValidator -V --target-env vulkan1.1 -S comp "/tmp/dump/$n.comp" -o "/tmp/dump/$n.glslang.spv" | tail -3 | cut -c1-160
+            stats "$n glsl glslang" "/tmp/dump/$n.glslang.spv"
+            for form in const buffer; do
+              DIAG_WGSL=$form DIAG_DUMP=/tmp/dump DIAG_NODE=$n DIAG_POINTS=1 "$B" one_case --nocapture 2>&1 | grep CASE
+              naga "/tmp/dump/$n.$form.wgsl" "/tmp/dump/$n.$form.spv"
+              stats "$n wgsl $form" "/tmp/dump/$n.$form.spv"
+            done
+          done
+      - name: First dispatch of each form, one process each
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          B=$(cargo test --no-run --features "gpu,glsl,gpu-mesh,texture-fit" --test test_glsl_large_dispatch_diag 2>&1 | grep -o 'target/debug/deps/test_glsl_large_dispatch_diag-[0-9a-f]*' | head -1)
+          for c in "buffer loft" "const loft" "buffer loft_curves" "const loft_curves"; do
+            read -r form node <<< "$c"
+            echo "CASE start $form $node"
+            DIAG_WGSL=$form DIAG_NODE=$node DIAG_POINTS=64 timeout 420 "$B" one_case --nocapture 2>&1 | grep -E "CASE|panicked|timed out" | cut -c1-200
+            echo "CASE end $form $node rc=${PIPESTATUS[0]}"
+          done
