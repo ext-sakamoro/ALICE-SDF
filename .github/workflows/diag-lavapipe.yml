@@ -1,0 +1,48 @@
+name: Diagnostic lavapipe large dispatch
+on:
+  push:
+    branches: ['diag/**']
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+permissions:
+  contents: read
+jobs:
+  large-dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ALICE_SDF_REQUIRE_GPU: "1"
+      WGPU_BACKEND: vulkan
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Mesa software Vulkan (lavapipe)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1 vulkan-tools
+          icd=$(find /usr/share/vulkan/icd.d -name "lvp_icd*.json" | head -1)
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          VK_ICD_FILENAMES="$icd" vulkaninfo --summary | tee /tmp/vulkaninfo.txt | head -40
+          grep -qi llvmpipe /tmp/vulkaninfo.txt
+      - name: Each array form, one process each
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p /tmp/dump
+          DIAG_DUMP=/tmp/dump DIAG_NODE=loft DIAG_POINTS=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" --test test_glsl_large_dispatch_diag one_case -- --nocapture 2>&1 | grep CASE
+          B=$(cargo test --no-run --features "gpu,glsl,gpu-mesh,texture-fit" --test test_glsl_large_dispatch_diag 2>&1 | grep -o 'target/debug/deps/test_glsl_large_dispatch_diag-[0-9a-f]*' | head -1)
+          for node in loft loft_curves loft_nofade loft_faded; do
+            echo "CASE start wgsl buffer $node"
+            DIAG_WGSL=buffer DIAG_NODE=$node DIAG_POINTS=64 timeout 180 "$B" one_case --nocapture 2>&1 | grep -E "CASE|panicked|timed out" | cut -c1-200
+            echo "CASE end wgsl buffer $node rc=${PIPESTATUS[0]}"
+            echo "CASE start wgsl private $node"
+            DIAG_WGSL=private DIAG_NODE=$node DIAG_POINTS=64 timeout 180 "$B" one_case --nocapture 2>&1 | grep -E "CASE|panicked|timed out" | cut -c1-200
+            echo "CASE end wgsl private $node rc=${PIPESTATUS[0]}"
+            echo "CASE start glsl var $node"
+            DIAG_GLSL_VAR=1 DIAG_NODE=$node DIAG_POINTS=64 timeout 180 "$B" one_case --nocapture 2>&1 | grep -E "CASE|panicked|timed out" | cut -c1-200
+            echo "CASE end glsl var $node rc=${PIPESTATUS[0]}"
+          done
