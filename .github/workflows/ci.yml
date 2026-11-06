@@ -439,6 +439,10 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: cargo test --features msl --test test_msl_metal_oracle -- --nocapture
 
+      - name: update_params on the Metal engine
+        if: matrix.os == 'macos-latest'
+        run: cargo test --features msl --test test_gpu_dynamic_shape -- --nocapture
+
       # ALICE-Law G8: the msl arms of tests/test_shader_text_provenance.rs (MslShader::from_wgsl
       # and its pinned twin, the MSL of the transpiler, the Nanite header form), counted
       - name: Test (shader text semantics identifier — msl, macOS only)
@@ -1294,6 +1298,35 @@ jobs:
         env:
           ALICE_SDF_VOLUME_READBACK: "1"
         run: cargo test --features gpu --test test_gpu_readback_volume -- --nocapture
+
+      # The polygon / section-stack shader oracles need gpu + glsl + hlsl together (the
+      # files are empty without all three), so they run as their own step, counted so a feature set
+      # that compiles them to nothing cannot pass with 0 tests; the parity tests print the compared
+      # count and the largest GPU − CPU difference
+      - name: GPU ↔ CPU parity (polygon, section stack, smooth section stack)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features "gpu,glsl,hlsl" --test test_polygon_2d_general_oracle -- --nocapture 2>&1 | tee test_polygon_2d_general_oracle.log
+          python3 scripts/libtest_count.py test_polygon_2d_general_oracle.log --min 11 --what "test_polygon_2d_general_oracle"
+          cargo test --features "gpu,glsl,hlsl" --test test_section_stack_shader_oracle -- --nocapture 2>&1 | tee test_section_stack_shader_oracle.log
+          python3 scripts/libtest_count.py test_section_stack_shader_oracle.log --min 4 --what "test_section_stack_shader_oracle"
+          cargo test --features "gpu,glsl,hlsl" --test test_smooth_stack_shader -- --nocapture 2>&1 | tee test_smooth_stack_shader.log
+          python3 scripts/libtest_count.py test_smooth_stack_shader.log --min 4 --what "test_smooth_stack_shader"
+          # the CPU side evaluates about 1e6 field values: release, without the link time work
+          CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo test --release --features "gpu,glsl,hlsl" --test test_shader_data_bounds -- --nocapture 2>&1 | tee test_shader_data_bounds.log
+          python3 scripts/libtest_count.py test_shader_data_bounds.log --min 8 --what "test_shader_data_bounds"
+          cargo test --features "gpu,glsl,hlsl" --test test_shader_minimal_trees -- --nocapture 2>&1 | tee test_shader_minimal_trees.log
+          python3 scripts/libtest_count.py test_shader_minimal_trees.log --min 3 --what "test_shader_minimal_trees"
+          cargo test --features "gpu,glsl,hlsl" --test test_gpu_dynamic_shape -- --nocapture 2>&1 | tee test_gpu_dynamic_shape.log
+          python3 scripts/libtest_count.py test_gpu_dynamic_shape.log --min 2 --what "test_gpu_dynamic_shape"
+          cargo test --features "gpu,glsl,hlsl" --test test_shader_integer_wraps -- --nocapture 2>&1 | tee test_shader_integer_wraps.log
+          python3 scripts/libtest_count.py test_shader_integer_wraps.log --min 2 --what "test_shader_integer_wraps"
+          # the CPU side evaluates about 1e6 field values: release, without the link time work
+          CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo test --release --features "gpu,glsl,hlsl" --test test_shader_read_ranges -- --nocapture 2>&1 | tee test_shader_read_ranges.log
+          python3 scripts/libtest_count.py test_shader_read_ranges.log --min 2 --what "test_shader_read_ranges"
+          cargo test --features "gpu,glsl,hlsl" --test test_loft_shader_cpu_agreement -- --nocapture 2>&1 | tee test_loft_shader_cpu_agreement.log
+          python3 scripts/libtest_count.py test_loft_shader_cpu_agreement.log --min 1 --what "test_loft_shader_cpu_agreement"
 
       # ALICE-Law G8: the whole shader text carries the semantics identifier and the four
       # readers that compile shader text check it (tests/test_shader_text_provenance.rs). The

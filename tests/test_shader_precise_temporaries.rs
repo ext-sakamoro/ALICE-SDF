@@ -658,7 +658,7 @@ fn check(backend: &str, texts: &[(&str, String, String)], qualifier: &str) {
 fn glsl_computes_every_float_into_a_precise_local() {
     use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode};
     let mut texts = Vec::new();
-    for (name, node) in common::corpus::corpus() {
+    for (name, node) in common::corpus::gate_corpus() {
         for (mode, m) in [
             ("hardcoded", GlslTranspileMode::Hardcoded),
             ("dynamic", GlslTranspileMode::Dynamic),
@@ -696,7 +696,7 @@ fn glsl_computes_every_float_into_a_precise_local() {
 fn hlsl_computes_every_float_into_a_precise_local() {
     use alice_sdf::compiled::hlsl::{HlslShader, HlslTranspileMode};
     let mut texts = Vec::new();
-    for (name, node) in common::corpus::corpus() {
+    for (name, node) in common::corpus::gate_corpus() {
         for (mode, m) in [
             ("hardcoded", HlslTranspileMode::Hardcoded),
             ("dynamic", HlslTranspileMode::Dynamic),
@@ -1103,7 +1103,7 @@ fn nanite_material_computes_every_float_into_a_precise_local() {
     std::fs::create_dir_all(&dir).unwrap();
     let caller = alice_sdf::provenance::Provenance::new([0x5a; 32]);
     let mut texts: Vec<(&str, String, String)> = Vec::new();
-    for (name, node) in common::corpus::corpus() {
+    for (name, node) in common::corpus::gate_corpus() {
         let path = dir.join(format!("{name}.usf"));
         export_nanite_hlsl_material(&node, &path).unwrap();
         texts.push((

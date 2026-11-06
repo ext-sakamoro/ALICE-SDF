@@ -28,6 +28,26 @@ pub fn in_batches<T, E>(
     Ok(out)
 }
 
+/// `eval_batch` over `pts` at most `points` at a time (at most the limit): for a field long enough that
+/// the limit's points are too much work for one submit on a software rasteriser
+///
+/// # Errors
+///
+/// The first error of `eval_batch`
+#[cfg(feature = "gpu")]
+pub fn eval_in_small_batches(
+    gpu: &alice_sdf::compiled::GpuEvaluator,
+    pts: &[Vec3],
+    points: usize,
+) -> Result<Vec<f32>, alice_sdf::compiled::GpuError> {
+    assert!(points > 0 && points <= MAX_POINTS_PER_SUBMIT);
+    let mut out = Vec::with_capacity(pts.len());
+    for chunk in pts.chunks(points) {
+        out.extend(gpu.eval_batch(chunk)?);
+    }
+    Ok(out)
+}
+
 /// [`in_batches`] on a GPU evaluator's `eval_batch`
 ///
 /// # Errors
