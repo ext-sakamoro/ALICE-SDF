@@ -32,6 +32,8 @@ impl crate::compiled::transpiler_common::private::Sealed for GlslLang {}
 
 impl ShaderLang for GlslLang {
     const NAME: &'static str = "glsl";
+    const NODE_DATA_OPEN: &'static str = "alice_node_data_at(";
+    const NODE_DATA_CLOSE: &'static str = ")";
 
     fn vec2_ctor(x: &str, y: &str) -> String {
         format!("vec2({}, {})", x, y)
@@ -199,6 +201,9 @@ pub enum GlslTranspileMode {
     Dynamic,
 }
 
+/// Width in texels of the texture [`GlslShader::transpile_with_live_data`] reads
+pub const GLSL_NODE_DATA_WIDTH: usize = 1024;
+
 /// Generated GLSL shader code
 #[derive(Debug, Clone)]
 pub struct GlslShader {
@@ -270,6 +275,39 @@ impl GlslShader {
             mode,
             version: 450,
         }
+    }
+
+    /// [`GlslShader::transpile_with_scale`] for a tree whose grid warps change after the shader is
+    /// built (GLSL ES 3.00 and up): their data is read from the R32F texture
+    /// `alice_node_data_tex`, [`GLSL_NODE_DATA_WIDTH`] texels wide, row by row, so it can exceed
+    /// any uniform block. A warp's box, cell and reach are written into the shader and must not
+    /// change. Each frame, write [`crate::transforms::GridWarp::live_node_data`] over the data.
+    #[must_use]
+    pub fn transpile_with_live_data(node: &SdfNode) -> (Self, Vec<f32>) {
+        use super::super::transpiler_common::{GenericTranspiler, TranspileModeLang};
+        let mut g: GenericTranspiler<GlslLang> = GenericTranspiler::new(TranspileModeLang::Hardcoded);
+        g.node_data = Some(Vec::new());
+        g.live_node_data = true;
+        let sc = g.transpile_scaled(node, "p");
+        let body = format!("{}    return {};\n", sc.value_code, sc.value);
+        let source = format!(
+            "{PRECISE_MACRO}uniform highp sampler2D alice_node_data_tex;\nfloat alice_node_data_at(int i) {{\n    return texelFetch(alice_node_data_tex, ivec2(i % {GLSL_NODE_DATA_WIDTH}, i / {GLSL_NODE_DATA_WIDTH}), 0).r;\n}}\n{}\nvec2 sdf_eval_scaled(vec3 p) {{\n{}{}    return vec2({}, {});\n}}\n",
+            g.generate_shader(&body),
+            sc.value_code,
+            sc.scale_code,
+            sc.value,
+            sc.scale
+        );
+        (
+            Self {
+                source,
+                helper_count: g.helper_functions.len(),
+                param_layout: g.params,
+                mode: GlslTranspileMode::Hardcoded,
+                version: 300,
+            },
+            g.node_data.unwrap_or_default(),
+        )
     }
 
     /// Extract parameter values from an SDF node tree

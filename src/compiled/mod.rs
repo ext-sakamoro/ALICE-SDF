@@ -219,7 +219,7 @@ pub use wgsl::{GpuBufferPool, GpuError, GpuEvalFuture, GpuEvaluator, TranspileMo
 pub use hlsl::{HlslShader, HlslTranspileMode};
 
 #[cfg(feature = "glsl")]
-pub use glsl::{GlslShader, GlslTranspileMode};
+pub use glsl::{GlslShader, GlslTranspileMode, GLSL_NODE_DATA_WIDTH};
 
 #[cfg(feature = "blinkscript")]
 pub use blinkscript::{BlinkScriptShader, BlinkScriptTranspileMode};

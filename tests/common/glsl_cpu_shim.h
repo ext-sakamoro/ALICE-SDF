@@ -83,6 +83,11 @@ struct vec2 {
     float operator[](int i) const { return (&x)[i]; }
 };
 
+struct ivec2 {
+    int x, y;
+    ivec2(int a, int b) : x(a), y(b) {}
+};
+
 struct ivec3 {
     int x, y, z;
     ivec3() : x(0), y(0), z(0) {}

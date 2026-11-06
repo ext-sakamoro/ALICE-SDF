@@ -459,3 +459,111 @@ fn the_scaled_source_starts_with_the_unchanged_library() {
     }
     assert!(n > 190, "{n}");
 }
+
+
+/// A slab on a sheet at rest, and on the same sheet with one corner pulled out: the shape and the
+/// grid are the same, the maps are not
+fn live_warps() -> (SdfNode, alice_sdf::transforms::GridWarp, alice_sdf::transforms::GridWarp) {
+    use alice_sdf::transforms::{grid_warp_from_triangles, GridWarp, WarpGrid};
+    let n = 5usize;
+    let mut rest = Vec::new();
+    for j in 0..n {
+        for i in 0..n {
+            rest.push(Vec3::new(i as f32 / 4.0, j as f32 / 4.0, 0.0));
+        }
+    }
+    let mut tris = Vec::new();
+    for j in 0..n - 1 {
+        for i in 0..n - 1 {
+            let a = (j * n + i) as u32;
+            let (b, c, d) = (a + 1, a + n as u32, a + n as u32 + 1);
+            tris.push([a, b, d]);
+            tris.push([a, d, c]);
+        }
+    }
+    let posed: Vec<Vec3> = rest
+        .iter()
+        .map(|p| *p + Vec3::new(0.3, 0.2, 0.05) * (p.x * p.y).powi(2))
+        .collect();
+    let grid = WarpGrid {
+        box_min: Vec3::new(-0.3, -0.3, -0.3),
+        box_max: Vec3::new(1.5, 1.5, 0.3),
+        cell: 0.1,
+        reach: 0.3,
+        shell: Some(0.06),
+        overhang: None,
+    };
+    let at = |p: &[Vec3]| {
+        GridWarp::new(grid_warp_from_triangles(&rest, p, &tris, &grid).expect("builds")).expect("valid")
+    };
+    let child = SdfNode::box3d(0.8, 0.8, 0.08).translate(0.5, 0.5, 0.0);
+    (child, at(&rest), at(&posed))
+}
+
+/// The live source with `data` in its texture, as C++
+fn live_source(source: &str, data: &[f32]) -> String {
+    let w = alice_sdf::compiled::GLSL_NODE_DATA_WIDTH;
+    let texels: Vec<String> = data.iter().map(|v| format!("{:e}", v)).collect();
+    let decl = "uniform highp sampler2D alice_node_data_tex;";
+    assert!(source.contains(decl), "the source does not read the texture");
+    let read = format!(
+        "static const float alice_texels[{}] = {{{}}};\nstruct sampler2D {{ int unused; }};\nstatic sampler2D alice_node_data_tex;\nstruct alice_texel {{ float r; }};\nstatic alice_texel texelFetch(sampler2D, ivec2 c, int) {{ return alice_texel{{alice_texels[c.y * {w} + c.x]}}; }}",
+        data.len(),
+        texels.join(",")
+    );
+    source
+        .replace(decl, &read)
+        .replace("out float ", "float &")
+}
+
+#[test]
+fn a_live_warp_read_from_the_texture_is_the_posed_warp_on_the_cpu() {
+    // oracle: the shader is built once, at rest; with the posed warp's data in its texture its
+    // value and scale are eval_scaled of the tree holding the posed warp
+    let Some(cxx) = cxx_or_skip() else { return };
+    let (child, rest, posed) = live_warps();
+    let (shader, at_build) = GlslShader::transpile_with_live_data(&child.clone().grid_warp(rest.clone()));
+    assert_eq!(at_build, rest.live_node_data(), "the built data is the warp's layout");
+    assert!(at_build.len() > 4096, "{} floats: past a uniform block", at_build.len());
+    assert_eq!(shader.source.matches("vec3 alice_warp_").count(), 1, "one function per warp");
+    let mut pts = points(96, 0x0bad_cafe);
+    pts.extend(
+        points(160, 0x1357_9bdf)
+            .into_iter()
+            .map(|p| Vec3::new(0.5 + 0.4 * p.x, 0.5 + 0.4 * p.y, 0.1 * p.z)),
+    );
+    let mut differs = 0;
+    for (name, warp) in [("rest", &rest), ("posed", &posed)] {
+        let tree = child.clone().grid_warp(warp.clone());
+        let data = warp.live_node_data();
+        assert_eq!(data.len(), at_build.len(), "the layout does not move");
+        let src = program(&[live_source(&shader.source, &data)], 2, |i| {
+            format!("vec2 v = t{i}::sdf_eval_scaled(p); o[0] = v.x; o[1] = v.y;")
+        });
+        let got = compile_and_run(&cxx, &format!("live_{name}"), &src, &pts, 2);
+        let mut bad = Vec::new();
+        for (k, p) in pts.iter().enumerate() {
+            let (d, s) = alice_sdf::eval::eval_scaled(&tree, *p);
+            let (gd, gs) = (got[k * 2], got[k * 2 + 1]);
+            if (gd - d).abs() > 1e-4 * d.abs().max(1.0) || (gs - s).abs() > 1e-4 * s.abs().max(1.0) {
+                bad.push(format!("{name} at {p:?}: glsl ({gd}, {gs}) vs cpu ({d}, {s})"));
+            }
+            if name == "posed" && (d - alice_sdf::eval::eval(&child.clone().grid_warp(rest.clone()), *p)).abs() > 1e-3 {
+                differs += 1;
+            }
+        }
+        assert!(bad.is_empty(), "{} differ, e.g.\n{}", bad.len(), bad[..bad.len().min(8)].join("\n"));
+    }
+    assert!(differs > 50, "the pose hardly moved the field: {differs}");
+}
+
+#[test]
+fn a_live_warp_keeps_its_ranges_when_two_arrays_hold_the_same_values() {
+    // two warps equal today can differ next frame: each has its own range and its own function
+    let (child, rest, _) = live_warps();
+    let one = rest.live_node_data().len();
+    let tree = child.clone().grid_warp(rest.clone()).union(child.grid_warp(rest));
+    let (shader, data) = GlslShader::transpile_with_live_data(&tree);
+    assert_eq!(data.len(), 2 * one);
+    assert_eq!(shader.source.matches("vec3 alice_warp_").count(), 2);
+}

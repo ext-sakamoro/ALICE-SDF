@@ -127,6 +127,11 @@ pub(in crate::compiled) mod private {
 /// the WGSL emit with naga, which keeps one copy of every law instead of four
 /// (see that module's docs).
 pub trait ShaderLang: private::Sealed + 'static {
+    /// How the emitted code opens a read of the node data at an index: an element of the storage
+    /// buffer unless the language reads it another way
+    const NODE_DATA_OPEN: &'static str = "alice_node_data[";
+    /// What closes that read
+    const NODE_DATA_CLOSE: &'static str = "]";
     /// Lowercase language name used in diagnostics (`"wgsl"`, `"glsl"`, `"hlsl"`).
     const NAME: &'static str;
 
@@ -271,6 +276,10 @@ pub struct GenericTranspiler<L: ShaderLang> {
     /// appended here and read from the storage buffer `alice_node_data` (binding 4) instead of
     /// being emitted as module-scope constants (see [`GenericTranspiler::data_array`])
     pub node_data: Option<Vec<f32>>,
+    /// The node data changes after the shader is built (a grid warp posed every frame): every array
+    /// keeps its own range however its values compare today, the warp's global bound is read from
+    /// the data, not written as a literal, and each warp's point is one function of its own
+    pub live_node_data: bool,
     /// Data arrays already emitted, by (length, FNV-1a of the bits): the same values are emitted once
     /// (a second walk of the tree, e.g. the rest point, reuses the first walk's arrays), with whether
     /// the accessor function was emitted
@@ -386,6 +395,8 @@ fn scale_kind(node: &SdfNode) -> ScaleKind {
 pub struct DataArr {
     name: String,
     base: Option<usize>,
+    open: &'static str,
+    close: &'static str,
 }
 
 impl DataArr {
@@ -404,7 +415,7 @@ impl DataArr {
     pub fn at(&self, idx: &str) -> String {
         match self.base {
             None => format!("{}[{idx}]", self.name),
-            Some(b) => format!("alice_node_data[{b} + ({idx})]"),
+            Some(b) => format!("{}{b} + ({idx}){}", self.open, self.close),
         }
     }
 }
@@ -419,6 +430,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             params: Vec::new(),
             globals: String::new(),
             node_data: None,
+            live_node_data: false,
             data_seen: Vec::new(),
             scale_trace: None,
             _phantom: std::marker::PhantomData,
@@ -434,8 +446,10 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 (h ^ u64::from(v.to_bits())).wrapping_mul(0x0000_0100_0000_01b3)
             }),
         );
-        if let Some((_, d, _)) = self.data_seen.iter().find(|(k, _, _)| *k == key) {
-            return d.clone();
+        if !self.live_node_data {
+            if let Some((_, d, _)) = self.data_seen.iter().find(|(k, _, _)| *k == key) {
+                return d.clone();
+            }
         }
         let d = self.data_array_new(name, values);
         self.data_seen.push((key, d.clone(), false));
@@ -449,12 +463,16 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             DataArr {
                 name: name.to_owned(),
                 base: Some(base),
+                open: L::NODE_DATA_OPEN,
+                close: L::NODE_DATA_CLOSE,
             }
         } else {
             self.globals.push_str(&L::global_float_array(name, values));
             DataArr {
                 name: name.to_owned(),
                 base: None,
+                open: L::NODE_DATA_OPEN,
+                close: L::NODE_DATA_CLOSE,
             }
         }
     }
@@ -624,6 +642,36 @@ impl<L: ShaderLang> GenericTranspiler<L> {
     /// The grid warp's point computation (shared by the field and the rest point): emits `q`, the box
     /// distance and the blended map, and returns the names of (x = M q, e, b, Λ(q), F(q))
     fn emit_grid_warp_point(
+        &mut self,
+        warp: &crate::transforms::GridWarp,
+        point_var: &str,
+        code: &mut String,
+    ) -> (String, String, String, String, String) {
+        if !self.live_node_data {
+            return self.emit_grid_warp_point_inline(warp, point_var, code);
+        }
+        // one function, so what the warp costs a driver that inlines is in one place
+        let name = format!("alice_warp_{}", self.var_counter);
+        self.var_counter += 1;
+        let mut body = String::new();
+        let (x, e, b, lam, fl) = self.emit_grid_warp_point_inline(warp, "alice_p", &mut body);
+        self.globals.push_str(&format!(
+            "vec3 {name}(vec3 alice_p, out float alice_e, out float alice_b, out float alice_lam, out float alice_fl) {{\n{body}    alice_e = {e};\n    alice_b = {b};\n    alice_lam = {lam};\n    alice_fl = {fl};\n    return {x};\n}}\n"
+        ));
+        let (xo, eo, bo, lo, fo) = (
+            self.next_var(),
+            self.next_var(),
+            self.next_var(),
+            self.next_var(),
+            self.next_var(),
+        );
+        code.push_str(&format!(
+            "    float {eo}; float {bo}; float {lo}; float {fo};\n    vec3 {xo} = {name}({point_var}, {eo}, {bo}, {lo}, {fo});\n"
+        ));
+        (xo, eo, bo, lo, fo)
+    }
+
+    fn emit_grid_warp_point_inline(
         &mut self,
         warp: &crate::transforms::GridWarp,
         point_var: &str,
@@ -3160,7 +3208,11 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let (dv, dp, out) = (self.next_var(), self.next_var(), self.next_var());
                 self.note_scale(&[&lam, &e, &dv]);
                 let r = lit(data.reach);
-                let lg = lit(warp.lambda_global());
+                let lg = if self.live_node_data {
+                    self.data_array("alice_gwg", &[warp.lambda_global()]).at("0")
+                } else {
+                    lit(warp.lambda_global())
+                };
                 code.push_str(&L::decl_float(
                     &dv,
                     &format!(

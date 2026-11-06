@@ -483,6 +483,19 @@ impl GridWarp {
         self.slope
     }
 
+    /// What a shader from `GlslShader::transpile_with_live_data` reads for this warp, in its order:
+    /// the maps, `Λ_n`, the floor, `Λ_g`
+    #[must_use]
+    pub fn live_node_data(&self) -> Vec<f32> {
+        let d = &self.data;
+        let mut out = Vec::with_capacity(d.maps.len() + 2 * self.node_lambda.len() + 1);
+        out.extend_from_slice(&d.maps);
+        out.extend_from_slice(&self.node_lambda);
+        out.extend_from_slice(&d.floor);
+        out.push(self.lambda_global);
+        out
+    }
+
     /// `Λ_n` per node, x fastest (computed, see the module doc)
     #[must_use]
     pub fn node_lambda(&self) -> &[f32] {
