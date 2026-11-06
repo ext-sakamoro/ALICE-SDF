@@ -7,6 +7,7 @@
 )]
 
 pub mod corpus;
+pub mod loft_stack_scenes;
 
 use alice_sdf::prelude::*;
 
