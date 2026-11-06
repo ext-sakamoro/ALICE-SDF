@@ -1288,7 +1288,7 @@ jobs:
       # `gpu-test: ran` or `gpu-test: skipped` (`gpu_test_support` in src/lib.rs). Here a device
       # exists and ALICE_SDF_REQUIRE_GPU=1 makes a skip fail; the count makes sure the
       # six tests ran at all (a filter that matches nothing also says ok)
-      - name: GPU unit tests ran, not skipped (6)
+      - name: GPU unit tests ran, not skipped
         shell: bash
         run: |
           set -euo pipefail

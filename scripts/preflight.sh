@@ -552,7 +552,7 @@ step "gpu-parity: shader text semantics identifier (gpu, glsl, hlsl, volume, bli
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl,volume,blinkscript,texture-fit" --test test_shader_text_provenance -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log" --min 14 --what "shader text provenance tests (gpu, glsl, hlsl, volume, blinkscript, texture-fit)"
 
-step "gpu-parity: GPU unit tests ran, not skipped (6, ci.yml の GPU unit tests ran と対)"
+step "gpu-parity: GPU unit tests ran, not skipped (ci.yml の GPU unit tests ran と対)"
 python3 scripts/test_gpu_test_count.py
 ALICE_SDF_REQUIRE_GPU=1 cargo test --lib --features "gpu,gpu-mesh" test_gpu_ -- --nocapture --test-threads=1 2>&1 | tee "${TMPDIR:-/tmp}/sdf-gpu-unit.log"
 python3 scripts/gpu_test_count.py "${TMPDIR:-/tmp}/sdf-gpu-unit.log" --ran 7 --max-skipped 0

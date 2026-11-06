@@ -205,6 +205,33 @@ fn the_one_device_drop_takes_the_lock_as_proof() {
     );
 }
 
+/// The lock's value is the proof `create` and `destroy` ask for, so only the static builds one. A
+/// second value would satisfy them outside the lock, after a `locked(|_| ())` that the lock test
+/// cannot tell apart from the real wait.
+#[test]
+fn only_the_static_builds_the_lock_value() {
+    let text =
+        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(LIFECYCLE_MODULE))
+            .expect("read the lifecycle module");
+    let mut lines = Vec::new();
+    for (at, name) in text.match_indices("Lifecycle") {
+        let after = &text[at + name.len()..];
+        if after.trim_start().starts_with('{') {
+            let start = text[..at].rfind('\n').map_or(0, |n| n + 1);
+            let end = at + text[at..].find('\n').unwrap_or(text.len() - at);
+            lines.push(text[start..end].trim());
+        }
+    }
+    assert_eq!(
+        lines,
+        [
+            "struct Lifecycle {",
+            "static LIFECYCLE: Mutex<Lifecycle> = Mutex::new(Lifecycle { instance: None });",
+        ],
+        "{LIFECYCLE_MODULE}"
+    );
+}
+
 #[cfg(feature = "gpu")]
 mod overlap {
     use alice_sdf::compiled::GpuEvaluator;
