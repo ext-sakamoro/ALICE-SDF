@@ -74,11 +74,10 @@ pub fn gpu_bake_volume_from_shader(
     let (device, queue) = (context.device(), context.queue());
 
     // Create shader module
-    let shader_module: wgpu::ShaderModule =
-        device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Volume Bake Shader"),
-            source: wgpu::ShaderSource::Wgsl(compute_source.into()),
-        });
+    let shader_module = context.shader_module(
+        "Volume Bake Shader",
+        wgpu::ShaderSource::Wgsl(compute_source.into()),
+    )?;
 
     // Create output buffer
     let output_buffer_size = (total * std::mem::size_of::<f32>()) as u64;
@@ -259,10 +258,10 @@ pub fn gpu_bake_volume_with_normals(
     let context = GpuContext::request("ALICE-SDF Volume Bake Device")?;
     let (device, queue) = (context.device(), context.queue());
 
-    let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("Volume Bake Normal Shader"),
-        source: wgpu::ShaderSource::Wgsl(compute_source.into()),
-    });
+    let shader_module = context.shader_module(
+        "Volume Bake Normal Shader",
+        wgpu::ShaderSource::Wgsl(compute_source.into()),
+    )?;
 
     // Output: 4 floats per voxel (dist, nx, ny, nz)
     let output_buffer_size = (total * std::mem::size_of::<VoxelDistGrad>()) as u64;

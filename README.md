@@ -119,9 +119,24 @@ in the evaluator and law directories.
 | `tests/test_gpu_law_parity.rs` | WGSL against the CPU within a tolerance; axis ties of `atan2` exactly | Linux, on a software Vulkan device (lavapipe) |
 <!-- claim-test: tree_evaluator_bits_match_recorded_hashes -->
 
+**GPU.** A GPU's values are a tolerance domain against the CPU, not bit-equal to
+it: sums and products match, but its division, `sqrt`, `sin` and `cos` are the driver's. What
+the driver is kept from doing is fusing `a * b + c`, so one shader gives the same
+bits whatever else it computes. `gpu_context::contraction(path, backend)` and
+`GpuEvaluator::contraction()` answer for each path, so a result that needs this can
+refuse by checking:
+
+| Path | Vulkan | Metal | DX12, GL | Browser |
+|------|--------|-------|----------|---------|
+| `GpuEvaluator` from WGSL, a tree or a shader | forbidden | forbidden on macOS | refused | not controlled |
+| volume bake, marching cubes, `GpuEvaluator` from GLSL compute | forbidden | not controlled | refused | not controlled |
+
+Metal through wgpu has no way to turn fast math off. In a browser the browser owns
+the compiler, so that path cannot be covered from here.
+
 **Not covered.** `wasm32` is built in CI but the tests above are not run on
-it. The GPU shaders (WGSL, GLSL, HLSL, Metal) are a tolerance domain, not a
-bit-exact one. Targets that do not follow IEEE 754 for the basic operations,
+it. The shader text for other hosts (WGSL, GLSL, HLSL, Metal) is a tolerance domain,
+not a bit-exact one. Targets that do not follow IEEE 754 for the basic operations,
 and builds with fast-math style flags, are outside the guarantee. The
 bit-identity is for finite transcendental arguments: a non-finite or
 astronomically large `twist` / `bend` angle (strength times coordinate
