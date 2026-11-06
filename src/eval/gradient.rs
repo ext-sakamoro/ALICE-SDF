@@ -21,7 +21,7 @@ use crate::eval::eval;
 use crate::modifiers::*;
 use crate::transforms::{transform_rotate, transform_rotate_inverse, transform_translate};
 use crate::types::SdfNode;
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 use std::f32::consts::FRAC_1_SQRT_2;
 
 // ============================================================
@@ -121,9 +121,16 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
         | SdfNode::Circle2D { .. }
         | SdfNode::Rect2D { .. }
         | SdfNode::Segment2D { .. }
-        | SdfNode::Polygon2D { .. }
         | SdfNode::RoundedRect2D { .. }
-        | SdfNode::Annular2D { .. } => numerical_gradient_of(node, point),
+        | SdfNode::Annular2D { .. }
+        | SdfNode::Loft { .. }
+        | SdfNode::LoftCurves { .. }
+        | SdfNode::SmoothSectionStack(_) => numerical_gradient_of(node, point),
+
+        SdfNode::Polygon2D {
+            vertices,
+            half_height,
+        } => grad_polygon_2d(point, vertices, *half_height),
 
         // === Operations: chain rule ===
         SdfNode::Union { a, b } => {
@@ -539,6 +546,60 @@ fn numerical_gradient_of(node: &SdfNode, point: Vec3) -> Vec3 {
 // ============================================================
 // Primitive gradient functions
 // ============================================================
+
+/// Polygon2D: the 2D gradient is the unit vector from the nearest edge point, signed like the
+/// distance (the same edge loop and sign rule as `sdf_polygon_2d_xy`); the extrusion combines it with
+/// ±z exactly as the distance combines `d₂` and `|z| − h`
+fn grad_polygon_2d(point: Vec3, vertices: &[Vec2], half_height: f32) -> Vec3 {
+    let n = vertices.len();
+    if n < 3 {
+        return Vec3::Z;
+    }
+    let q = Vec2::new(point.x, point.y);
+    let mut best = (q - vertices[0]).length_squared();
+    let mut near = vertices[0];
+    let mut s = 1.0f32;
+    let mut j = n - 1;
+    for i in 0..n {
+        let e = vertices[j] - vertices[i];
+        let w = q - vertices[i];
+        let t = (w.dot(e) / e.dot(e)).clamp(0.0, 1.0);
+        let b = w - e * t;
+        let d = b.dot(b);
+        if d < best {
+            best = d;
+            near = vertices[i] + e * t;
+        }
+        let c = [
+            q.y >= vertices[i].y,
+            q.y < vertices[j].y,
+            e.x * w.y > e.y * w.x,
+        ];
+        if c.iter().all(|x| *x) || c.iter().all(|x| !*x) {
+            s = -s;
+        }
+        j = i;
+    }
+    let off = q - near;
+    let len = off.length();
+    let g2 = if len > 1e-12 {
+        off / len * s
+    } else {
+        Vec2::ZERO
+    };
+    let d2 = s * best.sqrt();
+    let dz = point.z.abs() - half_height;
+    let gz = if point.z >= 0.0 { 1.0 } else { -1.0 };
+    if d2 > 0.0 && dz > 0.0 {
+        let w = Vec2::new(d2, dz);
+        let l = w.length();
+        Vec3::new(g2.x * d2 / l, g2.y * d2 / l, gz * dz / l)
+    } else if d2 > dz {
+        Vec3::new(g2.x, g2.y, 0.0)
+    } else {
+        Vec3::new(0.0, 0.0, gz)
+    }
+}
 
 /// Sphere: f = |p| - r → ∇f = p / |p|
 #[inline(always)]
