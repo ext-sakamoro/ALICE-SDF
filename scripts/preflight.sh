@@ -351,9 +351,18 @@ if [[ $quick -eq 1 ]]; then
   else
     echo "skip scip reach (${scope#skip: })"
   fi
+  # These read source text and touch no GPU, so a rule they hold is not left for CI to report.
+  step "test: GPU source guards (--quick でも走らせる、GPU に触らない文字列検査、件数不足で fail)"
+  guards_log="${TMPDIR:-/tmp}/sdf-gpu-guards.log"
+  cargo test --features gpu --test test_gpu_lifecycle_oracle -- --exact one_module_owns_the_gpu_lifecycle \
+    the_one_device_drop_takes_the_lock_as_proof only_the_static_builds_the_lock_value 2>&1 | tee "$guards_log"
+  python3 scripts/libtest_count.py "$guards_log" --min 3 --what "GPU lifecycle source guards"
+  cargo test --features gpu --test test_gpu_submit_limit -- --exact no_test_dispatches_past_the_limit \
+    the_check_refuses_what_it_should 2>&1 | tee "$guards_log"
+  python3 scripts/libtest_count.py "$guards_log" --min 2 --what "GPU submit source guards"
   echo
   echo "preflight --quick OK"
-  echo "  RAN     : fmt / clippy / MSRV / feature builds / wasm target / fuzz build / cargo test --lib"
+  echo "  RAN     : fmt / clippy / MSRV / feature builds / wasm target / fuzz build / cargo test --lib / GPU source guards"
   echo "            (+ scip reach when a scip input differs from origin/main)"
   echo "  NOT RUN : cargo test --tests (integration), feature-gated oracles (svo / texture-fit /"
   echo "            jit parity / MSL), ffi + shaders, doctests, bridges, aaa, release wasm, cargo audit"

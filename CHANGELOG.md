@@ -117,6 +117,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - CI: ci.yml の変更検出に `lint` (clippy.toml / `.github/clippy-lib/` / `scripts/clippy_lib_gate.*` / `scripts/clippy-lib-canary/`) を足し、clippy job がそれでも走るようにした これまでは lint の設定や gate だけを変えた commit では clippy job (canary を走らせる job) が飛んでいた
 - **動作の変更:** `BvhTriangle::closest_point` (と `MeshBvh` の距離の問い合わせ) は、計算した面積が 0 の三角形 (`(v1 − v0) × (v2 − v0)` が 0) で 3 辺 (v0v1、v1v2、v2v0 の順) の最寄りの点を返す 以前は辺の領域の判定の式で求めていたので、その三角形に限り点が ulp の差で動くことがある 面積のある三角形の値は変わらない
 - **動作の変更:** `MeshBvh::closest_point` と `MeshBvh::unsigned_distance` は `MeshBvh::closest_triangle` と同じ木の歩きを通る 距離がちょうど等しい三角形が複数ある時、`closest_point` は入力の index が最小の三角形の点を返す (以前は木の歩きが先に見た方) 距離の値は変わらない `ExteriorFloodFill` の符号は帯の中で最寄りの点から外へ歩くので、同距離の点でだけ歩く向きが変わりうる `MeshBvh::signed_distance` は別の歩きのまま
+- CI: `scripts/preflight.sh --quick` が GPU に触らない文字列検査を走らせる (`tests/test_gpu_lifecycle_oracle.rs` 3 件、`tests/test_gpu_submit_limit.rs` 2 件、件数不足で fail) これまでは CI まで届かないと見えなかった
 
 ### Fixed
 - GPU の device を複数 thread で作成・破棄すると、ある driver (Vulkan / EGL) の内部で永久に止まる問題: `wgpu::Instance` を process に 1 個にし、device の作成と破棄を 1 つの lock で直列化 (`src/gpu_context.rs`、`tests/test_gpu_lifecycle_oracle.rs`)
