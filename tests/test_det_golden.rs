@@ -684,7 +684,7 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "sdf_skinning_two_bones",
-        "b6ecdcaa34bd4cfcfde568a2f4be1849960e23f4712d8561e97bc0e835bb9be3",
+        "91e3a4e239257d2c7a82b823168358897e84952fbc823c1b175214a90089b186",
     ),
     (
         "twist",

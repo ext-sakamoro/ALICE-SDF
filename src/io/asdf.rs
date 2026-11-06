@@ -277,13 +277,15 @@ pub fn save_asdf_with_provenance(
 /// Reads body into buffer, validates CRC before deserialization.
 /// This protects against corrupted data causing bincode to hang.
 ///
-/// The header's semantics identifier must be this crate's or one it still reproduces
-/// ([`crate::check_sdf_semantics`]).
+/// The header's semantics identifier must be this crate's or one it still reproduces for this tree
+/// ([`crate::check_sdf_semantics`], [`crate::semantics::SKINNING_FREE_SDF_SEMANTICS_IDS`]).
 ///
 /// # Errors
 ///
 /// [`IoError::Unpinned`] for a version 1 file (no identifier; [`load_asdf_unverified`] reads
-/// it), [`IoError::SemanticsMismatch`] for another identifier, and the format errors below.
+/// it), [`IoError::SemanticsMismatch`] for another identifier,
+/// [`IoError::SemanticsMovedForNode`] for a tree with a node that moved since its identifier, and
+/// the format errors below.
 pub fn load_asdf(path: impl AsRef<Path>) -> Result<SdfTree, IoError> {
     load_asdf_checked(path, false).map(|c| c.into_parts().0)
 }
@@ -313,7 +315,7 @@ fn load_asdf_checked(
     }
     let header = AsdfHeader::from_bytes(&header_bytes)?;
     let semantics =
-        crate::provenance::sdf_load_verdict(header.semantics_id, "ASDF", allow_unpinned)?;
+        crate::provenance::sdf_tree_load_verdict(header.semantics_id, "ASDF", allow_unpinned)?;
 
     // 2. Read entire body into buffer (necessary for CRC validation before deserialize)
     let mut body = Vec::new();
@@ -341,6 +343,7 @@ fn load_asdf_checked(
         bincode::config::legacy().with_limit::<ASDF_BINCODE_LIMIT>(),
     )
     .map_err(|e| IoError::Serialization(e.to_string()))?;
+    let semantics = crate::provenance::sdf_tree_settle(semantics, &tree, "ASDF")?;
     Ok(Checked::new(tree, semantics))
 }
 

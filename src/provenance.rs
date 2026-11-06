@@ -1286,6 +1286,59 @@ pub(crate) fn sdf_load_verdict(
     )
 }
 
+/// [`sdf_load_verdict`] for a stored tree, read before the tree is decoded: it also takes the
+/// identifiers that hold for a tree without a given node, and [`sdf_tree_settle`] then decides on
+/// the decoded tree
+pub(crate) fn sdf_tree_load_verdict(
+    stored: Option<[u8; 32]>,
+    format: &'static str,
+    allow_unpinned: bool,
+) -> Result<StoredSemantics, crate::io::IoError> {
+    let mut previous = crate::PREVIOUS_SDF_SEMANTICS_IDS.to_vec();
+    previous.extend_from_slice(crate::semantics::SKINNING_FREE_SDF_SEMANTICS_IDS);
+    sdf_load_verdict_against(stored, format, allow_unpinned, &previous)
+}
+
+/// Whether the serialized form holds a node of this variant at any depth: read from the form, so a
+/// node kind with children cannot be missed
+fn holds_variant(value: &serde_json::Value, variant: &str) -> bool {
+    match value {
+        serde_json::Value::Object(map) => map
+            .iter()
+            .any(|(key, inner)| key == variant || holds_variant(inner, variant)),
+        serde_json::Value::Array(items) => items.iter().any(|v| holds_variant(v, variant)),
+        _ => false,
+    }
+}
+
+/// The verdict on a decoded tree: an identifier from
+/// [`crate::semantics::SKINNING_FREE_SDF_SEMANTICS_IDS`] stands only for a tree without the node
+///
+/// # Errors
+///
+/// [`crate::io::IoError::SemanticsMovedForNode`] when the tree has the node.
+pub(crate) fn sdf_tree_settle(
+    verdict: StoredSemantics,
+    tree: &crate::types::SdfTree,
+    format: &'static str,
+) -> Result<StoredSemantics, crate::io::IoError> {
+    const NODE: &str = "SdfSkinning";
+    if let StoredSemantics::VerifiedPrevious(stored) = verdict {
+        if crate::semantics::SKINNING_FREE_SDF_SEMANTICS_IDS.contains(&stored.semantics_id) {
+            let form = serde_json::to_value(&tree.root)
+                .map_err(|e| crate::io::IoError::Serialization(e.to_string()))?;
+            if holds_variant(&form, NODE) {
+                return Err(crate::io::IoError::SemanticsMovedForNode {
+                    format,
+                    stored,
+                    node: NODE,
+                });
+            }
+        }
+    }
+    Ok(verdict)
+}
+
 /// [`sdf_load_verdict`] against the earlier identifiers `previous` instead of G6's list, so the
 /// mapping of a reproduced earlier identifier stays tested while the list is empty
 fn sdf_load_verdict_against(

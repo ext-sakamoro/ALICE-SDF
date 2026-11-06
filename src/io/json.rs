@@ -20,7 +20,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::io::IoError;
-use crate::provenance::{sdf_load_verdict, Checked, Provenance, KEY};
+use crate::provenance::{sdf_tree_load_verdict, sdf_tree_settle, Checked, Provenance, KEY};
 use crate::types::SdfTree;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -67,7 +67,8 @@ pub fn split(mut value: serde_json::Value) -> Result<(SdfTree, Option<[u8; 32]>)
 
 fn checked(value: serde_json::Value, allow_unpinned: bool) -> Result<Checked<SdfTree>, IoError> {
     let (tree, stored) = split(value)?;
-    let verdict = sdf_load_verdict(stored, FORMAT, allow_unpinned)?;
+    let verdict = sdf_tree_load_verdict(stored, FORMAT, allow_unpinned)?;
+    let verdict = sdf_tree_settle(verdict, &tree, FORMAT)?;
     Ok(Checked::new(tree, verdict))
 }
 
@@ -103,7 +104,9 @@ fn read_value(path: impl AsRef<Path>) -> Result<serde_json::Value, IoError> {
 /// # Errors
 ///
 /// [`IoError::Unpinned`] for a document without an identifier ([`load_asdf_json_unverified`]
-/// reads it), [`IoError::SemanticsMismatch`] for another identifier, and the I/O and JSON errors.
+/// reads it), [`IoError::SemanticsMismatch`] for another identifier,
+/// [`IoError::SemanticsMovedForNode`] for a tree with a node that moved since its identifier, and
+/// the I/O and JSON errors.
 pub fn load_asdf_json(path: impl AsRef<Path>) -> Result<SdfTree, IoError> {
     checked(read_value(path)?, false).map(|c| c.into_parts().0)
 }
