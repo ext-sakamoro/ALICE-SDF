@@ -26,7 +26,11 @@
 
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, PoisonError};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::{Duration, Instant};
 
 use crate::compiled::GpuError;
 
@@ -73,18 +77,90 @@ fn device_descriptor(label: &str) -> wgpu::DeviceDescriptor<'_> {
     }
 }
 
+/// How long a read waits for its work unless the evaluator says otherwise, in milliseconds. It is
+/// far over any dispatch this crate makes (the 64,000-value loft takes 16 ms) and over a slow first
+/// compile (214 s measured for one shader on one native driver): reaching it means something is stuck
+const WAIT_LIMIT_MS: u64 = 600_000;
+
+/// What a wait ended with
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, PartialEq)]
+enum Waited {
+    /// The mapping's result
+    Mapped(Result<(), wgpu::BufferAsyncError>),
+    /// The sender went without a result
+    Closed,
+    /// The limit passed first
+    OverLimit,
+}
+
+/// Why nothing was taken from a mapping channel
+#[cfg(not(target_arch = "wasm32"))]
+enum NotTaken {
+    Empty,
+    Closed,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl From<std::sync::mpsc::TryRecvError> for NotTaken {
+    fn from(e: std::sync::mpsc::TryRecvError) -> Self {
+        match e {
+            std::sync::mpsc::TryRecvError::Empty => Self::Empty,
+            std::sync::mpsc::TryRecvError::Disconnected => Self::Closed,
+        }
+    }
+}
+
+/// Poll and look for the mapping until it arrives or `elapsed` passes `limit`. The mapping is looked
+/// for before the limit, so a result that is there is never refused, with a limit of zero as well.
+/// After about a millisecond of yielding it sleeps between polls, so a long wait costs no core
+#[cfg(not(target_arch = "wasm32"))]
+fn wait_until(
+    mut poll: impl FnMut(),
+    mut take: impl FnMut() -> Result<Result<(), wgpu::BufferAsyncError>, NotTaken>,
+    elapsed: impl Fn() -> Duration,
+    limit: Duration,
+) -> Waited {
+    loop {
+        poll();
+        match take() {
+            Ok(result) => return Waited::Mapped(result),
+            Err(NotTaken::Closed) => return Waited::Closed,
+            Err(NotTaken::Empty) => {}
+        }
+        let waited = elapsed();
+        if waited >= limit {
+            return Waited::OverLimit;
+        }
+        if waited < Duration::from_millis(1) {
+            std::thread::yield_now();
+        } else {
+            std::thread::sleep(Duration::from_micros(200));
+        }
+    }
+}
+
 /// A device and its queue
 struct GpuDevice {
     device: wgpu::Device,
     queue: wgpu::Queue,
 }
 
-/// Destroys what it holds inside the lock
-struct Serialized(ManuallyDrop<GpuDevice>);
+/// Destroys what it holds inside the lock, unless work on it is still running
+struct Serialized {
+    device: ManuallyDrop<GpuDevice>,
+    /// A read gave up on this device. Its work may still be running, and destroying a queue with
+    /// work running panics after a few seconds, so the device is kept for the life of the process
+    abandoned: AtomicBool,
+    /// How long a read waits, in milliseconds
+    wait_limit_ms: AtomicU64,
+}
 
 impl Drop for Serialized {
     fn drop(&mut self) {
-        locked(|held| destroy(held, &mut self.0));
+        if !self.abandoned.load(Ordering::Acquire) {
+            locked(|held| destroy(held, &mut self.device));
+        }
     }
 }
 
@@ -156,13 +232,94 @@ impl GpuContext {
     /// The device
     #[must_use]
     pub fn device(&self) -> &wgpu::Device {
-        &self.0 .0.device
+        &self.0.device.device
     }
 
     /// The device's queue
     #[must_use]
     pub fn queue(&self) -> &wgpu::Queue {
-        &self.0 .0.queue
+        &self.0.device.queue
+    }
+
+    /// Wait for a buffer mapping, polling the device, until it arrives or the wait limit passes.
+    ///
+    /// `Maintain::Wait` is not used: wgpu's wait stops at 60 s and then treats the submission as
+    /// finished, running the mapping callback and releasing what the running work still uses. A
+    /// first dispatch can pass 60 s by itself on a driver that compiles the shader there. A poll
+    /// only looks at the fence, so a slow dispatch gives its values when it finishes.
+    ///
+    /// # Errors
+    ///
+    /// [`GpuError::BufferMapping`] when the limit passes (the device is then kept for good, see
+    /// [`Serialized`]) or the mapping fails. Nothing of the output may be read after an error.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the one place that polls: the wait is bounded here, by the clock of a blocking call"
+    )]
+    pub(crate) fn wait_for_mapping(
+        &self,
+        mapped: &Receiver<Result<(), wgpu::BufferAsyncError>>,
+    ) -> Result<(), GpuError> {
+        let limit = Duration::from_millis(self.0.wait_limit_ms.load(Ordering::Relaxed));
+        let started = Instant::now();
+        let waited = wait_until(
+            || {
+                self.device().poll(wgpu::Maintain::Poll);
+            },
+            || mapped.try_recv().map_err(|e| e.into()),
+            || started.elapsed(),
+            limit,
+        );
+        self.after_wait(waited, limit)
+    }
+
+    /// [`GpuContext::wait_for_mapping`] on `wasm32`, where the browser runs the work and this thread
+    /// cannot wait for it: the mapping is there or the read fails
+    #[cfg(target_arch = "wasm32")]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "no thread waits here, and the browser owns the driver"
+    )]
+    pub(crate) fn wait_for_mapping(
+        &self,
+        mapped: &Receiver<Result<(), wgpu::BufferAsyncError>>,
+    ) -> Result<(), GpuError> {
+        self.device().poll(wgpu::Maintain::Poll);
+        match mapped.try_recv() {
+            Ok(r) => r.map_err(|e| GpuError::BufferMapping(format!("{e:?}"))),
+            Err(_) => Err(GpuError::BufferMapping(
+                "the GPU work has not finished: its output is not read".to_string(),
+            )),
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn after_wait(&self, waited: Waited, limit: Duration) -> Result<(), GpuError> {
+        match waited {
+            Waited::Mapped(Ok(())) => Ok(()),
+            Waited::Mapped(Err(e)) => Err(GpuError::BufferMapping(format!("{e:?}"))),
+            Waited::Closed => Err(GpuError::BufferMapping(
+                "GPU channel closed unexpectedly".to_string(),
+            )),
+            Waited::OverLimit => {
+                self.abandon();
+                Err(GpuError::BufferMapping(format!(
+                    "the GPU work did not finish within {limit:?}: its output is not read and the device should not be used again"
+                )))
+            }
+        }
+    }
+
+    /// Keep this device for the life of the process: work on it may still be running
+    pub(crate) fn abandon(&self) {
+        self.0.abandoned.store(true, Ordering::Release);
+    }
+
+    /// Set how long a read on this device waits for its work
+    pub(crate) fn set_wait_limit(&self, limit: std::time::Duration) {
+        let ms = u64::try_from(limit.as_millis()).unwrap_or(u64::MAX);
+        self.0.wait_limit_ms.store(ms, Ordering::Relaxed);
     }
 
     /// Keep `resources` with this context, so that they end before it does
@@ -175,10 +332,11 @@ impl GpuContext {
     }
 
     fn holding(device: wgpu::Device, queue: wgpu::Queue) -> Self {
-        Self(Arc::new(Serialized(ManuallyDrop::new(GpuDevice {
-            device,
-            queue,
-        }))))
+        Self(Arc::new(Serialized {
+            device: ManuallyDrop::new(GpuDevice { device, queue }),
+            abandoned: AtomicBool::new(false),
+            wait_limit_ms: AtomicU64::new(WAIT_LIMIT_MS),
+        }))
     }
 }
 
@@ -214,10 +372,80 @@ impl<T, C> DerefMut for Held<T, C> {
 
 #[cfg(test)]
 mod tests {
-    use super::{locked, GpuContext, Held};
+    use super::{locked, wait_until, GpuContext, Held, NotTaken, Waited};
     use std::sync::mpsc::{channel, RecvTimeoutError};
     use std::sync::Mutex;
     use std::time::Duration;
+
+    /// A clock that moves by one millisecond for each look at it
+    fn ticking() -> impl Fn() -> Duration {
+        let now = std::cell::Cell::new(0u64);
+        move || {
+            now.set(now.get() + 1);
+            Duration::from_millis(now.get())
+        }
+    }
+
+    #[test]
+    fn a_wait_returns_the_mapping_when_it_arrives_and_polls_until_then() {
+        let polls = std::cell::Cell::new(0);
+        let waited = wait_until(
+            || polls.set(polls.get() + 1),
+            || {
+                if polls.get() < 5 {
+                    Err(NotTaken::Empty)
+                } else {
+                    Ok(Ok(()))
+                }
+            },
+            ticking(),
+            Duration::from_secs(1),
+        );
+        assert_eq!(waited, Waited::Mapped(Ok(())));
+        assert_eq!(polls.get(), 5);
+    }
+
+    #[test]
+    fn a_wait_ends_at_its_limit_and_not_before() {
+        let polls = std::cell::Cell::new(0);
+        let waited = wait_until(
+            || polls.set(polls.get() + 1),
+            || Err(NotTaken::Empty),
+            ticking(),
+            Duration::from_millis(40),
+        );
+        assert_eq!(waited, Waited::OverLimit);
+        assert_eq!(
+            polls.get(),
+            40,
+            "one poll for each millisecond of the clock"
+        );
+    }
+
+    /// A mapping that is there is taken at any limit: the limit bounds the wait, not the result
+    #[test]
+    fn a_wait_takes_a_mapping_that_is_there_at_a_limit_of_zero() {
+        let waited = wait_until(|| {}, || Ok(Ok(())), ticking(), Duration::ZERO);
+        assert_eq!(waited, Waited::Mapped(Ok(())));
+    }
+
+    #[test]
+    fn a_wait_reports_a_closed_channel_and_a_failed_mapping() {
+        let closed = wait_until(
+            || {},
+            || Err(NotTaken::Closed),
+            ticking(),
+            Duration::from_secs(1),
+        );
+        assert_eq!(closed, Waited::Closed);
+        let failed = wait_until(
+            || {},
+            || Ok(Err(wgpu::BufferAsyncError)),
+            ticking(),
+            Duration::from_secs(1),
+        );
+        assert_eq!(failed, Waited::Mapped(Err(wgpu::BufferAsyncError)));
+    }
 
     /// With the lock held, a drop and a request both wait, and both finish once it is free. Finishing
     /// early is the failure, so a slow machine can only miss it, not fail falsely. This shows on any
