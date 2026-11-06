@@ -17,6 +17,7 @@
 mod common;
 
 use alice_sdf::prelude::*;
+use alice_sdf::sdf2d::{eval_2d, Sdf2dNode};
 use common::corpus::corpus;
 use sha2::{Digest, Sha256};
 
@@ -65,6 +66,37 @@ fn nan_scenes() -> Vec<(&'static str, SdfNode)> {
                 .intersection(SdfNode::sphere(f32::from_bits(0x7fc0_0123))),
         ),
     ]
+}
+
+/// A law the bytecode compiler rejects, so the shared corpus (whose parity, transpiler and shader tests
+/// all compile their nodes) cannot list it; its bits are pinned here
+fn tree_only_scenes() -> Vec<(&'static str, SdfNode)> {
+    vec![(
+        "bezier",
+        SdfNode::bezier(
+            Vec3::new(-1.0, 0.0, 0.25),
+            Vec3::new(0.0, 1.0, -0.25),
+            Vec3::new(1.0, 0.0, 0.25),
+            0.1,
+        ),
+    )]
+}
+
+/// The 2D laws, each hashed on the grid's `(x, y)`: `sdf2d_bezier` is a cubic whose distance has several
+/// stationary points per query point (an S curve with a loop's worth of turning)
+fn sdf2d_hashes(pts: &[Vec3]) -> Vec<(&'static str, String)> {
+    let cubic = Sdf2dNode::Bezier {
+        p0: [-1.0, 0.0],
+        p1: [-0.25, 1.5],
+        p2: [0.25, -1.5],
+        p3: [1.0, 0.0],
+        thickness: 0.05,
+    };
+    let mut h = Sha256::new();
+    for p in pts {
+        h.update(eval_2d(&cubic, [p.x, p.y]).to_bits().to_le_bytes());
+    }
+    vec![("sdf2d_bezier", format!("{:x}", h.finalize()))]
 }
 
 /// Compares each `(name, hash)` with its entry in `golden`: returns the names with no
@@ -132,8 +164,10 @@ fn corpus_hashes() -> Vec<(&'static str, String)> {
     corpus()
         .into_iter()
         .chain(nan_scenes())
+        .chain(tree_only_scenes())
         .map(|(name, node)| (name, hash_node(&node, &pts)))
         .chain(far_hashes())
+        .chain(sdf2d_hashes(&pts))
         .collect()
 }
 
@@ -448,11 +482,11 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "blobby_cross",
-        "55160ecb2dad3122acdb48ccc6797374002b8cbafbb524621de3501cf30d9077",
+        "7a1c39c02e1d250482c1c1b131b4db948fb5d0df55b68d3cd1fa949b92218ad8",
     ),
     (
         "parabola_segment",
-        "d50caf335ea24d510b72e2d239299e00ccdae2992f3f4cecaa6aefc1be5ff55c",
+        "2171575568ed0fac2d0e5232d82e8281264a583da1f6ba117da406c26bce5d83",
     ),
     (
         "regular_polygon",
@@ -468,7 +502,7 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "helix",
-        "1ffa278889d2fbe0af505056a94e047f2d1c62fb6e063c349db967696bdf182f",
+        "d81b4e3881439a3241e0d5e935bd14f9d83f9eee3da9229707de993e77f4aa88",
     ),
     (
         "tetrahedron",
@@ -796,7 +830,7 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "sweep_bezier",
-        "dcc34097d512b7bcf759c3f983da09bf896f30cb5257e491dec04010dc0b7d98",
+        "12da0df6b0cb9bfc6a7c8fc19a90e8b600f30a1cd3f48eafdcf87ce18d63c2b5",
     ),
     (
         "taper",
@@ -893,5 +927,13 @@ const GOLDEN: &[(&str, &str)] = &[
     (
         "infinite_cylinder_r0_subnormal",
         "9f648ada5d9fdfc89282d8e4f9cd659b6df83ece847148c3ae83fa33bc31f1c9",
+    ),
+    (
+        "bezier",
+        "91aa07681cc8ea394437b1261b2614217774fc5b97fe0a29ee103a736de88cc9",
+    ),
+    (
+        "sdf2d_bezier",
+        "cc27c8bb7e9eb2c8464ba928e064eea7bbcc5ad2530e33f49214ac3e066a946e",
     ),
 ];

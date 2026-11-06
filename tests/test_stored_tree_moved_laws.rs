@@ -69,7 +69,6 @@ fn moved_cases() -> Vec<(&'static str, SdfTree)> {
 }
 
 #[test]
-#[ignore = "takes effect when the identifier moves: both earlier identifiers are still decided before this rule"]
 fn a_tree_without_a_moved_node_reads_under_each_earlier_identifier() {
     let tree = body_style_tree();
     let p = Vec3::new(0.1, 0.2, 0.3);
@@ -95,7 +94,6 @@ fn a_tree_without_a_moved_node_reads_under_each_earlier_identifier() {
 }
 
 #[test]
-#[ignore = "takes effect when the identifier moves: both earlier identifiers are still decided before this rule"]
 fn a_tree_with_a_moved_node_is_refused_and_named() {
     let mut n = 0;
     for hex in EARLIER {
@@ -145,7 +143,6 @@ fn an_older_identifier_is_refused_for_any_tree() {
 }
 
 #[test]
-#[ignore = "takes effect when the identifier moves: both earlier identifiers are still decided before this rule"]
 fn a_mesh_under_an_earlier_identifier_stays_refused() {
     let mesh = sdf_to_mesh(
         &SdfNode::sphere(1.0),
@@ -203,7 +200,6 @@ fn the_frozen_list_names_real_nodes() {
 
 /// The LLM JSON path follows the same rule (it reads an identifier and accepts none)
 #[test]
-#[ignore = "takes effect when the identifier moves: both earlier identifiers are still decided before this rule"]
 fn llm_json_follows_the_rule() {
     let id = earlier(EARLIER[0]);
     let plain = io::to_json_string_with_provenance(&body_style_tree(), &id).unwrap();

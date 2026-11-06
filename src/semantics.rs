@@ -15,7 +15,7 @@
 //! # Hex form (with `alice-det-math` 0.5.2 at 2d01c63f; other generations in [`SDF_SEMANTICS_BY_DET_MATH`])
 //!
 //! ```text
-//! 0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f79d2f6b69a4
+//! 0b927d2e1a42754b7f6aab52f5121a17eddac1e8c46360ffc9513fdee50407b1
 //! ```
 //!
 //! # Fold
@@ -64,7 +64,7 @@ pub const MUL_ADD_RULE: &str = "alice-sdf: Real::mul_add is a * b + c with two r
 pub const SDF_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
     (
         "golden tests/test_det_golden.rs GOLDEN",
-        hex32("ecfb9c749cac3ec06f9fec60bf1735ee9aff187f0d2873825895e744682750a5"),
+        hex32("6a5deb46b9e51b1ec1d40629b2accf7835d3ddada200e6620f3403469d38f06f"),
     ),
     (
         "tag max / min rule",
@@ -85,7 +85,8 @@ pub const SDF_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
 /// A build against a generation with no row does not compile ([`sdf_semantics_id_for`]
 /// panics in a const context), rather than reporting an identifier of another generation.
 pub const SDF_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
-    // alice-det-math 0.5.2 at 2d01c63f, with the grid warp and the pose in the golden table (sin /
+    // alice-det-math 0.5.2 at 2d01c63f, with the distance laws that over-stated corrected and the
+    // grid warp, the pose, the tube Bezier and the 2D cubic in the golden table (sin /
     // cos at |x| >= 2^13 through sin64 / cos64, powf of a
     // negative base, powf64 as fdlibm e_pow, hypot of two subnormals; erf added). The rows of the
     // earlier generations are not folds of these pins any more (the golden table gained the
@@ -93,7 +94,7 @@ pub const SDF_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
     // `tests/sdf_semantics_id.rs`
     (
         hex32("a2a11b9b826227fa7a9ed8ab2c1ce63dbb07ad4c39aa2c46a363ddea6b47dbe9"),
-        hex32("0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f79d2f6b69a4"),
+        hex32("0b927d2e1a42754b7f6aab52f5121a17eddac1e8c46360ffc9513fdee50407b1"),
     ),
 ];
 
@@ -132,19 +133,17 @@ pub const SDF_SEMANTICS_ID: [u8; 32] = sdf_semantics_id_for(&alice_det_math::SEM
 
 /// Earlier identifiers whose distances this build still computes to the same bits, newest first
 ///
-/// `ad04549c…` (alice-det-math 0.5.2 at 2d01c63f, before the grid warp and the pose): those two
-/// nodes only added golden rows, and every row of that build has the same bits here
-/// (`tests/sdf_semantics_id.rs` folds the table without the added rows back to it). Older ones
+/// Empty. `0f6c58d0…` and `ad04549c…` (alice-det-math 0.5.2 at 2d01c63f) are refused as a whole: the
+/// distance laws in [`SDF_MOVED_LAWS_OVERSTATE_FIX`] moved after them, and a form without a tree cannot
+/// show that it used none of those laws (a stored tree can, see [`SDF_SEMANTICS_MOVED_LAWS`]). Older ones
 /// stay refused: alice-det-math at 2d01c63f reduces `sin` / `cos` / `sin_cos` arguments from
 /// `2^13` on in double precision and evaluates `hypot` of two subnormals in `f64`, and this crate
 /// calls them on the caller's coordinates (twist, bend, noise, the cylinder and cone families), so
 /// a distance at such a point has other bits than under any earlier generation. `6e98f0be…` (0.5.2
 /// at 39507d1b), `151079595…` (0.5.1, 7.0.0) and the det-math identifiers 6.0 / 6.1 exposed
 /// (`85e08846…`, `135c407d…`) therefore read as a mismatch; `tests/sdf_semantics_id.rs` shows
-/// which golden windows moved.
-pub const PREVIOUS_SDF_SEMANTICS_IDS: &[[u8; 32]] = &[hex32(
-    "ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f642257da4938",
-)];
+/// which golden rows moved.
+pub const PREVIOUS_SDF_SEMANTICS_IDS: &[[u8; 32]] = &[];
 
 /// The tree nodes (their tags in the serialized tree) whose distance moved after the identifiers in
 /// [`SDF_SEMANTICS_MOVED_LAWS`]: each returned a distance larger than the true one, and a tracer could
