@@ -548,6 +548,22 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_shader_precise_temporaries \
   --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle
 
+step "gpu-parity: polygon / section stack shader oracles (ci.yml の同名 step と対、file ごとに件数未満で fail)"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_polygon_2d_general_oracle -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_polygon_2d_general_oracle.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_polygon_2d_general_oracle.log" --min 11 --what "test_polygon_2d_general_oracle"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_section_stack_shader_oracle -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_section_stack_shader_oracle.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_section_stack_shader_oracle.log" --min 4 --what "test_section_stack_shader_oracle"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_smooth_stack_shader -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_smooth_stack_shader.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_smooth_stack_shader.log" --min 4 --what "test_smooth_stack_shader"
+ALICE_SDF_REQUIRE_GPU=1 CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo test --release --features "gpu,glsl,hlsl" --test test_shader_data_bounds -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_shader_data_bounds.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_shader_data_bounds.log" --min 8 --what "test_shader_data_bounds"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_shader_minimal_trees -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_shader_minimal_trees.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_shader_minimal_trees.log" --min 3 --what "test_shader_minimal_trees"
+ALICE_SDF_REQUIRE_GPU=1 CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo test --release --features "gpu,glsl,hlsl" --test test_shader_read_ranges -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_shader_read_ranges.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_shader_read_ranges.log" --min 2 --what "test_shader_read_ranges"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_loft_shader_cpu_agreement -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_loft_shader_cpu_agreement.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_loft_shader_cpu_agreement.log" --min 1 --what "test_loft_shader_cpu_agreement"
+
 step "gpu-parity: shader text semantics identifier (gpu, glsl, hlsl, volume, blinkscript, texture-fit、ci.yml の gpu-parity job と対、14 件未満で fail)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl,volume,blinkscript,texture-fit" --test test_shader_text_provenance -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-shader-text-provenance.log" --min 14 --what "shader text provenance tests (gpu, glsl, hlsl, volume, blinkscript, texture-fit)"
