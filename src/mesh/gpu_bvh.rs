@@ -15,7 +15,6 @@ use super::bvh::{BvhNode, MeshBvh};
 use super::bvh_shell::{ShellFeature, ShellHit, ShellRay};
 use crate::compiled::GpuError;
 use crate::gpu_context::GpuContext;
-use glam::Vec3;
 use wgpu::util::DeviceExt;
 
 /// The kernel's text: the closest-point helpers, then the shell walk

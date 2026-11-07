@@ -15,6 +15,8 @@ use alice_sdf::mesh::{
 };
 use glam::Vec3;
 
+#[path = "common/shell_margin.rs"]
+mod shell_margin;
 #[path = "common/shell_oracle.rs"]
 mod shell_oracle;
 #[path = "common/shell_scenes.rs"]
@@ -133,6 +135,8 @@ fn gpu_first_hits_match_the_cpu_path() {
     ];
     let mut all = Stats::default();
     let (mut judged, mut wrong_n, mut wrong) = (0usize, 0usize, Vec::<String>::new());
+    let (mut outside, mut over_bound, mut worst_ratio) = (0usize, 0usize, 0f64);
+    let mut outside_why = Vec::<String>::new();
     for (name, bvh, v, ix, r) in &meshes {
         let renderer = ShellRenderer::new(bvh, *r).expect("renderer");
         if renderer.backend() == ShellBackend::Cpu {
@@ -155,6 +159,50 @@ fn gpu_first_hits_match_the_cpu_path() {
             compare(&gpu, &cpu, &mut s);
             println!("{name} {label}: {s:?}");
             explain(bvh, *r, rays, &gpu, &cpu);
+            // the ambiguous band, from the WGSL accuracy rules (common/shell_margin.rs): outside it the
+            // hit, triangle and piece are the same and t lies within its derived bound
+            let (mut in_band, mut differ_in_band) = (0usize, 0usize);
+            for (k, ray) in rays.iter().enumerate() {
+                let band = shell_margin::band(bvh, ray, *r);
+                in_band += band.is_some() as usize;
+                let (g, c) = (gpu[k], cpu[k]);
+                let same = match (g, c) {
+                    (Some(g), Some(c)) => g.triangle == c.triangle && g.feature == c.feature,
+                    (None, None) => true,
+                    _ => false,
+                };
+                if !same {
+                    if band.is_some() {
+                        differ_in_band += 1;
+                    } else {
+                        outside += 1;
+                        if outside_why.len() < 6 {
+                            outside_why
+                                .push(format!("{name} {label} ray {k}: gpu {g:?} cpu {c:?}"));
+                        }
+                    }
+                    continue;
+                }
+                if let (Some(g), Some(c)) = (g, c) {
+                    if g.t.to_bits() != c.t.to_bits() && band.is_none() {
+                        let bound =
+                            shell_margin::t_bound(bvh, ray, *r, c.triangle, c.feature as u32, c.t)
+                                .expect("the CPU's answer is one of its pieces");
+                        let diff = f64::from((g.t - c.t).abs());
+                        worst_ratio = worst_ratio.max(diff / bound.max(f64::MIN_POSITIVE));
+                        if diff > bound {
+                            over_bound += 1;
+                            if outside_why.len() < 6 {
+                                outside_why.push(format!("{name} {label} ray {k}: t {} vs {} differ by {diff:e}, bound {bound:e}", g.t, c.t));
+                            }
+                        }
+                    }
+                }
+            }
+            println!(
+                "  band {in_band} of {} rays, {differ_in_band} of them differ",
+                rays.len()
+            );
             // the GPU against the f64 truth (no shared code) on every 97th ray (the truth scans every triangle at every step)
             let truth = shell_oracle::triangles(v, ix);
             for (k, ray) in rays.iter().enumerate().step_by(97) {
@@ -194,9 +242,8 @@ fn gpu_first_hits_match_the_cpu_path() {
         all.rays > 0 && all.hits > 1000,
         "compared too little: {all:?}"
     );
-    assert_eq!(
-        (all.set, all.tri, all.feature),
-        (0, 0, 0),
-        "hit set, triangle or feature differs: {all:?}"
+    println!(
+        "outside the band: {outside} differ, {over_bound} t over the bound, worst t / bound {worst_ratio:.3}"
     );
+    assert_eq!((outside, over_bound), (0, 0), "{outside_why:#?}");
 }
