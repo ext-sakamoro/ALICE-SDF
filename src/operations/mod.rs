@@ -36,6 +36,7 @@ pub use smooth::{
     sdf_smooth_intersection, sdf_smooth_intersection_rk, sdf_smooth_subtraction,
     sdf_smooth_subtraction_rk, sdf_smooth_union, sdf_smooth_union_rk, smooth_max, smooth_max_rk,
     smooth_min, smooth_min_cubic, smooth_min_exp, smooth_min_rk, smooth_min_root,
+    smooth_min_weight, SMOOTH_UNION_BLEND_GLSL,
 };
 pub use stairs::{
     sdf_stairs_intersection, sdf_stairs_subtraction, sdf_stairs_union, stairs_max, stairs_min,

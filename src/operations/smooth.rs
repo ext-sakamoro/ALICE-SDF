@@ -36,6 +36,27 @@ pub fn smooth_min_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
     smooth_min_rk_r::<f32>(a, b, k, rk)
 }
 
+/// The polynomial smooth minimum and how much of its surface is `b`, 0 to 1: the same mix factor the union's own
+/// curve gives, for a material that blends across the seam as the shape does. The distance is `smooth_min` to the bit.
+#[inline(always)]
+pub fn smooth_min_weight(a: f32, b: f32, k: f32) -> (f32, f32) {
+    let d = smooth_min(a, b, k);
+    let k = k.law_max(1e-10);
+    let h = (k - (a - b).abs()).law_max(0.0) * (1.0 / k);
+    let m = h * h * 0.5;
+    (d, if a < b { m } else { 1.0 - m })
+}
+
+/// GLSL of [`smooth_min_weight`], for a shader that writes its own map: the distance, then the weight of `b`
+pub const SMOOTH_UNION_BLEND_GLSL: &str = r"vec2 sdf_smooth_union_blend(float a, float b, float k) {
+    float s = max(k, 1e-10);
+    float h = max(s - abs(a - b), 0.0) / s;
+    float m = h * h * 0.5;
+    float d = min(a, b) - h * h * k * 0.25;
+    return vec2(d, a < b ? m : 1.0 - m);
+}
+";
+
 /// Polynomial smooth maximum (Deep Fried)
 ///
 /// Branchless k=0 safety via max().

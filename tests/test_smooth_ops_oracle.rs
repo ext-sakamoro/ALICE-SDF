@@ -768,3 +768,88 @@ fn smooth_ops_do_not_panic_on_degenerate_inputs() {
         "a smooth operator panicked on a degenerate input"
     );
 }
+
+// ------------------------------------------------------------------ the union with its weight
+
+/// oracle: iq, "smooth minimum", polynomial form with its mix factor, written here in f64:
+/// h = max(k - |a - b|, 0) / k, m = h^2 / 2, weight of b = m when a < b, else 1 - m
+fn weight_closed_form(a: f64, b: f64, k: f64) -> f64 {
+    let h = (k - (a - b).abs()).max(0.0) / k;
+    let m = h * h * 0.5;
+    if a < b {
+        m
+    } else {
+        1.0 - m
+    }
+}
+
+#[test]
+fn the_union_with_its_weight_is_the_union_to_the_bit_and_its_weight_is_the_closed_form() {
+    use alice_sdf::operations::{smooth_min, smooth_min_weight};
+    let mut compared = 0;
+    for ia in -40..=40 {
+        for ib in -40..=40 {
+            for k in [0.01f32, 0.05, 0.3, 1.0, 2.5] {
+                let (a, b) = (ia as f32 * 0.037, ib as f32 * 0.041);
+                let (d, w) = smooth_min_weight(a, b, k);
+                assert_eq!(d.to_bits(), smooth_min(a, b, k).to_bits(), "{a} {b} {k}");
+                let want = weight_closed_form(f64::from(a), f64::from(b), f64::from(k));
+                assert!(
+                    (f64::from(w) - want).abs() < 1e-5,
+                    "{a} {b} {k}: {w} {want}"
+                );
+                // the two weights share the surface, and nothing beyond k belongs to the far one
+                assert!(
+                    (w + smooth_min_weight(b, a, k).1 - 1.0).abs() < 1e-5,
+                    "{a} {b} {k}"
+                );
+                if (a - b).abs() >= k {
+                    assert_eq!(w, if a < b { 0.0 } else { 1.0 }, "{a} {b} {k}");
+                }
+                compared += 1;
+            }
+        }
+    }
+    assert!(compared > 30_000, "{compared}");
+}
+
+#[test]
+fn the_weight_does_not_jump_where_the_two_sides_meet() {
+    use alice_sdf::operations::smooth_min_weight;
+    // oracle: continuity of the closed form at a = b, where it is one half from either side
+    for k in [0.02f32, 0.2, 2.0] {
+        let e = k * 1e-4;
+        let (l, r) = (
+            smooth_min_weight(1.0 - e, 1.0, k).1,
+            smooth_min_weight(1.0 + e, 1.0, k).1,
+        );
+        assert!(
+            (l - 0.5).abs() < 1e-3 && (r - 0.5).abs() < 1e-3,
+            "{k}: {l} {r}"
+        );
+    }
+}
+
+#[test]
+fn a_union_with_no_width_is_the_nearer_one_entirely() {
+    use alice_sdf::operations::smooth_min_weight;
+    let (d, w) = smooth_min_weight(0.5, 0.25, 0.0);
+    assert_eq!((d, w), (0.25, 1.0));
+    let (d, w) = smooth_min_weight(0.25, 0.5, 0.0);
+    assert_eq!((d, w), (0.25, 0.0));
+}
+
+#[test]
+fn the_shader_text_of_the_weight_is_the_same_law() {
+    use alice_sdf::operations::SMOOTH_UNION_BLEND_GLSL as G;
+    // the name it is called by, and the terms of the closed form; a change of coefficient shows here
+    for term in [
+        "vec2 sdf_smooth_union_blend(float a, float b, float k)",
+        "abs(a - b)",
+        "h * h * 0.5",
+        "h * h * k * 0.25",
+        "a < b",
+    ] {
+        assert!(G.contains(term), "{term}");
+    }
+}
