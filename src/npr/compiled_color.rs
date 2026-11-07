@@ -1560,9 +1560,9 @@ pub mod gpu_opcode_tag {
     pub const TONEMAP: u32 = 16;
     /// SpeedLine { focus, count, thickness, ink } — 7 payload words
     pub const SPEED_LINE: u32 = 17;
-    /// [`ColorOp::FamilyPalette`]: `[count, 8 normals, 8 colours]` (49 words)
+    /// [`super::ColorOp::FamilyPalette`]: `[count, 8 normals, 8 colours]` (49 words)
     pub const FAMILY_PALETTE: u32 = 18;
-    /// [`ColorOp::RegionNoise`]: `[cell, region_amp, noise_amp, seed]` (8 words)
+    /// [`super::ColorOp::RegionNoise`]: `[cell, region_amp, noise_amp, seed]` (8 words)
     pub const REGION_NOISE: u32 = 19;
 }
 
