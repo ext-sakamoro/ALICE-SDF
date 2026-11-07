@@ -50,6 +50,7 @@ impl std::fmt::Display for MeshInputError {
 impl std::error::Error for MeshInputError {}
 
 pub mod bvh;
+pub mod bvh_shell;
 pub mod collision;
 pub mod decimate;
 pub mod dual_contouring;
@@ -86,6 +87,7 @@ pub mod gpu_marching_cubes;
 pub mod gpu_mc_shaders;
 
 pub use bvh::{Aabb, BvhNode, BvhTriangle, MeshBvh};
+pub use bvh_shell::{triangle_shell_hit, ShellFeature, ShellHit};
 pub use collision::{
     compute_aabb, compute_bounding_sphere, compute_convex_hull, convex_decomposition,
     convex_hull_from_points, simplify_collision, BoundingSphere, CollisionAabb, CollisionMesh,
