@@ -278,6 +278,10 @@ required-features = ["msl"]
 name = "unreal_plugin_icon"
 required-features = ["image"]
 
+[[example]]
+name = "shell_render"
+required-features = ["gpu", "image"]
+
 # Ray casting with the Cranelift JIT evaluators (scalar + 8-wide SIMD).
 [[example]]
 name = "raycast_jit"
