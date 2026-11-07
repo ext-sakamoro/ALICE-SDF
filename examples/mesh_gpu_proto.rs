@@ -120,7 +120,8 @@ fn main() {
     println!("compile {:.3} s rays {n} tile {tile}", tracer.compile_s);
     let mut first: Option<Vec<RayOut>> = None;
     let mut same = true;
-    for run in 0..5 {
+    let runs: usize = std::env::var("MG_RUNS").map_or(5, |v| v.parse().unwrap());
+    for run in 0..runs {
         let started = Instant::now();
         let (got, longest) = tracer.trace(n).expect("trace");
         let ms = started.elapsed().as_secs_f64() * 1e3;
@@ -130,7 +131,30 @@ fn main() {
         );
         match &first {
             None => first = Some(got),
-            Some(f) => same &= *f == got,
+            Some(f) => {
+                same &= *f == got;
+                let differing: Vec<usize> = (0..f.len()).filter(|&i| f[i] != got[i]).collect();
+                if !differing.is_empty() {
+                    let tiles: std::collections::BTreeSet<usize> =
+                        differing.iter().map(|i| i / tile as usize).collect();
+                    println!(
+                        "  run {run} differs from run 0 at {} rays in {} tiles",
+                        differing.len(),
+                        tiles.len()
+                    );
+                    for &i in differing.iter().take(4) {
+                        println!(
+                            "    ray {i} tile {} pos {}: {:?} ({:08x}) vs {:?} ({:08x})",
+                            i / tile as usize,
+                            i % tile as usize,
+                            f[i],
+                            f[i].s.to_bits(),
+                            got[i],
+                            got[i].s.to_bits()
+                        );
+                    }
+                }
+            }
         }
     }
     let gpu = first.unwrap();
