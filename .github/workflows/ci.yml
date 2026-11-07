@@ -1347,6 +1347,14 @@ jobs:
           cargo test --features gpu --test test_gpu_wait_limit -- --nocapture 2>&1 | tee test_gpu_wait_limit.log
           python3 scripts/libtest_count.py test_gpu_wait_limit.log --min 1 --what "test_gpu_wait_limit"
 
+      # GLSL arrays are variables, and a loft compiles within a limit on this driver
+      - name: GLSL array form and compile limit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features "gpu,glsl" --test test_glsl_array_form -- --nocapture 2>&1 | tee test_glsl_array_form.log
+          python3 scripts/libtest_count.py test_glsl_array_form.log --min 3 --what "test_glsl_array_form"
+
       # aaa 側の GPU oracle (volume の gpu_bake)。上の step とは feature 集合が違う
       # ので分けている。ALICE_SDF_REQUIRE_GPU=1 は job env で設定済なので、
       # adapter 不在は silent skip でなく assert 失敗になる
