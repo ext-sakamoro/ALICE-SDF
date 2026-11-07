@@ -49,6 +49,8 @@ pub struct Piece {
     pub ambiguous: bool,
     /// this piece hits on the CPU
     pub hits: bool,
+    /// which decision was ambiguous ("" when none)
+    pub why: &'static str,
 }
 
 /// `|w0 + t g|^2 = rr` about the closest approach; returns (lo or hi, its bound, ambiguous, hits)
@@ -187,7 +189,14 @@ fn edge_function(u: Vec3, v: Vec3, q: Vec3, nu: Vec3) -> f32 {
 }
 
 /// Both offset planes; each side is its own piece
-fn face(o: Vec3, d: Vec3, va: Vec3, vb: Vec3, vc: Vec3, r: f32) -> Vec<(M, bool, bool)> {
+fn face(
+    o: Vec3,
+    d: Vec3,
+    va: Vec3,
+    vb: Vec3,
+    vc: Vec3,
+    r: f32,
+) -> Vec<(M, bool, bool, &'static str)> {
     let (anchor, nu) = face_frame(va, vb, vc);
     let nl = nu.length();
     if nl == 0.0 || !nl.is_finite() {
@@ -202,9 +211,12 @@ fn face(o: Vec3, d: Vec3, va: Vec3, vb: Vec3, vc: Vec3, r: f32) -> Vec<(M, bool,
     if dn == 0.0 {
         return Vec::new();
     }
-    // h is exact up to its last rounding for given n; it moves with n
+    // h is exact up to its last rounding for given n, and moves with n. n_i = nu_i / nl: the square
+    // root moves every component by the same factor, which moves h by SQRT E |h|; each division
+    // adds its own DIV E |n_i|, which moves h by DIV E sum |w_i n_i| (w = anchor - o)
     let h = plane_distance(anchor, o, n);
-    let dh = (anchor.as_dvec3() - o.as_dvec3()).abs().dot(dn_vec) + 2.0 * E * f64::from(h.abs());
+    let w = (anchor.as_dvec3() - o.as_dvec3()).abs();
+    let dh = SQRT * E * f64::from(h.abs()) + DIV * E * w.dot(a(n)) + 2.0 * E * f64::from(h.abs());
     let mut out = Vec::new();
     for sg in [1.0f32, -1.0] {
         let off = sg * r;
@@ -233,8 +245,17 @@ fn face(o: Vec3, d: Vec3, va: Vec3, vb: Vec3, vc: Vec3, r: f32) -> Vec<(M, bool,
         }
         let hits = t >= 0.0 && over;
         let amb = amb_dn || amb_t || amb_e;
+        let why = if amb_dn {
+            "face dn"
+        } else if amb_t {
+            "face t"
+        } else if amb_e {
+            "face edge"
+        } else {
+            ""
+        };
         if hits || amb {
-            out.push((M { v: t, d: dt }, amb, hits));
+            out.push((M { v: t, d: dt }, amb, hits, why));
         }
     }
     out
@@ -258,13 +279,32 @@ pub fn pieces(o: Vec3, d: Vec3, tri: &BvhTriangle, index: u32, r: f32) -> Vec<Pi
             dt: 0.0,
             ambiguous: amb_in,
             hits: dist <= r,
+            why: if amb_in { "inside" } else { "" },
         });
         if dist <= r && !amb_in {
             return out;
         }
     }
+    for (m, amb, hits, why) in face(o, d, tri.v0, tri.v1, tri.v2, r) {
+        out.push(Piece {
+            tri: index,
+            feature: 1,
+            t: m.v,
+            dt: m.d,
+            ambiguous: amb,
+            hits,
+            why,
+        });
+    }
     let mut add = |m: Option<(M, bool, bool)>, f: u32| {
         if let Some((t, amb, hits)) = m {
+            let why = if !amb {
+                ""
+            } else if f == 2 {
+                "edge"
+            } else {
+                "vertex"
+            };
             out.push(Piece {
                 tri: index,
                 feature: f,
@@ -272,12 +312,10 @@ pub fn pieces(o: Vec3, d: Vec3, tri: &BvhTriangle, index: u32, r: f32) -> Vec<Pi
                 dt: t.d,
                 ambiguous: amb,
                 hits,
+                why,
             });
         }
     };
-    for m in face(o, d, tri.v0, tri.v1, tri.v2, r) {
-        add(Some(m), 1);
-    }
     for (u, v) in [(tri.v0, tri.v1), (tri.v1, tri.v2), (tri.v2, tri.v0)] {
         add(cylinder(o, d, u, v, r), 2);
     }
@@ -335,8 +373,8 @@ pub fn band(bvh: &MeshBvh, ray: &ShellRay, r: f32) -> Option<String> {
         .find(|p| p.ambiguous && within(p) && f64::from(p.t) - p.dt <= reach)
     {
         return Some(format!(
-            "ambiguous decision: tri {} feature {} t {} dt {:.3e}",
-            p.tri, p.feature, p.t, p.dt
+            "ambiguous decision: {} tri {} feature {} t {} dt {:.3e}",
+            p.why, p.tri, p.feature, p.t, p.dt
         ));
     }
     // a different piece whose t may cross the answer's (tmax counts when the answer is near it)
