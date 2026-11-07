@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1089 |
+| 🟢 Not ignored | 1093 |
 | 🔴 Red by design | 1 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1094** |
+| **Total** | **1098** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -43,7 +43,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1089)
+## 🟢 Not ignored (1093)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -171,6 +171,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_law_nan_operands.rs` | 3 |
 | `test_law_scalar_minmax_ties.rs` | 3 |
 | `test_llm_schema_oracle.rs` | 3 |
+| `test_mesh_shell_oracle.rs` | 3 |
 | `test_minmax_signed_zero_probe.rs` | 3 |
 | `test_neural_oracle.rs` | 3 |
 | `test_optimize_stats_oracle.rs` | 3 |
@@ -191,6 +192,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_asdf_roundtrip_parity.rs` | 1 |
 | `test_det_parity.rs` | 1 |
 | `test_gpu_readback_volume.rs` | 1 |
+| `test_mesh_shell_gpu_parity.rs` | 1 |
 | `test_metadata_order.rs` | 1 |
 | `test_npr_bytecode_gpu_parity.rs` | 1 |
 | `test_texture_shader_gpu_parity.rs` | 1 |
