@@ -159,8 +159,8 @@ const fn has_type_and_result(opcode: u32) -> bool {
 /// no expansion here.
 fn expand_builtins(module: &[u32]) -> Result<Vec<u32>, SpirvError> {
     let mut floats = Vec::new();
-    let mut vectors = std::collections::HashMap::new();
-    let mut types = std::collections::HashMap::new();
+    let mut vectors = std::collections::BTreeMap::new();
+    let mut types = std::collections::BTreeMap::new();
     let mut glsl = None;
     let mut first_function = None;
     let mut at = HEADER_WORDS;
@@ -194,7 +194,7 @@ fn expand_builtins(module: &[u32]) -> Result<Vec<u32>, SpirvError> {
     };
     e.out.extend_from_slice(&module[..HEADER_WORDS]);
     // `mix` needs 1.0, and a constant has to come before the functions
-    let mut ones = std::collections::HashMap::new();
+    let mut ones = std::collections::BTreeMap::new();
     let mut at = HEADER_WORDS;
     while at < module.len() {
         let length = (module[at] >> 16) as usize;
