@@ -225,6 +225,26 @@ pub enum GlslTranspileMode {
     Dynamic,
 }
 
+/// `source` with its module-scope `const float NAME[N]` declarations as variables
+fn module_arrays_as_variables(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    for line in source.split_inclusive('\n') {
+        match line.strip_prefix("const float ") {
+            Some(rest)
+                if rest
+                    .split(['[', ' '])
+                    .next()
+                    .is_some_and(|name| rest[name.len()..].starts_with('[')) =>
+            {
+                out.push_str("float ");
+                out.push_str(rest);
+            }
+            _ => out.push_str(line),
+        }
+    }
+    out
+}
+
 /// Generated GLSL shader code
 #[derive(Debug, Clone)]
 pub struct GlslShader {
@@ -419,6 +439,12 @@ void main() {{
     ///
     /// Bindings 0-2 are the layout `GpuEvaluator` (`gpu` feature) binds, so
     /// a Hardcoded shader runs through `GpuEvaluator::from_glsl_compute`.
+    ///
+    /// The module-scope float arrays are variables here and `const` in every other form. This
+    /// text goes through a SPIR-V compiler, where a long `const` array took over 12 minutes to
+    /// compile at the first dispatch on a driver that compiles there, against about a second as a
+    /// variable. A driver's own GLSL compiler can refuse the variables instead (ANGLE on NVIDIA:
+    /// `cannot locate suitable resource`, on one loft), so the forms it reads stay `const`.
     pub fn to_vulkan_compute_shader(&self) -> String {
         crate::provenance::tagged_shader(&self.to_vulkan_compute_shader_text())
     }
@@ -470,7 +496,7 @@ void main() {{
 ",
             mode = self.mode,
             params_decl = params_decl,
-            source = self.source
+            source = module_arrays_as_variables(&self.source)
         )
     }
 

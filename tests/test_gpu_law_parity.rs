@@ -368,28 +368,6 @@ mod glsl_execution {
     use super::*;
     use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode};
 
-    pub fn compute_wrapper(library: &str) -> String {
-        format!(
-            r"#version 450
-layout(local_size_x = 256) in;
-struct InputPoint {{ float x; float y; float z; float pad; }};
-struct OutputDistance {{ float distance; float pad1; float pad2; float pad3; }};
-layout(std430, set = 0, binding = 0) readonly buffer InputPoints {{ InputPoint input_points[]; }};
-layout(std430, set = 0, binding = 1) buffer OutputDistances {{ OutputDistance output_distances[]; }};
-layout(std140, set = 0, binding = 2) uniform PointCount {{ uint point_count; }};
-
-{library}
-
-void main() {{
-    uint idx = gl_GlobalInvocationID.x;
-    if (idx >= point_count) {{ return; }}
-    InputPoint pt = input_points[idx];
-    output_distances[idx].distance = sdf_eval(vec3(pt.x, pt.y, pt.z));
-}}
-"
-        )
-    }
-
     #[test]
     fn every_corpus_node_matches_cpu_through_glsl() {
         use alice_sdf::compiled::shader_unsupported_nodes;
@@ -411,7 +389,7 @@ void main() {{
                 continue;
             }
             let shader = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
-            let gpu = match GpuEvaluator::from_glsl_compute(&compute_wrapper(&shader.source))
+            let gpu = match GpuEvaluator::from_glsl_compute(&shader.to_vulkan_compute_shader())
                 .map(|c| c.into_parts().0)
             {
                 Ok(g) => g,
@@ -484,7 +462,7 @@ void main() {{
         let pts = points(2048);
         crate::common::corpus::assert_projective_case_discriminates(&pts, 1e-4);
         let shader = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
-        let gpu = match GpuEvaluator::from_glsl_compute(&compute_wrapper(&shader.source))
+        let gpu = match GpuEvaluator::from_glsl_compute(&shader.to_vulkan_compute_shader())
             .map(|c| c.into_parts().0)
         {
             Ok(g) => g,
@@ -584,10 +562,8 @@ mod glsl_axis_ties {
         for count in [3u32, 5, 7] {
             let node = base.clone().polar_repeat(count);
             let shader = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
-            let gpu = match GpuEvaluator::from_glsl_compute(
-                &super::glsl_execution::compute_wrapper(&shader.source),
-            )
-            .map(|c| c.into_parts().0)
+            let gpu = match GpuEvaluator::from_glsl_compute(&shader.to_vulkan_compute_shader())
+                .map(|c| c.into_parts().0)
             {
                 Ok(g) => g,
                 Err(e) => {
