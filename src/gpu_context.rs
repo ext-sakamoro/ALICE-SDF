@@ -213,7 +213,7 @@ pub enum GpuPath {
 
 /// The answer for `path` on `backend`.
 #[must_use]
-pub fn contraction(path: GpuPath, backend: wgpu::Backend) -> Contraction {
+pub const fn contraction(path: GpuPath, backend: wgpu::Backend) -> Contraction {
     match (backend, path) {
         (wgpu::Backend::Vulkan, _) => Contraction::Forbidden,
         (wgpu::Backend::Metal, GpuPath::Evaluator) if cfg!(target_os = "macos") => {
@@ -348,9 +348,9 @@ impl GpuContext {
 
     fn holding(device: wgpu::Device, queue: wgpu::Queue, backend: wgpu::Backend) -> Self {
         Self(Arc::new(Serialized(ManuallyDrop::new(GpuDevice {
-            backend,
             device,
             queue,
+            backend,
         }))))
     }
 }
