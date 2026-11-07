@@ -562,6 +562,19 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_shader_precise_temporaries \
   --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle --test test_gpu_lifecycle_oracle
 
+step "gpu-parity: module arrays fit SPIR-V instructions (ci.yml の同名 step と対、3 件未満で fail、spirv-val が無ければ PREFLIGHT-SKIP 行)"
+spv_dir="${CARGO_TARGET_DIR:-target}/spirv-modules"
+rm -rf "$spv_dir"; mkdir -p "$spv_dir"
+ALICE_SDF_SPIRV_DIR="$spv_dir" ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl" --test test_module_array_chunks -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_module_array_chunks.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_module_array_chunks.log" --min 3 --what "test_module_array_chunks"
+if command -v spirv-val >/dev/null; then
+  n=0
+  for f in "$spv_dir"/*.spv; do [ -e "$f" ] || continue; spirv-val "$f"; n=$((n + 1)); done
+  [ "$n" -ge 2 ] || { echo "spirv-val checked $n modules, expected 2"; exit 1; }
+else
+  echo "PREFLIGHT-SKIP: spirv-val: not installed here (brew install spirv-tools), run on every module by the lavapipe CI lane"
+fi
+
 step "gpu-parity: polygon / section stack shader oracles (ci.yml の同名 step と対、file ごとに件数未満で fail)"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_polygon_2d_general_oracle -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_polygon_2d_general_oracle.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_polygon_2d_general_oracle.log" --min 11 --what "test_polygon_2d_general_oracle"

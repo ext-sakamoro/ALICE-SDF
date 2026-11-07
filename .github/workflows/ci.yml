@@ -1372,6 +1372,27 @@ jobs:
           cargo test --features "gpu,glsl" --test test_glsl_array_form -- --nocapture 2>&1 | tee test_glsl_array_form.log
           python3 scripts/libtest_count.py test_glsl_array_form.log --min 3 --what "test_glsl_array_form"
 
+      # a large loft's WGSL and GLSL as SPIR-V: every instruction fits its 16-bit word count
+      # (the module arrays are chunked), checked by the test's own walker and by spirv-val
+      - name: Module arrays fit SPIR-V instructions (spirv-val)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends spirv-tools
+          spirv-val --version
+          dir="$RUNNER_TEMP/spirv"
+          mkdir -p "$dir"
+          ALICE_SDF_SPIRV_DIR="$dir" cargo test --features "gpu,glsl" --test test_module_array_chunks -- --nocapture 2>&1 | tee test_module_array_chunks.log
+          python3 scripts/libtest_count.py test_module_array_chunks.log --min 3 --what "test_module_array_chunks"
+          n=0
+          for f in "$dir"/*.spv; do
+            [ -e "$f" ] || continue
+            spirv-val "$f"
+            n=$((n + 1))
+          done
+          echo "spirv-val: $n modules valid"
+          [ "$n" -ge 2 ] || { echo "spirv-val checked $n modules, expected 2"; exit 1; }
+
       # aaa 側の GPU oracle (volume の gpu_bake)。上の step とは feature 集合が違う
       # ので分けている。ALICE_SDF_REQUIRE_GPU=1 は job env で設定済なので、
       # adapter 不在は silent skip でなく assert 失敗になる

@@ -21,7 +21,7 @@ mod common;
 #[path = "common/gpu_batches.rs"]
 mod gpu_batches;
 
-use alice_sdf::compiled::GpuEvaluator;
+use alice_sdf::compiled::{GpuEvaluator, TranspileMode, WgslShader};
 use alice_sdf::prelude::*;
 use glam::Vec2;
 
@@ -46,6 +46,10 @@ fn points(n: usize) -> Vec<Vec3> {
 }
 
 fn gpu_or_skip(node: &SdfNode) -> Option<GpuEvaluator> {
+    // the shader GpuEvaluator::new builds, checked as SPIR-V before any driver sees it
+    if let Ok(shader) = WgslShader::try_transpile_with_node_data(node, TranspileMode::Hardcoded) {
+        common::spirv::assert_wgsl_encodes(&shader.to_compute_shader());
+    }
     match GpuEvaluator::new(node) {
         Ok(g) => Some(g),
         Err(e) => {
@@ -389,8 +393,10 @@ mod glsl_execution {
                 continue;
             }
             let shader = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
-            let gpu = match GpuEvaluator::from_glsl_compute(&shader.to_vulkan_compute_shader())
-                .map(|c| c.into_parts().0)
+            let gpu = match GpuEvaluator::from_glsl_compute(&common::spirv::checked_glsl(
+                shader.to_vulkan_compute_shader(),
+            ))
+            .map(|c| c.into_parts().0)
             {
                 Ok(g) => g,
                 Err(e) => {
@@ -462,8 +468,10 @@ mod glsl_execution {
         let pts = points(2048);
         crate::common::corpus::assert_projective_case_discriminates(&pts, 1e-4);
         let shader = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
-        let gpu = match GpuEvaluator::from_glsl_compute(&shader.to_vulkan_compute_shader())
-            .map(|c| c.into_parts().0)
+        let gpu = match GpuEvaluator::from_glsl_compute(&common::spirv::checked_glsl(
+            shader.to_vulkan_compute_shader(),
+        ))
+        .map(|c| c.into_parts().0)
         {
             Ok(g) => g,
             Err(e) => {
@@ -562,8 +570,10 @@ mod glsl_axis_ties {
         for count in [3u32, 5, 7] {
             let node = base.clone().polar_repeat(count);
             let shader = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded);
-            let gpu = match GpuEvaluator::from_glsl_compute(&shader.to_vulkan_compute_shader())
-                .map(|c| c.into_parts().0)
+            let gpu = match GpuEvaluator::from_glsl_compute(&common::spirv::checked_glsl(
+                shader.to_vulkan_compute_shader(),
+            ))
+            .map(|c| c.into_parts().0)
             {
                 Ok(g) => g,
                 Err(e) => {
