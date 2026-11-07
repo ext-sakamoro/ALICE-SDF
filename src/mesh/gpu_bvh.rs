@@ -430,16 +430,37 @@ pub fn run_u32(
             },
         ],
     });
+    let mode = std::env::var("MG_MODE").unwrap_or_default();
+    let read = |bytes: u64, out: &mut Vec<u32>| -> Result<(), GpuError> {
+        let slice = staging.slice(..bytes);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |r| {
+            let _ = sender.send(r);
+        });
+        device.poll(wgpu::Maintain::Wait);
+        receiver
+            .recv()
+            .map_err(|e| GpuError::BufferMapping(e.to_string()))?
+            .map_err(|e| GpuError::BufferMapping(format!("{e:?}")))?;
+        out.extend_from_slice(bytemuck::cast_slice::<u8, u32>(&slice.get_mapped_range()));
+        staging.unmap();
+        Ok(())
+    };
     let mut all = Vec::new();
+    let (mut recopy_changed, mut zeros) = (0_u64, 0_u64);
     for _ in 0..runs {
         let started = Instant::now();
         let mut got = Vec::with_capacity(count as usize);
         let mut first = 0;
         while first < count {
             let n = tile.min(count - first);
+            let bytes = u64::from(n) * 4;
             queue.write_buffer(&params, 0, bytemuck::cast_slice(&[first, n, 0, 0]));
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+            if mode == "clear" {
+                encoder.clear_buffer(&output, 0, None);
+            }
             {
                 let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: None,
@@ -449,25 +470,36 @@ pub fn run_u32(
                 pass.set_bind_group(0, &bind, &[]);
                 pass.dispatch_workgroups(n.div_ceil(64), 1, 1);
             }
-            let bytes = u64::from(n) * 4;
+            if mode == "split" {
+                queue.submit(std::iter::once(encoder.finish()));
+                device.poll(wgpu::Maintain::Wait);
+                encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+            }
             encoder.copy_buffer_to_buffer(&output, 0, &staging, 0, bytes);
             queue.submit(std::iter::once(encoder.finish()));
-            let slice = staging.slice(..bytes);
-            let (sender, receiver) = std::sync::mpsc::channel();
-            slice.map_async(wgpu::MapMode::Read, move |r| {
-                let _ = sender.send(r);
-            });
-            device.poll(wgpu::Maintain::Wait);
-            receiver
-                .recv()
-                .map_err(|e| GpuError::BufferMapping(e.to_string()))?
-                .map_err(|e| GpuError::BufferMapping(format!("{e:?}")))?;
-            got.extend_from_slice(bytemuck::cast_slice::<u8, u32>(&slice.get_mapped_range()));
-            staging.unmap();
+            let at = got.len();
+            read(bytes, &mut got)?;
+            if mode == "recopy" {
+                let mut encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+                encoder.copy_buffer_to_buffer(&output, 0, &staging, 0, bytes);
+                queue.submit(std::iter::once(encoder.finish()));
+                let mut again = Vec::with_capacity(n as usize);
+                read(bytes, &mut again)?;
+                recopy_changed +=
+                    got[at..].iter().zip(&again).filter(|(a, b)| a != b).count() as u64;
+                got.truncate(at);
+                got.extend_from_slice(&again);
+            }
+            zeros += got[at..].iter().filter(|v| **v == 0).count() as u64;
             first += n;
         }
         all.push((got, started.elapsed().as_secs_f64()));
     }
+    println!(
+        "mode {mode:?}: words changed by a second copy {recopy_changed}, words that read 0 {zeros}"
+    );
     Ok(all)
 }
 
