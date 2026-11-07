@@ -21,6 +21,41 @@ fn u32s(p: &str) -> Vec<u32> {
         .collect()
 }
 
+/// A generated body of about 40,000 triangles, in mm: a bumpy torus knot tube
+fn synthetic() -> (Vec<Vec3>, Vec<u32>) {
+    let (nu, nv) = (500_u32, 40_u32);
+    let mut v = Vec::new();
+    let mut t = Vec::new();
+    let curve = |u: f32| {
+        let (p, q) = (2.0 * u, 3.0 * u);
+        let r = 300.0 + 120.0 * q.cos();
+        Vec3::new(r * p.cos(), r * p.sin(), 120.0 * q.sin())
+    };
+    for i in 0..nu {
+        let u = i as f32 / nu as f32 * std::f32::consts::TAU;
+        let c = curve(u);
+        let n = (curve(u + 0.001) - c).normalize();
+        let a = n.cross(Vec3::Z).normalize();
+        let b = n.cross(a);
+        for j in 0..nv {
+            let w = j as f32 / nv as f32 * std::f32::consts::TAU;
+            let r = 60.0 + 12.0 * (w * 5.0 + u * 40.0).sin();
+            v.push(c + a * (r * w.cos()) + b * (r * w.sin()));
+            let (i1, j1) = ((i + 1) % nu, (j + 1) % nv);
+            let at = |x: u32, y: u32| x * nv + y;
+            t.extend_from_slice(&[
+                at(i, j),
+                at(i1, j),
+                at(i1, j1),
+                at(i, j),
+                at(i1, j1),
+                at(i, j1),
+            ]);
+        }
+    }
+    (v, t)
+}
+
 /// A 1300 x 680 front view of the mesh's box: orthographic, along -z, every pixel a ray
 fn grid(v: &[Vec3]) -> Vec<f32> {
     let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
@@ -94,11 +129,17 @@ fn main() {
     let (dir, name, shell, tile): (&str, &str, f32, u32) =
         (&a[1], &a[2], a[3].parse().unwrap(), a[4].parse().unwrap());
     let (hit, max_evals) = (0.02_f32, 2000_u32);
-    let v: Vec<Vec3> = f32s(&format!("{dir}/V.bin"))
-        .chunks_exact(3)
-        .map(|c| Vec3::new(c[0], c[1], c[2]))
-        .collect();
-    let t = u32s(&format!("{dir}/T.bin"));
+    let (v, t) = if dir == "syn" {
+        synthetic()
+    } else {
+        (
+            f32s(&format!("{dir}/V.bin"))
+                .chunks_exact(3)
+                .map(|c| Vec3::new(c[0], c[1], c[2]))
+                .collect(),
+            u32s(&format!("{dir}/T.bin")),
+        )
+    };
     let started = Instant::now();
     let bvh = MeshBvh::build(&v, &t, 4);
     let flat = flatten(&bvh);
