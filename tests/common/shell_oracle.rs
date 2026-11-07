@@ -121,7 +121,7 @@ pub fn judge(
     dir: Vec3,
     tmax: f32,
     r: f32,
-    got: Option<f32>,
+    got: Option<f64>,
 ) -> Option<String> {
     let (o, d) = (o.as_dvec3(), dir.as_dvec3());
     let len = d.length();
@@ -130,7 +130,7 @@ pub fn judge(
     let shrunk = first_entry(tris, o, d, tmax, r - eta(far));
     match got {
         Some(t) => {
-            let t = f64::from(t) * len;
+            let t = t * len;
             let p = o + d / len * t;
             let e = eta(o.length().max(p.length()));
             let at = distance(tris, p);

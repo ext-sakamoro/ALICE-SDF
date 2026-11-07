@@ -238,9 +238,14 @@ fn gpu_first_hits_match_the_cpu_path() {
                 let ray = rays[k];
                 let got = if on_cpu { cpu[k] } else { gpu[k] };
                 judged += 1;
-                if let Some(why) =
-                    shell_oracle::judge(&truth, ray.origin, ray.dir, ray.tmax, *r, got.map(|h| h.t))
-                {
+                if let Some(why) = shell_oracle::judge(
+                    &truth,
+                    ray.origin,
+                    ray.dir,
+                    ray.tmax,
+                    *r,
+                    got.map(|h| f64::from(h.t_base) + f64::from(h.t_local)),
+                ) {
                     if wrong.len() < 6 {
                         let side = if on_cpu { "cpu" } else { "gpu" };
                         wrong.push(format!("{name} {label} ray {k} {side}: {why}"));

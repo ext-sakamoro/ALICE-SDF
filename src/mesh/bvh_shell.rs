@@ -41,8 +41,13 @@ pub enum ShellFeature {
 /// First hit of a ray on the thickened mesh
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShellHit {
-    /// Ray parameter of the hit (the hit point is `origin + t * dir`)
+    /// Ray parameter of the hit (the hit point is `origin + t * dir`): `t_base + t_local`,
+    /// rounded once; the pair keeps the precision that one f32 far from the origin loses
     pub t: f32,
+    /// The part of `t` that moves the ray to its frame (see [`ShellFrame`]); 0 in the world frame
+    pub t_base: f32,
+    /// The part of `t` solved in the frame, from the moved origin
+    pub t_local: f32,
     /// Index into [`MeshBvh::triangles`]
     pub triangle: u32,
     /// Piece of that triangle the ray met
@@ -405,7 +410,14 @@ fn slab_t(lo: Vec3, hi: Vec3, o: Vec3, inv: Vec3) -> Option<f32> {
 }
 
 #[inline]
-fn take(best: &mut Option<ShellHit>, t: f32, triangle: u32, feature: ShellFeature) {
+fn take(
+    best: &mut Option<ShellHit>,
+    t_base: f32,
+    t_local: f32,
+    triangle: u32,
+    feature: ShellFeature,
+) {
+    let t = t_base + t_local;
     let better = match best {
         None => true,
         Some(b) => t < b.t || (t == b.t && triangle < b.triangle),
@@ -413,14 +425,60 @@ fn take(best: &mut Option<ShellHit>, t: f32, triangle: u32, feature: ShellFeatur
     if better {
         *best = Some(ShellHit {
             t,
+            t_base,
+            t_local,
             triangle,
             feature,
         });
     }
 }
 
+/// Where a triangle's hit is solved
+///
+/// Far from the world origin an f32 coordinate carries an ulp of that distance, larger than a thin
+/// shell's tolerance. A frame moves the triangle and the ray near a centre `c`: the triangle as
+/// `v - c` and the ray's origin advanced to `t_base`, the entry of a box (inflated by `r`) around
+/// the triangle, with every rounding error of `o + d t_base - c` carried (`frame_origin`). The hit
+/// is then `t_base + t_local`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShellFrame {
+    /// No frame: the triangle and the ray as given
+    World,
+    /// The BVH leaf's box: its centre, and the entry of the leaf's box
+    Leaf,
+    /// The triangle's own box: its centre, and the entry of that box
+    Triangle,
+}
+
+/// `o + d t - c` with every rounding error carried: the difference exact (TwoSum), the product
+/// exact (Dekker), their sum exact, the remainders added last. Each component's difference,
+/// product and remainders below `FLUSH_W` are 0, so every intermediate stays normal.
+#[inline]
+pub(crate) fn frame_origin(o: Vec3, d: Vec3, c: Vec3, t: f32) -> Vec3 {
+    let comp = |o: f32, c: f32, d: f32| {
+        let (s, e) = two_diff(o, c);
+        let (s, e) = (flush(s, FLUSH_W), flush(e, FLUSH_W));
+        let (p, pe) = two_prod(flush(d, FLUSH_W), t);
+        let (p, pe) = (flush(p, FLUSH_W), flush(pe, FLUSH_W));
+        let (x, xe) = two_sum(p, s);
+        x + (xe + pe + e)
+    };
+    Vec3::new(
+        comp(o.x, c.x, d.x),
+        comp(o.y, c.y, d.y),
+        comp(o.z, c.z, d.z),
+    )
+}
+
+/// The centre of a box, as the GPU's flattened BVH stores it
+#[inline]
+fn centre(min: Vec3, max: Vec3) -> Vec3 {
+    (min + max) * 0.5
+}
+
 struct Walk<'a> {
     tris: &'a [BvhTriangle],
+    frame: ShellFrame,
     o: Vec3,
     d: Vec3,
     inv: Vec3,
@@ -431,12 +489,36 @@ struct Walk<'a> {
 impl Walk<'_> {
     fn visit(&self, n: &BvhNode, best: &mut Option<ShellHit>) {
         match n {
-            BvhNode::Leaf { triangles, .. } => {
+            BvhNode::Leaf { triangles, aabb } => {
+                let ra = Vec3::splat(self.r);
+                let leaf = (
+                    centre(aabb.min, aabb.max),
+                    slab_t(aabb.min - ra, aabb.max + ra, self.o, self.inv).unwrap_or(0.0),
+                );
                 for &k in triangles {
-                    if let Some((t, f)) = triangle_shell_hit(self.o, self.d, &self.tris[k], self.r)
-                    {
-                        if t <= self.tmax {
-                            take(best, t, k as u32, f);
+                    let tri = &self.tris[k];
+                    let (c, t_base) = match self.frame {
+                        ShellFrame::World => (Vec3::ZERO, 0.0),
+                        ShellFrame::Leaf => leaf,
+                        ShellFrame::Triangle => (
+                            centre(tri.aabb.min, tri.aabb.max),
+                            match slab_t(tri.aabb.min - ra, tri.aabb.max + ra, self.o, self.inv) {
+                                Some(t) => t,
+                                // the ray misses this triangle's inflated box: no hit on it
+                                None => continue,
+                            },
+                        ),
+                    };
+                    let hit = if self.frame == ShellFrame::World {
+                        triangle_shell_hit(self.o, self.d, tri, self.r)
+                    } else {
+                        let local = BvhTriangle::new(tri.v0 - c, tri.v1 - c, tri.v2 - c);
+                        let oa = frame_origin(self.o, self.d, c, t_base);
+                        triangle_shell_hit(oa, self.d, &local, self.r)
+                    };
+                    if let Some((t, f)) = hit {
+                        if t_base + t <= self.tmax {
+                            take(best, t_base, t, k as u32, f);
                         }
                     }
                 }
@@ -475,9 +557,22 @@ impl MeshBvh {
     /// Ties at the same `t` go to the lower triangle index, as a brute-force scan
     /// over [`Self::triangles`] would give. `dir` need not be unit length.
     pub fn shell_first_hit(&self, origin: Vec3, dir: Vec3, r: f32, tmax: f32) -> Option<ShellHit> {
+        self.shell_first_hit_in(ShellFrame::Leaf, origin, dir, r, tmax)
+    }
+
+    /// [`Self::shell_first_hit`], solved in the given frame
+    pub fn shell_first_hit_in(
+        &self,
+        frame: ShellFrame,
+        origin: Vec3,
+        dir: Vec3,
+        r: f32,
+        tmax: f32,
+    ) -> Option<ShellHit> {
         let root = self.root.as_ref()?;
         let walk = Walk {
             tris: &self.triangles,
+            frame,
             o: origin,
             d: dir,
             inv: dir.recip(),
@@ -639,7 +734,7 @@ mod tests {
         for (k, t) in tris.iter().enumerate() {
             if let Some((s, f)) = triangle_shell_hit(o, d, t, r) {
                 if s <= tmax {
-                    take(&mut best, s, k as u32, f);
+                    take(&mut best, 0.0, s, k as u32, f);
                 }
             }
         }
@@ -651,7 +746,7 @@ mod tests {
         let p = [v(0., 0., 0.), v(4., 0., 0.), v(0., 4., 0.), v(4., 4., 0.)];
         let b = MeshBvh::build(&p, &[1, 3, 2, 0, 1, 2], 1);
         let (o, d) = (v(2., 2., 5.), v(0., 0., -1.));
-        let g = b.shell_first_hit(o, d, 0.5, 100.0);
+        let g = b.shell_first_hit_in(ShellFrame::World, o, d, 0.5, 100.0);
         assert_eq!(g, brute(&b.triangles, o, d, 0.5, 100.0));
         assert_eq!(g.map(|h| h.triangle), Some(0));
     }
@@ -676,7 +771,7 @@ mod tests {
                 let o = v(u() * 12. - 6., u() * 12. - 6., u() * 12. - 6.);
                 let d = v(u() - 0.5, u() - 0.5, u() - 0.5).normalize();
                 let r = 0.01 + u() * 0.2;
-                let g = b.shell_first_hit(o, d, r, 50.0);
+                let g = b.shell_first_hit_in(ShellFrame::World, o, d, r, 50.0);
                 assert_eq!(
                     g,
                     brute(&b.triangles, o, d, r, 50.0),

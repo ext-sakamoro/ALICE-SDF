@@ -87,7 +87,7 @@ pub mod gpu_marching_cubes;
 pub mod gpu_mc_shaders;
 
 pub use bvh::{Aabb, BvhNode, BvhTriangle, MeshBvh};
-pub use bvh_shell::{triangle_shell_hit, ShellFeature, ShellHit, ShellRay};
+pub use bvh_shell::{triangle_shell_hit, ShellFeature, ShellFrame, ShellHit, ShellRay};
 pub use collision::{
     compute_aabb, compute_bounding_sphere, compute_convex_hull, convex_decomposition,
     convex_hull_from_points, simplify_collision, BoundingSphere, CollisionAabb, CollisionMesh,
