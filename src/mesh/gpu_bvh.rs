@@ -470,6 +470,8 @@ pub fn run_u32(
     let mut all = Vec::new();
     let (mut recopy_changed, mut zeros, mut first_bad, mut second_bad) =
         (0_u64, 0_u64, 0_u64, 0_u64);
+    let (mut remap_changed, mut remap_bad, mut delay_changed, mut delay_bad) =
+        (0_u64, 0_u64, 0_u64, 0_u64);
     for _ in 0..runs {
         let started = Instant::now();
         let mut got = Vec::with_capacity(count as usize);
