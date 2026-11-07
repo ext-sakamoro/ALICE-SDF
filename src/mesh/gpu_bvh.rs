@@ -512,6 +512,29 @@ pub fn run_u32(
             if pairs {
                 first_bad += failing(&got[at..], first);
             }
+            if mode == "reread" {
+                // no new copy: the same mapped range after a delay, and again after a new map
+                let slice = staging.slice(..bytes);
+                let (sender, receiver) = std::sync::mpsc::channel();
+                slice.map_async(wgpu::MapMode::Read, move |r| {
+                    let _ = sender.send(r);
+                });
+                device.poll(wgpu::Maintain::Wait);
+                receiver
+                    .recv()
+                    .map_err(|e| GpuError::BufferMapping(e.to_string()))?
+                    .map_err(|e| GpuError::BufferMapping(format!("{e:?}")))?;
+                let view = slice.get_mapped_range();
+                let again: &[u32] = bytemuck::cast_slice(&view);
+                remap_changed += got[at..].iter().zip(again).filter(|(a, b)| a != b).count() as u64;
+                remap_bad += failing(again, first);
+                let held: Vec<u32> = again.to_vec();
+                std::thread::sleep(std::time::Duration::from_millis(3));
+                delay_changed += held.iter().zip(again).filter(|(a, b)| a != b).count() as u64;
+                delay_bad += failing(again, first);
+                drop(view);
+                staging.unmap();
+            }
             if mode == "recopy" || mode == "recopy_fresh" {
                 if mode == "recopy_fresh" {
                     staging = make_staging();
@@ -535,6 +558,7 @@ pub fn run_u32(
         }
         all.push((got, started.elapsed().as_secs_f64()));
     }
+    println!("reread: changed on a new map {remap_changed} (failing {remap_bad}), changed after 3 ms {delay_changed} (failing {delay_bad})");
     println!(
         "mode {mode:?} adapter {:?} backend {:?}: first copy failing pairs {first_bad}, second copy failing pairs {second_bad}, words changed by a second copy {recopy_changed}, words read 0 {zeros}",
         std::env::var("VK_ICD_FILENAMES").unwrap_or_default(),
