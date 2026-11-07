@@ -320,20 +320,23 @@ fn face_t(o: Vec3, d: Vec3, a: Vec3, b: Vec3, c: Vec3, r: f32) -> Option<f32> {
     if nl == 0.0 || !nl.is_finite() {
         return None;
     }
-    let n = nu / nl;
-    let dn = d.dot(n);
-    if dn == 0.0 {
+    // t = (P +- r |nu|) / D with P = (anchor - o) . nu and D = d . nu, both from + - * alone (the
+    // same bits on a GPU): t carries one square root (in |nu|) and one division
+    let dd = d.dot(nu);
+    if dd == 0.0 {
         return None;
     }
-    // one division, at the end: the GPU's division and square root then move h in proportion to h
-    let h = plane_distance(anchor, o, nu) / nl;
+    let p = plane_distance(anchor, o, nu);
+    let rn = r * nl;
+    // the offset of the plane along nu, one division shared by the three components
+    let off = r / nl;
     let mut best: Option<f32> = None;
     for sg in [1.0f32, -1.0] {
-        let t = (h + sg * r) / dn;
+        let t = (p + sg * rn) / dd;
         if t < 0.0 {
             continue;
         }
-        let q = o + d * t - n * (sg * r);
+        let q = o + d * t - nu * (sg * off);
         let over = edge_function(a, b, q, nu) >= 0.0
             && edge_function(b, c, q, nu) >= 0.0
             && edge_function(c, a, q, nu) >= 0.0;
@@ -970,18 +973,18 @@ mod tests {
             let Some(t) = face_t(o, d, a, b, c, r) else {
                 continue;
             };
-            let (n6, d6) = (n.as_dvec3(), d.as_dvec3());
-            // the method's plane distance: (anchor - o) . nu over its own f32 |nu|
-            let h6 = (anchor.as_dvec3() - o.as_dvec3()).dot(nu.as_dvec3()) / f64::from(nu.length());
-            // the method's own f32 d . n: this test isolates the plane distance
-            let dn = f64::from(d.dot(n));
-            let _ = d6;
+            // t = (P +- r |nu|) / D: P = (anchor - o) . nu in f64, with the method's own f32 |nu|
+            // and D = d . nu, so this test isolates the plane distance P
+            let p6 = (anchor.as_dvec3() - o.as_dvec3()).dot(nu.as_dvec3());
+            let nl6 = f64::from(nu.length());
+            let dd = f64::from(d.dot(nu));
+            let n6 = nu.as_dvec3() / nl6;
             // each side's hit point, kept when it lies over the triangle (f64 edge tests)
             let (a6, b6, c6) = (a.as_dvec3(), b.as_dvec3(), c.as_dvec3());
             let nn6 = (b6 - a6).cross(c6 - a6);
             let want = [0.002f64, -0.002]
                 .into_iter()
-                .map(|off| ((h6 + off) / dn, off))
+                .map(|off| ((p6 + off * nl6) / dd, off))
                 .filter(|(t, off)| {
                     let q = o.as_dvec3() + d.as_dvec3() * *t - n6 * *off;
                     let e = |u: glam::DVec3, w: glam::DVec3| (w - u).cross(q - u).dot(nn6) >= 0.0;

@@ -138,18 +138,18 @@ fn face_t(o: vec3<f32>, dir: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>
     let nu = fr.nu;
     let nl = sqrt(d(nu, nu));
     if nl == 0.0 || !(abs(nl) <= 3.40282347e38) { return MISS; }
-    let n = vec3<f32>(nu.x / nl, nu.y / nl, nu.z / nl);
-    let dn = d(dir, n);
-    if dn == 0.0 { return MISS; }
-    // one division, at the end
-    let h = plane_distance(fr.anchor, o, nu) / nl;
+    // t = (P +- r |nu|) / D, P and D from + - * alone: one square root and one division in t
+    let dd = d(dir, nu);
+    if dd == 0.0 { return MISS; }
+    let p = plane_distance(fr.anchor, o, nu);
+    let rn = r * nl;
+    let off = r / nl;
     var best = MISS;
     for (var k = 0u; k < 2u; k += 1u) {
         let sg = select(-1.0, 1.0, k == 0u);
-        let off = sg * r;
-        let t = (h + off) / dn;
+        let t = (p + sg * rn) / dd;
         if t < 0.0 { continue; }
-        let q = vadd_scaled(vadd_scaled(o, dir, t), n, -off);
+        let q = vadd_scaled(vadd_scaled(o, dir, t), nu, -(sg * off));
         let over = edge_function(a, b, q, nu) >= 0.0
             && edge_function(b, c, q, nu) >= 0.0
             && edge_function(c, a, q, nu) >= 0.0;

@@ -215,33 +215,30 @@ fn face(
     if nl == 0.0 || !nl.is_finite() {
         return Vec::new();
     }
-    let n = nu / nl;
-    // n: a square root, then a division per component
-    let dn_vec = a(n) * ((SQRT + DIV + 1.0) * E);
-    let dn = d.dot(n);
-    let ddn = a(d).dot(dn_vec) + 3.0 * E * a(d).dot(a(n));
-    let amb_dn = f64::from(dn.abs()) <= ddn;
-    if dn == 0.0 {
+    // t = (P +- r |nu|) / D: P and D come from + - * alone (bit-identical on the GPU); |nu| moves by
+    // its square root, r |nu| by that and its rounding, t by those and the one division
+    let dd = d.dot(nu);
+    if dd == 0.0 {
         return Vec::new();
     }
-    // h = P / |nu|: P is formed from + - * alone (bit-identical on the GPU), so h moves only by the
-    // square root of |nu| and the one division
-    let h = plane_distance(anchor, o, nu) / nl;
-    let dh = (SQRT + DIV + 1.0) * E * f64::from(h.abs());
+    let amb_dn = false;
+    let p = plane_distance(anchor, o, nu);
+    let rn = r * nl;
+    let drn = (SQRT + 1.0) * E * f64::from(rn.abs());
+    let off = r / nl;
+    let doff = (SQRT + DIV) * E * f64::from(off.abs());
     let mut out = Vec::new();
     for sg in [1.0f32, -1.0] {
-        let off = sg * r;
-        let num = h + off;
-        let dnum = dh + E * f64::from(num.abs());
-        let t = num / dn;
-        let dt =
-            (dnum + f64::from(t.abs()) * ddn) / f64::from(dn.abs()) + DIV * E * f64::from(t.abs());
+        let num = p + sg * rn;
+        let dnum = drn + E * f64::from(num.abs());
+        let t = num / dd;
+        let dt = dnum / f64::from(dd.abs()) + DIV * E * f64::from(t.abs());
         let amb_t = f64::from(t.abs()) <= dt;
         if t < 0.0 && !amb_t {
             continue;
         }
-        let q = o + d * t - n * off;
-        let dq = a(d) * dt + dn_vec * f64::from(off.abs()) + (a(o + d * t) + a(q)) * (2.0 * E);
+        let q = o + d * t - nu * (sg * off);
+        let dq = a(d) * dt + a(nu) * doff + (a(o + d * t) + a(q)) * (2.0 * E);
         let mut over = true;
         let mut amb_e = false;
         for (p0, p1) in [(va, vb), (vb, vc), (vc, va)] {
