@@ -106,6 +106,8 @@ pub struct Tracer {
     hit: f32,
     max_evals: u32,
     tile: u32,
+    n_nodes: u32,
+    n_tris: u32,
     /// Seconds to compile the module and the pipeline
     pub compile_s: f64,
 }
@@ -173,6 +175,7 @@ impl Tracer {
                 storage_entry(4, true),
                 storage_entry(5, false),
                 storage_entry(6, true),
+                storage_entry(7, true),
             ],
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -201,6 +204,21 @@ impl Tracer {
         let b_leaf = storage("leaf", bytemuck::cast_slice(&flat.leaf_tris));
         let b_tris = storage("tris", bytemuck::cast_slice(&flat.tris));
         let b_parents = storage("parents", bytemuck::cast_slice(&flat.parents));
+        // what each node, triangle and ray's words sum to (wrapping), for a kernel that checks its reads
+        let word_sum = |words: &[u32]| words.iter().fold(0_u32, |a, b| a.wrapping_add(*b));
+        let mut sums: Vec<u32> = flat.nodes.chunks_exact(8).map(word_sum).collect();
+        let n_nodes = sums.len() as u32;
+        sums.extend(
+            flat.tris
+                .chunks_exact(9)
+                .map(|t| word_sum(&t.iter().map(|v| v.to_bits()).collect::<Vec<_>>())),
+        );
+        let n_tris = sums.len() as u32 - n_nodes;
+        sums.extend(
+            rays.chunks_exact(7)
+                .map(|t| word_sum(&t.iter().map(|v| v.to_bits()).collect::<Vec<_>>())),
+        );
+        let b_sums = storage("sums", bytemuck::cast_slice(&sums));
         let size = u64::from(tile) * 16;
         let output = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("out"),
@@ -252,6 +270,10 @@ impl Tracer {
                     binding: 6,
                     resource: b_parents.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: b_sums.as_entire_binding(),
+                },
             ],
         });
         Ok(Self {
@@ -265,6 +287,8 @@ impl Tracer {
             hit,
             max_evals,
             tile,
+            n_nodes,
+            n_tris,
             compile_s,
         })
     }
@@ -287,8 +311,8 @@ impl Tracer {
                 self.shell.to_bits(),
                 self.hit.to_bits(),
                 self.max_evals,
-                0,
-                0,
+                self.n_nodes,
+                self.n_tris,
                 0,
             ];
             queue.write_buffer(&self.params, 0, bytemuck::cast_slice(&words));

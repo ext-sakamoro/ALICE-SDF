@@ -167,13 +167,25 @@ fn main() {
         let (got, longest) = tracer.trace(n).expect("trace");
         let ms = started.elapsed().as_secs_f64() * 1e3;
         let empty = got.iter().filter(|r| r.evals & 0x8000_0000 != 0).count();
+        let misread = got.iter().filter(|r| r.evals & 0x4000_0000 != 0).count();
+        if misread > 0 {
+            println!("  run {run}: {misread} rays read a word that does not match its sum");
+        }
+        let state = |p: &str| {
+            std::fs::read_to_string(p).map_or(0, |v| v.trim().parse::<u64>().unwrap_or(0))
+        };
+        println!(
+            "  state run {run}: gpu {} MHz, temp {} C",
+            state("/sys/devices/platform/gpu.0/devfreq/17000000.gpu/cur_freq") / 1_000_000,
+            state("/sys/class/thermal/thermal_zone1/temp") / 1000
+        );
         if empty > 0 {
             println!("  run {run}: {empty} rays had a walk that found no triangle");
         }
         let got: Vec<RayOut> = got
             .into_iter()
             .map(|mut r| {
-                r.evals &= 0x7fff_ffff;
+                r.evals &= 0x3fff_ffff;
                 r
             })
             .collect();
