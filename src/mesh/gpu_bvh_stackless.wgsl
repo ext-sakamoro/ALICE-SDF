@@ -137,8 +137,29 @@ fn may_hold(n: Node, bound: f32, p: vec3<f32>, best_sq: f32) -> bool {
 
 struct Nearest { d_sq: f32, tri: u32, }
 
-fn nearest(p: vec3<f32>) -> Nearest {
+/// The same answer as `nearest(p)`, bit for bit, starting from a triangle known to be near (the
+/// previous step's): `best` starts at that triangle's distance, so boxes farther than it are
+/// skipped sooner. A triangle at exactly that distance with a smaller index is still found, since
+/// a box is skipped only when farther than the best by more than the slack; `0xffffffff` = none.
+fn nearest_from(p: vec3<f32>, seed: u32) -> Nearest {
     var best = Nearest(0x1.fffffep+127f, 0xffffffffu);
+    if seed < arrayLength(&tris) / 9u {
+        let o = seed * 9u;
+        let a = vec3<f32>(tris[o], tris[o + 1u], tris[o + 2u]);
+        let b = vec3<f32>(tris[o + 3u], tris[o + 4u], tris[o + 5u]);
+        let c = vec3<f32>(tris[o + 6u], tris[o + 7u], tris[o + 8u]);
+        let e = p - closest(p, a, b, c);
+        best = Nearest(d(e, e), seed);
+    }
+    return walk(p, best);
+}
+
+fn nearest(p: vec3<f32>) -> Nearest {
+    return walk(p, Nearest(0x1.fffffep+127f, 0xffffffffu));
+}
+
+fn walk(p: vec3<f32>, start: Nearest) -> Nearest {
+    var best = start;
     var at = 0u;
     var prev = NONE;
     loop {
@@ -191,10 +212,17 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     var s = 0.0;
     var e = 0u;
     var empty = 0u;
+    var seed = 0xffffffffu;
     var res = Out(0.0, 0xffffffffu, 0u, 0u);
     loop {
         if !(s < end && e < params.max_evals) { break; }
-        let n = nearest(vec3<f32>(o.x + dir.x * s, o.y + dir.y * s, o.z + dir.z * s));
+        var n = Nearest(0.0, 0u);
+        if params.pad2 != 0u {
+            n = nearest_from(vec3<f32>(o.x + dir.x * s, o.y + dir.y * s, o.z + dir.z * s), seed);
+        } else {
+            n = nearest(vec3<f32>(o.x + dir.x * s, o.y + dir.y * s, o.z + dir.z * s));
+        }
+        seed = n.tri;
         if n.tri == 0xffffffffu { empty = 0x80000000u; }
         let q = sqrt(n.d_sq) - params.shell;
         e += 1u;
