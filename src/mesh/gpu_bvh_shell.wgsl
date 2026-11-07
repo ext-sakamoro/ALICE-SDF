@@ -3,7 +3,7 @@
 // walked without a stack (parent links). Follows gpu_bvh_closest.wgsl.
 struct Params { first: u32, count: u32, r: f32, pad: u32, }
 struct Node { min_x: f32, min_y: f32, min_z: f32, a: u32, max_x: f32, max_y: f32, max_z: f32, b: u32, }
-struct Out { t: f32, tri: u32, feature: u32, pad: u32, }
+struct Out { t_base: f32, t_local: f32, tri: u32, feature: u32, }
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> rays: array<f32>;
@@ -12,6 +12,13 @@ struct Out { t: f32, tri: u32, feature: u32, pad: u32, }
 @group(0) @binding(4) var<storage, read> tris: array<f32>;
 @group(0) @binding(5) var<storage, read> parents: array<u32>;
 @group(0) @binding(6) var<storage, read_write> out: array<Out>;
+// the frames (FRAME 1: per node, the leaf's box centre and its triangles as v - c in the order of
+// leaf_tris; FRAME 2: per triangle, its box centre and v - c); 4 and 9 floats an entry
+@group(0) @binding(7) var<storage, read> centres: array<f32>;
+@group(0) @binding(8) var<storage, read> local_tris: array<f32>;
+
+// 0: the world frame, 1: the BVH leaf's box, 2: the triangle's box (set when the kernel is built)
+const FRAME: u32 = 0u;
 
 const LEAF: u32 = 0x80000000u;
 const NONE: u32 = 0xffffffffu;
@@ -182,27 +189,54 @@ fn triangle_hit(o: vec3<f32>, dir: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec
 }
 
 // entry parameter into the node's box inflated by r, clamped to 0; MISS when the ray misses it
-fn slab_t(n: Node, o: vec3<f32>, inv: vec3<f32>, r: f32) -> f32 {
-    let ax = (n.min_x - r - o.x) * inv.x; let bx = (n.max_x + r - o.x) * inv.x;
-    let ay = (n.min_y - r - o.y) * inv.y; let by = (n.max_y + r - o.y) * inv.y;
-    let az = (n.min_z - r - o.z) * inv.z; let bz = (n.max_z + r - o.z) * inv.z;
+// entry parameter into the box [lo - r, hi + r], clamped to 0; MISS when the ray misses it
+fn slab_box(lo: vec3<f32>, hi: vec3<f32>, o: vec3<f32>, inv: vec3<f32>, r: f32) -> f32 {
+    let ax = (lo.x - r - o.x) * inv.x; let bx = (hi.x + r - o.x) * inv.x;
+    let ay = (lo.y - r - o.y) * inv.y; let by = (hi.y + r - o.y) * inv.y;
+    let az = (lo.z - r - o.z) * inv.z; let bz = (hi.z + r - o.z) * inv.z;
     let t0 = fmax(fmax(fmin(ax, bx), fmax(fmin(ay, by), fmin(az, bz))), 0.0);
     let t1 = fmin(fmax(ax, bx), fmin(fmax(ay, by), fmax(az, bz)));
     if t1 >= t0 { return t0; }
     return MISS;
 }
 
+fn slab_t(n: Node, o: vec3<f32>, inv: vec3<f32>, r: f32) -> f32 {
+    return slab_box(vec3<f32>(n.min_x, n.min_y, n.min_z), vec3<f32>(n.max_x, n.max_y, n.max_z), o, inv, r);
+}
+
+// o + d t - c with every rounding error carried, as frame_origin in src/mesh/bvh_shell.rs
+fn frame_comp(o: f32, c: f32, d: f32, t: f32) -> f32 {
+    let s = flush2(two_diff(o, c));
+    let p = flush2(two_prod(flush(d, FLUSH_W), t));
+    let x = two_sum(p.x, s.x);
+    return x.x + (x.y + p.y + s.y);
+}
+fn frame_origin(o: vec3<f32>, dir: vec3<f32>, c: vec3<f32>, t: f32) -> vec3<f32> {
+    return vec3<f32>(frame_comp(o.x, c.x, dir.x, t), frame_comp(o.y, c.y, dir.y, t), frame_comp(o.z, c.z, dir.z, t));
+}
+
+fn vec_at(buf_index: u32, which: u32) -> vec3<f32> {
+    // which 0: centres (4 floats an entry), 1..3: local_tris vertex which-1 (9 floats an entry)
+    if which == 0u { let q = buf_index * 4u; return vec3<f32>(centres[q], centres[q + 1u], centres[q + 2u]); }
+    let q = buf_index * 9u + (which - 1u) * 3u;
+    return vec3<f32>(local_tris[q], local_tris[q + 1u], local_tris[q + 2u]);
+}
+
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let i = id.x;
     if i >= params.count { return; }
-    let k = (params.first + i) * 7u;
+    // 10 floats a ray: origin, direction, tmax, and 1 / direction from the CPU (correctly rounded,
+    // so the boxes' entries, the walk's order and every frame's base are the CPU's bits)
+    let k = (params.first + i) * 10u;
     let o = vec3<f32>(rays[k], rays[k + 1u], rays[k + 2u]);
     let dir = vec3<f32>(rays[k + 3u], rays[k + 4u], rays[k + 5u]);
     let tmax = rays[k + 6u];
     let r = params.r;
-    let inv = vec3<f32>(1.0 / dir.x, 1.0 / dir.y, 1.0 / dir.z);
+    let inv = vec3<f32>(rays[k + 7u], rays[k + 8u], rays[k + 9u]);
     var best_t = tmax;
+    var best_base = 0.0;
+    var best_local = 0.0;
     var best_tri = NONE;
     var best_f = 0u;
     if arrayLength(&nodes) > 0u && slab_t(nodes[0], o, inv, r) != MISS {
@@ -212,16 +246,32 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             let n = nodes[at];
             if (n.a & LEAF) != 0u {
                 let first = n.a & ~LEAF;
+                var leaf_base = slab_t(n, o, inv, r);
+                if leaf_base == MISS { leaf_base = 0.0; }
                 for (var j = first; j < first + n.b; j += 1u) {
                     let t = leaf_tris[j];
                     let q = t * 9u;
                     let a = vec3<f32>(tris[q], tris[q + 1u], tris[q + 2u]);
                     let b = vec3<f32>(tris[q + 3u], tris[q + 4u], tris[q + 5u]);
                     let c = vec3<f32>(tris[q + 6u], tris[q + 7u], tris[q + 8u]);
-                    let h = triangle_hit(o, dir, a, b, c, r);
-                    if h.feature != 0u && h.t <= tmax {
-                        if best_tri == NONE || h.t < best_t || (h.t == best_t && t < best_tri) {
-                            best_t = h.t; best_tri = t; best_f = h.feature;
+                    var base = 0.0;
+                    var h = Hit(0.0, 0u);
+                    if FRAME == 0u {
+                        h = triangle_hit(o, dir, a, b, c, r);
+                    } else if FRAME == 1u {
+                        base = leaf_base;
+                        let oa = frame_origin(o, dir, vec_at(at, 0u), base);
+                        h = triangle_hit(oa, dir, vec_at(j, 1u), vec_at(j, 2u), vec_at(j, 3u), r);
+                    } else {
+                        base = slab_box(min(min(a, b), c), max(max(a, b), c), o, inv, r);
+                        if base == MISS { continue; }
+                        let oa = frame_origin(o, dir, vec_at(t, 0u), base);
+                        h = triangle_hit(oa, dir, vec_at(t, 1u), vec_at(t, 2u), vec_at(t, 3u), r);
+                    }
+                    let key = base + h.t;
+                    if h.feature != 0u && key <= tmax {
+                        if best_tri == NONE || key < best_t || (key == best_t && t < best_tri) {
+                            best_t = key; best_base = base; best_local = h.t; best_tri = t; best_f = h.feature;
                         }
                     }
                 }
@@ -250,5 +300,5 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         }
     }
     let slot = params.first + i;
-    if best_tri == NONE { out[slot] = Out(0.0, NONE, 0u, 0u); } else { out[slot] = Out(best_t, best_tri, best_f, 0u); }
+    if best_tri == NONE { out[slot] = Out(0.0, 0.0, NONE, 0u); } else { out[slot] = Out(best_base, best_local, best_tri, best_f); }
 }

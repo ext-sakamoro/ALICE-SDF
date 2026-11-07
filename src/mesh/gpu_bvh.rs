@@ -12,7 +12,7 @@
 //! Author: Moroya Sakamoto
 
 use super::bvh::{BvhNode, MeshBvh};
-use super::bvh_shell::{ShellFeature, ShellHit, ShellRay};
+use super::bvh_shell::{ShellFeature, ShellFrame, ShellHit, ShellRay};
 use crate::compiled::GpuError;
 use crate::gpu_context::GpuContext;
 use wgpu::util::DeviceExt;
@@ -39,12 +39,28 @@ pub struct FlatBvh {
     pub tris: Vec<f32>,
     /// The parent of each node (the root's is itself)
     pub parents: Vec<u32>,
+    /// 4 floats a node: its box centre (used for leaves, [`ShellFrame::Leaf`])
+    pub node_centres: Vec<f32>,
+    /// 9 floats per entry of `leaf_tris`: that triangle as `v - c`, `c` its leaf's centre
+    pub leaf_local: Vec<f32>,
+    /// 4 floats a triangle: its box centre ([`ShellFrame::Triangle`])
+    pub tri_centres: Vec<f32>,
+    /// 9 floats a triangle: `v - c`, `c` its own box centre
+    pub tri_local: Vec<f32>,
 }
 
-fn push(node: &BvhNode, out: &mut FlatBvh) -> u32 {
+fn local(out: &mut Vec<f32>, t: &super::bvh::BvhTriangle, c: glam::Vec3) {
+    for v in [t.v0 - c, t.v1 - c, t.v2 - c] {
+        out.extend_from_slice(&[v.x, v.y, v.z]);
+    }
+}
+
+fn push(node: &BvhNode, tris: &[super::bvh::BvhTriangle], out: &mut FlatBvh) -> u32 {
     let at = (out.nodes.len() / 8) as u32;
     out.parents.push(at);
     let a = node.aabb();
+    let c = (a.min + a.max) * 0.5;
+    out.node_centres.extend_from_slice(&[c.x, c.y, c.z, 0.0]);
     out.nodes.extend_from_slice(&[
         a.min.x.to_bits(),
         a.min.y.to_bits(),
@@ -59,11 +75,14 @@ fn push(node: &BvhNode, out: &mut FlatBvh) -> u32 {
         BvhNode::Leaf { triangles, .. } => {
             let first = out.leaf_tris.len() as u32;
             out.leaf_tris.extend(triangles.iter().map(|&t| t as u32));
+            for &t in triangles {
+                local(&mut out.leaf_local, &tris[t], c);
+            }
             (first | 0x8000_0000, triangles.len() as u32)
         }
         BvhNode::Internal { left, right, .. } => {
-            let l = push(left, out);
-            let r = push(right, out);
+            let l = push(left, tris, out);
+            let r = push(right, tris, out);
             out.parents[l as usize] = at;
             out.parents[r as usize] = at;
             (l, r)
@@ -82,14 +101,21 @@ pub fn flatten(bvh: &MeshBvh) -> FlatBvh {
         leaf_tris: Vec::new(),
         tris: Vec::with_capacity(bvh.triangles.len() * 9),
         parents: Vec::new(),
+        node_centres: Vec::new(),
+        leaf_local: Vec::new(),
+        tri_centres: Vec::new(),
+        tri_local: Vec::new(),
     };
     for t in &bvh.triangles {
         for v in [t.v0, t.v1, t.v2] {
             out.tris.extend_from_slice(&[v.x, v.y, v.z]);
         }
+        let c = (t.aabb.min + t.aabb.max) * 0.5;
+        out.tri_centres.extend_from_slice(&[c.x, c.y, c.z, 0.0]);
+        local(&mut out.tri_local, t, c);
     }
     if let Some(root) = &bvh.root {
-        push(root, &mut out);
+        push(root, &bvh.triangles, &mut out);
     }
     out
 }
@@ -115,10 +141,10 @@ struct Params {
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct RawHit {
-    t: f32,
+    t_base: f32,
+    t_local: f32,
     tri: u32,
     feature: u32,
-    pad: u32,
 }
 
 struct Gpu {
@@ -129,6 +155,8 @@ struct Gpu {
     leaf_tris: wgpu::Buffer,
     tris: wgpu::Buffer,
     parents: wgpu::Buffer,
+    centres: wgpu::Buffer,
+    local: wgpu::Buffer,
 }
 
 /// First hits of rays on a mesh thickened by `r`: the boundary of the set of points within `r` of
@@ -136,6 +164,7 @@ struct Gpu {
 pub struct ShellRenderer<'a> {
     bvh: &'a MeshBvh,
     r: f32,
+    frame: ShellFrame,
     gpu: Option<Gpu>,
 }
 
@@ -146,9 +175,19 @@ impl<'a> ShellRenderer<'a> {
     /// [`GpuError`] when a device exists but the kernel does not compile or the backend cannot keep
     /// the driver from fusing operations; no device is not an error.
     pub fn new(bvh: &'a MeshBvh, r: f32) -> Result<Self, GpuError> {
+        Self::new_in(ShellFrame::Leaf, bvh, r)
+    }
+
+    /// [`Self::new`], solving each hit in `frame`
+    ///
+    /// # Errors
+    /// As [`Self::new`].
+    pub fn new_in(frame: ShellFrame, bvh: &'a MeshBvh, r: f32) -> Result<Self, GpuError> {
         match GpuContext::request("mesh shell renderer") {
-            Ok(context) => Self::on(context, bvh, r),
-            Err(GpuError::NoAdapter | GpuError::DeviceCreation(_)) => Ok(Self::cpu(bvh, r)),
+            Ok(context) => Self::on_in(context, frame, bvh, r),
+            Err(GpuError::NoAdapter | GpuError::DeviceCreation(_)) => {
+                Ok(Self::cpu_in(frame, bvh, r))
+            }
             Err(e) => Err(e),
         }
     }
@@ -159,14 +198,36 @@ impl<'a> ShellRenderer<'a> {
     /// [`GpuError`] when the kernel does not compile or the backend cannot keep the driver from
     /// fusing operations.
     pub fn on(context: GpuContext, bvh: &'a MeshBvh, r: f32) -> Result<Self, GpuError> {
+        Self::on_in(context, ShellFrame::Leaf, bvh, r)
+    }
+
+    /// [`Self::on`], solving each hit in `frame`
+    ///
+    /// # Errors
+    /// As [`Self::on`].
+    pub fn on_in(
+        context: GpuContext,
+        frame: ShellFrame,
+        bvh: &'a MeshBvh,
+        r: f32,
+    ) -> Result<Self, GpuError> {
         let flat = flatten(bvh);
         if flat.nodes.is_empty() {
             // nothing to hit: every ray misses, with no buffer to bind
-            return Ok(Self::cpu(bvh, r));
+            return Ok(Self::cpu_in(frame, bvh, r));
         }
         let device = context.device();
-        let module =
-            context.shader_module("mesh shell", wgpu::ShaderSource::Wgsl(SHELL_KERNEL.into()))?;
+        let code = match frame {
+            ShellFrame::World => 0,
+            ShellFrame::Leaf => 1,
+            ShellFrame::Triangle => 2,
+        };
+        let text = SHELL_KERNEL.replacen(
+            "const FRAME: u32 = 0u;",
+            &format!("const FRAME: u32 = {code}u;"),
+            1,
+        );
+        let module = context.shader_module("mesh shell", wgpu::ShaderSource::Wgsl(text.into()))?;
         let entry = |binding: u32, ty: wgpu::BufferBindingType| wgpu::BindGroupLayoutEntry {
             binding,
             visibility: wgpu::ShaderStages::COMPUTE,
@@ -188,6 +249,8 @@ impl<'a> ShellRenderer<'a> {
                 entry(4, read),
                 entry(5, read),
                 entry(6, wgpu::BufferBindingType::Storage { read_only: false }),
+                entry(7, read),
+                entry(8, read),
             ],
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -215,9 +278,18 @@ impl<'a> ShellRenderer<'a> {
         let leaf_tris = storage("mesh shell leaves", bytemuck::cast_slice(&flat.leaf_tris));
         let tris = storage("mesh shell triangles", bytemuck::cast_slice(&flat.tris));
         let parents = storage("mesh shell parents", bytemuck::cast_slice(&flat.parents));
+        // the world frame reads neither; bind something non-empty
+        let (c, l): (&[f32], &[f32]) = match frame {
+            ShellFrame::World => (&[0.0; 4], &[0.0; 9]),
+            ShellFrame::Leaf => (&flat.node_centres, &flat.leaf_local),
+            ShellFrame::Triangle => (&flat.tri_centres, &flat.tri_local),
+        };
+        let centres = storage("mesh shell frame centres", bytemuck::cast_slice(c));
+        let local = storage("mesh shell local triangles", bytemuck::cast_slice(l));
         Ok(Self {
             bvh,
             r,
+            frame,
             gpu: Some(Gpu {
                 context,
                 pipeline,
@@ -226,6 +298,8 @@ impl<'a> ShellRenderer<'a> {
                 leaf_tris,
                 tris,
                 parents,
+                centres,
+                local,
             }),
         })
     }
@@ -233,7 +307,18 @@ impl<'a> ShellRenderer<'a> {
     /// On the CPU only
     #[must_use]
     pub const fn cpu(bvh: &'a MeshBvh, r: f32) -> Self {
-        Self { bvh, r, gpu: None }
+        Self::cpu_in(ShellFrame::Leaf, bvh, r)
+    }
+
+    /// [`Self::cpu`], solving each hit in `frame`
+    #[must_use]
+    pub const fn cpu_in(frame: ShellFrame, bvh: &'a MeshBvh, r: f32) -> Self {
+        Self {
+            bvh,
+            r,
+            frame,
+            gpu: None,
+        }
     }
 
     /// Where [`Self::first_hits`] computes
@@ -264,7 +349,7 @@ impl<'a> ShellRenderer<'a> {
         rays.iter()
             .map(|ray| {
                 self.bvh
-                    .shell_first_hit(ray.origin, ray.dir, self.r, ray.tmax)
+                    .shell_first_hit_in(self.frame, ray.origin, ray.dir, self.r, ray.tmax)
             })
             .collect()
     }
@@ -280,9 +365,14 @@ impl<'a> ShellRenderer<'a> {
         let words: Vec<f32> = rays
             .iter()
             .flat_map(|r| {
-                [
-                    r.origin.x, r.origin.y, r.origin.z, r.dir.x, r.dir.y, r.dir.z, r.tmax,
-                ]
+                {
+                    // 1 / dir on the CPU: the kernel then divides nowhere in the walk
+                    let inv = r.dir.recip();
+                    [
+                        r.origin.x, r.origin.y, r.origin.z, r.dir.x, r.dir.y, r.dir.z, r.tmax,
+                        inv.x, inv.y, inv.z,
+                    ]
+                }
             })
             .collect();
         let ray_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -320,6 +410,8 @@ impl<'a> ShellRenderer<'a> {
                 (4, &gpu.tris),
                 (5, &gpu.parents),
                 (6, &out),
+                (7, &gpu.centres),
+                (8, &gpu.local),
             ]
             .map(|(binding, b)| wgpu::BindGroupEntry {
                 binding,
@@ -398,7 +490,10 @@ fn decode(h: &RawHit) -> Result<Option<ShellHit>, GpuError> {
         }
     };
     Ok(Some(ShellHit {
-        t: h.t,
+        // the same f32 sum the kernel compared by
+        t: h.t_base + h.t_local,
+        t_base: h.t_base,
+        t_local: h.t_local,
         triangle: h.tri,
         feature,
     }))

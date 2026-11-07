@@ -110,3 +110,55 @@ pub fn grazing(v: &[Vec3], ix: &[u32], r: f32) -> Vec<ShellRay> {
     }
     rays
 }
+
+/// Long thin triangles (40-80 x 1-4 mm) about 1400 mm from the origin and 25 rays per triangle from
+/// 900-1400 mm back, aimed at points of it: the scale where an f32 world coordinate's ulp is a
+/// sizeable part of a 0.002 mm shell
+pub fn far_thin(seed: u64) -> (Vec<Vec3>, Vec<u32>, Vec<ShellRay>) {
+    let mut x = seed;
+    let mut u = move || {
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        (x >> 40) as f32 / (1u64 << 24) as f32
+    };
+    let (mut v, mut ix, mut aims) = (Vec::new(), Vec::new(), Vec::new());
+    for k in 0..60u32 {
+        let base = Vec3::new(
+            u() * 1200.0 - 600.0,
+            u() * 500.0 - 170.0,
+            900.0 + u() * 500.0,
+        );
+        let ax = Vec3::new(u() - 0.5, u() - 0.5, u() - 0.5).normalize();
+        let pp = Vec3::new(u() - 0.5, u() - 0.5, u() - 0.5)
+            .cross(ax)
+            .normalize();
+        let (l, w) = (40.0 + 40.0 * u(), 1.0 + 3.0 * u());
+        v.extend([
+            base,
+            base + ax * l,
+            base + ax * (l - w * (u() - 0.5)) + pp * w,
+        ]);
+        ix.extend([3 * k, 3 * k + 1, 3 * k + 2]);
+    }
+    for t in ix.chunks_exact(3) {
+        let (p0, p1, p2) = (v[t[0] as usize], v[t[1] as usize], v[t[2] as usize]);
+        for _ in 0..25 {
+            let (a, b0) = (u(), u());
+            let p = p0 + (p1 - p0) * a + (p2 - p0) * (b0 * (1.0 - a));
+            let n = (p1 - p0).cross(p2 - p0).normalize();
+            let tilt = 0.1 + 0.8 * u();
+            let side = Vec3::new(u() - 0.5, u() - 0.5, u() - 0.5)
+                .cross(n)
+                .normalize();
+            let d = (-n * tilt + side * (1.0 - tilt * tilt).sqrt()).normalize();
+            let o = p - d * (900.0 + 500.0 * u());
+            aims.push(ShellRay {
+                origin: o,
+                dir: d,
+                tmax: 3000.0,
+            });
+        }
+    }
+    (v, ix, aims)
+}

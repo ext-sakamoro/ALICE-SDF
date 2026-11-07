@@ -119,53 +119,10 @@ fn soup_and_sphere_agree_with_the_f64_truth() {
 /// sizeable part of a 0.002 mm shell. Each frame's hits against the f64 distance.
 #[test]
 fn far_thin_triangles_in_each_frame() {
-    let mut x = 0x5EED_F00Du64;
-    let mut u = move || {
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        (x >> 40) as f32 / (1u64 << 24) as f32
-    };
     let r = 0.002f32;
-    let (mut v, mut ix, mut aims) = (Vec::new(), Vec::new(), Vec::new());
-    for k in 0..60u32 {
-        let base = Vec3::new(
-            u() * 1200.0 - 600.0,
-            u() * 500.0 - 170.0,
-            900.0 + u() * 500.0,
-        );
-        let ax = Vec3::new(u() - 0.5, u() - 0.5, u() - 0.5).normalize();
-        let pp = Vec3::new(u() - 0.5, u() - 0.5, u() - 0.5)
-            .cross(ax)
-            .normalize();
-        let (l, w) = (40.0 + 40.0 * u(), 1.0 + 3.0 * u());
-        v.extend([
-            base,
-            base + ax * l,
-            base + ax * (l - w * (u() - 0.5)) + pp * w,
-        ]);
-        ix.extend([3 * k, 3 * k + 1, 3 * k + 2]);
-    }
+    let (v, ix, aims) = shell_scenes::far_thin(0x5EED_F00D);
     let bvh = MeshBvh::build(&v, &ix, 4);
     let truth = shell_oracle::triangles(&v, &ix);
-    for t in &bvh.triangles {
-        for _ in 0..25 {
-            let (a, b0) = (u(), u());
-            let p = t.v0 + (t.v1 - t.v0) * a + (t.v2 - t.v0) * (b0 * (1.0 - a));
-            let n = (t.v1 - t.v0).cross(t.v2 - t.v0).normalize();
-            let tilt = 0.1 + 0.8 * u();
-            let side = Vec3::new(u() - 0.5, u() - 0.5, u() - 0.5)
-                .cross(n)
-                .normalize();
-            let d = (-n * tilt + side * (1.0 - tilt * tilt).sqrt()).normalize();
-            let o = p - d * (900.0 + 500.0 * u());
-            aims.push(ShellRay {
-                origin: o,
-                dir: d,
-                tmax: 3000.0,
-            });
-        }
-    }
     let mut report = Vec::new();
     for frame in [ShellFrame::World, ShellFrame::Leaf, ShellFrame::Triangle] {
         let (mut worst, mut hits, mut bad) = (0f64, 0, Vec::new());

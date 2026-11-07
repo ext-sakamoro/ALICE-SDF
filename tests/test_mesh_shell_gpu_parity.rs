@@ -11,7 +11,7 @@
 #![cfg(feature = "gpu")]
 
 use alice_sdf::mesh::{
-    triangle_shell_hit, MeshBvh, ShellBackend, ShellHit, ShellRay, ShellRenderer,
+    triangle_shell_hit, MeshBvh, ShellBackend, ShellFrame, ShellHit, ShellRay, ShellRenderer,
 };
 use glam::Vec3;
 
@@ -21,7 +21,7 @@ mod shell_margin;
 mod shell_oracle;
 #[path = "common/shell_scenes.rs"]
 mod shell_scenes;
-use shell_scenes::{grazing, soup, sphere, view};
+use shell_scenes::{far_thin, grazing, soup, sphere, view};
 
 fn ulps(a: f32, b: f32) -> u64 {
     let key = |x: f32| {
@@ -210,9 +210,16 @@ fn gpu_first_hits_match_the_cpu_path() {
                 }
                 if let (Some(g), Some(c)) = (g, c) {
                     if g.t.to_bits() != c.t.to_bits() && band.is_none() {
-                        let bound =
-                            shell_margin::t_bound(bvh, ray, *r, c.triangle, c.feature as u32, c.t)
-                                .expect("the CPU's answer is one of its pieces");
+                        let bound = shell_margin::t_bound_in(
+                            ShellFrame::Leaf,
+                            bvh,
+                            ray,
+                            *r,
+                            c.triangle,
+                            c.feature as u32,
+                            c.t,
+                        )
+                        .expect("the CPU's answer is one of its pieces");
                         let diff = f64::from((g.t - c.t).abs());
                         worst_ratio = worst_ratio.max(diff / bound.max(f64::MIN_POSITIVE));
                         if diff > bound {
@@ -279,4 +286,78 @@ fn gpu_first_hits_match_the_cpu_path() {
     );
     assert_eq!((outside, over_bound), (0, 0), "{outside_why:#?}");
     assert!(ratchet_bad.is_empty(), "{ratchet_bad:#?}");
+}
+
+/// Each frame on the GPU: how long a batch takes, how far its hits lie from the f64 shell on the
+/// far scene, and whether it agrees with its own CPU path; printed, for choosing a frame on cost
+#[test]
+fn each_frame_on_the_gpu_cost_and_accuracy() {
+    let (sv, si) = sphere(48, 96);
+    let (fv, fi, far) = far_thin(0x5EED_F00D);
+    let sphere_bvh = MeshBvh::build(&sv, &si, 4);
+    let far_bvh = MeshBvh::build(&fv, &fi, 4);
+    let truth = shell_oracle::triangles(&fv, &fi);
+    let views: Vec<ShellRay> = [Vec3::new(0., 0., 3.), Vec3::new(2., 1.5, 2.)]
+        .iter()
+        .flat_map(|e| view(*e, 256))
+        .collect();
+    let mut wrong = Vec::new();
+    for frame in [ShellFrame::World, ShellFrame::Leaf, ShellFrame::Triangle] {
+        let sphere_r = ShellRenderer::new_in(frame, &sphere_bvh, 0.002).expect("renderer");
+        if sphere_r.backend() == ShellBackend::Cpu {
+            assert!(
+                std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                "no GPU device"
+            );
+            eprintln!("gpu-test: skipped (no GPU device)");
+            return;
+        }
+        let far_r = ShellRenderer::new_in(frame, &far_bvh, 0.002).expect("renderer");
+        // warm, then the best of five
+        let _ = sphere_r.first_hits(&views).expect("gpu");
+        let best = |f: &dyn Fn() -> ()| {
+            (0..5)
+                .map(|_| {
+                    let s = std::time::Instant::now();
+                    f();
+                    s.elapsed().as_secs_f64()
+                })
+                .fold(f64::INFINITY, f64::min)
+        };
+        let t_sphere = best(&|| {
+            let _ = sphere_r.first_hits(&views).expect("gpu");
+        });
+        let t_far = best(&|| {
+            let _ = far_r.first_hits(&far).expect("gpu");
+        });
+        let gpu = far_r.first_hits(&far).expect("gpu");
+        let cpu = far_r.cpu_hits(&far);
+        let (mut worst, mut differ, mut hits) = (0f64, 0, 0);
+        for (k, (g, c)) in gpu.iter().zip(&cpu).enumerate() {
+            differ +=
+                (g.map(|h| (h.triangle, h.feature)) != c.map(|h| (h.triangle, h.feature))) as usize;
+            let ray = far[k];
+            let got = g.map(|h| f64::from(h.t_base) + f64::from(h.t_local));
+            if let Some(t) = got {
+                hits += 1;
+                let at = ray.origin.as_dvec3() + ray.dir.as_dvec3() * t;
+                worst = worst.max((shell_oracle::distance(&truth, at) - 0.002).abs());
+            }
+            if let Some(why) =
+                shell_oracle::judge(&truth, ray.origin, ray.dir, ray.tmax, 0.002, got)
+            {
+                wrong.push(format!("{frame:?} far ray {k}: {why}"));
+            }
+        }
+        println!(
+            "frame {frame:?}: sphere views {} rays {:.2} ms, far {} rays {:.2} ms; far hits {hits}, worst |d - r| {worst:.3e} ({:.2}% of r), gpu/cpu differ {differ}",
+            views.len(), t_sphere * 1e3, far.len(), t_far * 1e3, worst / 0.002 * 100.0
+        );
+    }
+    assert!(
+        wrong.is_empty(),
+        "{} against the f64 truth, first {:#?}",
+        wrong.len(),
+        &wrong[..wrong.len().min(4)]
+    );
 }
