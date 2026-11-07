@@ -10,7 +10,9 @@
 //! Author: Moroya Sakamoto
 #![cfg(feature = "gpu")]
 
-use alice_sdf::mesh::{MeshBvh, ShellBackend, ShellHit, ShellRay, ShellRenderer};
+use alice_sdf::mesh::{
+    triangle_shell_hit, MeshBvh, ShellBackend, ShellHit, ShellRay, ShellRenderer,
+};
 use glam::Vec3;
 
 fn sphere(stacks: u32, slices: u32) -> (Vec<Vec3>, Vec<u32>) {
@@ -169,6 +171,50 @@ fn compare(gpu: &[Option<ShellHit>], cpu: &[Option<ShellHit>], s: &mut Stats) {
     }
 }
 
+/// For the first rays whose answers differ by more than rounding: the GPU's triangle on the CPU,
+/// the CPU's triangle on the CPU, and the brute-force answer
+fn explain(
+    bvh: &MeshBvh,
+    r: f32,
+    rays: &[ShellRay],
+    gpu: &[Option<ShellHit>],
+    cpu: &[Option<ShellHit>],
+) {
+    let mut shown = 0;
+    for (i, (g, c)) in gpu.iter().zip(cpu).enumerate() {
+        let far = match (g, c) {
+            (Some(g), Some(c)) => ulps(g.t, c.t) > 1000,
+            (None, None) => false,
+            _ => true,
+        };
+        if !far || shown >= 4 {
+            continue;
+        }
+        shown += 1;
+        let ray = rays[i];
+        let on = |h: &Option<ShellHit>| {
+            h.map(|h| {
+                triangle_shell_hit(ray.origin, ray.dir, &bvh.triangles[h.triangle as usize], r)
+            })
+        };
+        let mut brute: Option<(f32, usize)> = None;
+        for (k, t) in bvh.triangles.iter().enumerate() {
+            if let Some((s, _)) = triangle_shell_hit(ray.origin, ray.dir, t, r) {
+                if s <= ray.tmax && brute.is_none_or(|(b, _)| s < b) {
+                    brute = Some((s, k));
+                }
+            }
+        }
+        let tri = |h: &Option<ShellHit>| {
+            h.map(|h| {
+                let t = &bvh.triangles[h.triangle as usize];
+                [t.v0, t.v1, t.v2]
+            })
+        };
+        println!("  ray {i} o {:?} d {:?}\n    gpu {g:?} -> cpu on it {:?} verts {:?}\n    cpu {c:?} -> {:?}\n    brute {brute:?}", ray.origin, ray.dir, on(g), tri(g), on(c));
+    }
+}
+
 #[test]
 fn gpu_first_hits_match_the_cpu_path() {
     let (sv, si) = sphere(48, 96);
@@ -205,6 +251,7 @@ fn gpu_first_hits_match_the_cpu_path() {
             let mut s = Stats::default();
             compare(&gpu, &cpu, &mut s);
             println!("{name} {label}: {s:?}");
+            explain(bvh, *r, rays, &gpu, &cpu);
             all.rays += s.rays;
             all.hits += s.hits;
             all.set += s.set;
