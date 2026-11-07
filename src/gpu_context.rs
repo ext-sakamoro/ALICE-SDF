@@ -322,7 +322,7 @@ impl GpuContext {
     /// Whether the driver of this device can fuse `a * b + c` on `path` ([`contraction`]).
     #[must_use]
     pub fn contraction(&self, path: GpuPath) -> Contraction {
-        contraction(path, self.0 .0.backend)
+        contraction(path, self.backend())
     }
 
     /// The device
