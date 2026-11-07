@@ -79,6 +79,8 @@ pub mod uv_unwrap;
 pub mod winding;
 
 #[cfg(feature = "gpu")]
+pub mod gpu_bvh;
+#[cfg(feature = "gpu")]
 pub mod gpu_marching_cubes;
 #[cfg(feature = "gpu")]
 pub mod gpu_mc_shaders;

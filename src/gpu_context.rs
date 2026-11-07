@@ -147,7 +147,7 @@ fn create(held: &mut Lifecycle, label: &str) -> Result<GpuContext, GpuError> {
 /// options are wgpu's own for the Vulkan backend, except that the bounds checks stay on where wgpu
 /// would drop them for a robust device: a passthrough module cannot ask which it is on.
 #[cfg(not(target_arch = "wasm32"))]
-fn no_contraction_spirv(source: wgpu::ShaderSource<'_>) -> Result<Vec<u32>, GpuError> {
+pub(crate) fn no_contraction_spirv(source: wgpu::ShaderSource<'_>) -> Result<Vec<u32>, GpuError> {
     use naga::back::spv;
     use naga::proc::{BoundsCheckPolicies, BoundsCheckPolicy};
     let failed = |e: String| GpuError::ShaderCompilation(e);
