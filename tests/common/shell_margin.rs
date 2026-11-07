@@ -150,10 +150,23 @@ fn two_prod(a: f32, b: f32) -> (f32, f32) {
     let (bh, bl) = split(b);
     (p, ((ah * bh - p) + ah * bl + al * bh) + al * bl)
 }
+fn flush(x: f32, below: f32) -> f32 {
+    if x.abs() < below {
+        0.0
+    } else {
+        x
+    }
+}
 fn plane_distance(a: Vec3, o: Vec3, n: Vec3) -> f32 {
-    let (wx, ex) = two_diff(a.x, o.x);
-    let (wy, ey) = two_diff(a.y, o.y);
-    let (wz, ez) = two_diff(a.z, o.z);
+    let (fw, fnn) = (1.0 / 1_099_511_627_776.0, 1.0 / 274_877_906_944.0);
+    let w = |x: f32, y: f32| {
+        let (s, e) = two_diff(x, y);
+        (flush(s, fw), flush(e, fw))
+    };
+    let (wx, ex) = w(a.x, o.x);
+    let (wy, ey) = w(a.y, o.y);
+    let (wz, ez) = w(a.z, o.z);
+    let n = Vec3::new(flush(n.x, fnn), flush(n.y, fnn), flush(n.z, fnn));
     let (p0, q0) = two_prod(wx, n.x);
     let (h1, r1) = two_prod(wy, n.y);
     let (p1, s1) = two_sum(p0, h1);
@@ -211,12 +224,10 @@ fn face(
     if dn == 0.0 {
         return Vec::new();
     }
-    // h is exact up to its last rounding for given n, and moves with n. n_i = nu_i / nl: the square
-    // root moves every component by the same factor, which moves h by SQRT E |h|; each division
-    // adds its own DIV E |n_i|, which moves h by DIV E sum |w_i n_i| (w = anchor - o)
-    let h = plane_distance(anchor, o, n);
-    let w = (anchor.as_dvec3() - o.as_dvec3()).abs();
-    let dh = SQRT * E * f64::from(h.abs()) + DIV * E * w.dot(a(n)) + 2.0 * E * f64::from(h.abs());
+    // h = P / |nu|: P is formed from + - * alone (bit-identical on the GPU), so h moves only by the
+    // square root of |nu| and the one division
+    let h = plane_distance(anchor, o, nu) / nl;
+    let dh = (SQRT + DIV + 1.0) * E * f64::from(h.abs());
     let mut out = Vec::new();
     for sg in [1.0f32, -1.0] {
         let off = sg * r;

@@ -92,9 +92,17 @@ fn two_prod(a: f32, b: f32) -> vec2<f32> {
     let y = split(b);
     return vec2<f32>(p, ((x.x * y.x - p) + x.x * y.y + x.y * y.x) + x.y * y.y);
 }
-// (a - o) . n: exact differences, Dot2, plus the remainders against n
-fn plane_distance(a: vec3<f32>, o: vec3<f32>, n: vec3<f32>) -> f32 {
-    let wx = two_diff(a.x, o.x); let wy = two_diff(a.y, o.y); let wz = two_diff(a.z, o.z);
+// below these a difference component (or its remainder) and a normal component are exactly 0, as on
+// the CPU: every intermediate of the error-free transforms stays a normal f32
+const FLUSH_W: f32 = 0x1p-40f;
+const FLUSH_N: f32 = 0x1p-38f;
+fn flush(x: f32, below: f32) -> f32 { return select(x, 0.0, abs(x) < below); }
+fn flush2(v: vec2<f32>) -> vec2<f32> { return vec2<f32>(flush(v.x, FLUSH_W), flush(v.y, FLUSH_W)); }
+
+// (a - o) . n for an unnormalised n: exact differences, Dot2, plus the remainders against n
+fn plane_distance(a: vec3<f32>, o: vec3<f32>, n0: vec3<f32>) -> f32 {
+    let wx = flush2(two_diff(a.x, o.x)); let wy = flush2(two_diff(a.y, o.y)); let wz = flush2(two_diff(a.z, o.z));
+    let n = vec3<f32>(flush(n0.x, FLUSH_N), flush(n0.y, FLUSH_N), flush(n0.z, FLUSH_N));
     let q0 = two_prod(wx.x, n.x);
     let r1 = two_prod(wy.x, n.y);
     let s1 = two_sum(q0.x, r1.x);
@@ -133,7 +141,8 @@ fn face_t(o: vec3<f32>, dir: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>
     let n = vec3<f32>(nu.x / nl, nu.y / nl, nu.z / nl);
     let dn = d(dir, n);
     if dn == 0.0 { return MISS; }
-    let h = plane_distance(fr.anchor, o, n);
+    // one division, at the end
+    let h = plane_distance(fr.anchor, o, nu) / nl;
     var best = MISS;
     for (var k = 0u; k < 2u; k += 1u) {
         let sg = select(-1.0, 1.0, k == 0u);

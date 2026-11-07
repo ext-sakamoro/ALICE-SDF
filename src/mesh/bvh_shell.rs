@@ -114,8 +114,19 @@ fn cylinder_t(o: Vec3, d: Vec3, u: Vec3, v: Vec3, r: f32, root: RootFn) -> Optio
 // Error-free transforms. A product's rounding error comes from Dekker's split (Veltkamp,
 // 4097 = 2^12 + 1 for f32), not from a fused multiply-add: `+ - *` are correctly rounded in WGSL
 // and the shader path keeps them unfused, so the CPU and the GPU form the same bits. They are
-// exact while every intermediate value is zero or a normal f32 (a GPU may flush subnormals to
-// zero); `plane_distance_in_domain` checks that for given inputs.
+// exact while every intermediate value is zero or a normal f32, since a GPU may flush subnormals
+// to zero.
+//
+// The plane distance keeps them there by construction: a difference component or its remainder
+// below `FLUSH_W` (2^-40), and a normal component below `FLUSH_N` (2^-38), is set to exactly 0, on
+// the CPU and in WGSL alike. A nonzero lo part of Dekker's split has |lo(x)| >= ulp(x) >= 2^-24 |x|,
+// so every partial product is at least 2^-48 |w_i nu_i| >= 2^-126 once every nonzero
+// |w_i nu_i| >= 2^-78, and every TwoSum remainder is a multiple of an operand's ulp above 2^-102:
+// all normal, for any mesh and any ray. The flush moves the distance by at most
+// (|w| 2^-38 + |nu| 2^-40) / |nu|, about 2e-10 mm over a 60 mm frame.
+// Measured on a figure (4 views, r .002 and .004 mm, world and leaf frames), without the flush,
+// the smallest intermediate was 5.0e-16 (a lo * lo), |anchor - o| 7.66e-3 and a normal component
+// 1.37e-6 mm: the flush does not change those results.
 
 /// `a + b = s + e` exactly
 #[inline]
@@ -149,13 +160,37 @@ pub(crate) fn two_prod(a: f32, b: f32) -> (f32, f32) {
     (p, ((ah * bh - p) + ah * bl + al * bh) + al * bl)
 }
 
-/// `(a - o) . n`: the difference exact per component, then Dot2 (Ogita, Rump, Oishi) of it with `n`,
-/// plus the differences' remainders against `n`
+/// Below this a difference component or its remainder is 0 (see the comment above `two_sum`)
+const FLUSH_W: f32 = 1.0 / 1_099_511_627_776.0; // 2^-40
+/// Below this a normal component is 0
+const FLUSH_N: f32 = 1.0 / 274_877_906_944.0; // 2^-38
+
+#[inline]
+fn flush(x: f32, below: f32) -> f32 {
+    if x.abs() < below {
+        0.0
+    } else {
+        x
+    }
+}
+
+/// `(a - o) . n` for an unnormalised `n`: the difference exact per component, then Dot2 (Ogita,
+/// Rump, Oishi) of it with `n`, plus the differences' remainders against `n`; the flush keeps every
+/// intermediate normal
 #[inline]
 fn plane_distance(a: Vec3, o: Vec3, n: Vec3) -> f32 {
-    let (wx, ex) = two_diff(a.x, o.x);
-    let (wy, ey) = two_diff(a.y, o.y);
-    let (wz, ez) = two_diff(a.z, o.z);
+    let w = |x: f32, y: f32| {
+        let (s, e) = two_diff(x, y);
+        (flush(s, FLUSH_W), flush(e, FLUSH_W))
+    };
+    let (wx, ex) = w(a.x, o.x);
+    let (wy, ey) = w(a.y, o.y);
+    let (wz, ez) = w(a.z, o.z);
+    let n = Vec3::new(
+        flush(n.x, FLUSH_N),
+        flush(n.y, FLUSH_N),
+        flush(n.z, FLUSH_N),
+    );
     let (p0, q0) = two_prod(wx, n.x);
     let (h1, r1) = two_prod(wy, n.y);
     let (p1, s1) = two_sum(p0, h1);
@@ -164,21 +199,35 @@ fn plane_distance(a: Vec3, o: Vec3, n: Vec3) -> f32 {
     p2 + (q0 + r1 + s1 + r2 + s2 + (ex * n.x + ey * n.y + ez * n.z))
 }
 
-/// Whether every intermediate value of `plane_distance(a, o, n)` is zero or a normal f32, so a GPU
-/// that flushes subnormals forms the same bits as the CPU
+/// Whether every intermediate value of `plane_distance(a, o, n)` (after its flush) is zero or a
+/// normal f32, so a GPU that flushes subnormals forms the same bits as the CPU
 #[cfg(test)]
 pub(crate) fn plane_distance_in_domain(a: Vec3, o: Vec3, n: Vec3) -> bool {
+    plane_distance_in_domain_with(a, o, n, true)
+}
+
+/// The same check with the flush on or off (off shows the inputs it protects against)
+#[cfg(test)]
+pub(crate) fn plane_distance_in_domain_with(a: Vec3, o: Vec3, n: Vec3, flushed: bool) -> bool {
     let ok = |v: f32| v == 0.0 || v.abs() >= f32::MIN_POSITIVE;
-    let mut vals = vec![a.x, a.y, a.z, o.x, o.y, o.z, n.x, n.y, n.z];
+    let (fw, fnn) = if flushed {
+        (FLUSH_W, FLUSH_N)
+    } else {
+        (0.0, 0.0)
+    };
+    let mut vals = vec![a.x, a.y, a.z, o.x, o.y, o.z];
     let diff = |x: f32, y: f32, vals: &mut Vec<f32>| {
         let s = x - y;
         let bb = s - x;
         vals.extend([s, bb, s - bb, x - (s - bb), -y - bb]);
-        two_diff(x, y)
+        let (s, e) = two_diff(x, y);
+        (flush(s, fw), flush(e, fw))
     };
     let (wx, ex) = diff(a.x, o.x, &mut vals);
     let (wy, ey) = diff(a.y, o.y, &mut vals);
     let (wz, ez) = diff(a.z, o.z, &mut vals);
+    let n = Vec3::new(flush(n.x, fnn), flush(n.y, fnn), flush(n.z, fnn));
+    vals.extend([n.x, n.y, n.z, wx, wy, wz, ex, ey, ez]);
     let prod = |x: f32, y: f32, vals: &mut Vec<f32>| {
         let p = x * y;
         let (xh, xl) = split(x);
@@ -276,7 +325,8 @@ fn face_t(o: Vec3, d: Vec3, a: Vec3, b: Vec3, c: Vec3, r: f32) -> Option<f32> {
     if dn == 0.0 {
         return None;
     }
-    let h = plane_distance(anchor, o, n);
+    // one division, at the end: the GPU's division and square root then move h in proportion to h
+    let h = plane_distance(anchor, o, nu) / nl;
     let mut best: Option<f32> = None;
     for sg in [1.0f32, -1.0] {
         let t = (h + sg * r) / dn;
@@ -846,10 +896,7 @@ mod tests {
                 comp(o.z, c.z, d.z),
             );
             let (anchor, nu) = face_frame(local.v0, local.v1, local.v2);
-            assert!(
-                plane_distance_in_domain(anchor, oa, nu / nu.length()),
-                "seed {seed}"
-            );
+            assert!(plane_distance_in_domain(anchor, oa, nu), "seed {seed}");
             let e = match triangle_shell_hit(oa, d, &local, r) {
                 Some((tl, _)) => {
                     let at = o.as_dvec3() + d.as_dvec3() * (f64::from(t_adv) + f64::from(tl));
@@ -894,10 +941,11 @@ mod tests {
         ));
         assert!(plane_distance_in_domain(a, a, n));
         // and a case outside it, so the check has teeth
-        assert!(!plane_distance_in_domain(
+        assert!(!plane_distance_in_domain_with(
             v(1e-20, 0.0, 0.0),
             v(-1e-20, 0.0, 0.0),
-            v(1e-20, 0.0, 1.0)
+            v(1e-20, 0.0, 1.0),
+            false
         ));
     }
 
@@ -923,7 +971,8 @@ mod tests {
                 continue;
             };
             let (n6, d6) = (n.as_dvec3(), d.as_dvec3());
-            let h6 = (anchor.as_dvec3() - o.as_dvec3()).dot(n6);
+            // the method's plane distance: (anchor - o) . nu over its own f32 |nu|
+            let h6 = (anchor.as_dvec3() - o.as_dvec3()).dot(nu.as_dvec3()) / f64::from(nu.length());
             // the method's own f32 d . n: this test isolates the plane distance
             let dn = f64::from(d.dot(n));
             let _ = d6;
@@ -983,5 +1032,33 @@ mod tests {
             }
         }
         assert_eq!(crack, 0, "points over neither triangle");
+    }
+
+    #[test]
+    fn the_flush_keeps_every_intermediate_normal_for_any_input() {
+        // a proof check of the construction: random inputs over 80 decades, components near zero
+        // included, are all in the exact domain once flushed
+        let mut u = xorshift(0xF1_05);
+        let mut tiny = 0;
+        for _ in 0..50000 {
+            let mut c = || {
+                let x = (u() - 0.5) * 2.0;
+                let e = (u() * 80.0) as i32 - 60;
+                let s = f32::from_bits(((e + 127) as u32) << 23);
+                if u() < 0.1 {
+                    0.0
+                } else {
+                    x * s
+                }
+            };
+            let (a, o, n) = (v(c(), c(), c()), v(c(), c(), c()), v(c(), c(), c()));
+            tiny += (!plane_distance_in_domain_with(a, o, n, false)) as usize;
+            assert!(plane_distance_in_domain(a, o, n), "a {a:?} o {o:?} n {n:?}");
+        }
+        // inputs the flush is there for did occur
+        assert!(
+            tiny > 100,
+            "only {tiny} inputs left the domain without the flush"
+        );
     }
 }
