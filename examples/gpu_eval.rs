@@ -81,9 +81,7 @@ fn run_gpu_example() {
         reason = "example timing printed to stdout, not stored, not part of library output"
     )]
     let init_time = start.elapsed();
-    println!("GPU initialization: {:?}", init_time);
-    // whether this device's driver may fuse `a * b + c`: the same bits on every device only when not
-    println!("Multiply-add contraction: {:?}\n", gpu.contraction());
+    println!("GPU initialization: {:?}\n", init_time);
 
     // === Method 3: Evaluate Single Point ===
     println!("--- Single Point Evaluation ---");
