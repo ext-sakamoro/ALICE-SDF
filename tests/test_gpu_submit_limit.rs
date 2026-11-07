@@ -48,6 +48,27 @@ const OVER_LIMIT: &[Listed] = &[
         nodes: 1,
         reason: "a batch larger than a workgroup dispatch returns every point",
     },
+    Listed {
+        file: "test_gpu_workgroup_size.rs",
+        method: "eval_batch",
+        points: 70_000,
+        nodes: 0,
+        reason: "past the dispatch limit at size 1: refused, nothing is submitted",
+    },
+    Listed {
+        file: "test_gpu_workgroup_size.rs",
+        method: "eval_batch_async",
+        points: 70_000,
+        nodes: 0,
+        reason: "past the dispatch limit at size 1: refused, nothing is submitted",
+    },
+    Listed {
+        file: "test_gpu_workgroup_size.rs",
+        method: "eval_batch_pooled",
+        points: 70_000,
+        nodes: 0,
+        reason: "past the dispatch limit at size 1: refused, nothing is submitted",
+    },
 ];
 
 /// The number written by `prefix` + digits at the start of or inside `s`

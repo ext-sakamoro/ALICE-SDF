@@ -37,6 +37,17 @@ use crate::types::SdfNode;
 /// Error type for GPU evaluation
 #[derive(Error, Debug)]
 pub enum GpuError {
+    /// A batch needs more workgroups than one dispatch of this device can have: a shader with a
+    /// small declared size over many points. Split the points, or declare a larger size
+    #[error("{points} points at workgroup size {workgroup_size} need more than the device's {limit} workgroups in a dispatch")]
+    DispatchTooLarge {
+        /// Points in the batch
+        points: usize,
+        /// The size the shader declares
+        workgroup_size: u32,
+        /// The device's limit per dimension
+        limit: u32,
+    },
     /// Failed to create GPU adapter
     #[error("Failed to create GPU adapter")]
     NoAdapter,
@@ -296,6 +307,14 @@ impl WgpuEngine {
     /// For small numbers of points, CPU evaluation may be faster due to
     /// GPU dispatch overhead.
     fn eval_batch(&self, points: &[Vec3]) -> Result<Vec<f32>, GpuError> {
+        let workgroup_count = dispatch_count(
+            points.len(),
+            self.workgroup_size,
+            self.context()
+                .device()
+                .limits()
+                .max_compute_workgroups_per_dimension,
+        )?;
         if points.is_empty() {
             return Ok(Vec::new());
         }
@@ -373,9 +392,6 @@ impl WgpuEngine {
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
 
-            // Calculate workgroup count (adaptive threads per workgroup)
-            let wg = self.workgroup_size;
-            let workgroup_count = (point_count as u32).div_ceil(wg);
             compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
 
@@ -481,6 +497,14 @@ impl WgpuEngine {
         points: &[Vec3],
         pool: &mut WgpuPool,
     ) -> Result<Vec<f32>, GpuError> {
+        let workgroup_count = dispatch_count(
+            points.len(),
+            self.workgroup_size,
+            self.context()
+                .device()
+                .limits()
+                .max_compute_workgroups_per_dimension,
+        )?;
         if points.is_empty() {
             return Ok(Vec::new());
         }
@@ -529,7 +553,6 @@ impl WgpuEngine {
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
 
-            let workgroup_count = (point_count as u32).div_ceil(self.workgroup_size);
             compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
 
@@ -647,6 +670,14 @@ impl WgpuEngine {
     /// This is the async version that allows CPU work while GPU computes.
     /// Use this for optimal CPU/GPU overlap in real-time applications.
     async fn eval_batch_async(&self, points: &[Vec3]) -> Result<Vec<f32>, GpuError> {
+        let workgroup_count = dispatch_count(
+            points.len(),
+            self.workgroup_size,
+            self.context()
+                .device()
+                .limits()
+                .max_compute_workgroups_per_dimension,
+        )?;
         if points.is_empty() {
             return Ok(Vec::new());
         }
@@ -724,7 +755,6 @@ impl WgpuEngine {
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
 
-            let workgroup_count = (point_count as u32).div_ceil(self.workgroup_size);
             compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
 
@@ -957,6 +987,14 @@ impl WgpuEngine {
     /// # Panics
     /// Panics if the evaluator was not created with `new_dynamic()`.
     fn eval_batch_full(&self, points: &[Vec3]) -> Result<Vec<(f32, Vec3)>, GpuError> {
+        let workgroup_count = dispatch_count(
+            points.len(),
+            self.workgroup_size,
+            self.context()
+                .device()
+                .limits()
+                .max_compute_workgroups_per_dimension,
+        )?;
         if points.is_empty() {
             return Ok(Vec::new());
         }
@@ -1056,7 +1094,6 @@ impl WgpuEngine {
             });
             compute_pass.set_pipeline(full_pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            let workgroup_count = (point_count as u32).div_ceil(self.workgroup_size);
             compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
 
@@ -1220,6 +1257,25 @@ impl std::fmt::Debug for WgpuPool {
             )
             .finish_non_exhaustive()
     }
+}
+
+/// The workgroups a batch needs in one dispatch
+///
+/// # Errors
+/// [`GpuError::DispatchTooLarge`] over the device's limit, where the dispatch would be refused by
+/// validation and panic.
+fn dispatch_count(points: usize, workgroup_size: u32, limit: u32) -> Result<u32, GpuError> {
+    let too_large = || GpuError::DispatchTooLarge {
+        points,
+        workgroup_size,
+        limit,
+    };
+    // a size of 0 does not get here on a device; no count is right for it
+    let count = (points as u64).div_ceil(u64::from(workgroup_size.max(1)));
+    u32::try_from(count)
+        .ok()
+        .filter(|c| *c <= limit)
+        .ok_or_else(too_large)
 }
 
 /// The `x` of the `@workgroup_size` of the compute entry point `main`, since a dispatch is counted in
@@ -1870,6 +1926,26 @@ impl std::fmt::Debug for GpuEvaluator {
             .finish()
     }
 }
+#[cfg(test)]
+mod dispatch_limit_tests {
+    use super::*;
+
+    #[test]
+    fn a_dispatch_past_the_limit_is_an_error() {
+        assert_eq!(dispatch_count(65_535, 1, 65_535).ok(), Some(65_535));
+        assert_eq!(dispatch_count(0, 64, 65_535).ok(), Some(0));
+        assert_eq!(dispatch_count(65, 64, 65_535).ok(), Some(2));
+        assert_eq!(dispatch_count(131_070, 2, 65_535).ok(), Some(65_535));
+        assert_eq!(dispatch_count(10, 0, 65_535).ok(), Some(10));
+        for (points, size) in [(65_536, 1), (131_071, 2), (usize::MAX, 1)] {
+            assert!(matches!(
+                dispatch_count(points, size, 65_535),
+                Err(GpuError::DispatchTooLarge { limit: 65_535, .. })
+            ));
+        }
+    }
+}
+
 #[allow(
     clippy::disallowed_methods,
     reason = "test code: the platform libm and fused mul_add serve as independent references"

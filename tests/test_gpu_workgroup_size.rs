@@ -135,3 +135,34 @@ fn a_shader_whose_size_cannot_be_known_is_refused() {
         );
     }
 }
+
+/// Size 1 over more points than a dispatch can have workgroups: an error, not a panic in the
+/// device's validation, on each path that dispatches. Nothing is submitted. The MSL engine takes the
+/// size from its kernel and has no such limit.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_dispatch_past_the_device_limit_is_an_error() {
+    let text = kernel("@workgroup_size(1)", "", "main");
+    let Some(c) = built("size 1", GpuEvaluator::from_wgsl(&text)) else {
+        return;
+    };
+    let gpu = c.into_parts().0;
+    let pts: Vec<Vec3> = (0..70_000).map(|i| Vec3::new(i as f32, 0.0, 0.0)).collect();
+    assert!(matches!(
+        gpu.eval_batch(&pts),
+        Err(GpuError::DispatchTooLarge {
+            points: 70_000,
+            workgroup_size: 1,
+            ..
+        })
+    ));
+    assert!(matches!(
+        pollster::block_on(gpu.eval_batch_async(&pts)),
+        Err(GpuError::DispatchTooLarge { .. })
+    ));
+    let mut pool = gpu.create_buffer_pool(16);
+    assert!(matches!(
+        gpu.eval_batch_pooled(&pts, &mut pool),
+        Err(GpuError::DispatchTooLarge { .. })
+    ));
+}
