@@ -119,6 +119,26 @@ fn explain(
     }
 }
 
+/// The ambiguous band per view may fall but not rise: `tests/data/shell_band_ratchet.txt` holds the
+/// largest count each view may have (`<mesh> <view>: <count>`). A view with no line fails.
+fn ratchet(view: &str, count: usize, bad: &mut Vec<String>) {
+    let text = include_str!("data/shell_band_ratchet.txt");
+    let pinned = text.lines().find_map(|l| {
+        let (k, v) = l.split_once(':')?;
+        (k.trim() == view)
+            .then(|| v.trim().parse::<usize>().ok())
+            .flatten()
+    });
+    match pinned {
+        None => bad.push(format!("{view}: no line in the ratchet (band {count})")),
+        Some(p) if count > p => bad.push(format!("{view}: band {count} rose above {p}")),
+        Some(p) if count < p => {
+            println!("  ratchet: {view} band {count}, below {p}: lower the line")
+        }
+        Some(_) => {}
+    }
+}
+
 #[test]
 fn gpu_first_hits_match_the_cpu_path() {
     let (sv, si) = sphere(48, 96);
@@ -137,6 +157,7 @@ fn gpu_first_hits_match_the_cpu_path() {
     let (mut judged, mut wrong_n, mut wrong) = (0usize, 0usize, Vec::<String>::new());
     let (mut outside, mut over_bound, mut worst_ratio) = (0usize, 0usize, 0f64);
     let mut outside_why = Vec::<String>::new();
+    let mut ratchet_bad = Vec::<String>::new();
     for (name, bvh, v, ix, r) in &meshes {
         let renderer = ShellRenderer::new(bvh, *r).expect("renderer");
         if renderer.backend() == ShellBackend::Cpu {
@@ -162,9 +183,13 @@ fn gpu_first_hits_match_the_cpu_path() {
             // the ambiguous band, from the WGSL accuracy rules (common/shell_margin.rs): outside it the
             // hit, triangle and piece are the same and t lies within its derived bound
             let (mut in_band, mut differ_in_band) = (0usize, 0usize);
+            let mut band_rays = Vec::new();
             for (k, ray) in rays.iter().enumerate() {
                 let band = shell_margin::band(bvh, ray, *r);
                 in_band += band.is_some() as usize;
+                if band.is_some() {
+                    band_rays.push(k);
+                }
                 let (g, c) = (gpu[k], cpu[k]);
                 let same = match (g, c) {
                     (Some(g), Some(c)) => g.triangle == c.triangle && g.feature == c.feature,
@@ -203,20 +228,22 @@ fn gpu_first_hits_match_the_cpu_path() {
                 "  band {in_band} of {} rays, {differ_in_band} of them differ",
                 rays.len()
             );
-            // the GPU against the f64 truth (no shared code) on every 97th ray (the truth scans every triangle at every step)
+            ratchet(&format!("{name} {label}"), in_band, &mut ratchet_bad);
+            // the f64 truth (no shared code): the GPU and the CPU on every band ray, where they may
+            // differ, and the GPU on every 97th ray besides (the truth scans every triangle at every step)
             let truth = shell_oracle::triangles(v, ix);
-            for (k, ray) in rays.iter().enumerate().step_by(97) {
+            let sample = (0..rays.len()).step_by(97).map(|k| (k, false));
+            let band_both = band_rays.iter().flat_map(|&k| [(k, false), (k, true)]);
+            for (k, on_cpu) in sample.chain(band_both) {
+                let ray = rays[k];
+                let got = if on_cpu { cpu[k] } else { gpu[k] };
                 judged += 1;
-                if let Some(why) = shell_oracle::judge(
-                    &truth,
-                    ray.origin,
-                    ray.dir,
-                    ray.tmax,
-                    *r,
-                    gpu[k].map(|h| h.t),
-                ) {
+                if let Some(why) =
+                    shell_oracle::judge(&truth, ray.origin, ray.dir, ray.tmax, *r, got.map(|h| h.t))
+                {
                     if wrong.len() < 6 {
-                        wrong.push(format!("{name} {label} ray {k}: {why}"));
+                        let side = if on_cpu { "cpu" } else { "gpu" };
+                        wrong.push(format!("{name} {label} ray {k} {side}: {why}"));
                     }
                     wrong_n += 1;
                 }
@@ -246,4 +273,5 @@ fn gpu_first_hits_match_the_cpu_path() {
         "outside the band: {outside} differ, {over_bound} t over the bound, worst t / bound {worst_ratio:.3}"
     );
     assert_eq!((outside, over_bound), (0, 0), "{outside_why:#?}");
+    assert!(ratchet_bad.is_empty(), "{ratchet_bad:#?}");
 }
