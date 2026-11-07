@@ -22,6 +22,39 @@ fn main() {
             }
         }
     }
+    if a[1].contains("pair") {
+        // each result is written with a check over its value and its own index: a pair that fails
+        // the check was lost, torn or is another index's; a pair that passes and still differs from
+        // the most common value was computed differently
+        let (mut torn, mut stale, mut computed) = (0_u64, 0_u64, 0_u64);
+        let n = first.len() / 2;
+        for i in 0..n {
+            let mut seen: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
+            for (got, _) in &all {
+                let (v, c) = (got[2 * i], got[2 * i + 1]);
+                let good = (v.wrapping_mul(2_654_435_761)) ^ i as u32;
+                if c == good {
+                    *seen.entry(v).or_default() += 1;
+                } else {
+                    torn += 1;
+                    // does it pass as some other index's pair: a stale result of the same position
+                    let other = (v.wrapping_mul(2_654_435_761)) ^ c;
+                    if (other as usize) < n {
+                        stale += 1;
+                    }
+                }
+            }
+            if seen.len() > 1 {
+                let most = seen.values().max().copied().unwrap_or(0);
+                computed += seen
+                    .values()
+                    .filter(|c| **c != most)
+                    .map(|c| u64::from(*c))
+                    .sum::<u64>();
+            }
+        }
+        println!("pairs: failing the check {torn} (of them another index's {stale}), passing but computed differently {computed}");
+    }
     let mut t: Vec<f64> = all.iter().map(|x| x.1 * 1e3).collect();
     t.sort_by(f64::total_cmp);
     println!(
