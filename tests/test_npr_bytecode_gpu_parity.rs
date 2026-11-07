@@ -9,7 +9,7 @@
 //! serialised program to the same colour as the CPU tree walker
 //! (`NprColorNode::eval`) does for the tree it came from. This test runs the
 //! emitted evaluator in a compute shader over a sweep of shading contexts and
-//! compares every program of a corpus that uses each of the 18 opcodes and
+//! compares every program of a corpus that uses each of the 20 opcodes and
 //! each of the 5 palette sources.
 //!
 //! Several laws are step functions (toon bands, two-tone, posterise, bloom
@@ -40,7 +40,8 @@ use wgpu::util::DeviceExt;
 const TOL: f32 = 2e-4;
 const PERTURB: f32 = 1e-3;
 
-/// The six context scalars the bytecode evaluator reads.
+/// The context the bytecode evaluator reads: six scalars, the surface normal
+/// and the shading position (12 floats on the wire).
 #[derive(Clone, Copy, Debug)]
 struct Scalars {
     n_dot_l: f32,
@@ -48,40 +49,54 @@ struct Scalars {
     sdf: f32,
     uv: Vec2,
     time: f32,
+    normal: Vec3,
+    position: Vec3,
 }
 
 impl Scalars {
     /// A CPU context whose `n . l` / `n . v` are exactly these scalars
     /// (normal = +Z, light and view carry the value in z).
-    const fn ctx(self) -> NprColorContext {
-        NprColorContext {
-            sdf: self.sdf,
-            normal: Vec3::Z,
-            view: Vec3::new(0.0, 0.0, self.n_dot_v),
-            light: Vec3::new(0.0, 0.0, self.n_dot_l),
-            uv: self.uv,
-            time: self.time,
-        }
+    fn ctx(self) -> NprColorContext {
+        NprColorContext::new(
+            self.normal,
+            self.normal * self.n_dot_v,
+            self.normal * self.n_dot_l,
+        )
+        .with_sdf(self.sdf)
+        .with_uv(self.uv)
+        .with_time(self.time)
+        .with_position(self.position)
     }
 
-    const fn as_array(self) -> [f32; 6] {
+    /// The wire layout: the dots as the CPU context computes them, then the
+    /// normal and the position
+    fn as_array(self) -> [f32; 12] {
+        let c = self.ctx();
         [
-            self.n_dot_l,
-            self.n_dot_v,
-            self.sdf,
-            self.uv.x,
-            self.uv.y,
-            self.time,
+            c.n_dot_l(),
+            c.n_dot_v(),
+            c.sdf,
+            c.uv.x,
+            c.uv.y,
+            c.time,
+            c.normal.x,
+            c.normal.y,
+            c.normal.z,
+            c.position.x,
+            c.position.y,
+            c.position.z,
         ]
     }
 
-    const fn from_array(a: [f32; 6]) -> Self {
+    const fn from_array(a: [f32; 12]) -> Self {
         Self {
             n_dot_l: a[0],
             n_dot_v: a[1],
             sdf: a[2],
             uv: Vec2::new(a[3], a[4]),
             time: a[5],
+            normal: Vec3::new(a[6], a[7], a[8]),
+            position: Vec3::new(a[9], a[10], a[11]),
         }
     }
 }
@@ -101,6 +116,18 @@ fn contexts(n: usize) -> Vec<Scalars> {
             sdf: next().mul_add(3.0, -1.5),
             uv: Vec2::new(next(), next()),
             time: next().mul_add(10.0, -2.0),
+            normal: {
+                // a unit normal from two uniform numbers (uniform on the sphere)
+                let z = next().mul_add(2.0, -1.0);
+                let a = next() * core::f32::consts::TAU;
+                let r = (1.0 - z * z).max(0.0).sqrt();
+                Vec3::new(r * a.cos(), r * a.sin(), z)
+            },
+            position: Vec3::new(
+                next().mul_add(0.6, -0.3),
+                next().mul_add(0.6, -0.3),
+                next().mul_add(0.6, -0.3),
+            ),
         })
         .collect()
 }
@@ -216,6 +243,28 @@ fn corpus() -> Vec<(&'static str, NprColorNode)> {
             c(1.0, 1.0, 1.0).with_speed_lines(Vec2::new(0.5, 0.45), 24, 0.2, Vec3::ZERO),
         ),
         ("tonemap", c(2.0, 0.8, 5.0).tonemap_reinhard(1.5)),
+        (
+            "family palette",
+            NprColorNode::FamilyPalette {
+                families: vec![
+                    (Vec3::Y, Vec3::new(0.9, 0.8, 0.7)),
+                    (Vec3::X, Vec3::new(0.5, 0.3, 0.2)),
+                    (Vec3::Z, Vec3::new(0.2, 0.3, 0.5)),
+                    (Vec3::NEG_Y, Vec3::new(0.1, 0.1, 0.1)),
+                    (Vec3::NEG_X, Vec3::new(0.3, 0.5, 0.2)),
+                ],
+            },
+        ),
+        (
+            "region noise",
+            NprColorNode::RegionNoise {
+                base: Box::new(c(0.5, 0.4, 0.3)),
+                cell: 0.04,
+                region_amp: Vec3::new(0.10, 0.05, 0.02),
+                noise_amp: Vec3::splat(0.04),
+                seed: 11,
+            },
+        ),
     ]
 }
 
@@ -244,13 +293,15 @@ fn alice_npr_load(index: u32) -> u32 {{
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
     let i = id.x;
     if (i >= sizes.y) {{ return; }}
-    let b = i * 6u;
+    let b = i * 12u;
     let ctx = AliceNprBytecodeCtx(
         contexts[b],
         contexts[b + 1u],
         contexts[b + 2u],
         vec2<f32>(contexts[b + 3u], contexts[b + 4u]),
         contexts[b + 5u],
+        vec3<f32>(contexts[b + 6u], contexts[b + 7u], contexts[b + 8u]),
+        vec3<f32>(contexts[b + 9u], contexts[b + 10u], contexts[b + 11u]),
     );
     let color = alice_npr_eval_bytecode(sizes.x, ctx);
     colors[i * 3u] = color.x;
@@ -377,7 +428,7 @@ impl Gpu {
 /// every input scalar, i.e. the context is not next to a step of a law.
 fn stable(node: &NprColorNode, s: Scalars, at: Vec3) -> bool {
     let base = s.as_array();
-    for k in 0..6 {
+    for k in 0..12 {
         for sign in [-1.0f32, 1.0] {
             let mut a = base;
             a[k] += sign * PERTURB * a[k].abs().max(1.0);

@@ -16,7 +16,7 @@ use alice_sdf::npr::outline::{distance_field_outline, distance_field_outline_sof
 use alice_sdf::npr::palette::palette_gradient;
 use alice_sdf::npr::rim::fresnel_rim;
 use alice_sdf::npr::toon::{posterize_color, soft_toon_ramp, toon_ramp};
-use glam::{Vec2, Vec3};
+use glam::Vec3;
 
 fn samples() -> Vec<f32> {
     (0..=400).map(|i| i as f32 / 400.0).collect()
@@ -211,14 +211,11 @@ fn compiled_pipeline_matches_closed_form_composition() {
     pipeline.validate().expect("balanced");
     for i in 0..=100 {
         let a = std::f32::consts::PI * i as f32 / 100.0;
-        let ctx = NprColorContext {
-            sdf: 0.0,
-            normal: Vec3::Z,
-            view: Vec3::Z,
-            light: Vec3::new(a.sin(), 0.0, a.cos()).normalize(),
-            uv: Vec2::splat(0.5),
-            time: 0.0,
-        };
+        let ctx = NprColorContext::new(
+            Vec3::Z,
+            Vec3::Z,
+            Vec3::new(a.sin(), 0.0, a.cos()).normalize(),
+        );
         let n_dot_l = ctx.normal.dot(ctx.light);
         let expect = shadow.lerp(light, toon_ramp(n_dot_l, bands)) * Vec3::new(0.5, 1.0, 2.0);
         let got = pipeline.eval(&ctx);

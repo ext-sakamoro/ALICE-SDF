@@ -120,6 +120,30 @@ fn reference_words(op: &ColorOp) -> Vec<u32> {
             ]);
             w.extend(bits3(*ink));
         }
+        ColorOp::FamilyPalette {
+            count,
+            normals,
+            colors,
+        } => {
+            w.extend([18, *count]);
+            for n in normals {
+                w.extend(bits3(*n));
+            }
+            for c in colors {
+                w.extend(bits3(*c));
+            }
+        }
+        ColorOp::RegionNoise {
+            cell,
+            region_amp,
+            noise_amp,
+            seed,
+        } => {
+            w.extend([19, cell.to_bits()]);
+            w.extend(bits3(*region_amp));
+            w.extend(bits3(*noise_amp));
+            w.push(*seed);
+        }
         ColorOp::Fallback(_) => panic!("Fallback has no wire form"),
     }
     w
@@ -195,6 +219,35 @@ fn every_op() -> Vec<ColorOp> {
             thickness: 0.2,
             ink: Vec3::ZERO,
         },
+        ColorOp::FamilyPalette {
+            count: 3,
+            normals: [
+                Vec3::Y,
+                Vec3::X,
+                Vec3::Z,
+                Vec3::ZERO,
+                Vec3::ZERO,
+                Vec3::ZERO,
+                Vec3::ZERO,
+                Vec3::ZERO,
+            ],
+            colors: [
+                Vec3::new(0.9, 0.8, 0.7),
+                Vec3::new(0.5, 0.3, 0.2),
+                Vec3::new(0.2, 0.3, 0.5),
+                Vec3::ZERO,
+                Vec3::ZERO,
+                Vec3::ZERO,
+                Vec3::ZERO,
+                Vec3::ZERO,
+            ],
+        },
+        ColorOp::RegionNoise {
+            cell: 0.04,
+            region_amp: Vec3::new(0.1, 0.05, 0.02),
+            noise_amp: Vec3::splat(0.03),
+            seed: 11,
+        },
     ]
 }
 
@@ -221,8 +274,8 @@ fn every_opcode_encodes_to_its_layout() {
         tags.push(want[0]);
     }
     tags.sort_unstable();
-    assert_eq!(tags, (0..18).collect::<Vec<u32>>(), "18 contiguous tags");
-    for tag in [18, 19, 255, u32::MAX] {
+    assert_eq!(tags, (0..20).collect::<Vec<u32>>(), "20 contiguous tags");
+    for tag in [20, 21, 255, u32::MAX] {
         assert_eq!(opcode_word_count(tag), None, "tag {tag}");
     }
 }
@@ -249,6 +302,8 @@ fn rust_tags_equal_the_constants_of_the_emitted_wgsl() {
         ("ALICE_OP_HATCH", t::HATCH),
         ("ALICE_OP_TONEMAP", t::TONEMAP),
         ("ALICE_OP_SPEED_LINE", t::SPEED_LINE),
+        ("ALICE_OP_FAMILY_PALETTE", t::FAMILY_PALETTE),
+        ("ALICE_OP_REGION_NOISE", t::REGION_NOISE),
         ("ALICE_PS_N_DOT_L", ps::N_DOT_L),
         ("ALICE_PS_N_DOT_V", ps::N_DOT_V),
         ("ALICE_PS_SDF", ps::SDF),
@@ -278,7 +333,7 @@ fn rust_tags_equal_the_constants_of_the_emitted_wgsl() {
         PaletteSource::UvY,
         PaletteSource::TimeCycle,
     ];
-    for (s, (_, tag)) in sources.iter().zip(&consts[18..]) {
+    for (s, (_, tag)) in sources.iter().zip(&consts[20..]) {
         assert_eq!(source_tag(*s), *tag);
     }
 }
@@ -304,6 +359,8 @@ fn stack_effect_is_the_documented_arity_table() {
         (1, 1), // Hatch
         (1, 1), // Tonemap
         (1, 1), // SpeedLine
+        (0, 1), // FamilyPalette
+        (1, 1), // RegionNoise
     ];
     let ops = every_op();
     assert_eq!(ops.len(), want.len());
@@ -404,14 +461,15 @@ fn deserialize_rejects_malformed_streams() {
 }
 
 const fn ctx(n_dot_l: f32, n_dot_v: f32, sdf: f32, uv: Vec2, time: f32) -> NprColorContext {
-    NprColorContext {
-        sdf,
-        normal: Vec3::Z,
-        view: Vec3::new(0.0, 0.0, n_dot_v),
-        light: Vec3::new(0.0, 0.0, n_dot_l),
-        uv,
-        time,
-    }
+    NprColorContext::new(
+        Vec3::Z,
+        Vec3::new(0.0, 0.0, n_dot_v),
+        Vec3::new(0.0, 0.0, n_dot_l),
+    )
+    .with_sdf(sdf)
+    .with_uv(uv)
+    .with_time(time)
+    .with_position(Vec3::new(uv.x * 0.3 - 0.1, time * 0.02, sdf * 0.05))
 }
 
 const fn c(r: f32, g: f32, b: f32) -> NprColorNode {
@@ -466,6 +524,19 @@ fn every_node() -> NprColorNode {
         .with_hatch(0.3, 6.0, 0.1, Vec3::splat(0.05))
         .tonemap_reinhard(1.2)
         .with_speed_lines(Vec2::new(0.5, 0.5), 16, 0.15, Vec3::ZERO)
+        .plus(NprColorNode::RegionNoise {
+            base: Box::new(NprColorNode::FamilyPalette {
+                families: vec![
+                    (Vec3::Z, Vec3::new(0.2, 0.3, 0.5)),
+                    (Vec3::X, Vec3::new(0.5, 0.3, 0.2)),
+                    (Vec3::Y, Vec3::new(0.9, 0.8, 0.7)),
+                ],
+            }),
+            cell: 0.04,
+            region_amp: Vec3::new(0.1, 0.05, 0.02),
+            noise_amp: Vec3::splat(0.03),
+            seed: 11,
+        })
 }
 
 #[test]
