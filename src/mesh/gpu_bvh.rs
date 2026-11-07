@@ -451,6 +451,12 @@ pub fn run_u32(
             .recv()
             .map_err(|e| GpuError::BufferMapping(e.to_string()))?
             .map_err(|e| GpuError::BufferMapping(format!("{e:?}")))?;
+        if let Some(us) = std::env::var("MG_DELAY_US")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+        {
+            std::thread::sleep(std::time::Duration::from_micros(us));
+        }
         out.extend_from_slice(bytemuck::cast_slice::<u8, u32>(&slice.get_mapped_range()));
         staging.unmap();
         Ok(())
