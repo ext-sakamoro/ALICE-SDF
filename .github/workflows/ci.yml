@@ -1278,6 +1278,17 @@ jobs:
           --test test_gpu_lifecycle_oracle
           -- --nocapture
 
+      # Every value the CPU reads back from a mapped buffer is the one the GPU just wrote, over
+      # 39,321,600 values (tests/test_gpu_readback_volume.rs). Here it runs the barrier that
+      # GpuContext::before_host_read records on a Vulkan device; without an adapter it fails.
+      # lavapipe never returned a stale value (0 in 117 passes without the barrier), so this step
+      # cannot go red without it: the test's teeth are on the hardware driver where the fault was
+      # seen (without the barrier red in 4 of 4 alternating rounds, with it green in 4 of 4)
+      - name: GPU readback at volume
+        env:
+          ALICE_SDF_VOLUME_READBACK: "1"
+        run: cargo test --features gpu --test test_gpu_readback_volume -- --nocapture
+
       # ALICE-Law G8: the whole shader text carries the semantics identifier and the four
       # readers that compile shader text check it (tests/test_shader_text_provenance.rs). The
       # accepted cases build an evaluator, so they run here on lavapipe; the arms of

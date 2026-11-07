@@ -61,7 +61,7 @@ image = ["dep:image", "dep:png"]  # PNG / JPEG decoding (heightmap import, textu
 python = ["dep:pyo3", "dep:numpy"]
 godot = ["dep:godot"]  # Godot 4.x GDExtension integration
 jit = ["dep:cranelift-codegen", "dep:cranelift-frontend", "dep:cranelift-jit", "dep:cranelift-module", "dep:cranelift-native"]
-gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck", "dep:futures-channel"]
+gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck", "dep:futures-channel", "dep:ash"]
 volume = ["gpu"]  # 3D volume texture baking
 gpu-mesh = ["gpu"]  # GPU Marching Cubes mesh generation
 svo = []  # Sparse Voxel Octree
@@ -212,6 +212,10 @@ metal = "0.31"
 
 # The Metal backend of GpuEvaluator (src/compiled/wgsl/gpu_metal.rs): the `msl` feature
 # runs the WGSL kernel as MslShader's MSL with fast math off. Same version as above.
+# the dependency from GPU writes to CPU reads that wgpu 24 does not record (`GpuContext::before_host_read`)
+[target.'cfg(not(any(target_arch = "wasm32", target_os = "macos")))'.dependencies]
+ash = { version = "0.38", optional = true }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 metal = { version = "0.31", optional = true }
 

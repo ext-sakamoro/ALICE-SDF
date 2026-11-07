@@ -399,6 +399,7 @@ impl WgpuEngine {
         encoder.copy_buffer_to_buffer(&output_buffer, 0, &staging_buffer, 0, output_buffer_size);
 
         // Submit commands
+        self.context().before_host_read(&mut encoder);
         self.context()
             .queue()
             .submit(std::iter::once(encoder.finish()));
@@ -558,6 +559,8 @@ impl WgpuEngine {
 
         let read_size = (point_count * std::mem::size_of::<GpuOutputDistance>()) as u64;
         encoder.copy_buffer_to_buffer(&pool.output_buffer, 0, &pool.staging_buffer, 0, read_size);
+
+        self.context().before_host_read(&mut encoder);
 
         self.context()
             .queue()
@@ -762,6 +765,7 @@ impl WgpuEngine {
         encoder.copy_buffer_to_buffer(&output_buffer, 0, &staging_buffer, 0, output_buffer_size);
 
         // Submit commands (non-blocking)
+        self.context().before_host_read(&mut encoder);
         self.context()
             .queue()
             .submit(std::iter::once(encoder.finish()));
@@ -1098,6 +1102,7 @@ impl WgpuEngine {
         }
 
         encoder.copy_buffer_to_buffer(&output_buffer, 0, &staging_buffer, 0, output_buffer_size);
+        self.context().before_host_read(&mut encoder);
         self.context()
             .queue()
             .submit(std::iter::once(encoder.finish()));

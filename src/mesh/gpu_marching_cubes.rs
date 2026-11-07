@@ -307,6 +307,7 @@ pub fn gpu_marching_cubes_from_shader(
         encoder.copy_buffer_to_buffer(&point_counts_buffer, 0, &p, 0, (grid_total * 4) as u64);
         Some((c, p))
     };
+    context.before_host_read(&mut encoder);
     queue.submit(std::iter::once(encoder.finish()));
 
     let totals = read_u32_vec(device, &totals_staging, 2)?;
@@ -405,6 +406,7 @@ pub fn gpu_marching_cubes_from_shader(
     let index_staging = staging("Index Staging", index_bytes);
     encoder.copy_buffer_to_buffer(&vertex_buffer, 0, &vertex_staging, 0, vertex_bytes as u64);
     encoder.copy_buffer_to_buffer(&index_buffer, 0, &index_staging, 0, index_bytes as u64);
+    context.before_host_read(&mut encoder);
     queue.submit(std::iter::once(encoder.finish()));
 
     let gpu_verts = read_gpu_vertices(device, &vertex_staging, total_verts)?;

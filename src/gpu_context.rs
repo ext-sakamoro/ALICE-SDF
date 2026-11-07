@@ -115,6 +115,56 @@ fn create(held: &mut Lifecycle, label: &str) -> Result<GpuContext, GpuError> {
 pub struct GpuContext(Arc<Serialized>);
 
 impl GpuContext {
+    /// Records, at the end of `encoder`, the dependency from everything the GPU wrote to the CPU's
+    /// reads of a mapped buffer. Call it on every encoder whose results the CPU maps and reads.
+    ///
+    /// wgpu 24 records none when a buffer is mapped for reading (a TODO in `wgpu-core`'s
+    /// `Buffer::map_async`, still there in 29.0.1; <https://github.com/gfx-rs/wgpu/issues/9306>).
+    /// Vulkan requires one; on one integrated-GPU Vulkan driver (540.4.0) its absence let the first
+    /// mapped read return another tile's old results at 16,384 points a dispatch and up, while the
+    /// memory held the new ones (`tests/test_gpu_readback_volume.rs`). A device on another backend
+    /// gives no Vulkan handle and nothing is recorded; other backends synchronise mapping
+    /// themselves, and a browser has no such access. Remove this once wgpu records the dependency
+    /// (the issue above).
+    pub(crate) fn before_host_read(&self, encoder: &mut wgpu::CommandEncoder) {
+        #[cfg(not(any(target_arch = "wasm32", target_os = "macos")))]
+        {
+            use ash::vk;
+            // SAFETY: the device is this context's own and outlives the call; the handle is only
+            // cloned to record into an encoder of the same device, never used to destroy anything.
+            let device = unsafe {
+                self.device()
+                    .as_hal::<wgpu::hal::api::Vulkan, _, _>(|d| d.map(|d| d.raw_device().clone()))
+            };
+            let Some(device) = device else {
+                return;
+            };
+            let barrier = [vk::MemoryBarrier::default()
+                .src_access_mask(vk::AccessFlags::MEMORY_WRITE)
+                .dst_access_mask(vk::AccessFlags::HOST_READ)];
+            // SAFETY: the command buffer is the one wgpu is recording for `encoder`, still open;
+            // a pipeline barrier changes no state wgpu tracks (no binding, no layout, no resource
+            // usage), and the handle is not kept or destroyed.
+            unsafe {
+                encoder.as_hal_mut::<wgpu::hal::api::Vulkan, _, _>(|e| {
+                    if let Some(e) = e {
+                        device.cmd_pipeline_barrier(
+                            e.raw_handle(),
+                            vk::PipelineStageFlags::ALL_COMMANDS,
+                            vk::PipelineStageFlags::HOST,
+                            vk::DependencyFlags::empty(),
+                            &barrier,
+                            &[],
+                            &[],
+                        );
+                    }
+                });
+            }
+        }
+        #[cfg(any(target_arch = "wasm32", target_os = "macos"))]
+        let _ = encoder;
+    }
+
     /// Create a device on the high performance adapter, with the default limits and no extra
     /// features.
     ///

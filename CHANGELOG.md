@@ -119,6 +119,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **動作の変更:** `MeshBvh::closest_point` と `MeshBvh::unsigned_distance` は `MeshBvh::closest_triangle` と同じ木の歩きを通る 距離がちょうど等しい三角形が複数ある時、`closest_point` は入力の index が最小の三角形の点を返す (以前は木の歩きが先に見た方) 距離の値は変わらない `ExteriorFloodFill` の符号は帯の中で最寄りの点から外へ歩くので、同距離の点でだけ歩く向きが変わりうる `MeshBvh::signed_distance` は別の歩きのまま
 
 ### Fixed
+- GPU の結果を CPU が読む時、Vulkan で最初の読みが別の dispatch の古い値を返すことがあった問題: wgpu 24 は map した buffer に GPU の書込みから CPU の読みへの依存を記録しない ある device (Vulkan、driver 540.4.0) で 1 dispatch 16,384 点以上の時、64 byte 単位で別の batch の値が読めた `GpuContext::before_host_read` がその依存を evaluator / marching cubes / volume bake の読み戻しの前に記録する (wgpu が記録するようになったら外す) 試験 `tests/test_gpu_readback_volume.rs` (`ALICE_SDF_VOLUME_READBACK=1` の device lane)
 - CI: `scripts/workflow_pipefail.py` (試験 `scripts/test_workflow_pipefail.py`、他の repo と同じ中身) が、pipe する `run` step が pipefail で走るかを全 workflow で確かめる server smoke と NPR benchmark の job、bake の Summary、ALICE-Law の block の step を `shell: bash` にした
 - CI: `scripts/check_pipe_grep_q.py` を CI と `scripts/preflight.sh` で走らせる 該当 8 行 (`ci.yml` の server smoke 3、`preflight.sh` 4、`build-xcframework.sh` 1) は pipe をやめて here-string で読む pipefail の下で `grep -q` が先に終わると前段が SIGPIPE になり、見つかった行を無いと読むことがあった
 - `GpuEvaluator` の wgpu 経路: 小さい workgroup size で device の dispatch 上限 (既定 65535 workgroup) を超える点数は validation の panic だった 新しい `GpuError::DispatchTooLarge` を返す

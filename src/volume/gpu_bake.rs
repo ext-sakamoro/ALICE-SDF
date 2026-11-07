@@ -192,6 +192,7 @@ pub fn gpu_bake_volume_from_shader(
     }
 
     encoder.copy_buffer_to_buffer(&output_buffer, 0, &staging_buffer, 0, output_buffer_size);
+    context.before_host_read(&mut encoder);
     queue.submit(std::iter::once(encoder.finish()));
 
     // Readback
@@ -371,6 +372,7 @@ pub fn gpu_bake_volume_with_normals(
     }
 
     encoder.copy_buffer_to_buffer(&output_buffer, 0, &staging_buffer, 0, output_buffer_size);
+    context.before_host_read(&mut encoder);
     queue.submit(std::iter::once(encoder.finish()));
 
     let buffer_slice = staging_buffer.slice(..);

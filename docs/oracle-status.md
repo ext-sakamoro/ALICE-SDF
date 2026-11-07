@@ -189,6 +189,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_asdf_roundtrip_parity.rs` | 1 |
 | `test_det_parity.rs` | 1 |
 | `test_gpu_fma_contraction.rs` | 1 |
+| `test_gpu_readback_volume.rs` | 1 |
 | `test_metadata_order.rs` | 1 |
 | `test_npr_bytecode_gpu_parity.rs` | 1 |
 | `test_texture_shader_gpu_parity.rs` | 1 |

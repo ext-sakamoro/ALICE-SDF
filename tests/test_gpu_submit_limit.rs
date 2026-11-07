@@ -69,6 +69,13 @@ const OVER_LIMIT: &[Listed] = &[
         nodes: 0,
         reason: "past the dispatch limit at size 1: refused, nothing is submitted",
     },
+    Listed {
+        file: "test_gpu_readback_volume.rs",
+        method: "eval_batch",
+        points: 32_768,
+        nodes: 0,
+        reason: "the readback fault shows at 16,384 points a dispatch and up: the size is what it checks",
+    },
 ];
 
 /// The number written by `prefix` + digits at the start of or inside `s`
