@@ -315,6 +315,7 @@ impl GpuContext {
 
     /// The device's backend
     #[must_use]
+    // ALLOW-UNWIRED: wiring debt gpu-contraction-query: the device query the contraction answer is read from; wired with it
     pub fn backend(&self) -> wgpu::Backend {
         self.0 .0.backend
     }
