@@ -12,7 +12,7 @@ mod shell_oracle;
 #[path = "common/shell_scenes.rs"]
 mod shell_scenes;
 
-use alice_sdf::mesh::{triangle_shell_hit, MeshBvh, ShellFrame, ShellRay};
+use alice_sdf::mesh::{triangle_shell_hit, MeshBvh, ShellRay};
 use glam::Vec3;
 use shell_scenes::{grazing, soup, sphere, view};
 
@@ -40,19 +40,12 @@ fn run(
     let truth = shell_oracle::triangles(v, ix);
     let (mut hits, mut bad) = (0, Vec::new());
     for (i, ray) in rays.iter().enumerate() {
-        // each frame's answer as t_base + t_local in f64 (one f32 sum would round it again)
-        let walk = |frame| {
-            bvh.shell_first_hit_in(frame, ray.origin, ray.dir, r, ray.tmax)
-                .map(|h| f64::from(h.t_base) + f64::from(h.t_local))
-        };
-        let world = walk(ShellFrame::World);
-        hits += world.is_some() as usize;
-        for (method, got) in [
-            ("bvh world", world),
-            ("bvh leaf", walk(ShellFrame::Leaf)),
-            ("bvh triangle", walk(ShellFrame::Triangle)),
-            ("brute", brute(&bvh, ray, r).map(f64::from)),
-        ] {
+        // the answer as t_base + t_local in f64 (one f32 sum would round it again)
+        let walk = bvh
+            .shell_first_hit(ray.origin, ray.dir, r, ray.tmax)
+            .map(|h| f64::from(h.t_base) + f64::from(h.t_local));
+        hits += walk.is_some() as usize;
+        for (method, got) in [("bvh", walk), ("brute", brute(&bvh, ray, r).map(f64::from))] {
             if let Some(why) = shell_oracle::judge(&truth, ray.origin, ray.dir, ray.tmax, r, got) {
                 bad.push(format!("{name} ray {i} {method} {got:?}: {why}"));
             }
@@ -118,41 +111,35 @@ fn soup_and_sphere_agree_with_the_f64_truth() {
 /// back, aimed at points of the triangles: the scale where an f32 world coordinate's ulp is a
 /// sizeable part of a 0.002 mm shell. Each frame's hits against the f64 distance.
 #[test]
-fn far_thin_triangles_in_each_frame() {
+fn far_thin_triangles_hit_on_the_f64_shell() {
     let r = 0.002f32;
     let (v, ix, aims) = shell_scenes::far_thin(0x5EED_F00D);
     let bvh = MeshBvh::build(&v, &ix, 4);
     let truth = shell_oracle::triangles(&v, &ix);
-    let mut report = Vec::new();
-    for frame in [ShellFrame::World, ShellFrame::Leaf, ShellFrame::Triangle] {
-        let (mut worst, mut hits, mut bad) = (0f64, 0, Vec::new());
-        for (i, ray) in aims.iter().enumerate() {
-            let h = bvh.shell_first_hit_in(frame, ray.origin, ray.dir, r, ray.tmax);
-            let got = h.map(|h| f64::from(h.t_base) + f64::from(h.t_local));
-            if let Some(t) = got {
-                hits += 1;
-                let at = ray.origin.as_dvec3() + ray.dir.as_dvec3() * t;
-                worst = worst.max((shell_oracle::distance(&truth, at) - f64::from(r)).abs());
-            }
-            if let Some(why) = shell_oracle::judge(&truth, ray.origin, ray.dir, ray.tmax, r, got) {
-                bad.push(format!("{frame:?} ray {i}: {why}"));
-            }
+    let (mut worst, mut hits, mut bad) = (0f64, 0, Vec::new());
+    for (i, ray) in aims.iter().enumerate() {
+        let h = bvh.shell_first_hit(ray.origin, ray.dir, r, ray.tmax);
+        let got = h.map(|h| f64::from(h.t_base) + f64::from(h.t_local));
+        if let Some(t) = got {
+            hits += 1;
+            let at = ray.origin.as_dvec3() + ray.dir.as_dvec3() * t;
+            worst = worst.max((shell_oracle::distance(&truth, at) - f64::from(r)).abs());
         }
-        println!(
-            "far thin, {frame:?}: {hits} hits of {}, worst |d - r| {worst:.3e} ({:.2}% of r)",
-            aims.len(),
-            worst / f64::from(r) * 100.0
-        );
-        report.push((frame, hits, worst));
-        assert!(
-            bad.is_empty(),
-            "{} failures, first: {:#?}",
-            bad.len(),
-            &bad[..bad.len().min(4)]
-        );
+        if let Some(why) = shell_oracle::judge(&truth, ray.origin, ray.dir, ray.tmax, r, got) {
+            bad.push(format!("ray {i}: {why}"));
+        }
     }
+    println!(
+        "far thin: {hits} hits of {}, worst |d - r| {worst:.3e} ({:.2}% of r)",
+        aims.len(),
+        worst / f64::from(r) * 100.0
+    );
+    // every ray is aimed at a point of a triangle, so every ray hits the shell
+    assert_eq!(hits, aims.len());
     assert!(
-        report.iter().all(|(_, h, _)| *h * 10 > aims.len() * 9),
-        "{report:?}"
+        bad.is_empty(),
+        "{} failures, first: {:#?}",
+        bad.len(),
+        &bad[..bad.len().min(4)]
     );
 }

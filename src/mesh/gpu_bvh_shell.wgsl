@@ -12,12 +12,12 @@ struct Out { t_base: f32, t_local: f32, tri: u32, feature: u32, }
 @group(0) @binding(4) var<storage, read> tris: array<f32>;
 @group(0) @binding(5) var<storage, read> parents: array<u32>;
 @group(0) @binding(6) var<storage, read_write> out: array<Out>;
-// the frames (FRAME 1: per node, the leaf's box centre and its triangles as v - c in the order of
-// leaf_tris; FRAME 2: per triangle, its box centre and v - c); 4 and 9 floats an entry
+// the triangle frame: per triangle, its box centre (4 floats) and its vertices as v - c (9 floats)
 @group(0) @binding(7) var<storage, read> centres: array<f32>;
 @group(0) @binding(8) var<storage, read> local_tris: array<f32>;
 
-// 0: the world frame, 1: the BVH leaf's box, 2: the triangle's box (set when the kernel is built)
+// 0: the world frame (the crate's unframed reference), 1: the triangle's box (set when the kernel
+// is built)
 const FRAME: u32 = 0u;
 
 const LEAF: u32 = 0x80000000u;
@@ -246,8 +246,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             let n = nodes[at];
             if (n.a & LEAF) != 0u {
                 let first = n.a & ~LEAF;
-                var leaf_base = slab_t(n, o, inv, r);
-                if leaf_base == MISS { leaf_base = 0.0; }
                 for (var j = first; j < first + n.b; j += 1u) {
                     let t = leaf_tris[j];
                     let q = t * 9u;
@@ -258,10 +256,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                     var h = Hit(0.0, 0u);
                     if FRAME == 0u {
                         h = triangle_hit(o, dir, a, b, c, r);
-                    } else if FRAME == 1u {
-                        base = leaf_base;
-                        let oa = frame_origin(o, dir, vec_at(at, 0u), base);
-                        h = triangle_hit(oa, dir, vec_at(j, 1u), vec_at(j, 2u), vec_at(j, 3u), r);
                     } else {
                         base = slab_box(min(min(a, b), c), max(max(a, b), c), o, inv, r);
                         if base == MISS { continue; }

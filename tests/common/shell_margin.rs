@@ -17,7 +17,7 @@
 //! Author: Moroya Sakamoto
 #![allow(dead_code)]
 
-use alice_sdf::mesh::{BvhNode, BvhTriangle, MeshBvh, ShellFrame, ShellRay};
+use alice_sdf::mesh::{BvhNode, BvhTriangle, MeshBvh, ShellRay};
 use glam::{DVec3, Vec3};
 
 /// An ULP is at most `E` times the value (f32, `2^-23`)
@@ -388,32 +388,17 @@ fn frame_origin(o: Vec3, d: Vec3, c: Vec3, t: f32) -> Vec3 {
     )
 }
 
-/// Every piece of triangle `k` solved in `frame` as the method solves it: `t` is the key
+/// Every piece of triangle `k` solved in the triangle frame as the method solves it: `t` is the key
 /// `t_base + t_local` and `dt` its bound. `t_base` and the moved origin use + - * and the CPU's
 /// `1 / dir` alone, so they are the same bits on the GPU; only `t_local` and the sum move.
-fn framed(
-    frame: ShellFrame,
-    ray: &ShellRay,
-    r: f32,
-    bvh: &MeshBvh,
-    k: usize,
-    leaf: (Vec3, Vec3),
-) -> Vec<Piece> {
+fn framed(ray: &ShellRay, r: f32, bvh: &MeshBvh, k: usize) -> Vec<Piece> {
     let tri = &bvh.triangles[k];
     let (o, d) = (ray.origin, ray.dir);
-    let inv = d.recip();
     let ra = Vec3::splat(r);
-    let (c, base) = match frame {
-        ShellFrame::World => return pieces(o, d, tri, k as u32, r),
-        ShellFrame::Leaf => (
-            (leaf.0 + leaf.1) * 0.5,
-            slab(leaf.0 - ra, leaf.1 + ra, o, inv).unwrap_or(0.0),
-        ),
-        ShellFrame::Triangle => match slab(tri.aabb.min - ra, tri.aabb.max + ra, o, inv) {
-            Some(t) => ((tri.aabb.min + tri.aabb.max) * 0.5, t),
-            None => return Vec::new(),
-        },
+    let Some(base) = slab(tri.aabb.min - ra, tri.aabb.max + ra, o, d.recip()) else {
+        return Vec::new();
     };
+    let c = (tri.aabb.min + tri.aabb.max) * 0.5;
     let local = BvhTriangle::new(tri.v0 - c, tri.v1 - c, tri.v2 - c);
     let oa = frame_origin(o, d, c, base);
     pieces(oa, d, &local, k as u32, r)
@@ -427,13 +412,8 @@ fn framed(
         .collect()
 }
 
-/// Whether the ray lies in the ambiguous band in the leaf frame, and why
+/// Whether the ray lies in the ambiguous band, and why
 pub fn band(bvh: &MeshBvh, ray: &ShellRay, r: f32) -> Option<String> {
-    band_in(ShellFrame::Leaf, bvh, ray, r)
-}
-
-/// Whether the ray lies in the ambiguous band when solved in `frame`, and why
-pub fn band_in(frame: ShellFrame, bvh: &MeshBvh, ray: &ShellRay, r: f32) -> Option<String> {
     let root = bvh.root.as_ref()?;
     let (o, d) = (ray.origin.as_dvec3(), ray.dir.as_dvec3());
     let mut tris = Vec::new();
@@ -447,8 +427,8 @@ pub fn band_in(frame: ShellFrame, bvh: &MeshBvh, ray: &ShellRay, r: f32) -> Opti
         &mut tris,
     );
     let mut all = Vec::new();
-    for (k, lo, hi) in tris {
-        all.extend(framed(frame, ray, r, bvh, k, (lo, hi)));
+    for (k, _, _) in tris {
+        all.extend(framed(ray, r, bvh, k));
     }
     let within = |p: &Piece| f64::from(p.t) - p.dt <= f64::from(ray.tmax);
     let best = all
@@ -485,9 +465,8 @@ pub fn band_in(frame: ShellFrame, bvh: &MeshBvh, ray: &ShellRay, r: f32) -> Opti
     None
 }
 
-/// The bound on `t` for the CPU's answer `(tri, feature)` on this ray, solved in `frame`
-pub fn t_bound_in(
-    frame: ShellFrame,
+/// The bound on `t` for the CPU's answer `(tri, feature)` on this ray
+pub fn t_bound(
     bvh: &MeshBvh,
     ray: &ShellRay,
     r: f32,
@@ -495,18 +474,7 @@ pub fn t_bound_in(
     feature: u32,
     t: f32,
 ) -> Option<f64> {
-    let root = bvh.root.as_ref()?;
-    let mut tris = Vec::new();
-    near(
-        root,
-        ray.origin.as_dvec3(),
-        ray.dir.as_dvec3().recip(),
-        f64::from(r) * 1.01 + 1e-4,
-        f64::MAX,
-        &mut tris,
-    );
-    let (_, lo, hi) = *tris.iter().find(|(k, _, _)| *k == tri as usize)?;
-    framed(frame, ray, r, bvh, tri as usize, (lo, hi))
+    framed(ray, r, bvh, tri as usize)
         .into_iter()
         .filter(|p| p.feature == feature && p.hits && p.t.to_bits() == t.to_bits())
         .map(|p| p.dt)

@@ -39,11 +39,7 @@ pub struct FlatBvh {
     pub tris: Vec<f32>,
     /// The parent of each node (the root's is itself)
     pub parents: Vec<u32>,
-    /// 4 floats a node: its box centre (used for leaves, [`ShellFrame::Leaf`])
-    pub node_centres: Vec<f32>,
-    /// 9 floats per entry of `leaf_tris`: that triangle as `v - c`, `c` its leaf's centre
-    pub leaf_local: Vec<f32>,
-    /// 4 floats a triangle: its box centre ([`ShellFrame::Triangle`])
+    /// 4 floats a triangle: its box centre (the triangle frame, see [`MeshBvh::shell_first_hit`])
     pub tri_centres: Vec<f32>,
     /// 9 floats a triangle: `v - c`, `c` its own box centre
     pub tri_local: Vec<f32>,
@@ -55,12 +51,10 @@ fn local(out: &mut Vec<f32>, t: &super::bvh::BvhTriangle, c: glam::Vec3) {
     }
 }
 
-fn push(node: &BvhNode, tris: &[super::bvh::BvhTriangle], out: &mut FlatBvh) -> u32 {
+fn push(node: &BvhNode, out: &mut FlatBvh) -> u32 {
     let at = (out.nodes.len() / 8) as u32;
     out.parents.push(at);
     let a = node.aabb();
-    let c = (a.min + a.max) * 0.5;
-    out.node_centres.extend_from_slice(&[c.x, c.y, c.z, 0.0]);
     out.nodes.extend_from_slice(&[
         a.min.x.to_bits(),
         a.min.y.to_bits(),
@@ -75,14 +69,11 @@ fn push(node: &BvhNode, tris: &[super::bvh::BvhTriangle], out: &mut FlatBvh) -> 
         BvhNode::Leaf { triangles, .. } => {
             let first = out.leaf_tris.len() as u32;
             out.leaf_tris.extend(triangles.iter().map(|&t| t as u32));
-            for &t in triangles {
-                local(&mut out.leaf_local, &tris[t], c);
-            }
             (first | 0x8000_0000, triangles.len() as u32)
         }
         BvhNode::Internal { left, right, .. } => {
-            let l = push(left, tris, out);
-            let r = push(right, tris, out);
+            let l = push(left, out);
+            let r = push(right, out);
             out.parents[l as usize] = at;
             out.parents[r as usize] = at;
             (l, r)
@@ -101,8 +92,6 @@ pub fn flatten(bvh: &MeshBvh) -> FlatBvh {
         leaf_tris: Vec::new(),
         tris: Vec::with_capacity(bvh.triangles.len() * 9),
         parents: Vec::new(),
-        node_centres: Vec::new(),
-        leaf_local: Vec::new(),
         tri_centres: Vec::new(),
         tri_local: Vec::new(),
     };
@@ -115,7 +104,7 @@ pub fn flatten(bvh: &MeshBvh) -> FlatBvh {
         local(&mut out.tri_local, t, c);
     }
     if let Some(root) = &bvh.root {
-        push(root, &bvh.triangles, &mut out);
+        push(root, &mut out);
     }
     out
 }
@@ -175,14 +164,14 @@ impl<'a> ShellRenderer<'a> {
     /// [`GpuError`] when a device exists but the kernel does not compile or the backend cannot keep
     /// the driver from fusing operations; no device is not an error.
     pub fn new(bvh: &'a MeshBvh, r: f32) -> Result<Self, GpuError> {
-        Self::new_in(ShellFrame::Leaf, bvh, r)
+        Self::new_in(ShellFrame::Triangle, bvh, r)
     }
 
     /// [`Self::new`], solving each hit in `frame`
     ///
     /// # Errors
     /// As [`Self::new`].
-    pub fn new_in(frame: ShellFrame, bvh: &'a MeshBvh, r: f32) -> Result<Self, GpuError> {
+    pub(crate) fn new_in(frame: ShellFrame, bvh: &'a MeshBvh, r: f32) -> Result<Self, GpuError> {
         match GpuContext::request("mesh shell renderer") {
             Ok(context) => Self::on_in(context, frame, bvh, r),
             Err(GpuError::NoAdapter | GpuError::DeviceCreation(_)) => {
@@ -198,14 +187,14 @@ impl<'a> ShellRenderer<'a> {
     /// [`GpuError`] when the kernel does not compile or the backend cannot keep the driver from
     /// fusing operations.
     pub fn on(context: GpuContext, bvh: &'a MeshBvh, r: f32) -> Result<Self, GpuError> {
-        Self::on_in(context, ShellFrame::Leaf, bvh, r)
+        Self::on_in(context, ShellFrame::Triangle, bvh, r)
     }
 
     /// [`Self::on`], solving each hit in `frame`
     ///
     /// # Errors
     /// As [`Self::on`].
-    pub fn on_in(
+    pub(crate) fn on_in(
         context: GpuContext,
         frame: ShellFrame,
         bvh: &'a MeshBvh,
@@ -219,8 +208,7 @@ impl<'a> ShellRenderer<'a> {
         let device = context.device();
         let code = match frame {
             ShellFrame::World => 0,
-            ShellFrame::Leaf => 1,
-            ShellFrame::Triangle => 2,
+            ShellFrame::Triangle => 1,
         };
         let text = SHELL_KERNEL.replacen(
             "const FRAME: u32 = 0u;",
@@ -281,7 +269,6 @@ impl<'a> ShellRenderer<'a> {
         // the world frame reads neither; bind something non-empty
         let (c, l): (&[f32], &[f32]) = match frame {
             ShellFrame::World => (&[0.0; 4], &[0.0; 9]),
-            ShellFrame::Leaf => (&flat.node_centres, &flat.leaf_local),
             ShellFrame::Triangle => (&flat.tri_centres, &flat.tri_local),
         };
         let centres = storage("mesh shell frame centres", bytemuck::cast_slice(c));
@@ -307,12 +294,12 @@ impl<'a> ShellRenderer<'a> {
     /// On the CPU only
     #[must_use]
     pub const fn cpu(bvh: &'a MeshBvh, r: f32) -> Self {
-        Self::cpu_in(ShellFrame::Leaf, bvh, r)
+        Self::cpu_in(ShellFrame::Triangle, bvh, r)
     }
 
     /// [`Self::cpu`], solving each hit in `frame`
     #[must_use]
-    pub const fn cpu_in(frame: ShellFrame, bvh: &'a MeshBvh, r: f32) -> Self {
+    pub(crate) const fn cpu_in(frame: ShellFrame, bvh: &'a MeshBvh, r: f32) -> Self {
         Self {
             bvh,
             r,
