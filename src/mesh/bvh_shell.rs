@@ -877,11 +877,21 @@ mod tests {
 
     #[test]
     fn the_smallest_magnitudes_stay_in_the_exact_domain() {
-        // r .002 mm: a triangle 0.01 mm across near the frame origin, a normal with a component of
-        // 1e-8, the origin 1e-4 from the anchor
-        let a = v(1e-4, -2e-4, 3e-4);
-        let n = v(1e-8, 0.6, 0.8).normalize();
-        assert!(plane_distance_in_domain(a, a + v(1e-4, 1e-4, -1e-4), n));
+        // the smallest magnitudes measured on the figure (4 views, r .002 and .004, world and leaf
+        // frames, every piece the walk reached), in mm: |anchor - o| 7.66e-3 in a leaf frame, a
+        // component of anchor - o of 2.77e-5, a normal component of 1.37e-6; at those sizes the
+        // smallest intermediate (a Dekker lo * lo) was 5.0e-16, far above the f32 normal minimum
+        let a = v(12.5, -7.25, 3.0);
+        let o = a - v(2.77e-5, 7.66e-3, 1.0e-4);
+        let n = v(1.37e-6, 0.6, 0.8).normalize();
+        assert!(n.x > 1.0e-6);
+        assert!(plane_distance_in_domain(a, o, n));
+        // and in world coordinates, |anchor - o| 1.10 and up
+        assert!(plane_distance_in_domain(
+            a + v(800.0, 600.0, 1400.0),
+            o + v(800.0, 600.0, 1400.0) - v(0.0, 1.1, 0.0),
+            n
+        ));
         assert!(plane_distance_in_domain(a, a, n));
         // and a case outside it, so the check has teeth
         assert!(!plane_distance_in_domain(
