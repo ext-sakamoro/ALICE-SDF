@@ -551,6 +551,181 @@ pub(crate) enum Reads<'a> {
     CheckedPlain,
 }
 
+/// The most elements a module-scope array is emitted with: larger arrays are written as consecutive
+/// arrays of at most this many elements, read through one function. A SPIR-V instruction holds at
+/// most 65535 words, so a constant composite of more than 65532 constituents cannot be encoded (naga
+/// writes it anyway, with a word count of 0, and the module is invalid on every Vulkan driver); WGSL
+/// array constructors are also limited to 32767 elements by some compilers. A loft at a body's size
+/// carries about 85000 values. Reported upstream: <https://github.com/gfx-rs/wgpu/issues/10877>
+pub(crate) const MODULE_ARRAY_CHUNK: usize = 16384;
+
+/// One module-scope array declaration of a dialect, on one line: `head` up to the first element,
+/// the elements, `tail` from after the last
+struct ArrayDecl<'a> {
+    name: &'a str,
+    elem: &'static str,
+    len: usize,
+    head: &'a str,
+    items: Vec<&'a str>,
+    tail: &'a str,
+}
+
+/// The array declaration on `line`, as each dialect writes it (`ShaderLang::global_float_array`,
+/// the loft and stack emitters): WGSL `const NAME: array<f32, N> = array<f32, N>(…);`, GLSL
+/// `const float NAME[N] = float[N](…);`, HLSL `static const float NAME[N] = { … };` (and `int`)
+fn array_decl<'a>(line: &'a str, dialect: &str) -> Option<ArrayDecl<'a>> {
+    let (name, elem, len) = match dialect {
+        "wgsl" => {
+            let rest = line.strip_prefix("const ")?;
+            let (name, ty) = rest.split_once(": array<")?;
+            let (elem, rest) = ty.split_once(", ")?;
+            let elem = match elem {
+                "f32" => "f32",
+                "i32" => "i32",
+                _ => return None,
+            };
+            (name, elem, rest.split_once('>')?.0)
+        }
+        "glsl" | "hlsl" => {
+            let rest = line.strip_prefix(if dialect == "glsl" {
+                "const "
+            } else {
+                "static const "
+            })?;
+            let (elem, rest) = rest.split_once(' ')?;
+            let elem = match elem {
+                "float" => "float",
+                "int" => "int",
+                _ => return None,
+            };
+            let (name, rest) = rest.split_once('[')?;
+            (name, elem, rest.split_once(']')?.0)
+        }
+        _ => return None,
+    };
+    let len = len.trim().parse::<usize>().ok()?;
+    let eq = line.find(" = ")?;
+    let open = eq + line[eq..].find(['(', '{'])? + 1;
+    let close = line.rfind([')', '}'])?;
+    let inner = &line[open..close];
+    let lead = inner.len() - inner.trim_start().len();
+    let trail = inner.len() - inner.trim_end().len();
+    let items: Vec<&str> = inner
+        .split(',')
+        .map(str::trim)
+        .filter(|x| !x.is_empty())
+        .collect();
+    (items.len() == len).then_some(ArrayDecl {
+        name,
+        elem,
+        len,
+        head: &line[..open + lead],
+        items,
+        tail: &line[close - trail..],
+    })
+}
+
+/// `src` with every module-scope array longer than `chunk` written as consecutive arrays
+/// `NAME_c0, NAME_c1, …` of at most `chunk` elements and a function `NAME_r(i)` reading element `i`;
+/// each read `NAME[e]` becomes `NAME_r(e)` (as an integer). The values and the order of every read are
+/// those of the one array, so the field is the same
+pub(crate) fn split_large_arrays(src: &str, dialect: &str, chunk: usize) -> String {
+    let decls: Vec<ArrayDecl<'_>> = src
+        .lines()
+        .filter_map(|l| array_decl(l, dialect))
+        .filter(|d| d.len > chunk)
+        .collect();
+    if decls.is_empty() {
+        return src.to_owned();
+    }
+    let mut out = String::with_capacity(src.len() + 1024);
+    for line in src.split_inclusive('\n') {
+        let Some(d) = decls.iter().find(|d| {
+            array_decl(line.trim_end_matches('\n'), dialect).is_some_and(|x| x.name == d.name)
+        }) else {
+            out.push_str(line);
+            continue;
+        };
+        let parts = d.len.div_ceil(chunk);
+        for k in 0..parts {
+            let items = &d.items[k * chunk..((k + 1) * chunk).min(d.len)];
+            let n = items.len();
+            let head = d
+                .head
+                .replacen(d.name, &format!("{}_c{k}", d.name), 1)
+                .replace(&format!(", {}>", d.len), &format!(", {n}>"))
+                .replace(&format!("[{}]", d.len), &format!("[{n}]"));
+            out.push_str(&format!("{head}{}{}\n", items.join(", "), d.tail));
+        }
+        out.push_str(&chunk_reader(d, dialect, parts, chunk));
+    }
+    let mut src = out;
+    for d in &decls {
+        src = rewrite_reads(&src, d.name, dialect);
+    }
+    src
+}
+
+/// The function `NAME_r(i)`: element `i` of the chunks of `d`
+fn chunk_reader(d: &ArrayDecl<'_>, dialect: &str, parts: usize, chunk: usize) -> String {
+    let name = d.name;
+    let mut body = String::new();
+    for k in 0..parts {
+        let read = format!("{name}_c{k}[i - {}]", k * chunk);
+        if k + 1 < parts {
+            body.push_str(&format!(
+                "    if (i < {}) {{ return {read}; }}\n",
+                (k + 1) * chunk
+            ));
+        } else {
+            body.push_str(&format!("    return {read};\n"));
+        }
+    }
+    match dialect {
+        "wgsl" => format!("fn {name}_r(i: i32) -> {} {{\n{body}}}\n", d.elem),
+        _ => format!("{} {name}_r(int i) {{\n{body}}}\n", d.elem),
+    }
+}
+
+/// Every read `name[e]` in `src` (not a declaration, not a longer identifier ending in `name`)
+/// written `name_r(int(e))`
+fn rewrite_reads(src: &str, name: &str, dialect: &str) -> String {
+    let pat = format!("{name}[");
+    let bytes = src.as_bytes();
+    let mut out = String::with_capacity(src.len());
+    let mut i = 0;
+    while let Some(rel) = src[i..].find(&pat) {
+        let at = i + rel;
+        let prev_ident = at > 0 && (bytes[at - 1].is_ascii_alphanumeric() || bytes[at - 1] == b'_');
+        out.push_str(&src[i..at]);
+        if prev_ident {
+            out.push_str(&pat);
+            i = at + pat.len();
+            continue;
+        }
+        let open = at + pat.len();
+        let (mut depth, mut j) = (1usize, open);
+        while depth > 0 && j < bytes.len() {
+            match bytes[j] {
+                b'[' => depth += 1,
+                b']' => depth -= 1,
+                _ => {}
+            }
+            j += 1;
+        }
+        let expr = &src[open..j - 1];
+        let int = match dialect {
+            "wgsl" => format!("i32({expr})"),
+            "hlsl" => format!("(int)({expr})"),
+            _ => format!("int({expr})"),
+        };
+        out.push_str(&format!("{name}_r({int})"));
+        i = j;
+    }
+    out.push_str(&src[i..]);
+    out
+}
+
 /// The emitter's reads of the array `arr` (a block of `len` values, at `offset` in the node's data
 /// for the buffer modes) written out in `mode`, `wrap` applied to each read. Every read must carry
 /// its index range `@ lo..hi` (integers, inclusive): a read without one, or a range outside `0..len`,
@@ -922,7 +1097,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         writeln!(shader, "{}", L::func_signature()).unwrap();
         shader.push_str(body);
         shader.push_str("}\n");
-        shader
+        split_large_arrays(&shader, L::NAME, MODULE_ARRAY_CHUNK)
     }
 
     /// The grid warp's point computation (shared by the field and the rest point): emits `q`, the box
@@ -4588,5 +4763,90 @@ mod read_range_tests {
         let (out, errs) = render("static const float a[5] = { 1.0 };\nx = a[0 @ 0..0];", 5);
         assert!(errs.is_empty(), "{errs:?}");
         assert!(out.starts_with("static const float a[5]"));
+    }
+}
+
+#[cfg(test)]
+mod array_chunk_tests {
+    use super::split_large_arrays;
+
+    fn items(n: usize) -> (Vec<f32>, String) {
+        let v: Vec<f32> = (0..n).map(|i| i as f32 * 1.5 + 0.25).collect();
+        let s = v
+            .iter()
+            .map(|x| format!("{x:?}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        (v, s)
+    }
+
+    #[test]
+    fn every_dialect_writes_chunks_of_at_most_the_limit() {
+        let (_, s) = items(10);
+        for (dialect, decl, read) in [
+            (
+                "wgsl",
+                format!("const A: array<f32, 10> = array<f32, 10>({s});"),
+                "A[j]",
+            ),
+            (
+                "glsl",
+                format!("const float A[10] = float[10]({s});"),
+                "A[j]",
+            ),
+            (
+                "hlsl",
+                format!("static const float A[10] = {{ {s} }};"),
+                "A[j]",
+            ),
+        ] {
+            let out = split_large_arrays(&format!("{decl}\nx = {read} + BA[1];\n"), dialect, 3);
+            for (k, n) in [(0, 3), (1, 3), (2, 3), (3, 1)] {
+                let want = match dialect {
+                    "wgsl" => format!("const A_c{k}: array<f32, {n}> = array<f32, {n}>("),
+                    "glsl" => format!("const float A_c{k}[{n}] = float[{n}]("),
+                    _ => format!("static const float A_c{k}[{n}] = {{ "),
+                };
+                assert!(out.contains(&want), "{dialect}: no {want}\n{out}");
+            }
+            assert!(
+                !out.contains("A[j]"),
+                "{dialect}: a read left as it was\n{out}"
+            );
+            assert!(out.contains("A_r("), "{dialect}: no reader call\n{out}");
+            assert!(
+                out.contains("BA[1]"),
+                "{dialect}: a longer name was rewritten\n{out}"
+            );
+        }
+        // an array within the limit is left alone
+        let small = format!("const A: array<f32, 10> = array<f32, 10>({s});\n");
+        assert_eq!(split_large_arrays(&small, "wgsl", 10), small);
+    }
+
+    /// The reader on the GPU returns every element, across every chunk boundary
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn a_chunked_array_reads_every_element_on_the_gpu() {
+        if !crate::gpu_test_support::gpu_ready("a_chunked_array_reads_every_element_on_the_gpu") {
+            return;
+        }
+        let n = 10;
+        let (values, s) = items(n);
+        let src = format!(
+            "const A: array<f32, {n}> = array<f32, {n}>({s});\nfn sdf_eval(p: vec3<f32>) -> f32 {{\n    return A[i32(p.x)];\n}}\n"
+        );
+        let split = split_large_arrays(&src, "wgsl", 3);
+        assert!(split.contains("A_c3"), "{split}");
+        let mut shader = crate::compiled::WgslShader::transpile(
+            &crate::types::SdfNode::sphere(1.0),
+            crate::compiled::TranspileMode::Hardcoded,
+        );
+        shader.source = split;
+        let gpu = crate::compiled::GpuEvaluator::from_shader(&shader).expect("evaluator");
+        let pts: Vec<glam::Vec3> = (0..n)
+            .map(|i| glam::Vec3::new(i as f32 + 0.25, 0.0, 0.0))
+            .collect();
+        assert_eq!(gpu.eval_batch(&pts).expect("gpu"), values);
     }
 }
