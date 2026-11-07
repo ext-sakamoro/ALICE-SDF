@@ -69,24 +69,81 @@ fn cylinder_t(o: vec3<f32>, dir: vec3<f32>, u0: vec3<f32>, v0: vec3<f32>, r: f32
     return t;
 }
 
-// over the triangle: the three edge functions against the unnormalised normal (no division)
+// Error-free transforms, as src/mesh/bvh_shell.rs: Dekker's split, no fused multiply-add, so the
+// same + - * (correctly rounded, kept unfused by the shader path) give the CPU's bits
+fn two_sum(a: f32, b: f32) -> vec2<f32> {
+    let s = a + b;
+    let bb = s - a;
+    return vec2<f32>(s, (a - (s - bb)) + (b - bb));
+}
+fn two_diff(a: f32, b: f32) -> vec2<f32> {
+    let s = a - b;
+    let bb = s - a;
+    return vec2<f32>(s, (a - (s - bb)) + (-b - bb));
+}
+fn split(a: f32) -> vec2<f32> {
+    let c = 4097.0 * a;
+    let hi = c - (c - a);
+    return vec2<f32>(hi, a - hi);
+}
+fn two_prod(a: f32, b: f32) -> vec2<f32> {
+    let p = a * b;
+    let x = split(a);
+    let y = split(b);
+    return vec2<f32>(p, ((x.x * y.x - p) + x.x * y.y + x.y * y.x) + x.y * y.y);
+}
+// (a - o) . n: exact differences, Dot2, plus the remainders against n
+fn plane_distance(a: vec3<f32>, o: vec3<f32>, n: vec3<f32>) -> f32 {
+    let wx = two_diff(a.x, o.x); let wy = two_diff(a.y, o.y); let wz = two_diff(a.z, o.z);
+    let q0 = two_prod(wx.x, n.x);
+    let r1 = two_prod(wy.x, n.y);
+    let s1 = two_sum(q0.x, r1.x);
+    let r2 = two_prod(wz.x, n.z);
+    let s2 = two_sum(s1.x, r2.x);
+    return s2.x + (q0.y + r1.y + s1.y + r2.y + s2.y + (wx.y * n.x + wy.y * n.y + wz.y * n.z));
+}
+
+struct Frame { anchor: vec3<f32>, nu: vec3<f32>, }
+
+// the cross of the two shortest edges, at the vertex opposite the longest; a tie goes to the lower
+// bits of the opposite vertex
+fn face_frame(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> Frame {
+    let l0 = d(b - a, b - a); let l1 = d(c - b, c - b); let l2 = d(a - c, a - c);
+    // edge k is opposite vertex (c, a, b)[k]
+    var m = 0u; var ml = l0; var mk = c;
+    if l1 > ml || (l1 == ml && key_lt(a, mk)) { m = 1u; ml = l1; mk = a; }
+    if l2 > ml || (l2 == ml && key_lt(b, mk)) { m = 2u; ml = l2; mk = b; }
+    if m == 0u { return Frame(c, cross3(a - c, b - c)); }
+    if m == 1u { return Frame(a, cross3(b - a, c - a)); }
+    return Frame(b, cross3(c - b, a - b));
+}
+
+// the edge function of u -> v at q, one direction per edge (lower bits first, sign turned back)
+fn edge_function(u: vec3<f32>, v: vec3<f32>, q: vec3<f32>, nu: vec3<f32>) -> f32 {
+    if !key_lt(v, u) { return d(cross3(v - u, q - u), nu); }
+    return -d(cross3(u - v, q - v), nu);
+}
+
+// both planes offset by r from the shortest-edge plane; over the triangle by the edge functions
 fn face_t(o: vec3<f32>, dir: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, r: f32) -> f32 {
-    let nn = cross3(b - a, c - a);
-    let nl = sqrt(d(nn, nn));
+    let fr = face_frame(a, b, c);
+    let nu = fr.nu;
+    let nl = sqrt(d(nu, nu));
     if nl == 0.0 || !(abs(nl) <= 3.40282347e38) { return MISS; }
-    let n = vec3<f32>(nn.x / nl, nn.y / nl, nn.z / nl);
+    let n = vec3<f32>(nu.x / nl, nu.y / nl, nu.z / nl);
     let dn = d(dir, n);
     if dn == 0.0 { return MISS; }
+    let h = plane_distance(fr.anchor, o, n);
     var best = MISS;
     for (var k = 0u; k < 2u; k += 1u) {
         let sg = select(-1.0, 1.0, k == 0u);
         let off = sg * r;
-        let t = d(vadd_scaled(a, n, off) - o, n) / dn;
+        let t = (h + off) / dn;
         if t < 0.0 { continue; }
         let q = vadd_scaled(vadd_scaled(o, dir, t), n, -off);
-        let over = d(cross3(b - a, q - a), nn) >= 0.0
-            && d(cross3(c - b, q - b), nn) >= 0.0
-            && d(cross3(a - c, q - c), nn) >= 0.0;
+        let over = edge_function(a, b, q, nu) >= 0.0
+            && edge_function(b, c, q, nu) >= 0.0
+            && edge_function(c, a, q, nu) >= 0.0;
         if over {
             if best == MISS { best = t; } else { best = fmin(best, t); }
         }

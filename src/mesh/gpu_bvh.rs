@@ -407,6 +407,7 @@ fn decode(h: &RawHit) -> Result<Option<ShellHit>, GpuError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use glam::Vec3;
 
     #[test]
     fn the_shell_kernel_parses_and_validates() {

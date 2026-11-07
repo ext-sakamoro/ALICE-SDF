@@ -111,35 +111,182 @@ fn cylinder_t(o: Vec3, d: Vec3, u: Vec3, v: Vec3, r: f32, root: RootFn) -> Optio
     Some(t)
 }
 
-/// Hit on either plane offset from the face by `r`, inside the triangle's prism
+// Error-free transforms. A product's rounding error comes from Dekker's split (Veltkamp,
+// 4097 = 2^12 + 1 for f32), not from a fused multiply-add: `+ - *` are correctly rounded in WGSL
+// and the shader path keeps them unfused, so the CPU and the GPU form the same bits. They are
+// exact while every intermediate value is zero or a normal f32 (a GPU may flush subnormals to
+// zero); `plane_distance_in_domain` checks that for given inputs.
+
+/// `a + b = s + e` exactly
+#[inline]
+pub(crate) fn two_sum(a: f32, b: f32) -> (f32, f32) {
+    let s = a + b;
+    let bb = s - a;
+    (s, (a - (s - bb)) + (b - bb))
+}
+
+/// `a - b = s + e` exactly
+#[inline]
+pub(crate) fn two_diff(a: f32, b: f32) -> (f32, f32) {
+    let s = a - b;
+    let bb = s - a;
+    (s, (a - (s - bb)) + (-b - bb))
+}
+
+#[inline]
+fn split(a: f32) -> (f32, f32) {
+    let c = 4097.0 * a;
+    let hi = c - (c - a);
+    (hi, a - hi)
+}
+
+/// `a * b = p + e` exactly (Dekker)
+#[inline]
+pub(crate) fn two_prod(a: f32, b: f32) -> (f32, f32) {
+    let p = a * b;
+    let (ah, al) = split(a);
+    let (bh, bl) = split(b);
+    (p, ((ah * bh - p) + ah * bl + al * bh) + al * bl)
+}
+
+/// `(a - o) . n`: the difference exact per component, then Dot2 (Ogita, Rump, Oishi) of it with `n`,
+/// plus the differences' remainders against `n`
+#[inline]
+fn plane_distance(a: Vec3, o: Vec3, n: Vec3) -> f32 {
+    let (wx, ex) = two_diff(a.x, o.x);
+    let (wy, ey) = two_diff(a.y, o.y);
+    let (wz, ez) = two_diff(a.z, o.z);
+    let (p0, q0) = two_prod(wx, n.x);
+    let (h1, r1) = two_prod(wy, n.y);
+    let (p1, s1) = two_sum(p0, h1);
+    let (h2, r2) = two_prod(wz, n.z);
+    let (p2, s2) = two_sum(p1, h2);
+    p2 + (q0 + r1 + s1 + r2 + s2 + (ex * n.x + ey * n.y + ez * n.z))
+}
+
+/// Whether every intermediate value of `plane_distance(a, o, n)` is zero or a normal f32, so a GPU
+/// that flushes subnormals forms the same bits as the CPU
+#[cfg(test)]
+pub(crate) fn plane_distance_in_domain(a: Vec3, o: Vec3, n: Vec3) -> bool {
+    let ok = |v: f32| v == 0.0 || v.abs() >= f32::MIN_POSITIVE;
+    let mut vals = vec![a.x, a.y, a.z, o.x, o.y, o.z, n.x, n.y, n.z];
+    let diff = |x: f32, y: f32, vals: &mut Vec<f32>| {
+        let s = x - y;
+        let bb = s - x;
+        vals.extend([s, bb, s - bb, x - (s - bb), -y - bb]);
+        two_diff(x, y)
+    };
+    let (wx, ex) = diff(a.x, o.x, &mut vals);
+    let (wy, ey) = diff(a.y, o.y, &mut vals);
+    let (wz, ez) = diff(a.z, o.z, &mut vals);
+    let prod = |x: f32, y: f32, vals: &mut Vec<f32>| {
+        let p = x * y;
+        let (xh, xl) = split(x);
+        let (yh, yl) = split(y);
+        vals.extend([
+            4097.0 * x,
+            4097.0 * y,
+            xh,
+            xl,
+            yh,
+            yl,
+            p,
+            xh * yh,
+            xh * yh - p,
+            xh * yl,
+            xl * yh,
+            xl * yl,
+        ]);
+        vals.push((xh * yh - p) + xh * yl);
+        vals.push(((xh * yh - p) + xh * yl) + xl * yh);
+        two_prod(x, y)
+    };
+    let (p0, q0) = prod(wx, n.x, &mut vals);
+    let (h1, r1) = prod(wy, n.y, &mut vals);
+    let (p1, s1) = two_sum(p0, h1);
+    let (h2, r2) = prod(wz, n.z, &mut vals);
+    let (p2, s2) = two_sum(p1, h2);
+    vals.extend([p0, q0, h1, r1, p1, s1, h2, r2, p2, s2, p1 - p0, p2 - p1]);
+    vals.extend([ex * n.x, ey * n.y, ez * n.z, ex * n.x + ey * n.y]);
+    vals.extend([
+        q0 + r1,
+        q0 + r1 + s1,
+        q0 + r1 + s1 + r2,
+        q0 + r1 + s1 + r2 + s2,
+    ]);
+    vals.into_iter().all(ok)
+}
+
+/// The anchor vertex and the unnormalised normal of a triangle: the cross of its two shortest edges,
+/// at the vertex opposite the longest (the largest angle), which keeps the normal well conditioned
+/// on a long thin triangle. The longest edge is chosen by squared lengths in a fixed order, a tie
+/// going to the lower bits of the opposite vertex; each pair has the orientation of `(b-a) x (c-a)`.
+#[inline]
+fn face_frame(a: Vec3, b: Vec3, c: Vec3) -> (Vec3, Vec3) {
+    let key = |p: Vec3| (p.x.to_bits(), p.y.to_bits(), p.z.to_bits());
+    // edge k is opposite vertex (c, a, b)[k]
+    let cand = [
+        ((b - a).dot(b - a), key(c), 0u8),
+        ((c - b).dot(c - b), key(a), 1),
+        ((a - c).dot(a - c), key(b), 2),
+    ];
+    let longest = cand[1..].iter().fold(cand[0], |m, x| {
+        if x.0 > m.0 || (x.0 == m.0 && x.1 < m.1) {
+            *x
+        } else {
+            m
+        }
+    });
+    match longest.2 {
+        0 => (c, (a - c).cross(b - c)),
+        1 => (a, (b - a).cross(c - a)),
+        _ => (b, (c - b).cross(a - b)),
+    }
+}
+
+/// The edge function of `u -> v` at `q` against `nu`, evaluated in one direction per edge (lower
+/// vertex bits first, the sign turned back), so a shared edge gives the same value from both
+/// triangles
+#[inline]
+fn edge_function(u: Vec3, v: Vec3, q: Vec3, nu: Vec3) -> f32 {
+    let key = |p: Vec3| (p.x.to_bits(), p.y.to_bits(), p.z.to_bits());
+    if key(u) <= key(v) {
+        (v - u).cross(q - u).dot(nu)
+    } else {
+        -((u - v).cross(q - v).dot(nu))
+    }
+}
+
 /// Hit on either plane offset from the face by `r`, inside the triangle's prism
 ///
-/// Whether the point lies over the triangle is decided by the three edge functions against the
-/// unnormalised normal, `((v1 - v0) x (q - v0)) . nn >= 0` for each edge: no division, so a sliver
-/// or near-collinear triangle (whose barycentric weights would divide by a Gram determinant near 0)
+/// The plane: the shortest-edge normal at its anchor (`face_frame`), and the signed distance of `o`
+/// to it in compensated arithmetic (`plane_distance`), `r` added after on that small value. Over the
+/// triangle: the three edge functions against the unnormalised normal, no division, so a sliver or
+/// near-collinear triangle (whose barycentric weights would divide by a Gram determinant near 0)
 /// accepts only points over itself.
 #[inline]
 fn face_t(o: Vec3, d: Vec3, a: Vec3, b: Vec3, c: Vec3, r: f32) -> Option<f32> {
-    let nn = (b - a).cross(c - a);
-    let nl = nn.length();
+    let (anchor, nu) = face_frame(a, b, c);
+    let nl = nu.length();
     if nl == 0.0 || !nl.is_finite() {
         return None;
     }
-    let n = nn / nl;
+    let n = nu / nl;
     let dn = d.dot(n);
     if dn == 0.0 {
         return None;
     }
+    let h = plane_distance(anchor, o, n);
     let mut best: Option<f32> = None;
     for sg in [1.0f32, -1.0] {
-        let t = ((a + n * (sg * r)) - o).dot(n) / dn;
+        let t = (h + sg * r) / dn;
         if t < 0.0 {
             continue;
         }
         let q = o + d * t - n * (sg * r);
-        let over = (b - a).cross(q - a).dot(nn) >= 0.0
-            && (c - b).cross(q - b).dot(nn) >= 0.0
-            && (a - c).cross(q - c).dot(nn) >= 0.0;
+        let over = edge_function(a, b, q, nu) >= 0.0
+            && edge_function(b, c, q, nu) >= 0.0
+            && edge_function(c, a, q, nu) >= 0.0;
         if over {
             best = Some(best.map_or(t, |x| x.min(t)));
         }
@@ -569,5 +716,262 @@ mod tests {
         }
         assert!(both > 500, "too few rays on the shared edge: {both}");
         assert_eq!(differ, 0, "of {both} rays on the shared edge");
+    }
+
+    fn xorshift(seed: u64) -> impl FnMut() -> f32 {
+        let mut x = seed;
+        move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            (x >> 40) as f32 / (1u64 << 24) as f32
+        }
+    }
+
+    /// f64 distance from a point to a triangle (no shared code with the method)
+    fn dist64(p: glam::DVec3, a: glam::DVec3, b: glam::DVec3, c: glam::DVec3) -> f64 {
+        let seg = |u: glam::DVec3, v: glam::DVec3| {
+            let e = v - u;
+            let l = e.dot(e);
+            let t = if l > 0.0 {
+                ((p - u).dot(e) / l).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            (u + e * t - p).length()
+        };
+        let m = seg(a, b).min(seg(b, c)).min(seg(c, a));
+        let n = (b - a).cross(c - a);
+        let nn = n.dot(n);
+        if nn <= 0.0 {
+            return m;
+        }
+        let q = p - n * ((p - a).dot(n) / nn);
+        let inside = |u: glam::DVec3, v: glam::DVec3| (v - u).cross(q - u).dot(n) >= 0.0;
+        if inside(a, b) && inside(b, c) && inside(c, a) {
+            (q - p).length().min(m)
+        } else {
+            m
+        }
+    }
+
+    #[test]
+    fn dekker_products_are_exact() {
+        let mut u = xorshift(0x51A7);
+        let mut checked = 0;
+        for _ in 0..20000 {
+            let scale = [1e-6f32, 1e-4, 1e-2, 1.0, 1e2, 1e4];
+            let a = (u() - 0.5) * scale[(u() * 6.0) as usize % 6];
+            let b = (u() - 0.5) * scale[(u() * 6.0) as usize % 6];
+            let (p, e) = two_prod(a, b);
+            // f64 holds an f32 product exactly
+            assert_eq!(
+                f64::from(p) + f64::from(e),
+                f64::from(a) * f64::from(b),
+                "{a} * {b}"
+            );
+            checked += 1;
+        }
+        assert_eq!(checked, 20000);
+    }
+
+    #[test]
+    fn the_plane_distance_is_within_two_ulp_of_f64() {
+        // oracle: (a - o) . n in f64 on the same f32 inputs; limit 2 ulp of the result + 1e-9
+        let mut u = xorshift(0xD1B54A32D192ED03);
+        let mut over = 0;
+        for _ in 0..20000 {
+            let a = v(
+                u() * 800.0 - 400.0,
+                u() * 800.0 - 400.0,
+                u() * 800.0 - 400.0,
+            );
+            let o = a + v(u() - 0.5, u() - 0.5, u() - 0.5) * (u() * 600.0);
+            let n = v(u() - 0.5, u() - 0.5, u() - 0.5).normalize();
+            let got = plane_distance(a, o, n);
+            let want = (a.as_dvec3() - o.as_dvec3()).dot(n.as_dvec3());
+            let lim = 2.0 * f64::from(f32::EPSILON) * want.abs() + 1e-9;
+            if (f64::from(got) - want).abs() > lim {
+                over += 1;
+            }
+            assert!(plane_distance_in_domain(a, o, n), "a {a:?} o {o:?} n {n:?}");
+        }
+        assert_eq!(over, 0, "of 20000 over 2 ulp");
+    }
+
+    /// Seeded long thin triangles (40-80 x 1-4 mm) about 1400 mm out, 300 oblique rays each aimed at a
+    /// point of the triangle, solved in a 60 x 50 x 50 mm leaf frame: the origin advanced to the
+    /// leaf's entry, the difference to the leaf centre exact. Returns the worst |dist - r| against
+    /// the f64 distance (infinite for a miss), and checks the inputs stay in the exact domain.
+    fn thin_case(seed: u64) -> f64 {
+        let mut u = xorshift(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
+        let r = 0.002f32;
+        let base = v(u() * 1200.0 - 600.0, u() * 500.0 - 170.0, u() * 1400.0);
+        let ax = v(u() - 0.5, u() - 0.5, u() - 0.5).normalize();
+        let pp = v(u() - 0.5, u() - 0.5, u() - 0.5).cross(ax).normalize();
+        let (l, w) = (40.0 + 40.0 * u(), 1.0 + 3.0 * u());
+        let tri = BvhTriangle::new(
+            base,
+            base + ax * l,
+            base + ax * (l - w * (u() - 0.5)) + pp * w,
+        );
+        let nrm = (tri.v1 - tri.v0).cross(tri.v2 - tri.v0).normalize();
+        let c0 = (tri.aabb.min + tri.aabb.max) * 0.5;
+        let half = v(30.0, 25.0, 25.0);
+        let lo = tri.aabb.min.min(c0 - half) - Vec3::ONE;
+        let hi = tri.aabb.max.max(c0 + half) + Vec3::ONE;
+        let c = (lo + hi) * 0.5;
+        let local = BvhTriangle::new(tri.v0 - c, tri.v1 - c, tri.v2 - c);
+        let mut worst = 0f64;
+        for _ in 0..300 {
+            let (wa, wb0) = (u(), u());
+            let wb = wb0 * (1.0 - wa);
+            let p = tri.v0 + (tri.v1 - tri.v0) * wa + (tri.v2 - tri.v0) * wb;
+            let tilt = 0.1 + 0.8 * u();
+            let side = v(u() - 0.5, u() - 0.5, u() - 0.5).cross(nrm).normalize();
+            let d = (-nrm * tilt + side * (1.0 - tilt * tilt).sqrt()).normalize();
+            let o = p - d * (900.0 + 500.0 * u());
+            let ra = Vec3::splat(r);
+            let t_adv = slab_t(lo - ra, hi + ra, o, d.recip()).unwrap_or(0.0);
+            // o_a = d t_adv + (o - c), every rounding error carried
+            let comp = |o: f32, c: f32, d: f32| {
+                let (s, e) = two_diff(o, c);
+                let (pr, pe) = two_prod(d, t_adv);
+                let (x, xe) = two_sum(pr, s);
+                x + (xe + pe + e)
+            };
+            let oa = v(
+                comp(o.x, c.x, d.x),
+                comp(o.y, c.y, d.y),
+                comp(o.z, c.z, d.z),
+            );
+            let (anchor, nu) = face_frame(local.v0, local.v1, local.v2);
+            assert!(
+                plane_distance_in_domain(anchor, oa, nu / nu.length()),
+                "seed {seed}"
+            );
+            let e = match triangle_shell_hit(oa, d, &local, r) {
+                Some((tl, _)) => {
+                    let at = o.as_dvec3() + d.as_dvec3() * (f64::from(t_adv) + f64::from(tl));
+                    (dist64(at, tri.v0.as_dvec3(), tri.v1.as_dvec3(), tri.v2.as_dvec3())
+                        - f64::from(r))
+                    .abs()
+                }
+                None => f64::INFINITY,
+            };
+            worst = worst.max(e);
+        }
+        worst
+    }
+
+    #[test]
+    fn thin_far_triangles_hit_on_the_level_set() {
+        let mut worst = 0f64;
+        for seed in [
+            1277u64, 53, 2531, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+        ] {
+            worst = worst.max(thin_case(seed));
+        }
+        assert!(worst <= 2e-5, "worst |d - r| {worst:e} (a miss is inf)");
+    }
+
+    #[test]
+    fn the_smallest_magnitudes_stay_in_the_exact_domain() {
+        // r .002 mm: a triangle 0.01 mm across near the frame origin, a normal with a component of
+        // 1e-8, the origin 1e-4 from the anchor
+        let a = v(1e-4, -2e-4, 3e-4);
+        let n = v(1e-8, 0.6, 0.8).normalize();
+        assert!(plane_distance_in_domain(a, a + v(1e-4, 1e-4, -1e-4), n));
+        assert!(plane_distance_in_domain(a, a, n));
+        // and a case outside it, so the check has teeth
+        assert!(!plane_distance_in_domain(
+            v(1e-20, 0.0, 0.0),
+            v(-1e-20, 0.0, 0.0),
+            v(1e-20, 0.0, 1.0)
+        ));
+    }
+
+    #[test]
+    fn a_face_hit_matches_the_f64_plane_solve_for_oblique_rays() {
+        // oracle: t = ((anchor - o) . n + r) / dn in f64 on the same f32 anchor, normal and dn; the
+        // rays start far along the plane (|anchor - o| much larger than the plane distance), where a
+        // plain f32 dot of anchor - o loses the plane distance's low digits
+        let mut u = xorshift(0x000B_110E);
+        let (mut over, mut checked) = (0, 0);
+        for _ in 0..20000 {
+            let a = v(u() * 40.0 - 20.0, u() * 40.0 - 20.0, u() * 40.0 - 20.0);
+            let b = a + v(u() * 30.0 - 15.0, u() * 30.0 - 15.0, u() * 30.0 - 15.0);
+            let c = a + v(u() * 30.0 - 15.0, u() * 30.0 - 15.0, u() * 30.0 - 15.0);
+            let (anchor, nu) = face_frame(a, b, c);
+            let n = nu / nu.length();
+            let target = a + (b - a) * 0.3 + (c - a) * 0.3;
+            let along = (b - a).normalize();
+            let o = target - along * (300.0 + 100.0 * u()) + n * (0.05 + u() * 0.05);
+            let d = (target - o).normalize();
+            let r = 0.002;
+            let Some(t) = face_t(o, d, a, b, c, r) else {
+                continue;
+            };
+            let (n6, d6) = (n.as_dvec3(), d.as_dvec3());
+            let h6 = (anchor.as_dvec3() - o.as_dvec3()).dot(n6);
+            // the method's own f32 d . n: this test isolates the plane distance
+            let dn = f64::from(d.dot(n));
+            let _ = d6;
+            // each side's hit point, kept when it lies over the triangle (f64 edge tests)
+            let (a6, b6, c6) = (a.as_dvec3(), b.as_dvec3(), c.as_dvec3());
+            let nn6 = (b6 - a6).cross(c6 - a6);
+            let want = [0.002f64, -0.002]
+                .into_iter()
+                .map(|off| ((h6 + off) / dn, off))
+                .filter(|(t, off)| {
+                    let q = o.as_dvec3() + d.as_dvec3() * *t - n6 * *off;
+                    let e = |u: glam::DVec3, w: glam::DVec3| (w - u).cross(q - u).dot(nn6) >= 0.0;
+                    *t >= 0.0 && e(a6, b6) && e(b6, c6) && e(c6, a6)
+                })
+                .map(|(t, _)| t)
+                .fold(f64::INFINITY, f64::min);
+            if !want.is_finite() {
+                // on the edge of the triangle: the edge cylinders decide, not this test
+                continue;
+            }
+            checked += 1;
+            if (f64::from(t) - want).abs() > 8.0 * f64::from(f32::EPSILON) * want.abs() {
+                over += 1;
+            }
+        }
+        assert!(checked > 1000, "checked {checked}");
+        assert_eq!(
+            over, 0,
+            "of {checked} face hits over 8 ulp of the f64 plane solve"
+        );
+    }
+
+    #[test]
+    fn two_coplanar_triangles_leave_no_crack_on_their_shared_edge() {
+        // a quad split along p-q: a point of the plane next to the diagonal is over one triangle or
+        // both, never neither
+        let mut u = xorshift(0xC0FFEE);
+        let mut crack = 0;
+        for _ in 0..200 {
+            let p = v(u() * 10.0, u() * 10.0, u() * 10.0);
+            let q = p + v(u() * 7.0 + 1.0, u() * 7.0 - 3.0, u() * 7.0 - 3.0);
+            let side = (q - p).cross(v(0.3, 1.0, 0.2)).normalize();
+            let (one, two) = (
+                [p, q, p + side * 3.0 + (q - p) * 0.5],
+                [q, p, p - side * 3.0 + (q - p) * 0.5],
+            );
+            let (_, n1) = face_frame(one[0], one[1], one[2]);
+            let (_, n2) = face_frame(two[0], two[1], two[2]);
+            for _ in 0..500 {
+                let s = p + (q - p) * (0.05 + 0.9 * u()) + side * ((u() - 0.5) * 1e-5);
+                let over = |t: [Vec3; 3], nu: Vec3| {
+                    edge_function(t[0], t[1], s, nu) >= 0.0
+                        && edge_function(t[1], t[2], s, nu) >= 0.0
+                        && edge_function(t[2], t[0], s, nu) >= 0.0
+                };
+                crack += (!over(one, n1) && !over(two, n2)) as usize;
+            }
+        }
+        assert_eq!(crack, 0, "points over neither triangle");
     }
 }

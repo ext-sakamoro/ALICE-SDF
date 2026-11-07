@@ -121,14 +121,80 @@ fn cylinder(o: Vec3, d: Vec3, u0: Vec3, v0: Vec3, r: f32) -> Option<(M, bool, bo
     (hits || amb_ax || amb).then_some((t, amb || amb_ax, hits))
 }
 
+fn key(p: Vec3) -> (u32, u32, u32) {
+    (p.x.to_bits(), p.y.to_bits(), p.z.to_bits())
+}
+
+// the method's plane: the shortest-edge normal at its anchor, and (anchor - o) . n in compensated
+// arithmetic (Dekker products), mirrored from src/mesh/bvh_shell.rs
+fn two_sum(a: f32, b: f32) -> (f32, f32) {
+    let s = a + b;
+    let bb = s - a;
+    (s, (a - (s - bb)) + (b - bb))
+}
+fn two_diff(a: f32, b: f32) -> (f32, f32) {
+    let s = a - b;
+    let bb = s - a;
+    (s, (a - (s - bb)) + (-b - bb))
+}
+fn split(a: f32) -> (f32, f32) {
+    let c = 4097.0 * a;
+    let hi = c - (c - a);
+    (hi, a - hi)
+}
+fn two_prod(a: f32, b: f32) -> (f32, f32) {
+    let p = a * b;
+    let (ah, al) = split(a);
+    let (bh, bl) = split(b);
+    (p, ((ah * bh - p) + ah * bl + al * bh) + al * bl)
+}
+fn plane_distance(a: Vec3, o: Vec3, n: Vec3) -> f32 {
+    let (wx, ex) = two_diff(a.x, o.x);
+    let (wy, ey) = two_diff(a.y, o.y);
+    let (wz, ez) = two_diff(a.z, o.z);
+    let (p0, q0) = two_prod(wx, n.x);
+    let (h1, r1) = two_prod(wy, n.y);
+    let (p1, s1) = two_sum(p0, h1);
+    let (h2, r2) = two_prod(wz, n.z);
+    let (p2, s2) = two_sum(p1, h2);
+    p2 + (q0 + r1 + s1 + r2 + s2 + (ex * n.x + ey * n.y + ez * n.z))
+}
+fn face_frame(a: Vec3, b: Vec3, c: Vec3) -> (Vec3, Vec3) {
+    let cand = [
+        ((b - a).dot(b - a), key(c), 0u8),
+        ((c - b).dot(c - b), key(a), 1),
+        ((a - c).dot(a - c), key(b), 2),
+    ];
+    let longest = cand[1..].iter().fold(cand[0], |m, x| {
+        if x.0 > m.0 || (x.0 == m.0 && x.1 < m.1) {
+            *x
+        } else {
+            m
+        }
+    });
+    match longest.2 {
+        0 => (c, (a - c).cross(b - c)),
+        1 => (a, (b - a).cross(c - a)),
+        _ => (b, (c - b).cross(a - b)),
+    }
+}
+fn edge_function(u: Vec3, v: Vec3, q: Vec3, nu: Vec3) -> f32 {
+    if key(u) <= key(v) {
+        (v - u).cross(q - u).dot(nu)
+    } else {
+        -((u - v).cross(q - v).dot(nu))
+    }
+}
+
 /// Both offset planes; each side is its own piece
 fn face(o: Vec3, d: Vec3, va: Vec3, vb: Vec3, vc: Vec3, r: f32) -> Vec<(M, bool, bool)> {
-    let nn = (vb - va).cross(vc - va);
-    let nl = nn.length();
+    let (anchor, nu) = face_frame(va, vb, vc);
+    let nl = nu.length();
     if nl == 0.0 || !nl.is_finite() {
         return Vec::new();
     }
-    let n = nn / nl;
+    let n = nu / nl;
+    // n: a square root, then a division per component
     let dn_vec = a(n) * ((SQRT + DIV + 1.0) * E);
     let dn = d.dot(n);
     let ddn = a(d).dot(dn_vec) + 3.0 * E * a(d).dot(a(n));
@@ -136,14 +202,14 @@ fn face(o: Vec3, d: Vec3, va: Vec3, vb: Vec3, vc: Vec3, r: f32) -> Vec<(M, bool,
     if dn == 0.0 {
         return Vec::new();
     }
+    // h is exact up to its last rounding for given n; it moves with n
+    let h = plane_distance(anchor, o, n);
+    let dh = (anchor.as_dvec3() - o.as_dvec3()).abs().dot(dn_vec) + 2.0 * E * f64::from(h.abs());
     let mut out = Vec::new();
     for sg in [1.0f32, -1.0] {
         let off = sg * r;
-        let pp = va + n * off;
-        let x = pp - o;
-        let dx = dn_vec * f64::from(off.abs()) + (a(pp) + a(x)) * E;
-        let num = x.dot(n);
-        let dnum = a(x).dot(dn_vec) + a(n).dot(dx) + 3.0 * E * a(x).dot(a(n));
+        let num = h + off;
+        let dnum = dh + E * f64::from(num.abs());
         let t = num / dn;
         let dt =
             (dnum + f64::from(t.abs()) * ddn) / f64::from(dn.abs()) + DIV * E * f64::from(t.abs());
@@ -156,11 +222,11 @@ fn face(o: Vec3, d: Vec3, va: Vec3, vb: Vec3, vc: Vec3, r: f32) -> Vec<(M, bool,
         let mut over = true;
         let mut amb_e = false;
         for (p0, p1) in [(va, vb), (vb, vc), (vc, va)] {
+            let ef = edge_function(p0, p1, q, nu);
             let s = (p1 - p0).cross(q - p0);
-            let ef = s.dot(nn);
-            // |((p1 - p0) x dq) . nn| <= |p1 - p0| |dq| |nn|, plus the roundings of the cross and dot
+            // |((p1 - p0) x dq) . nu| <= |p1 - p0| |dq| |nu|, plus the roundings of the cross and dot
             let de = (p1 - p0).as_dvec3().length() * dq.length() * f64::from(nl)
-                + 6.0 * E * a(s).dot(a(nn))
+                + 6.0 * E * a(s).dot(a(nu))
                 + 4.0 * E * a(p1 - p0).dot(a(q - p0)) * f64::from(nl);
             amb_e |= f64::from(ef.abs()) <= de;
             over &= ef >= 0.0;
