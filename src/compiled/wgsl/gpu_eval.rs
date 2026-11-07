@@ -1544,6 +1544,7 @@ impl GpuEvaluator {
     /// Whether this evaluator's driver can fuse `a * b + c`, so a caller that needs the same bits
     /// everywhere can refuse by checking.
     #[must_use]
+    // ALLOW-UNWIRED: wiring debt gpu-contraction-query: read by the GPU tests to choose their assertion (bit-equal or a budget); an eval option that refuses a contracted device is the production caller to come
     pub fn contraction(&self) -> crate::gpu_context::Contraction {
         match &self.engine {
             Engine::Wgpu(w) => w
