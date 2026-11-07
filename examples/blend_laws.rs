@@ -20,7 +20,8 @@
 
 use alice_sdf::operations::{
     sdf_intersection_multi, sdf_smooth_intersection_rk, sdf_smooth_subtraction_rk,
-    sdf_smooth_union_rk, sdf_union_multi, smooth_min_cubic, smooth_min_exp, smooth_min_root,
+    sdf_smooth_union_rk, sdf_union_multi, smooth_min, smooth_min_cubic, smooth_min_exp,
+    smooth_min_root, smooth_min_weight, SMOOTH_UNION_BLEND_GLSL,
 };
 
 fn check(name: &str, got: f32, want: f64) {
@@ -88,6 +89,28 @@ fn main() {
         "smooth_min_root",
         smooth_min_root(a, b, k),
         0.5 * (a6 + b6 - ((b6 - a6).powi(2) + k6 * k6).sqrt()),
+    );
+    // the distance and the share of b in it, by one law: the same distance as smooth_min, and the share
+    // h^2 / 2 (h = max(k - |a - b|, 0) / k) from the nearer side, so a map (a colour, a material) blends where the
+    // surfaces blend; the GLSL a shader writes its own map with is the same law
+    let (d, w) = smooth_min_weight(a, b, k);
+    let h = ((k6 - (a6 - b6).abs()).max(0.0)) / k6;
+    // min(a, b) - h^2 k / 4, and the library's smooth_min to the bit
+    check(
+        "smooth_min_weight: distance",
+        d,
+        a6.min(b6) - h * h * k6 * 0.25,
+    );
+    assert_eq!(d.to_bits(), smooth_min(a, b, k).to_bits());
+    let share = h * h * 0.5;
+    check(
+        "smooth_min_weight: share of b",
+        w,
+        if a < b { share } else { 1.0 - share },
+    );
+    println!(
+        "  GLSL for a shader's own map: {} lines",
+        SMOOTH_UNION_BLEND_GLSL.lines().count()
     );
     println!();
     println!("all checks passed");
