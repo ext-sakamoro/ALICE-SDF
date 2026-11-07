@@ -135,6 +135,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **動作の変更:** `MeshBvh::closest_point` と `MeshBvh::unsigned_distance` は `MeshBvh::closest_triangle` と同じ木の歩きを通る 距離がちょうど等しい三角形が複数ある時、`closest_point` は入力の index が最小の三角形の点を返す (以前は木の歩きが先に見た方) 距離の値は変わらない `ExteriorFloodFill` の符号は帯の中で最寄りの点から外へ歩くので、同距離の点でだけ歩く向きが変わりうる `MeshBvh::signed_distance` は別の歩きのまま
 
 ### Fixed
+- WGSL / GLSL / HLSL の module-scope 配列: 65532 要素を超える配列 (全身規模の loft は約 85000 値) を 1 つの定数で書いていたため、SPIR-V の 1 命令の word 数 (16 bit) が溢れて無効な module になり、Vulkan では device が失われていた (lavapipe で確認、naga は error を出さない) 16384 要素以下の配列に分け、1 つの関数で読む 値と読み出しの順は同じ `tests/test_module_array_chunks.rs` が SPIR-V の word 列を検査し、CI の lavapipe レーンで spirv-val を通す
 - CI: `scripts/workflow_pipefail.py` (試験 `scripts/test_workflow_pipefail.py`、他の repo と同じ中身) が、pipe する `run` step が pipefail で走るかを全 workflow で確かめる server smoke と NPR benchmark の job、bake の Summary、ALICE-Law の block の step を `shell: bash` にした
 - CI: `scripts/check_pipe_grep_q.py` を CI と `scripts/preflight.sh` で走らせる 該当 8 行 (`ci.yml` の server smoke 3、`preflight.sh` 4、`build-xcframework.sh` 1) は pipe をやめて here-string で読む pipefail の下で `grep -q` が先に終わると前段が SIGPIPE になり、見つかった行を無いと読むことがあった
 - `GpuEvaluator::from_wgsl` (`from_wgsl_async` / `from_glsl_compute` も) が wgpu 経路で workgroup size を 256 と決めて dispatch していた問題: shader の宣言が小さいと点の一部が評価されず 0 のまま `Ok` で返っていた (64 で 1000 点なら 256 点だけ) shader の宣言を読む (override は既定値、読めない・`main` が無い時は `GpuError::ShaderCompilation`)
