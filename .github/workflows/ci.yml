@@ -1355,6 +1355,15 @@ jobs:
           cargo test --lib --features "gpu,gpu-mesh" test_gpu_ -- --nocapture --test-threads=1 2>&1 | tee gpu-unit.log
           python3 scripts/gpu_test_count.py gpu-unit.log --ran 7 --max-skipped 0
 
+      # A read over its wait limit: lavapipe compiles at the first dispatch, so the work is still
+      # running when the evaluator is dropped. A device freed under it fails this run with a signal
+      - name: A read over its wait limit keeps the device
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features gpu --test test_gpu_wait_limit -- --nocapture 2>&1 | tee test_gpu_wait_limit.log
+          python3 scripts/libtest_count.py test_gpu_wait_limit.log --min 1 --what "test_gpu_wait_limit"
+
       # aaa 側の GPU oracle (volume の gpu_bake)。上の step とは feature 集合が違う
       # ので分けている。ALICE_SDF_REQUIRE_GPU=1 は job env で設定済なので、
       # adapter 不在は silent skip でなく assert 失敗になる
