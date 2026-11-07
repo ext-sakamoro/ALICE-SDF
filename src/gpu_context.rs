@@ -135,6 +135,10 @@ fn create(held: &mut Lifecycle, label: &str) -> Result<GpuContext, GpuError> {
         .ok_or(GpuError::NoAdapter)?;
     let adapter = prefer_passthrough(instance, adapter);
     let backend = adapter.get_info().backend;
+    if std::env::var_os("MG_MODE").is_some() {
+        let info = adapter.get_info();
+        println!("adapter {} driver {} {}", info.name, info.driver, info.driver_info);
+    }
     let (device, queue) = pollster::block_on(adapter.request_device(
         &device_descriptor(label, adapter.features() & SPIRV_PASSTHROUGH),
         None,
@@ -267,6 +271,10 @@ impl GpuContext {
             .await
             .ok_or(GpuError::NoAdapter)?;
         let backend = adapter.get_info().backend;
+    if std::env::var_os("MG_MODE").is_some() {
+        let info = adapter.get_info();
+        println!("adapter {} driver {} {}", info.name, info.driver, info.driver_info);
+    }
         let (device, queue) = adapter
             .request_device(&device_descriptor(label, wgpu::Features::empty()), None)
             .await
