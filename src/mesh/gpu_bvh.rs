@@ -119,11 +119,63 @@ impl Tracer {
     ) -> Result<Self, GpuError> {
         let context = GpuContext::request("mesh bvh prototype")?;
         let started = Instant::now();
-        let module = context.shader_module("mesh bvh", wgpu::ShaderSource::Wgsl(KERNEL.into()))?;
+        let text = std::env::var("MG_KERNEL").map_or_else(
+            |_| KERNEL.to_owned(),
+            |p| std::fs::read_to_string(p).expect("kernel"),
+        );
         let device = context.device();
+        if let Ok(path) = std::env::var("MG_DUMP_SPV") {
+            let words = crate::gpu_context::no_contraction_spirv(wgpu::ShaderSource::Wgsl(
+                text.clone().into(),
+            ))?;
+            std::fs::write(path, bytemuck::cast_slice::<u32, u8>(&words)).expect("dump");
+        }
+        let module = if std::env::var_os("MG_PLAIN").is_some() {
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("mesh bvh"),
+                source: wgpu::ShaderSource::Wgsl(text.into()),
+            })
+        } else {
+            context.shader_module("mesh bvh", wgpu::ShaderSource::Wgsl(text.into()))?
+        };
+        let storage_entry = |binding: u32, read_only: bool| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        };
+        let group = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("mesh bvh"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                storage_entry(1, true),
+                storage_entry(2, true),
+                storage_entry(3, true),
+                storage_entry(4, true),
+                storage_entry(5, false),
+            ],
+        });
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("mesh bvh"),
+            bind_group_layouts: &[&group],
+            push_constant_ranges: &[],
+        });
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("mesh bvh"),
-            layout: None,
+            layout: Some(&layout),
             module: &module,
             entry_point: Some("main"),
             compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -162,7 +214,7 @@ impl Tracer {
         });
         let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("mesh bvh"),
-            layout: &pipeline.get_bind_group_layout(0),
+            layout: &group,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
