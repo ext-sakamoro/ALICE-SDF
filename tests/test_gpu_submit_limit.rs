@@ -48,6 +48,13 @@ const OVER_LIMIT: &[Listed] = &[
         nodes: 1,
         reason: "a batch larger than a workgroup dispatch returns every point",
     },
+    Listed {
+        file: "test_gpu_readback_volume.rs",
+        method: "eval_batch",
+        points: 32_768,
+        nodes: 0,
+        reason: "the readback fault shows at 16,384 points a dispatch and up: the size is what it checks",
+    },
 ];
 
 /// The number written by `prefix` + digits at the start of or inside `s`
