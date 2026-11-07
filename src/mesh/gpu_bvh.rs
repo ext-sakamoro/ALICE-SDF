@@ -20,10 +20,13 @@ pub struct FlatBvh {
     pub tris: Vec<f32>,
     /// The deepest node, the root at 1
     pub depth: u32,
+    /// The parent of each node (the root's is itself)
+    pub parents: Vec<u32>,
 }
 
 fn push(node: &BvhNode, out: &mut FlatBvh, depth: u32) -> u32 {
     let at = (out.nodes.len() / 8) as u32;
+    out.parents.push(at);
     out.depth = out.depth.max(depth);
     let a = node.aabb();
     let head = [
@@ -46,6 +49,8 @@ fn push(node: &BvhNode, out: &mut FlatBvh, depth: u32) -> u32 {
         BvhNode::Internal { left, right, .. } => {
             let l = push(left, out, depth + 1);
             let r = push(right, out, depth + 1);
+            out.parents[l as usize] = at;
+            out.parents[r as usize] = at;
             (l, r)
         }
     };
@@ -62,6 +67,7 @@ pub fn flatten(bvh: &MeshBvh) -> FlatBvh {
         leaf_tris: Vec::new(),
         tris: Vec::with_capacity(bvh.triangles.len() * 9),
         depth: 0,
+        parents: Vec::new(),
     };
     for t in &bvh.triangles {
         for v in [t.v0, t.v1, t.v2] {
@@ -166,6 +172,7 @@ impl Tracer {
                 storage_entry(3, true),
                 storage_entry(4, true),
                 storage_entry(5, false),
+                storage_entry(6, true),
             ],
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -193,6 +200,7 @@ impl Tracer {
         let b_nodes = storage("nodes", bytemuck::cast_slice(&flat.nodes));
         let b_leaf = storage("leaf", bytemuck::cast_slice(&flat.leaf_tris));
         let b_tris = storage("tris", bytemuck::cast_slice(&flat.tris));
+        let b_parents = storage("parents", bytemuck::cast_slice(&flat.parents));
         let size = u64::from(tile) * 16;
         let output = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("out"),
@@ -239,6 +247,10 @@ impl Tracer {
                 wgpu::BindGroupEntry {
                     binding: 5,
                     resource: output.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: b_parents.as_entire_binding(),
                 },
             ],
         });

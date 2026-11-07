@@ -125,6 +125,17 @@ fn main() {
         let started = Instant::now();
         let (got, longest) = tracer.trace(n).expect("trace");
         let ms = started.elapsed().as_secs_f64() * 1e3;
+        let empty = got.iter().filter(|r| r.evals & 0x8000_0000 != 0).count();
+        if empty > 0 {
+            println!("  run {run}: {empty} rays had a walk that found no triangle");
+        }
+        let got: Vec<RayOut> = got
+            .into_iter()
+            .map(|mut r| {
+                r.evals &= 0x7fff_ffff;
+                r
+            })
+            .collect();
         println!(
             "run {run}: {ms:.1} ms, longest tile {:.1} ms",
             longest * 1e3

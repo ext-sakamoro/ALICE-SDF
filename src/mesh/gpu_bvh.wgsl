@@ -11,6 +11,7 @@ struct Out { s: f32, tri: u32, evals: u32, hit: u32, }
 @group(0) @binding(3) var<storage, read> leaf_tris: array<u32>;
 @group(0) @binding(4) var<storage, read> tris: array<f32>;
 @group(0) @binding(5) var<storage, read_write> out: array<Out>;
+@group(0) @binding(6) var<storage, read> parents: array<u32>;
 
 const LEAF: u32 = 0x80000000u;
 const REGION_DET_ERR: f32 = 1.9073486328125e-6;
@@ -198,10 +199,12 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let end = rays[r + 6u];
     var s = 0.0;
     var e = 0u;
+    var empty = 0u;
     var res = Out(0.0, 0xffffffffu, 0u, 0u);
     loop {
         if !(s < end && e < params.max_evals) { break; }
         let n = nearest(vec3<f32>(o.x + dir.x * s, o.y + dir.y * s, o.z + dir.z * s));
+        if n.tri == 0xffffffffu { empty = 0x80000000u; }
         let q = sqrt(n.d_sq) - params.shell;
         e += 1u;
         if q < params.hit {
@@ -210,6 +213,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         s += q;
     }
-    res.evals = e;
+    res.evals = e | empty;
     out[i] = res;
 }
