@@ -398,46 +398,55 @@ pub fn run_u32(
         cache: None,
     });
     let size = u64::from(tile) * 4;
-    let output = device.create_buffer(&wgpu::BufferDescriptor {
-        label: None,
-        size,
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    });
-    let staging = device.create_buffer(&wgpu::BufferDescriptor {
-        label: None,
-        size,
-        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
+    let make_output = || {
+        device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })
+    };
+    let make_staging = || {
+        device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })
+    };
     let params = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
         size: 16,
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
-    let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: None,
-        layout: &group,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: params.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: output.as_entire_binding(),
-            },
-        ],
-    });
+    let make_bind = |output: &wgpu::Buffer| {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &group,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: params.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: output.as_entire_binding(),
+                },
+            ],
+        })
+    };
     let mode = std::env::var("MG_MODE").unwrap_or_default();
-    let read = |bytes: u64, out: &mut Vec<u32>| -> Result<(), GpuError> {
+    let read = |staging: &wgpu::Buffer, bytes: u64, out: &mut Vec<u32>| -> Result<(), GpuError> {
         let slice = staging.slice(..bytes);
         let (sender, receiver) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |r| {
             let _ = sender.send(r);
         });
         device.poll(wgpu::Maintain::Wait);
+        // the callback has run before the range is touched: recv returns only after it
         receiver
             .recv()
             .map_err(|e| GpuError::BufferMapping(e.to_string()))?
@@ -446,8 +455,21 @@ pub fn run_u32(
         staging.unmap();
         Ok(())
     };
+    // a pair kernel: word 2i is the value, 2i+1 its check; a pair failing is counted per copy
+    let failing = |words: &[u32], first: u32| -> u64 {
+        words
+            .chunks_exact(2)
+            .enumerate()
+            .filter(|(k, w)| (w[0].wrapping_mul(2_654_435_761)) ^ (first / 2 + *k as u32) != w[1])
+            .count() as u64
+    };
+    let pairs = std::env::var_os("MG_PAIR").is_some();
+    let mut output = make_output();
+    let mut bind = make_bind(&output);
+    let mut staging = make_staging();
     let mut all = Vec::new();
-    let (mut recopy_changed, mut zeros) = (0_u64, 0_u64);
+    let (mut recopy_changed, mut zeros, mut first_bad, mut second_bad) =
+        (0_u64, 0_u64, 0_u64, 0_u64);
     for _ in 0..runs {
         let started = Instant::now();
         let mut got = Vec::with_capacity(count as usize);
@@ -455,6 +477,13 @@ pub fn run_u32(
         while first < count {
             let n = tile.min(count - first);
             let bytes = u64::from(n) * 4;
+            if mode == "fresh_output" {
+                output = make_output();
+                bind = make_bind(&output);
+            }
+            if mode == "fresh_staging" || mode == "recopy_fresh" {
+                staging = make_staging();
+            }
             queue.write_buffer(&params, 0, bytemuck::cast_slice(&[first, n, 0, 0]));
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -479,16 +508,25 @@ pub fn run_u32(
             encoder.copy_buffer_to_buffer(&output, 0, &staging, 0, bytes);
             queue.submit(std::iter::once(encoder.finish()));
             let at = got.len();
-            read(bytes, &mut got)?;
-            if mode == "recopy" {
+            read(&staging, bytes, &mut got)?;
+            if pairs {
+                first_bad += failing(&got[at..], first);
+            }
+            if mode == "recopy" || mode == "recopy_fresh" {
+                if mode == "recopy_fresh" {
+                    staging = make_staging();
+                }
                 let mut encoder =
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
                 encoder.copy_buffer_to_buffer(&output, 0, &staging, 0, bytes);
                 queue.submit(std::iter::once(encoder.finish()));
                 let mut again = Vec::with_capacity(n as usize);
-                read(bytes, &mut again)?;
+                read(&staging, bytes, &mut again)?;
                 recopy_changed +=
                     got[at..].iter().zip(&again).filter(|(a, b)| a != b).count() as u64;
+                if pairs {
+                    second_bad += failing(&again, first);
+                }
                 got.truncate(at);
                 got.extend_from_slice(&again);
             }
@@ -498,7 +536,9 @@ pub fn run_u32(
         all.push((got, started.elapsed().as_secs_f64()));
     }
     println!(
-        "mode {mode:?}: words changed by a second copy {recopy_changed}, words that read 0 {zeros}"
+        "mode {mode:?} adapter {:?} backend {:?}: first copy failing pairs {first_bad}, second copy failing pairs {second_bad}, words changed by a second copy {recopy_changed}, words read 0 {zeros}",
+        std::env::var("VK_ICD_FILENAMES").unwrap_or_default(),
+        context.backend()
     );
     Ok(all)
 }

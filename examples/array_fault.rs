@@ -27,6 +27,8 @@ fn main() {
         // the check was lost, torn or is another index's; a pair that passes and still differs from
         // the most common value was computed differently
         let (mut torn, mut stale, mut computed) = (0_u64, 0_u64, 0_u64);
+        let mut from: std::collections::BTreeMap<(i64, i64), u64> =
+            std::collections::BTreeMap::new();
         let n = first.len() / 2;
         for i in 0..n {
             let mut seen: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
@@ -41,6 +43,12 @@ fn main() {
                     let other = (v.wrapping_mul(2_654_435_761)) ^ c;
                     if (other as usize) < n {
                         stale += 1;
+                        // how far away the pair came from, in tiles and within a tile
+                        let tile_pairs = (tile / 2) as i64;
+                        let delta = other as i64 - i as i64;
+                        *from
+                            .entry((delta.div_euclid(tile_pairs), delta.rem_euclid(tile_pairs)))
+                            .or_insert(0_u64) += 1;
                     }
                 }
             }
@@ -53,6 +61,12 @@ fn main() {
                     .sum::<u64>();
             }
         }
+        let mut top: Vec<_> = from.into_iter().collect();
+        top.sort_by_key(|x| std::cmp::Reverse(x.1));
+        println!(
+            "source of failing pairs (tiles away, offset in tile): {:?}",
+            &top[..top.len().min(6)]
+        );
         println!("pairs: failing the check {torn} (of them another index's {stale}), passing but computed differently {computed}");
     }
     let mut t: Vec<f64> = all.iter().map(|x| x.1 * 1e3).collect();
