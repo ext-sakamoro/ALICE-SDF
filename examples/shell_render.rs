@@ -3,8 +3,11 @@
 //! distance and of the shell's normal.
 //!
 //! ```text
-//! cargo run --release --example shell_render --features gpu,image -- <out dir> [size] [radius]
+//! cargo run --release --example shell_render --features gpu,image -- <out dir> [size] [radius] [--cpu]
 //! ```
+//!
+//! `--cpu` renders on the CPU even when a GPU is available. The centre pixel of each view is
+//! checked against `MeshBvh::shell_first_hit` (the same answer on the CPU, one ray).
 //!
 //! Writes `<out dir>/view<k>_t.png` (distance to the first hit, near is light) and
 //! `<out dir>/view<k>_normal.png` (the shell's outward normal, `n * 0.5 + 0.5` as RGB), and prints
@@ -63,7 +66,9 @@ fn view(eye: Vec3, size: u32) -> Vec<ShellRay> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = std::env::args().skip(1);
+    let all: Vec<String> = std::env::args().skip(1).collect();
+    let on_cpu = all.iter().any(|a| a == "--cpu");
+    let mut args = all.into_iter().filter(|a| a != "--cpu");
     let out = PathBuf::from(args.next().unwrap_or_else(|| "shell_render_out".into()));
     let size: u32 = args.next().map_or(Ok(256), |s| s.parse())?;
     let r: f32 = args.next().map_or(Ok(0.01), |s| s.parse())?;
@@ -71,7 +76,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (v, ix) = torus(1.0, 0.35, 96, 48);
     let bvh = MeshBvh::build(&v, &ix, 4);
-    let renderer = ShellRenderer::new(&bvh, r)?;
+    let renderer = if on_cpu {
+        ShellRenderer::cpu(&bvh, r)
+    } else {
+        ShellRenderer::new(&bvh, r)?
+    };
     println!(
         "[shell_render] {} triangles, r {r}, {size}x{size}, backend {:?}",
         bvh.triangles.len(),
@@ -119,6 +128,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     normal.extend_from_slice(&[0, 0, 0]);
                 }
             }
+        }
+        // the centre pixel against the CPU method, one ray: the same triangle and piece
+        let mid = (size / 2 * size + size / 2) as usize;
+        let one = bvh.shell_first_hit(rays[mid].origin, rays[mid].dir, r, rays[mid].tmax);
+        let same =
+            one.map(|h| (h.triangle, h.feature)) == hits[mid].map(|h| (h.triangle, h.feature));
+        if !same {
+            return Err(format!(
+                "view {k}: centre pixel {:?} against the CPU's {one:?}",
+                hits[mid]
+            )
+            .into());
         }
         let t_path = out.join(format!("view{k}_t.png"));
         let n_path = out.join(format!("view{k}_normal.png"));

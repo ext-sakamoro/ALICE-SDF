@@ -181,19 +181,11 @@ impl<'a> ShellRenderer<'a> {
         }
     }
 
-    /// On the given device
+    /// On the given device, solving each hit in `frame`
     ///
     /// # Errors
     /// [`GpuError`] when the kernel does not compile or the backend cannot keep the driver from
     /// fusing operations.
-    pub fn on(context: GpuContext, bvh: &'a MeshBvh, r: f32) -> Result<Self, GpuError> {
-        Self::on_in(context, ShellFrame::Triangle, bvh, r)
-    }
-
-    /// [`Self::on`], solving each hit in `frame`
-    ///
-    /// # Errors
-    /// As [`Self::on`].
     pub(crate) fn on_in(
         context: GpuContext,
         frame: ShellFrame,
