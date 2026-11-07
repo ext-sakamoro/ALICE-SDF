@@ -10,7 +10,9 @@
 //!
 //! Emitted code depends on the NPR helpers exported by
 //! [`crate::npr::shader_glue`]: `alice_toon_ramp`, `alice_soft_toon_ramp`,
-//! `alice_two_tone`, and `alice_composite_outline`.
+//! `alice_two_tone`, and `alice_composite_outline`; `RegionNoise` also needs
+//! the crate's noise law (`alice_hash3` / `hash_noise_3d` from
+//! `crate::modifiers::HASH_NOISE_{GLSL, WGSL, HLSL}`) in the same shader.
 //!
 //! Author: Moroya Sakamoto
 
@@ -35,6 +37,10 @@ pub struct NprShaderContext<'a> {
     pub uv: &'a str,
     /// Name of the animation time scalar variable (typically `iTime`)
     pub time: &'a str,
+    /// Name of the unit surface normal variable (`vec3` / `vec3<f32>` / `float3`)
+    pub normal: &'a str,
+    /// Name of the shading position variable in the law's frame (`vec3` / `vec3<f32>` / `float3`)
+    pub position: &'a str,
 }
 
 impl NprShaderContext<'_> {
@@ -47,6 +53,8 @@ impl NprShaderContext<'_> {
             sdf: "d",
             uv: "uv",
             time: "iTime",
+            normal: "n",
+            position: "p",
         }
     }
 }
@@ -104,6 +112,31 @@ impl Walker {
         match self.language {
             ShaderLanguage::Glsl => format!("    vec3 {name} = {expr};\n"),
             ShaderLanguage::Wgsl => format!("    let {name} = {expr};\n"),
+            ShaderLanguage::Hlsl => format!("    float3 {name} = {expr};\n"),
+        }
+    }
+
+    /// An immutable scalar declaration
+    fn decl_f32(&self, name: &str, expr: &str) -> String {
+        match self.language {
+            ShaderLanguage::Glsl | ShaderLanguage::Hlsl => format!("    float {name} = {expr};\n"),
+            ShaderLanguage::Wgsl => format!("    let {name} = {expr};\n"),
+        }
+    }
+
+    /// A mutable scalar declaration (assigned again below it)
+    fn decl_var_f32(&self, name: &str, expr: &str) -> String {
+        match self.language {
+            ShaderLanguage::Glsl | ShaderLanguage::Hlsl => format!("    float {name} = {expr};\n"),
+            ShaderLanguage::Wgsl => format!("    var {name}: f32 = {expr};\n"),
+        }
+    }
+
+    /// A mutable colour declaration (assigned again below it)
+    fn decl_var_vec3(&self, name: &str, expr: &str) -> String {
+        match self.language {
+            ShaderLanguage::Glsl => format!("    vec3 {name} = {expr};\n"),
+            ShaderLanguage::Wgsl => format!("    var {name}: vec3<f32> = {expr};\n"),
             ShaderLanguage::Hlsl => format!("    float3 {name} = {expr};\n"),
         }
     }
@@ -260,6 +293,59 @@ impl Walker {
                     ctx.uv,
                     format_f32(*radius),
                     format_f32(*softness)
+                )
+            }
+            NprColorNode::FamilyPalette { families } => {
+                // the family law unrolled: one compare per family, the lowest index wins a tie (strict `>`)
+                let out = self.next_var();
+                let zero = self.vec3_literal(Vec3::ZERO);
+                self.statements.push_str(&self.decl_var_vec3(&out, &zero));
+                let best = format!("{out}_best");
+                self.statements
+                    .push_str(&self.decl_var_f32(&best, "-3.402823466e38"));
+                for (i, (n, c)) in families.iter().enumerate() {
+                    let d = format!("{out}_d{i}");
+                    let dot = format!(
+                        "({nrm}.x * {} + {nrm}.y * {} + {nrm}.z * {})",
+                        format_f32(n.x),
+                        format_f32(n.y),
+                        format_f32(n.z),
+                        nrm = ctx.normal
+                    );
+                    self.statements.push_str(&self.decl_f32(&d, &dot));
+                    let colour = self.vec3_literal(*c);
+                    self.statements.push_str(&format!(
+                        "    if ({d} > {best}) {{\n        {best} = {d};\n        {out} = {colour};\n    }}\n"
+                    ));
+                }
+                out
+            }
+            NprColorNode::RegionNoise {
+                base,
+                cell,
+                region_amp,
+                noise_amp,
+                seed,
+            } => {
+                let base_expr = self.walk(base, ctx);
+                let base_var = self.next_var();
+                self.statements
+                    .push_str(&self.decl_vec3(&base_var, &base_expr));
+                let q = format!("{base_var}_q");
+                let q_expr = format!("{} / {}", ctx.position, format_f32(*cell));
+                self.statements.push_str(&self.decl_vec3(&q, &q_expr));
+                let h = format!("{base_var}_h");
+                self.statements
+                    .push_str(&self.decl_f32(&h, &format!("alice_hash3(floor({q}), {seed}u)")));
+                let v = format!("{base_var}_v");
+                self.statements.push_str(&self.decl_f32(
+                    &v,
+                    &format!("hash_noise_3d({q}, {}u)", seed.wrapping_add(1)),
+                ));
+                format!(
+                    "({base_var} + {} * (2.0 * {h} - 1.0) + {} * {v})",
+                    self.vec3_literal(*region_amp),
+                    self.vec3_literal(*noise_amp)
                 )
             }
             NprColorNode::Palette3 { source, c0, c1, c2 } => {
@@ -750,5 +836,92 @@ mod tests {
         let snip = transpile_npr_color_node(&node, ShaderLanguage::Hlsl, ctx());
         assert!(snip.color_expression.starts_with("lerp("));
         assert!(snip.color_expression.contains("alice_fresnel_rim(ndv"));
+    }
+
+    #[test]
+    fn family_palette_unrolls_one_compare_per_family_wgsl() {
+        let node = NprColorNode::FamilyPalette {
+            families: vec![
+                (Vec3::Y, Vec3::new(0.9, 0.8, 0.7)),
+                (Vec3::X, Vec3::new(0.5, 0.3, 0.2)),
+                (Vec3::Z, Vec3::new(0.2, 0.3, 0.5)),
+            ],
+        };
+        let s = transpile_npr_color_node(&node, ShaderLanguage::Wgsl, ctx());
+        assert_eq!(s.color_expression, "alice_col_0");
+        assert!(s
+            .statements
+            .contains("var alice_col_0: vec3<f32> = vec3<f32>(0.0, 0.0, 0.0);"));
+        assert!(s
+            .statements
+            .contains("var alice_col_0_best: f32 = -3.402823466e38;"));
+        assert_eq!(
+            s.statements.matches("if (alice_col_0_d").count(),
+            3,
+            "{}",
+            s.statements
+        );
+        assert!(s
+            .statements
+            .contains("let alice_col_0_d1 = (n.x * 1.0 + n.y * 0.0 + n.z * 0.0);"));
+        assert!(s
+            .statements
+            .contains("alice_col_0 = vec3<f32>(0.200000, 0.300000, 0.500000);"));
+    }
+
+    #[test]
+    fn region_noise_calls_the_crate_hash_and_noise_glsl() {
+        let node = NprColorNode::RegionNoise {
+            base: Box::new(NprColorNode::Constant(Vec3::new(0.5, 0.4, 0.3))),
+            cell: 0.04,
+            region_amp: Vec3::new(0.1, 0.05, 0.02),
+            noise_amp: Vec3::splat(0.03),
+            seed: 11,
+        };
+        let s = transpile_npr_color_node(&node, ShaderLanguage::Glsl, ctx());
+        assert!(
+            s.statements.contains("vec3 alice_col_0_q = p / 0.040000;"),
+            "{}",
+            s.statements
+        );
+        assert!(s
+            .statements
+            .contains("float alice_col_0_h = alice_hash3(floor(alice_col_0_q), 11u);"));
+        assert!(s
+            .statements
+            .contains("float alice_col_0_v = hash_noise_3d(alice_col_0_q, 12u);"));
+        assert_eq!(
+            s.color_expression,
+            "(alice_col_0 + vec3(0.100000, 0.050000, 0.020000) * (2.0 * alice_col_0_h - 1.0) + vec3(0.030000, 0.030000, 0.030000) * alice_col_0_v)"
+        );
+    }
+
+    #[test]
+    fn family_and_region_snippets_validate_in_naga_wgsl() {
+        let node = NprColorNode::RegionNoise {
+            base: Box::new(NprColorNode::FamilyPalette {
+                families: vec![
+                    (Vec3::Y, Vec3::new(0.9, 0.8, 0.7)),
+                    (Vec3::X, Vec3::new(0.5, 0.3, 0.2)),
+                ],
+            }),
+            cell: 0.04,
+            region_amp: Vec3::new(0.1, 0.05, 0.02),
+            noise_amp: Vec3::splat(0.03),
+            seed: 11,
+        };
+        let s = transpile_npr_color_node(&node, ShaderLanguage::Wgsl, ctx());
+        let source = format!(
+            "{}\n@group(0) @binding(0) var<storage, read_write> out: array<vec3<f32>>;\n@compute @workgroup_size(1)\nfn main() {{\n    let ndl = 0.5;\n    let ndv = 0.5;\n    let d = 0.1;\n    let uv = vec2<f32>(0.5, 0.5);\n    let iTime = 0.0;\n    let n = vec3<f32>(0.0, 1.0, 0.0);\n    let p = vec3<f32>(0.01, 0.02, 0.03);\n{}    out[0] = {};\n}}\n",
+            crate::modifiers::HASH_NOISE_WGSL, s.statements, s.color_expression
+        );
+        let module = naga::front::wgsl::parse_str(&source)
+            .unwrap_or_else(|e| panic!("{}\n{source}", e.emit_to_string(&source)));
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .expect("the snippet validates");
     }
 }

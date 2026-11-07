@@ -85,14 +85,15 @@ fn main() {
     let mut worst = 0.0f32;
     for k in 0..64 {
         let s = k as f32 / 63.0;
-        let ctx = NprColorContext {
-            sdf: 0.0,
-            normal: Vec3::Z,
-            view: Vec3::new(0.0, 0.0, 1.0 - s),
-            light: Vec3::new(0.0, 0.0, s),
-            uv: Vec2::new(s, 1.0 - s * 0.5),
-            time: 0.0,
-        };
+        let ctx = NprColorContext::new(
+            Vec3::Z,
+            Vec3::new(0.0, 0.0, 1.0 - s),
+            Vec3::new(0.0, 0.0, s),
+        )
+        .with_sdf(s - 0.5)
+        .with_uv(Vec2::new(s, 1.0 - s * 0.5))
+        .with_time(s * 3.0)
+        .with_position(Vec3::new(s * 0.1 - 0.05, 0.02, s * 0.05));
         let want = tree.eval(&ctx);
         for got in [compiled.eval(&ctx), decoded.eval(&ctx)] {
             worst = worst.max((got - want).abs().max_element());

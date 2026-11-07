@@ -30,6 +30,17 @@ fn hash3(i: Vec3, seed: u32) -> f32 {
     (h as f32) * (1.0 / 4_294_967_295.0)
 }
 
+/// The lattice-corner hash of an integer-valued cell, in `[0, 1)`.
+///
+/// PCG over the raw bits of the coordinates and `seed`, the value the WGSL /
+/// GLSL / HLSL `alice_hash3` helpers produce. Colour laws use it for a value
+/// that is constant inside a cell (a region id).
+#[inline]
+#[must_use]
+pub fn cell_hash_3d(i: Vec3, seed: u32) -> f32 {
+    hash3(i, seed)
+}
+
 /// The lattice-corner hash as three floats (for the texture module's SIMD
 /// lanes); same law as the private `hash3`.
 #[cfg(feature = "texture-fit")]

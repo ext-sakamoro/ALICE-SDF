@@ -8,7 +8,8 @@
 //!
 //! # Coverage
 //!
-//! As of Phase 12-D all 17 `NprColorNode` variants have a native opcode.
+//! As of Phase 12-D all `NprColorNode` variants (19 with `FamilyPalette` and
+//! `RegionNoise`) have a native opcode.
 //! The [`ColorOp::Fallback`] path is preserved for forward compatibility:
 //! any future variant added to [`NprColorNode`] compiles down to a
 //! `Fallback` opcode until an explicit native encoding is added, so the
@@ -46,7 +47,10 @@
 //! Author: Moroya Sakamoto
 
 use crate::npr::composition::{bloom_toon, vignette};
-use crate::npr::dsl::{palette_source_scalar, NprColorContext, NprColorNode, PaletteSource};
+use crate::npr::dsl::{
+    family_palette, palette_source_scalar, region_noise, NprColorContext, NprColorNode,
+    PaletteSource,
+};
 use crate::npr::hatch::hatch_lines;
 use crate::npr::motion::speed_line;
 use crate::npr::outline::composite_outline;
@@ -60,13 +64,15 @@ use glam::{Vec2, Vec3};
 /// Opcodes are grouped by arity:
 ///
 /// - **0-input, 1-output**: [`PushConstant`](Self::PushConstant),
-///   [`Palette3`](Self::Palette3), [`Palette5`](Self::Palette5)
+///   [`Palette3`](Self::Palette3), [`Palette5`](Self::Palette5),
+///   [`FamilyPalette`](Self::FamilyPalette)
 /// - **1-input, 1-output**: [`Scale`](Self::Scale),
 ///   [`Saturate`](Self::Saturate), [`Bloom`](Self::Bloom),
 ///   [`PosterizeColor`](Self::PosterizeColor),
 ///   [`Vignette`](Self::Vignette), [`Tonemap`](Self::Tonemap),
 ///   [`OutlineOver`](Self::OutlineOver), [`Fresnel`](Self::Fresnel),
-///   [`Hatch`](Self::Hatch), [`SpeedLine`](Self::SpeedLine)
+///   [`Hatch`](Self::Hatch), [`SpeedLine`](Self::SpeedLine),
+///   [`RegionNoise`](Self::RegionNoise)
 /// - **2-input, 1-output**: [`Toon`](Self::Toon),
 ///   [`SoftToon`](Self::SoftToon), [`TwoTone`](Self::TwoTone),
 ///   [`Multiply`](Self::Multiply), [`Add`](Self::Add)
@@ -194,15 +200,41 @@ pub enum ColorOp {
         /// Ink colour blended in where the mask is high
         ink: Vec3,
     },
+    /// Colour by surface normal family (0-in, 1-out): push the colour of the
+    /// family whose unit normal has the largest `n · normal` (a tie goes to
+    /// the lowest index); the first `count` of the 8 slots are the families
+    /// (`count` in `1..=8`, checked by [`CompiledColorPipeline::validate`])
+    FamilyPalette {
+        /// Families in use (`1..=8`)
+        count: u32,
+        /// Unit normal per slot (unused slots are ignored)
+        normals: [Vec3; 8],
+        /// Colour per slot
+        colors: [Vec3; 8],
+    },
+    /// Region and smooth-field colour offset (1-in, 1-out): pop `base`, push
+    /// `base + region_amp * (2 h - 1) + noise_amp * v` with `h` the lattice
+    /// hash of `floor(position / cell)` and `v` the value noise at
+    /// `position / cell` (see [`NprColorNode::RegionNoise`]); `cell` must be
+    /// positive (checked by [`CompiledColorPipeline::validate`])
+    RegionNoise {
+        /// Cell size in the units of the shading position
+        cell: f32,
+        /// Per-channel amplitude of the per-cell term
+        region_amp: Vec3,
+        /// Per-channel amplitude of the smooth term
+        noise_amp: Vec3,
+        /// Hash seed (the smooth term uses `seed + 1`)
+        seed: u32,
+    },
     /// Forward-compat fallback (1-out, delegating): evaluate the enclosed
     /// tree via the recursive walker
     ///
-    /// Reserved for future `NprColorNode` variants that have not yet
-    /// received a native opcode. As of Phase 12-D all existing variants
-    /// compile to native opcodes, so a well-formed pipeline produced by
-    /// [`CompiledColorPipeline::compile`] on today's DSL surface contains
-    /// no `Fallback`. New DSL variants will emit `Fallback` transparently
-    /// until an explicit native encoding is added.
+    /// Reserved for `NprColorNode` trees without a native encoding: today
+    /// only a [`NprColorNode::FamilyPalette`] with more than 8 families (the
+    /// opcode has 8 slots); every other variant compiles to a native opcode.
+    /// New DSL variants will emit `Fallback` transparently until an explicit
+    /// native encoding is added.
     Fallback(Box<NprColorNode>),
 }
 
@@ -222,6 +254,7 @@ impl ColorOp {
             Self::PushConstant(_)
             | Self::Palette3 { .. }
             | Self::Palette5 { .. }
+            | Self::FamilyPalette { .. }
             | Self::Fallback(_) => (0, 1),
             Self::Toon { .. }
             | Self::SoftToon { .. }
@@ -237,7 +270,8 @@ impl ColorOp {
             | Self::Vignette { .. }
             | Self::Hatch { .. }
             | Self::Tonemap { .. }
-            | Self::SpeedLine { .. } => (1, 1),
+            | Self::SpeedLine { .. }
+            | Self::RegionNoise { .. } => (1, 1),
         }
     }
 }
@@ -262,6 +296,14 @@ pub enum StackError {
         /// Final stack depth
         depth: usize,
     },
+    /// Instruction `index` carries a payload its law cannot evaluate: a
+    /// family count of 0 or above 8, or a region cell that is not positive
+    Payload {
+        /// Index of the offending instruction in `ops`
+        index: usize,
+        /// Which payload field (`"family count"` or `"region cell"`)
+        what: &'static str,
+    },
 }
 
 impl core::fmt::Display for StackError {
@@ -278,6 +320,10 @@ impl core::fmt::Display for StackError {
             Self::Unbalanced { depth } => {
                 write!(f, "program leaves {depth} values on the stack, expected 1")
             }
+            Self::Payload { index, what } => write!(
+                f,
+                "colour program instruction {index}: {what} is outside the law's domain"
+            ),
         }
     }
 }
@@ -293,10 +339,26 @@ impl CompiledColorPipeline {
     ///
     /// # Errors
     ///
-    /// The first underflow, or the final depth when it is not 1.
+    /// The first underflow, a payload outside its law's domain
+    /// ([`StackError::Payload`]), or the final depth when it is not 1.
     pub fn validate(&self) -> Result<(), StackError> {
         let mut depth = 0usize;
         for (index, op) in self.ops.iter().enumerate() {
+            match op {
+                ColorOp::FamilyPalette { count, .. } if !(1..=8).contains(count) => {
+                    return Err(StackError::Payload {
+                        index,
+                        what: "family count",
+                    });
+                }
+                ColorOp::RegionNoise { cell, .. } if !(*cell > 0.0 && cell.is_finite()) => {
+                    return Err(StackError::Payload {
+                        index,
+                        what: "region cell",
+                    });
+                }
+                _ => {}
+            }
             let (pops, pushes) = op.stack_effect();
             if depth < pops {
                 return Err(StackError::Underflow {
@@ -411,6 +473,36 @@ impl CompiledColorPipeline {
                     let t = palette_source_scalar(*source, ctx).clamp(0.0, 1.0);
                     let palette = [*c0, *c1, *c2];
                     stack.push(palette_gradient(t, &palette));
+                }
+                ColorOp::FamilyPalette {
+                    count,
+                    normals,
+                    colors,
+                } => {
+                    let n = usize::try_from(*count).unwrap_or(8).min(8);
+                    stack.push(family_palette(
+                        ctx.normal,
+                        normals[..n]
+                            .iter()
+                            .copied()
+                            .zip(colors[..n].iter().copied()),
+                    ));
+                }
+                ColorOp::RegionNoise {
+                    cell,
+                    region_amp,
+                    noise_amp,
+                    seed,
+                } => {
+                    let base = stack.pop().expect("RegionNoise: missing base on stack");
+                    stack.push(region_noise(
+                        base,
+                        ctx.position,
+                        *cell,
+                        *region_amp,
+                        *noise_amp,
+                        *seed,
+                    ));
                 }
                 ColorOp::Palette5 {
                     source,
@@ -556,6 +648,40 @@ impl CompiledColorPipeline {
                     softness: *softness,
                 });
             }
+            NprColorNode::FamilyPalette { families } => {
+                if families.len() > 8 {
+                    ops.push(ColorOp::Fallback(Box::new(node.clone())));
+                } else {
+                    let mut normals = [Vec3::ZERO; 8];
+                    let mut colors = [Vec3::ZERO; 8];
+                    for ((slot_n, slot_c), (n, c)) in
+                        normals.iter_mut().zip(colors.iter_mut()).zip(families)
+                    {
+                        *slot_n = *n;
+                        *slot_c = *c;
+                    }
+                    ops.push(ColorOp::FamilyPalette {
+                        count: u32::try_from(families.len()).expect("checked: at most 8 families"),
+                        normals,
+                        colors,
+                    });
+                }
+            }
+            NprColorNode::RegionNoise {
+                base,
+                cell,
+                region_amp,
+                noise_amp,
+                seed,
+            } => {
+                Self::compile_node(base, ops);
+                ops.push(ColorOp::RegionNoise {
+                    cell: *cell,
+                    region_amp: *region_amp,
+                    noise_amp: *noise_amp,
+                    seed: *seed,
+                });
+            }
             NprColorNode::Palette3 { source, c0, c1, c2 } => {
                 ops.push(ColorOp::Palette3 {
                     source: *source,
@@ -631,14 +757,12 @@ impl CompiledColorPipeline {
 
     /// Number of fallback opcodes in the pipeline
     ///
-    /// Always zero: every `NprColorNode` variant compiles to a native opcode,
-    /// so a compiled pipeline never contains a fallback. Deprecated since
-    /// 5.0.0; the count of all opcodes is [`Self::native_op_count`].
+    /// Zero for every `NprColorNode` tree except one holding a
+    /// [`NprColorNode::FamilyPalette`] with more than 8 families, which keeps
+    /// the tree walker (the opcode has 8 slots) and therefore cannot be
+    /// serialised for the GPU. The count of all opcodes is
+    /// [`Self::native_op_count`].
     #[must_use]
-    #[deprecated(
-        since = "5.0.0",
-        note = "always 0: every NprColorNode variant compiles to a native opcode"
-    )]
     pub fn fallback_op_count(&self) -> usize {
         self.ops
             .iter()
@@ -808,6 +932,18 @@ pub struct NprBatchContext8 {
     pub uv_y: f32x8,
     /// Time per lane
     pub time: f32x8,
+    /// Surface normal x per lane
+    pub normal_x: f32x8,
+    /// Surface normal y per lane
+    pub normal_y: f32x8,
+    /// Surface normal z per lane
+    pub normal_z: f32x8,
+    /// Shading position x per lane
+    pub position_x: f32x8,
+    /// Shading position y per lane
+    pub position_y: f32x8,
+    /// Shading position z per lane
+    pub position_z: f32x8,
 }
 
 impl NprBatchContext8 {
@@ -875,6 +1011,12 @@ impl NprBatchContext8 {
                 ctxs[6].time,
                 ctxs[7].time,
             ]),
+            normal_x: f32x8::new(ctxs.map(|c| c.normal.x)),
+            normal_y: f32x8::new(ctxs.map(|c| c.normal.y)),
+            normal_z: f32x8::new(ctxs.map(|c| c.normal.z)),
+            position_x: f32x8::new(ctxs.map(|c| c.position.x)),
+            position_y: f32x8::new(ctxs.map(|c| c.position.y)),
+            position_z: f32x8::new(ctxs.map(|c| c.position.z)),
         }
     }
 }
@@ -1197,6 +1339,56 @@ impl CompiledColorPipeline {
                     let t = palette_source_scalar_x8(*source, batch);
                     stack.push(palette_gradient_3_x8(t, *c0, *c1, *c2));
                 }
+                ColorOp::FamilyPalette {
+                    count,
+                    normals,
+                    colors,
+                } => {
+                    // the scalar law per lane: the argmax is a comparison, not arithmetic
+                    let n = usize::try_from(*count).unwrap_or(8).min(8);
+                    let (nx, ny, nz) = (
+                        batch.normal_x.to_array(),
+                        batch.normal_y.to_array(),
+                        batch.normal_z.to_array(),
+                    );
+                    let mut out = [Vec3::ZERO; 8];
+                    for (lane, o) in out.iter_mut().enumerate() {
+                        *o = family_palette(
+                            Vec3::new(nx[lane], ny[lane], nz[lane]),
+                            normals[..n]
+                                .iter()
+                                .copied()
+                                .zip(colors[..n].iter().copied()),
+                        );
+                    }
+                    stack.push(NprColorBatch8::from_vec3s(&out));
+                }
+                ColorOp::RegionNoise {
+                    cell,
+                    region_amp,
+                    noise_amp,
+                    seed,
+                } => {
+                    // the scalar law per lane, so the lanes equal the scalar evaluator bit for bit
+                    let base = stack.pop().expect("RegionNoise: missing base").to_vec3s();
+                    let (px, py, pz) = (
+                        batch.position_x.to_array(),
+                        batch.position_y.to_array(),
+                        batch.position_z.to_array(),
+                    );
+                    let mut out = [Vec3::ZERO; 8];
+                    for (lane, o) in out.iter_mut().enumerate() {
+                        *o = region_noise(
+                            base[lane],
+                            Vec3::new(px[lane], py[lane], pz[lane]),
+                            *cell,
+                            *region_amp,
+                            *noise_amp,
+                            *seed,
+                        );
+                    }
+                    stack.push(NprColorBatch8::from_vec3s(&out));
+                }
                 ColorOp::Palette5 {
                     source,
                     c0,
@@ -1300,6 +1492,11 @@ fn fallback_reconstruct_ctx(batch: &NprBatchContext8, lane: usize) -> NprColorCo
         light: Vec3::new(0.0, n_dot_l, (n_dot_l * -n_dot_l + 1.0).raw_max(0.0).sqrt()),
         uv: Vec2::new(uv_x, uv_y),
         time,
+        position: Vec3::new(
+            batch.position_x.to_array()[lane],
+            batch.position_y.to_array()[lane],
+            batch.position_z.to_array()[lane],
+        ),
     }
 }
 
@@ -1363,6 +1560,10 @@ pub mod gpu_opcode_tag {
     pub const TONEMAP: u32 = 16;
     /// SpeedLine { focus, count, thickness, ink } — 7 payload words
     pub const SPEED_LINE: u32 = 17;
+    /// [`ColorOp::FamilyPalette`]: `[count, 8 normals, 8 colours]` (49 words)
+    pub const FAMILY_PALETTE: u32 = 18;
+    /// [`ColorOp::RegionNoise`]: `[cell, region_amp, noise_amp, seed]` (8 words)
+    pub const REGION_NOISE: u32 = 19;
 }
 
 /// Tag values for [`PaletteSource`] in the GPU bytecode
@@ -1540,6 +1741,8 @@ pub const fn opcode_word_count(tag: u32) -> Option<usize> {
         t::HATCH => 6,
         t::TONEMAP => 1,
         t::SPEED_LINE => 7,
+        t::FAMILY_PALETTE => 49,
+        t::REGION_NOISE => 8,
         _ => return None,
     };
     Some(n)
@@ -1684,6 +1887,25 @@ fn decode_opcode(
             thickness: read_f32(words, payload_start + 3),
             ink: read_vec3(words, payload_start + 4),
         },
+        t::FAMILY_PALETTE => {
+            let mut normals = [Vec3::ZERO; 8];
+            let mut colors = [Vec3::ZERO; 8];
+            for (i, (n, c)) in normals.iter_mut().zip(colors.iter_mut()).enumerate() {
+                *n = read_vec3(words, payload_start + 1 + 3 * i);
+                *c = read_vec3(words, payload_start + 25 + 3 * i);
+            }
+            ColorOp::FamilyPalette {
+                count: words[payload_start],
+                normals,
+                colors,
+            }
+        }
+        t::REGION_NOISE => ColorOp::RegionNoise {
+            cell: read_f32(words, payload_start),
+            region_amp: read_vec3(words, payload_start + 1),
+            noise_amp: read_vec3(words, payload_start + 4),
+            seed: words[payload_start + 7],
+        },
         // opcode_word_count above already returned None for unknown tags,
         // so this arm is unreachable in practice.
         _ => {
@@ -1776,6 +1998,32 @@ impl CompiledColorPipeline {
                     push_vec3(&mut words, *c1);
                     push_vec3(&mut words, *c2);
                 }
+                ColorOp::FamilyPalette {
+                    count,
+                    normals,
+                    colors,
+                } => {
+                    words.push(t::FAMILY_PALETTE);
+                    words.push(*count);
+                    for n in normals {
+                        push_vec3(&mut words, *n);
+                    }
+                    for c in colors {
+                        push_vec3(&mut words, *c);
+                    }
+                }
+                ColorOp::RegionNoise {
+                    cell,
+                    region_amp,
+                    noise_amp,
+                    seed,
+                } => {
+                    words.push(t::REGION_NOISE);
+                    words.push(cell.to_bits());
+                    push_vec3(&mut words, *region_amp);
+                    push_vec3(&mut words, *noise_amp);
+                    words.push(*seed);
+                }
                 ColorOp::Palette5 {
                     source,
                     c0,
@@ -1837,7 +2085,7 @@ impl CompiledColorPipeline {
 /// The returned string defines two host-visible entities:
 ///
 /// - `struct AliceNprBytecodeCtx` — shading context (n_dot_l / n_dot_v /
-///   sdf / uv / time)
+///   sdf / uv / time / normal / position)
 /// - `fn alice_npr_eval_bytecode(program_len, ctx)` — stack-machine
 ///   evaluator returning the final `vec3<f32>` colour
 ///
@@ -1908,6 +2156,8 @@ const ALICE_OP_PALETTE5: u32 = {palette5}u;
 const ALICE_OP_HATCH: u32 = {hatch}u;
 const ALICE_OP_TONEMAP: u32 = {tonemap}u;
 const ALICE_OP_SPEED_LINE: u32 = {speed_line}u;
+const ALICE_OP_FAMILY_PALETTE: u32 = {family_palette}u;
+const ALICE_OP_REGION_NOISE: u32 = {region_noise}u;
 
 // PaletteSource tags
 const ALICE_PS_N_DOT_L: u32 = {ps_ndotl}u;
@@ -1922,7 +2172,13 @@ struct AliceNprBytecodeCtx {{
     sdf: f32,
     uv: vec2<f32>,
     time: f32,
+    normal: vec3<f32>,
+    position: vec3<f32>,
 }};
+
+// The crate's single noise law (`modifiers::hash_noise_3d` and its lattice-corner hash) under npr-prefixed names,
+// so this evaluator can sit next to a transpiled SDF shader that defines the same functions.
+{hash_noise}
 
 fn alice_npr_palette_source_scalar(source: u32, ctx: AliceNprBytecodeCtx) -> f32 {{
     if (source == ALICE_PS_N_DOT_L) {{
@@ -2183,6 +2439,49 @@ fn alice_npr_eval_bytecode(
             pc = pc + 2u;
             let mask = alice_npr_vignette_mask(ctx.uv.x, ctx.uv.y, radius, softness);
             stack[sp - 1u] = stack[sp - 1u] * mask;
+        }} else if (tag == ALICE_OP_FAMILY_PALETTE) {{
+            let count = alice_npr_load(pc);
+            var best = bitcast<f32>(0xff800000u);
+            var colour = vec3<f32>(0.0);
+            for (var i = 0u; i < 8u; i = i + 1u) {{
+                if (i < count) {{
+                    let n = vec3<f32>(
+                        bitcast<f32>(alice_npr_load(pc + 1u + 3u * i)),
+                        bitcast<f32>(alice_npr_load(pc + 2u + 3u * i)),
+                        bitcast<f32>(alice_npr_load(pc + 3u + 3u * i)),
+                    );
+                    let d = ctx.normal.x * n.x + ctx.normal.y * n.y + ctx.normal.z * n.z;
+                    if (d > best) {{
+                        best = d;
+                        colour = vec3<f32>(
+                            bitcast<f32>(alice_npr_load(pc + 25u + 3u * i)),
+                            bitcast<f32>(alice_npr_load(pc + 26u + 3u * i)),
+                            bitcast<f32>(alice_npr_load(pc + 27u + 3u * i)),
+                        );
+                    }}
+                }}
+            }}
+            pc = pc + 49u;
+            stack[sp] = colour;
+            sp = sp + 1u;
+        }} else if (tag == ALICE_OP_REGION_NOISE) {{
+            let cell = bitcast<f32>(alice_npr_load(pc));
+            let region_amp = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc + 1u)),
+                bitcast<f32>(alice_npr_load(pc + 2u)),
+                bitcast<f32>(alice_npr_load(pc + 3u)),
+            );
+            let noise_amp = vec3<f32>(
+                bitcast<f32>(alice_npr_load(pc + 4u)),
+                bitcast<f32>(alice_npr_load(pc + 5u)),
+                bitcast<f32>(alice_npr_load(pc + 6u)),
+            );
+            let seed = alice_npr_load(pc + 7u);
+            pc = pc + 8u;
+            let q = ctx.position / cell;
+            let h = alice_npr_hash3(floor(q), seed);
+            let v = alice_npr_hash_noise_3d(q, seed + 1u);
+            stack[sp - 1u] = stack[sp - 1u] + region_amp * (2.0 * h - 1.0) + noise_amp * v;
         }} else if (tag == ALICE_OP_PALETTE3) {{
             let source = alice_npr_load(pc);
             let c0 = vec3<f32>(
@@ -2297,6 +2596,12 @@ fn alice_npr_eval_bytecode(
         hatch = t::HATCH,
         tonemap = t::TONEMAP,
         speed_line = t::SPEED_LINE,
+        family_palette = t::FAMILY_PALETTE,
+        region_noise = t::REGION_NOISE,
+        hash_noise = crate::modifiers::HASH_NOISE_WGSL
+            .replace("alice_pcg", "alice_npr_pcg")
+            .replace("alice_hash3", "alice_npr_hash3")
+            .replace("hash_noise_3d", "alice_npr_hash_noise_3d"),
         ps_ndotl = p::N_DOT_L,
         ps_ndotv = p::N_DOT_V,
         ps_sdf = p::SDF,
@@ -2306,7 +2611,6 @@ fn alice_npr_eval_bytecode(
 }
 
 #[cfg(test)]
-#[allow(deprecated)] // pins that `fallback_op_count` stays 0 while it exists
 mod tests {
     use super::*;
 
@@ -2318,6 +2622,7 @@ mod tests {
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.5, 0.5),
             time: 0.0,
+            position: Vec3::ZERO,
         }
     }
 
@@ -2329,6 +2634,7 @@ mod tests {
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.1, 0.9),
             time: 0.25,
+            position: Vec3::ZERO,
         }
     }
 
@@ -2672,6 +2978,7 @@ mod tests {
             light: Vec3::new(0.0, ndl, (ndl * -ndl + 1.0).max(0.0).sqrt()),
             uv,
             time,
+            position: Vec3::new(uv.x * 0.1, time * 0.01, sdf),
         };
         [
             mkctx(1.0, Vec2::new(0.5, 0.5), 0.0, 0.0),

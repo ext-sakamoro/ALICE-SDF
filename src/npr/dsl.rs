@@ -28,7 +28,12 @@ use crate::raw_minmax::RawMinMax;
 use glam::{Vec2, Vec3};
 
 /// Inputs available to every color node during evaluation
+///
+/// `#[non_exhaustive]`: build one with [`NprColorContext::new`] and the
+/// `with_*` builders, so a field added later is not a breaking change; the
+/// fields stay public to read and to set one at a time.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct NprColorContext {
     /// Signed distance at the point being shaded
     pub sdf: f32,
@@ -42,9 +47,61 @@ pub struct NprColorContext {
     pub uv: Vec2,
     /// Elapsed time in seconds since the animation started
     pub time: f32,
+    /// The point being shaded, in the law's frame (metres); colour laws
+    /// that read a region or a cell ([`NprColorNode::RegionNoise`]) use it
+    pub position: Vec3,
 }
 
 impl NprColorContext {
+    /// A context for a surface point: `normal`, `view` and `light` unit
+    /// vectors, with `sdf = 0`, `uv = (0.5, 0.5)`, `time = 0` and
+    /// `position = 0`; set the rest with the `with_*` builders
+    #[inline]
+    #[must_use]
+    pub const fn new(normal: Vec3, view: Vec3, light: Vec3) -> Self {
+        Self {
+            sdf: 0.0,
+            normal,
+            view,
+            light,
+            uv: Vec2::new(0.5, 0.5),
+            time: 0.0,
+            position: Vec3::ZERO,
+        }
+    }
+
+    /// The same context with `sdf` set
+    #[inline]
+    #[must_use]
+    pub const fn with_sdf(mut self, sdf: f32) -> Self {
+        self.sdf = sdf;
+        self
+    }
+
+    /// The same context with `uv` set
+    #[inline]
+    #[must_use]
+    pub const fn with_uv(mut self, uv: Vec2) -> Self {
+        self.uv = uv;
+        self
+    }
+
+    /// The same context with `time` set
+    #[inline]
+    #[must_use]
+    pub const fn with_time(mut self, time: f32) -> Self {
+        self.time = time;
+        self
+    }
+
+    /// The same context with `position` set
+    #[inline]
+    #[must_use]
+    pub const fn with_position(mut self, position: Vec3) -> Self {
+        self.position = position;
+        self
+    }
+
     /// Diffuse `n . l`
     #[inline]
     #[must_use]
@@ -66,6 +123,32 @@ impl NprColorContext {
 /// load-bearing.
 #[derive(Debug, Clone)]
 pub enum NprColorNode {
+    /// Colour by surface normal family (0 operands): the family whose unit
+    /// normal has the largest `n · family_normal` (a tie goes to the lowest
+    /// index) gives its colour; no families evaluates to black. Up to 8
+    /// families compile to one opcode; more fall back to the tree walker.
+    FamilyPalette {
+        /// `(unit normal, colour)` per family, in priority order for ties
+        families: Vec<(Vec3, Vec3)>,
+    },
+    /// Colour by region and by a smooth field of the shading position
+    /// (1 operand): `base + region_amp * (2 h - 1) + noise_amp * v`, `h` the
+    /// crate's lattice hash of the cell `floor(position / cell)` (constant
+    /// inside a cell) and `v` its value noise in `[-1, 1]` at
+    /// `position / cell` with `seed + 1`, so a facet keeps one tone per
+    /// region with a soft variation inside it
+    RegionNoise {
+        /// Colour the offsets are added to
+        base: Box<Self>,
+        /// Cell size in the units of `position` (must be positive)
+        cell: f32,
+        /// Per-channel amplitude of the per-cell term
+        region_amp: Vec3,
+        /// Per-channel amplitude of the smooth term
+        noise_amp: Vec3,
+        /// Hash seed (the smooth term uses `seed + 1`)
+        seed: u32,
+    },
     /// A constant color, ignoring context
     Constant(NprColor),
     /// Toon-ramp lookup between shadow and light using `n . l`
@@ -248,6 +331,43 @@ pub enum PaletteSource {
     TimeCycle,
 }
 
+/// The family-palette law.
+///
+/// The colour of the family with the largest `normal · family_normal`, the
+/// lowest index on a tie, black with no families.
+#[must_use]
+pub fn family_palette(normal: Vec3, families: impl IntoIterator<Item = (Vec3, Vec3)>) -> Vec3 {
+    let mut best = f32::NEG_INFINITY;
+    let mut colour = Vec3::ZERO;
+    for (n, c) in families {
+        let d = normal.dot(n);
+        if d > best {
+            best = d;
+            colour = c;
+        }
+    }
+    colour
+}
+
+/// The region-noise law (see [`NprColorNode::RegionNoise`]).
+///
+/// The per-cell term is the lattice hash of `floor(position / cell)`, the
+/// smooth term the crate's value noise at `position / cell` with `seed + 1`.
+#[must_use]
+pub fn region_noise(
+    base: Vec3,
+    position: Vec3,
+    cell: f32,
+    region_amp: Vec3,
+    noise_amp: Vec3,
+    seed: u32,
+) -> Vec3 {
+    let q = position / cell;
+    let h = crate::modifiers::cell_hash_3d(q.floor(), seed);
+    let v = crate::modifiers::hash_noise_3d(q, seed.wrapping_add(1));
+    base + region_amp * (2.0 * h - 1.0) + noise_amp * v
+}
+
 impl NprColorNode {
     /// Evaluate the node against a shading context
     #[must_use]
@@ -320,6 +440,23 @@ impl NprColorNode {
                 let mask = vignette(ctx.uv.x, ctx.uv.y, *radius, *softness);
                 child.eval(ctx) * mask
             }
+            Self::FamilyPalette { families } => {
+                family_palette(ctx.normal, families.iter().copied())
+            }
+            Self::RegionNoise {
+                base,
+                cell,
+                region_amp,
+                noise_amp,
+                seed,
+            } => region_noise(
+                base.eval(ctx),
+                ctx.position,
+                *cell,
+                *region_amp,
+                *noise_amp,
+                *seed,
+            ),
             Self::Palette3 { source, c0, c1, c2 } => {
                 let t = palette_source_scalar(*source, ctx).clamp(0.0, 1.0);
                 let palette = [*c0, *c1, *c2];
@@ -513,6 +650,7 @@ mod tests {
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.5, 0.5),
             time: 0.0,
+            position: Vec3::ZERO,
         }
     }
 
@@ -524,6 +662,7 @@ mod tests {
             light: Vec3::new(0.0, -1.0, 0.0),
             uv: Vec2::new(0.5, 0.5),
             time: 0.0,
+            position: Vec3::ZERO,
         }
     }
 
@@ -616,6 +755,7 @@ mod tests {
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.5, 0.5),
             time: 0.0,
+            position: Vec3::ZERO,
         };
         let base = NprColorNode::Constant(Vec3::new(0.5, 0.5, 0.5));
         let node = base.with_fresnel(Vec3::ZERO, 2.0);
@@ -633,6 +773,7 @@ mod tests {
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.5, 0.5),
             time: 0.0,
+            position: Vec3::ZERO,
         };
         let base = NprColorNode::Constant(Vec3::ZERO);
         let node = base.with_fresnel(Vec3::ONE, 2.0);
@@ -706,6 +847,7 @@ mod tests {
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.0, 0.0),
             time: 0.0,
+            position: Vec3::ZERO,
         };
         let c = node.eval(&ctx);
         assert!((c - Vec3::ZERO).length() < 1e-4);
@@ -738,6 +880,7 @@ mod tests {
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.5, 0.375),
             time: 0.0,
+            position: Vec3::ZERO,
         };
         let c = node.eval(&ctx);
         assert!((c - Vec3::ONE).length() < 1e-4);
@@ -810,6 +953,7 @@ mod tests {
             light: Vec3::new(0.0, 1.0, 0.0),
             uv: Vec2::new(0.5, 1.0),
             time: 0.0,
+            position: Vec3::ZERO,
         };
         assert!((node.eval(&ctx_top) - Vec3::new(0.0, 0.0, 1.0)).length() < 1e-3);
     }
@@ -839,6 +983,7 @@ mod tests {
                 light: Vec3::new(0.0, 1.0, 0.0),
                 uv: Vec2::new(0.5, 0.5),
                 time: 0.0,
+                position: Vec3::ZERO,
             };
             let c = node.eval(&ctx);
             for ch in [c.x, c.y, c.z] {
