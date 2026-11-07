@@ -45,7 +45,19 @@ fn shifted_root(w0: vec3<f32>, g: vec3<f32>, rr: f32) -> f32 {
     return MISS;
 }
 
-fn cylinder_t(o: vec3<f32>, dir: vec3<f32>, u: vec3<f32>, v: vec3<f32>, r: f32) -> f32 {
+// (x, y, z) bits of p before those of q, lexicographically, as the CPU's tuple order
+fn key_lt(p: vec3<f32>, q: vec3<f32>) -> bool {
+    let a = bitcast<vec3<u32>>(p);
+    let b = bitcast<vec3<u32>>(q);
+    if a.x != b.x { return a.x < b.x; }
+    if a.y != b.y { return a.y < b.y; }
+    return a.z < b.z;
+}
+
+fn cylinder_t(o: vec3<f32>, dir: vec3<f32>, u0: vec3<f32>, v0: vec3<f32>, r: f32) -> f32 {
+    // one order for an edge, whichever triangle names it
+    var u = u0; var v = v0;
+    if key_lt(v0, u0) { u = v0; v = u0; }
     let e = v - u;
     let l2 = d(e, e);
     if l2 == 0.0 { return MISS; }
@@ -57,6 +69,7 @@ fn cylinder_t(o: vec3<f32>, dir: vec3<f32>, u: vec3<f32>, v: vec3<f32>, r: f32) 
     return t;
 }
 
+// over the triangle: the three edge functions against the unnormalised normal (no division)
 fn face_t(o: vec3<f32>, dir: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, r: f32) -> f32 {
     let nn = cross3(b - a, c - a);
     let nl = sqrt(d(nn, nn));
@@ -64,22 +77,17 @@ fn face_t(o: vec3<f32>, dir: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>
     let n = vec3<f32>(nn.x / nl, nn.y / nl, nn.z / nl);
     let dn = d(dir, n);
     if dn == 0.0 { return MISS; }
-    let v0 = b - a;
-    let v1 = c - a;
-    let d00 = d(v0, v0); let d01 = d(v0, v1); let d11 = d(v1, v1);
-    let den = d00 * d11 - d01 * d01;
-    if den == 0.0 { return MISS; }
     var best = MISS;
     for (var k = 0u; k < 2u; k += 1u) {
         let sg = select(-1.0, 1.0, k == 0u);
         let off = sg * r;
         let t = d(vadd_scaled(a, n, off) - o, n) / dn;
         if t < 0.0 { continue; }
-        let v2 = vadd_scaled(vadd_scaled(o, dir, t), n, -off) - a;
-        let d20 = d(v2, v0); let d21 = d(v2, v1);
-        let bv = (d11 * d20 - d01 * d21) / den;
-        let bw = (d00 * d21 - d01 * d20) / den;
-        if bv >= 0.0 && bw >= 0.0 && bv + bw <= 1.0 {
+        let q = vadd_scaled(vadd_scaled(o, dir, t), n, -off);
+        let over = d(cross3(b - a, q - a), nn) >= 0.0
+            && d(cross3(c - b, q - b), nn) >= 0.0
+            && d(cross3(a - c, q - c), nn) >= 0.0;
+        if over {
             if best == MISS { best = t; } else { best = fmin(best, t); }
         }
     }

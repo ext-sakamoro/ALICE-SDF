@@ -49,6 +49,17 @@ pub struct ShellHit {
     pub feature: ShellFeature,
 }
 
+/// A ray `origin + t * dir`, `0 <= t <= tmax`; `dir` need not be unit length
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShellRay {
+    /// Start
+    pub origin: Vec3,
+    /// Direction
+    pub dir: Vec3,
+    /// Largest `t` a hit may have
+    pub tmax: f32,
+}
+
 /// Smallest root `t >= 0` of `|w0 + t g|^2 = rr`, solved about the closest approach
 #[inline]
 fn shifted_root(w0: Vec3, g: Vec3, rr: f32) -> Option<f32> {
@@ -83,6 +94,9 @@ fn sphere_t(o: Vec3, d: Vec3, c: Vec3, r: f32) -> Option<f32> {
 fn cylinder_t(o: Vec3, d: Vec3, u: Vec3, v: Vec3, r: f32, root: RootFn) -> Option<f32> {
     // distance to the edge's line is |(m + t d) x e| / |e|, so solve
     // |m x e + t (d x e)|^2 = r^2 |e|^2
+    // one order for an edge, whichever triangle names it: a shared edge gives the same bits in both
+    let key = |p: Vec3| (p.x.to_bits(), p.y.to_bits(), p.z.to_bits());
+    let (u, v) = if key(v) < key(u) { (v, u) } else { (u, v) };
     let e = v - u;
     let l2 = e.dot(e);
     if l2 == 0.0 {
@@ -98,24 +112,22 @@ fn cylinder_t(o: Vec3, d: Vec3, u: Vec3, v: Vec3, r: f32, root: RootFn) -> Optio
 }
 
 /// Hit on either plane offset from the face by `r`, inside the triangle's prism
-// the Gram determinant d00 d11 - d01^2, not a mistyped product
-#[allow(clippy::suspicious_operation_groupings)]
+/// Hit on either plane offset from the face by `r`, inside the triangle's prism
+///
+/// Whether the point lies over the triangle is decided by the three edge functions against the
+/// unnormalised normal, `((v1 - v0) x (q - v0)) . nn >= 0` for each edge: no division, so a sliver
+/// or near-collinear triangle (whose barycentric weights would divide by a Gram determinant near 0)
+/// accepts only points over itself.
 #[inline]
 fn face_t(o: Vec3, d: Vec3, a: Vec3, b: Vec3, c: Vec3, r: f32) -> Option<f32> {
-    let n = (b - a).cross(c - a);
-    let nl = n.length();
+    let nn = (b - a).cross(c - a);
+    let nl = nn.length();
     if nl == 0.0 || !nl.is_finite() {
         return None;
     }
-    let n = n / nl;
+    let n = nn / nl;
     let dn = d.dot(n);
     if dn == 0.0 {
-        return None;
-    }
-    let (v0, v1) = (b - a, c - a);
-    let (d00, d01, d11) = (v0.dot(v0), v0.dot(v1), v1.dot(v1));
-    let den = d00 * d11 - d01 * d01;
-    if den == 0.0 {
         return None;
     }
     let mut best: Option<f32> = None;
@@ -124,11 +136,11 @@ fn face_t(o: Vec3, d: Vec3, a: Vec3, b: Vec3, c: Vec3, r: f32) -> Option<f32> {
         if t < 0.0 {
             continue;
         }
-        let v2 = o + d * t - n * (sg * r) - a;
-        let (d20, d21) = (v2.dot(v0), v2.dot(v1));
-        let bv = (d11 * d20 - d01 * d21) / den;
-        let bw = (d00 * d21 - d01 * d20) / den;
-        if bv >= 0.0 && bw >= 0.0 && bv + bw <= 1.0 {
+        let q = o + d * t - n * (sg * r);
+        let over = (b - a).cross(q - a).dot(nn) >= 0.0
+            && (c - b).cross(q - b).dot(nn) >= 0.0
+            && (a - c).cross(q - c).dot(nn) >= 0.0;
+        if over {
             best = Some(best.map_or(t, |x| x.min(t)));
         }
     }
@@ -517,5 +529,45 @@ mod tests {
         // 409 hits with this seed; the floor only rules out an empty comparison
         assert!(hits > 300, "too few hits: {hits}");
         assert_eq!((off, early), (0, 0), "of {hits} hits");
+    }
+
+    #[test]
+    fn a_shared_edge_gives_the_same_bits_in_both_triangles() {
+        // the edge p-q, named q-p by the second triangle (as a consistently wound mesh does)
+        let (p, q) = (v(0.3, -0.7, 0.2), v(1.9, 0.45, -0.35));
+        let one = BvhTriangle::new(p, q, v(0.1, 1.2, 0.4));
+        let two = BvhTriangle::new(q, p, v(1.4, -1.1, -0.9));
+        let mut x = 0x9E3779B97F4A7C15u64;
+        let mut u = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            (x >> 40) as f32 / (1u64 << 24) as f32
+        };
+        let (mut both, mut differ) = (0, 0);
+        for _ in 0..20000 {
+            let aim = p + (q - p) * u();
+            let o = aim + v(u() - 0.5, u() - 0.5, u() - 0.5).normalize() * (1.0 + u() * 5.0);
+            let d = (aim - o + v(u() - 0.5, u() - 0.5, u() - 0.5) * 0.02).normalize();
+            let r = 0.05;
+            if let (Some((s1, ShellFeature::Edge)), Some((s2, ShellFeature::Edge))) = (
+                triangle_shell_hit(o, d, &one, r),
+                triangle_shell_hit(o, d, &two, r),
+            ) {
+                // only rays whose first hit on both is the shared edge's cylinder
+                let h = o + d * s1;
+                let on_shared = |t: &BvhTriangle| {
+                    let e = q - p;
+                    let s = ((h - p).dot(e) / e.dot(e)).clamp(0.0, 1.0);
+                    (h - (p + e * s)).length() <= t.unsigned_distance(h) + 1e-5
+                };
+                if on_shared(&one) && on_shared(&two) {
+                    both += 1;
+                    differ += (s1.to_bits() != s2.to_bits()) as usize;
+                }
+            }
+        }
+        assert!(both > 500, "too few rays on the shared edge: {both}");
+        assert_eq!(differ, 0, "of {both} rays on the shared edge");
     }
 }

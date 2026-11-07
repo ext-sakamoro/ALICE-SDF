@@ -87,7 +87,7 @@ pub mod gpu_marching_cubes;
 pub mod gpu_mc_shaders;
 
 pub use bvh::{Aabb, BvhNode, BvhTriangle, MeshBvh};
-pub use bvh_shell::{triangle_shell_hit, ShellFeature, ShellHit};
+pub use bvh_shell::{triangle_shell_hit, ShellFeature, ShellHit, ShellRay};
 pub use collision::{
     compute_aabb, compute_bounding_sphere, compute_convex_hull, convex_decomposition,
     convex_hull_from_points, simplify_collision, BoundingSphere, CollisionAabb, CollisionMesh,
@@ -96,7 +96,7 @@ pub use collision::{
 pub use decimate::{decimate, DecimateConfig};
 pub use dual_contouring::{dual_contouring, dual_contouring_compiled, DualContouringConfig};
 #[cfg(feature = "gpu")]
-pub use gpu_bvh::{ShellBackend, ShellRay, ShellRenderer};
+pub use gpu_bvh::{ShellBackend, ShellRenderer};
 #[cfg(feature = "gpu")]
 pub use gpu_marching_cubes::{
     gpu_marching_cubes, gpu_marching_cubes_from_shader, GpuMarchingCubesConfig,

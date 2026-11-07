@@ -12,7 +12,7 @@
 //! Author: Moroya Sakamoto
 
 use super::bvh::{BvhNode, MeshBvh};
-use super::bvh_shell::{ShellFeature, ShellHit};
+use super::bvh_shell::{ShellFeature, ShellHit, ShellRay};
 use crate::compiled::GpuError;
 use crate::gpu_context::GpuContext;
 use glam::Vec3;
@@ -93,17 +93,6 @@ pub fn flatten(bvh: &MeshBvh) -> FlatBvh {
         push(root, &mut out);
     }
     out
-}
-
-/// A ray `origin + t * dir`, `0 <= t <= tmax`; `dir` need not be unit length
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ShellRay {
-    /// Start
-    pub origin: Vec3,
-    /// Direction
-    pub dir: Vec3,
-    /// Largest `t` a hit may have
-    pub tmax: f32,
 }
 
 /// Where a [`ShellRenderer`] computes
@@ -414,4 +403,43 @@ fn decode(h: &RawHit) -> Result<Option<ShellHit>, GpuError> {
         triangle: h.tri,
         feature,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_shell_kernel_parses_and_validates() {
+        let module = naga::front::wgsl::parse_str(SHELL_KERNEL).expect("the kernel parses");
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .expect("the kernel validates");
+        assert!(module.entry_points.iter().any(|e| e.name == "main"));
+    }
+
+    #[test]
+    fn flattening_keeps_every_triangle_once_with_parent_links() {
+        let v: Vec<Vec3> = (0..60)
+            .map(|i| Vec3::new((i % 7) as f32, (i % 5) as f32 * 0.5, (i / 7) as f32 * 0.3))
+            .collect();
+        let ix: Vec<u32> = (0..60).collect();
+        let bvh = MeshBvh::build(&v, &ix, 2);
+        let flat = flatten(&bvh);
+        let mut seen = flat.leaf_tris.clone();
+        seen.sort_unstable();
+        assert_eq!(seen, (0..20).collect::<Vec<u32>>());
+        assert_eq!(flat.parents[0], 0);
+        for at in 0..flat.nodes.len() / 8 {
+            let (a, b) = (flat.nodes[at * 8 + 3], flat.nodes[at * 8 + 7]);
+            if a & 0x8000_0000 == 0 {
+                assert_eq!(flat.parents[a as usize], at as u32);
+                assert_eq!(flat.parents[b as usize], at as u32);
+            }
+        }
+        assert!(flatten(&MeshBvh::build(&[], &[], 2)).nodes.is_empty());
+    }
 }
