@@ -328,6 +328,125 @@ impl Tracer {
     }
 }
 
+/// A kernel with a uniform `(first, count)` and one `array<u32>` output, for narrowing a fault:
+/// `runs` passes over `count` invocations, each pass's output
+///
+/// # Errors
+/// [`GpuError`] when there is no device or the kernel does not compile.
+pub fn run_u32(
+    text: &str,
+    count: u32,
+    tile: u32,
+    runs: u32,
+) -> Result<Vec<(Vec<u32>, f64)>, GpuError> {
+    let context = GpuContext::request("fault")?;
+    let module =
+        context.shader_module("fault", wgpu::ShaderSource::Wgsl(text.to_owned().into()))?;
+    let (device, queue) = (context.device(), context.queue());
+    let entry = |binding: u32, ty: wgpu::BufferBindingType| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Buffer {
+            ty,
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    };
+    let group = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: None,
+        entries: &[
+            entry(0, wgpu::BufferBindingType::Uniform),
+            entry(1, wgpu::BufferBindingType::Storage { read_only: false }),
+        ],
+    });
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: None,
+        bind_group_layouts: &[&group],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: None,
+        layout: Some(&layout),
+        module: &module,
+        entry_point: Some("main"),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+    let size = u64::from(tile) * 4;
+    let output = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+    let staging = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let params = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: 16,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout: &group,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: params.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: output.as_entire_binding(),
+            },
+        ],
+    });
+    let mut all = Vec::new();
+    for _ in 0..runs {
+        let started = Instant::now();
+        let mut got = Vec::with_capacity(count as usize);
+        let mut first = 0;
+        while first < count {
+            let n = tile.min(count - first);
+            queue.write_buffer(&params, 0, bytemuck::cast_slice(&[first, n, 0, 0]));
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+            {
+                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: None,
+                    timestamp_writes: None,
+                });
+                pass.set_pipeline(&pipeline);
+                pass.set_bind_group(0, &bind, &[]);
+                pass.dispatch_workgroups(n.div_ceil(64), 1, 1);
+            }
+            let bytes = u64::from(n) * 4;
+            encoder.copy_buffer_to_buffer(&output, 0, &staging, 0, bytes);
+            queue.submit(std::iter::once(encoder.finish()));
+            let slice = staging.slice(..bytes);
+            let (sender, receiver) = std::sync::mpsc::channel();
+            slice.map_async(wgpu::MapMode::Read, move |r| {
+                let _ = sender.send(r);
+            });
+            device.poll(wgpu::Maintain::Wait);
+            receiver
+                .recv()
+                .map_err(|e| GpuError::BufferMapping(e.to_string()))?
+                .map_err(|e| GpuError::BufferMapping(format!("{e:?}")))?;
+            got.extend_from_slice(bytemuck::cast_slice::<u8, u32>(&slice.get_mapped_range()));
+            staging.unmap();
+            first += n;
+        }
+        all.push((got, started.elapsed().as_secs_f64()));
+    }
+    Ok(all)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

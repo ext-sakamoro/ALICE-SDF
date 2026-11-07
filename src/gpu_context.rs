@@ -174,7 +174,11 @@ pub(crate) fn no_contraction_spirv(source: wgpu::ShaderSource<'_>) -> Result<Vec
         lang_version: (1, 0),
         flags: spv::WriterFlags::empty(),
         bounds_check_policies: BoundsCheckPolicies {
-            index: BoundsCheckPolicy::Restrict,
+            index: if std::env::var_os("MG_UNCHECKED").is_some() {
+                BoundsCheckPolicy::Unchecked
+            } else {
+                BoundsCheckPolicy::Restrict
+            },
             buffer: BoundsCheckPolicy::Restrict,
             image_load: BoundsCheckPolicy::Restrict,
             binding_array: BoundsCheckPolicy::Unchecked,
