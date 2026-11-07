@@ -313,7 +313,11 @@ impl Tracer {
                 self.max_evals,
                 self.n_nodes,
                 self.n_tris,
-                0,
+                std::env::var("MG_CUTOFF")
+                    .ok()
+                    .and_then(|v| v.parse::<f32>().ok())
+                    .unwrap_or(0.0)
+                    .to_bits(),
             ];
             queue.write_buffer(&self.params, 0, bytemuck::cast_slice(&words));
             let started = Instant::now();
