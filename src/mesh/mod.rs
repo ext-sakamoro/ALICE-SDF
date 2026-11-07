@@ -80,6 +80,8 @@ pub mod uv_unwrap;
 pub mod winding;
 
 #[cfg(feature = "gpu")]
+pub mod gpu_bvh;
+#[cfg(feature = "gpu")]
 pub mod gpu_marching_cubes;
 #[cfg(feature = "gpu")]
 pub mod gpu_mc_shaders;
@@ -93,6 +95,8 @@ pub use collision::{
 };
 pub use decimate::{decimate, DecimateConfig};
 pub use dual_contouring::{dual_contouring, dual_contouring_compiled, DualContouringConfig};
+#[cfg(feature = "gpu")]
+pub use gpu_bvh::{ShellBackend, ShellRay, ShellRenderer};
 #[cfg(feature = "gpu")]
 pub use gpu_marching_cubes::{
     gpu_marching_cubes, gpu_marching_cubes_from_shader, GpuMarchingCubesConfig,
