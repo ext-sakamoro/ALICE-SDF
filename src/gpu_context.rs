@@ -126,6 +126,16 @@ impl GpuContext {
     /// gives no Vulkan handle and nothing is recorded; other backends synchronise mapping
     /// themselves, and a browser has no such access. Remove this once wgpu records the dependency
     /// (the issue above).
+    // where there is no Vulkan device (macOS, a browser) the call records nothing, and the
+    // signature is still the one the Vulkan build needs
+    #[cfg_attr(
+        any(target_arch = "wasm32", target_os = "macos"),
+        allow(
+            clippy::unused_self,
+            clippy::needless_pass_by_ref_mut,
+            clippy::missing_const_for_fn
+        )
+    )]
     pub(crate) fn before_host_read(&self, encoder: &mut wgpu::CommandEncoder) {
         #[cfg(not(any(target_arch = "wasm32", target_os = "macos")))]
         {
