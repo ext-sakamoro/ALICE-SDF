@@ -67,7 +67,7 @@ const GLSL_REFUSED: [u32; 6] = [49, 70, 71, 72, 33, 34];
 
 /// Why a word stream could not be read as a SPIR-V module.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum SpirvError {
+pub enum SpirvError {
     /// Shorter than the header, or the first word is not the magic number.
     NotSpirv,
     /// An instruction at this word offset has length 0, runs past the end, is an
@@ -86,7 +86,7 @@ struct Expander {
 }
 
 impl Expander {
-    fn id(&mut self) -> u32 {
+    const fn id(&mut self) -> u32 {
         let id = self.bound;
         self.bound += 1;
         id
@@ -143,7 +143,7 @@ impl Expander {
 /// An opcode whose first two operands are a result type and a result id. Only what comes before a
 /// use of a vector value in a module this crate compiles: an operand of any other origin has no
 /// known type, and the expansion refuses it.
-fn has_type_and_result(opcode: u32) -> bool {
+const fn has_type_and_result(opcode: u32) -> bool {
     matches!(
         opcode,
         1 | 12 | 41..=46 | 55 | 57 | 59 | 61 | 65 | 66 | 79..=83 | 109..=215 | 245
@@ -255,7 +255,7 @@ fn expand_builtins(module: &[u32]) -> Result<Vec<u32>, SpirvError> {
                     e.op(OP_COMPOSITE_CONSTRUCT, &construct);
                 }),
                 (GLSL_CROSS, [a, b]) => {
-                    let (c, size) = vector_of(*a).ok_or(unknown.clone())?;
+                    let (c, size) = vector_of(*a).ok_or_else(|| unknown.clone())?;
                     let (x, y) = (e.components(c, *a, size), e.components(c, *b, size));
                     let mut construct = vec![ty, result];
                     for (i, j) in [(1, 2), (2, 0), (0, 1)] {
@@ -314,7 +314,7 @@ fn expand_builtins(module: &[u32]) -> Result<Vec<u32>, SpirvError> {
 /// # Errors
 /// [`SpirvError`] when `module` is not a well-formed instruction stream, or holds a builtin with
 /// no expansion here.
-pub(crate) fn mark_no_contraction(module: &[u32]) -> Result<Vec<u32>, SpirvError> {
+pub fn mark_no_contraction(module: &[u32]) -> Result<Vec<u32>, SpirvError> {
     if module.len() < HEADER_WORDS || module[0] != MAGIC {
         return Err(SpirvError::NotSpirv);
     }
@@ -592,7 +592,7 @@ mod tests {
             Err(SpirvError::Malformed(5))
         );
         let mut overrun = HEADER.to_vec();
-        overrun.push((4 << 16) | 17);
+        overrun.push((0x4 << 16) | 0x11);
         assert_eq!(mark_no_contraction(&overrun), Err(SpirvError::Malformed(5)));
         let short_fadd = module(&[op(129, &[1])]);
         assert_eq!(
