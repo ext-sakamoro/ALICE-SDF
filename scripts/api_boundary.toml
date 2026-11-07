@@ -1129,6 +1129,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "alice-det-math" = "deterministic arithmetic functions and the identifier constants; no input is read"
 "alice-physics" = "physics on values this crate passes in the same process; no input is read"
 "alice-zip" = "the law-id v2 hasher (law_id::LawIdHasher) over bytes this crate already holds; no input is read"
+"ash" = "Vulkan bindings used only to record a memory barrier into the command buffer wgpu is recording (GpuContext::before_host_read); it reads no input"
 "bytemuck" = "casts between plain types in memory; the bytes come from this crate's own buffers"
 "clap" = "parses the command-line arguments of the cli binary, not a stored or transmitted form"
 "cranelift-codegen" = "compiles this crate's own IR to machine code (jit)"
