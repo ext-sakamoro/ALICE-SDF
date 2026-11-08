@@ -208,8 +208,9 @@ fn checker_rejects_a_wrong_hash() {
 /// evaluator path calls, and every hash below stayed put). A failure here is a
 /// dependency move: re-check the table, then re-pin both with the CHANGELOG
 /// saying which `alice-det-math` the crate now evaluates with.
-// alice-det-math 0.5.2 at 2d01c63f (a2e46794… at 39507d1b, 85e08846… with 0.5.1)
-const SEMANTICS_ID_HEX: &str = "a2a11b9b826227fa7a9ed8ab2c1ce63dbb07ad4c39aa2c46a363ddea6b47dbe9";
+// alice-det-math 0.6.1 at 8c4c9132 (a2a11b9b… with 0.5.2 at 2d01c63f, a2e46794… at 39507d1b,
+// 85e08846… with 0.5.1); every hash below stayed put with the move from 2d01c63f
+const SEMANTICS_ID_HEX: &str = "6fc214e924c53557f33775df51f1f8dfe2f246d67a9e493d6fb5837d999022f2";
 
 /// The identifier `alice-det-math` 0.5.0 published, which 6.0 exposed as this crate's own: no
 /// longer a recognised previous one (2d01c63f moved `sin` / `cos` from `2^13` on and `hypot` of
