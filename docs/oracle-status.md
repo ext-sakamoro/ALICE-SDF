@@ -6,22 +6,24 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1198 |
-| 🔴 Red by design | 2 |
+| 🟢 Not ignored | 1204 |
+| 🔴 Red by design | 4 |
 | ⏱ Gated (runtime / diagnostic / manual) | 6 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1206** |
+| **Total** | **1214** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🔴 Red by design (2)
+## 🔴 Red by design (4)
 
 Oracles kept red on purpose: the implementation is not there yet, and a companion test pins
 today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected value is never loosened.
 
+- `the_call_sites_do_not_grow_with_the_lofts_and_stacks` (test_one_call_site.rs) — known defect: B1 lofts/stacks one-call-site pending (sdf b1 one call site)
 - `the_normal_is_steady_at_the_99th_percentile_on_a_torso_like_curve_loft` (test_loft_curve_oracle.rs) — known defect: LOFT-NORMAL-P99 — where L(s) jumps (the shrinking top), the band B(s) is narrow and the normal t…
+- `the_pipeline_time_does_not_grow_with_the_lofts` (test_one_call_site.rs) — known defect: B1 lofts/stacks one-call-site pending (sdf b1 one call site)
 - `torus_on_a_grid_plane_has_no_crossings` (test_dual_contouring_manifold.rs) — known defect: DC-TORUS-CROSS-001: torus(1.0, 0.5) at resolution 32 over ±1.6 has 1 crossing triangle pair in b…
 
 ## 🟠 Known defect in one arm (2)
@@ -46,7 +48,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1198)
+## 🟢 Not ignored (1204)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -185,7 +187,9 @@ Per-file counts (the test names are in `tests/`):
 | `test_law_scalar_minmax_ties.rs` | 3 |
 | `test_llm_schema_oracle.rs` | 3 |
 | `test_minmax_signed_zero_probe.rs` | 3 |
+| `test_module_array_chunks.rs` | 3 |
 | `test_neural_oracle.rs` | 3 |
+| `test_one_call_site.rs` | 3 |
 | `test_optimize_stats_oracle.rs` | 3 |
 | `test_rust_transpiler_oracle.rs` | 3 |
 | `test_shader_minimal_trees.rs` | 3 |
