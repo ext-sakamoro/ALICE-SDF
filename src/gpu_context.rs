@@ -126,10 +126,15 @@ impl GpuContext {
     /// gives no Vulkan handle and nothing is recorded; other backends synchronise mapping
     /// themselves, and a browser has no such access. Remove this once wgpu records the dependency
     /// (the issue above).
-    // where there is no Vulkan device (macOS, a browser) the call records nothing, and the
+    // wgpu 24 builds its Vulkan backend only for the targets of this predicate (its Cargo.toml
+    // gives wgpu-core the `vulkan` feature for exactly these), so `wgpu::hal::api::Vulkan` exists
+    // only there. Elsewhere (Apple targets, a browser) the call records nothing, and the
     // signature is still the one the Vulkan build needs
     #[cfg_attr(
-        any(target_arch = "wasm32", target_os = "macos"),
+        not(any(
+            windows,
+            all(unix, not(target_os = "emscripten"), not(target_vendor = "apple"))
+        )),
         allow(
             clippy::unused_self,
             clippy::needless_pass_by_ref_mut,
@@ -137,7 +142,10 @@ impl GpuContext {
         )
     )]
     pub(crate) fn before_host_read(&self, encoder: &mut wgpu::CommandEncoder) {
-        #[cfg(not(any(target_arch = "wasm32", target_os = "macos")))]
+        #[cfg(any(
+            windows,
+            all(unix, not(target_os = "emscripten"), not(target_vendor = "apple"))
+        ))]
         {
             use ash::vk;
             // SAFETY: the device is this context's own and outlives the call; the handle is only
@@ -171,7 +179,10 @@ impl GpuContext {
                 });
             }
         }
-        #[cfg(any(target_arch = "wasm32", target_os = "macos"))]
+        #[cfg(not(any(
+            windows,
+            all(unix, not(target_os = "emscripten"), not(target_vendor = "apple"))
+        )))]
         let _ = encoder;
     }
 
