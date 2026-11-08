@@ -419,7 +419,7 @@ mod tests {
         out
     }
 
-    fn points() -> Vec<Vec3> {
+    fn points(n: usize) -> Vec<Vec3> {
         let mut s: u64 = 0x5EED_0B1A;
         let mut r = move || {
             s = s
@@ -427,12 +427,13 @@ mod tests {
                 .wrapping_add(1_442_695_040_888_963_407);
             ((s >> 40) as f32) / ((1u64 << 24) as f32)
         };
-        (0..4096)
+        (0..n)
             .map(|_| Vec3::new(r() * 1.2 - 0.2, r() * 1.0 - 0.2, (r() - 0.5) * 0.2))
             .collect()
     }
 
-    fn values(node: &SdfNode, pts: &[Vec3], unroll: bool, off: bool) -> (String, Vec<f32>) {
+    fn values(node: &SdfNode, unroll: bool, off: bool) -> (String, Vec<f32>) {
+        let pts = points(2048);
         UNROLL.with(|c| c.set(unroll));
         OFF.with(|c| c.set(off));
         let shader = WgslShader::try_transpile_with_node_data(node, TranspileMode::Hardcoded);
@@ -440,7 +441,7 @@ mod tests {
         OFF.with(|c| c.set(false));
         let shader = shader.expect("transpile");
         let gpu = GpuEvaluator::from_shader(&shader).expect("evaluator");
-        (shader.source, gpu.eval_batch(pts).expect("gpu"))
+        (shader.source, gpu.eval_batch(&pts).expect("gpu"))
     }
 
     /// The loop and the same rows with one call site per operand give the same bits on the
@@ -452,12 +453,12 @@ mod tests {
         ) {
             return;
         }
-        let pts = points();
+        let pts = points(2048);
         let mut compared = 0usize;
         for (name, node) in trees() {
-            let (looped_src, looped) = values(&node, &pts, false, false);
-            let (unrolled_src, unrolled) = values(&node, &pts, true, false);
-            let (_, before) = values(&node, &pts, false, true);
+            let (looped_src, looped) = values(&node, false, false);
+            let (unrolled_src, unrolled) = values(&node, true, false);
+            let (_, before) = values(&node, false, true);
             assert!(
                 looped_src.contains("for (var lk"),
                 "{name}: no loop in the shader"

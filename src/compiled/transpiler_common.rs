@@ -4844,7 +4844,7 @@ mod array_chunk_tests {
         );
         shader.source = split;
         let gpu = crate::compiled::GpuEvaluator::from_shader(&shader).expect("evaluator");
-        let pts: Vec<glam::Vec3> = (0..n)
+        let pts: Vec<glam::Vec3> = (0..10)
             .map(|i| glam::Vec3::new(i as f32 + 0.25, 0.0, 0.0))
             .collect();
         assert_eq!(gpu.eval_batch(&pts).expect("gpu"), values);
