@@ -1280,6 +1280,7 @@ jobs:
           --test test_node_data_gpu_parity
           --test test_union_bound_oracle
           --test test_gpu_lifecycle_oracle
+          --test test_one_call_site
           -- --nocapture
 
       # The polygon / section-stack shader oracles need gpu + glsl + hlsl together (the
@@ -1290,7 +1291,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo test --features "gpu,glsl,hlsl" --test test_polygon_2d_general_oracle -- --nocapture 2>&1 | tee test_polygon_2d_general_oracle.log
+          # the peak memory is held under 3 GiB, under half the hosted runner's: a shader that takes
+          # more to compile shuts the runner down instead of failing a test (400 polygons took 7.6 GB
+          # on llvmpipe with one function per polygon)
+          python3 scripts/test_peak_rss.py
+          cargo build --tests --features "gpu,glsl,hlsl"
+          python3 scripts/peak_rss.py --max-mib 3072 --what "test_polygon_2d_general_oracle" -- \
+            bash -c 'cargo test --features "gpu,glsl,hlsl" --test test_polygon_2d_general_oracle -- --nocapture 2>&1 | tee test_polygon_2d_general_oracle.log'
           python3 scripts/libtest_count.py test_polygon_2d_general_oracle.log --min 11 --what "test_polygon_2d_general_oracle"
           cargo test --features "gpu,glsl,hlsl" --test test_section_stack_shader_oracle -- --nocapture 2>&1 | tee test_section_stack_shader_oracle.log
           python3 scripts/libtest_count.py test_section_stack_shader_oracle.log --min 4 --what "test_section_stack_shader_oracle"
@@ -1336,7 +1343,7 @@ jobs:
           set -euo pipefail
           python3 scripts/test_gpu_test_count.py
           cargo test --lib --features "gpu,gpu-mesh" test_gpu_ -- --nocapture --test-threads=1 2>&1 | tee gpu-unit.log
-          python3 scripts/gpu_test_count.py gpu-unit.log --ran 7 --max-skipped 0
+          python3 scripts/gpu_test_count.py gpu-unit.log --ran 8 --max-skipped 0
 
       # A read over its wait limit: lavapipe compiles at the first dispatch, so the work is still
       # running when the evaluator is dropped. A device freed under it fails this run with a signal

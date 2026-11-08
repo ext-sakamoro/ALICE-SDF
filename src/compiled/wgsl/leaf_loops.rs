@@ -446,9 +446,9 @@ mod tests {
     /// The loop and the same rows with one call site per operand give the same bits on the
     /// adapter that runs the test; the per-node form before the loops is compared and reported
     #[test]
-    fn the_loop_gives_the_bits_of_one_call_site_per_operand() {
+    fn test_gpu_leaf_loop_gives_the_bits_of_one_call_site_per_operand() {
         if !crate::gpu_test_support::gpu_ready(
-            "the_loop_gives_the_bits_of_one_call_site_per_operand",
+            "test_gpu_leaf_loop_gives_the_bits_of_one_call_site_per_operand",
         ) {
             return;
         }
