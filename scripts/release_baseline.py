@@ -53,7 +53,7 @@ class Baseline(NamedTuple):
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
     # a hook exports GIT_DIR and friends for the repository being sent: read `root`, not that
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, env=env)
+    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, encoding="utf-8", env=env)
 
 
 def _show(root: Path, commit: str, path: str) -> str | None:

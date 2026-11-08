@@ -6,6 +6,7 @@ not trigger, and an empty tree is exit 2."""
 import contextlib
 import io
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -23,8 +24,16 @@ NO_BAN = 'disallowed-methods = [\n    { path = "f32::sin", reason = "r" },\n]\n'
 BAN_SCRIPT = {"scripts/libm_ban_check.py": "# ban check\n"}
 
 
+# every tree of this file is made under one directory, removed when the module's tests end
+_TREES = tempfile.TemporaryDirectory(prefix="libm-guard-")
+
+
+def tearDownModule():
+    _TREES.cleanup()
+
+
 def tree(files: dict[str, str]) -> Path:
-    root = Path(tempfile.mkdtemp(prefix="libm-guard-"))
+    root = Path(tempfile.mkdtemp(dir=_TREES.name))
     for rel, text in files.items():
         p = root / rel
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -221,6 +230,19 @@ class Guard(unittest.TestCase):
             rc = g.main([])
         self.assertEqual(rc, 0, err.getvalue())
         self.assertRegex(out.getvalue(), r"libm_dependency_guard: [1-9]\d* manifests read")
+
+
+
+class LeavesNothing(unittest.TestCase):
+    def test_the_guard_tests_leave_no_temporary_directory(self):
+        # the tests of Guard, run with a temporary directory of their own: it must be empty after them
+        with tempfile.TemporaryDirectory(prefix="libm-guard-check-") as tmp:
+            env = {**os.environ, "TMPDIR": tmp, "TEMP": tmp, "TMP": tmp}
+            r = subprocess.run([sys.executable, os.path.abspath(__file__), "Guard"], env=env,
+                               capture_output=True, text=True, timeout=300)
+            self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+            self.assertRegex(r.stderr, r"Ran [1-9]\d* tests")  # compared something
+            self.assertEqual(sorted(os.listdir(tmp)), [])
 
 
 if __name__ == "__main__":
