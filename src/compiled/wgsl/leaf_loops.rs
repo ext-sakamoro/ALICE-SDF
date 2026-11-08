@@ -8,11 +8,13 @@
 //! row holds the operand's bound, its wrappers and the offset of its data, and the kind's function
 //! is written once and called once.
 //!
-//! The values are those of the per-node form: every per-node number is read from the buffer in both
-//! (no literal folds differently), the arithmetic of each operand is the same sequence, and the
-//! union's minimum does not depend on the order of the values it keeps (the bound skips only
-//! operands whose lower bound is above the minimum so far, as before; the skip count can differ
-//! with the order). Kinds not handled here, operands without a bound, wrappers other than
+//! The loop gives the bits of one call site per operand with the same buffer reads: the arithmetic
+//! of each operand is the same sequence, and the union's minimum does not depend on the order of the
+//! values it keeps (the bound skips only operands whose lower bound is above the minimum so far, as
+//! before; the skip count can differ with the order). Against the earlier per-node form, which wrote
+//! these numbers as literals, the values differ at the ulp level (a literal and a buffer read can
+//! compile differently): within 1e-5, and no further from the CPU than before, both asserted by the
+//! test below. Kinds not handled here, operands without a bound, wrappers other than
 //! translate / rotate / uniform scale, Dynamic mode and the checked reads keep the per-node form.
 //!
 //! Author: Moroya Sakamoto
