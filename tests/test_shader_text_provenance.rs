@@ -960,16 +960,25 @@ fn every_text_emitter_is_whole_fragment_or_not_shader() {
 // ------------------------------------------------------------------ classification by entry point
 
 /// Table entries with no path from the public API: the language types `GenericTranspiler` is
-/// generic over (`WgslLang` / `GlslLang` / `HlslLang`) live in private modules. Their text is the
-/// building block of the `source` fields, which are sampled. The test below checks that this
-/// list is exactly the `transpiler_common.rs` entries that are not `NOT_SHADER`, and that the
-/// language types stay private; a public path to them turns it red, so they get samples
+/// generic over (`WgslLang` / `GlslLang` / `HlslLang`) live in private modules, and so does the
+/// WGSL leaf loop (`leaf_loops`). Their text is the building block of the `source` fields, which
+/// are sampled. The test below checks that this list is exactly the `transpiler_common.rs` and
+/// `wgsl/leaf_loops.rs` entries that are not `NOT_SHADER`, and that those modules stay private; a
+/// public path to them turns it red, so they get samples
 const NO_PUBLIC_PATH: &[(&str, &str)] = &[
     ("src/compiled/transpiler_common.rs", "generate_shader"),
     ("src/compiled/transpiler_common.rs", "globals"),
     ("src/compiled/transpiler_common.rs", "transpile_node"),
     ("src/compiled/transpiler_common.rs", "transpile_node_inner"),
     ("src/compiled/transpiler_common.rs", "transpile_rest_inner"),
+    ("src/compiled/wgsl/leaf_loops.rs", "code"),
+    ("src/compiled/wgsl/leaf_loops.rs", "unbounded"),
+];
+
+/// The files whose shader entries have no public path (the files of `NO_PUBLIC_PATH`)
+const PRIVATE_FILES: [&str; 2] = [
+    "src/compiled/transpiler_common.rs",
+    "src/compiled/wgsl/leaf_loops.rs",
 ];
 
 /// Whether the features an entry needs are enabled in this build
@@ -1262,7 +1271,7 @@ fn whole_or_fragment_follows_from_the_entry_point() {
     }
     let common: Vec<(&str, &str)> = OTHER
         .iter()
-        .filter(|(f, _, l)| *f == "src/compiled/transpiler_common.rs" && *l != NOT_SHADER)
+        .filter(|(f, _, l)| PRIVATE_FILES.contains(f) && *l != NOT_SHADER)
         .map(|(f, n, _)| (*f, *n))
         .collect();
     let mut listed = NO_PUBLIC_PATH.to_vec();
@@ -1271,7 +1280,7 @@ fn whole_or_fragment_follows_from_the_entry_point() {
     common_sorted.sort_unstable();
     if listed != common_sorted {
         problems.push(format!(
-            "NO_PUBLIC_PATH {listed:?} is not exactly the shader entries of transpiler_common.rs \
+            "NO_PUBLIC_PATH {listed:?} is not exactly the shader entries of {PRIVATE_FILES:?} \
              {common_sorted:?}"
         ));
     }
@@ -1294,6 +1303,32 @@ fn whole_or_fragment_follows_from_the_entry_point() {
                  entries and remove them from NO_PUBLIC_PATH"
             ));
         }
+    }
+    // the leaf loop stays private too: a public module or re-export of its type makes `code` and
+    // `unbounded` reachable, so they get samples and leave the list
+    let wgsl = std::fs::read_to_string(root.join("src/compiled/wgsl/mod.rs")).unwrap();
+    let mut declared = 0;
+    for l in wgsl.lines().map(str::trim) {
+        if l.ends_with("mod leaf_loops;") {
+            declared += 1;
+            if l != "mod leaf_loops;" {
+                problems.push(format!(
+                    "src/compiled/wgsl/mod.rs declares `{l}`: sample the leaf_loops.rs entries \
+                     and remove them from NO_PUBLIC_PATH"
+                ));
+            }
+        }
+        if l.starts_with("pub use") && (l.contains("leaf_loops") || l.contains("Looped")) {
+            problems.push(format!(
+                "src/compiled/wgsl/mod.rs re-exports `{l}`: sample the leaf_loops.rs entries and \
+                 remove them from NO_PUBLIC_PATH"
+            ));
+        }
+    }
+    if declared != 1 {
+        problems.push(format!(
+            "src/compiled/wgsl/mod.rs declares `leaf_loops` {declared} times (expected 1)"
+        ));
     }
     assert!(compared > 0, "no sample compared");
     assert!(problems.is_empty(), "{}", problems.join("\n"));
