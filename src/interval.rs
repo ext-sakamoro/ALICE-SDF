@@ -1140,8 +1140,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             let l = eval_lipschitz(node);
             Interval::new(v - l * r, v + l * r)
         }
-        // LBS with fixed bones is one affine map q = A p + b (Σ w_i · bind_i ·
-        // current_i / Σ w); push the box through it exactly (`affine_map`).
+        // LBS with fixed bones is one affine map q = A p + b (Σ w_i · M_i / Σ w,
+        // M_i = rest_from_posed); push the box through it exactly (`affine_map`).
         SdfNode::SdfSkinning { child, bones } => match skinning_affine(bones) {
             Some((a, b)) => eval_interval(child, bounds.affine(&a, b)),
             None => eval_interval(child, bounds),
@@ -2000,22 +2000,24 @@ fn taper_bound_interval(d: Interval, p: Vec3Interval, factor: f32, reach: [f32; 
 }
 
 /// The single affine map `q = A p + b` a fixed-pose skinning node applies
-/// (`sdf_skinning`: Σ w_i · bind_i(current_i(p)) / Σ w over bones with
-/// w ≥ 1e-6); `None` when no bone carries weight (identity).
+/// (`sdf_skinning`: Σ w_i · M_i p / Σ w over the bones with an invertible pose and
+/// w ≥ 1e-6, M_i = `transforms::skinning::rest_from_posed`); `None` when no bone
+/// carries weight (identity).
 fn skinning_affine(
     bones: &[crate::transforms::skinning::BoneTransform],
 ) -> Option<([f32; 9], Vec3)> {
     use glam::Mat4;
-    let active: Vec<_> = bones.iter().filter(|b| b.weight >= 1e-6).collect();
-    let total: f32 = active.iter().map(|b| b.weight).sum();
+    let active: Vec<(Mat4, f32)> = crate::transforms::skinning::rest_matrices(bones)
+        .into_iter()
+        .filter(|(_, w)| *w >= 1e-6)
+        .collect();
+    let total: f32 = active.iter().map(|(_, w)| *w).sum();
     if active.is_empty() || total <= 1e-6 {
         return None;
     }
     let mut m = Mat4::ZERO;
-    for b in &active {
-        let combined =
-            Mat4::from_cols_array(&b.inv_bind_pose) * Mat4::from_cols_array(&b.current_pose);
-        m += combined * (b.weight / total);
+    for (rest, w) in &active {
+        m += *rest * (*w / total);
     }
     let c = m.to_cols_array();
     Some((

@@ -579,3 +579,44 @@ mod glsl_axis_ties {
         }
     }
 }
+
+#[test]
+fn skinning_gpu_matches_cpu() {
+    // the shader maps a posed point with the same rest_from_posed matrix as the CPU (until the
+    // fix both applied the current pose and the inverse bind pose un-inverted); one bone bound away
+    // from the origin, and two bones of different poses
+    use alice_sdf::transforms::skinning::BoneTransform;
+    use glam::Mat4;
+    let bound = BoneTransform {
+        inv_bind_pose: (Mat4::from_translation(Vec3::new(1.0, 0.0, 0.0))
+            * Mat4::from_rotation_y(0.3))
+        .inverse()
+        .to_cols_array(),
+        current_pose: (Mat4::from_translation(Vec3::new(2.0, 1.0, 0.0))
+            * Mat4::from_rotation_z(0.5))
+        .to_cols_array(),
+        weight: 1.0,
+    };
+    let other = BoneTransform {
+        inv_bind_pose: Mat4::from_scale(Vec3::new(1.2, 0.9, 1.0)).to_cols_array(),
+        current_pose: Mat4::from_rotation_x(-0.4).to_cols_array(),
+        weight: 0.7,
+    };
+    let shape = || SdfNode::box3d(1.0, 0.5, 0.75).translate(0.25, 0.0, -0.5);
+    assert_gpu_matches_cpu(
+        "skinning_one_bone",
+        &shape().sdf_skinning(vec![bound.clone()]),
+        1e-5,
+    );
+    assert_gpu_matches_cpu(
+        "skinning_two_bones",
+        &shape().sdf_skinning(vec![
+            BoneTransform {
+                weight: 0.3,
+                ..bound
+            },
+            other,
+        ]),
+        1e-5,
+    );
+}

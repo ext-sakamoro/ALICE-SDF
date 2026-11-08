@@ -244,24 +244,15 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                 if inst.aux_len >= 1 {
                     let aux = &aux_data[aux_off..aux_off + inst.aux_len as usize];
                     let bone_count = aux[0] as usize;
-                    let mut bones = Vec::with_capacity(bone_count);
-                    let mut cursor = 1;
-                    for _ in 0..bone_count {
-                        let mut inv_bind = [0.0f32; 16];
-                        let mut cur_pose = [0.0f32; 16];
-                        inv_bind.copy_from_slice(&aux[cursor..cursor + 16]);
-                        cursor += 16;
-                        cur_pose.copy_from_slice(&aux[cursor..cursor + 16]);
-                        cursor += 16;
-                        let weight = aux[cursor];
-                        cursor += 1;
-                        bones.push(crate::transforms::skinning::BoneTransform {
-                            inv_bind_pose: inv_bind,
-                            current_pose: cur_pose,
-                            weight,
-                        });
-                    }
-                    p = p.map(|q| crate::transforms::skinning::sdf_skinning(q, &bones).0);
+                    let bones: Vec<(glam::Mat4, f32)> = (0..bone_count)
+                        .map(|i| {
+                            let at = 1 + i * 17;
+                            let mut m = [0.0f32; 16];
+                            m.copy_from_slice(&aux[at..at + 16]);
+                            (glam::Mat4::from_cols_array(&m), aux[at + 16])
+                        })
+                        .collect();
+                    p = p.map(|q| crate::transforms::skinning::blend_rest_point(q, &bones));
                 }
             }
 
