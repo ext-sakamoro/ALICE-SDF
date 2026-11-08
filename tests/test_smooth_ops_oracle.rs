@@ -839,17 +839,56 @@ fn a_union_with_no_width_is_the_nearer_one_entirely() {
     assert_eq!((d, w), (0.25, 0.0));
 }
 
+/// The shader's text is the Rust's operations, one for one: its body is exactly these statements, and the same
+/// statements run in f32 (each operation rounded, as a GPU that does not fuse them) give `smooth_min` and the Rust share
+/// to the bit, over a grid with k = 0, k < 0, tiny k and a = b in it
 #[test]
-fn the_shader_text_of_the_weight_is_the_same_law() {
-    use alice_sdf::operations::SMOOTH_UNION_BLEND_GLSL as G;
-    // the name it is called by, and the terms of the closed form; a change of coefficient shows here
-    for term in [
-        "vec2 sdf_smooth_union_blend(float a, float b, float k)",
-        "abs(a - b)",
-        "h * h * 0.5",
-        "h * h * k * 0.25",
-        "a < b",
-    ] {
-        assert!(G.contains(term), "{term}");
+fn the_shader_text_of_the_weight_is_the_same_law_to_the_bit() {
+    use alice_sdf::operations::{smooth_min, smooth_min_weight, SMOOTH_UNION_BLEND_GLSL as G};
+    let body: Vec<&str> = G.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    assert_eq!(
+        body,
+        [
+            "vec2 sdf_smooth_union_blend(float a, float b, float k) {",
+            "float s = max(k, 1e-10);",
+            "float rk = 1.0 / s;",
+            "float h = max(1.0 - abs(a - b) * rk, 0.0);",
+            "float d = min(a, b) - h * h * (s * 0.25);",
+            "float m = h * h * 0.5;",
+            "return vec2(d, a < b ? m : 1.0 - m);",
+            "}",
+        ]
+    );
+    // the statements above, in f32
+    let shader = |a: f32, b: f32, k: f32| -> (f32, f32) {
+        let s = k.max(1e-10);
+        let rk = 1.0 / s;
+        let h = (1.0 - (a - b).abs() * rk).max(0.0);
+        let d = a.min(b) - h * h * (s * 0.25);
+        let m = h * h * 0.5;
+        (d, if a < b { m } else { 1.0 - m })
+    };
+    let mut compared = 0;
+    for ia in -60..=60 {
+        for ib in -60..=60 {
+            for k in [-0.1f32, 0.0, 1e-12, 1e-10, 0.013, 0.1, 0.7, 1.0, 3.3] {
+                let (a, b) = (ia as f32 * 0.0173, ib as f32 * 0.0191);
+                for (a, b) in [(a, b), (a, a)] {
+                    let (d, m) = shader(a, b, k);
+                    assert_eq!(
+                        d.to_bits(),
+                        smooth_min(a, b, k).to_bits(),
+                        "distance {a} {b} {k}"
+                    );
+                    assert_eq!(
+                        m.to_bits(),
+                        smooth_min_weight(a, b, k).1.to_bits(),
+                        "share {a} {b} {k}"
+                    );
+                    compared += 1;
+                }
+            }
+        }
     }
+    assert!(compared > 200_000, "{compared}");
 }

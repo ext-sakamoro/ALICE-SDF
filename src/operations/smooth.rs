@@ -37,22 +37,28 @@ pub fn smooth_min_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
 }
 
 /// The polynomial smooth minimum and how much of its surface is `b`, 0 to 1: the same mix factor the union's own
-/// curve gives, for a material that blends across the seam as the shape does. The distance is `smooth_min` to the bit.
+/// curve gives, for a material that blends across the seam as the shape does. The distance is `smooth_min` to the bit:
+/// the same clamp of `k`, the same reciprocal and the same `h` (`smooth_min_rk_r`), and the share is `h² / 2` of that
+/// same `h`, from the nearer side.
 #[inline(always)]
 pub fn smooth_min_weight(a: f32, b: f32, k: f32) -> (f32, f32) {
-    let d = smooth_min(a, b, k);
     let k = k.law_max(1e-10);
-    let h = (k - (a - b).abs()).law_max(0.0) * (1.0 / k);
+    let rk = 1.0 / k;
+    let d = smooth_min_rk(a, b, k, rk);
+    let h = (1.0 - (a - b).abs() * rk).law_max(0.0);
     let m = h * h * 0.5;
     (d, if a < b { m } else { 1.0 - m })
 }
 
-/// GLSL of [`smooth_min_weight`], for a shader that writes its own map: the distance, then the weight of `b`
+/// GLSL of [`smooth_min_weight`], for a shader that writes its own map: the distance, then the weight of `b`. Written
+/// operation for operation as the Rust is (the clamp, the reciprocal, `h`, `k / 4`), so it rounds as `smooth_min` does
+/// on a GPU that rounds each operation (`tests/test_smooth_ops_oracle.rs` holds the text to that sequence).
 pub const SMOOTH_UNION_BLEND_GLSL: &str = r"vec2 sdf_smooth_union_blend(float a, float b, float k) {
     float s = max(k, 1e-10);
-    float h = max(s - abs(a - b), 0.0) / s;
+    float rk = 1.0 / s;
+    float h = max(1.0 - abs(a - b) * rk, 0.0);
+    float d = min(a, b) - h * h * (s * 0.25);
     float m = h * h * 0.5;
-    float d = min(a, b) - h * h * k * 0.25;
     return vec2(d, a < b ? m : 1.0 - m);
 }
 ";
