@@ -1,5 +1,9 @@
 //! 2D SDF oracle: closed-form distances computed here, independently.
 //!
+//! - tapered segment (uneven capsule): the shape is the union of the disks centred at `a + t (b − a)`
+//!   with radius `ra + t (rb − ra)`, `t ∈ [0, 1]` (the convex hull of the end disks: every one of these
+//!   disks touches both outer tangent lines), so its SDF is `min_t |p − c(t)| − r(t)`; the function of
+//!   `t` is convex (a norm of an affine map minus a linear term), minimised here by golden-section in f64
 //! - circle `|p − c| − r`, ring `||p| − R| − t`, segment capsule
 //!   `|p − a − clamp(t)·(b − a)| − th`
 //! - rectangle / rounded rectangle: the exact box SDF (outside length +
@@ -254,4 +258,83 @@ fn batch_and_normal() {
         }
     }
     assert!(n > 0);
+}
+
+/// A tapered segment case: end points, end radii, name
+type TaperCase = ([f32; 2], [f32; 2], f32, f32, &'static str);
+
+/// `min over t in [0, 1] of |p − c(t)| − r(t)` for the disks interpolated between the end disks
+fn tapered_hull(p: [f32; 2], a: [f32; 2], b: [f32; 2], ra: f32, rb: f32) -> f32 {
+    let f = |t: f64| {
+        let cx = f64::from(a[0]) + t * (f64::from(b[0]) - f64::from(a[0]));
+        let cy = f64::from(a[1]) + t * (f64::from(b[1]) - f64::from(a[1]));
+        let r = f64::from(ra) + t * (f64::from(rb) - f64::from(ra));
+        (f64::from(p[0]) - cx).hypot(f64::from(p[1]) - cy) - r
+    };
+    let g = (5f64.sqrt() - 1.0) / 2.0;
+    let (mut lo, mut hi) = (0.0_f64, 1.0_f64);
+    for _ in 0..200 {
+        let (x1, x2) = (hi - g * (hi - lo), lo + g * (hi - lo));
+        if f(x1) <= f(x2) {
+            hi = x2;
+        } else {
+            lo = x1;
+        }
+    }
+    let t = f64::midpoint(lo, hi);
+    f(t).min(f(0.0)).min(f(1.0)) as f32
+}
+
+#[test]
+fn uneven_capsule_is_the_hull_of_its_end_disks() {
+    let cases: [TaperCase; 7] = [
+        ([-1.0, -0.5], [1.2, 0.7], 0.5, 0.1, "diagonal, narrowing"),
+        ([0.9, 1.1], [-1.3, -0.2], 0.05, 0.6, "diagonal, widening"),
+        ([-1.5, 0.2], [1.5, 0.2], 0.3, 0.3, "horizontal, even"),
+        ([0.1, -1.6], [0.1, 1.4], 0.7, 0.0, "vertical, to a point"),
+        (
+            [0.0, 0.0],
+            [0.3, 0.2],
+            1.0,
+            0.2,
+            "the larger end disk contains the other",
+        ),
+        ([0.4, -0.3], [0.4, -0.3], 0.6, 0.9, "coincident ends"),
+        (
+            [-0.2, 0.1],
+            [0.5, 0.6],
+            0.0,
+            0.0,
+            "zero radii = the segment",
+        ),
+    ];
+    let mut n = 0;
+    for (a, b, ra, rb, name) in cases {
+        n += check(
+            &Sdf2dNode::uneven_capsule(a, b, ra, rb),
+            |p| tapered_hull(p, a, b, ra, rb),
+            2e-5,
+            name,
+        );
+    }
+    // equal radii is the existing capsule (line with half-thickness)
+    let (a, b) = ([-1.0, -0.5], [1.2, 0.7]);
+    n += check(
+        &Sdf2dNode::uneven_capsule(a, b, 0.25, 0.25),
+        |p| eval_2d(&Sdf2dNode::line(a, b, 0.25), p),
+        2e-5,
+        "equal radii = line",
+    );
+    // both signs are reached in every case set (the grid is not all outside)
+    let inside = grid()
+        .into_iter()
+        .filter(|&p| {
+            eval_2d(
+                &Sdf2dNode::uneven_capsule([-1.0, -0.5], [1.2, 0.7], 0.5, 0.1),
+                p,
+            ) < 0.0
+        })
+        .count();
+    assert!(inside > 10, "only {inside} grid points inside");
+    assert_eq!(n, 8 * 21 * 21);
 }

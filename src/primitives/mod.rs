@@ -168,5 +168,5 @@ pub use truncated_icosahedron::sdf_truncated_icosahedron;
 pub use truncated_octahedron::sdf_truncated_octahedron;
 pub use tube::sdf_tube;
 pub use tunnel::sdf_tunnel;
-pub use uneven_capsule::sdf_uneven_capsule;
+pub use uneven_capsule::{sdf_uneven_capsule, sdf_uneven_capsule_2d_core};
 pub use vesica::sdf_vesica;

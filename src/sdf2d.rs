@@ -50,6 +50,20 @@ pub enum Sdf2dNode {
         thickness: f32,
     },
 
+    /// Tapered segment: the convex hull of the circle of radius `ra` at `a` and the circle of radius
+    /// `rb` at `b` (the 2D uneven capsule, exact distance) Radii are `>= 0`; when one circle contains
+    /// the other the shape is the larger circle
+    UnevenCapsule {
+        /// First endpoint.
+        a: [f32; 2],
+        /// Second endpoint.
+        b: [f32; 2],
+        /// Radius at `a`.
+        ra: f32,
+        /// Radius at `b`.
+        rb: f32,
+    },
+
     /// Cubic Bezier curve with thickness.
     Bezier {
         /// Start point.
@@ -214,6 +228,23 @@ pub fn eval_2d(node: &Sdf2dNode, point: [f32; 2]) -> f32 {
             let dx = ba[0] * -t + pa[0];
             let dy = ba[1] * -t + pa[1];
             alice_det_math::hypot(dx, dy) - thickness
+        }
+
+        Sdf2dNode::UnevenCapsule { a, b, ra, rb } => {
+            let (ex, ey) = (b[0] - a[0], b[1] - a[1]);
+            let h = alice_det_math::hypot(ex, ey);
+            let (px, py) = (point[0] - a[0], point[1] - a[1]);
+            if h <= (ra - rb).abs() {
+                // one end circle contains the other (or the ends coincide): the hull is the larger
+                let da = alice_det_math::hypot(px, py) - ra;
+                let db = alice_det_math::hypot(point[0] - b[0], point[1] - b[1]) - rb;
+                return da.law_min(db);
+            }
+            // the frame of the core: `a` at the origin, the axis toward `b` along +y
+            let (ux, uy) = (ex / h, ey / h);
+            let along = px * ux + (py * uy);
+            let across = (py * ux - (px * uy)).abs();
+            crate::primitives::sdf_uneven_capsule_2d_core(across, along, *ra, *rb, h)
         }
 
         Sdf2dNode::Bezier {
@@ -487,6 +518,11 @@ impl Sdf2dNode {
     /// Create a line segment.
     pub const fn line(a: [f32; 2], b: [f32; 2], thickness: f32) -> Self {
         Self::Line { a, b, thickness }
+    }
+
+    /// Create a tapered segment (radius `ra` at `a`, `rb` at `b`).
+    pub const fn uneven_capsule(a: [f32; 2], b: [f32; 2], ra: f32, rb: f32) -> Self {
+        Self::UnevenCapsule { a, b, ra, rb }
     }
 
     /// Create a ring (annulus) at the origin.
