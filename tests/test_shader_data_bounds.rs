@@ -35,6 +35,35 @@ const SITES: &[(&str, usize)] = &[
 /// The WGSL array constructor's element limit
 const WGSL_ARRAY_LIMIT: usize = 32767;
 
+/// Every module-scope array's length, the chunks of one array (`NAME_c0`, `NAME_c1`, ...) summed
+fn const_array_totals(src: &str) -> Vec<usize> {
+    let mut totals: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for line in src.lines() {
+        let l = line.trim_start();
+        let Some(rest) = l.strip_prefix("const ") else {
+            continue;
+        };
+        let Some((name, ty)) = rest.split_once(':') else {
+            continue;
+        };
+        let Some(at) = ty.find("array<f32, ").or_else(|| ty.find("array<i32, ")) else {
+            continue;
+        };
+        let n: String = ty[at + 11..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        let name = name.trim();
+        let base = match name.rsplit_once("_c") {
+            Some((b, k)) if !k.is_empty() && k.chars().all(|c| c.is_ascii_digit()) => b,
+            _ => name,
+        };
+        *totals.entry(base.to_string()).or_default() +=
+            n.parse::<usize>().expect("an array length");
+    }
+    totals.into_values().collect()
+}
+
 /// Every module-scope array's declared length
 fn const_array_lengths(src: &str) -> Vec<usize> {
     let mut out = Vec::new();
@@ -135,15 +164,16 @@ fn buffer_reads(src: &str) -> Vec<Option<(usize, usize)>> {
 
 #[test]
 fn the_big_stack_needs_more_than_the_array_limit() {
-    // precondition: the constant path would declare an array above the limit
+    // precondition: the constant path holds more values in one array than the limit (it is
+    // written as chunks `NAME_c0`, `NAME_c1`, ... so each declaration stays below it)
     let plain = WgslShader::transpile(&big_smooth_stack(), TranspileMode::Hardcoded);
-    let longest = const_array_lengths(&plain.source)
+    let largest = const_array_totals(&plain.source)
         .into_iter()
         .max()
         .unwrap_or(0);
     assert!(
-        longest > WGSL_ARRAY_LIMIT,
-        "the big stack's array has {longest} elements"
+        largest > WGSL_ARRAY_LIMIT,
+        "the big stack's array has {largest} elements"
     );
 }
 
