@@ -26,8 +26,12 @@ fn torus(major: f32, minor: f32, segments: u32, sides: u32) -> (Vec<Vec3>, Vec<u
         let a = std::f32::consts::TAU * i as f32 / segments as f32;
         for j in 0..sides {
             let b = std::f32::consts::TAU * j as f32 / sides as f32;
-            let ring = major + minor * b.cos();
-            v.push(Vec3::new(ring * a.cos(), minor * b.sin(), ring * a.sin()));
+            let ring = major + minor * alice_det_math::cos(b);
+            v.push(Vec3::new(
+                ring * alice_det_math::cos(a),
+                minor * alice_det_math::sin(b),
+                ring * alice_det_math::sin(a),
+            ));
         }
     }
     let mut ix = Vec::new();

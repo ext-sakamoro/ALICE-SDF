@@ -20,7 +20,8 @@ pub const ETA: f64 = 2e-5;
 
 /// The allowance for points of magnitude up to `m` (see the module doc)
 fn eta(m: f64) -> f64 {
-    ETA + 16.0 * f64::powi(2.0, -24) * m
+    // 2^-24
+    ETA + 16.0 * 5.960_464_477_539_063e-8 * m
 }
 
 fn closest_on_segment(p: DVec3, a: DVec3, b: DVec3) -> DVec3 {

@@ -14,9 +14,9 @@ pub fn sphere(stacks: u32, slices: u32) -> (Vec<Vec3>, Vec<u32>) {
         for j in 0..slices {
             let ph = std::f32::consts::TAU * j as f32 / slices as f32;
             v.push(Vec3::new(
-                th.sin() * ph.cos(),
-                th.cos(),
-                th.sin() * ph.sin(),
+                alice_det_math::sin(th) * alice_det_math::cos(ph),
+                alice_det_math::cos(th),
+                alice_det_math::sin(th) * alice_det_math::sin(ph),
             ));
         }
     }
