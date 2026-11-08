@@ -2,7 +2,8 @@
 //! (`GlslShader::transpile_with_node_texture`): a new map of the same layout is a new texture, not a
 //! new shader.
 //!
-//! oracle: the CPU evaluation of the frame's tree (`eval`) at sample points, and
+//! oracle: the CPU evaluation of the frame's tree (`eval`) at sample points, within a per-point
+//! bound on the f32 rounding of the grid warp's expression (`tolerance`), and
 //! `interval::eval_lipschitz` of that tree for the frame's bound. The shader is compiled once from
 //! the first tree; the second tree's texels go into the same texture of the same pipeline and the
 //! results must follow the second tree, not the first. The grid has more node data than one texture
@@ -66,7 +67,8 @@ fn warp(twist: f32, dims: [u32; 3]) -> GridWarp {
 }
 
 fn tree(twist: f32) -> SdfNode {
-    SdfNode::box3d(0.75, 0.4, 0.9).grid_warp(warp(twist, DIMS))
+    SdfNode::box3d(BOX_HALF.x * 2.0, BOX_HALF.y * 2.0, BOX_HALF.z * 2.0)
+        .grid_warp(warp(twist, DIMS))
 }
 
 fn points(n: usize) -> Vec<Vec3> {
@@ -377,11 +379,95 @@ void main() {{
     )
 }
 
-fn worst(got: &[f32], node: &SdfNode, pts: &[Vec3]) -> (f32, Vec3) {
-    got.iter()
-        .zip(pts)
-        .map(|(g, p)| ((g - eval(node, *p)).abs(), *p))
-        .fold((0.0, Vec3::ZERO), |a, b| if b.0 > a.0 { b } else { a })
+/// Half extents of the warped box (the child of every frame)
+const BOX_HALF: Vec3 = Vec3::new(0.375, 0.2, 0.45);
+
+/// The unit roundoff of f32
+const U: f32 = f32::EPSILON / 2.0;
+
+/// A bound on |GPU − CPU| at `p` for the grid warp over the box, from the f32 evaluation of the
+/// same expression on both sides (standard model: each `+ − ×` within `U` relative, as Vulkan
+/// rounds them; a GPU division within 2.5 ulp = `5U`, a GPU `sqrt` taken as `1 / inversesqrt`
+/// within 2 + 2.5 ulp = `9U`; the CPU rounds each correctly). Every magnitude is this point's: its
+/// cell coordinate, the 8 corner maps of its cell and how much they differ, its warped point.
+/// Terms, in the evaluation order of `transforms::grid_warp`:
+/// 1. the cell coordinate `g = (q − b₀)·(1/h)`: 2 roundings of `|g|`; the fraction `f = g − ⌊g⌋`
+///    is exact ⇒ `Δf ≤ 2U·|g|∞`
+/// 2. the corner weights: a shift `Δf` moves weight between opposite corners, which changes a
+///    blended entry by at most `3·D·Δf` (D = the largest difference of an entry between two
+///    corners of the cell); rounding `1 − f` and the 2 products: `3U` per weight
+/// 3. a blended entry `Σ₈ w·m` (8 products, 7 sums, Σw = 1):
+///    `ΔM ≤ 3DΔf + m·(8·3U + 15U)` (m = the largest entry magnitude at the cell's corners); the
+///    blended bound Λ alike, with its corner values
+/// 4. the warped point `x = M q + t`, per axis: `Δx ≤ (3|q|∞ + 1)ΔM + 6U·X`
+///    (X = `Σ|Mᵢ qᵢ| + |t|`)
+/// 5. the box at `x` (1-Lipschitz, `√3·Δx` from the point; `|x| − h`, the length of 3 squares
+///    summed, its `sqrt` and the outer sum: `(1 + 5 + 9 + 1)U·C`, C = |x|₂ + |h|₂)
+/// 6. `c / Λ`: `Δc/Λ + |c|ΔΛ/Λ² + 5U|c/Λ|`; the clamps are exact
+/// 7. the extension and clip outside the box: `e = |p − q|` (`(5 + 9)U·e`), `sqrt(e² + d⁺²)`
+///    (`(3 + 9)U·r`, r = that root) and 2 sums (`2U·(|d| + r)`)
+///
+/// Both sides round, so the bound is twice one side's. It assumes every rounding error has the
+/// worst sign at once, so it is far above the differences seen (the test prints the ratio).
+fn tolerance(warp: &GridWarp, p: Vec3) -> f32 {
+    let data = warp.data();
+    let (x, b, lam, _) = warp.warp(p);
+    let q = p.clamp(warp.box_min(), warp.box_max());
+    let g = (q - warp.box_min()) / data.cell;
+    let [nx, ny, nz] = data.dims.map(|n| n as usize);
+    let cell = |v: f32, n: usize| (v.floor().max(0.0) as usize).min(n - 2);
+    let (i0, j0, k0) = (cell(g.x, nx), cell(g.y, ny), cell(g.z, nz));
+    let corners: Vec<usize> = (0..8)
+        .map(|c| (i0 + (c & 1)) + nx * ((j0 + ((c >> 1) & 1)) + ny * (k0 + ((c >> 2) & 1))))
+        .collect();
+    let entry = |n: usize, t: usize| data.maps[n * 12 + t];
+    let mut m = 0.0f32;
+    let mut d = 0.0f32;
+    for t in 0..12 {
+        let vals: Vec<f32> = corners.iter().map(|&n| entry(n, t)).collect();
+        let (lo, hi) = vals
+            .iter()
+            .fold((f32::INFINITY, f32::NEG_INFINITY), |(a, b), v| {
+                (a.min(*v), b.max(*v))
+            });
+        m = m.max(lo.abs()).max(hi.abs());
+        d = d.max(hi - lo);
+    }
+    let lams: Vec<f32> = corners.iter().map(|&n| warp.node_lambda()[n]).collect();
+    let lam_max = lams.iter().fold(0.0f32, |a, v| a.max(*v));
+    let lam_d = lams.iter().fold(0.0f32, |a, v| a.max(*v))
+        - lams.iter().fold(f32::INFINITY, |a, v| a.min(*v));
+    let df = 2.0 * U * g.abs().max_element();
+    let dm = 3.0 * d * df + m * (24.0 * U + 15.0 * U);
+    let dlam = 3.0 * lam_d * df + lam_max * (24.0 * U + 15.0 * U);
+    let qn = q.abs().max_element();
+    let xs = 3.0 * m * qn + m;
+    let dx = (3.0 * qn + 1.0) * dm + 6.0 * U * xs;
+    let c =
+        (x.abs() - BOX_HALF).max(Vec3::ZERO).length() + (x.abs() - BOX_HALF).max_element().min(0.0);
+    let cc = x.length() + BOX_HALF.length();
+    let dc = 3f32.sqrt() * dx + 16.0 * U * cc;
+    let v = c / lam;
+    let dv = dc / lam + c.abs() * dlam / (lam * lam) + 5.0 * U * v.abs();
+    let e = (p - q).length();
+    let dp = v.max(0.0);
+    let r = (e * e + dp * dp).sqrt();
+    let ext = 14.0 * U * e + 12.0 * U * r + 2.0 * U * (v.abs() + r) + 2.0 * U * b.abs();
+    2.0 * (dv + ext)
+}
+
+/// The largest |GPU − CPU| and the largest ratio of it to [`tolerance`] over the points
+fn compare(got: &[f32], node: &SdfNode, warp: &GridWarp, pts: &[Vec3]) -> (f32, f32, Vec3) {
+    let mut out = (0.0f32, 0.0f32, Vec3::ZERO);
+    for (g, p) in got.iter().zip(pts) {
+        let diff = (g - eval(node, *p)).abs();
+        let ratio = diff / tolerance(warp, *p);
+        out.0 = out.0.max(diff);
+        if ratio > out.1 {
+            out = (out.0, ratio, *p);
+        }
+    }
+    out
 }
 
 #[test]
@@ -394,12 +480,14 @@ fn one_shader_follows_the_texture_of_each_frame() {
     let pts = points(4096);
     gpu.upload(&tex.texels());
     let got_a = gpu.eval(&pts);
-    let (wa, pa) = worst(&got_a, &a, &pts);
-    assert!(wa <= 1e-5, "frame a: {wa} at {pa}");
+    let (da, ra, pa) = compare(&got_a, &a, &warp(0.6, DIMS), &pts);
+    eprintln!("frame a: largest |GPU − CPU| {da:e}, largest ratio to the bound {ra:.3}");
+    assert!(ra <= 1.0, "frame a: {ra} of the bound at {pa}");
     gpu.upload(&tex.frame(&b).expect("same layout").texels);
     let got_b = gpu.eval(&pts);
-    let (wb, pb) = worst(&got_b, &b, &pts);
-    assert!(wb <= 1e-5, "frame b: {wb} at {pb}");
+    let (db, rb, pb) = compare(&got_b, &b, &warp(1.3, DIMS), &pts);
+    eprintln!("frame b: largest |GPU − CPU| {db:e}, largest ratio to the bound {rb:.3}");
+    assert!(rb <= 1.0, "frame b: {rb} of the bound at {pb}");
     // the second frame is not the first: the change is observed
     let moved = got_a
         .iter()
