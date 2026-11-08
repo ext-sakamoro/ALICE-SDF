@@ -74,6 +74,7 @@
 mod gpu_eval;
 #[cfg(all(target_os = "macos", feature = "msl"))]
 mod gpu_metal;
+mod leaf_loops;
 mod transpiler;
 
 pub use gpu_eval::{GpuBufferPool, GpuError, GpuEvalFuture, GpuEvaluator};
