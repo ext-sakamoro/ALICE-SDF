@@ -52,7 +52,9 @@ pub fn smooth_min_weight(a: f32, b: f32, k: f32) -> (f32, f32) {
 
 /// GLSL of [`smooth_min_weight`], for a shader that writes its own map: the distance, then the weight of `b`. Written
 /// operation for operation as the Rust is (the clamp, the reciprocal, `h`, `k / 4`), so it rounds as `smooth_min` does
-/// on a GPU that rounds each operation (`tests/test_smooth_ops_oracle.rs` holds the text to that sequence).
+/// on a GPU that rounds each operation (`tests/test_smooth_ops_oracle.rs` holds the text to that sequence). The
+/// equality is of the arithmetic as written: a shader compiler may contract `min(a, b) - h * h * (s * 0.25)` into a
+/// fused multiply-add and change the last bit on the device (GLSL ES 3.0 has no `precise` to forbid it).
 pub const SMOOTH_UNION_BLEND_GLSL: &str = r"vec2 sdf_smooth_union_blend(float a, float b, float k) {
     float s = max(k, 1e-10);
     float rk = 1.0 / s;
