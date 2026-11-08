@@ -807,6 +807,8 @@ const OTHER: &[(&str, &str, &str)] = &[
         NOT_SHADER,
     ),
     ("src/compiled/transpiler_common.rs", "globals", FRAGMENT),
+    ("src/compiled/wgsl/leaf_loops.rs", "code", FRAGMENT),
+    ("src/compiled/wgsl/leaf_loops.rs", "unbounded", FRAGMENT),
     (
         "src/compiled/transpiler_common.rs",
         "transpile_node_inner",
