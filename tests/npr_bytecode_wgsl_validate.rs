@@ -27,6 +27,12 @@ struct AliceNprUniforms {{
     uv_x: f32,
     uv_y: f32,
     time: f32,
+    normal_x: f32,
+    normal_y: f32,
+    normal_z: f32,
+    position_x: f32,
+    position_y: f32,
+    position_z: f32,
     _pad: u32,
 }};
 
@@ -48,6 +54,12 @@ fn fs_main(_in: FragInput) -> @location(0) vec4<f32> {{
         alice_npr_uniforms.sdf,
         vec2<f32>(alice_npr_uniforms.uv_x, alice_npr_uniforms.uv_y),
         alice_npr_uniforms.time,
+        vec3<f32>(alice_npr_uniforms.normal_x, alice_npr_uniforms.normal_y, alice_npr_uniforms.normal_z),
+        vec3<f32>(
+            alice_npr_uniforms.position_x,
+            alice_npr_uniforms.position_y,
+            alice_npr_uniforms.position_z
+        ),
     );
     let color = alice_npr_eval_bytecode(alice_npr_uniforms.program_len, ctx);
     return vec4<f32>(color, 1.0);
