@@ -106,3 +106,109 @@ fn the_skinned_distance_is_the_rest_distance_on_every_evaluator() {
         }
     }
 }
+
+/// The shader transpilers write the bits of `rest_from_posed` (the matrix the CPU evaluators use)
+/// as literals, and no longer the raw `current_pose` / `inv_bind_pose` entries that only these
+/// matrices have: every transpiler starts from the same 16 floats as the CPU.
+#[cfg(any(feature = "gpu", feature = "glsl", feature = "hlsl"))]
+#[test]
+// each push is behind its own feature, so the list cannot be one `vec![]`
+#[allow(clippy::vec_init_then_push)]
+fn the_transpilers_write_the_cpu_rest_matrix() {
+    use alice_sdf::compiled::transpiler_common::lit;
+    use alice_sdf::transforms::skinning::rest_from_posed;
+    let c = &cases()[1];
+    let b = bone(c);
+    let m = rest_from_posed(&b)
+        .expect("an invertible pose")
+        .to_cols_array();
+    let node = SdfNode::sphere(0.75).sdf_skinning(vec![b.clone()]);
+    let mut sources: Vec<(&str, String)> = Vec::new();
+    #[cfg(feature = "gpu")]
+    sources.push((
+        "wgsl",
+        alice_sdf::compiled::WgslShader::transpile(
+            &node,
+            alice_sdf::compiled::TranspileMode::Hardcoded,
+        )
+        .source,
+    ));
+    #[cfg(feature = "glsl")]
+    sources.push((
+        "glsl",
+        alice_sdf::compiled::GlslShader::transpile(
+            &node,
+            alice_sdf::compiled::GlslTranspileMode::Hardcoded,
+        )
+        .source,
+    ));
+    #[cfg(feature = "hlsl")]
+    sources.push((
+        "hlsl",
+        alice_sdf::compiled::HlslShader::transpile(
+            &node,
+            alice_sdf::compiled::HlslTranspileMode::Hardcoded,
+        )
+        .source,
+    ));
+    assert!(!sources.is_empty(), "no transpiler compared");
+    // entries of the raw poses whose magnitude is no entry's of the rest matrix (a literal is
+    // matched as text, and `-x` contains `x`): none may be written
+    let raw: Vec<f32> = b
+        .current_pose
+        .iter()
+        .chain(&b.inv_bind_pose)
+        .copied()
+        .filter(|v| !m.iter().any(|e| e.abs() == v.abs()) && v.fract() != 0.0)
+        .collect();
+    assert!(!raw.is_empty(), "the case has no raw entry to tell apart");
+    for (name, src) in &sources {
+        for v in m.iter().filter(|v| v.fract() != 0.0) {
+            assert!(
+                src.contains(&lit(*v)),
+                "{name}: rest matrix entry {} not written",
+                lit(*v)
+            );
+        }
+        for v in &raw {
+            assert!(
+                !src.contains(&lit(*v)),
+                "{name}: raw pose entry {} written",
+                lit(*v)
+            );
+        }
+    }
+}
+
+/// A bone whose pose cannot be inverted (a zero scale) has no rest pose to return to: it
+/// contributes nothing, like a bone of zero weight. With only such bones the point is unchanged;
+/// next to a valid bone only the valid bone counts. Same on every CPU evaluator, never NaN.
+#[test]
+fn a_bone_that_cannot_be_inverted_contributes_nothing() {
+    let flat = BoneTransform {
+        inv_bind_pose: DMat4::IDENTITY.to_cols_array().map(|v| v as f32),
+        current_pose: to_f32(DMat4::from_scale(DVec3::new(1.0, 0.0, 1.0))),
+        weight: 1.0,
+    };
+    let p = Vec3::new(0.5, -0.25, 2.0);
+    let (q, _) = sdf_skinning(p, std::slice::from_ref(&flat));
+    assert_eq!(q, p, "only a singular bone: the point is unchanged");
+    let c = &cases()[1];
+    let (q, _) = sdf_skinning(posed(c), &[flat.clone(), bone(c)]);
+    assert!(
+        (q - c.rest.as_vec3()).length() < 1e-4,
+        "the singular bone counted: {q}"
+    );
+    let node = SdfNode::sphere(0.75).sdf_skinning(vec![flat]);
+    let compiled = CompiledSdf::compile(&node);
+    let want = p.length() - 0.75;
+    for (path, got) in [
+        ("eval", eval(&node, p)),
+        ("eval_compiled", eval_compiled(&compiled, p)),
+    ] {
+        assert!(
+            got.is_finite() && (got - want).abs() < 1e-6,
+            "{path}: {got}, want {want}"
+        );
+    }
+}

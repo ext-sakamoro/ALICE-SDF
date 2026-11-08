@@ -13,9 +13,19 @@ use alice_sdf::{
 use sha2::{Digest, Sha256};
 
 const GOLDEN_SOURCE: &str = include_str!("test_det_golden.rs");
-// with alice-det-math 0.5.2 at 2d01c63f and the grid warp and pose golden rows; ad04549c… (the
-// same without those rows) is the previous identifier this build still reproduces
-const RECORDED_HEX: &str = "0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f79d2f6b69a4";
+// with alice-det-math 0.5.2 at 2d01c63f, the grid warp and pose golden rows, and skinning mapping a
+// posed point back to the rest pose; no earlier identifier is reproduced (the skinning row moved)
+const RECORDED_HEX: &str = "6dbd717498ecc4a4cfc200797c53811ee621f38fda750255be650f80b3857e1c";
+
+/// The identifier before the skinning fix (with the grid warp and pose rows)
+const ID_0F6C58D0: &str = "0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f79d2f6b69a4";
+
+/// The golden rows the skinning fix moved, with their hash before it (`SdfSkinning` applied the
+/// current pose and the inverse bind pose to the posed point instead of their inverse)
+const ROWS_MOVED_BY_SKINNING_FIX: &[(&str, &str)] = &[(
+    "sdf_skinning_two_bones",
+    "b6ecdcaa34bd4cfcfde568a2f4be1849960e23f4712d8561e97bc0e835bb9be3",
+)];
 
 /// The golden rows added after `ad04549c…`: new nodes, no row of that build changed
 const ROWS_ADDED_AFTER_AD04549C: &[&str] = &["grid_warp", "pose"];
@@ -56,6 +66,45 @@ fn golden_rows() -> Vec<(String, String)> {
     strings
         .chunks(2)
         .map(|c| (c[0].to_string(), c[1].to_string()))
+        .collect()
+}
+
+/// The golden rows as they were before the skinning fix: this table with the moved rows put back
+fn rows_before_skinning_fix() -> Vec<(String, String)> {
+    let mut rows = golden_rows();
+    for (name, then) in ROWS_MOVED_BY_SKINNING_FIX {
+        let row = rows
+            .iter_mut()
+            .find(|(n, _)| n == name)
+            .unwrap_or_else(|| panic!("no golden row {name}"));
+        assert_ne!(row.1, *then, "{name} did not move");
+        (*then).clone_into(&mut row.1);
+    }
+    rows
+}
+
+fn canon_digest(rows: &[(String, String)]) -> [u8; 32] {
+    let mut rows = rows.to_vec();
+    rows.sort();
+    let canon = rows.iter().fold(String::new(), |mut s, (n, h)| {
+        use std::fmt::Write;
+        writeln!(s, "{n}={h}").expect("writing to a String");
+        s
+    });
+    sha(canon.as_bytes())
+}
+
+/// The pins of this build with the golden digest replaced
+fn pins_with_golden(golden: [u8; 32]) -> Vec<(&'static str, [u8; 32])> {
+    SDF_SEMANTICS_PINS
+        .iter()
+        .map(|&(n, d)| {
+            if n.starts_with("golden ") {
+                (n, golden)
+            } else {
+                (n, d)
+            }
+        })
         .collect()
 }
 
@@ -127,16 +176,14 @@ fn check_reads_this_identifier_and_refuses_the_earlier_ones() {
         check_sdf_semantics(&SDF_SEMANTICS_ID),
         SemanticsCheck::Verified
     );
-    assert_eq!(PREVIOUS_SDF_SEMANTICS_IDS.len(), 1);
-    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[0]), AD04549C);
-    assert_eq!(
-        check_sdf_semantics(&PREVIOUS_SDF_SEMANTICS_IDS[0]),
-        SemanticsCheck::VerifiedPrevious(PREVIOUS_SDF_SEMANTICS_IDS[0])
-    );
-    // the identifiers earlier releases stamped (6e98f0be with alice-det-math 0.5.2 at 39507d1b,
-    // 151079595 with 0.5.1 by 7.0.0, the det-math identifiers 6.0 / 6.1 exposed) are refused
+    assert!(PREVIOUS_SDF_SEMANTICS_IDS.is_empty());
+    // the identifiers earlier builds stamped (0f6c58d0 and ad04549c before the skinning fix,
+    // 6e98f0be with alice-det-math 0.5.2 at 39507d1b, 151079595 with 0.5.1 by 7.0.0, the det-math
+    // identifiers 6.0 / 6.1 exposed) are refused
     let mut refused = 0;
     for earlier in [
+        ID_0F6C58D0,
+        AD04549C,
         "6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37",
         "151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69",
         "85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315",
@@ -151,7 +198,7 @@ fn check_reads_this_identifier_and_refuses_the_earlier_ones() {
         );
         refused += 1;
     }
-    assert_eq!(refused, 4);
+    assert_eq!(refused, 6);
     assert_eq!(check_sdf_semantics(&[0u8; 32]), SemanticsCheck::Mismatch);
 }
 
@@ -213,7 +260,7 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
         hex(&fold(&frozen)),
         "6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37"
     );
-    let rows = golden_rows();
+    let rows = rows_before_skinning_fix();
     let windows: Vec<&str> = WINDOWS_AT_39507D1B.iter().map(|(n, _)| *n).collect();
     let mut older: Vec<(String, String)> = rows
         .iter()
@@ -258,21 +305,30 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
 /// The oracle that shows this build reproduces what an earlier identifier stamped:
 /// `(identifier, test file, test function)`. Empty with `PREVIOUS_SDF_SEMANTICS_IDS`; an
 /// identifier put back into the previous list needs its oracle here
-const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[(
-    AD04549C,
-    "tests/sdf_semantics_id.rs",
-    "the_ad04549c_rows_are_unchanged",
-)];
+const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[];
 
 const AD04549C: &str = "ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f642257da4938";
 
-/// `ad04549c…` is a previous identifier of this build: the golden table without the rows added
-/// after it hashes to its golden pin, and that pin folds with this build's rule and det-math
-/// entries to it. Any moved row of that build, or a row added without being listed in
-/// `ROWS_ADDED_AFTER_AD04549C`, fails here
+/// `0f6c58d0…` (the identifier before the skinning fix) is refused, and the reason is exactly the
+/// fix: the golden table with only the moved skinning rows put back hashes to its golden pin and
+/// folds to it. Any other moved row fails here
 #[test]
-fn the_ad04549c_rows_are_unchanged() {
-    let mut rows = golden_rows();
+fn the_0f6c58d0_identifier_is_rejected_because_only_the_skinning_rows_moved() {
+    let golden = canon_digest(&rows_before_skinning_fix());
+    assert_eq!(
+        hex(&golden),
+        "ecfb9c749cac3ec06f9fec60bf1735ee9aff187f0d2873825895e744682750a5"
+    );
+    assert_eq!(hex(&fold(&pins_with_golden(golden))), ID_0F6C58D0);
+    assert_ne!(canon_digest(&golden_rows()), golden);
+}
+
+/// `ad04549c…` (before the grid warp and pose rows, and before the skinning fix) is refused for
+/// the same reason: the table without the rows added after it and with the moved skinning rows put
+/// back hashes to its golden pin and folds to it
+#[test]
+fn the_ad04549c_identifier_is_rejected_because_only_the_skinning_rows_moved() {
+    let mut rows = rows_before_skinning_fix();
     let all = rows.len();
     rows.retain(|(n, _)| !ROWS_ADDED_AFTER_AD04549C.contains(&n.as_str()));
     assert_eq!(
@@ -280,28 +336,12 @@ fn the_ad04549c_rows_are_unchanged() {
         all,
         "every added row is a row"
     );
-    rows.sort();
-    let canon = rows.iter().fold(String::new(), |mut s, (n, h)| {
-        use std::fmt::Write;
-        writeln!(s, "{n}={h}").expect("writing to a String");
-        s
-    });
-    let golden = sha(canon.as_bytes());
+    let golden = canon_digest(&rows);
     assert_eq!(
         hex(&golden),
         "84831086d072608aa773445b0a838e5aa530c32d936fc1d6bf62ff02325b709d"
     );
-    let pins: Vec<(&str, [u8; 32])> = SDF_SEMANTICS_PINS
-        .iter()
-        .map(|&(n, d)| {
-            if n.starts_with("golden ") {
-                (n, golden)
-            } else {
-                (n, d)
-            }
-        })
-        .collect();
-    assert_eq!(hex(&fold(&pins)), AD04549C);
+    assert_eq!(hex(&fold(&pins_with_golden(golden))), AD04549C);
 }
 
 /// Every previous identifier has an oracle that exists as a test (the file holds `#[test]` and

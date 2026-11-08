@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1086 |
+| 🟢 Not ignored | 1093 |
 | 🔴 Red by design | 1 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 1 |
-| **Total** | **1091** |
+| **Total** | **1098** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -42,7 +42,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1086)
+## 🟢 Not ignored (1093)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -62,10 +62,10 @@ Per-file counts (the test names are in `tests/`):
 | `test_smooth_ops_oracle.rs` | 17 |
 | `test_mesh_winding.rs` | 16 |
 | `test_compiled_bytecode_oracle.rs` | 15 |
+| `test_gpu_law_parity.rs` | 15 |
 | `test_io_round_trip.rs` | 15 |
 | `test_compiled_evaluation.rs` | 14 |
 | `test_degenerate_input_oracle.rs` | 14 |
-| `test_gpu_law_parity.rs` | 14 |
 | `test_io_format_oracle.rs` | 13 |
 | `test_texture_fit_oracle.rs` | 13 |
 | `test_union_bound_oracle.rs` | 13 |
@@ -90,6 +90,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_physics_bridge_determinism.rs` | 9 |
 | `test_relaxed_tracing.rs` | 9 |
 | `meshopt_reference_vectors.rs` | 8 |
+| `sdf_semantics_id.rs` | 8 |
 | `test_batch_operations.rs` | 8 |
 | `test_destruction_api_oracle.rs` | 8 |
 | `test_dual_contouring_manifold.rs` | 8 |
@@ -101,7 +102,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_point_transform_oracle.rs` | 8 |
 | `test_tight_aabb_elongate_oracle.rs` | 8 |
 | `test_volume_api_oracle.rs` | 8 |
-| `sdf_semantics_id.rs` | 7 |
 | `test_animation_oracle.rs` | 7 |
 | `test_field_fidelity_oracle.rs` | 7 |
 | `test_g8_meaning_id.rs` | 7 |
@@ -137,6 +137,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_meshopt_filter_oracle.rs` | 5 |
 | `test_npr_primitives_oracle.rs` | 5 |
 | `test_projective_unfused_oracle.rs` | 5 |
+| `test_skinning_inverse.rs` | 5 |
 | `test_step_export_oracle.rs` | 5 |
 | `test_unordered_no_iteration.rs` | 5 |
 | `mesh_bvh_sliver.rs` | 4 |

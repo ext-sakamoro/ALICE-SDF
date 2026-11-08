@@ -3002,29 +3002,27 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             }
 
             SdfNode::SdfSkinning { child, bones } => {
-                // `sdf_skinning`: Σ w · bind(current(p)) / Σ w over bones with
-                // w ≥ 1e-6 (glam column-major `transform_point3` twice);
-                // no bone or no weight → identity.
-                let active: Vec<&crate::transforms::skinning::BoneTransform> =
-                    bones.iter().filter(|b| b.weight >= 1e-6).collect();
-                let total: f32 = active.iter().map(|b| b.weight).sum();
+                // `sdf_skinning`: Σ w · M(p) / Σ w over the bones with an invertible pose and
+                // w ≥ 1e-6, M = `rest_from_posed` (the same f32 matrix bits as the CPU, glam
+                // column-major `transform_point3`); no such bone or no weight → identity.
+                let active: Vec<(glam::Mat4, f32)> =
+                    crate::transforms::skinning::rest_matrices(bones)
+                        .into_iter()
+                        .filter(|(_, w)| *w >= 1e-6)
+                        .collect();
+                let total: f32 = active.iter().map(|(_, w)| *w).sum();
                 if active.is_empty() || total <= 1e-6 {
                     return self.transpile_node_inner(child, point_var, code);
                 }
                 let acc = self.next_var();
                 code.push_str(&L::decl_mut_vec3(&acc, L::vec3_zero()));
-                for bone in &active {
-                    let skinned = self.next_var();
+                for (m, w) in &active {
                     let rest = self.next_var();
                     code.push_str(&L::decl_vec3(
-                        &skinned,
-                        &transform_point3_expr::<L>(&bone.current_pose, point_var),
-                    ));
-                    code.push_str(&L::decl_vec3(
                         &rest,
-                        &transform_point3_expr::<L>(&bone.inv_bind_pose, &skinned),
+                        &transform_point3_expr::<L>(&m.to_cols_array(), point_var),
                     ));
-                    writeln!(code, "    {acc} = {acc} + {rest} * {};", lit(bone.weight)).unwrap();
+                    writeln!(code, "    {acc} = {acc} + {rest} * {};", lit(*w)).unwrap();
                 }
                 let q = self.next_var();
                 code.push_str(&L::decl_vec3(&q, &format!("{acc} / {}", lit(total))));
