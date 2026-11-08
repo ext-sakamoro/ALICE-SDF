@@ -27,7 +27,10 @@ For each identifier that exists at the base and has another value now:
   .github/alice-siblings (`<Repo> <40-hex SHA>`): the sibling must be at the pinned commit and
   clean, the list is located by the sibling's rustdoc span, and the value is taken out of a
   copy of the sibling laid out next to a copy of this crate (the real sibling is never
-  changed). A re-export that does not resolve that way fails, with the reason;
+  changed). A re-export of a crate taken from git is read at the manifest's 40-hex `rev`, or,
+  without a `rev` (`branch`, `tag` or the default branch), at the commit Cargo.lock resolved it
+  to (no Cargo.lock, the package not in it from that url, or a source without a 40-hex commit
+  fails). A re-export that does not resolve that way fails, with the reason;
 - otherwise (not in the list, or no list) the move is a change of meaning and it must be
   announced to the consumers: the version is a breaking step from the base's (a major for 1.x
   and later, a minor or a major for 0.x), or, while publication is frozen and the version does
@@ -1079,9 +1082,43 @@ def base_sibling_pins(root: Path, refs: list[str]) -> list[tuple[str, str]]:
     return sorted(out)
 
 
+def locked_git_commit(root: Path, crate_dir: Path, package: str, url: str) -> str:
+    """the 40-hex commit Cargo.lock resolved the git source `url` of `package` to (a git dependency
+    without a `rev`: `branch`, `tag` or the default branch); CheckError when there is no Cargo.lock,
+    the package is not in it from that url, its source names no 40-hex commit, or two entries name
+    different commits"""
+    lock = next((d / "Cargo.lock" for d in dict.fromkeys([crate_dir, root]) if (d / "Cargo.lock").is_file()), None)
+    if lock is None:
+        raise CheckError(f"{package} is taken from git without a `rev` and there is no Cargo.lock to read "
+                         f"the commit it resolved to")
+    try:
+        doc = tomllib.loads(lock.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
+        raise CheckError(f"{lock}: unreadable: {e}") from None
+    want = url.removesuffix("/").removesuffix(".git")
+    commits = set()
+    for pkg in doc.get("package", []):
+        source = pkg.get("source", "")
+        if pkg.get("name") != package or not isinstance(source, str) or not source.startswith("git+"):
+            continue
+        base, _, commit = source[len("git+"):].partition("#")
+        if base.split("?", 1)[0].removesuffix("/").removesuffix(".git") != want:
+            continue
+        if not re.fullmatch(r"[0-9a-f]{40}", commit):
+            raise CheckError(f"{lock}: {package} from {url} names {commit!r}, not a 40-hex commit")
+        commits.add(commit)
+    if not commits:
+        raise CheckError(f"{lock}: {package} from {url} is not in it (run cargo to resolve it, then commit the lock)")
+    if len(commits) > 1:
+        raise CheckError(f"{lock}: {package} from {url} resolves to {len(commits)} commits: "
+                         f"{', '.join(sorted(c[:12] for c in commits))}")
+    return commits.pop()
+
+
 def git_rev_dependency(root: Path, crate_dir: Path, crate: str) -> dict | str | None:
-    """the `git` + `rev` source the manifests of the crate (and its workspace) give the dependency
-    `crate` (lib name), as {url, rev, package}; None when no manifest takes it from git"""
+    """the `git` source the manifests of the crate (and its workspace) give the dependency `crate`
+    (lib name) and the commit it is read at, as {url, rev, package}: the manifest's 40-hex `rev`, or,
+    without a `rev`, the commit Cargo.lock resolved it to; None when no manifest takes it from git"""
     for m in dict.fromkeys([crate_dir / "Cargo.toml", root / "Cargo.toml"]):
         if not m.is_file():
             continue
@@ -1096,8 +1133,13 @@ def git_rev_dependency(root: Path, crate_dir: Path, crate: str) -> dict | str | 
                 if package.replace("-", "_") != crate:
                     continue
                 rev = spec.get("rev")
-                if not isinstance(rev, str) or not re.fullmatch(r"[0-9a-f]{40}", rev):
-                    return f"{m}: {key} is taken from git without a 40-hex `rev`"
+                if rev is None:
+                    try:
+                        rev = locked_git_commit(root, crate_dir, package, str(spec["git"]))
+                    except CheckError as e:
+                        return f"{m}: {key}: {e}"
+                elif not isinstance(rev, str) or not re.fullmatch(r"[0-9a-f]{40}", rev):
+                    return f"{m}: {key} is taken from git with a `rev` that is not 40 hex digits"
                 return {"url": str(spec["git"]), "rev": rev, "package": package}
     return None
 

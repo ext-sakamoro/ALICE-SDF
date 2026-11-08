@@ -280,6 +280,36 @@ pub const DET_MATH_PINS: &[(&str, [u8; 32])] = &[
 
 const _: () = alice_det_math::assert_function_pins(DET_MATH_PINS);
 
+/// Whether `pins` names exactly `functions`, in that order
+const fn pins_name_the_functions(pins: &[(&str, [u8; 32])], functions: &[&str]) -> bool {
+    if pins.len() != functions.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < pins.len() {
+        let (a, b) = (pins[i].0.as_bytes(), functions[i].as_bytes());
+        if a.len() != b.len() {
+            return false;
+        }
+        let mut j = 0;
+        while j < a.len() {
+            if a[j] != b[j] {
+                return false;
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+    true
+}
+
+// a pin for a function the crate does not call, or a called function with no pin, stops the
+// compile: the fold takes exactly the functions DET_MATH_FUNCTIONS lists
+const _: () = assert!(
+    pins_name_the_functions(DET_MATH_PINS, DET_MATH_FUNCTIONS),
+    "DET_MATH_PINS does not name DET_MATH_FUNCTIONS in order"
+);
+
 /// The identifiers of the generations that folded `alice-det-math` whole
 ///
 /// `(alice_det_math::SEMANTICS_ID, fold of SDF_SEMANTICS_PINS with an `alice-det-math` entry
