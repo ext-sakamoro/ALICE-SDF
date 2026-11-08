@@ -36,8 +36,10 @@ pub fn smooth_min_rk(a: f32, b: f32, k: f32, rk: f32) -> f32 {
     smooth_min_rk_r::<f32>(a, b, k, rk)
 }
 
-/// The polynomial smooth minimum and how much of its surface is `b`, 0 to 1: the same mix factor the union's own
-/// curve gives, for a material that blends across the seam as the shape does. The distance is `smooth_min` to the bit:
+/// The polynomial smooth minimum and how much of its surface is `b`, 0 to 1.
+///
+/// The share is the mix factor the union's own curve gives, for a material that blends across the seam as the shape
+/// does. The distance is `smooth_min` to the bit:
 /// the same clamp of `k`, the same reciprocal and the same `h` (`smooth_min_rk_r`), and the share is `h² / 2` of that
 /// same `h`, from the nearer side.
 #[inline(always)]
@@ -50,8 +52,9 @@ pub fn smooth_min_weight(a: f32, b: f32, k: f32) -> (f32, f32) {
     (d, if a < b { m } else { 1.0 - m })
 }
 
-/// GLSL of [`smooth_min_weight`], for a shader that writes its own map: the distance, then the weight of `b`. Written
-/// operation for operation as the Rust is (the clamp, the reciprocal, `h`, `k / 4`), so it rounds as `smooth_min` does
+/// GLSL of [`smooth_min_weight`], for a shader that writes its own map: the distance, then the weight of `b`.
+///
+/// Written operation for operation as the Rust is (the clamp, the reciprocal, `h`, `k / 4`), so it rounds as `smooth_min` does
 /// on a GPU that rounds each operation (`tests/test_smooth_ops_oracle.rs` holds the text to that sequence). The
 /// equality is of the arithmetic as written: a shader compiler may contract `min(a, b) - h * h * (s * 0.25)` into a
 /// fused multiply-add and change the last bit on the device (GLSL ES 3.0 has no `precise` to forbid it).

@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1362 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1364 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1104 |
-| | **total** | **2475** |
+| | **total** | **2477** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1362)
+## L1 — example-only (1364)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -199,7 +199,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/npr/sky.rs`: `distance_color_quantize`, `light_shaft_beam`, `puffy_cloud_layer`, `sky_gradient_bands`, `sun_disc`
 - `src/npr/toon.rs`: `posterize_color`, `soft_toon_ramp`, `toon_ramp`, `two_tone`
 - `src/operations/intersection.rs`: `sdf_intersection_multi`
-- `src/operations/smooth.rs`: `sdf_smooth_intersection_rk`, `sdf_smooth_subtraction_rk`, `sdf_smooth_union_rk`, `smooth_min_cubic`, `smooth_min_exp`, `smooth_min_root`
+- `src/operations/smooth.rs`: `SMOOTH_UNION_BLEND_GLSL`, `sdf_smooth_intersection_rk`, `sdf_smooth_subtraction_rk`, `sdf_smooth_union_rk`, `smooth_min_cubic`, `smooth_min_exp`, `smooth_min_root`, `smooth_min_weight`
 - `src/operations/union.rs`: `sdf_union_multi`
 - `src/optimize.rs`: `OptimizationStats`, `optimization_stats`
 - `src/physics_bridge.rs`: `CompiledSdfField`, `CompiledSdfField::arc`, `CompiledSdfField::compiled`, `CompiledSdfField::from_arc`, `CompiledSdfField::new`, `CompiledSdfField::with_epsilon`, `sdf_to_physics_field`
