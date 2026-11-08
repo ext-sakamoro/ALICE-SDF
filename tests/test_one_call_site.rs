@@ -14,6 +14,10 @@
 //!
 //! Author: Moroya Sakamoto
 #![cfg(feature = "gpu")]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "the pipeline time is the measured quantity: the wall clock is read on purpose"
+)]
 
 use alice_sdf::compiled::{GpuEvaluator, TranspileMode, WgslShader};
 use alice_sdf::prelude::*;

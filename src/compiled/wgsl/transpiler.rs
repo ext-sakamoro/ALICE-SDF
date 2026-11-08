@@ -15,6 +15,7 @@
 
 use super::super::transpiler_common::ShaderLang;
 pub use super::super::transpiler_common::TranspileError;
+use super::leaf_loops;
 use crate::types::SdfNode;
 use std::fmt::Write;
 
@@ -917,11 +918,22 @@ fn union_bounded_body(
     let mut code = String::from(
         "    var d_ub: f32 = 0.0;\n    var d_ub_set: bool = false;\n    var n_skip: f32 = 0.0;\n",
     );
+    // operands of one kind with a bound: one loop over their rows in the node data buffer, one
+    // call site for all of them (see `leaf_loops`); the others as they are, below
+    let looped = leaf_loops::group(g, &ops, &bounded);
+    code.push_str(&looped.unbounded);
     // unbounded operands first (they set the minimum the bounds are compared with)
     let order = (0..ops.len())
         .filter(|&i| bounded[i].is_none())
-        .chain((0..ops.len()).filter(|&i| bounded[i].is_some()));
+        .chain((0..ops.len()).filter(|&i| bounded[i].is_some()))
+        .filter(|i| !looped.members.contains(i))
+        .collect::<Vec<_>>();
+    let mut first_bounded = true;
     for i in order {
+        if bounded[i].is_some() && first_bounded {
+            first_bounded = false;
+            code.push_str(&looped.code);
+        }
         let guarded = if let Some(b) = bounded[i] {
             // `Bound::lower`: k |p − c| − r − (depth + 1) · 2⁻²⁰ · (1 + |p| + |c| + r)
             let cv = format!("vec3<f32>({}, {}, {})", lit(b.c.x), lit(b.c.y), lit(b.c.z));
@@ -954,6 +966,9 @@ fn union_bounded_body(
         } else {
             code.push_str("    }\n");
         }
+    }
+    if first_bounded {
+        code.push_str(&looped.code);
     }
     match out {
         UnionBoundsOutput::Value => code.push_str("    return d_ub;\n"),
