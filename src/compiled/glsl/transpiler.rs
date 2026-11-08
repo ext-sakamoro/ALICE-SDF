@@ -116,6 +116,9 @@ impl ShaderLang for GlslLang {
     fn global_vec3_fn(name: &str, body: &str) -> String {
         format!("vec3 {name}(vec3 p) {{\n{body}}}\n")
     }
+    fn node_data_read(index: &str) -> String {
+        format!("alice_node_at({index})")
+    }
     fn for_loop_int(name: &str, init: i32, cond: &str, incr: &str) -> String {
         format!("    for (int {} = {}; {}; {}) {{\n", name, init, cond, incr)
     }
@@ -190,6 +193,121 @@ impl ShaderLang for GlslLang {
     }
 }
 
+/// Width in texels of the node data texture: element `i` is the red channel of texel
+/// `(i % NODE_TEXTURE_WIDTH, i / NODE_TEXTURE_WIDTH)` (2048 = WebGL 2's least `MAX_TEXTURE_SIZE`)
+pub const NODE_TEXTURE_WIDTH: u32 = 2048;
+
+/// GLSL whose per-node data (grid warp maps and bounds, lattice control points, heightmap samples)
+/// is read from a texture at run time instead of being written into the source
+///
+/// Made by [`GlslShader::transpile_with_node_texture`]. `shader.source` calls
+/// `float alice_node_at(int i)`; [`GlslNodeTexture::es_source`] prepends its WebGL 2 definition (an
+/// R32F `highp sampler2D` named `alice_node_tex`, read with `texelFetch`). A tree of the same layout
+/// (the same nodes, grid sizes, boxes and reaches, other map values) gives a new texture with
+/// [`GlslNodeTexture::frame`] and needs no new shader.
+#[derive(Debug, Clone)]
+pub struct GlslNodeTexture {
+    /// The shader; its source reads the node data through `alice_node_at`
+    pub shader: GlslShader,
+    /// The node data, in the order the source reads it
+    pub node_data: Vec<f32>,
+}
+
+/// The data of one frame for a [`GlslNodeTexture`]: the texture's texels and the tree's Lipschitz
+/// bound
+#[derive(Debug, Clone)]
+pub struct GlslNodeTextureFrame {
+    /// `width × height` floats (the node data, then zeros), row by row
+    pub texels: Vec<f32>,
+    /// [`crate::interval::eval_lipschitz`] of the frame's tree: the bound a ray march steps by
+    pub lipschitz: f32,
+}
+
+/// Why a tree cannot use an existing [`GlslNodeTexture`]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GlslNodeTextureError {
+    /// The tree's shader is not the texture's shader: a node, a grid size, a box, a reach or another
+    /// value written into the source differs (transpile the tree again)
+    LayoutChanged,
+}
+
+impl std::fmt::Display for GlslNodeTextureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LayoutChanged => f.write_str(
+                "the tree's shader differs from the texture's shader: a node, a grid size, a box, a reach or a value in the source changed",
+            ),
+        }
+    }
+}
+
+impl std::error::Error for GlslNodeTextureError {}
+
+impl GlslNodeTexture {
+    /// The texture's size in texels: [`NODE_TEXTURE_WIDTH`] wide, at least 1 row
+    #[must_use]
+    pub fn texture_size(&self) -> (u32, u32) {
+        texture_size(self.node_data.len())
+    }
+
+    /// `float alice_node_at(int i)` reading element `i` with `fetch(texel)`, where `texel` is the
+    /// `ivec2` expression of its texel; the one place the index is laid out on the texture
+    #[must_use]
+    pub fn reader(fetch: impl Fn(&str) -> String) -> String {
+        let w = NODE_TEXTURE_WIDTH;
+        format!(
+            "float alice_node_at(int i) {{\n    return {};\n}}\n",
+            fetch(&format!("ivec2(i % {w}, i / {w})"))
+        )
+    }
+
+    /// The source for WebGL 2 (GLSL ES 3.00): the `alice_node_tex` sampler, [`Self::reader`] with
+    /// `texelFetch`, then the shader (put `#version 300 es` and the precisions before it)
+    #[must_use]
+    pub fn es_source(&self) -> String {
+        format!(
+            "uniform highp sampler2D alice_node_tex;\n{}{}",
+            Self::reader(|c| format!("texelFetch(alice_node_tex, {c}, 0).r")),
+            self.shader.source
+        )
+    }
+
+    /// The texels and the Lipschitz bound of `node` for this shader, when `node` has its layout
+    ///
+    /// # Errors
+    ///
+    /// [`GlslNodeTextureError::LayoutChanged`] when `node`'s shader is not this shader
+    pub fn frame(&self, node: &SdfNode) -> Result<GlslNodeTextureFrame, GlslNodeTextureError> {
+        let next = GlslShader::transpile_with_node_texture(node, self.shader.version);
+        if next.shader.source != self.shader.source || next.node_data.len() != self.node_data.len()
+        {
+            return Err(GlslNodeTextureError::LayoutChanged);
+        }
+        Ok(GlslNodeTextureFrame {
+            texels: next.texels(),
+            lipschitz: crate::interval::eval_lipschitz(node),
+        })
+    }
+
+    /// The node data padded with zeros to the texture's size
+    #[must_use]
+    pub fn texels(&self) -> Vec<f32> {
+        let (w, h) = self.texture_size();
+        let mut t = self.node_data.clone();
+        t.resize(w as usize * h as usize, 0.0);
+        t
+    }
+}
+
+fn texture_size(len: usize) -> (u32, u32) {
+    let w = NODE_TEXTURE_WIDTH as usize;
+    let rows = len.div_ceil(w).max(1);
+    (
+        NODE_TEXTURE_WIDTH,
+        u32::try_from(rows).expect("node data beyond 2^32 rows"),
+    )
+}
+
 /// Transpilation mode for GLSL
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GlslTranspileMode {
@@ -238,6 +356,30 @@ impl GlslShader {
             param_layout: transpiler.params,
             mode,
             version,
+        }
+    }
+
+    /// Transpile with the per-node data read from a texture (see [`GlslNodeTexture`])
+    ///
+    /// Hardcoded mode; `version` as in [`Self::transpile_with_version`]. Every per-node data array
+    /// (grid warp maps, node bounds, floors and its global bound, lattice control points,
+    /// heightmap samples) is read through `alice_node_at` from `node_data` instead of being written
+    /// into the source, so a tree of the same layout with other values needs only a new texture.
+    #[must_use]
+    pub fn transpile_with_node_texture(node: &SdfNode, version: u32) -> GlslNodeTexture {
+        let mut transpiler = GlslTranspiler::new(GlslTranspileMode::Hardcoded);
+        transpiler.node_data = Some(Vec::new());
+        let body = transpiler.transpile_node(node, "p");
+        let source = transpiler.generate_shader(&body);
+        GlslNodeTexture {
+            shader: Self {
+                source,
+                helper_count: transpiler.helper_functions.len(),
+                param_layout: transpiler.params,
+                mode: GlslTranspileMode::Hardcoded,
+                version,
+            },
+            node_data: transpiler.node_data.unwrap_or_default(),
         }
     }
 
@@ -620,6 +762,9 @@ struct GlslTranspiler {
     params: Vec<f32>,
     /// Module-scope data / functions emitted before the entry point
     globals: String,
+    /// Node data read through `alice_node_at` ([`GlslShader::transpile_with_node_texture`]), or
+    /// `None` for data written into the source
+    node_data: Option<Vec<f32>>,
 }
 
 impl GlslTranspiler {
@@ -630,6 +775,7 @@ impl GlslTranspiler {
             mode,
             params: Vec::new(),
             globals: String::new(),
+            node_data: None,
         }
     }
 
@@ -644,8 +790,10 @@ impl GlslTranspiler {
         generic.params = std::mem::take(&mut self.params);
         generic.helper_functions = std::mem::take(&mut self.helper_functions);
         generic.globals = std::mem::take(&mut self.globals);
+        generic.node_data = self.node_data.take();
         let body = generic.transpile_node(node, point_var);
         self.globals = generic.globals;
+        self.node_data = generic.node_data;
         self.var_counter = generic.var_counter;
         self.params = generic.params;
         self.helper_functions = generic.helper_functions;

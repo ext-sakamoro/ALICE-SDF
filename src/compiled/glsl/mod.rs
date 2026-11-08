@@ -38,4 +38,7 @@ pub mod render_pipeline;
 mod transpiler;
 
 pub use render_pipeline::RenderConfig;
-pub use transpiler::{GlslShader, GlslTranspileMode};
+pub use transpiler::{
+    GlslNodeTexture, GlslNodeTextureError, GlslNodeTextureFrame, GlslShader, GlslTranspileMode,
+    NODE_TEXTURE_WIDTH,
+};

@@ -176,8 +176,8 @@ fn the_shader_text_declares_the_data_binding_only_with_node_data() {
     let buf = WgslShader::transpile_with_node_data(&node, TranspileMode::Hardcoded);
     assert_eq!(
         buf.node_data.len(),
-        27 * 12 + 27,
-        "12 map floats and Λ per node"
+        27 * 12 + 27 + 1,
+        "12 map floats and Λ per node, and Λ_g"
     );
     assert!(buf
         .to_compute_shader()

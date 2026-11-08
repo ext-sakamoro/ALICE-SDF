@@ -224,6 +224,14 @@ pub trait ShaderLang: private::Sealed + 'static {
     /// A module-scope `float name(int i)` returning `arr[i]`: one function frame holds the array
     /// when a target lowers a dynamically indexed constant array to a local copy per access
     fn global_float_at_fn(name: &str, arr: &str) -> String;
+    /// The element at the (integer) index expression `index` of the node data, when node data is
+    /// enabled (see [`GenericTranspiler::node_data`]): the storage buffer `alice_node_data` by
+    /// default; GLSL reads it through `alice_node_at` (a texture, see
+    /// `GlslShader::transpile_with_node_texture`)
+    #[must_use]
+    fn node_data_read(index: &str) -> String {
+        format!("alice_node_data[{index}]")
+    }
 }
 
 /// Float literal for shader source: shortest round-trip form with a decimal
@@ -284,6 +292,8 @@ pub struct GenericTranspiler<L: ShaderLang> {
 pub struct DataArr {
     name: String,
     base: Option<usize>,
+    /// how the target reads the node data (`ShaderLang::node_data_read`)
+    read: fn(&str) -> String,
 }
 
 impl DataArr {
@@ -302,7 +312,7 @@ impl DataArr {
     pub fn at(&self, idx: &str) -> String {
         match self.base {
             None => format!("{}[{idx}]", self.name),
-            Some(b) => format!("alice_node_data[{b} + ({idx})]"),
+            Some(b) => (self.read)(&format!("{b} + ({idx})")),
         }
     }
 }
@@ -346,12 +356,14 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             DataArr {
                 name: name.to_owned(),
                 base: Some(base),
+                read: L::node_data_read,
             }
         } else {
             self.globals.push_str(&L::global_float_array(name, values));
             DataArr {
                 name: name.to_owned(),
                 base: None,
+                read: L::node_data_read,
             }
         }
     }
@@ -2986,7 +2998,16 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let dc = self.transpile_node_inner(child, &x, code);
                 let (dv, dp, out) = (self.next_var(), self.next_var(), self.next_var());
                 let r = lit(data.reach);
-                let lg = lit(warp.lambda_global());
+                // Λ_g depends on the maps: with node data it is read from the data (a new map of the
+                // same layout needs no new shader), as a literal otherwise
+                let lg = if self.node_data.is_some() {
+                    let id = self.var_counter;
+                    self.var_counter += 1;
+                    self.data_array(&format!("alice_gwg_{id}"), &[warp.lambda_global()])
+                        .at("0")
+                } else {
+                    lit(warp.lambda_global())
+                };
                 code.push_str(&L::decl_float(
                     &dv,
                     &format!(
