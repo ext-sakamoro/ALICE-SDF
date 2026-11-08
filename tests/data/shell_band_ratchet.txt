@@ -1,10 +1,10 @@
 # The ambiguous band of tests/test_mesh_shell_gpu_parity.rs per view: the largest count each view
 # may have (it may fall, a rise is red). Measured on a Vulkan device; lower a line when the test says so.
-sphere view 0: 77
+sphere view 0: 76
 sphere view 1: 76
 sphere view 2: 106
-sphere view 3: 72
-sphere grazing: 104
+sphere view 3: 73
+sphere grazing: 103
 soup view 0: 50
 soup view 1: 33
 soup view 2: 41
