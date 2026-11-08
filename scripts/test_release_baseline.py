@@ -59,7 +59,7 @@ def load():
 def git(repo: Path, *args: str) -> str:
     return subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@example.invalid",
                            "-c", "init.defaultBranch=main", *args], cwd=repo, check=True,
-                          capture_output=True, text=True, env=ENV).stdout.strip()
+                          capture_output=True, text=True, encoding="utf-8", env=ENV).stdout.strip()
 
 
 def toml(name: str, version: str) -> str:
@@ -262,16 +262,16 @@ class Baseline(unittest.TestCase):
         c1, c2, c3, c4 = self.linear()
         args = [sys.executable, str(SCRIPT), "--root", str(self.repo), "--manifest", "Cargo.toml", "--main", "main",
                 "--print", "--package"]
-        r = subprocess.run(args + ["alice-x"], capture_output=True, text=True, env=ENV)
+        r = subprocess.run(args + ["alice-x"], capture_output=True, text=True, encoding="utf-8", env=ENV)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.strip(), f"{c2} 0.1.0")
-        r = subprocess.run(args + ["alice-nope"], capture_output=True, text=True, env=ENV)
+        r = subprocess.run(args + ["alice-nope"], capture_output=True, text=True, encoding="utf-8", env=ENV)
         self.assertNotEqual(r.returncode, 0)
         self.assertEqual(r.stdout, "")
         # a new crate at a new manifest (replacing the manifest of alice-x would be a rename, an error)
         self.commit({"crates/z/Cargo.toml": toml("alice-z", "0.1.0")}, "z")
         zargs = [a if a != "Cargo.toml" else "crates/z/Cargo.toml" for a in args]
-        r = subprocess.run(zargs + ["alice-z"], capture_output=True, text=True, env=ENV)
+        r = subprocess.run(zargs + ["alice-z"], capture_output=True, text=True, encoding="utf-8", env=ENV)
         self.assertEqual((r.returncode, r.stdout.strip()), (0, "introduced"), r.stderr)
 
 if __name__ == "__main__":

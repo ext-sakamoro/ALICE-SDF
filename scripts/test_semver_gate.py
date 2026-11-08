@@ -270,7 +270,7 @@ class BumpBaseline(unittest.TestCase):
     def git(self, *args: str) -> str:
         import subprocess
         return subprocess.run(["git", "-c", "user.name=T", "-c", "user.email=t@example.invalid", *args],
-                              cwd=self.repo, check=True, capture_output=True, text=True, env=self.env).stdout.strip()
+                              cwd=self.repo, check=True, capture_output=True, text=True, encoding="utf-8", env=self.env).stdout.strip()
 
     def at(self, version: str) -> str:
         (self.repo / "Cargo.toml").write_text(f'[package]\nname = "x"\nversion = "{version}"\n', encoding="utf-8")

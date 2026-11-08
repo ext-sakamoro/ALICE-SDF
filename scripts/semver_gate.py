@@ -169,7 +169,7 @@ def cargo_metadata(manifest_path: str | Path) -> dict:
     MetadataError on any failure (there is no fallback to the manifest's [features])"""
     cmd = ["cargo", "metadata", "--no-deps", "--format-version", "1", "--manifest-path", str(manifest_path)]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, env={**os.environ, "CARGO_TERM_COLOR": "never"})
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env={**os.environ, "CARGO_TERM_COLOR": "never"})
     except OSError as e:
         raise MetadataError(f"cargo metadata could not run: {e}") from None
     if r.returncode != 0:
@@ -328,7 +328,7 @@ def run_semver_checks(repo: Path, manifest_path: str, baseline: list[str], featu
            *baseline, *semver_feature_args(features)]
     env = {**os.environ, "CARGO_TERM_COLOR": "never", "CARGO_TARGET_DIR": str(target_dir)}
     try:
-        r = subprocess.run(cmd, cwd=repo, env=env, capture_output=True, text=True)
+        r = subprocess.run(cmd, cwd=repo, env=env, capture_output=True, text=True, encoding="utf-8")
     except FileNotFoundError as e:
         return 127, str(e)
     return r.returncode, r.stdout + r.stderr
@@ -383,7 +383,7 @@ def bump_base(repo: Path, manifest_path: str, crate: str, main_ref: str,
               base_package: str | None = None) -> release_baseline.Baseline:
     """release_baseline.bump_baseline for the manifest `manifest_path` under `repo` (the git top is found here);
     `base_package` is the crate's name before a rename (the config's `base-package`)"""
-    top = subprocess.run(["git", "-C", str(repo), "rev-parse", "--show-toplevel"], capture_output=True, text=True,
+    top = subprocess.run(["git", "-C", str(repo), "rev-parse", "--show-toplevel"], capture_output=True, text=True, encoding="utf-8",
                          env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")})
     if top.returncode != 0:
         raise release_baseline.BaselineError(f"{repo} is not in a git repository")
