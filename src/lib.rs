@@ -224,7 +224,9 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Re-exported from `alice-det-math` (it is that crate's identifier, not this
 /// one's). The identifier of what alice-sdf computes, which a caller that
 /// stores or identifies distances should record, is [`SDF_SEMANTICS_ID`]; it
-/// folds this one. `tests/test_det_golden.rs` pins its value.
+/// folds the identifier of each `alice-det-math` function the crate calls
+/// ([`semantics::DET_MATH_PINS`]), not this one. `tests/test_det_golden.rs`
+/// pins its value.
 pub use alice_det_math::SEMANTICS_ID;
 
 pub mod semantics;
@@ -232,7 +234,8 @@ pub mod semantics;
 pub mod eval_cache;
 pub use eval_cache::ExactEvalCache;
 pub use semantics::{
-    check_sdf_semantics, PREVIOUS_SDF_SEMANTICS_IDS, SDF_SEMANTICS_BY_DET_MATH, SDF_SEMANTICS_ID,
+    check_sdf_semantics, DET_MATH_FUNCTIONS, DET_MATH_PINS, PREVIOUS_SDF_SEMANTICS_IDS,
+    SDF_SEMANTICS_BY_DET_MATH, SDF_SEMANTICS_ID,
 };
 
 /// Prelude - commonly used types and functions

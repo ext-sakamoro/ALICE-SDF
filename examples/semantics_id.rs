@@ -6,9 +6,10 @@
 //!
 //! Run: `cargo run --example semantics_id`
 
-use alice_sdf::semantics::{sdf_semantics_id_for, MAX_MIN_RULE, MUL_ADD_RULE, SDF_SEMANTICS_PINS};
+use alice_sdf::semantics::{MAX_MIN_RULE, MUL_ADD_RULE, SDF_SEMANTICS_PINS};
 use alice_sdf::{
-    check_sdf_semantics, PREVIOUS_SDF_SEMANTICS_IDS, SDF_SEMANTICS_BY_DET_MATH, SDF_SEMANTICS_ID,
+    check_sdf_semantics, DET_MATH_PINS, PREVIOUS_SDF_SEMANTICS_IDS, SDF_SEMANTICS_BY_DET_MATH,
+    SDF_SEMANTICS_ID,
 };
 
 fn hex(b: &[u8; 32]) -> String {
@@ -21,7 +22,11 @@ fn hex(b: &[u8; 32]) -> String {
 
 fn main() {
     println!("SDF_SEMANTICS_ID {}", hex(&SDF_SEMANTICS_ID));
-    println!("folded from {} entries:", SDF_SEMANTICS_PINS.len());
+    println!(
+        "folded from {} entries and {} alice-det-math functions:",
+        SDF_SEMANTICS_PINS.len(),
+        DET_MATH_PINS.len()
+    );
     for (name, digest) in SDF_SEMANTICS_PINS {
         println!("  {name}: {}", hex(digest));
     }
@@ -29,9 +34,15 @@ fn main() {
     for rule in rules {
         println!("rule: {rule}");
     }
+    for (name, pin) in DET_MATH_PINS {
+        println!("  det-math {name}: {}", hex(pin));
+    }
     for (det_math, id) in SDF_SEMANTICS_BY_DET_MATH {
-        assert_eq!(sdf_semantics_id_for(det_math), *id);
-        println!("  with alice-det-math {} -> {}", hex(det_math), hex(id));
+        println!(
+            "  earlier, with alice-det-math {} folded whole -> {}",
+            hex(det_math),
+            hex(id)
+        );
     }
 
     // a stored identifier, as a reader would find it next to the data

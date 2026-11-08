@@ -192,7 +192,6 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::provenance::meaning_id" = "local: formats or wraps an identifier the caller holds for a writer to store"
 
 # 1 local
-"fn::semantics::sdf_semantics_id_for" = "local: maps a linked alice-det-math identifier to this crate's identifier (const table)"
 
 # 1 local
 "fn::AsdfHeader::from_bytes" = "local: parses the .asdf header and returns its stored identifier as a field; load_asdf does the comparison"

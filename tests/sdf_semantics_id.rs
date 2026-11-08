@@ -3,19 +3,26 @@
 //!
 //! The expected values come from the sources the entries pin: the golden table is read
 //! from `tests/test_det_golden.rs`, the rule entries are the SHA-256 of their text, and
-//! the det-math entry is the resolved crate's identifier. The fold is written out here.
+//! each det-math entry is the resolved crate's identifier of that function. The fold is
+//! written out here.
 
 use alice_det_math::SemanticsCheck;
 use alice_sdf::semantics::{MAX_MIN_RULE, MUL_ADD_RULE, SDF_SEMANTICS_PINS};
 use alice_sdf::{
-    check_sdf_semantics, PREVIOUS_SDF_SEMANTICS_IDS, SDF_SEMANTICS_BY_DET_MATH, SDF_SEMANTICS_ID,
+    check_sdf_semantics, DET_MATH_FUNCTIONS, DET_MATH_PINS, PREVIOUS_SDF_SEMANTICS_IDS,
+    SDF_SEMANTICS_BY_DET_MATH, SDF_SEMANTICS_ID,
 };
 use sha2::{Digest, Sha256};
 
 const GOLDEN_SOURCE: &str = include_str!("test_det_golden.rs");
-// with alice-det-math 0.5.2 at 2d01c63f and the grid warp and pose golden rows; ad04549c… (the
-// same without those rows) is the previous identifier this build still reproduces
-const RECORDED_HEX: &str = "0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f79d2f6b69a4";
+// each alice-det-math function the crate calls folded as its own entry; 0f6c58d0… (alice-det-math
+// 0.5.2 at 2d01c63f folded whole) and ad04549c… (the same without the grid warp and pose rows)
+// are the previous identifiers this build still reproduces
+const RECORDED_HEX: &str = "0f6ffc20efe7737c4cfbb95d35e74c62edd16c1c0d562faf35a2abdcc5ccb7e7";
+
+/// The alice-det-math entry of the generations that folded it whole: its 0.5.2 at 2d01c63f
+/// identifier
+const DET_MATH_2D01C63F: &str = "a2a11b9b826227fa7a9ed8ab2c1ce63dbb07ad4c39aa2c46a363ddea6b47dbe9";
 
 /// The golden rows added after `ad04549c…`: new nodes, no row of that build changed
 const ROWS_ADDED_AFTER_AD04549C: &[&str] = &["grid_warp", "pose"];
@@ -59,6 +66,44 @@ fn golden_rows() -> Vec<(String, String)> {
         .collect()
 }
 
+fn unhex(s: &str) -> [u8; 32] {
+    core::array::from_fn(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap())
+}
+
+/// The entries SDF_SEMANTICS_ID folds: SDF_SEMANTICS_PINS and one `det-math <function>` entry per
+/// DET_MATH_PINS row
+fn all_entries() -> Vec<(String, [u8; 32])> {
+    let mut out: Vec<(String, [u8; 32])> = SDF_SEMANTICS_PINS
+        .iter()
+        .map(|&(n, d)| (n.to_owned(), d))
+        .collect();
+    out.extend(
+        DET_MATH_PINS
+            .iter()
+            .map(|&(n, d)| (format!("det-math {n}"), d)),
+    );
+    out
+}
+
+fn fold_owned(entries: &[(String, [u8; 32])]) -> [u8; 32] {
+    let pins: Vec<(&str, [u8; 32])> = entries.iter().map(|(n, d)| (n.as_str(), *d)).collect();
+    fold(&pins)
+}
+
+/// SDF_SEMANTICS_PINS with the golden pin replaced by `golden` and the whole alice-det-math entry
+/// of 2d01c63f: the fold of the generations before the per-function entries
+fn whole_det_math_fold(golden: Option<[u8; 32]>) -> [u8; 32] {
+    let mut pins: Vec<(&str, [u8; 32])> = SDF_SEMANTICS_PINS
+        .iter()
+        .map(|&(n, d)| match golden {
+            Some(g) if n.starts_with("golden ") => (n, g),
+            _ => (n, d),
+        })
+        .collect();
+    pins.push(("alice-det-math", unhex(DET_MATH_2D01C63F)));
+    fold(&pins)
+}
+
 fn pin(name: &str) -> [u8; 32] {
     SDF_SEMANTICS_PINS
         .iter()
@@ -87,37 +132,45 @@ fn every_entry_matches_its_source() {
         pin("tag Real::mul_add rounds twice"),
         sha(MUL_ADD_RULE.as_bytes())
     );
-    assert_eq!(pin("alice-det-math"), alice_det_math::SEMANTICS_ID);
-    assert_eq!(SDF_SEMANTICS_PINS.len(), 4);
+    assert_eq!(SDF_SEMANTICS_PINS.len(), 3);
+}
+
+/// One pin per alice-det-math function the crate calls, in the list's order, each the resolved
+/// alice-det-math's own identifier of that function
+#[test]
+fn the_det_math_pins_are_the_resolved_function_identifiers() {
+    let names: Vec<&str> = DET_MATH_PINS.iter().map(|(n, _)| *n).collect();
+    assert_eq!(names, DET_MATH_FUNCTIONS);
+    assert!(!DET_MATH_PINS.is_empty(), "compared nothing");
+    for (name, pin) in DET_MATH_PINS {
+        assert_eq!(*pin, alice_det_math::function_pin(name), "{name}");
+    }
 }
 
 #[test]
-fn every_row_is_the_fold_of_the_pins_and_this_build_uses_its_row() {
+fn the_identifier_is_the_fold_and_every_earlier_row_is_its_whole_det_math_fold() {
     assert!(!SDF_SEMANTICS_BY_DET_MATH.is_empty());
     for (det_math, id) in SDF_SEMANTICS_BY_DET_MATH {
-        let pins: Vec<(&str, [u8; 32])> = SDF_SEMANTICS_PINS
-            .iter()
-            .map(|&(n, d)| {
-                if n == "alice-det-math" {
-                    (n, *det_math)
-                } else {
-                    (n, d)
-                }
-            })
-            .collect();
+        let mut pins: Vec<(&str, [u8; 32])> = SDF_SEMANTICS_PINS.to_vec();
+        pins.push(("alice-det-math", *det_math));
         assert_eq!(fold(&pins), *id, "row for {}", hex(det_math));
     }
-    assert_eq!(SDF_SEMANTICS_ID, fold(SDF_SEMANTICS_PINS));
+    assert_eq!(SDF_SEMANTICS_ID, fold_owned(&all_entries()));
     assert_eq!(hex(&SDF_SEMANTICS_ID), RECORDED_HEX);
     assert_ne!(SDF_SEMANTICS_ID, alice_det_math::SEMANTICS_ID);
 }
 
 #[test]
 fn the_identifier_moves_with_each_entry() {
-    for i in 0..SDF_SEMANTICS_PINS.len() {
-        let mut pins = SDF_SEMANTICS_PINS.to_vec();
-        pins[i].1[0] ^= 1;
-        assert_ne!(fold(&pins), SDF_SEMANTICS_ID, "{}", pins[i].0);
+    let entries = all_entries();
+    assert_eq!(
+        entries.len(),
+        SDF_SEMANTICS_PINS.len() + DET_MATH_PINS.len()
+    );
+    for i in 0..entries.len() {
+        let mut changed = entries.clone();
+        changed[i].1[0] ^= 1;
+        assert_ne!(fold_owned(&changed), SDF_SEMANTICS_ID, "{}", changed[i].0);
     }
 }
 
@@ -127,12 +180,15 @@ fn check_reads_this_identifier_and_refuses_the_earlier_ones() {
         check_sdf_semantics(&SDF_SEMANTICS_ID),
         SemanticsCheck::Verified
     );
-    assert_eq!(PREVIOUS_SDF_SEMANTICS_IDS.len(), 1);
-    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[0]), AD04549C);
-    assert_eq!(
-        check_sdf_semantics(&PREVIOUS_SDF_SEMANTICS_IDS[0]),
-        SemanticsCheck::VerifiedPrevious(PREVIOUS_SDF_SEMANTICS_IDS[0])
-    );
+    assert_eq!(PREVIOUS_SDF_SEMANTICS_IDS.len(), 2);
+    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[0]), ID_0F6C58D0);
+    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[1]), AD04549C);
+    for previous in PREVIOUS_SDF_SEMANTICS_IDS {
+        assert_eq!(
+            check_sdf_semantics(previous),
+            SemanticsCheck::VerifiedPrevious(*previous)
+        );
+    }
     // the identifiers earlier releases stamped (6e98f0be with alice-det-math 0.5.2 at 39507d1b,
     // 151079595 with 0.5.1 by 7.0.0, the det-math identifiers 6.0 / 6.1 exposed) are refused
     let mut refused = 0;
@@ -205,9 +261,6 @@ const WINDOWS_AT_39507D1B: &[(&str, &str)] = &[
 /// fails here.
 #[test]
 fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
-    let unhex = |s: &str| -> [u8; 32] {
-        core::array::from_fn(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap())
-    };
     let frozen: Vec<(&str, [u8; 32])> = PINS_6E98F0BE.iter().map(|&(n, d)| (n, unhex(d))).collect();
     assert_eq!(
         hex(&fold(&frozen)),
@@ -258,17 +311,39 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
 /// The oracle that shows this build reproduces what an earlier identifier stamped:
 /// `(identifier, test file, test function)`. Empty with `PREVIOUS_SDF_SEMANTICS_IDS`; an
 /// identifier put back into the previous list needs its oracle here
-const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[(
-    AD04549C,
-    "tests/sdf_semantics_id.rs",
-    "the_ad04549c_rows_are_unchanged",
-)];
+const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[
+    (
+        ID_0F6C58D0,
+        "tests/sdf_semantics_id.rs",
+        "the_0f6c58d0_golden_is_unchanged",
+    ),
+    (
+        AD04549C,
+        "tests/sdf_semantics_id.rs",
+        "the_ad04549c_rows_are_unchanged",
+    ),
+];
+
+const ID_0F6C58D0: &str = "0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f79d2f6b69a4";
+
+/// `0f6c58d0…` (alice-det-math 0.5.2 at 2d01c63f folded whole) is a previous identifier of this
+/// build: every golden row has the bits it had then (the golden pin, checked against the table by
+/// `every_entry_matches_its_source`, folds with that build's rule entries and its whole
+/// alice-det-math entry to it). A moved golden row fails here
+#[test]
+fn the_0f6c58d0_golden_is_unchanged() {
+    assert_eq!(
+        hex(&pin("golden tests/test_det_golden.rs GOLDEN")),
+        "ecfb9c749cac3ec06f9fec60bf1735ee9aff187f0d2873825895e744682750a5"
+    );
+    assert_eq!(hex(&whole_det_math_fold(None)), ID_0F6C58D0);
+}
 
 const AD04549C: &str = "ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f642257da4938";
 
 /// `ad04549c…` is a previous identifier of this build: the golden table without the rows added
-/// after it hashes to its golden pin, and that pin folds with this build's rule and det-math
-/// entries to it. Any moved row of that build, or a row added without being listed in
+/// after it hashes to its golden pin, and that pin folds with this build's rule entries and the
+/// whole alice-det-math entry of 2d01c63f to it. Any moved row of that build, or a row added without being listed in
 /// `ROWS_ADDED_AFTER_AD04549C`, fails here
 #[test]
 fn the_ad04549c_rows_are_unchanged() {
@@ -291,17 +366,7 @@ fn the_ad04549c_rows_are_unchanged() {
         hex(&golden),
         "84831086d072608aa773445b0a838e5aa530c32d936fc1d6bf62ff02325b709d"
     );
-    let pins: Vec<(&str, [u8; 32])> = SDF_SEMANTICS_PINS
-        .iter()
-        .map(|&(n, d)| {
-            if n.starts_with("golden ") {
-                (n, golden)
-            } else {
-                (n, d)
-            }
-        })
-        .collect();
-    assert_eq!(hex(&fold(&pins)), AD04549C);
+    assert_eq!(hex(&whole_det_math_fold(Some(golden))), AD04549C);
 }
 
 /// Every previous identifier has an oracle that exists as a test (the file holds `#[test]` and

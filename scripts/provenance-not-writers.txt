@@ -53,7 +53,6 @@ src/provenance.rs::stl_header builds the 80-byte STL header that carries the ide
 src/provenance.rs::meaning_id computes the meaning identifier the writers store, writes nothing itself
 src/provenance.rs::slot_for returns the 32 bytes a binary writer stores in its slot, writes nothing
 src/provenance.rs::writes_meaning tells whether a form's writers store meaning identifiers, writes nothing
-src/semantics.rs::sdf_semantics_id_for returns the 32-byte identifier constant of a det-math identifier
 src/svo/linearize.rs::as_bytes views the linearised octree nodes as bytes for an in-process GPU upload
 src/wasm.rs::render_sphere_slice_rgba renders pixels for the browser canvas in the same process; nothing is stored
 src/provenance.rs::write_sidecar writes the sidecar of the volume writer that calls it, never on its own (pub(crate))
