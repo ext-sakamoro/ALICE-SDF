@@ -582,7 +582,8 @@ ALICE_SDF_REQUIRE_GPU=1 CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODE
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_shader_data_bounds.log" --min 8 --what "test_shader_data_bounds"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_shader_minimal_trees -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_shader_minimal_trees.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_shader_minimal_trees.log" --min 3 --what "test_shader_minimal_trees"
-ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_gpu_dynamic_shape -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_gpu_dynamic_shape.log"
+cargo test --no-run --features "gpu,glsl,hlsl" --test test_gpu_dynamic_shape
+ALICE_SDF_REQUIRE_GPU=1 python3 scripts/peak_rss.py --max-mib 3072 --what "test_gpu_dynamic_shape" -- cargo test --features "gpu,glsl,hlsl" --test test_gpu_dynamic_shape -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_gpu_dynamic_shape.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_gpu_dynamic_shape.log" --min 2 --what "test_gpu_dynamic_shape"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_shader_integer_wraps -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_shader_integer_wraps.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_shader_integer_wraps.log" --min 2 --what "test_shader_integer_wraps"
