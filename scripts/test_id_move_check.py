@@ -1454,6 +1454,27 @@ class GitRevPreviousList(unittest.TestCase):
         self.assertEqual(passed, [])
         self.assertTrue(any("fetching ALICE-Zz failed" in p for p in problems), problems)
 
+    def test_a_branch_dependency_is_read_at_the_commit_its_lock_names(self):
+        # no `rev`: the checker reads the dependency at the commit Cargo.lock resolved the branch to,
+        # here the first commit while the branch has moved on to a list without the old value
+        branch = self.git(self.up, "branch", "--show-current")
+        (self.d / "Cargo.toml").write_text((self.d / "Cargo.toml").read_text().replace(
+            f'rev = "{self.rev}"', f'branch = "{branch}"'))
+        imc.rustdoc_json(self.d, self.cfg)  # resolves and writes Cargo.lock at the branch's head
+        lock = (self.d / "Cargo.lock").read_text()
+        self.assertIn(f"#{self.rev}", lock)
+        self.upstream_list("")
+        self.git(self.up, "add", "-A")
+        self.git(self.up, "commit", "-qm", "list emptied")
+        self.git(self.up, "pu" + "sh", "-q", "origin", f"HEAD:refs/heads/{branch}")
+        self.git(self.up, "fetch", "-q", "origin")
+        self.git(self.d, "add", "-A")
+        self.git(self.d, "commit", "-qm", "branch dependency")
+        passed, problems = self.verify()
+        self.assertEqual(problems, [])
+        self.assertEqual(passed, [self.REF])
+        self.assertEqual((self.d / "Cargo.lock").read_text(), lock, "the lock was not re-resolved")
+
     def test_a_rev_not_on_an_origin_branch_fails(self):
         (self.up / "NOTES").write_text("local only\n")
         self.git(self.up, "add", "-A")
@@ -1468,6 +1489,82 @@ class GitRevPreviousList(unittest.TestCase):
         passed, problems = self.verify()
         self.assertEqual(passed, [])
         self.assertTrue(any("still passes" in p for p in problems), problems)
+
+
+class GitDependencyCommit(unittest.TestCase):
+    """The commit a re-exported list's git dependency is read at: the manifest's 40-hex `rev`, or,
+    without one, the commit Cargo.lock resolved it to; any other case is a reason, never a guess"""
+
+    URL = "https://example.invalid/ext/ALICE-Zz"
+    COMMIT = "0123456789abcdef0123456789abcdef01234567"
+
+    def setUp(self):
+        self.d = Path(tempfile.mkdtemp(prefix="id-move-lockrev-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def manifest(self, dep: str):
+        (self.d / "Cargo.toml").write_text(
+            '[package]\nname = "probe-crate"\nversion = "0.6.0"\nedition = "2021"\n\n[dependencies]\n' + dep + "\n")
+
+    def lock(self, source: str | None, name: str = "alice-zz"):
+        body = '[[package]]\nname = "probe-crate"\nversion = "0.6.0"\n'
+        if source is not None:
+            body += f'\n[[package]]\nname = "{name}"\nversion = "0.11.0"\nsource = "{source}"\n'
+        (self.d / "Cargo.lock").write_text("version = 4\n\n" + body)
+
+    def dep(self):
+        return imc.git_rev_dependency(self.d, self.d, "alice_zz")
+
+    def test_a_branch_dependency_is_read_at_the_locked_commit(self):
+        self.manifest(f'alice-zz = {{ git = "{self.URL}", branch = "main", version = "0.11" }}')
+        self.lock(f"git+{self.URL}?branch=main#{self.COMMIT}")
+        self.assertEqual(self.dep(), {"url": self.URL, "rev": self.COMMIT, "package": "alice-zz"})
+
+    def test_a_dependency_with_no_branch_named_is_read_at_the_locked_commit(self):
+        self.manifest(f'zz = {{ package = "alice-zz", git = "{self.URL}.git", version = "0.11" }}')
+        self.lock(f"git+{self.URL}#{self.COMMIT}")
+        self.assertEqual(self.dep()["rev"], self.COMMIT)
+
+    def test_a_rev_dependency_is_read_at_its_rev_and_not_the_lock(self):
+        rev = "f" * 40
+        self.manifest(f'alice-zz = {{ git = "{self.URL}", rev = "{rev}", version = "0.11" }}')
+        self.lock(f"git+{self.URL}?rev={rev}#{self.COMMIT}")
+        self.assertEqual(self.dep()["rev"], rev)
+
+    def test_a_short_rev_is_refused(self):
+        self.manifest(f'alice-zz = {{ git = "{self.URL}", rev = "0123abc", version = "0.11" }}')
+        self.lock(f"git+{self.URL}?rev=0123abc#{self.COMMIT}")
+        self.assertIn("not 40 hex digits", self.dep())
+
+    def test_without_a_lock_a_branch_dependency_is_refused(self):
+        self.manifest(f'alice-zz = {{ git = "{self.URL}", branch = "main", version = "0.11" }}')
+        self.assertIn("no Cargo.lock", self.dep())
+
+    def test_a_branch_dependency_not_in_the_lock_is_refused(self):
+        self.manifest(f'alice-zz = {{ git = "{self.URL}", branch = "main", version = "0.11" }}')
+        for source, name in ((None, "alice-zz"), (f"git+{self.URL}?branch=main#{self.COMMIT}", "alice-yy"),
+                             (f"git+https://example.invalid/other/ALICE-Zz?branch=main#{self.COMMIT}", "alice-zz"),
+                             ("registry+https://github.com/rust-lang/crates.io-index", "alice-zz")):
+            with self.subTest(source=source, name=name):
+                self.lock(source, name)
+                self.assertIn("is not in it", self.dep())
+
+    def test_a_locked_source_without_a_40_hex_commit_is_refused(self):
+        self.manifest(f'alice-zz = {{ git = "{self.URL}", branch = "main", version = "0.11" }}')
+        for source in (f"git+{self.URL}?branch=main#0123abc", f"git+{self.URL}?branch=main",
+                       f"git+{self.URL}?branch=main#{self.COMMIT.upper()}"):
+            with self.subTest(source=source):
+                self.lock(source)
+                self.assertIn("not a 40-hex commit", self.dep())
+
+    def test_two_locked_commits_are_refused(self):
+        self.manifest(f'alice-zz = {{ git = "{self.URL}", branch = "main", version = "0.11" }}')
+        self.lock(f"git+{self.URL}?branch=main#{self.COMMIT}")
+        with (self.d / "Cargo.lock").open("a") as f:
+            f.write(f'\n[[package]]\nname = "alice-zz"\nversion = "0.10.0"\nsource = "git+{self.URL}?branch=old#{"e" * 40}"\n')
+        self.assertIn("resolves to 2 commits", self.dep())
 
 
 @unittest.skipUnless(shutil.which("cargo") and shutil.which("git"), "needs cargo and git")

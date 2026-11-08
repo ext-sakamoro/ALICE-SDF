@@ -289,15 +289,15 @@ cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
 
 リリース履歴は [`CHANGELOG.md`](CHANGELOG.md) にある
 
-<!-- law-integration:begin law=40973a8a7a679e6befac9a49b76cd4425165128f -->
+<!-- law-integration:begin law=5b19cf68bf4e7b8fc80c01e486a8c3436de98af0 -->
 ## ALICE-Law との統合
 
-ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `40973a8a7a67` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
+ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `5b19cf68bf4e` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
 
 | | |
 |---|---|
 | release train | alice-sdf 6.1.0 (published)、Law への依存: あり |
-| 算術 | train の alice-det-math 0.5.1、算術の識別子 `85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315` この crate の要求は `alice-det-math = "0.5.2"` |
+| 算術 | train の alice-det-math 0.5.1、算術の識別子 `85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315` この crate の要求は `alice-det-math = "0.6"` |
 | end to end 検査 | 対象 (`alice-sdf = "6"`)、digest `9f7cf676708a272e3817ebbf0727c610f391e1547747af4307ee44d5523267c2`、aarch64 と x86_64 で同じ |
 
 ### 適合 (G1-G14)

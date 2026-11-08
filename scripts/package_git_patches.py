@@ -1,4 +1,4 @@
-"""Patches for packaging a crate whose dependencies are taken from git at a pinned rev.
+"""Patches for packaging a crate whose dependencies are taken from git (a rev, a branch or a tag).
 
 While a sibling's version is not on crates.io, Cargo.toml takes it as
 `{ git = URL, rev = <40 hex>, version = "X" }`. `cargo package` drops `git` and
@@ -16,8 +16,17 @@ so the .crate is checked against what it is consumed with.
                     same repository at the pinned rev is pinned by it (a facade
                     and the crates it reaches by path in that repository)
 
-Cargo.toml fails both modes when a dependency names `git` and `version` without
-a 40-hex `rev` (not pinned).
+A dependency that names `git` and `version` without a `rev` (`branch`, `tag` or
+the default branch) is patched with the same reference (`branch = ..`, `tag = ..`
+or none), not with a `rev`: the crates it depends on through git take their
+siblings by that reference too, and a patch by `rev` would give cargo a second
+source for the same package (two copies linked, 2026-11-08: alice-det-math by
+`?rev=` from the patch and by `?branch=main` from alice-analytics). `verify`
+expects the source cargo writes for that reference at the commit Cargo.lock
+resolved it to, read by `locked_git_commit` of scripts/id_move_check.py (the one
+place that rule lives): no Cargo.lock, the package not in it from that url, a
+source without a 40-hex commit, or two commits fail both modes, as does a `rev`
+that is not 40 hex, or a dependency naming more than one of rev / branch / tag.
 
 Before alice-physics is published, the pinned sibling is published and the
 dependency goes back to `version` only; then there is nothing to patch.
@@ -31,8 +40,11 @@ import os
 import re
 import sys
 import tomllib
+from pathlib import Path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from id_move_check import CheckError, locked_git_commit  # noqa: E402
 REV = re.compile(r"[0-9a-f]{40}")
 DEP_TABLES = ("dependencies", "dev-dependencies", "build-dependencies")
 
@@ -45,21 +57,40 @@ def _dep_tables(manifest: dict):
             yield f"target.{target}.{t}", body.get(t, {})
 
 
-def pins(manifest_text: str) -> tuple[list[tuple[str, str, str]], list[str]]:
-    """(name, git, rev) of each dependency taken from git with a version; problems."""
+REFS = ("rev", "branch", "tag")
+
+
+def pins(manifest_text: str, root: str = ROOT) -> tuple[list[tuple[str, str, str, str]], list[str]]:
+    """(name, git, commit, reference) of each dependency taken from git with a version: the
+    reference is how Cargo.toml names it (`rev=<40 hex>`, `branch=<name>`, `tag=<name>`, or ""
+    for the default branch), the commit is the rev, or for the others the commit `root`'s
+    Cargo.lock resolved it to; problems."""
     manifest = tomllib.loads(manifest_text)
-    found: dict[str, tuple[str, str, str]] = {}
+    found: dict[str, tuple[str, str, str, str]] = {}
     problems: list[str] = []
     for table, deps in _dep_tables(manifest):
         for key, spec in deps.items():
             if not isinstance(spec, dict) or "git" not in spec or "version" not in spec:
                 continue
             name = spec.get("package", key)
-            rev = spec.get("rev", "")
-            if not REV.fullmatch(rev):
-                problems.append(f"{table}.{key}: git with a version but rev is not 40 hex ({rev!r})")
+            named = [k for k in REFS if k in spec]
+            if len(named) > 1:
+                problems.append(f"{table}.{key}: names more than one of {', '.join(named)}")
                 continue
-            pin = (name, spec["git"], rev)
+            rev = spec.get("rev")
+            if rev is not None:
+                if not REV.fullmatch(rev):
+                    problems.append(f"{table}.{key}: git with a version but rev is not 40 hex ({rev!r})")
+                    continue
+                commit, ref = rev, f"rev={rev}"
+            else:
+                try:
+                    commit = locked_git_commit(Path(root), Path(root), name, spec["git"])
+                except CheckError as e:
+                    problems.append(f"{table}.{key}: {e}")
+                    continue
+                ref = f"{named[0]}={spec[named[0]]}" if named else ""
+            pin = (name, spec["git"], commit, ref)
             if name in found and found[name] != pin:
                 problems.append(f"{name}: pinned twice with different sources {found[name]} / {pin}")
                 continue
@@ -67,19 +98,26 @@ def pins(manifest_text: str) -> tuple[list[tuple[str, str, str]], list[str]]:
     return sorted(found.values()), problems
 
 
-def config_args(pinned: list[tuple[str, str, str]]) -> list[str]:
+def config_args(pinned: list[tuple[str, str, str, str]]) -> list[str]:
     out = []
-    for name, git, rev in pinned:
+    for name, git, _commit, ref in pinned:
         out += ["--config", f'patch.crates-io.{name}.git="{git}"']
-        out += ["--config", f'patch.crates-io.{name}.rev="{rev}"']
+        if ref:
+            kind, value = ref.split("=", 1)
+            out += ["--config", f'patch.crates-io.{name}.{kind}="{value}"']
     return out
 
 
-def verify(pinned: list[tuple[str, str, str]], lock_text: str) -> list[str]:
+def source_of(git: str, commit: str, ref: str) -> str:
+    """the source cargo writes in Cargo.lock for a git dependency by that reference at that commit"""
+    return f"git+{git}?{ref}#{commit}" if ref else f"git+{git}#{commit}"
+
+
+def verify(pinned: list[tuple[str, str, str, str]], lock_text: str) -> list[str]:
     lock = tomllib.loads(lock_text)
     packages = lock.get("package", [])
     problems = []
-    want = {name: f"git+{git}?rev={rev}#{rev}" for name, git, rev in pinned}
+    want = {name: source_of(git, commit, ref) for name, git, commit, ref in pinned}
     for name, source in want.items():
         got = [p.get("source", "(path)") for p in packages if p.get("name") == name]
         if not got:
