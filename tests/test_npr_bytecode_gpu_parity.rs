@@ -32,6 +32,9 @@
 use alice_sdf::compiled::GpuError;
 use alice_sdf::gpu_context::{GpuContext, Held};
 use alice_sdf::npr::compiled_color::{emit_wgsl_bytecode_evaluator, CompiledColorPipeline};
+
+#[path = "support/npr_ctx_wgsl.rs"]
+mod ctx_wgsl;
 use alice_sdf::npr::dsl::{NprColorContext, NprColorNode, PaletteSource};
 use glam::{Vec2, Vec3};
 use std::sync::mpsc;
@@ -277,6 +280,17 @@ struct Gpu(Held<GpuResources>);
 const WORKGROUP: u32 = 64;
 
 fn shader_source() -> String {
+    // the 12 scalars of one context, read from the packed storage buffer in table order
+    let scalars: Vec<String> = (0..12u32)
+        .map(|k| {
+            if k == 0 {
+                "contexts[b]".to_string()
+            } else {
+                format!("contexts[b + {k}u]")
+            }
+        })
+        .collect();
+    let scalars: Vec<&str> = scalars.iter().map(String::as_str).collect();
     format!(
         r"{evaluator}
 
@@ -294,22 +308,15 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
     let i = id.x;
     if (i >= sizes.y) {{ return; }}
     let b = i * 12u;
-    let ctx = AliceNprBytecodeCtx(
-        contexts[b],
-        contexts[b + 1u],
-        contexts[b + 2u],
-        vec2<f32>(contexts[b + 3u], contexts[b + 4u]),
-        contexts[b + 5u],
-        vec3<f32>(contexts[b + 6u], contexts[b + 7u], contexts[b + 8u]),
-        vec3<f32>(contexts[b + 9u], contexts[b + 10u], contexts[b + 11u]),
-    );
+    let ctx = {ctx};
     let color = alice_npr_eval_bytecode(sizes.x, ctx);
     colors[i * 3u] = color.x;
     colors[i * 3u + 1u] = color.y;
     colors[i * 3u + 2u] = color.z;
 }}
 ",
-        evaluator = emit_wgsl_bytecode_evaluator()
+        evaluator = emit_wgsl_bytecode_evaluator(),
+        ctx = ctx_wgsl::ctx_constructor(&scalars)
     )
 }
 

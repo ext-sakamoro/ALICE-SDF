@@ -2080,6 +2080,43 @@ impl CompiledColorPipeline {
     }
 }
 
+/// The members of the WGSL `AliceNprBytecodeCtx` in declaration order, as
+/// `(name, scalar width)`: `1` is `f32`, `2` is `vec2<f32>`, `3` is `vec3<f32>`.
+///
+/// The struct the evaluator emits ([`emit_wgsl_bytecode_evaluator`]) is
+/// generated from this table, and a host shader that builds the context
+/// should derive its constructor from the same table (the crate's tests do),
+/// so a member added here cannot leave a constructor behind.
+pub const WGSL_BYTECODE_CTX_FIELDS: &[(&str, u8)] = &[
+    ("n_dot_l", 1),
+    ("n_dot_v", 1),
+    ("sdf", 1),
+    ("uv", 2),
+    ("time", 1),
+    ("normal", 3),
+    ("position", 3),
+];
+
+/// `struct AliceNprBytecodeCtx { … };` built from [`WGSL_BYTECODE_CTX_FIELDS`].
+fn wgsl_bytecode_ctx_struct() -> String {
+    let mut out = String::from("struct AliceNprBytecodeCtx {\n");
+    for &(name, width) in WGSL_BYTECODE_CTX_FIELDS {
+        let ty = match width {
+            1 => "f32",
+            2 => "vec2<f32>",
+            3 => "vec3<f32>",
+            _ => "vec4<f32>",
+        };
+        out.push_str("    ");
+        out.push_str(name);
+        out.push_str(": ");
+        out.push_str(ty);
+        out.push_str(",\n");
+    }
+    out.push_str("};");
+    out
+}
+
 /// Emit the canonical WGSL source for the GPU bytecode evaluator
 ///
 /// The returned string defines two host-visible entities:
@@ -2166,15 +2203,7 @@ const ALICE_PS_SDF: u32 = {ps_sdf}u;
 const ALICE_PS_UV_Y: u32 = {ps_uvy}u;
 const ALICE_PS_TIME_CYCLE: u32 = {ps_time}u;
 
-struct AliceNprBytecodeCtx {{
-    n_dot_l: f32,
-    n_dot_v: f32,
-    sdf: f32,
-    uv: vec2<f32>,
-    time: f32,
-    normal: vec3<f32>,
-    position: vec3<f32>,
-}};
+{ctx_struct}
 
 // The crate's single noise law (`modifiers::hash_noise_3d` and its lattice-corner hash) under npr-prefixed names,
 // so this evaluator can sit next to a transpiled SDF shader that defines the same functions.
@@ -2607,6 +2636,7 @@ fn alice_npr_eval_bytecode(
         ps_sdf = p::SDF,
         ps_uvy = p::UV_Y,
         ps_time = p::TIME_CYCLE,
+        ctx_struct = wgsl_bytecode_ctx_struct(),
     )
 }
 
@@ -3487,6 +3517,31 @@ mod tests {
         ] {
             assert!(src.contains(name), "WGSL missing {name}");
         }
+    }
+
+    /// The emitted struct is the one the field table describes: every member in order with
+    /// its width, and the table's scalar count is what a host constructor must supply.
+    #[test]
+    fn wgsl_ctx_struct_follows_the_field_table() {
+        let src = emit_wgsl_bytecode_evaluator();
+        let built = wgsl_bytecode_ctx_struct();
+        assert!(
+            src.contains(&built),
+            "evaluator source lacks the table's struct:\n{built}"
+        );
+        let scalars: u32 = WGSL_BYTECODE_CTX_FIELDS
+            .iter()
+            .map(|&(_, w)| u32::from(w))
+            .sum();
+        assert_eq!(scalars, 12, "the context carries 12 scalars");
+        let names: Vec<&str> = WGSL_BYTECODE_CTX_FIELDS.iter().map(|&(n, _)| n).collect();
+        assert_eq!(
+            names,
+            ["n_dot_l", "n_dot_v", "sdf", "uv", "time", "normal", "position"]
+        );
+        assert!(
+            built.contains("    uv: vec2<f32>,\n") && built.contains("    normal: vec3<f32>,\n")
+        );
     }
 }
 

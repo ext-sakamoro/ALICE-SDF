@@ -12,8 +12,25 @@
 
 use alice_sdf::npr::compiled_color::emit_wgsl_bytecode_evaluator;
 
+#[path = "support/npr_ctx_wgsl.rs"]
+mod ctx_wgsl;
+
 fn wrap_evaluator_in_fragment_shader() -> String {
     let evaluator = emit_wgsl_bytecode_evaluator();
+    let ctx = ctx_wgsl::ctx_constructor(&[
+        "alice_npr_uniforms.n_dot_l",
+        "alice_npr_uniforms.n_dot_v",
+        "alice_npr_uniforms.sdf",
+        "alice_npr_uniforms.uv_x",
+        "alice_npr_uniforms.uv_y",
+        "alice_npr_uniforms.time",
+        "alice_npr_uniforms.normal_x",
+        "alice_npr_uniforms.normal_y",
+        "alice_npr_uniforms.normal_z",
+        "alice_npr_uniforms.position_x",
+        "alice_npr_uniforms.position_y",
+        "alice_npr_uniforms.position_z",
+    ]);
     format!(
         r"{evaluator}
 
@@ -48,19 +65,7 @@ struct FragInput {{
 
 @fragment
 fn fs_main(_in: FragInput) -> @location(0) vec4<f32> {{
-    let ctx = AliceNprBytecodeCtx(
-        alice_npr_uniforms.n_dot_l,
-        alice_npr_uniforms.n_dot_v,
-        alice_npr_uniforms.sdf,
-        vec2<f32>(alice_npr_uniforms.uv_x, alice_npr_uniforms.uv_y),
-        alice_npr_uniforms.time,
-        vec3<f32>(alice_npr_uniforms.normal_x, alice_npr_uniforms.normal_y, alice_npr_uniforms.normal_z),
-        vec3<f32>(
-            alice_npr_uniforms.position_x,
-            alice_npr_uniforms.position_y,
-            alice_npr_uniforms.position_z
-        ),
-    );
+    let ctx = {ctx};
     let color = alice_npr_eval_bytecode(alice_npr_uniforms.program_len, ctx);
     return vec4<f32>(color, 1.0);
 }}
