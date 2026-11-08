@@ -500,3 +500,37 @@ fn one_shader_follows_the_texture_of_each_frame() {
         pts.len()
     );
 }
+
+/// The bound's slack hides no real error: one map entry of one node moved by `DELTA` in the
+/// texture (the translation along x of a node in the middle of the box, about 840 ulp of 1, the
+/// scale of the scene) puts some point near that node above the bound
+#[test]
+fn one_node_off_by_a_small_step_is_above_the_bound() {
+    const DELTA: f32 = 1e-4;
+    let a = tree(0.6);
+    let w = warp(0.6, DIMS);
+    let tex = GlslShader::transpile_with_node_texture(&a, 450);
+    let Some(gpu) = gpu_or_skip(&compute_wrapper(&tex), tex.texture_size()) else {
+        return;
+    };
+    let [nx, ny, _] = DIMS.map(|n| n as usize);
+    let (i, j, k) = (3usize, 3usize, 3usize);
+    let node = i + nx * (j + ny * k);
+    let mut texels = tex.texels();
+    // the maps are the first array of the node data (12 floats per node, x fastest)
+    assert_eq!(texels[node * 12 + 3], w.data().maps[node * 12 + 3]);
+    texels[node * 12 + 3] += DELTA;
+    gpu.upload(&texels);
+    let centre = Vec3::from(ORIGIN) + Vec3::new(i as f32, j as f32, k as f32) * CELL;
+    let near: Vec<Vec3> = points(512)
+        .into_iter()
+        .map(|p| centre + p * (0.4 * CELL / 1.8))
+        .collect();
+    let got = gpu.eval(&near);
+    let (diff, ratio, at) = compare(&got, &a, &w, &near);
+    eprintln!("one node off by {DELTA:e}: largest |GPU − CPU| {diff:e}, ratio to the bound {ratio:.2} at {at}");
+    assert!(
+        ratio > 1.0,
+        "a {DELTA:e} error at one node stays under the bound ({ratio})"
+    );
+}
