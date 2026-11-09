@@ -493,6 +493,9 @@ if [ "$(uname -s)" = "Darwin" ]; then
   step "test: GpuEvaluator on Metal does not fuse a multiply-add (msl、ci.yml の macOS step と対、走った件数 0 で fail)"
   ALICE_SDF_REQUIRE_METAL=1 cargo test --features msl --test test_gpu_fma_contraction -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-gpu-fma.log"
   python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-gpu-fma.log" --min 1 --what "GpuEvaluator fma contraction tests (msl, Metal)"
+  step "test: GLSL const and variable arrays agree on a loft (Metal、ci.yml の macOS step と対、走った件数 0 で fail)"
+  ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl" --test test_glsl_array_form const_and_variable_arrays_agree_on_a_loft -- --ignored --exact --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-glsl-const-loft.log"
+  python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-glsl-const-loft.log" --min 1 --what "GLSL const and variable arrays on a loft (Metal)"
 else
   step "skip: MSL -> Metal oracle (Metal は macOS のみ)"
 fi
