@@ -8,10 +8,10 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 |----------|-------|
 | 🟢 Not ignored | 1210 |
 | 🔴 Red by design | 5 |
-| ⏱ Gated (runtime / diagnostic / manual) | 7 |
+| ⏱ Gated (runtime / diagnostic / manual) | 8 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1222** |
+| **Total** | **1223** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -37,7 +37,7 @@ exact assert by itself once the defect is gone (see the test's doc).
 - `a_large_twist_keeps_the_plain_bits_on_the_gpu` (test_union_bound_oracle.rs) — known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within c…
 - `no_checked_read_leaves_its_proven_range_on_the_gpu` (test_shader_data_bounds.rs) — known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within t…
 
-## ⏱ Gated (7)
+## ⏱ Gated (8)
 
 Correct tests that are too slow for every push, or that print a measurement table.
 Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ignored`.
@@ -48,6 +48,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `metal_default_fast_math_loses_the_sign_of_zero` (test_msl_metal_oracle.rs) — driver observation: Metal default fast math loses the sign of zero
 - `the_alembic_library_reads_the_mesh_and_the_identifier_bit_for_bit` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
+- `the_smaller_wgsl_chunks_keep_a_large_height_map_as_close_to_the_cpu` (test_wgsl_chunk_ulp.rs) — runs on the macOS lane: llvmpipe cannot run the 16384-element chunks of the form before
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
 ## 🟢 Not ignored (1210)

@@ -11,6 +11,11 @@
 //! the emitted form (chunks of 2047) and in the same text regrouped into chunks of 16384 (the form
 //! before), each against the CPU at the same points. Comparing 0 trees fails.
 //!
+//! The height map runs on the macOS lane only (Metal through wgpu, `ci.yml`): its form before has
+//! 16384-element chunks, which llvmpipe cannot run (each read at a run-time index copies the
+//! chunk; the hosted runner was shut down running it). That test is ignored elsewhere and the
+//! macOS step runs it with `--ignored`.
+//!
 //! Author: Moroya Sakamoto
 #![cfg(feature = "gpu")]
 
@@ -204,16 +209,11 @@ fn deviation(shader: &WgslShader, cpu: &[f32], pts: &[Vec3]) -> Option<(f32, usi
     Some((max, differ))
 }
 
-#[test]
-fn the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu() {
+/// The trees compared, each as (name, max |GPU - CPU| before, after), or `None` without a GPU
+fn compare(trees: &[(String, SdfNode)]) -> Option<Vec<(String, f32, f32)>> {
     let pts = points();
-    let mut trees: Vec<(String, SdfNode)> = common::corpus::corpus()
-        .into_iter()
-        .map(|(n, x)| (n.to_string(), x))
-        .collect();
-    trees.push(("height map 300 x 300".into(), large_field()));
-    let (mut compared, mut worse) = (0usize, Vec::new());
-    for (name, node) in &trees {
+    let mut rows = Vec::new();
+    for (name, node) in trees {
         let after = WgslShader::transpile(node, TranspileMode::Hardcoded);
         let Some(before_src) = regrouped(&after.source, BEFORE_CHUNK) else {
             continue;
@@ -227,23 +227,52 @@ fn the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu() {
         let mut before = after.clone();
         before.source = before_src;
         let cpu: Vec<f32> = pts.iter().map(|p| eval(node, *p)).collect();
-        let Some((b, nb)) = deviation(&before, &cpu, &pts) else {
-            return;
-        };
+        let (b, nb) = deviation(&before, &cpu, &pts)?;
         let (a, na) = deviation(&after, &cpu, &pts).expect("the GPU built the other form");
         eprintln!(
             "{name}: max |gpu - cpu| {b:e} -> {a:e}, points off the cpu bits {nb} -> {na} of {}",
             pts.len()
         );
-        if a > b {
-            worse.push(format!("{name}: {b:e} -> {a:e}"));
-        }
-        compared += 1;
+        rows.push((name.clone(), b, a));
     }
-    assert!(compared > 0, "no tree with a split WGSL array was compared");
+    Some(rows)
+}
+
+/// `rows` compared at least `min` trees and none is further from the CPU after
+fn assert_not_worse(rows: &[(String, f32, f32)], min: usize) {
+    assert!(
+        rows.len() >= min,
+        "{} trees with a split WGSL array were compared, expected at least {min}",
+        rows.len()
+    );
+    let worse: Vec<String> = rows
+        .iter()
+        .filter(|(_, b, a)| a > b)
+        .map(|(n, b, a)| format!("{n}: {b:e} -> {a:e}"))
+        .collect();
     assert!(
         worse.is_empty(),
         "the 2047-element chunks take the GPU further from the CPU:\n{}",
         worse.join("\n")
     );
+}
+
+/// The corpus trees with a split array (every lane with a GPU)
+#[test]
+fn the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu() {
+    let trees: Vec<(String, SdfNode)> = common::corpus::corpus()
+        .into_iter()
+        .map(|(n, x)| (n.to_string(), x))
+        .collect();
+    let Some(rows) = compare(&trees) else { return };
+    assert_not_worse(&rows, 1);
+}
+
+/// The 300 x 300 height map, on a driver that runs its 16384-element form before (the macOS lane)
+#[test]
+#[ignore = "runs on the macOS lane: llvmpipe cannot run the 16384-element chunks of the form before"]
+fn the_smaller_wgsl_chunks_keep_a_large_height_map_as_close_to_the_cpu() {
+    let trees = vec![("height map 300 x 300".to_owned(), large_field())];
+    let Some(rows) = compare(&trees) else { return };
+    assert_not_worse(&rows, 1);
 }
