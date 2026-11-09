@@ -2156,6 +2156,94 @@ mod tests {
     use super::*;
     use glam::Vec3;
 
+    /// The module-scope constant arrays of `source` (`const name: array<...> = ...`)
+    fn const_arrays(source: &str) -> Vec<&str> {
+        source
+            .lines()
+            .filter(|l| l.starts_with("const ") && l.contains(": array<"))
+            .map(|l| l.split(':').next().unwrap_or(l))
+            .collect()
+    }
+
+    /// The GPU evaluator's Dynamic shader reads a loft's or stack's data from the node data buffer,
+    /// never from a module-scope constant indexed at run time (llvmpipe held more than 12 GB to
+    /// compile one curve loft read that way). The teeth: the same trees in the form `new_dynamic`
+    /// used before (`transpile`, Dynamic) do declare such arrays
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn the_dynamic_evaluator_shader_declares_no_constant_data_array() {
+        use glam::Vec2;
+        let ring = |m: usize, r: f32| -> Vec<Vec2> {
+            (0..m)
+                .map(|j| {
+                    let (s, c) =
+                        alice_det_math::sin_cos(std::f32::consts::TAU * j as f32 / m as f32);
+                    Vec2::new(r * c, r * s)
+                })
+                .collect()
+        };
+        let axis: Vec<Vec3> = (0..4)
+            .map(|i| Vec3::new(0.0, 0.3 * i as f32, 0.0))
+            .collect();
+        let levels: Vec<f32> = (0..6).map(|i| 0.15 * i as f32).collect();
+        let trees = [
+            (
+                "curve loft",
+                SdfNode::loft_curves(
+                    axis.clone(),
+                    Vec3::X,
+                    axis.iter().map(|_| ring(12, 0.2)).collect(),
+                )
+                .expect("curve loft"),
+            ),
+            (
+                "polar loft",
+                SdfNode::loft(
+                    axis.clone(),
+                    Vec3::Z,
+                    1,
+                    axis.iter().map(|_| vec![0.2, 0.0, 0.0]).collect(),
+                )
+                .expect("polar loft"),
+            ),
+            (
+                "section stack",
+                SdfNode::section_stack(
+                    levels.clone(),
+                    levels.iter().map(|_| vec![ring(12, 0.2)]).collect(),
+                )
+                .expect("section stack"),
+            ),
+            (
+                "smooth stack",
+                SdfNode::smooth_section_stack(
+                    levels.clone(),
+                    levels.iter().map(|_| vec![ring(12, 0.2)]).collect(),
+                    0.01,
+                    0.1,
+                )
+                .expect("smooth stack"),
+            ),
+        ];
+        for (name, t) in &trees {
+            let t = t.clone().translate(0.1, 0.0, 0.0);
+            let before = WgslShader::transpile(&t, TranspileMode::Dynamic);
+            assert!(
+                !const_arrays(&before.to_compute_shader()).is_empty(),
+                "{name}: the plain Dynamic form declares no constant array, the check has no teeth"
+            );
+            let s = WgslShader::transpile_dynamic(&t);
+            for text in [s.to_compute_shader(), s.to_compute_shader_with_normals()] {
+                let arrays = const_arrays(&text);
+                assert!(arrays.is_empty(), "{name}: constant data arrays {arrays:?}");
+            }
+            assert!(
+                !s.node_data.is_empty(),
+                "{name}: no data in the node data buffer"
+            );
+        }
+    }
+
     #[test]
     fn test_transpile_sphere() {
         let sphere = SdfNode::Sphere { radius: 1.0 };
