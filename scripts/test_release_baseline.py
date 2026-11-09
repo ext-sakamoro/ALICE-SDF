@@ -112,12 +112,45 @@ class Baseline(unittest.TestCase):
         b = self.base()
         self.assertEqual((b.sha, b.version), (c2, "0.1.0"))
 
-    def test_a_branch_off_main_looks_for_the_bump_on_main(self):
+    def test_a_branch_with_its_own_bump_gets_the_parent_of_its_own_bump(self):
+        """the pushed commits (merge-base..HEAD) are read as if main had them: a branch that bumps the
+        version is judged against the parent of its bump, the base main computes once the branch lands
+        by fast-forward (oracle: c4 written out here, the commit before the branch's bump c5)"""
         c1, c2, c3, c4 = self.linear()
         git(self.repo, "checkout", "-q", "-b", "work")
         self.commit({"Cargo.toml": toml("alice-x", "0.3.0")}, "c5 bump on the branch")
         b = self.base()
+        self.assertEqual((b.sha, b.version), (c4, "0.2.0"))
+
+    def test_the_branch_base_equals_the_base_main_computes_after_the_landing(self):
+        """the same answer on the ci branch and on main after a fast-forward landing of the same commits"""
+        c1, c2, c3, c4 = self.linear()
+        git(self.repo, "checkout", "-q", "-b", "work")
+        c5 = self.commit({"Cargo.toml": toml("alice-x", "0.3.0")}, "c5 bump on the branch")
+        self.commit({"src.rs": "c"}, "c6 after the bump")
+        on_branch = self.base()
+        git(self.repo, "branch", "-q", "-f", "main", "HEAD")
+        on_main = self.base()
+        self.assertEqual(on_branch, on_main)
+        self.assertEqual((on_branch.sha, on_branch.version), (c4, "0.2.0"))
+        self.assertNotEqual(on_branch.sha, c5)
+
+    def test_a_branch_without_a_bump_keeps_the_bump_on_main(self):
+        """no version change in merge-base..HEAD: the base is main's newest bump, as before (c2)"""
+        c1, c2, c3, c4 = self.linear()
+        git(self.repo, "checkout", "-q", "-b", "work")
+        self.commit({"src.rs": "branch work"}, "c5 no bump")
+        b = self.base()
         self.assertEqual((b.sha, b.version), (c2, "0.1.0"))
+
+    def test_the_newest_of_two_bumps_on_the_branch_sets_the_base(self):
+        """two bumps in the pushed commits: the parent of the newer one (c5, at 0.3.0)"""
+        c1, c2, c3, c4 = self.linear()
+        git(self.repo, "checkout", "-q", "-b", "work")
+        c5 = self.commit({"Cargo.toml": toml("alice-x", "0.3.0")}, "c5 bump")
+        self.commit({"Cargo.toml": toml("alice-x", "0.4.0")}, "c6 bump again")
+        b = self.base()
+        self.assertEqual((b.sha, b.version), (c5, "0.3.0"))
 
     def test_a_version_that_moved_only_on_a_merged_branch_is_not_a_bump(self):
         c1, c2, c3, c4 = self.linear()

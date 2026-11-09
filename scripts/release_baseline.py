@@ -149,6 +149,25 @@ def bump_baseline(root: Path | str, manifest: str, package: str, *, base_package
         raise BaselineError(f"{head} and {main_ref} have no common commit in {root}")
     names = (package,) + ((base_package,) if base_package else ())
     start = mb.stdout.strip()
+    # the pushed commits first (merge-base..HEAD on HEAD's first-parent line), read as if main had them: a
+    # version change there is the newest bump, and its parent is the base main computes once these commits
+    # land by fast-forward (on a ci branch the bump is not on main yet; reading main's line alone gave another
+    # base before the landing than after it). No change there: main's line from the merge base, as before.
+    if head_sha != start:
+        own = _git(root, "rev-list", "--first-parent", head_sha, f"^{start}").stdout.split()
+        if prefilter:
+            touched = set(_git(root, "rev-list", "--first-parent", head_sha, f"^{start}", "--",
+                               *_version_paths(manifest)).stdout.split())
+            own = [c for c in own if c in touched]
+        for c in own:
+            v = version_at(root, c, manifest, names)
+            parents = _git(root, "rev-list", "--parents", "-n", "1", c).stdout.split()[1:]
+            pv = version_at(root, parents[0], manifest, names) if parents else None
+            if v is not None and pv is not None and pv != v:
+                return Baseline(parents[0], pv, False)
+            if v is not None and pv is None:
+                # the crate came on these commits: introduced, as when main's line shows it coming
+                break
     if version_at(root, start, manifest, names) is None:
         # the crate is not on main at the merge base (it came on HEAD's branch)
         _introduced(root, start, manifest, names)

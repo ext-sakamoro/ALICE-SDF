@@ -607,6 +607,22 @@ class EndToEnd(unittest.TestCase):
         self.assertIn("(0.3.0)", report[0])
         self.assertTrue(any("moved 11111111 -> 22222222" in r for r in report), report)
 
+    def test_a_ci_branch_bump_that_moves_an_id_unnamed_fails_on_the_branch(self):
+        """a version bump that is only on a ci branch (main has not got it yet) is judged as main judges it
+        after a fast-forward landing: against the commit before the bump, so a move CHANGELOG.md does not
+        name fails on the branch, not only after landing (2026-11-09: it passed on ci/** and went red on main)"""
+        d = self.repo()
+        subprocess.run(["git", "-C", str(d), "checkout", "-q", "-B", "ci/x"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(d), "branch", "-f", "main", "HEAD"], check=True, capture_output=True)
+        self.write(d, "0.4.0", "0x22", "")
+        (d / "CHANGELOG.md").write_text("# Changelog\n\n## [Unreleased]\n\n- the version moves\n")
+        self.commit(d, "bump on the branch")
+        problems = imc.check(d, None, "bump", "main")[0]
+        self.assertTrue(any("does not name 11111111, 22222222" in p for p in problems), problems)
+        # the same commit on main (landed by fast-forward) gives the same verdict
+        subprocess.run(["git", "-C", str(d), "branch", "-f", "main", "HEAD"], check=True, capture_output=True)
+        self.assertEqual(imc.check(d, None, "bump", "main")[0], problems)
+
     def test_bump_base_named_only_in_an_older_section_fails(self):
         d = self.repo()
         self.write(d, "0.4.0", "0x22", "")
