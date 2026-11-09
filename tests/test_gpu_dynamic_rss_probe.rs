@@ -97,7 +97,7 @@ fn step(what: &str, build: impl FnOnce() -> GpuEvaluator) -> GpuEvaluator {
 }
 
 #[test]
-fn rss_per_case_dropped() {
+fn rss_z_per_case_dropped() {
     let cases: Vec<(&str, SdfNode)> = vec![
         ("sphere", SdfNode::sphere(0.2)),
         ("polygon 5", poly(5)),
@@ -110,23 +110,23 @@ fn rss_per_case_dropped() {
         ("smooth stack", smooth(0.2).translate(0.1, 0.0, 0.0)),
     ];
     for (n, t) in &cases {
-        drop(step(&format!("dynamic {n}"), || {
-            GpuEvaluator::new_dynamic(t).expect("dynamic")
-        }));
-        eprintln!("rss-probe dynamic {n}: after drop {:.0} MiB", rss_mib());
-    }
-    for (n, t) in &cases {
         let s = WgslShader::try_transpile_with_node_data(t, TranspileMode::Hardcoded)
             .expect("node data");
         drop(step(&format!("node-data {n}"), || {
             GpuEvaluator::from_shader(&s).expect("node data")
         }));
     }
+    for (n, t) in &cases {
+        drop(step(&format!("dynamic {n}"), || {
+            GpuEvaluator::new_dynamic(t).expect("dynamic")
+        }));
+        eprintln!("rss-probe dynamic {n}: after drop {:.0} MiB", rss_mib());
+    }
 }
 
 #[test]
-fn rss_per_loft_count() {
-    for k in [1usize, 2, 4] {
+fn rss_a_per_loft_count() {
+    for k in [1usize, 2, 4, 8] {
         let t = union_of((0..k).map(|i| curves(0.2, 0.3 * i as f32)).collect());
         let s = WgslShader::try_transpile_with_node_data(&t, TranspileMode::Hardcoded)
             .expect("node data");
