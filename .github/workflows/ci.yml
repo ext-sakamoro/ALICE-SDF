@@ -1405,6 +1405,17 @@ jobs:
 
       # a large loft's WGSL and GLSL as SPIR-V: every instruction fits its 16-bit word count
       # (the module arrays are chunked), checked by the test's own walker and by spirv-val
+      - name: WGSL array constructors within the spec limit, and the smaller chunks keep the GPU as close to the CPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features "gpu" --test test_wgsl_array_constructor_limit -- --nocapture 2>&1 | tee test_wgsl_array_constructor_limit.log
+          python3 scripts/libtest_count.py test_wgsl_array_constructor_limit.log --min 2 --what "test_wgsl_array_constructor_limit"
+          grep -q "array constructors: [1-9]" test_wgsl_array_constructor_limit.log
+          cargo test --features "gpu" --test test_wgsl_chunk_ulp -- --nocapture 2>&1 | tee test_wgsl_chunk_ulp.log
+          python3 scripts/libtest_count.py test_wgsl_chunk_ulp.log --min 1 --what "test_wgsl_chunk_ulp"
+          grep -q "height map 300 x 300: max |gpu - cpu| " test_wgsl_chunk_ulp.log
+
       - name: Module arrays fit SPIR-V instructions (spirv-val)
         shell: bash
         run: |
