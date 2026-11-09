@@ -170,9 +170,11 @@ fn measure(form: &str, kind: &str, n: usize) -> f64 {
         "{case}: the child failed\n{text}\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
+    // libtest prints the child's line after its own `test compile_memory_child ... ` on one line
+    let tag = format!("compile-memory {case} ");
     let line = text
         .lines()
-        .find(|l| l.starts_with(&format!("compile-memory {case} ")))
+        .find_map(|l| l.find(&tag).map(|at| &l[at..]))
         .unwrap_or_else(|| panic!("{case}: no measurement in\n{text}"));
     let mut w = line.split_whitespace().skip(2);
     let mib: f64 = w.next().and_then(|x| x.parse().ok()).expect("MiB");
@@ -232,11 +234,12 @@ fn the_compile_memory_does_not_grow_with_the_polygons() {
         !grows(a, b),
         "looped polygons: +{a:.0} MiB -> +{b:.0} MiB from 4 to 16"
     );
-    // the teeth: the same polygons, one emitted copy each, grow
-    let (pa, pb) = excesses("per-node", "polygons", 4, 16);
+    // the teeth: the same polygons, one emitted copy each, grow (2 to 8, smaller than the looped
+    // sizes: 16 per-node polygons alone took about 3 GB on a real driver)
+    let (pa, pb) = excesses("per-node", "polygons", 2, 8);
     assert!(
         grows(pa, pb),
-        "per-node polygons: +{pa:.0} MiB -> +{pb:.0} MiB from 4 to 16, the measure does not see a \
+        "per-node polygons: +{pa:.0} MiB -> +{pb:.0} MiB from 2 to 8, the measure does not see a \
          growing compile"
     );
 }
@@ -255,20 +258,25 @@ fn the_compile_memory_does_not_grow_with_the_lofts() {
     );
 }
 
+/// The memory budget of the job that runs this test (scripts/peak_rss.py --max-mib in the lavapipe
+/// job and in preflight)
+const JOB_BUDGET_MIB: f64 = 3072.0;
+
 #[test]
-fn a_dynamic_loft_takes_the_memory_of_the_node_data_form() {
+fn a_dynamic_loft_compiles_within_the_job_budget() {
     if !measurable() {
         return;
     }
     // Dynamic mode with the loft's rows in a module-scope array read at run-time indices took more
-    // than 12 GB on llvmpipe for one curve loft; with the rows in the node data buffer it is the
-    // looped form's size
-    let base = measure("looped", "sphere", 1);
-    let looped = measure("looped", "curve-lofts", 1) - base;
-    let dynamic = measure("per-node", "curve-lofts", 1) - measure("per-node", "sphere", 1);
-    eprintln!("dynamic curve loft: +{dynamic:.0} MiB, node data form +{looped:.0} MiB");
+    // than 12 GB on llvmpipe for one curve loft; the structural cause is pinned by
+    // `the_dynamic_evaluator_shader_declares_no_constant_data_array`, this is the memory it leaves
+    let peak = measure("per-node", "curve-lofts", 1);
+    let looped = measure("looped", "curve-lofts", 1);
+    eprintln!(
+        "dynamic curve loft: {peak:.0} MiB, node data form {looped:.0} MiB (peak, not excess)"
+    );
     assert!(
-        dynamic.max(FLOOR_MIB) <= GROWTH * looped.max(FLOOR_MIB),
-        "a Dynamic curve loft takes +{dynamic:.0} MiB, the node data form +{looped:.0} MiB"
+        peak < JOB_BUDGET_MIB,
+        "a Dynamic curve loft peaks at {peak:.0} MiB, over the job budget {JOB_BUDGET_MIB:.0} MiB"
     );
 }
