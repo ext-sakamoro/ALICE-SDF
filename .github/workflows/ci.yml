@@ -1230,7 +1230,9 @@ jobs:
     name: GPU parity (lavapipe)
     needs: changes
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
-    runs-on: ubuntu-latest
+    # pinned: the bit-exact parity lane must not move with ubuntu-latest (26.04's mesa lavapipe crashes
+    # in the GLSL execution parity; qualify 26.04 before moving it)
+    runs-on: ubuntu-24.04
     env:
       ALICE_SDF_REQUIRE_GPU: "1"
       WGPU_BACKEND: vulkan
