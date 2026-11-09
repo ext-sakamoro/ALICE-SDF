@@ -91,6 +91,19 @@ fn main() {
         0.0,
         "ellipse vertex",
     );
+    // A tapered segment (radius 1 at the origin, 0.5 at (4, 0)): past either end the distance is
+    // to that end's circle.
+    let taper = Sdf2dNode::uneven_capsule([0.0, 0.0], [4.0, 0.0], 1.0, 0.5);
+    close(
+        eval_2d(&taper, [5.0, 0.0]),
+        0.5,
+        "uneven capsule past the thin end",
+    );
+    close(
+        eval_2d(&taper, [-2.0, 0.0]),
+        1.0,
+        "uneven capsule behind the thick end",
+    );
     let n = eval_2d_normal(&Sdf2dNode::circle(1.0), [0.0, 2.0]);
     println!("circle normal at (0, 2) = {n:?}");
     assert!(n[0].abs() < 1e-3 && (n[1] - 1.0).abs() < 1e-3);
