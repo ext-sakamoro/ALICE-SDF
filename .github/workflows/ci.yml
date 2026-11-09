@@ -1258,6 +1258,15 @@ jobs:
           VK_ICD_FILENAMES="$icd" vulkaninfo --summary | tee /tmp/vulkaninfo.txt | head -60
           grep -qi llvmpipe /tmp/vulkaninfo.txt
 
+      - name: Compile memory per case (measurement)
+        run: |
+          set -uo pipefail
+          cargo test --no-run --features "gpu,glsl,hlsl" --test test_gpu_compile_memory
+          for c in looped:sphere:1 looped:polygons:1 looped:polygons:2 looped:polygons:4 per-node:sphere:1 per-node:polygons:1 per-node:polygons:2 per-node:polygons:4; do
+            echo "case $c"
+            ALICE_SDF_COMPILE_MEMORY_CASE=$c python3 scripts/peak_rss.py --max-mib 6000 --what "case $c" -- cargo test --features "gpu,glsl,hlsl" --test test_gpu_compile_memory -- compile_memory_child --exact --nocapture --test-threads=1 2>&1 | grep -E "compile-memory|peak-rss|panicked" || true
+          done
+
       - name: GPU ↔ CPU law parity, shader validation, GPU marching cubes
         run: >
           cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
