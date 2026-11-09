@@ -1258,6 +1258,12 @@ jobs:
           VK_ICD_FILENAMES="$icd" vulkaninfo --summary | tee /tmp/vulkaninfo.txt | head -60
           grep -qi llvmpipe /tmp/vulkaninfo.txt
 
+      - name: Resident memory per Dynamic evaluator (measurement)
+        run: |
+          set -euo pipefail
+          cargo test --no-run --features "gpu,glsl,hlsl" --test test_gpu_dynamic_rss_probe
+          python3 scripts/peak_rss.py --max-mib 12000 --what "rss probe" -- cargo test --features "gpu,glsl,hlsl" --test test_gpu_dynamic_rss_probe -- --nocapture --test-threads=1
+
       - name: GPU ↔ CPU law parity, shader validation, GPU marching cubes
         run: >
           cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
