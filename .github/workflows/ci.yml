@@ -468,6 +468,19 @@ jobs:
           cargo test --features msl --test test_gpu_fma_contraction -- --nocapture 2>&1 | tee gpu-fma.log
           python3 scripts/libtest_count.py gpu-fma.log --min 1 --what "GpuEvaluator fma contraction tests (msl, Metal)"
 
+      # The const and variable GLSL arrays agree on a loft (12 arrays). Metal compiles the shader when
+      # the pipeline is created, where llvmpipe compiles the const form at the first dispatch and does
+      # not finish it in 890 s; the test is ignored elsewhere, and 0 tests run fails here
+      - name: GLSL const and variable arrays agree on a loft (Metal through wgpu, macOS only)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        env:
+          ALICE_SDF_REQUIRE_GPU: "1"
+        run: |
+          set -euo pipefail
+          cargo test --features "gpu,glsl" --test test_glsl_array_form const_and_variable_arrays_agree_on_a_loft -- --ignored --exact --nocapture 2>&1 | tee glsl-const-loft.log
+          python3 scripts/libtest_count.py glsl-const-loft.log --min 1 --what "GLSL const and variable arrays on a loft (Metal)"
+
       # doctest (= rustdoc 内 ```rust ブロック) は --lib / --tests では走らない
       # ``` の文字リテラル混入で doctest が落ちるのを予防
       - name: Test (doctests)
@@ -1375,7 +1388,8 @@ jobs:
           cargo test --features gpu --test test_gpu_wait_limit -- --nocapture 2>&1 | tee test_gpu_wait_limit.log
           python3 scripts/libtest_count.py test_gpu_wait_limit.log --min 1 --what "test_gpu_wait_limit"
 
-      # GLSL arrays are variables, and a loft compiles within a limit on this driver
+      # GLSL arrays are variables, a loft compiles within a limit on this driver, and the const and
+      # variable forms agree on a section stack (the loft is compared on the macOS lane)
       - name: GLSL array form and compile limit
         shell: bash
         run: |

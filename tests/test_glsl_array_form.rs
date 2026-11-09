@@ -4,7 +4,14 @@
 //! variable form on one loft and links the `const` form (3.0 s, and 7.1 s with curves, checked by
 //! hand on an arm64 board, Chrome WebGL2).
 //!
-//! What this does not cover: the lane runs the compute form, not WebGL2's text, and D3D11 is
+//! The two forms are compared on two lanes. On llvmpipe (Linux, the GPU lane) the const form is
+//! compiled at the first dispatch and its cost jumps with the number of arrays: a section stack with 2
+//! arrays takes 0.15 s, a loft with 12 does not finish in 890 s. So that lane compares them on the
+//! section stack. The loft is compared on the macOS lane (`ci.yml`, Metal through wgpu), where the
+//! shader is compiled when the pipeline is created; that test is ignored elsewhere and the macOS step
+//! runs it with `--ignored` and fails on 0 tests run.
+//!
+//! What this does not cover: the lanes run the compute form, not WebGL2's text, and D3D11 is
 //! unmeasured. This does not make a whole body work in GLSL: that many arrays neither compile in 10
 //! minutes as variables nor pass ANGLE's limit.
 //!
@@ -133,18 +140,16 @@ const CONST_FIRST_DISPATCH_LIMIT: Duration = Duration::from_secs(180);
 /// The const form's dispatch of the 1024 points once compiled
 const CONST_DISPATCH_LIMIT: Duration = Duration::from_secs(60);
 
-/// The two forms on one driver, on a loft small enough for the const form to compile and run within
-/// the limits above (each timed on its own and printed): the count is printed and the difference
-/// bounded, because a driver may fold the const reads
-#[test]
+/// The const and variable forms of `node`'s compute shader on one driver: the const form's build,
+/// first dispatch and dispatch are each timed and bounded, the count of points whose bits differ is
+/// printed and the difference bounded, because a driver may fold the const reads
 #[allow(
     clippy::disallowed_methods,
     reason = "the build and dispatch times are measured and bounded, not part of a computation"
 )]
-fn const_and_variable_arrays_agree_on_one_driver() {
-    let node = loft(2, 4);
+fn const_and_variable_forms_agree(node: &SdfNode) {
     let variable =
-        GlslShader::transpile(&node, GlslTranspileMode::Hardcoded).to_vulkan_compute_shader();
+        GlslShader::transpile(node, GlslTranspileMode::Hardcoded).to_vulkan_compute_shader();
     let constant = with_const_arrays(&variable);
     assert_ne!(variable, constant, "the two forms are the same text");
     let t = Instant::now();
@@ -198,4 +203,19 @@ fn const_and_variable_arrays_agree_on_one_driver() {
         x.len()
     );
     assert!(max < 2e-6, "largest difference {max}");
+}
+
+/// The two forms on one driver, on a section stack (2 arrays) that llvmpipe compiles in well under a
+/// second in the const form
+#[test]
+fn const_and_variable_arrays_agree_on_one_driver() {
+    const_and_variable_forms_agree(&section_stack());
+}
+
+/// The two forms on a loft (12 arrays), on a driver that compiles at pipeline creation: the macOS
+/// lane runs this with `--ignored` (llvmpipe does not finish the const form's first dispatch in 890 s)
+#[test]
+#[ignore = "runs on the macOS lane, where Metal compiles the shader at pipeline creation"]
+fn const_and_variable_arrays_agree_on_a_loft() {
+    const_and_variable_forms_agree(&loft(2, 4));
 }

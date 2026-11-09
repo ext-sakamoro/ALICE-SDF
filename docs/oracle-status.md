@@ -8,10 +8,10 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 |----------|-------|
 | 🟢 Not ignored | 1207 |
 | 🔴 Red by design | 5 |
-| ⏱ Gated (runtime / diagnostic / manual) | 6 |
+| ⏱ Gated (runtime / diagnostic / manual) | 7 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1218** |
+| **Total** | **1219** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -37,11 +37,12 @@ exact assert by itself once the defect is gone (see the test's doc).
 - `a_large_twist_keeps_the_plain_bits_on_the_gpu` (test_union_bound_oracle.rs) — known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within c…
 - `no_checked_read_leaves_its_proven_range_on_the_gpu` (test_shader_data_bounds.rs) — known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within t…
 
-## ⏱ Gated (6)
+## ⏱ Gated (7)
 
 Correct tests that are too slow for every push, or that print a measurement table.
 Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ignored`.
 
+- `const_and_variable_arrays_agree_on_a_loft` (test_glsl_array_form.rs) — runs on the macOS lane, where Metal compiles the shader at pipeline creation
 - `gradient_norm_at_the_surface` (test_loft_oracle.rs) — measurement: |∇f| at the surface of the bent mm-scale loft (run with --ignored --nocapture)
 - `march_steps_of_the_global_bound` (test_loft_oracle.rs) — measurement: march step counts of the global bound (run with --ignored --nocapture)
 - `metal_default_fast_math_loses_the_sign_of_zero` (test_msl_metal_oracle.rs) — driver observation: Metal default fast math loses the sign of zero
