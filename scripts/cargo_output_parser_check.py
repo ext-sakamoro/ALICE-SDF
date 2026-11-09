@@ -57,7 +57,7 @@ def imports(src: str, module: str) -> bool:
 # Names of a declared parser module that parse no cargo / tool output, with why. A test that uses
 # only these names of the module (`import m as a` then `a.<name>`, or `from m import <name>`) does not
 # test the parser, so it needs no coloured sample. Any other name of the module, or no name found,
-# makes it a test of the parser as before. The shared scripts/test_package_git_patches.py imports
+# makes it a test of the parser as before. The shared scripts/package_integrity.py (and its test) imports
 # id_move_check only to read a branch dependency's commit from Cargo.lock; the list moves into
 # id_move_check itself at its next shared re-roll.
 NON_PARSING_NAMES: dict[str, dict[str, str]] = {

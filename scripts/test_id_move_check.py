@@ -1644,6 +1644,51 @@ class BaseBeforePins(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.parent, ignore_errors=True)
 
+    def drop_path_deps(self, version: str):
+        (self.d / "Cargo.toml").write_text(
+            f'[package]\nname = "probe-crate"\nversion = "{version}"\nedition = "2021"\n\n[workspace]\n')
+
+    def remove_pins_history(self, keep_path_dep: bool) -> None:
+        """pins added, then removed in a later commit (with the path dependency, or not), then a release"""
+        (self.d / ".github" / "alice-siblings").write_text(f"ALICE-Up {self.v1}\n")
+        self.git(self.d, "add", "-A", date="2026-02-15T00:00:00Z")
+        self.git(self.d, "commit", "-qm", "pins", date="2026-02-15T00:00:00Z")
+        (self.d / ".github" / "alice-siblings").unlink()
+        if keep_path_dep:
+            self.probe("0.3.0", "^1")
+        else:
+            self.drop_path_deps("0.3.0")
+        self.git(self.d, "add", "-A", date="2026-02-20T00:00:00Z")
+        self.git(self.d, "commit", "-qm", "path deps and pins removed", date="2026-02-20T00:00:00Z")
+        (self.d / "CHANGELOG.md").write_text("# Changelog\n\n## 0.3.0\n")
+        self.release("2026-03-02T00:00:00Z")
+        self.drop_path_deps("0.4.0")
+
+    def test_a_base_whose_history_removed_the_pins_with_the_path_deps_is_accepted(self):
+        # the repository dropped its path dependencies and .github/alice-siblings with them: the
+        # base has no siblings, so there is nothing to build against and nothing is broken
+        self.remove_pins_history(keep_path_dep=False)
+        removed = self.git(self.d, "rev-parse", "v0.3.0~1")
+        self.assertEqual(imc.siblings_file_removed(self.d, "v0.3.0"), removed)
+        self.assertEqual(imc.base_sibling_pins(self.d, ["v0.3.0"]), [])
+        problems, report = imc.check(self.d, None, "tag")
+        self.assertEqual(problems, [])
+        self.assertFalse(any("ALICE-Up" in r for r in report), report)
+
+    def test_a_base_whose_history_removed_the_pins_but_still_reaches_a_sibling_is_broken(self):
+        self.remove_pins_history(keep_path_dep=True)
+        with self.assertRaises(imc.CheckError) as e:
+            imc.base_sibling_pins(self.d, ["v0.3.0"])
+        self.assertIn("broken base", str(e.exception))
+        self.assertIn("was removed in", str(e.exception))
+        with self.assertRaises(imc.CheckError) as e:
+            imc.check(self.d, None, "tag")
+        self.assertIn("broken base", str(e.exception))
+        self.assertIn("../ALICE-Up", str(e.exception))
+
+    def test_a_base_from_before_any_pin_file_is_no_removal(self):
+        self.assertIsNone(imc.siblings_file_removed(self.d, "v0.3.0"))
+
     def test_each_sibling_is_taken_at_its_main_as_of_the_base_commit(self):
         problems, report = imc.check(self.d, None, "tag")
         self.assertEqual(problems, [])
