@@ -70,7 +70,7 @@ dependencies = [
 [[package]]
 name = "alice-det-math"
 version = "0.6.1"
-source = "git+https://github.com/ext-sakamoro/ALICE-DetMath?branch=main#8c4c9132c39e07890dcf6de07fc35bd39732a72b"
+source = "git+https://github.com/ext-sakamoro/ALICE-DetMath?branch=main#81b301495181edb559de9e36052bd7b96646e91f"
 dependencies = [
  "bytemuck",
  "wide",
@@ -79,7 +79,7 @@ dependencies = [
 [[package]]
 name = "alice-physics"
 version = "4.0.0"
-source = "git+https://github.com/ext-sakamoro/ALICE-Physics?rev=4b8e7592ce22de28b632d41785415d8c6351159e#4b8e7592ce22de28b632d41785415d8c6351159e"
+source = "git+https://github.com/ext-sakamoro/ALICE-Physics?branch=main#30c9d4623af2b6afb49e71bdeefee4b7c120735a"
 dependencies = [
  "alice-physics-core",
 ]
@@ -87,7 +87,7 @@ dependencies = [
 [[package]]
 name = "alice-physics-core"
 version = "4.0.0"
-source = "git+https://github.com/ext-sakamoro/ALICE-Physics?rev=4b8e7592ce22de28b632d41785415d8c6351159e#4b8e7592ce22de28b632d41785415d8c6351159e"
+source = "git+https://github.com/ext-sakamoro/ALICE-Physics?branch=main#30c9d4623af2b6afb49e71bdeefee4b7c120735a"
 dependencies = [
  "alice-det-math",
  "sha2",
