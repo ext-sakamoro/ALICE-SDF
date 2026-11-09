@@ -1,0 +1,7 @@
+# ALICE-SDF: the call sites scripts/entropy_guard.py allows in src/ (exact counts; an entry that matches nothing fails)
+
+[[allow]]
+path = "src/bin/main.rs"
+pattern = "Instant::now"
+count = 14
+reason = "CLI timing printed to the terminal after each command, not stored and not part of library output"

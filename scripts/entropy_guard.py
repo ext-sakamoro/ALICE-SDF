@@ -1,39 +1,51 @@
 #!/usr/bin/env python3
 """No deterministic path of the crate draws OS entropy or reads the wall clock.
 
-The crate's computed/stored output must be bit-identical given the same input
-regardless of when or on what machine it runs, so production code must not
-call an OS entropy source or a wall clock.
+An estimate this crate computes (a quantile, a cardinality, a noisy count) is
+meant to compare equal given the same input, on any machine, at any time, so
+no part of production code may depend on the wall clock or on OS randomness:
+either one would make the same input produce a different estimate on a
+different run. Randomness a caller wants belongs to the caller, passed in
+explicitly (`XorShift64::new(seed)` / `with_seed` / `with_probability` /
+`with_seed_params`); this crate's own production code never reaches for it on
+its own, except the one deprecated path documented below.
 
-Checked in every `*.rs` file under `src/`, outside
-`#[cfg(test)]` modules, with the code of a file joined (a call split over
-lines still matches), `use .. as` aliases of `Instant` / `SystemTime`
-resolved, and a fully-qualified-self call (`<std::time::Instant>::now()`)
-recognised the same as the plain form:
+Checked in every src/**/*.rs file, outside `#[cfg(test)]` / `#[cfg(all(test,
+...))]` modules, with the code of a file joined (a call split over lines still
+matches), `use .. as` aliases of `Instant` / `SystemTime` resolved, and a
+fully-qualified-self call (`<std::time::Instant>::now()`) recognised the same
+as the plain form:
 
     getrandom  OsRng  thread_rng  rand::random  from_entropy(  try_from_entropy(
     SystemTime::now  Instant::now  UNIX_EPOCH  RandomState (any use, not only
     `::new`: `::default()` reaches the same OS-seeded hasher)  Uuid::new_v4
 
-`libalice/` is a separate, non-workspace crate (its own `Cargo.toml`, no
-`[workspace]` on either side), but clippy resolves `clippy.toml` by walking up
-parent directories regardless of workspace membership, so the root
-`clippy.toml`'s `disallowed-methods` already reaches it -- this script's scan
-root matches that reach rather than being narrower than the compiled layer.
-
 clippy's `disallowed-methods` in clippy.toml is the first layer (compiled,
 `cargo clippy --all-targets -D warnings`); this script is the second, readable
-without compiling (clippy's `--all-targets` also covers tests/benches/
-examples, where a scoped `#[allow(clippy::disallowed_methods, reason =
-"...")]` carries the same per-call-site accounting this script does).
+without compiling and run on `src/` only (clippy's `--all-targets` also covers
+tests/benches/examples/fuzz, where a scoped `#[allow(clippy::disallowed_methods,
+reason = "...")]` carries the same per-call-site accounting this script does).
 
 Deliberately not scanned: `HashMap` / `HashSet` (their default hasher also
-seeds from OS randomness, but that is tracked as its own gate, not here).
+seeds from OS randomness, but that is a separate gate -- iteration order, not
+entropy in a value -- this crate has no HashMap/HashSet in src/ today).
 
-A definition (`fn from_entropy`) is not a call. ALLOWED lists the call sites
-that stay, each with its reason and exact count: a count that drifts either
-way fails, so a new call cannot hide behind an old entry and a removed one
-must be removed here too. Scanning no file, or no pattern, fails.
+A definition (`fn from_entropy`) is not a call. The call sites that stay are
+this repository's own data, listed in scripts/entropy_guard.toml (this script
+is shared byte-for-byte between repositories, so it carries none):
+
+    [[allow]]
+    path = "src/bin/main.rs"
+    pattern = "Instant::now"
+    count = 14
+    reason = "CLI timing printed to the terminal, not stored"
+
+Each entry gives the path, a pattern name above, the exact count and a reason:
+a count that drifts either way fails, so a new call cannot hide behind an old
+entry and a removed one must be removed there too; an entry that matches
+nothing fails as stale; the same site listed twice, an unknown pattern or key,
+or a file that does not parse fails. No file means no allowance (every call is
+a finding), never a skip. Scanning no file, or no pattern, fails.
 
     python3 scripts/entropy_guard.py
 """
@@ -41,10 +53,10 @@ from __future__ import annotations
 
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCAN_DIRS = ("src",)
 # A qualified-self call wraps the type in `<...>` and may add `as Trait`
 # before the closing `>` (`<std::time::Instant>::now()`, `<std::time::Instant
 # as SomeTrait>::now()`): the type name's own `\b` boundary does not care about
@@ -74,12 +86,49 @@ ALIASABLE = {
     "SystemTime": ("SystemTime::now", r"\b{}\b" + _QUALIFIED_SELF + r"::\s*now\b"),
 }
 ALIAS_RE = re.compile(r"\b(Instant|SystemTime)\s+as\s+(\w+)")
-# (file, pattern) -> (count, reason)
-ALLOWED: dict[tuple[str, str], tuple[int, str]] = {
-    ("src/bin/main.rs", "Instant::now"): (
-        14, "CLI timing printed to the terminal after each command, not stored and not part of library output",
-    ),
-}
+# this repository's allowances: (file, pattern) -> (count, reason), read by load_allowed
+ALLOW_FILE = "scripts/entropy_guard.toml"
+ALLOW_KEYS = {"path", "pattern", "count", "reason"}
+
+
+def load_allowed(root: Path) -> tuple[dict[tuple[str, str], tuple[int, str]], list[str]]:
+    """(allowances, problems) from ALLOW_FILE under `root`; an absent file is no allowance"""
+    f = root / ALLOW_FILE
+    if not f.is_file():
+        return {}, []
+    try:
+        data = tomllib.loads(f.read_text(encoding="utf-8"))
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as e:
+        return {}, [f"{ALLOW_FILE} is not TOML: {e}"]
+    problems: list[str] = []
+    if set(data) - {"allow"} or not isinstance(data.get("allow", []), list):
+        problems.append(f"{ALLOW_FILE}: only [[allow]] entries are read (found {sorted(data)})")
+    allowed: dict[tuple[str, str], tuple[int, str]] = {}
+    for i, e in enumerate(data.get("allow", []) if isinstance(data.get("allow", []), list) else [], 1):
+        where = f"{ALLOW_FILE} entry {i}"
+        if not isinstance(e, dict):
+            problems.append(f"{where}: not a table")
+            continue
+        extra = set(e) - ALLOW_KEYS
+        if extra:
+            problems.append(f"{where}: unknown key {sorted(extra)}")
+        path, name, count, reason = e.get("path"), e.get("pattern"), e.get("count"), e.get("reason", "")
+        if not isinstance(path, str) or not path:
+            problems.append(f"{where}: path must be a file under src/")
+            continue
+        if name not in PATTERNS:
+            problems.append(f"{where}: unknown pattern {name!r} (one of {sorted(PATTERNS)})")
+            continue
+        if not isinstance(count, int) or isinstance(count, bool) or count < 1:
+            problems.append(f"{where}: count must be a positive integer (got {count!r})")
+            continue
+        if not isinstance(reason, str):
+            reason = ""
+        if (path, name) in allowed:
+            problems.append(f"{where}: {name} in {path} listed twice")
+            continue
+        allowed[(path, name)] = (count, reason)
+    return allowed, problems
 # A char literal ('{', '\n', '\u{1F600}', also after a `b` prefix) but not a
 # lifetime ('a, 'static: those have no closing quote, so they never match.
 CHAR_RE = re.compile(r"'(?:\\u\{[0-9a-fA-F_]+\}|\\x[0-9a-fA-F]{2}|\\.|[^'\\\n])'")
@@ -147,7 +196,7 @@ def production_lines(text: str) -> list[tuple[int, str]]:
     depth = 0
     for n, code in enumerate(sanitize(text).splitlines(), 1):
         stripped = code.strip()
-        if skip_depth is None and stripped.startswith("#[cfg(test)]"):
+        if skip_depth is None and (stripped == "#[cfg(test)]" or re.match(r"#\[cfg\(all\(test\s*,", stripped)):
             pending_test = True
             continue
         opens, closes = code.count("{"), code.count("}")
@@ -169,17 +218,7 @@ def production_lines(text: str) -> list[tuple[int, str]]:
 def matches(lines: list[tuple[int, str]]) -> dict[str, list[int]]:
     """Line numbers of each pattern in the production lines of one file, with
     the code joined so a call split over lines still matches, and aliases
-    (`use std::time::Instant as Clock`) resolved
-
-    Known limitation: hits are recorded as a set of distinct line numbers, not
-    a count of matches, so two calls to the same pattern on one line count as
-    one. ALLOWED's count is keyed on this same "distinct lines" accounting, so
-    a 2nd call squeezed onto an already-allowed line would not raise the
-    count here -- clippy's disallowed-methods (compiled, per-call-site) still
-    catches it independently, which is why this is noted rather than fixed:
-    changing the accounting here would also need ALLOWED's semantics to
-    change from "line count" to "call count", a larger edit than this script's
-    role (a readable, compile-free second layer) calls for."""
+    (`use std::time::Instant as Clock`) resolved"""
     text = "\n".join(code for _, code in lines)
     starts = []
     pos = 0
@@ -203,25 +242,25 @@ def matches(lines: list[tuple[int, str]]) -> dict[str, list[int]]:
 
 
 def check(root: Path) -> tuple[list[str], int, int]:
-    problems: list[str] = []
+    allowed_sites, problems = load_allowed(root)
     counts: dict[tuple[str, str], list[int]] = {}
-    files = sorted({p for d in SCAN_DIRS for p in (root / d).rglob("*.rs")})
+    files = sorted((root / "src").rglob("*.rs"))
     for path in files:
         rel = path.relative_to(root).as_posix()
         for name, hits in matches(production_lines(path.read_text(encoding="utf-8"))).items():
             counts[(rel, name)] = hits
     for key, lines in sorted(counts.items()):
-        allowed = ALLOWED.get(key)
+        allowed = allowed_sites.get(key)
         where = ", ".join(f"{key[0]}:{n}" for n in lines)
         if allowed is None:
             problems.append(f"{key[1]} in production code: {where}")
         elif allowed[0] != len(lines):
-            problems.append(f"{key[1]} in {key[0]}: {len(lines)} call sites, ALLOWED says {allowed[0]} ({where})")
-    for key, (count, reason) in sorted(ALLOWED.items()):
+            problems.append(f"{key[1]} in {key[0]}: {len(lines)} call sites, {ALLOW_FILE} allows {allowed[0]} ({where})")
+    for key, (count, reason) in sorted(allowed_sites.items()):
         if not reason.strip():
-            problems.append(f"ALLOWED entry {key[1]} in {key[0]} has no reason")
+            problems.append(f"{ALLOW_FILE} entry {key[1]} in {key[0]} has no reason")
         if key not in counts:
-            problems.append(f"ALLOWED entry {key[1]} in {key[0]} ({count}) matches nothing: remove it")
+            problems.append(f"{ALLOW_FILE} entry {key[1]} in {key[0]} ({count}) matches nothing: remove it")
     return problems, len(files), len(PATTERNS)
 
 
