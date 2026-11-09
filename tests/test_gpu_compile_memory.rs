@@ -154,6 +154,8 @@ fn compile_memory_child() {
 /// The peak resident memory of a fresh process that built `form` for `n` nodes of `kind`, in MiB
 fn measure(form: &str, kind: &str, n: usize) -> f64 {
     let case = format!("{form}:{kind}:{n}");
+    // named before the child starts, so a job killed over its memory budget names the case
+    eprintln!("compile-memory case {case}: starting");
     let out = Command::new(std::env::current_exe().expect("test binary"))
         .args([
             "compile_memory_child",

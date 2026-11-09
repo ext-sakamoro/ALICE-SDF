@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1386 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1387 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1179 |
-| | **total** | **2574** |
+| | **total** | **2575** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1386)
+## L1 — example-only (1387)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -104,7 +104,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/transpiler_common.rs`: `GenericTranspiler::transpile_rest_inner`, `shader_unsupported_nodes`
 - `src/compiled/wgsl/gpu_eval.rs`: `GpuEvalFuture`, `GpuEvalFuture::resolve`, `GpuEvalFuture::wait`, `GpuEvaluator::eval_batch`, `GpuEvaluator::eval_batch_async`, `GpuEvaluator::eval_batch_full`, `GpuEvaluator::eval_batch_submit`, `GpuEvaluator::from_glsl_compute`, `GpuEvaluator::from_glsl_compute_pinned`, `GpuEvaluator::from_shader_async`, `GpuEvaluator::from_wgsl`, `GpuEvaluator::from_wgsl_async`, `GpuEvaluator::from_wgsl_async_pinned`, `GpuEvaluator::new_async`, `GpuEvaluator::new_checked`, `GpuEvaluator::new_dynamic`, `GpuEvaluator::read_hits`, `GpuEvaluator::set_wait_limit`, `GpuEvaluator::update_params`
 - `src/compiled/wgsl/gpu_metal.rs`: `MetalEngine::eval_batch`, `MetalEngine::eval_batch_full`, `MetalEngine::new_dynamic`, `MetalEngine::read_hits`, `MetalEngine::update_params`
-- `src/compiled/wgsl/transpiler.rs`: `WgslShader::dynamic_shape`, `WgslShader::extract_params`, `WgslShader::get_eval_function`, `WgslShader::to_compute_shader_with_normals`, `WgslShader::transpile_material`, `WgslShader::transpile_union_skip_count`, `WgslShader::transpile_with_node_data`, `WgslShader::transpile_with_rest_point`, `WgslShader::transpile_with_union_bounds`, `WgslShader::try_transpile_with_node_data_checked`, `WgslShader::with_workgroup_size`
+- `src/compiled/wgsl/transpiler.rs`: `WgslShader::dynamic_shape`, `WgslShader::extract_params`, `WgslShader::get_eval_function`, `WgslShader::to_compute_shader_with_normals`, `WgslShader::transpile_dynamic`, `WgslShader::transpile_material`, `WgslShader::transpile_union_skip_count`, `WgslShader::transpile_with_node_data`, `WgslShader::transpile_with_rest_point`, `WgslShader::transpile_with_union_bounds`, `WgslShader::try_transpile_with_node_data_checked`, `WgslShader::with_workgroup_size`
 - `src/constraint.rs`: `Constraint`, `ConstraintKind`, `ConstraintSolver`, `ConstraintSolver::add_constraint`, `ConstraintSolver::constraint_count`, `ConstraintSolver::distance`, `ConstraintSolver::fix`, `ConstraintSolver::get`, `ConstraintSolver::new`, `ConstraintSolver::param_count`, `ConstraintSolver::product`, `ConstraintSolver::range`, `ConstraintSolver::ratio`, `ConstraintSolver::set`, `ConstraintSolver::solve`, `ConstraintSolver::sum`, `ParamId`, `ParamId::as_index`, `ParamId::as_u32`, `ParamId::from_raw`, `SolveResult`
 - `src/crispy.rs`: `fnv1a_hash`
 - `src/destruction/debris.rs`: `DebrisConfig`, `DebrisPiece`, `generate_debris`
