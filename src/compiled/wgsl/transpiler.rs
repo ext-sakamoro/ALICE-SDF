@@ -389,7 +389,29 @@ impl WgslShader {
     }
 
     fn transpile_inner(node: &SdfNode, mode: TranspileMode) -> Result<Self, TranspileError> {
+        Self::transpile_plain(node, mode, false)
+    }
+
+    /// The Dynamic-mode shader of the GPU evaluator: parameters in the uniform at binding 3, every
+    /// data array (a loft's rows, a stack's sections, a lattice) in the node data buffer at binding 4
+    /// instead of a module-scope constant. A driver that indexes a module-scope constant at run time
+    /// may copy the whole array at each read (llvmpipe held more than 12 GB for one curve loft); a
+    /// storage read copies nothing. The body is the plain tree (no union bounds: those are computed
+    /// from the parameter values, and `update_params` moves the operands)
+    #[cfg(feature = "gpu")]
+    pub(crate) fn transpile_dynamic(node: &SdfNode) -> Self {
+        Self::transpile_plain(node, TranspileMode::Dynamic, true).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    fn transpile_plain(
+        node: &SdfNode,
+        mode: TranspileMode,
+        data_buffer: bool,
+    ) -> Result<Self, TranspileError> {
         let mut transpiler = WgslTranspiler::new(mode);
+        if data_buffer {
+            transpiler.node_data = Some(Vec::new());
+        }
         let body = transpiler.transpile_node(node, "p");
         TranspileError::from_reads(std::mem::take(&mut transpiler.read_errors))?;
         let source = transpiler.generate_shader(&body);
@@ -511,17 +533,21 @@ impl WgslShader {
         }
     }
 
-    /// The Dynamic-mode shape of `node`: a digest of its emitted source, which holds everything that is
-    /// not a parameter (the tree's form and its non-parameter data), and the parameter values. Two
+    /// The Dynamic-mode shape of `node`: a digest of its emitted source and node data, which hold
+    /// everything that is not a parameter (the tree's form and its non-parameter data), and the
+    /// parameter values. Two
     /// trees with one shape differ only in values that `update_params` can write
     #[cfg(feature = "gpu")]
     pub(crate) fn dynamic_shape(node: &SdfNode) -> ([u8; 32], Vec<f32>) {
         use sha2::{Digest, Sha256};
-        let shader = Self::transpile(node, TranspileMode::Dynamic);
-        (
-            Sha256::digest(shader.source.as_bytes()).into(),
-            shader.param_layout,
-        )
+        let shader = Self::transpile_dynamic(node);
+        // the data arrays are in the node data buffer, not the source: they are part of the shape
+        let mut h = Sha256::new();
+        h.update(shader.source.as_bytes());
+        for v in &shader.node_data {
+            h.update(v.to_bits().to_le_bytes());
+        }
+        (h.finalize().into(), shader.param_layout)
     }
 
     /// Extract parameter values from an SDF node tree

@@ -22,7 +22,7 @@ use metal::{
 };
 
 use super::gpu_eval::GpuError;
-use super::transpiler::{TranspileMode, WgslShader};
+use super::transpiler::WgslShader;
 use crate::compiled::msl::MslShader;
 use crate::types::SdfNode;
 
@@ -214,10 +214,18 @@ impl MetalEngine {
     }
 
     pub(super) fn new_dynamic(node: &SdfNode) -> Result<Self, GpuError> {
-        let shader = WgslShader::transpile(node, TranspileMode::Dynamic);
+        // the data arrays in the node data buffer (see `WgslShader::transpile_dynamic`)
+        let shader = WgslShader::transpile_dynamic(node);
         let device = Self::device()?;
         let distance = Kernel::compile(&device, &shader.to_compute_shader())?;
         let full = Kernel::compile(&device, &shader.to_compute_shader_with_normals())?;
+        let node_data = (!shader.node_data.is_empty()).then(|| {
+            device.new_buffer_with_data(
+                shader.node_data.as_ptr().cast(),
+                (shader.node_data.len() * 4) as u64,
+                MTLResourceOptions::StorageModeShared,
+            )
+        });
         let params = Self::param_buffer(&device, shader.param_layout);
         let queue = device.new_command_queue();
         Ok(Self {
@@ -227,7 +235,7 @@ impl MetalEngine {
             full: Some(full),
             params: Some(Mutex::new(params)),
             dynamic_shape: Some(WgslShader::dynamic_shape(node).0),
-            node_data: None,
+            node_data,
             read_hits: None,
         })
     }

@@ -1331,6 +1331,12 @@ jobs:
           cargo test --no-run --features "gpu,glsl,hlsl" --test test_gpu_dynamic_shape
           python3 scripts/peak_rss.py --max-mib 3072 --what "test_gpu_dynamic_shape" -- cargo test --features "gpu,glsl,hlsl" --test test_gpu_dynamic_shape -- --nocapture --test-threads=1 2>&1 | tee test_gpu_dynamic_shape.log
           python3 scripts/libtest_count.py test_gpu_dynamic_shape.log --min 2 --what "test_gpu_dynamic_shape"
+          # the compile memory per kind, measured in a fresh child process per case (the peak budget
+          # covers the children); the two measurement lines show it compared something
+          cargo test --no-run --features "gpu,glsl,hlsl" --test test_gpu_compile_memory
+          ALICE_SDF_REQUIRE_COMPILE_MEMORY=1 python3 scripts/peak_rss.py --max-mib 3072 --what "test_gpu_compile_memory" -- cargo test --features "gpu,glsl,hlsl" --test test_gpu_compile_memory -- --nocapture --test-threads=1 2>&1 | tee test_gpu_compile_memory.log
+          python3 scripts/libtest_count.py test_gpu_compile_memory.log --min 3 --what "test_gpu_compile_memory"
+          grep -q "^looped polygons: " test_gpu_compile_memory.log && grep -q "^per-node polygons: " test_gpu_compile_memory.log && grep -q "^dynamic curve loft: " test_gpu_compile_memory.log
           cargo test --features "gpu,glsl,hlsl" --test test_shader_integer_wraps -- --nocapture 2>&1 | tee test_shader_integer_wraps.log
           python3 scripts/libtest_count.py test_shader_integer_wraps.log --min 2 --what "test_shader_integer_wraps"
           # the CPU side evaluates about 1e6 field values: release, without the link time work

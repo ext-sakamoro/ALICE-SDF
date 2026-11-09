@@ -1005,8 +1005,7 @@ impl WgpuEngine {
     /// In Dynamic mode, SDF parameters (radius, size, blend ratio, etc.)
     /// can be updated at 60fps without shader recompilation via `update_params()`.
     fn new_dynamic(node: &SdfNode) -> Result<Self, GpuError> {
-        use super::transpiler::TranspileMode;
-        let shader = WgslShader::transpile(node, TranspileMode::Dynamic);
+        let shader = WgslShader::transpile_dynamic(node);
         let shape = WgslShader::dynamic_shape(node).0;
 
         // Build distance-only compute shader (4 bindings)
@@ -1018,51 +1017,65 @@ impl WgpuEngine {
         let device = context.device();
 
         // 4-binding layout (shared by both pipelines)
+        let mut dynamic_entries = vec![
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ];
+        // the data arrays in the node data buffer (see `WgslShader::transpile_dynamic`)
+        if !shader.node_data.is_empty() {
+            dynamic_entries.push(wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            });
+        }
         let dynamic_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("ALICE-SDF Dynamic Bind Group Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
+                entries: &dynamic_entries,
             });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1097,6 +1110,14 @@ impl WgpuEngine {
             entry_point: Some("main"),
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             cache: None,
+        });
+
+        let node_data = (!shader.node_data.is_empty()).then(|| {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("SDF Node Data Buffer (Dynamic)"),
+                contents: bytemuck::cast_slice(&shader.node_data),
+                usage: wgpu::BufferUsages::STORAGE,
+            })
         });
 
         // Create parameter buffer with initial values
@@ -1159,7 +1180,7 @@ impl WgpuEngine {
             full_pipeline: Some(full_pipeline),
             dynamic_bind_group_layout: Some(dynamic_bind_group_layout),
             workgroup_size: shader.workgroup_size,
-            node_data: None,
+            node_data,
             read_hits: None,
         }))
     }
@@ -1302,7 +1323,13 @@ impl WgpuEngine {
                         binding: 3,
                         resource: param_buf.as_entire_binding(),
                     },
-                ],
+                ]
+                .into_iter()
+                .chain(self.node_data.as_ref().map(|d| wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: d.as_entire_binding(),
+                }))
+                .collect::<Vec<_>>(),
             });
 
         let mut encoder =
