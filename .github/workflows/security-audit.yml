@@ -146,6 +146,11 @@ jobs:
       # commit this repository's Cargo.lock resolved (one source per package)
       - name: Package integrity (tests)
         run: python3 scripts/test_package_integrity.py
+      # the shared scripts package_integrity.py imports (read_list, locked_git_commit): their own tests
+      - name: Package integrity imports (tests)
+        run: |
+          python3 scripts/test_alice_siblings_check.py
+          python3 scripts/test_id_move_check.py
       - name: Package integrity (package, unpack, build on its own)
         run: python3 scripts/package_integrity.py --expect-in-lock alice-det-math
 
