@@ -496,6 +496,10 @@ if [ "$(uname -s)" = "Darwin" ]; then
   step "test: GLSL const and variable arrays agree on a loft (Metal、ci.yml の macOS step と対、走った件数 0 で fail)"
   ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl" --test test_glsl_array_form const_and_variable_arrays_agree_on_a_loft -- --ignored --exact --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-glsl-const-loft.log"
   python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-glsl-const-loft.log" --min 1 --what "GLSL const and variable arrays on a loft (Metal)"
+  step "test: WGSL chunk ulp rule on a large height map (Metal、ci.yml の macOS step と対、走った件数 0 か行が無ければ fail)"
+  ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_wgsl_chunk_ulp the_smaller_wgsl_chunks_keep_a_large_height_map_as_close_to_the_cpu -- --ignored --exact --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-wgsl-chunk-ulp-height-map.log"
+  python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-wgsl-chunk-ulp-height-map.log" --min 1 --what "WGSL chunk ulp rule on a large height map (Metal)"
+  grep -q "height map 300 x 300: max |gpu - cpu| " "${TMPDIR:-/tmp}/sdf-wgsl-chunk-ulp-height-map.log"
 else
   step "skip: MSL -> Metal oracle (Metal は macOS のみ)"
 fi
@@ -571,7 +575,7 @@ python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_wgsl_array_constructo
 grep -q "array constructors: [1-9]" "${TMPDIR:-/tmp}/sdf-test_wgsl_array_constructor_limit.log"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu" --test test_wgsl_chunk_ulp -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_wgsl_chunk_ulp.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_wgsl_chunk_ulp.log" --min 1 --what "test_wgsl_chunk_ulp"
-grep -q "height map 300 x 300: max |gpu - cpu| " "${TMPDIR:-/tmp}/sdf-test_wgsl_chunk_ulp.log"
+grep -q "loft_faded: max |gpu - cpu| " "${TMPDIR:-/tmp}/sdf-test_wgsl_chunk_ulp.log"
 
 step "gpu-parity: module arrays fit SPIR-V instructions (ci.yml の同名 step と対、3 件未満で fail、spirv-val が無ければ PREFLIGHT-SKIP 行)"
 spv_dir="${CARGO_TARGET_DIR:-target}/spirv-modules"
