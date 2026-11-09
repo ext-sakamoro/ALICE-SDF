@@ -14,8 +14,8 @@
 //! failure, as the lavapipe job sets it).
 //!
 //! The teeth: the per-node form (Dynamic mode, every polygon vertex its own emitted read) grows with
-//! the polygons; the test asserts it does, so a bound that the looped form meets is not met by
-//! accident.
+//! the polygons, by at least `SEPARATION` times what the looped form grows at the same counts; the
+//! test asserts it does, so a bound that the looped form meets is not met by accident.
 //!
 //! Author: Moroya Sakamoto
 #![cfg(feature = "gpu")]
@@ -32,6 +32,12 @@ const GROWTH: f64 = 2.0;
 /// Resident memory below this is the allocator's noise, not a compile's (the excesses are compared
 /// with at least this floor, so 1 MiB against 3 MiB is not a growth)
 const FLOOR_MIB: f64 = 16.0;
+
+/// How many times the looped form's growth the per-node form's growth must be, at the same counts,
+/// for the measure to tell the two apart (on llvmpipe the per-node polygons grew +529 MiB from 1 to 2
+/// where the looped grew less than the floor, so a factor of 10 over the floor is a wide margin
+/// below the measured separation, not a fit to it)
+const SEPARATION: f64 = 10.0;
 
 const CASE_ENV: &str = "ALICE_SDF_COMPILE_MEMORY_CASE";
 
@@ -236,13 +242,16 @@ fn the_compile_memory_does_not_grow_with_the_polygons() {
         !grows(a, b),
         "looped polygons: +{a:.0} MiB -> +{b:.0} MiB from 4 to 16"
     );
-    // the teeth: the same polygons, one emitted copy each, grow (2 to 8, smaller than the looped
-    // sizes: 16 per-node polygons alone took about 3 GB on a real driver)
-    let (pa, pb) = excesses("per-node", "polygons", 2, 8);
+    // the teeth: the same polygons, one emitted copy each, grow far more than the looped form at
+    // the same counts (1 to 2, smaller than the looped sizes: on llvmpipe one per-node polygon took
+    // 266 MiB, two 795 MiB, four 2889 MiB, eight more than the job budget)
+    let (la, lb) = excesses("looped", "polygons", 1, 2);
+    let (pa, pb) = excesses("per-node", "polygons", 1, 2);
+    let (looped, per_node) = (lb - la, pb - pa);
     assert!(
-        grows(pa, pb),
-        "per-node polygons: +{pa:.0} MiB -> +{pb:.0} MiB from 2 to 8, the measure does not see a \
-         growing compile"
+        per_node >= SEPARATION * looped.max(FLOOR_MIB),
+        "per-node polygons grew {per_node:.0} MiB from 1 to 2, looped {looped:.0} MiB: the measure \
+         does not tell a growing compile from a looped one"
     );
 }
 
