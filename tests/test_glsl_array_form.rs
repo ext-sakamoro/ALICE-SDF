@@ -15,7 +15,7 @@ use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode};
 use alice_sdf::compiled::GpuEvaluator;
 use alice_sdf::prelude::*;
 use glam::Vec2;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn ring(a: f32, b: f32, m: usize) -> Vec<Vec2> {
     (0..m)
@@ -121,19 +121,38 @@ fn with_const_arrays(text: &str) -> String {
         .collect()
 }
 
-/// The two forms on one driver, on a loft small enough for the const form to compile: the count is
-/// printed and the difference bounded, because a driver may fold the const reads
+/// The const form's pipeline build, as the evaluator creates it (a driver that compiles at the first
+/// dispatch does little here)
+const CONST_BUILD_LIMIT: Duration = Duration::from_secs(60);
+
+/// The const form's first dispatch of one point, which holds the compile on a driver that compiles
+/// there: the read of a constant array at a run-time index copies the whole array, so the const form
+/// costs far more than the variable form (loft(3, 6) took over 300 s on llvmpipe)
+const CONST_FIRST_DISPATCH_LIMIT: Duration = Duration::from_secs(180);
+
+/// The const form's dispatch of the 1024 points once compiled
+const CONST_DISPATCH_LIMIT: Duration = Duration::from_secs(60);
+
+/// The two forms on one driver, on a loft small enough for the const form to compile and run within
+/// the limits above (each timed on its own and printed): the count is printed and the difference
+/// bounded, because a driver may fold the const reads
 #[test]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the build and dispatch times are measured and bounded, not part of a computation"
+)]
 fn const_and_variable_arrays_agree_on_one_driver() {
-    let node = loft(3, 6);
+    let node = loft(2, 4);
     let variable =
         GlslShader::transpile(&node, GlslTranspileMode::Hardcoded).to_vulkan_compute_shader();
     let constant = with_const_arrays(&variable);
     assert_ne!(variable, constant, "the two forms are the same text");
-    let (Some(a), Some(b)) = (evaluator(&constant), evaluator(&variable)) else {
+    let t = Instant::now();
+    let Some(a) = evaluator(&constant) else {
         return;
     };
-    a.set_wait_limit(Duration::from_secs(300));
+    let build = t.elapsed();
+    let b = evaluator(&variable).expect("the variable form on the same driver");
     let points: Vec<Vec3> = (0..1024)
         .map(|i| {
             let t = i as f32 * 0.002;
@@ -142,7 +161,26 @@ fn const_and_variable_arrays_agree_on_one_driver() {
             Vec3::new(0.2 * s, 0.5 * t - 0.2, 0.2 * c)
         })
         .collect();
+    a.set_wait_limit(CONST_FIRST_DISPATCH_LIMIT);
+    let t = Instant::now();
+    a.eval_batch(&points[..1])
+        .expect("the const form's first dispatch");
+    let first = t.elapsed();
+    a.set_wait_limit(CONST_DISPATCH_LIMIT);
+    let t = Instant::now();
     let x = a.eval_batch(&points).expect("const");
+    let dispatch = t.elapsed();
+    eprintln!(
+        "const form: build {:.2} s, first dispatch {:.2} s, {} points {:.2} s",
+        build.as_secs_f64(),
+        first.as_secs_f64(),
+        points.len(),
+        dispatch.as_secs_f64()
+    );
+    assert!(
+        build < CONST_BUILD_LIMIT,
+        "the const form's build took {build:?}"
+    );
     let y = b.eval_batch(&points).expect("variable");
     assert_eq!((x.len(), y.len()), (points.len(), points.len()));
     let differ = x
