@@ -15,6 +15,8 @@
 #![cfg(feature = "gpu")]
 
 mod common;
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
 
 use alice_sdf::compiled::{GpuEvaluator, TranspileMode, WgslShader};
 use alice_sdf::prelude::*;
@@ -187,7 +189,7 @@ fn deviation(shader: &WgslShader, cpu: &[f32], pts: &[Vec3]) -> Option<(f32, usi
             return None;
         }
     };
-    let gpu = g.eval_batch(pts).expect("dispatch");
+    let gpu = gpu_batches::eval_in_batches(&g, pts).expect("dispatch");
     assert_eq!(gpu.len(), pts.len());
     let max = cpu
         .iter()
