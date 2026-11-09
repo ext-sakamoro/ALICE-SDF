@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1092 |
+| 🟢 Not ignored | 1094 |
 | 🔴 Red by design | 1 |
 | ⏱ Gated (runtime / diagnostic / manual) | 4 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 1 |
-| **Total** | **1097** |
+| **Total** | **1099** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -42,7 +42,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1092)
+## 🟢 Not ignored (1094)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -83,6 +83,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_metric_field_oracle.rs` | 10 |
 | `test_rest_point.rs` | 10 |
 | `test_svo_api_oracle.rs` | 10 |
+| `sdf_semantics_id.rs` | 9 |
 | `test_mc_shared_vertex_oracle.rs` | 9 |
 | `test_mesh_fidelity.rs` | 9 |
 | `test_mesh_query_oracle.rs` | 9 |
@@ -101,7 +102,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_point_transform_oracle.rs` | 8 |
 | `test_tight_aabb_elongate_oracle.rs` | 8 |
 | `test_volume_api_oracle.rs` | 8 |
-| `sdf_semantics_id.rs` | 7 |
 | `test_animation_oracle.rs` | 7 |
 | `test_field_fidelity_oracle.rs` | 7 |
 | `test_g8_meaning_id.rs` | 7 |
