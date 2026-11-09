@@ -87,5 +87,42 @@ class Rules(unittest.TestCase):
         self.assertTrue(any(e.startswith("empty_scan") for e in errors), errors)
 
 
+
+IMC = "import re\nCARGO_OUTPUT_" + "PARSER = True\nR = re.compile(r'test result: ok\\. ([0-9]+) passed')\n"
+IMC_COLOURED = "import id_move_check\nS = '" + ESC + "32mok'\nid_move_check.check\n"
+
+
+class NonParsingNames(unittest.TestCase):
+    """a test that uses only names listed in NON_PARSING_NAMES does not test the parser; any other
+    name of the module, or the module used whole, does"""
+
+    def test_a_test_using_only_a_non_parsing_name_needs_no_sample(self):
+        lock_reader = "import id_move_check as imc\nX = imc.locked_git_commit\n"
+        errors, _ = scan({"id_move_check.py": IMC, "test_id_move_check.py": IMC_COLOURED,
+                          "test_lock.py": lock_reader})
+        self.assertEqual(errors, [])
+        errors, _ = scan({"id_move_check.py": IMC, "test_id_move_check.py": IMC_COLOURED,
+                          "test_lock.py": "from id_move_check import CheckError, locked_git_commit\n"})
+        self.assertEqual(errors, [])
+
+    def test_a_parsing_name_without_a_sample_still_fails(self):
+        uses_more = "import id_move_check as imc\nX = imc.locked_git_commit\nY = imc.parse_cargo\n"
+        errors, _ = scan({"id_move_check.py": IMC, "test_id_move_check.py": IMC_COLOURED,
+                          "test_lock.py": uses_more})
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("no_colour_sample: test_lock.py", errors[0])
+
+    def test_the_module_used_whole_still_fails(self):
+        whole = "import id_move_check\n"
+        errors, _ = scan({"id_move_check.py": IMC, "test_id_move_check.py": IMC_COLOURED, "test_lock.py": whole})
+        self.assertEqual(len(errors), 1, errors)
+
+    def test_the_names_are_listed_only_for_a_module_that_has_them(self):
+        lock_reader = "import other as o\nX = o.locked_git_commit\n"
+        errors, _ = scan({"other.py": IMC, "test_lock.py": lock_reader})
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("no_colour_sample: test_lock.py", errors[0])
+
+
 if __name__ == "__main__":
     unittest.main()

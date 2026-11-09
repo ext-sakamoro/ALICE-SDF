@@ -54,6 +54,42 @@ def imports(src: str, module: str) -> bool:
     return re.search(rf"^\s*(?:import\s+{module}\b|from\s+{module}\s+import\b)", src, re.M) is not None
 
 
+# Names of a declared parser module that parse no cargo / tool output, with why. A test that uses
+# only these names of the module (`import m as a` then `a.<name>`, or `from m import <name>`) does not
+# test the parser, so it needs no coloured sample. Any other name of the module, or no name found,
+# makes it a test of the parser as before. The shared scripts/test_package_git_patches.py imports
+# id_move_check only to read a branch dependency's commit from Cargo.lock; the list moves into
+# id_move_check itself at its next shared re-roll.
+NON_PARSING_NAMES: dict[str, dict[str, str]] = {
+    "id_move_check": {
+        "locked_git_commit": "reads the commit Cargo.lock resolved a git dependency to (no cargo output)",
+        "CheckError": "the exception type",
+    },
+}
+
+
+def names_used(src: str, module: str) -> set[str] | None:
+    """the names of `module` a source uses, or None when it uses the module whole (a bare `import m`
+    with no attribute use is read as whole)"""
+    used: set[str] = set()
+    for m in re.finditer(rf"^\s*from\s+{module}\s+import\s+\(?([^)\n]*(?:\n[^)]*)?)\)?", src, re.M):
+        used |= {x.strip().split(" as ")[0] for x in m.group(1).replace("\n", ",").split(",") if x.strip()}
+    aliases = re.findall(rf"^\s*import\s+{module}(?:\s+as\s+(\w+))?\s*(?:#.*)?$", src, re.M)
+    for a in aliases:
+        name = a or module
+        attrs = set(re.findall(rf"\b{name}\.(\w+)", src))
+        if not attrs:
+            return None
+        used |= attrs
+    return used
+
+
+def tests_the_parser(src: str, module: str) -> bool:
+    used = names_used(src, module)
+    exempt = NON_PARSING_NAMES.get(module, {})
+    return used is None or not used or not used <= exempt.keys()
+
+
 def check(scripts_dir: str) -> tuple[list[str], dict[str, int]]:
     files = sorted(f for f in os.listdir(scripts_dir) if f.endswith(".py"))
     src = {}
@@ -80,7 +116,7 @@ def check(scripts_dir: str) -> tuple[list[str], dict[str, int]]:
     checked_tests: set[str] = set()
     for p in parsers:
         mod = p[:-3]
-        users = [t for t in tests if imports(src[t], mod)]
+        users = [t for t in tests if imports(src[t], mod) and tests_the_parser(src[t], mod)]
         if not users:
             errors.append(f"untested: {p}: no scripts/test_*.py imports {mod}")
         for t in users:
