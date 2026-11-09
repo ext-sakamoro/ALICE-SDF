@@ -1,0 +1,69 @@
+name: Diagnostic GLSL const form on lavapipe
+on:
+  push:
+    branches: ['diag/**']
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+permissions:
+  contents: read
+jobs:
+  const-form:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ALICE_SDF_REQUIRE_GPU: "1"
+      WGPU_BACKEND: vulkan
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Mesa software Vulkan (lavapipe)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1 vulkan-tools
+          icd=$(find /usr/share/vulkan/icd.d -name "lvp_icd*.json" | head -1)
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          VK_ICD_FILENAMES="$icd" vulkaninfo --summary | tee /tmp/vulkaninfo.txt | head -40
+          grep -qi llvmpipe /tmp/vulkaninfo.txt
+      - name: Bisect - loft(2,4) with its first k arrays const, one process each, 300 s cap
+        shell: bash
+        run: |
+          set -uo pipefail
+          cargo test --no-run --features "gpu,glsl" --test zz_diag_glsl_const
+          for k in 1 2 3 4 6 9; do
+            c="loft-2-4:const-first-$k"
+            echo "CASE start $c"
+            start=$(date +%s)
+            DIAG_CASE=$c DIAG_WAIT_S=290 timeout 300 python3 scripts/peak_rss.py --max-mib 6000 --what "case $c" -- cargo test --features "gpu,glsl" --test zz_diag_glsl_const one_case -- --ignored --exact --nocapture 2>&1 | grep -E "CASE|peak-rss|panicked|BufferMapping" | cut -c1-400
+            rc=${PIPESTATUS[0]}
+            echo "CASE end $c rc=$rc wall $(( $(date +%s) - start )) s"
+            # a larger k is not cheaper once one is over the cap
+            [ "$rc" -eq 0 ] || break
+          done | tee bisect.log
+          n=$(grep -c "CASE done" bisect.log || true)
+          echo "measured bisect cases: $n"
+          [ "$n" -gt 0 ]
+      - name: WebGL2 in headless Chrome on SwiftShader, one browser each, 600 s cap
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          chrome=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          "$chrome" --version
+          mkdir -p "$RUNNER_TEMP/webgl2"
+          for c in section-stack-3:const loft-2-4:variable loft-2-4:const; do
+            f="$RUNNER_TEMP/webgl2/${c/:/-}.frag"
+            h="$RUNNER_TEMP/webgl2/${c/:/-}.html"
+            DIAG_CASE=$c DIAG_OUT=$f cargo test --features "gpu,glsl" --test zz_diag_glsl_const emit_webgl2 -- --ignored --exact --nocapture 2>&1 | grep -E "EMIT|panicked"
+            python3 tests/diag_webgl2_page.py "$f" "$h"
+            echo "CASE start webgl2 $c"
+            start=$(date +%s)
+            timeout 600 "$chrome" --headless=new --no-sandbox --disable-gpu --use-angle=swiftshader --enable-unsafe-swiftshader --user-data-dir="$RUNNER_TEMP/webgl2/profile-${c/:/-}" --dump-dom "file://$h" 2>/dev/null | grep -o "WEBGL2[^<]*" | sed "s/^/CASE webgl2 $c: /"
+            rc=${PIPESTATUS[0]}
+            echo "CASE end webgl2 $c rc=$rc wall $(( $(date +%s) - start )) s"
+          done | tee webgl2.log
+          n=$(grep -c "CASE webgl2 .*renderer=.*SwiftShader" webgl2.log || true)
+          echo "measured webgl2 cases on SwiftShader: $n"
+          [ "$n" -gt 0 ]
