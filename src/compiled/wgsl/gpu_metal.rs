@@ -158,6 +158,12 @@ pub(super) struct MetalEngine {
 }
 
 impl MetalEngine {
+    /// The bytes of the node data buffer (0 without one)
+    #[cfg(test)]
+    pub(super) fn node_data_bytes(&self) -> u64 {
+        self.node_data.as_ref().map_or(0, |b| b.length())
+    }
+
     fn device() -> Result<Device, GpuError> {
         require_device(Device::system_default())
     }

@@ -1694,7 +1694,24 @@ impl GpuEvaluator {
         }
     }
 
+    /// The bytes of the node data buffer (0 without one): where a tree's data arrays went
+    #[cfg(test)]
+    fn node_data_bytes(&self) -> u64 {
+        match &self.engine {
+            Engine::Wgpu(w) => w.node_data.as_ref().map_or(0, wgpu::Buffer::size),
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            Engine::Metal(m) => m.node_data_bytes(),
+        }
+    }
+
     /// Create a GPU evaluator from a pre-generated WGSL shader
+    ///
+    /// A [`TranspileMode::Hardcoded`](super::transpiler::TranspileMode::Hardcoded) shader from [`WgslShader::transpile`] keeps a tree's data
+    /// arrays (lofts, stacks, height maps, lattices) in module constants: on a driver that copies the
+    /// whole array at each read at a run-time index (naga writes such a read as a copy to a function
+    /// variable) a large array is slow, or the pipeline does not build (a 300 x 300 height map on an
+    /// NVIDIA Vulkan driver). [`GpuEvaluator::new`] puts the data in the node data buffer instead;
+    /// pass a Hardcoded shader here only when the self-contained text is what is wanted
     ///
     /// The shader is this crate's own, so its text carries this crate's identifier; it is read
     /// through [`GpuEvaluator::from_wgsl_pinned`].
@@ -2288,6 +2305,51 @@ mod dispatch_limit_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A 300 x 300 height map: 90000 data values, more than one WGSL array constructor holds
+    fn large_field() -> SdfNode {
+        let (w, h) = (300u32, 300u32);
+        let map: Vec<f32> = (0..w * h)
+            .map(|i| ((i * 7919) % 1000) as f32 / 1000.0)
+            .collect();
+        SdfNode::sphere(0.5).heightmap_displacement(map, w, h, 0.02, 1.0)
+    }
+
+    /// `new` puts a large tree's data in the node data buffer, a tree without data has none, and a
+    /// Hardcoded shader passed to `from_shader` keeps its data in the text (the explicit choice)
+    #[test]
+    fn a_large_tree_goes_to_the_node_data_buffer() {
+        if !crate::gpu_test_support::gpu_ready("a_large_tree_goes_to_the_node_data_buffer") {
+            return;
+        }
+        let big = large_field();
+        let gpu = GpuEvaluator::new(&big).unwrap();
+        assert!(
+            gpu.node_data_bytes() >= 90_000 * 4,
+            "new: {} bytes of node data for 90000 values",
+            gpu.node_data_bytes()
+        );
+        let p = [Vec3::new(0.1, 0.45, 0.2)];
+        let got = gpu.eval_batch(&p).unwrap()[0];
+        let cpu = crate::eval::eval(&big, p[0]);
+        assert!((got - cpu).abs() < 2e-5, "{got} against {cpu}");
+        let small = GpuEvaluator::new(&SdfNode::sphere(0.5)).unwrap();
+        assert_eq!(
+            small.node_data_bytes(),
+            0,
+            "a tree without data has no buffer"
+        );
+        let hard = GpuEvaluator::from_shader(&WgslShader::transpile(
+            &SdfNode::sphere(0.5).heightmap_displacement(vec![0.5; 16], 4, 4, 0.02, 1.0),
+            super::super::transpiler::TranspileMode::Hardcoded,
+        ))
+        .unwrap();
+        assert_eq!(
+            hard.node_data_bytes(),
+            0,
+            "a Hardcoded shader keeps its data in the text"
+        );
+    }
 
     #[test]
     fn an_engine_whose_dispatch_did_not_finish_refuses_further_work() {
