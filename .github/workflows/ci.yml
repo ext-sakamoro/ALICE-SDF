@@ -1326,9 +1326,10 @@ jobs:
           python3 scripts/libtest_count.py test_shader_minimal_trees.log --min 3 --what "test_shader_minimal_trees"
           # the budget tells a compile that outgrows the runner (exit 3 with the peak) from a wait
           # that does not end (the time on the peak-rss line, and libtest's "running for over 60
-          # seconds"); the test binary is built first so the peak is the test's, not rustc's
+          # seconds"); the test binary is built first so the peak is the test's, not rustc's, and one
+          # test runs at a time so the peak belongs to one test
           cargo test --no-run --features "gpu,glsl,hlsl" --test test_gpu_dynamic_shape
-          python3 scripts/peak_rss.py --max-mib 3072 --what "test_gpu_dynamic_shape" -- cargo test --features "gpu,glsl,hlsl" --test test_gpu_dynamic_shape -- --nocapture 2>&1 | tee test_gpu_dynamic_shape.log
+          python3 scripts/peak_rss.py --max-mib 3072 --what "test_gpu_dynamic_shape" -- cargo test --features "gpu,glsl,hlsl" --test test_gpu_dynamic_shape -- --nocapture --test-threads=1 2>&1 | tee test_gpu_dynamic_shape.log
           python3 scripts/libtest_count.py test_gpu_dynamic_shape.log --min 2 --what "test_gpu_dynamic_shape"
           cargo test --features "gpu,glsl,hlsl" --test test_shader_integer_wraps -- --nocapture 2>&1 | tee test_shader_integer_wraps.log
           python3 scripts/libtest_count.py test_shader_integer_wraps.log --min 2 --what "test_shader_integer_wraps"
