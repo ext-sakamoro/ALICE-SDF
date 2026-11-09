@@ -585,6 +585,14 @@ python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_shader_minimal_trees.
 cargo test --no-run --features "gpu,glsl,hlsl" --test test_gpu_dynamic_shape
 ALICE_SDF_REQUIRE_GPU=1 python3 scripts/peak_rss.py --max-mib 3072 --what "test_gpu_dynamic_shape" -- cargo test --features "gpu,glsl,hlsl" --test test_gpu_dynamic_shape -- --nocapture --test-threads=1 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_gpu_dynamic_shape.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_gpu_dynamic_shape.log" --min 2 --what "test_gpu_dynamic_shape"
+cargo test --no-run --features "gpu,glsl,hlsl" --test test_gpu_compile_memory
+if [ -r /proc/self/status ]; then
+  ALICE_SDF_REQUIRE_GPU=1 ALICE_SDF_REQUIRE_COMPILE_MEMORY=1 python3 scripts/peak_rss.py --max-mib 3072 --what "test_gpu_compile_memory" -- cargo test --features "gpu,glsl,hlsl" --test test_gpu_compile_memory -- --nocapture --test-threads=1 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_gpu_compile_memory.log"
+  python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_gpu_compile_memory.log" --min 3 --what "test_gpu_compile_memory"
+  grep -q "^looped polygons: " "${TMPDIR:-/tmp}/sdf-test_gpu_compile_memory.log" && grep -q "^per-node polygons: " "${TMPDIR:-/tmp}/sdf-test_gpu_compile_memory.log" && grep -q "^dynamic curve loft: " "${TMPDIR:-/tmp}/sdf-test_gpu_compile_memory.log"
+else
+  echo "PREFLIGHT-SKIP: test_gpu_compile_memory: no /proc here (the driver may compile in another process), measured by the lavapipe CI lane"
+fi
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,hlsl" --test test_shader_integer_wraps -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_shader_integer_wraps.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_shader_integer_wraps.log" --min 2 --what "test_shader_integer_wraps"
 ALICE_SDF_REQUIRE_GPU=1 CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo test --release --features "gpu,glsl,hlsl" --test test_shader_read_ranges -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_shader_read_ranges.log"
