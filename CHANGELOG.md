@@ -54,6 +54,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `MeshBvh::closest_triangle(point) -> Option<(usize, Vec3, Vec3)>`: 最寄りの三角形の入力の index (`indices` の 3 個ずつの位置)・重心座標・点を返す 点は `closest_point` と同じ bits、同じ距離の三角形は index の小さい方、空の mesh と有限でない点は `None` 面積 0 の三角形は 3 辺の最寄り `BvhTriangle::closest_point_barycentric` も公開した (`BvhTriangle::closest_point` の bits は変わらない)
 
 ### Changed
+- CI (共有の写し): `.github/actions/alice-siblings/action.yml` を足した (`scripts/test_alice_siblings_check.py` がこの action を読む、ALICE-Analytics の bytes と同じ)
 - CI (ALICE-Law G11 (c)): `.github/shared-files-pin` と `.github/g11-table-pin` を ALICE-Law 99dd3df4 に上げ、共有の写し (`scripts/release_baseline.py` と試験、`scripts/test_id_move_check.py`) をその版が計画した bytes にした README の ALICE-Law の節をその版で生成し直した
 - CI (ALICE-Law G11 (c)): `.github/shared-files-pin` と `.github/g11-table-pin` を ALICE-Law 5c33e32e (package_integrity と試験の目標を新しい bytes に付け替え、package_git_patches からこの repo を外した表) に上げ、README の ALICE-Law の節をその版で生成し直した
 - CI (package integrity): 公開される .crate の検査を共有の `scripts/package_integrity.py` (と試験、`scripts/alice_siblings_check.py` / `scripts/id_move_check.py` とそれぞれの試験) に置き換え、`scripts/package_git_patches.py` と試験を外した 旧検査は `branch` で取る git 依存に lock の commit の patch を当てられず、展開した crate が `alice-physics` を main の新しい commit から解決していた

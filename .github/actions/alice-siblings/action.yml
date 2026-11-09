@@ -1,0 +1,168 @@
+name: ALICE sibling checkouts
+description: >-
+  Clones each repository listed in .github/alice-siblings ("<Repo> <40-hex commit SHA>" per
+  line, "#" comments) next to this one ("<repo-dir>/../<Repo>" under $GITHUB_WORKSPACE, the path
+  the manifests name) and checks out that commit. A repository also named in
+  .github/alice-siblings-private ("<Repo>" per line) is private: it is cloned over ssh with its
+  own read-only deploy key, which the calling step passes as env ALICE_DEPKEY_<REPO> (the name
+  after "ALICE-", upper case, "-" as "_"); every other repository is cloned over https and gets
+  no key. Fails when a line is malformed, nothing is listed, a private repository is not listed
+  or has no key, a key is given for a repository that is not private, or a checkout ends at
+  another commit.
+
+  With `list:` the action reads that file instead (same line form, path relative to repo-dir), for
+  the extra commits a later step needs present, such as the base trees' siblings
+  `scripts/id_move_check.py --print-siblings` lists: a repository not yet cloned is cloned and
+  checked out at its commit as above; one already cloned keeps its checkout (the build of this
+  repository uses it) and gets the commit fetched. Then it fails when the file is missing, a line
+  is malformed or a commit is not present afterwards; an empty file clones nothing, and a private
+  repository need not be in it.
+inputs:
+  repo-dir:
+    description: >-
+      This repository's directory relative to $GITHUB_WORKSPACE (`.` when it is checked out at
+      the workspace root, `ALICE-LOL` when the workflow checks it out with `path: ALICE-LOL`)
+    required: false
+    default: "."
+  list:
+    description: >-
+      Another file of pins, relative to repo-dir, whose commits are made present without moving an
+      existing checkout (empty: .github/alice-siblings, cloned and checked out)
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: ALICE siblings at .github/alice-siblings
+      shell: bash
+      env:
+        REPO_DIR: ${{ inputs.repo-dir }}
+        LIST: ${{ inputs.list }}
+      run: |
+        set -euo pipefail
+        base="$GITHUB_WORKSPACE/$REPO_DIR"
+        list="$base/.github/alice-siblings"
+        list_mode=0
+        if [ -n "${LIST:-}" ]; then
+          list="$base/$LIST"
+          list_mode=1
+          if [ ! -f "$list" ]; then
+            echo "::error::list: $LIST is not a file under $REPO_DIR"
+            exit 1
+          fi
+        fi
+        private_list="$base/.github/alice-siblings-private"
+        # the clone URL prefixes; ALICE_SIBLINGS_GIT_BASE and ALICE_SIBLINGS_PRIVATE_GIT_BASE exist
+        # for the action's own test (local repositories). Redirecting them does not weaken the pin:
+        # every checkout must end at the listed 40-hex commit, checked below, or the step fails
+        git_base="${ALICE_SIBLINGS_GIT_BASE:-https://github.com/ext-sakamoro}"
+        private_base="${ALICE_SIBLINGS_PRIVATE_GIT_BASE:-git@github.com:ext-sakamoro}"
+        keydir="${RUNNER_TEMP:-}/alice-siblings-keys"
+        # a key is written only under the runner's temp directory and removed when the step ends,
+        # whatever its outcome; it is never written to git config or ~/.ssh
+        trap 'rm -rf "$keydir"' EXIT
+        key_var() {
+          local name="${1#ALICE-}"
+          name="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
+          printf 'ALICE_DEPKEY_%s' "$name"
+        }
+        private=" "
+        if [ -f "$private_list" ]; then
+          while IFS= read -r line || [ -n "$line" ]; do
+            line="${line%%#*}"
+            line="$(printf '%s' "$line" | tr -d '\r' | xargs)"
+            [ -z "$line" ] && continue
+            if ! [[ "$line" =~ ^ALICE-[A-Za-z0-9-]+$ ]]; then
+              echo "::error::.github/alice-siblings-private: not '<ALICE-Repo>': '$line'"
+              exit 1
+            fi
+            private="$private$line "
+          done < "$private_list"
+        fi
+        # a key in the environment that no private repository takes is refused (a public
+        # repository never gets one)
+        for var in $(env | sed -n 's/^\(ALICE_DEPKEY_[A-Za-z0-9_]*\)=.*/\1/p'); do
+          ok=0
+          for repo in $private; do
+            [ "$(key_var "$repo")" = "$var" ] && ok=1
+          done
+          if [ "$ok" -eq 0 ]; then
+            echo "::error::$var is set but names no repository in .github/alice-siblings-private"
+            exit 1
+          fi
+        done
+        n=0
+        listed=" "
+        while IFS= read -r line || [ -n "$line" ]; do
+          line="${line%%#*}"
+          line="$(printf '%s' "$line" | tr -d '\r' | xargs)"
+          [ -z "$line" ] && continue
+          read -r repo ref extra <<< "$line"
+          if ! [[ "$repo" =~ ^ALICE-[A-Za-z0-9-]+$ && "$ref" =~ ^[0-9a-f]{40}$ && -z "${extra:-}" ]]; then
+            echo "::error::.github/alice-siblings: not '<ALICE-Repo> <40-hex SHA>': '$line'"
+            exit 1
+          fi
+          listed="$listed$repo "
+          dest="$base/../$repo"
+          fresh=1
+          [ -d "$dest/.git" ] && fresh=0
+          if [[ "$private" == *" $repo "* ]]; then
+            var="$(key_var "$repo")"
+            if [ -z "${RUNNER_TEMP:-}" ]; then
+              echo "::error::RUNNER_TEMP is empty (the deploy key of $repo has no place to go)"
+              exit 1
+            fi
+            if [ -z "${!var:-}" ]; then
+              echo "::error::$repo is private and $var is empty (pass the deploy key from secrets.$var)"
+              exit 1
+            fi
+            mkdir -p "$keydir"
+            chmod 700 "$keydir"
+            (umask 077; printf '%s\n' "${!var}" > "$keydir/$repo")
+            # GitHub's published ed25519 host key (gh api meta), the only one accepted: the runner's
+            # system known_hosts is not read (GlobalKnownHostsFile=/dev/null)
+            echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$keydir/known_hosts"
+            ssh_cmd="ssh -F /dev/null -i $keydir/$repo -o IdentitiesOnly=yes -o UserKnownHostsFile=$keydir/known_hosts -o GlobalKnownHostsFile=/dev/null -o StrictHostKeyChecking=yes"
+            if [ ! -d "$dest/.git" ]; then
+              GIT_SSH_COMMAND="$ssh_cmd" git clone -q --filter=blob:none "$private_base/$repo.git" "$dest"
+            fi
+            git -C "$dest" cat-file -e "$ref^{commit}" 2>/dev/null || GIT_SSH_COMMAND="$ssh_cmd" git -C "$dest" fetch -q origin "$ref"
+            rm -f "$keydir/$repo"
+          else
+            if [ ! -d "$dest/.git" ]; then
+              git clone -q --filter=blob:none "$git_base/$repo" "$dest"
+            fi
+            git -C "$dest" cat-file -e "$ref^{commit}" 2>/dev/null || git -C "$dest" fetch -q origin "$ref"
+          fi
+          if [ "$list_mode" -eq 1 ] && [ "$fresh" -eq 0 ]; then
+            if ! git -C "$dest" cat-file -e "$ref^{commit}" 2>/dev/null; then
+              echo "::error::$repo has no commit $ref after the fetch ($LIST)"
+              exit 1
+            fi
+            echo "$repo commit $ref present (checkout kept at $(git -C "$dest" rev-parse HEAD))"
+            n=$((n + 1))
+            continue
+          fi
+          git -C "$dest" checkout -q --detach "$ref"
+          got=$(git -C "$dest" rev-parse HEAD)
+          if [ "$got" != "$ref" ]; then
+            echo "::error::$repo sibling is at $got, .github/alice-siblings says $ref"
+            exit 1
+          fi
+          echo "$repo sibling at $got"
+          n=$((n + 1))
+        done < "$list"
+        if [ "$list_mode" -eq 1 ]; then
+          echo "$LIST: $n commit(s) present"
+          exit 0
+        fi
+        for repo in $private; do
+          if [[ "$listed" != *" $repo "* ]]; then
+            echo "::error::$repo is in .github/alice-siblings-private but not in .github/alice-siblings"
+            exit 1
+          fi
+        done
+        if [ "$n" -eq 0 ]; then
+          echo "::error::.github/alice-siblings lists no repository (cloned nothing)"
+          exit 1
+        fi
