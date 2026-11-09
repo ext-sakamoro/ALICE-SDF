@@ -551,13 +551,27 @@ pub(crate) enum Reads<'a> {
     CheckedPlain,
 }
 
-/// The most elements a module-scope array is emitted with: larger arrays are written as consecutive
-/// arrays of at most this many elements, read through one function. A SPIR-V instruction holds at
-/// most 65535 words, so a constant composite of more than 65532 constituents cannot be encoded (naga
-/// writes it anyway, with a word count of 0, and the module is invalid on every Vulkan driver); WGSL
-/// array constructors are also limited to 32767 elements by some compilers. A loft at a body's size
-/// carries about 85000 values. Reported upstream: <https://github.com/gfx-rs/wgpu/issues/10877>
+/// The most elements a module-scope array is emitted with in GLSL and HLSL: larger arrays are written
+/// as consecutive arrays of at most this many elements, read through one function. A SPIR-V
+/// instruction holds at most 65535 words, so a constant composite of more than 65532 constituents
+/// cannot be encoded (naga writes it anyway, with a word count of 0, and the module is invalid on
+/// every Vulkan driver). A loft at a body's size carries about 85000 values. Reported upstream:
+/// <https://github.com/gfx-rs/wgpu/issues/10877>
 pub(crate) const MODULE_ARRAY_CHUNK: usize = 16384;
+
+/// The most elements of one WGSL array value constructor (W3C WGSL, section 2.4 "Limits": "Maximum
+/// number of elements in value constructor expression of array type", 2047); WGSL arrays are split at
+/// this size. A read of a constant array at a run-time index copies the whole array it reads from
+/// (naga spills the value to a function variable), so smaller chunks also make each read cheaper
+pub(crate) const WGSL_ARRAY_CONSTRUCTOR_LIMIT: usize = 2047;
+
+/// The chunk size of a dialect's module-scope arrays
+pub(crate) fn module_array_chunk(dialect: &str) -> usize {
+    match dialect {
+        "wgsl" => WGSL_ARRAY_CONSTRUCTOR_LIMIT,
+        _ => MODULE_ARRAY_CHUNK,
+    }
+}
 
 /// One module-scope array declaration of a dialect, on one line: `head` up to the first element,
 /// the elements, `tail` from after the last
@@ -1097,7 +1111,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         writeln!(shader, "{}", L::func_signature()).unwrap();
         shader.push_str(body);
         shader.push_str("}\n");
-        split_large_arrays(&shader, L::NAME, MODULE_ARRAY_CHUNK)
+        split_large_arrays(&shader, L::NAME, module_array_chunk(L::NAME))
     }
 
     /// The grid warp's point computation (shared by the field and the rest point): emits `q`, the box

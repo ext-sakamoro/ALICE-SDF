@@ -559,6 +559,14 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_shader_precise_temporaries \
   --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle --test test_gpu_lifecycle_oracle --test test_one_call_site
 
+step "gpu-parity: WGSL array constructors within the spec limit + smaller chunks keep the GPU as close to the CPU (ci.yml の同名 step と対、2 件 / 1 件未満で fail)"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu" --test test_wgsl_array_constructor_limit -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_wgsl_array_constructor_limit.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_wgsl_array_constructor_limit.log" --min 2 --what "test_wgsl_array_constructor_limit"
+grep -q "array constructors: [1-9]" "${TMPDIR:-/tmp}/sdf-test_wgsl_array_constructor_limit.log"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu" --test test_wgsl_chunk_ulp -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_wgsl_chunk_ulp.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_wgsl_chunk_ulp.log" --min 1 --what "test_wgsl_chunk_ulp"
+grep -q "height map 300 x 300: max |gpu - cpu| " "${TMPDIR:-/tmp}/sdf-test_wgsl_chunk_ulp.log"
+
 step "gpu-parity: module arrays fit SPIR-V instructions (ci.yml の同名 step と対、3 件未満で fail、spirv-val が無ければ PREFLIGHT-SKIP 行)"
 spv_dir="${CARGO_TARGET_DIR:-target}/spirv-modules"
 rm -rf "$spv_dir"; mkdir -p "$spv_dir"
