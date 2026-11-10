@@ -1202,7 +1202,7 @@ jobs:
         run: cargo fmt --check
 
   msrv:
-    name: MSRV (rust-version = 1.87)
+    name: MSRV (rust-version = 1.88)
     needs: changes
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
@@ -1211,7 +1211,7 @@ jobs:
       # Cargo.toml `rust-version` を実証する。
       # 宣言値と同じ toolchain を pin し、default feature + docs.rs feature set
       # で `cargo check` が通ることを確認する。宣言を上げる時はここも上げる。
-      - uses: dtolnay/rust-toolchain@1.87
+      - uses: dtolnay/rust-toolchain@1.88
       - uses: Swatinem/rust-cache@v2
 
       - name: Check (default features)
@@ -1219,6 +1219,10 @@ jobs:
 
       - name: Check (docs.rs feature set)
         run: cargo check --lib --features "glsl,hlsl,jit,svo,terrain,destruction,gi,ffi,rust"
+
+      # asp (libasp from git main) is the dependency that sets the declared floor
+      - name: Check (asp)
+        run: cargo check --lib --features "asp"
 
   # The transpilers' only correctness oracle runs the generated WGSL on a real
   # wgpu device (tests/test_gpu_law_parity.rs etc.). GitHub runners have no

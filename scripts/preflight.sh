@@ -64,7 +64,7 @@ LINUX_ALL='glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,g
 LINT_FEATURES='aaa,all-shaders,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume'
 DOCSRS='glsl,hlsl,jit,svo,terrain,destruction,gi,ffi,rust'
 BRIDGES='physics,codec,asp,sdf-cache'
-MSRV=1.87
+MSRV=1.88
 
 step() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
 # `cargo clippy` reuses fresh `cargo check` artifacts and then lints nothing
@@ -261,6 +261,9 @@ cargo "+${MSRV}" check --lib
 
 step "msrv: cargo +${MSRV} check --lib (docs.rs feature set)"
 cargo "+${MSRV}" check --lib --features "$DOCSRS"
+
+step "msrv: cargo +${MSRV} check --lib (asp)"
+cargo "+${MSRV}" check --lib --features "asp"
 
 # ffi は 2026-09-30 に ci.yml 側が build -> test に格上げされたのでここからは外し、
 # 下の test 群 ("test: ffi + shaders") に移した (ci.yml と逐語対応を保つ)。

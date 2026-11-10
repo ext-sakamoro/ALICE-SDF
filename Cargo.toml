@@ -15,10 +15,10 @@ homepage = "https://github.com/ext-sakamoro/ALICE-SDF"
 documentation = "https://docs.rs/alice-sdf"
 keywords = ["sdf", "distance-field", "3d", "procedural", "csg"]
 categories = ["graphics", "game-development", "mathematics"]
-# 1.87: 保存形式の意味の識別子に使う alice-zip (law-id v2) が rust-version 1.87 を要求する
-# (それより前は 1.85、clap_lex 1.1.0 の edition2024 が下限) CI の `msrv` job が宣言値で
-# default + docs.rs の feature set を check する
-rust-version = "1.87"
+# 1.88: git の main から引く libasp (feature `asp`) が rust-version 1.88 を宣言する (その alice-sync と
+# alice-identity が要る) それより前は 1.87 (alice-zip の law-id v2) CI の `msrv` job が宣言値で
+# default + docs.rs の feature set + asp を check する
+rust-version = "1.88"
 # crates.io publish から除外する dir / file 群
 # (Rust crate 配布物として本質的に不要、別 channel で配布 or CI 内部専用)
 # - vrchat-package / unreal-plugin / mobile / unity-sdf-universe: 他 engine 統合成果物
