@@ -496,10 +496,11 @@ if [ "$(uname -s)" = "Darwin" ]; then
   step "test: GLSL const and variable arrays agree on a loft (Metal、ci.yml の macOS step と対、走った件数 0 で fail)"
   ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl" --test test_glsl_array_form const_and_variable_arrays_agree_on_a_loft -- --ignored --exact --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-glsl-const-loft.log"
   python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-glsl-const-loft.log" --min 1 --what "GLSL const and variable arrays on a loft (Metal)"
-  step "test: WGSL chunk ulp rule on a large height map (Metal、ci.yml の macOS step と対、走った件数 0 か行が無ければ fail)"
-  ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_wgsl_chunk_ulp the_smaller_wgsl_chunks_keep_a_large_height_map_as_close_to_the_cpu -- --ignored --exact --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-wgsl-chunk-ulp-height-map.log"
-  python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-wgsl-chunk-ulp-height-map.log" --min 1 --what "WGSL chunk ulp rule on a large height map (Metal)"
-  grep -q "height map 300 x 300: max |gpu - cpu| " "${TMPDIR:-/tmp}/sdf-wgsl-chunk-ulp-height-map.log"
+  step "test: WGSL chunk ulp rule (Metal、ci.yml の macOS step と対、2 件未満か行が無ければ fail)"
+  ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_wgsl_chunk_ulp -- --ignored --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-wgsl-chunk-ulp.log"
+  python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-wgsl-chunk-ulp.log" --min 2 --what "WGSL chunk ulp rule (Metal)"
+  grep -q "loft_faded: max |gpu - cpu| " "${TMPDIR:-/tmp}/sdf-wgsl-chunk-ulp.log"
+  grep -q "height map 300 x 300: max |gpu - cpu| " "${TMPDIR:-/tmp}/sdf-wgsl-chunk-ulp.log"
 else
   step "skip: MSL -> Metal oracle (Metal は macOS のみ)"
 fi
@@ -569,14 +570,6 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_shader_precise_temporaries \
   --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle --test test_gpu_lifecycle_oracle --test test_one_call_site
 
-step "gpu-parity: WGSL array constructors within the spec limit + smaller chunks keep the GPU as close to the CPU (ci.yml の同名 step と対、2 件 / 1 件未満で fail)"
-ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu" --test test_wgsl_array_constructor_limit -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_wgsl_array_constructor_limit.log"
-python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_wgsl_array_constructor_limit.log" --min 2 --what "test_wgsl_array_constructor_limit"
-grep -q "array constructors: [1-9]" "${TMPDIR:-/tmp}/sdf-test_wgsl_array_constructor_limit.log"
-ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu" --test test_wgsl_chunk_ulp -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_wgsl_chunk_ulp.log"
-python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_wgsl_chunk_ulp.log" --min 1 --what "test_wgsl_chunk_ulp"
-grep -q "loft_faded: max |gpu - cpu| " "${TMPDIR:-/tmp}/sdf-test_wgsl_chunk_ulp.log"
-
 step "gpu-parity: module arrays fit SPIR-V instructions (ci.yml の同名 step と対、3 件未満で fail、spirv-val が無ければ PREFLIGHT-SKIP 行)"
 spv_dir="${CARGO_TARGET_DIR:-target}/spirv-modules"
 rm -rf "$spv_dir"; mkdir -p "$spv_dir"
@@ -589,6 +582,11 @@ if command -v spirv-val >/dev/null; then
 else
   echo "PREFLIGHT-SKIP: spirv-val: not installed here (brew install spirv-tools), run on every module by the lavapipe CI lane"
 fi
+
+step "gpu-parity: WGSL array constructors within the spec limit (ci.yml の同名 step と対、2 件未満で fail、ulp の比較は macOS の step)"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu" --test test_wgsl_array_constructor_limit -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_wgsl_array_constructor_limit.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_wgsl_array_constructor_limit.log" --min 2 --what "test_wgsl_array_constructor_limit"
+grep -q "array constructors: [1-9]" "${TMPDIR:-/tmp}/sdf-test_wgsl_array_constructor_limit.log"
 
 step "gpu-parity: polygon / section stack shader oracles (ci.yml の同名 step と対、file ごとに件数未満で fail)"
 python3 scripts/test_peak_rss.py
