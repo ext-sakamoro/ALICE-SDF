@@ -153,6 +153,12 @@ jobs:
           python3 scripts/test_id_move_check.py
       - name: Package integrity (package, unpack, build on its own)
         run: python3 scripts/package_integrity.py --expect-in-lock alice-det-math
+      # every alice-* (and libasp) in the tracked locks is this repository's own package or comes by
+      # git, one alice-det-math per lock (the lock the package step reads)
+      - name: Lock sources (tests)
+        run: python3 scripts/test_lock_sources_check.py
+      - name: Lock sources (alice-* by git, one alice-det-math)
+        run: python3 scripts/lock_sources_check.py
 
   coverage:
     name: Coverage (cargo-llvm-cov、informational)

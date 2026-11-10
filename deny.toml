@@ -131,6 +131,11 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
     "https://github.com/ext-sakamoro/ALICE-Zip",
     "https://github.com/ext-sakamoro/ALICE-DetMath",
+    "https://github.com/ext-sakamoro/ALICE-Physics",
+    "https://github.com/ext-sakamoro/ALICE-Codec",
+    "https://github.com/ext-sakamoro/ALICE-Cache",
+    "https://github.com/ext-sakamoro/ALICE-Crypto",
+    "https://github.com/ext-sakamoro/ALICE-Streaming-Protocol",
 ]
 
 [sources.allow-org]

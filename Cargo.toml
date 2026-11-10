@@ -154,7 +154,7 @@ sha2 = "0.10"
 # requirement keeps the resolved package at 4.x
 alice-physics = { git = "https://github.com/ext-sakamoro/ALICE-Physics", branch = "main", version = "4", optional = true }
 alice-codec = { git = "https://github.com/ext-sakamoro/ALICE-Codec", branch = "main", version = "0.2", optional = true }
-libasp = { version = "1.0", optional = true }
+libasp = { git = "https://github.com/ext-sakamoro/ALICE-Streaming-Protocol", branch = "main", version = "1", optional = true }
 alice-cache = { git = "https://github.com/ext-sakamoro/ALICE-Cache", branch = "main", version = "0.2", optional = true }
 
 

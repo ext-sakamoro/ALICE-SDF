@@ -49,7 +49,7 @@ dependencies = [
 [[package]]
 name = "alice-cache"
 version = "0.2.0"
-source = "git+https://github.com/ext-sakamoro/ALICE-Cache?branch=main#8f7855fb64733c663a3abfacdf4f3ca689343d21"
+source = "git+https://github.com/ext-sakamoro/ALICE-Cache?branch=main#91beadca76414f3bda69514f5502a28671d0ddb3"
 dependencies = [
  "hashbrown 0.14.5",
  "parking_lot",
@@ -1399,9 +1399,8 @@ checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 
 [[package]]
 name = "libasp"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66b78050a8d68ce6dc39b97b2ad2aff618a6684d1cdee668d512c58da0ea7571"
+version = "1.1.0"
+source = "git+https://github.com/ext-sakamoro/ALICE-Streaming-Protocol?branch=main#ec5991d9a430a8835041f5d43a9c20c555143b3c"
 dependencies = [
  "base64",
  "bytemuck",

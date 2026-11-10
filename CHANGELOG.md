@@ -54,6 +54,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `MeshBvh::closest_triangle(point) -> Option<(usize, Vec3, Vec3)>`: 最寄りの三角形の入力の index (`indices` の 3 個ずつの位置)・重心座標・点を返す 点は `closest_point` と同じ bits、同じ距離の三角形は index の小さい方、空の mesh と有限でない点は `None` 面積 0 の三角形は 3 辺の最寄り `BvhTriangle::closest_point_barycentric` も公開した (`BvhTriangle::closest_point` の bits は変わらない)
 
 ### Changed
+- 依存: `libasp` (feature `asp`) を crates.io の 1.0 から git の main (1) に替え、alice-cache の lock を main (alice-crypto を git の main から引く版) に進めた これで alice-* と libasp はすべて git から来る CI (package integrity の job と preflight): 追跡する Cargo.lock の alice-* と libasp が、この repository 自身の package か git から来るものだけで、alice-det-math が高々 1 つであることを `scripts/lock_sources_check.py` (試験 `scripts/test_lock_sources_check.py`、比較 0 件は exit 2) で検査する `deny.toml` の `allow-git` に Physics / Codec / Cache / Crypto / Streaming-Protocol を足した
 - CI (GPU parity lavapipe): runner を `ubuntu-latest` から `ubuntu-24.04` に固定した `ubuntu-latest` が 26.04 に移り、その mesa の lavapipe が GLSL の実行 parity で SIGSEGV になる bit 一致を見る lane は runner の版を固定し、26.04 は確かめてから移す
 - CI (共有の写し): `.github/actions/alice-siblings/action.yml` を足した (`scripts/test_alice_siblings_check.py` がこの action を読む、ALICE-Analytics の bytes と同じ)
 - CI (ALICE-Law G11 (c)): `.github/shared-files-pin` と `.github/g11-table-pin` を ALICE-Law 99dd3df4 に上げ、共有の写し (`scripts/release_baseline.py` と試験、`scripts/test_id_move_check.py`) をその版が計画した bytes にした README の ALICE-Law の節をその版で生成し直した
