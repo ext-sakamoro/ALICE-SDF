@@ -31,3 +31,8 @@ reason = "the release library's RUSTFLAGS is scripts/release_remap_flags.sh's ou
 path = ".github/workflows/release-wheels.yml"
 line = 'run: echo "RUSTFLAGS=$(scripts/release_remap_flags.sh)" >> "$GITHUB_ENV"'
 reason = "the wheels' RUSTFLAGS is scripts/release_remap_flags.sh's output: three --remap-path-prefix flags and nothing else (pinned by RemapFlags in scripts/test_release_artifact_audit.py); a path remap does not change floating-point results"
+
+[[allow]]
+path = ".github/workflows/ci.yml"
+line = "gcc -Q --help=target | grep -E '^ +-march=|^ +-mfma ' || true"
+reason = "a grep pattern that prints whether the image's gcc enables FMA by default (for tests/test_shader_read_ranges.rs's contraction gap); it passes no flag to any build"
