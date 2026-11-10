@@ -481,19 +481,21 @@ jobs:
           cargo test --features "gpu,glsl" --test test_glsl_array_form const_and_variable_arrays_agree_on_a_loft -- --ignored --exact --nocapture 2>&1 | tee glsl-const-loft.log
           python3 scripts/libtest_count.py glsl-const-loft.log --min 1 --what "GLSL const and variable arrays on a loft (Metal)"
 
-      # The 2047-element WGSL chunks keep a 300 x 300 height map as close to the CPU as the
-      # 16384-element chunks before; llvmpipe cannot run the form before, Metal can. Ignored
-      # elsewhere; 0 tests run or no height-map row fails here
-      - name: WGSL chunk ulp rule on a large height map (Metal through wgpu, macOS only)
+      # The 2047-element WGSL chunks keep the GPU as close to the CPU as the 16384-element chunks
+      # before, on the corpus trees with a split array and a 300 x 300 height map. llvmpipe cannot
+      # run the form before, Metal can. Ignored elsewhere; fewer than 2 tests run or a missing row
+      # fails here
+      - name: WGSL chunk ulp rule (Metal through wgpu, macOS only)
         if: matrix.os == 'macos-latest'
         shell: bash
         env:
           ALICE_SDF_REQUIRE_GPU: "1"
         run: |
           set -euo pipefail
-          cargo test --features gpu --test test_wgsl_chunk_ulp the_smaller_wgsl_chunks_keep_a_large_height_map_as_close_to_the_cpu -- --ignored --exact --nocapture 2>&1 | tee wgsl-chunk-ulp-height-map.log
-          python3 scripts/libtest_count.py wgsl-chunk-ulp-height-map.log --min 1 --what "WGSL chunk ulp rule on a large height map (Metal)"
-          grep -q "height map 300 x 300: max |gpu - cpu| " wgsl-chunk-ulp-height-map.log
+          cargo test --features gpu --test test_wgsl_chunk_ulp -- --ignored --nocapture 2>&1 | tee wgsl-chunk-ulp.log
+          python3 scripts/libtest_count.py wgsl-chunk-ulp.log --min 2 --what "WGSL chunk ulp rule (Metal)"
+          grep -q "loft_faded: max |gpu - cpu| " wgsl-chunk-ulp.log
+          grep -q "height map 300 x 300: max |gpu - cpu| " wgsl-chunk-ulp.log
 
       # doctest (= rustdoc 内 ```rust ブロック) は --lib / --tests では走らない
       # ``` の文字リテラル混入で doctest が落ちるのを予防
@@ -1413,17 +1415,6 @@ jobs:
 
       # a large loft's WGSL and GLSL as SPIR-V: every instruction fits its 16-bit word count
       # (the module arrays are chunked), checked by the test's own walker and by spirv-val
-      - name: WGSL array constructors within the spec limit, and the smaller chunks keep the GPU as close to the CPU
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo test --features "gpu" --test test_wgsl_array_constructor_limit -- --nocapture 2>&1 | tee test_wgsl_array_constructor_limit.log
-          python3 scripts/libtest_count.py test_wgsl_array_constructor_limit.log --min 2 --what "test_wgsl_array_constructor_limit"
-          grep -q "array constructors: [1-9]" test_wgsl_array_constructor_limit.log
-          cargo test --features "gpu" --test test_wgsl_chunk_ulp -- --nocapture 2>&1 | tee test_wgsl_chunk_ulp.log
-          python3 scripts/libtest_count.py test_wgsl_chunk_ulp.log --min 1 --what "test_wgsl_chunk_ulp"
-          grep -q "loft_faded: max |gpu - cpu| " test_wgsl_chunk_ulp.log
-
       - name: Module arrays fit SPIR-V instructions (spirv-val)
         shell: bash
         run: |
@@ -1442,6 +1433,16 @@ jobs:
           done
           echo "spirv-val: $n modules valid"
           [ "$n" -ge 2 ] || { echo "spirv-val checked $n modules, expected 2"; exit 1; }
+
+      # no WGSL array constructor over the spec limit (2047). The ulp rule against the 16384-element
+      # form before runs on the macOS lane: llvmpipe cannot run that form (tests/test_wgsl_chunk_ulp.rs)
+      - name: WGSL array constructors within the spec limit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features "gpu" --test test_wgsl_array_constructor_limit -- --nocapture 2>&1 | tee test_wgsl_array_constructor_limit.log
+          python3 scripts/libtest_count.py test_wgsl_array_constructor_limit.log --min 2 --what "test_wgsl_array_constructor_limit"
+          grep -q "array constructors: [1-9]" test_wgsl_array_constructor_limit.log
 
       # aaa 側の GPU oracle (volume の gpu_bake)。上の step とは feature 集合が違う
       # ので分けている。ALICE_SDF_REQUIRE_GPU=1 は job env で設定済なので、

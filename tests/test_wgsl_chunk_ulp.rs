@@ -11,10 +11,14 @@
 //! the emitted form (chunks of 2047) and in the same text regrouped into chunks of 16384 (the form
 //! before), each against the CPU at the same points. Comparing 0 trees fails.
 //!
-//! The height map runs on the macOS lane only (Metal through wgpu, `ci.yml`): its form before has
-//! 16384-element chunks, which llvmpipe cannot run (each read at a run-time index copies the
-//! chunk; the hosted runner was shut down running it). That test is ignored elsewhere and the
-//! macOS step runs it with `--ignored`.
+//! Both tests run on the macOS lane only (Metal through wgpu, `ci.yml`), and are ignored elsewhere.
+//! The form before writes an array of up to 16384 elements as one constant and reads it at a run-time
+//! index; naga lowers each such read into a copy of the whole array (a spill to a function
+//! variable), and llvmpipe does not run that in a CI job's time: on the Linux GPU lane the
+//! `loft_faded` row alone took 19.5 minutes and the 300 x 300 height map stopped the hosted runner,
+//! and in another run the first 2048-point submit of the corpus did not finish within 600 s. That
+//! copy per read is what the 2047-element chunks shrink; the lane that checks the chunks on llvmpipe
+//! is `tests/test_module_array_chunks.rs`.
 //!
 //! Author: Moroya Sakamoto
 #![cfg(feature = "gpu")]
@@ -257,8 +261,9 @@ fn assert_not_worse(rows: &[(String, f32, f32)], min: usize) {
     );
 }
 
-/// The corpus trees with a split array (every lane with a GPU)
+/// The corpus trees with a split array, on a driver that runs the form before (the macOS lane)
 #[test]
+#[ignore = "runs on the macOS lane: llvmpipe cannot run the form before (a copy of the array per read)"]
 fn the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu() {
     let trees: Vec<(String, SdfNode)> = common::corpus::corpus()
         .into_iter()
@@ -270,7 +275,7 @@ fn the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu() {
 
 /// The 300 x 300 height map, on a driver that runs its 16384-element form before (the macOS lane)
 #[test]
-#[ignore = "runs on the macOS lane: llvmpipe cannot run the 16384-element chunks of the form before"]
+#[ignore = "runs on the macOS lane: llvmpipe cannot run the form before (a copy of the array per read)"]
 fn the_smaller_wgsl_chunks_keep_a_large_height_map_as_close_to_the_cpu() {
     let trees = vec![("height map 300 x 300".to_owned(), large_field())];
     let Some(rows) = compare(&trees) else { return };
