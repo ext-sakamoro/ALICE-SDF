@@ -98,13 +98,15 @@ pub fn trees() -> Vec<(&'static str, SdfNode)> {
 /// The largest gap between the scene's HLSL text compiled as C++ with `-ffp-contract=fast` and
 /// with `-ffp-contract=off`, relative to `max(1, |cpu|)`, over the dense points of
 /// `test_shader_read_ranges.rs::the_contraction_gap_is_inside_its_budget`, times 4, rounded up over
-/// an aarch64 gcc and an arm64 clang build. MEASURED, not derived (no forward error analysis of
+/// an aarch64 gcc, an arm64 clang and an x86-64 gcc build at `-march=x86-64-v3` (the gaps of the
+/// x86-64 build on Ubuntu 26.04: 2.28e-7, 2.31e-7, 2.63e-7, 2.38e-7; `big_smooth_stack` was raised
+/// from 9.1e-7 by it). MEASURED, not derived (no forward error analysis of
 /// these laws exists), and the factor 4 is chosen, not derived: a margin for sites a driver fuses
 /// that the C++ compiler did not. Removed when no wgpu backend contracts. It stands for what a compiler that fuses `a * b + c` may change, and is the
 /// bound the wgpu arm of
 /// `test_shader_data_bounds.rs::no_checked_read_leaves_its_proven_range_on_the_gpu` tolerates
 pub const CONTRACTION_BUDGET: &[(&str, f32)] = &[
-    ("big_smooth_stack", 9.1e-7),
+    ("big_smooth_stack", 9.2e-7),
     ("section_stack", 9.3e-7),
     ("lofts", 1.06e-6),
     ("all", 9.6e-7),

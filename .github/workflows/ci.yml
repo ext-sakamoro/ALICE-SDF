@@ -1362,6 +1362,10 @@ jobs:
           grep -q "^looped polygons: " test_gpu_compile_memory.log && grep -q "^per-node polygons: " test_gpu_compile_memory.log && grep -q "^dynamic curve loft: " test_gpu_compile_memory.log
           cargo test --features "gpu,glsl,hlsl" --test test_shader_integer_wraps -- --nocapture 2>&1 | tee test_shader_integer_wraps.log
           python3 scripts/libtest_count.py test_shader_integer_wraps.log --min 2 --what "test_shader_integer_wraps"
+          # the contraction gap builds at -march=x86-64-v3 on x86-64; the compiler and its default
+          # target are printed so the image's own default is on record
+          c++ --version | head -1
+          gcc -Q --help=target | grep -E '^ +-march=|^ +-mfma ' || true
           # the CPU side evaluates about 1e6 field values: release, without the link time work
           CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo test --release --features "gpu,glsl,hlsl" --test test_shader_read_ranges -- --nocapture 2>&1 | tee test_shader_read_ranges.log
           python3 scripts/libtest_count.py test_shader_read_ranges.log --min 2 --what "test_shader_read_ranges"

@@ -362,6 +362,16 @@ int main() {
 ";
 
 /// The scene's HLSL text compiled as C++ with `contract` (`off` / `fast`), its values at the points
+/// The target of the contraction builds: on x86-64, `-march=x86-64-v3` (which has fused multiply-add),
+/// so `-ffp-contract=fast` fuses on every image. Without it the compiler's default target decides:
+/// Ubuntu 24.04's gcc targets x86-64 without FMA (the gap was 0), Ubuntu 26.04's fused (a gap of
+/// 2.28e-7 on `big_smooth_stack`). aarch64 has fused multiply-add in its base set and needs no flag
+const FUSING_TARGET: &[&str] = if cfg!(target_arch = "x86_64") {
+    &["-march=x86-64-v3"]
+} else {
+    &[]
+};
+
 fn values(
     cxx: &str,
     dir: &Path,
@@ -384,6 +394,7 @@ fn values(
             "-fno-strict-aliasing",
             "-w",
         ])
+        .args(FUSING_TARGET)
         .arg(&cpp)
         .arg("-o")
         .arg(&bin)
@@ -458,9 +469,9 @@ fn the_contraction_gap_is_inside_its_budget() {
         );
         gaps.push((name, gap, budget));
     }
-    // aarch64 has fused multiply-add in the base instruction set; x86-64 without `-mfma` has nothing
-    // to fuse, so there the two builds may be equal and only the budget is checked
-    if cfg!(target_arch = "aarch64") {
+    // aarch64 has fused multiply-add in its base instruction set and x86-64 builds with
+    // `FUSING_TARGET`, so on both the fast build fuses and some value differs
+    if cfg!(any(target_arch = "aarch64", target_arch = "x86_64")) {
         assert!(
             differing > 0,
             "no value differed between the two contractions (the measurement measured nothing)"
