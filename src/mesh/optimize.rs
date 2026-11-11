@@ -303,7 +303,7 @@ pub fn deduplicate_vertices(mesh: &mut Mesh) {
 /// as a boundary by any edge-pairing check, so the mesh reads as open.
 pub fn remove_degenerate_triangles(mesh: &mut Mesh) {
     let mut kept = Vec::with_capacity(mesh.indices.len());
-    for t in mesh.indices.chunks_exact(3) {
+    for t in mesh.indices.as_chunks::<3>().0.iter() {
         if t[0] != t[1] && t[1] != t[2] && t[0] != t[2] {
             kept.extend_from_slice(t);
         }

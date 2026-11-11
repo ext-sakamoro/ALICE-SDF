@@ -163,7 +163,9 @@ fn main() {
     // Every pixel is opaque now (background included); the check is that the
     // lit shape covers a sensible part of the frame.
     let covered = rgba
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .filter(|p| p[0] as u32 + p[1] as u32 + p[2] as u32 > 240)
         .count();
     println!(

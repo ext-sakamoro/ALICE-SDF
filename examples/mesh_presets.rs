@@ -36,7 +36,9 @@ fn radial_error(m: &Mesh) -> f32 {
 
 fn volume(m: &Mesh) -> f32 {
     m.indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| {
             let [a, b, c] = [0, 1, 2].map(|k| m.vertices[t[k] as usize].position);
             a.dot(b.cross(c)) / 6.0

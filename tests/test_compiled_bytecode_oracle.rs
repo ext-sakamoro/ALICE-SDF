@@ -501,7 +501,7 @@ fn simd_gradient_is_the_scalar_tetrahedral_gradient() {
     let pts = common::test_grid_points(8);
     let mut compared = 0usize;
     for (name, c) in corpus_bytecode() {
-        for chunk in pts.chunks_exact(8) {
+        for chunk in pts.as_chunks::<8>().0.iter() {
             let p = Vec3x8 {
                 x: f32x8::new(std::array::from_fn(|i| chunk[i].x)),
                 y: f32x8::new(std::array::from_fn(|i| chunk[i].y)),

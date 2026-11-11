@@ -3106,9 +3106,13 @@ fn meshopt_codecs_read_the_stamped_form_and_raw_bytes_by_name() {
         }
     }
     let same_tris = |a: &[u32], b: &[u32]| {
-        a.chunks_exact(3).zip(b.chunks_exact(3)).all(|(x, y)| {
-            (0..3).any(|r| x[0] == y[r] && x[1] == y[(r + 1) % 3] && x[2] == y[(r + 2) % 3])
-        })
+        a.as_chunks::<3>()
+            .0
+            .iter()
+            .zip(b.as_chunks::<3>().0.iter())
+            .all(|(x, y)| {
+                (0..3).any(|r| x[0] == y[r] && x[1] == y[(r + 1) % 3] && x[2] == y[(r + 2) % 3])
+            })
     };
 
     // the stamped form: this crate's identifier around the raw bytes

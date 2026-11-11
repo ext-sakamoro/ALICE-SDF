@@ -59,7 +59,9 @@ fn sdf_to_facets(node: &SdfNode, cfg: &IgesConfig) -> (Vec<Vec3>, Vec<[usize; 3]
     let verts: Vec<Vec3> = mesh.vertices.iter().map(|v| v.position).collect();
     let tris: Vec<[usize; 3]> = mesh
         .indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| [t[0] as usize, t[1] as usize, t[2] as usize])
         .collect();
     (verts, tris)

@@ -1400,7 +1400,7 @@ fn parse_glb(data: &[u8]) -> Result<Mesh, IoError> {
             let bytes = bin_bytes.get(byte_offset..end).ok_or_else(overrun)?;
             // `total * 4 <= bytes.len()` here, so this allocation is bounded by the BIN chunk
             let mut result = Vec::with_capacity(total);
-            for chunk in bytes.chunks_exact(4) {
+            for chunk in bytes.as_chunks::<4>().0.iter() {
                 result.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
             }
             Ok(result)

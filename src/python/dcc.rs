@@ -105,7 +105,7 @@ pub fn sdf_to_mesh<'py>(
         verts.append(t)?;
     }
     let faces = PyList::empty(py);
-    for tri in mesh.indices.chunks_exact(3) {
+    for tri in mesh.indices.as_chunks::<3>().0.iter() {
         let f = PyList::new(py, tri.iter().copied().map(|i| i as usize))?;
         faces.append(f)?;
     }

@@ -31,7 +31,9 @@ fn mc(node: &SdfNode, res: usize) -> Mesh {
 
 fn signed_volume(m: &Mesh) -> f32 {
     m.indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| {
             let a = m.vertices[t[0] as usize].position;
             let b = m.vertices[t[1] as usize].position;
@@ -48,7 +50,7 @@ fn signed_volume(m: &Mesh) -> f32 {
 /// is skipped here any more.
 fn winding(node: &SdfNode, m: &Mesh, _cell: f32) -> (usize, usize) {
     let (mut out, mut inw) = (0, 0);
-    for t in m.indices.chunks_exact(3) {
+    for t in m.indices.as_chunks::<3>().0.iter() {
         let a = m.vertices[t[0] as usize].position;
         let b = m.vertices[t[1] as usize].position;
         let c = m.vertices[t[2] as usize].position;
@@ -79,7 +81,7 @@ fn winding(node: &SdfNode, m: &Mesh, _cell: f32) -> (usize, usize) {
 
 fn open_edges(m: &Mesh) -> usize {
     let mut count: HashMap<(u32, u32), i32> = HashMap::new();
-    for t in m.indices.chunks_exact(3) {
+    for t in m.indices.as_chunks::<3>().0.iter() {
         for (u, v) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
             let key = if u < v { (u, v) } else { (v, u) };
             *count.entry(key).or_insert(0) += if u < v { 1 } else { -1 };

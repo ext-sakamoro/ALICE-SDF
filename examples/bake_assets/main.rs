@@ -177,7 +177,9 @@ fn mesh_aabb(m: &Mesh) -> (Vec3, Vec3) {
 
 fn mesh_area(m: &Mesh) -> f64 {
     m.indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| {
             let p = [0, 1, 2].map(|k| m.vertices[t[k] as usize].position.as_dvec3());
             0.5 * (p[1] - p[0]).cross(p[2] - p[0]).length()
@@ -191,7 +193,9 @@ fn mesh_area(m: &Mesh) -> f64 {
 fn zero_area_triangles(m: &Mesh) -> usize {
     let bits = |i: u32| m.vertices[i as usize].position.to_array().map(f32::to_bits);
     m.indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .filter(|t| {
             bits(t[0]) == bits(t[1]) || bits(t[1]) == bits(t[2]) || bits(t[0]) == bits(t[2])
         })
@@ -201,7 +205,9 @@ fn zero_area_triangles(m: &Mesh) -> usize {
 fn mesh_mass(m: &Mesh) -> Option<MassProps> {
     mass_properties(
         m.indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|t| [0, 1, 2].map(|k| m.vertices[t[k] as usize].position.as_dvec3().to_array())),
     )
 }
@@ -257,7 +263,7 @@ fn max_distance_to_surface(a: &Mesh, b: &Mesh, cell: f32) -> f64 {
         )
     };
     let mut grid: HashMap<(i64, i64, i64), Vec<[DVec3; 3]>> = HashMap::new();
-    for t in b.indices.chunks_exact(3) {
+    for t in b.indices.as_chunks::<3>().0.iter() {
         let tri = [0, 1, 2].map(|k| b.vertices[t[k] as usize].position.as_dvec3());
         grid.entry(key((tri[0] + tri[1] + tri[2]) / 3.0))
             .or_default()

@@ -133,7 +133,7 @@ fn cfg(res: usize) -> MarchingCubesConfig {
 /// of the index buffer.
 fn topology(m: &Mesh) -> (usize, usize, i64, usize) {
     let mut edges: HashMap<(u32, u32), u32> = HashMap::new();
-    for t in m.indices.chunks_exact(3) {
+    for t in m.indices.as_chunks::<3>().0.iter() {
         for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
             *edges.entry((a.min(b), a.max(b))).or_default() += 1;
         }
@@ -150,7 +150,7 @@ fn topology(m: &Mesh) -> (usize, usize, i64, usize) {
         x
     }
     let used: HashSet<u32> = m.indices.iter().copied().collect();
-    for t in m.indices.chunks_exact(3) {
+    for t in m.indices.as_chunks::<3>().0.iter() {
         for (a, b) in [(t[0], t[1]), (t[1], t[2])] {
             let (ra, rb) = (find(&mut parent, a), find(&mut parent, b));
             if ra != rb {
@@ -354,7 +354,9 @@ fn same_position_vertices_and_zero_area_triangles_follow_the_closed_form() {
         let got_pairs: usize = groups.values().map(|&k| k * (k - 1) / 2).sum();
         let zero_area: Vec<bool> = m
             .indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|t| key(t[0]) == key(t[1]) || key(t[1]) == key(t[2]) || key(t[0]) == key(t[2]))
             .collect();
         let got_zero = zero_area.iter().filter(|&&z| z).count();
@@ -377,7 +379,7 @@ fn same_position_vertices_and_zero_area_triangles_follow_the_closed_form() {
                 })
             })
             .collect();
-        for (t, z) in m.indices.chunks_exact(3).zip(&zero_area) {
+        for (t, z) in m.indices.as_chunks::<3>().0.iter().zip(&zero_area) {
             if !z {
                 merged.indices.extend(t.iter().map(|&i| remap[i as usize]));
             }
@@ -547,7 +549,9 @@ fn vertex_normals_are_the_gradient_at_the_vertex() {
 
 fn signed_volume(m: &Mesh) -> f64 {
     m.indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| {
             let [a, b, c] = [0, 1, 2].map(|k| m.vertices[t[k] as usize].position.as_dvec3());
             a.dot(b.cross(c)) / 6.0

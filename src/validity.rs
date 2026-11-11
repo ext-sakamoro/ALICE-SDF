@@ -180,7 +180,7 @@ pub fn overhang_stats(mesh: &Mesh, build_direction: Vec3, threshold: f32) -> (f3
     let dir = build_direction.normalize_or_zero();
     let mut max_angle = 0.0_f32;
     let mut over = 0_usize;
-    for idx in mesh.indices.chunks_exact(3) {
+    for idx in mesh.indices.as_chunks::<3>().0.iter() {
         let Some(normal) = face_normal(mesh, idx) else {
             continue; // 退化三角形は法線を持たない
         };
@@ -337,7 +337,7 @@ pub fn validate_for_printing(
     let span = (bmax - bmin).length();
     let mut min_local: Option<f32> = None;
     let mut thin_triangles = 0_usize;
-    for idx in mesh.indices.chunks_exact(3) {
+    for idx in mesh.indices.as_chunks::<3>().0.iter() {
         let Some(normal) = face_normal(mesh, idx) else {
             continue;
         };

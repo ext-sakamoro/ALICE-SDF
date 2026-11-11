@@ -854,12 +854,16 @@ fn try_decode_checked(
     // 6. Convert the LE bytes back to quantized i32 coefficients
     let quantized: Vec<i32> = if header.wide_coeffs() {
         raw_bytes
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
             .collect()
     } else {
         raw_bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|chunk| i32::from(i16::from_le_bytes([chunk[0], chunk[1]])))
             .collect()
     };

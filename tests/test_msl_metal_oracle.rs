@@ -153,7 +153,7 @@ fn run_on_metal(
 
     // Shared storage: the contents are visible without an explicit blit.
     let raw = unsafe { std::slice::from_raw_parts(out_buf.contents().cast::<f32>(), n * 4) };
-    Ok(raw.chunks_exact(4).map(|c| c[0]).collect())
+    Ok(raw.as_chunks::<4>().0.iter().map(|c| c[0]).collect())
 }
 
 #[test]

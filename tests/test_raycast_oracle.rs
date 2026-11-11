@@ -174,7 +174,7 @@ fn batched_marchers_match_ray_sphere() {
         }
     }
     // 8-wide packets
-    for chunk in rays.chunks_exact(8) {
+    for chunk in rays.as_chunks::<8>().0.iter() {
         let o: [Vec3; 8] = std::array::from_fn(|i| chunk[i].origin);
         let d: [Vec3; 8] = std::array::from_fn(|i| chunk[i].direction);
         let res = raymarch_simd_8(
@@ -397,7 +397,7 @@ mod jit {
                 "jit batch",
             );
         }
-        for chunk in rays.chunks_exact(8) {
+        for chunk in rays.as_chunks::<8>().0.iter() {
             let o: [Vec3; 8] = std::array::from_fn(|i| chunk[i].origin);
             let d: [Vec3; 8] = std::array::from_fn(|i| chunk[i].direction);
             let res = raymarch_jit_simd_8(

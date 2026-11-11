@@ -539,7 +539,7 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
                 .unwrap_or(&[]);
             let mut mn = Vec2::splat(f32::INFINITY);
             let mut mx = Vec2::splat(f32::NEG_INFINITY);
-            for v in flat.chunks_exact(2) {
+            for v in flat.as_chunks::<2>().0.iter() {
                 mn = mn.law_min(Vec2::new(v[0], v[1]));
                 mx = mx.law_max(Vec2::new(v[0], v[1]));
             }

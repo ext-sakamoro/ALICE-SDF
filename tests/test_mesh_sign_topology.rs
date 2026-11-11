@@ -117,7 +117,9 @@ fn open_quad() -> (Vec<Vec3>, Vec<u32>) {
 /// Reverse the winding of every triangle. The solid is unchanged.
 fn flip_winding(indices: &[u32]) -> Vec<u32> {
     indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .flat_map(|t| [t[0], t[2], t[1]])
         .collect()
 }

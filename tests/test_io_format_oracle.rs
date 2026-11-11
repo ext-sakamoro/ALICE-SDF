@@ -80,7 +80,9 @@ fn tetra() -> Mesh {
 
 fn triangles(mesh: &Mesh) -> Vec<[Vec3; 3]> {
     mesh.indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| {
             [
                 mesh.vertices[t[0] as usize].position,

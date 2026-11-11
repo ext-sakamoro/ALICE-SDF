@@ -125,7 +125,7 @@ fn compute_mikktspace_tangents(mesh: &mut Mesh) {
     let mut bitangents = vec![Vec3::ZERO; vert_count];
 
     // Phase 1: Accumulate tangent/bitangent per triangle
-    for tri in mesh.indices.chunks_exact(3) {
+    for tri in mesh.indices.as_chunks::<3>().0.iter() {
         let i0 = tri[0] as usize;
         let i1 = tri[1] as usize;
         let i2 = tri[2] as usize;
@@ -496,7 +496,7 @@ fn build_mesh(
         positions.par_iter().map(|&p| gradient_normal(p)).collect()
     } else {
         let mut acc = vec![Vec3::ZERO; positions.len()];
-        for t in indices.chunks_exact(3) {
+        for t in indices.as_chunks::<3>().0.iter() {
             let [a, b, c] = [t[0], t[1], t[2]].map(|i| i as usize);
             let n = (positions[b] - positions[a]).cross(positions[c] - positions[a]);
             acc[a] += n;
@@ -1557,7 +1557,7 @@ mod tests {
         // Verify manifold: every edge should be shared by exactly 2 triangles
         use std::collections::HashMap;
         let mut edge_count: HashMap<(u32, u32), u32> = HashMap::new();
-        for tri in mesh.indices.chunks_exact(3) {
+        for tri in mesh.indices.as_chunks::<3>().0.iter() {
             let edges = [
                 (tri[0].min(tri[1]), tri[0].max(tri[1])),
                 (tri[1].min(tri[2]), tri[1].max(tri[2])),

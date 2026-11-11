@@ -68,7 +68,7 @@ fn world_with(live: &LiveSdf, as_participant: bool, substeps: usize) -> PhysicsW
 
 fn boundary_edges(mesh: &Mesh) -> usize {
     let mut count: HashMap<(u32, u32), usize> = HashMap::new();
-    for t in mesh.indices.chunks_exact(3) {
+    for t in mesh.indices.as_chunks::<3>().0.iter() {
         for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
             *count.entry((a.min(b), a.max(b))).or_default() += 1;
         }
@@ -78,7 +78,7 @@ fn boundary_edges(mesh: &Mesh) -> usize {
 
 fn signed_volume(mesh: &Mesh) -> f64 {
     let mut v = 0.0f64;
-    for t in mesh.indices.chunks_exact(3) {
+    for t in mesh.indices.as_chunks::<3>().0.iter() {
         let p = |i: u32| mesh.vertices[i as usize].position.as_dvec3();
         let (a, b, c) = (p(t[0]), p(t[1]), p(t[2]));
         v += a.dot(b.cross(c)) / 6.0;

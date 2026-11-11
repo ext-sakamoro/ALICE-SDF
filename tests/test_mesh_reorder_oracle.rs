@@ -57,7 +57,7 @@ fn canon(t: &[u32]) -> [u32; 3] {
 
 fn tri_multiset(idx: &[u32]) -> HashMap<[u32; 3], usize> {
     let mut m = HashMap::new();
-    for t in idx.chunks_exact(3) {
+    for t in idx.as_chunks::<3>().0.iter() {
         *m.entry(canon(t)).or_insert(0) += 1;
     }
     m
@@ -85,7 +85,9 @@ fn shuffle_triangles(mesh: &mut Mesh, seed: u64) {
     let mut rng = Rng(seed);
     let mut tris: Vec<[u32; 3]> = mesh
         .indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| [t[0], t[1], t[2]])
         .collect();
     for i in (1..tris.len()).rev() {
@@ -243,7 +245,9 @@ fn vertex_fetch_optimisation_numbers_vertices_in_first_use_order() {
     }
     let pos_before: Vec<[[u32; 3]; 3]> = m
         .indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| {
             t.iter()
                 .map(|&i| m.vertices[i as usize].position.to_array().map(f32::to_bits))
@@ -265,7 +269,9 @@ fn vertex_fetch_optimisation_numbers_vertices_in_first_use_order() {
     assert_eq!(next as usize, used);
     let pos_after: Vec<[[u32; 3]; 3]> = m
         .indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| {
             t.iter()
                 .map(|&i| m.vertices[i as usize].position.to_array().map(f32::to_bits))
@@ -364,7 +370,9 @@ fn spatial_order_sorts_vertices_by_morton_code_and_keeps_triangles() {
     }
     let tri_pos = |m: &Mesh| -> Vec<[[u32; 3]; 3]> {
         m.indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|t| {
                 [0, 1, 2].map(|k| {
                     m.vertices[t[k] as usize]

@@ -133,7 +133,7 @@ pub fn try_decode_filter_oct_i16_in_place(data: &mut [i16]) -> Result<(), MeshIn
     }
     let max_v = f32::from(i16::MAX);
 
-    for chunk in data.chunks_exact_mut(4) {
+    for chunk in data.as_chunks_mut::<4>().0.iter_mut() {
         let mut x = f32::from(chunk[0]);
         let mut y = f32::from(chunk[1]);
         let z = f32::from(chunk[2]) - x.abs() - y.abs();
@@ -240,7 +240,7 @@ pub fn decode_filter_quat_i16_in_place(data: &mut [i16]) {
     assert_eq!(data.len() % 4, 0);
     let scale = f32::from(i16::MAX) / std::f32::consts::SQRT_2;
 
-    for chunk in data.chunks_exact_mut(4) {
+    for chunk in data.as_chunks_mut::<4>().0.iter_mut() {
         // Recover scale from high bits of the 4th component
         let sf = chunk[3] | 3;
         let s = f32::from(sf);

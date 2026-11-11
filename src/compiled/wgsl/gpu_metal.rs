@@ -225,7 +225,7 @@ impl MetalEngine {
             MTLResourceOptions::StorageModeShared,
         );
         let records = self.dispatch(&self.distance, points, &output)?;
-        Ok(records.chunks_exact(4).map(|r| r[0]).collect())
+        Ok(records.as_chunks::<4>().0.iter().map(|r| r[0]).collect())
     }
 
     pub(super) fn eval_batch_pooled(
@@ -238,7 +238,7 @@ impl MetalEngine {
         }
         pool.ensure_capacity(&self.device, points.len());
         let records = self.dispatch(&self.distance, points, &pool.output)?;
-        Ok(records.chunks_exact(4).map(|r| r[0]).collect())
+        Ok(records.as_chunks::<4>().0.iter().map(|r| r[0]).collect())
     }
 
     pub(super) fn eval_batch_full(&self, points: &[Vec3]) -> Result<Vec<(f32, Vec3)>, GpuError> {
@@ -255,7 +255,9 @@ impl MetalEngine {
         );
         let records = self.dispatch(full, points, &output)?;
         Ok(records
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|r| (r[0], Vec3::new(r[1], r[2], r[3])))
             .collect())
     }

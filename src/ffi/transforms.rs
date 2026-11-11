@@ -172,7 +172,9 @@ pub extern "C" fn alice_sdf_lattice_deform(
         let max_slice = unsafe { slice::from_raw_parts(bbox_max, 3) };
 
         let control_pts: Vec<glam::Vec3> = cp_slice
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| glam::Vec3::new(c[0], c[1], c[2]))
             .collect();
 
@@ -219,7 +221,7 @@ pub extern "C" fn alice_sdf_skinning(
         let bone_slice = unsafe { slice::from_raw_parts(bones, bone_count as usize * 33) };
         let mut bone_transforms = Vec::new();
 
-        for chunk in bone_slice.chunks_exact(33) {
+        for chunk in bone_slice.as_chunks::<33>().0.iter() {
             let inv_bind: [f32; 16] = chunk[0..16].try_into().unwrap();
             let current: [f32; 16] = chunk[16..32].try_into().unwrap();
             let weight = chunk[32];

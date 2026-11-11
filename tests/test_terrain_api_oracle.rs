@@ -133,7 +133,7 @@ fn clipmap_meshes_lie_on_the_ramp_with_upward_faces() {
             assert!((v.normal - n_want).length() < 1e-4);
             assert_eq!(all[i].mesh.vertices[k].position, v.position);
         }
-        for t in one.mesh.indices.chunks_exact(3) {
+        for t in one.mesh.indices.as_chunks::<3>().0.iter() {
             let p = |j: u32| one.mesh.vertices[j as usize].position;
             let face = (p(t[1]) - p(t[0])).cross(p(t[2]) - p(t[0]));
             assert!(face.normalize().dot(n_want) > 0.999, "face winding");

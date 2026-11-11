@@ -234,9 +234,13 @@ fn varint_codec_reports_each_broken_header_field() {
 
 fn same_triangles_keep_winding(a: &[u32], b: &[u32]) -> bool {
     a.len() == b.len()
-        && a.chunks_exact(3).zip(b.chunks_exact(3)).all(|(x, y)| {
-            (0..3).any(|r| x[0] == y[r] && x[1] == y[(r + 1) % 3] && x[2] == y[(r + 2) % 3])
-        })
+        && a.as_chunks::<3>()
+            .0
+            .iter()
+            .zip(b.as_chunks::<3>().0.iter())
+            .all(|(x, y)| {
+                (0..3).any(|r| x[0] == y[r] && x[1] == y[(r + 1) % 3] && x[2] == y[(r + 2) % 3])
+            })
 }
 
 #[test]

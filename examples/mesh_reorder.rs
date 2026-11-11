@@ -32,7 +32,7 @@ use std::collections::HashMap;
 /// triangles by vertex position, each rotated to a fixed start (winding kept)
 fn triangle_set(m: &Mesh) -> HashMap<[[u32; 3]; 3], usize> {
     let mut set = HashMap::new();
-    for t in m.indices.chunks_exact(3) {
+    for t in m.indices.as_chunks::<3>().0.iter() {
         let p = [0, 1, 2].map(|k| {
             m.vertices[t[k] as usize]
                 .position
@@ -70,7 +70,9 @@ fn main() {
     // shuffle the triangles (deterministic LCG)
     let mut tris: Vec<[u32; 3]> = mesh
         .indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| [t[0], t[1], t[2]])
         .collect();
     let mut s = 0x2545_F491_u64;

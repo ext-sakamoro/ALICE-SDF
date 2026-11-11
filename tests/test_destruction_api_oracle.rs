@@ -39,7 +39,7 @@ fn grid(res: u32, chunk: u32) -> MutableVoxelGrid {
 /// Triangles as bit patterns, so two meshes can be compared as multisets.
 fn triangle_bits(mesh: &Mesh) -> BTreeMap<[u32; 9], usize> {
     let mut out = BTreeMap::new();
-    for tri in mesh.indices.chunks_exact(3) {
+    for tri in mesh.indices.as_chunks::<3>().0.iter() {
         let mut key = [0u32; 9];
         for (k, &i) in tri.iter().enumerate() {
             let p = mesh.vertices[i as usize].position;
@@ -132,7 +132,7 @@ fn chunk_meshes_cover_exactly_the_active_cells_of_the_whole_grid() {
     let mut got: BTreeSet<[u32; 3]> = BTreeSet::new();
     let mut owner: BTreeMap<[u32; 3], usize> = BTreeMap::new();
     for (k, m) in all_chunk_meshes(&g).iter().enumerate() {
-        for tri in m.indices.chunks_exact(3) {
+        for tri in m.indices.as_chunks::<3>().0.iter() {
             let cell = cell_of_triangle(&g, m, tri);
             got.insert(cell);
             let prev = owner.insert(cell, k);

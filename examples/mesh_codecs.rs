@@ -112,7 +112,13 @@ fn main() {
     // --- meshoptimizer v1 codecs ---
     let enc_i = encode_index_buffer(&mesh.indices);
     let dec_i = decode_index_buffer(&enc_i, mesh.indices.len()).expect("meshopt index decode");
-    for (a, b) in mesh.indices.chunks_exact(3).zip(dec_i.chunks_exact(3)) {
+    for (a, b) in mesh
+        .indices
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .zip(dec_i.as_chunks::<3>().0.iter())
+    {
         let same = (0..3).any(|r| a[0] == b[r] && a[1] == b[(r + 1) % 3] && a[2] == b[(r + 2) % 3]);
         assert!(same, "triangle {a:?} came back as {b:?}");
     }
@@ -173,7 +179,7 @@ fn main() {
     decode_filter_oct_i16_in_place(&mut oct);
     let worst_deg = normals
         .iter()
-        .zip(oct.chunks_exact(4))
+        .zip(oct.as_chunks::<4>().0.iter())
         .map(|(n, d)| {
             let a = Vec3::new(n[0], n[1], n[2]).normalize();
             let b = Vec3::new(d[0] as f32, d[1] as f32, d[2] as f32).normalize();
@@ -194,7 +200,7 @@ fn main() {
     let mut qd = encode_filter_quat_i16(&quats, 16);
     decode_filter_quat_i16_in_place(&mut qd);
     let mut worst_q = 0.0f32;
-    for (q, d) in quats.iter().zip(qd.chunks_exact(4)) {
+    for (q, d) in quats.iter().zip(qd.as_chunks::<4>().0.iter()) {
         let dot: f32 = (0..4).map(|k| q[k] * d[k] as f32 / 32767.0).sum();
         worst_q = worst_q.max(1.0 - dot.abs());
     }

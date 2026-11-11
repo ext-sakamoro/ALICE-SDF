@@ -64,7 +64,7 @@ fn canon(t: &[u32]) -> [u32; 3] {
 
 fn tri_multiset(idx: &[u32]) -> HashMap<[u32; 3], usize> {
     let mut m = HashMap::new();
-    for t in idx.chunks_exact(3) {
+    for t in idx.as_chunks::<3>().0.iter() {
         *m.entry(canon(t)).or_insert(0) += 1;
     }
     m
@@ -128,7 +128,7 @@ fn overdraw(m: &Mesh, res: usize) -> (u64, u64) {
             )
         };
         let mut zbuf = vec![f64::INFINITY; res * res];
-        for t in m.indices.chunks_exact(3) {
+        for t in m.indices.as_chunks::<3>().0.iter() {
             if outward_normal(m, t).dot(d) <= 0.0 {
                 continue; // back face
             }
@@ -275,7 +275,12 @@ fn disjoint_triangles_are_sorted_by_normal_dot_offset_from_the_centroid() {
         let n = (b - a).cross(c - a).normalize();
         n.dot((a + b + c) / 3.0 - mean)
     };
-    let mut tris: Vec<&[u32]> = before.chunks_exact(3).collect();
+    let mut tris: Vec<&[u32]> = before
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .map(|t| t.as_slice())
+        .collect();
     let keys: Vec<f64> = tris.iter().map(|t| key(t)).collect();
     // keys are separated by more than f32 rounding
     let mut sorted = keys;

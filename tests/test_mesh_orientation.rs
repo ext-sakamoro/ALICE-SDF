@@ -23,7 +23,9 @@ fn mesh_of(node: &SdfNode, res: usize) -> Mesh {
 /// Divergence theorem: Σ (a · (b × c)) / 6 over CCW-outward triangles.
 fn signed_volume(m: &Mesh) -> f32 {
     m.indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| {
             let a = m.vertices[t[0] as usize].position;
             let b = m.vertices[t[1] as usize].position;
@@ -40,7 +42,7 @@ fn signed_volume(m: &Mesh) -> f32 {
 fn winding(node: &SdfNode, m: &Mesh, cell: f32) -> (usize, usize) {
     let (mut out, mut inw) = (0, 0);
     let min_area = 1e-3 * cell * cell;
-    for t in m.indices.chunks_exact(3) {
+    for t in m.indices.as_chunks::<3>().0.iter() {
         let a = m.vertices[t[0] as usize].position;
         let b = m.vertices[t[1] as usize].position;
         let c = m.vertices[t[2] as usize].position;
@@ -67,7 +69,7 @@ fn winding(node: &SdfNode, m: &Mesh, cell: f32) -> (usize, usize) {
 /// Edges referenced by exactly one triangle (directed-edge pairing).
 fn open_edges(m: &Mesh) -> usize {
     let mut count: HashMap<(u32, u32), i32> = HashMap::new();
-    for t in m.indices.chunks_exact(3) {
+    for t in m.indices.as_chunks::<3>().0.iter() {
         for (u, v) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
             let key = if u < v { (u, v) } else { (v, u) };
             *count.entry(key).or_insert(0) += if u < v { 1 } else { -1 };
@@ -134,7 +136,9 @@ fn sdf_to_mesh_is_watertight_with_shared_vertices() {
         let m = mesh_of(&node, res);
         let degenerate = m
             .indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter(|t| t[0] == t[1] || t[1] == t[2] || t[0] == t[2])
             .count();
         assert_eq!(
@@ -193,7 +197,7 @@ fn stl_facets_agree_with_their_normals() {
     export_stl(&m, &path).unwrap();
     let back = import_stl_pinned(&path).unwrap();
     let (mut agree, mut contradict) = (0, 0);
-    for t in back.indices.chunks_exact(3) {
+    for t in back.indices.as_chunks::<3>().0.iter() {
         let a = back.vertices[t[0] as usize];
         let b = back.vertices[t[1] as usize].position;
         let c = back.vertices[t[2] as usize].position;

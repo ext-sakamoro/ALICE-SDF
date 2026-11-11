@@ -80,7 +80,9 @@ fn sdf_to_facets(node: &SdfNode, cfg: &StepConfig) -> (Vec<Vec3>, Vec<[usize; 3]
     // `as_chunks` は MSRV より新しいので使わない (clippy::incompatible_msrv)
     let tris: Vec<[usize; 3]> = mesh
         .indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| [t[0] as usize, t[1] as usize, t[2] as usize])
         .collect();
     (verts, tris)

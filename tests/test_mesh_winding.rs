@@ -57,7 +57,9 @@ fn uv_sphere(lat: u32, lon: u32, keep: impl Fn(u32, u32) -> bool) -> (Vec<Vec3>,
 }
 
 fn triangles(v: &[Vec3], idx: &[u32]) -> Vec<BvhTriangle> {
-    idx.chunks_exact(3)
+    idx.as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| BvhTriangle::new(v[t[0] as usize], v[t[1] as usize], v[t[2] as usize]))
         .collect()
 }
@@ -425,7 +427,7 @@ const PINNED: [u64; 4] = [
 
 /// `(v, idx)` with every triangle of `extra` (triples) wound the other way and appended
 fn append_flipped(idx: &mut Vec<u32>, extra: &[u32]) {
-    for t in extra.chunks_exact(3) {
+    for t in extra.as_chunks::<3>().0.iter() {
         idx.extend([t[0], t[2], t[1]]);
     }
 }

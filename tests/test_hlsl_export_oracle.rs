@@ -213,7 +213,9 @@ fn compile_and_run(cxx: &str, name: &str, src: &str, pts: &[Vec3], per: usize) -
     writer.join().unwrap().unwrap();
     assert!(child.wait().unwrap().success(), "{name}: evaluator failed");
     assert_eq!(raw.len(), pts.len() * per * 4, "{name}: output size");
-    raw.chunks_exact(4)
+    raw.as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
 }
@@ -225,7 +227,9 @@ fn params_global(layout: &[f32]) -> String {
         padded.push(0.0);
     }
     let v: Vec<String> = padded
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| format!("float4({:e}f, {:e}f, {:e}f, {:e}f)", c[0], c[1], c[2], c[3]))
         .collect();
     format!(
@@ -281,9 +285,9 @@ fn ue5_material_function_evaluates_distance_and_normal() {
         )
     );
     let got = compile_and_run(&cxx, "ue5_mf", &src, &pts, 4);
-    let d: Vec<f32> = got.chunks_exact(4).map(|c| c[0]).collect();
+    let d: Vec<f32> = got.as_chunks::<4>().0.iter().map(|c| c[0]).collect();
     check_dist("AliceSdf_Eval", A, &pts, &d);
-    for (&p, c) in pts.iter().zip(got.chunks_exact(4)) {
+    for (&p, c) in pts.iter().zip(got.as_chunks::<4>().0.iter()) {
         let want = A.normal(p);
         for k in 0..3 {
             let err = (f64::from(c[k + 1]) - want[k]).abs();
@@ -453,11 +457,11 @@ fn unity_shader_graph_evaluates_distance_and_normal() {
         )
     );
     let got = compile_and_run(&cxx, "unity_sg", &src, &pts, 7);
-    let d: Vec<f32> = got.chunks_exact(7).map(|c| c[0]).collect();
+    let d: Vec<f32> = got.as_chunks::<7>().0.iter().map(|c| c[0]).collect();
     check_dist("AliceSdf_float distance", A, &pts, &d);
-    let hd: Vec<f32> = got.chunks_exact(7).map(|c| c[4]).collect();
+    let hd: Vec<f32> = got.as_chunks::<7>().0.iter().map(|c| c[4]).collect();
     check_dist("AliceSdf_half distance", A, &pts, &hd);
-    for (&p, c) in pts.iter().zip(got.chunks_exact(7)) {
+    for (&p, c) in pts.iter().zip(got.as_chunks::<7>().0.iter()) {
         let want = A.normal(p);
         for k in 0..3 {
             let err = (f64::from(c[k + 1]) - want[k]).abs();

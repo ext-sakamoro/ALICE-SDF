@@ -146,7 +146,7 @@ fn topology(m: &Mesh) -> (i64, usize) {
         i
     }
     let mut edges = HashSet::new();
-    for t in m.indices.chunks_exact(3) {
+    for t in m.indices.as_chunks::<3>().0.iter() {
         for &v in t {
             parent.entry(v).or_insert(v);
         }
@@ -213,7 +213,7 @@ fn winding(m: &Mesh, x: DVec3) -> f64 {
         DVec3::new(f64::from(v.x), f64::from(v.y), f64::from(v.z)) - x
     };
     let mut total = 0.0;
-    for t in m.indices.chunks_exact(3) {
+    for t in m.indices.as_chunks::<3>().0.iter() {
         let (a, b, c) = (g(t[0]), g(t[1]), g(t[2]));
         let (la, lb, lc) = (a.length(), b.length(), c.length());
         let num = a.dot(b.cross(c));
@@ -431,7 +431,9 @@ fn crossings(m: &Mesh) -> usize {
         .collect();
     let tris: Vec<[usize; 3]> = m
         .indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| [t[0] as usize, t[1] as usize, t[2] as usize])
         .collect();
     let span = p.iter().fold(0.0f64, |a, x| a.max(x.abs().max_element()));

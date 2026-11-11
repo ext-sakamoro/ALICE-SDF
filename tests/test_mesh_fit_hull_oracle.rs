@@ -248,7 +248,9 @@ fn convex_hull_lists_only_the_vertices_its_faces_use() {
     // closed: every directed edge has its reverse
     let edges: HashSet<(u32, u32)> = hull
         .indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .flat_map(|t| [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])])
         .collect();
     assert!(edges.iter().all(|&(a, b)| edges.contains(&(b, a))));

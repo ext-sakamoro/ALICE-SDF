@@ -353,10 +353,7 @@ pub extern "C" fn alice_sdf_ifs(
         // remains valid for the duration of this call. This is an FFI contract.
         let transform_slice =
             unsafe { slice::from_raw_parts(transforms, transform_count as usize * 16) };
-        let transform_matrices: Vec<[f32; 16]> = transform_slice
-            .chunks_exact(16)
-            .map(|c| c.try_into().unwrap())
-            .collect();
+        let transform_matrices: Vec<[f32; 16]> = transform_slice.as_chunks::<16>().0.to_vec();
 
         let new_node = (*sdf_node).clone().ifs(transform_matrices, iterations);
         register_node(new_node)

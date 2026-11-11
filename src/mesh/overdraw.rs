@@ -139,7 +139,7 @@ fn hard_boundaries(indices: &[u32], vertex_count: usize, cache_size: u32) -> Vec
     let mut stamps = vec![0u32; vertex_count];
     let mut timestamp = cache_size + 1;
     let mut out = Vec::new();
-    for (t, tri) in indices.chunks_exact(3).enumerate() {
+    for (t, tri) in indices.as_chunks::<3>().0.iter().enumerate() {
         let m = update_fifo(tri, cache_size, &mut stamps, &mut timestamp);
         if t == 0 || m == 3 {
             out.push(t);
@@ -225,7 +225,7 @@ fn cluster_sort_keys(mesh: &Mesh, clusters: &[usize]) -> Vec<f32> {
             let mut area_sum = 0.0f32;
             let mut centroid = Vec3::ZERO;
             let mut normal = Vec3::ZERO;
-            for tri in mesh.indices[start * 3..end * 3].chunks_exact(3) {
+            for tri in mesh.indices[start * 3..end * 3].as_chunks::<3>().0.iter() {
                 let (p0, p1, p2) = (pos(tri[0]), pos(tri[1]), pos(tri[2]));
                 let n = (p1 - p0).cross(p2 - p0);
                 let area = n.length();

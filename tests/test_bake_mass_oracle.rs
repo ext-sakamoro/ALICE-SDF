@@ -149,7 +149,7 @@ fn marching_cubes_sphere_converges_to_solid_sphere() {
             ..Default::default()
         };
         let mesh = sdf_to_mesh(&node, Vec3::splat(-1.0), Vec3::splat(1.0), &cfg);
-        let tris = mesh.indices.chunks_exact(3).map(|t| {
+        let tris = mesh.indices.as_chunks::<3>().0.iter().map(|t| {
             [0, 1, 2].map(|k| mesh.vertices[t[k] as usize].position.as_dvec3().to_array())
         });
         let m = mass_properties(tris).expect("closed sphere mesh");

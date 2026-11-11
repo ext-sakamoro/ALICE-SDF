@@ -51,7 +51,9 @@ const fn sphere() -> SdfNode {
 
 fn volume(m: &Mesh) -> f64 {
     m.indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| {
             let [a, b, c] = [0, 1, 2].map(|k| m.vertices[t[k] as usize].position.as_dvec3());
             a.dot(b.cross(c)) / 6.0
@@ -107,7 +109,7 @@ fn check_sphere_mesh(name: &str, m: &Mesh, cell: f32, attributes: bool) -> usize
             assert_eq!(v.material_id, 0);
         }
     }
-    for t in m.indices.chunks_exact(3) {
+    for t in m.indices.as_chunks::<3>().0.iter() {
         let [a, b, c] = [0, 1, 2].map(|k| m.vertices[t[k] as usize].position);
         let n = (b - a).cross(c - a);
         if n.length() > 1e-9 {
@@ -204,7 +206,7 @@ fn decimation_presets_reduce_monotonically_within_their_bounds() {
         "aggressive above target: {t2}"
     );
     for m in [&cons, &aggr] {
-        for t in m.indices.chunks_exact(3) {
+        for t in m.indices.as_chunks::<3>().0.iter() {
             assert!(t.iter().all(|&i| (i as usize) < m.vertices.len()));
             assert!(t[0] != t[1] && t[1] != t[2] && t[0] != t[2], "degenerate");
         }
@@ -248,7 +250,9 @@ fn lightmap_uvs_lie_in_the_unit_square_without_overlap() {
     assert_eq!(m.triangle_count(), tris_before);
     let tris: Vec<[Vec2; 3]> = m
         .indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| [0, 1, 2].map(|k| m.vertices[t[k] as usize].uv2))
         .collect();
     for t in &tris {

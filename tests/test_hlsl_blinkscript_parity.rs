@@ -315,7 +315,9 @@ fn run(bin: &Path, pts: &[Vec3]) -> Result<Vec<f32>, String> {
         ));
     }
     Ok(raw
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
         .collect())
 }
@@ -331,7 +333,9 @@ fn params_global(layout: &[f32]) -> String {
         padded.push(0.0);
     }
     let vecs: Vec<String> = padded
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| format!("float4({:e}f, {:e}f, {:e}f, {:e}f)", c[0], c[1], c[2], c[3]))
         .collect();
     format!(
@@ -589,7 +593,7 @@ fn hlsl_shim_matches_hand_computed_intrinsics() {
     );
 
     let mut wrong = Vec::new();
-    for ((name, expr, want), chunk) in probes.iter().zip(out.stdout.chunks_exact(4)) {
+    for ((name, expr, want), chunk) in probes.iter().zip(out.stdout.as_chunks::<4>().0.iter()) {
         let got = f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
         if (got - want).abs() > 1e-6 * want.abs().max(1.0) {
             wrong.push(format!("{name}: `{expr}` = {got}, expected {want}"));

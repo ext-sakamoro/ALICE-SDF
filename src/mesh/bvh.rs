@@ -701,8 +701,7 @@ fn compute_aabb_simd(triangles: &[BvhTriangle], indices: &[usize]) -> Aabb {
     let mut acc_max_z = f32x8::splat(f32::NEG_INFINITY);
 
     // Process 8 triangles at a time with SIMD
-    let chunks = indices.chunks_exact(8);
-    let remainder = chunks.remainder();
+    let (chunks, remainder) = indices.as_chunks::<8>();
 
     for chunk in chunks {
         let min_x = f32x8::new([

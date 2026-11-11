@@ -282,7 +282,9 @@ fn archive_bytes(mesh: &Mesh, config: &AlembicConfig, provenance: &Provenance) -
     // Alembic stores faces clockwise
     let indices = i32_bytes(
         mesh.indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .flat_map(|t| [t[0] as i32, t[2] as i32, t[1] as i32]),
     );
     let tris = mesh.indices.len() / 3;
@@ -446,8 +448,8 @@ fn murmur3_x64_128(data: &[u8]) -> [u8; 16] {
         k ^ (k >> 33)
     };
     let (mut h1, mut h2) = (0u64, 0u64);
-    let mut blocks = data.chunks_exact(16);
-    for b in &mut blocks {
+    let (blocks, tail) = data.as_chunks::<16>();
+    for b in blocks {
         let k1 = u64::from_le_bytes(b[..8].try_into().unwrap_or([0; 8]));
         let k2 = u64::from_le_bytes(b[8..].try_into().unwrap_or([0; 8]));
         h1 ^= k1.wrapping_mul(C1).rotate_left(31).wrapping_mul(C2);
@@ -463,7 +465,6 @@ fn murmur3_x64_128(data: &[u8]) -> [u8; 16] {
             .wrapping_mul(5)
             .wrapping_add(0x3849_5ab5);
     }
-    let tail = blocks.remainder();
     let mut t = [0u8; 16];
     t[..tail.len()].copy_from_slice(tail);
     if tail.len() > 8 {
@@ -503,12 +504,11 @@ fn spooky_hash128(msg: &[u8], seed1: u64, seed2: u64) -> (u64, u64) {
         seed1, seed2, SC_CONST, seed1, seed2, SC_CONST, seed1, seed2, SC_CONST, seed1, seed2,
         SC_CONST,
     ];
-    let mut blocks = msg.chunks_exact(96);
-    for b in &mut blocks {
+    let (blocks, rem) = msg.as_chunks::<96>();
+    for b in blocks {
         let d: [u64; 12] = core::array::from_fn(|i| word(b, i));
         spooky_mix(&d, &mut h);
     }
-    let rem = blocks.remainder();
     let mut last = [0u8; 96];
     last[..rem.len()].copy_from_slice(rem);
     last[95] = rem.len() as u8;

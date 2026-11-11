@@ -367,7 +367,9 @@ impl Gpu {
         rx.recv().expect("map callback").expect("map buffer");
         let data: Vec<f32> = bytemuck::cast_slice(&slice.get_mapped_range()).to_vec();
         staging.unmap();
-        data.chunks_exact(3)
+        data.as_chunks::<3>()
+            .0
+            .iter()
             .map(|v| Vec3::new(v[0], v[1], v[2]))
             .collect()
     }

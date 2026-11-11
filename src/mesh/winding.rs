@@ -129,7 +129,7 @@ pub fn winding_report(indices: &[u32]) -> WindingReport {
     // (low, high, runs low→high): sorted, so equal edges are adjacent and the count does not
     // depend on a hash order
     let mut edges: Vec<(u32, u32, bool)> = Vec::with_capacity(indices.len());
-    for t in indices.chunks_exact(3) {
+    for t in indices.as_chunks::<3>().0.iter() {
         let (a, b, c) = (t[0], t[1], t[2]);
         if a == b || b == c || c == a {
             report.degenerate_triangles += 1;
@@ -221,7 +221,9 @@ pub fn orientation_report(vertices: &[Vec3], indices: &[u32]) -> OrientationRepo
 
     let mut report = OrientationReport::default();
     let tris: Vec<[u32; 3]> = indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|t| [t[0], t[1], t[2]])
         .filter(|t| {
             t[0] != t[1]

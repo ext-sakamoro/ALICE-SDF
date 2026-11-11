@@ -264,7 +264,9 @@ fn extract_params_is_the_dynamic_layout_of_the_tree() {
         padded.push(0.0);
     }
     let consts: Vec<String> = padded
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| format!("vec4({:e}, {:e}, {:e}, {:e})", c[0], c[1], c[2], c[3]))
         .collect();
     let start = raw
@@ -440,7 +442,9 @@ fn vulkan_compute_shader_validates_as_emitted_and_runs() {
         padded.push(0.0);
     }
     let consts: Vec<String> = padded
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| format!("vec4({:e}, {:e}, {:e}, {:e})", c[0], c[1], c[2], c[3]))
         .collect();
     let src = format!(

@@ -350,7 +350,9 @@ mod tests {
             return false;
         }
         let mut ta: Vec<[u32; 3]> = a
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| {
                 let mut t = [c[0], c[1], c[2]];
                 t.sort_unstable();
@@ -358,7 +360,9 @@ mod tests {
             })
             .collect();
         let mut tb: Vec<[u32; 3]> = b
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| {
                 let mut t = [c[0], c[1], c[2]];
                 t.sort_unstable();
