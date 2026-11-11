@@ -18,6 +18,8 @@ use alice_sdf::compiled::{GlslShader, GlslTranspileMode, GpuEvaluator, Transpile
 use alice_sdf::prelude::*;
 
 mod common;
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
 use common::spirv::{instructions, spirv};
 
 /// `words` written to `$ALICE_SDF_SPIRV_DIR/name` when that is set (the CI lane runs spirv-val on them)
@@ -232,7 +234,7 @@ fn a_chunked_array_on_the_gpu_matches_the_cpu() {
         eprintln!("skipping: no GPU");
         return;
     };
-    let got = gpu.eval_batch(&pts).expect("gpu");
+    let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu");
     eprintln!(
         "wgsl: {} points over {} chunks of {chunk}",
         pts.len(),
@@ -259,7 +261,7 @@ fn a_chunked_array_on_the_gpu_matches_the_cpu() {
     let gl = GpuEvaluator::from_glsl_compute(&glsl.to_vulkan_compute_shader())
         .map(|c| c.into_parts().0)
         .expect("glsl evaluator");
-    let got = gl.eval_batch(&pts).expect("gpu glsl");
+    let got = gpu_batches::eval_in_batches(&gl, &pts).expect("gpu glsl");
     let mut worst = 0.0f32;
     for (p, g) in pts.iter().zip(&got) {
         worst = worst.max((eval(&node, *p) - g).abs());
