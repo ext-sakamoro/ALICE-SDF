@@ -193,7 +193,7 @@ ALICE-SDFはレイヤードアーキテクチャを使用しています。各SD
 
 ```
 Layer 1:  types.rs          -- SdfNode列挙型（AST定義）
-Layer 2:  primitives/       -- SDF数学公式（Inigo Quilez）
+Layer 2:  primitives/       -- SDF数学公式（自前の実装）
 Layer 3:  eval/             -- 再帰インタプリタ
 Layer 4:  compiled/opcode   -- VM用OpCode列挙型
 Layer 5:  compiled/instr    -- 命令エンコーディング（32バイトアライン）
@@ -320,7 +320,7 @@ export_ue5_mesh(&mesh, "model.ue5_mesh", &Ue5MeshConfig::default())?;
 
 ### プラトン立体・アルキメデス立体 (GDF)
 
-hg_sdfのGDF（一般化距離関数）アプローチによる5種の新プラトン/アルキメデス立体。面法線との絶対内積の最大値でSDFを定義。
+GDF（一般化距離関数、hg_sdf でも知られる方法）による5種の新プラトン/アルキメデス立体。面法線との絶対内積の最大値でSDFを定義。
 
 | プリミティブ | 法線数 | 説明 |
 |-------------|--------|------|
@@ -354,7 +354,7 @@ IQの`sdBoxFrame` — エッジのみ表示するワイヤーフレームボッ�
 
 ### 高度CSG演算 (9種新規)
 
-| 演算 | 数式 | 出典 |
+| 演算 | 数式 | 同じ方法が知られる所 |
 |------|------|------|
 | `XOR` | `min(a,b).max(-max(a,b))` | IQ |
 | `Morph` | `a*(1-t) + b*t` | libfive/Curv |

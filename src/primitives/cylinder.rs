@@ -1,8 +1,9 @@
 //! Cylinder primitive SDF (Deep Fried Edition)
 //!
 //! # Deep Fried Optimizations
-//! - **Branchless Capped Cylinder**: Rewrote Inigo Quilez's implementation
-//!   to use branchless selection logic (max/min) instead of if/else chains.
+//! - **Branchless Capped Cylinder**: the capped-cylinder distance (method also
+//!   known from Inigo Quilez's articles) written with branchless selection
+//!   logic (max/min) instead of if/else chains.
 //! - **Forced Inlining**: Zero call overhead.
 //!
 //! Author: Moroya Sakamoto

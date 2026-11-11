@@ -1,48 +1,33 @@
 # Third-party notices
 
-ALICE-SDF is an independent Rust implementation, but a number of its distance
-functions follow **mathematical forms published by others**. This file is the
-single place where those sources are named; the per-file doc comments point
-back here.
+## Origin
 
-Nothing in this repository is a copy of third-party source code: each law was
-re-implemented in Rust (and re-derived where the published form was only a
-bound — see `CHANGELOG.md` for the Ellipsoid and Rounded Cone cases, which were
-replaced with exact forms in 1.10.3 / 1.11.0).
+ALICE-SDF is our own implementation, which grew out of the principle
+"Don't send data, send the law" (ALICE-Zip's procedural laws).
 
-## Inigo Quilez — distance function forms
+The same methods are also widely known from published raymarching and SDF
+literature, including Inigo Quilez's articles (iquilezles.org), hg_sdf by
+Mercury and Ken Perlin's "Improving Noise" (2002). Where a doc comment names
+one of these, it says where the method is *also known from*; it does not mean
+the code was taken from there.
 
-Signed-distance formulas for a large part of the primitive set follow the
-articles and Shadertoy demos of **Inigo Quilez** (`sdEgg`, `sdRoundCone`,
-`sdCappedCone`, `sdCappedTorus`, `sdArc`, `sdMoon`, `sdCross`, `sdBlobbyCross`,
-`sdRhombus`, `sdVesica`, `sdBezier`, the exact triangle/quad distances used by
-the mesh BVH, and others).
+## Third-party code
 
-- Files that name him in a doc comment: 34 (`grep -rl "Inigo Quilez" src/`)
-- Layer in the architecture: `src/primitives/` (`docs/USAGE.md` §Layer 2)
-- Also used as a convention: `iTime` and the Shadertoy-style `mainImage`
-  wrapper emitted by the GLSL transpiler
+No third-party source code is included in `src/`. The sources named in doc
+comments were checked file by file:
 
-## Mercury (hg_sdf) — operator forms
+- Distance functions that name Inigo Quilez's articles: our own Rust code; the
+  articles are cited for the method only.
+- Operators that name hg_sdf (stairs, columns, chamfer, engrave, groove, pipe,
+  tongue, octant folding, GDF normals): our own Rust code; none of hg_sdf's
+  functions is called or reproduced, and several forms deliberately differ
+  from hg_sdf (see `src/operations/stairs.rs` and `src/operations/chamfer.rs`).
+- Gradient noise (`src/modifiers/noise.rs`, `src/npr/noise.rs`): our own hash
+  and our own encoding of the 12 cube-edge gradient directions; Perlin's
+  reference permutation table is not used.
 
-The stepped / columned / chamfered boolean operators and the octant mirror
-follow the forms in **hg_sdf** by Mercury (`fOpUnionStairs`, `fOpUnionColumns`,
-`fOpUnionChamfer`, `pR45` / octant folding).
+If a function is ever ported from someone else's code, it will be listed here
+individually with its licence.
 
-- Files that name it in a doc comment: 15 (`grep -rl "hg_sdf\|Mercury" src/`)
-
-## Perlin gradient table
-
-`src/modifiers/noise.rs` uses a gradient table derived from Ken Perlin's
-original improved-noise gradient set.
-
-## License status of the upstream sources
-
-The forms above are mathematics, and the implementations here are our own, but
-the **upstream terms have not been verified inside this repository yet**. That
-verification is tracked in the ALICE-* backlog together with the license census
-(2026-09-27); until it lands, treat this file as attribution, not as a
-statement about upstream licensing.
-
-If you are an author listed here and want the wording or the attribution
-changed, please open an issue.
+If you are an author named here and want the wording changed, please open an
+issue.

@@ -1,11 +1,11 @@
 //! Stairs CSG operations for SDFs (Deep Fried Edition)
 //!
-//! Stepped/terraced blends using Mercury's hg_sdf stairs formula.
+//! Stepped/terraced blends (method also known from Mercury's hg_sdf stairs).
 //! Creates n-1 discrete steps in the blend region between two SDFs.
 //!
 //! # Canonical form (decided 2026-09-14)
 //!
-//! This is the full Mercury construction (45° rotation, offset, `mod`
+//! This is the full construction, also known from Mercury's hg_sdf (45° rotation, offset, `mod`
 //! repetition, second rotation). The single-expression variant found in some
 //! hg_sdf ports — `min(a, b, 0.5·(u + a + |mod(u − a + s, 2s) − s|))` with
 //! `u = b − r`, `s = r / n` — is a *different* blend (max difference ≈ 2·r on
@@ -26,7 +26,7 @@ use std::f32::consts::{FRAC_1_SQRT_2, SQRT_2};
 /// Stairs minimum: stepped/terraced blend (Mercury hg_sdf)
 ///
 /// Creates n-1 discrete steps in the blend region.
-/// Based on Mercury's fOpUnionStairs from hg_sdf.
+/// Method also known from Mercury's hg_sdf as `fOpUnionStairs`.
 ///
 /// # Parameters
 /// - `a`, `b`: SDF distances

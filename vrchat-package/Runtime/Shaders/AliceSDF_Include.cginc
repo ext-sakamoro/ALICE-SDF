@@ -138,7 +138,7 @@ float sdCone(float3 p, float radius, float halfHeight)
     return s * sqrt(d2);
 }
 
-// Ellipsoid: approximate SDF (Inigo Quilez formula)
+// Ellipsoid: approximate SDF (method also known from Inigo Quilez's articles)
 float sdEllipsoid(float3 p, float3 radii)
 {
     float3 sr = max(radii, 1e-10);

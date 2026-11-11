@@ -57,7 +57,7 @@ fn legacy_sdf(vertices: &[Vec3], indices: &[u32]) -> MeshSdf {
 // analytic oracles (closed form, no implementation calls)
 // ---------------------------------------------------------------------------
 
-/// Exact SDF of an axis-aligned box centred at the origin (Inigo Quilez).
+/// Exact SDF of an axis-aligned box centred at the origin (method also known from Inigo Quilez's articles).
 /// The tessellated box mesh below *is* this box, so the match is exact, not
 /// an approximation.
 fn analytic_box(p: Vec3, half: Vec3) -> f32 {
