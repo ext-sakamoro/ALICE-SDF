@@ -34,11 +34,15 @@ fn keep(name: &str, words: &[u32]) {
 /// SPIR-V instruction can hold (a loft at a body's size reaches the same size, but takes minutes to
 /// build; the splitting acts on the emitted text, whichever node wrote the array)
 fn large_field() -> SdfNode {
-    let (w, h) = (300u32, 300u32);
-    let map: Vec<f32> = (0..w * h)
+    field(300)
+}
+
+/// A sphere displaced by a `w` x `w` height map of varied values
+fn field(w: u32) -> SdfNode {
+    let map: Vec<f32> = (0..w * w)
         .map(|i| ((i * 7919) % 1000) as f32 / 1000.0)
         .collect();
-    SdfNode::sphere(0.5).heightmap_displacement(map, w, h, 0.02, 1.0)
+    SdfNode::sphere(0.5).heightmap_displacement(map, w, w, 0.02, 1.0)
 }
 
 /// The count of OpConstant (opcode 43) instructions: the data values are float constants
@@ -119,8 +123,12 @@ fn the_walker_finds_an_overflowed_word_count() {
     assert!(instructions(&short).unwrap_err().contains("ends at word"));
 }
 
-/// The height map's side (the field reads element `y * W + x`)
-const W: u32 = 300;
+/// The GPU test's height map side: 70 x 70 = 4900 elements, which split as 2047 + 2047 + 806, so
+/// there are 3 chunks and the last is partial (an off-by-one in the chunk index and a wrong split
+/// size both read wrong elements). The 300 x 300 field of the SPIR-V test also chunks, but each
+/// GPU invocation of this Hardcoded form copies the module arrays on llvmpipe, and at 90000
+/// elements one dispatch of 86 points took about 600 s there (the wgpu wait limit)
+const W: u32 = 70;
 
 /// A point whose height-map lookup reads texel `(x, y)` and its +1 neighbours with non-zero
 /// weights: on the XY face (|z| dominant), `u = x + 0.25`, `v = y + 0.25` in texel units
@@ -175,7 +183,7 @@ fn boundary_points(chunk: usize, len: usize) -> Vec<Vec3> {
 
 #[test]
 fn a_chunked_array_on_the_gpu_matches_the_cpu() {
-    let node = large_field();
+    let node = field(W);
     // the Hardcoded emit, whose data is chunked module arrays (GpuEvaluator::new uses the node
     // data buffer instead)
     let wgsl = WgslShader::try_transpile(&node, TranspileMode::Hardcoded).expect("wgsl");
@@ -195,11 +203,15 @@ fn a_chunked_array_on_the_gpu_matches_the_cpu() {
         })
         .collect();
     assert!(
-        sizes.len() >= 2,
-        "the data is not large enough to be chunked ({} chunks)",
+        sizes.len() >= 3,
+        "the data is not large enough for 3 chunks ({} chunks)",
         sizes.len()
     );
     let (chunk, len) = (sizes[0], sizes.iter().sum::<usize>());
+    assert!(
+        sizes[..sizes.len() - 1].iter().all(|&n| n == chunk) && sizes[sizes.len() - 1] < chunk,
+        "the chunks are not equal with a partial last one: {sizes:?}"
+    );
     assert_eq!(
         len,
         (W * W) as usize,
