@@ -671,7 +671,7 @@ pub(crate) fn split_large_arrays(src: &str, dialect: &str, chunk: usize) -> Stri
                 .replace(&format!("[{}]", d.len), &format!("[{n}]"));
             out.push_str(&format!("{head}{}{}\n", items.join(", "), d.tail));
         }
-        out.push_str(&chunk_reader(d, dialect, parts, chunk));
+        out.push_str(&chunk_reader(d, dialect, parts, chunk + 1));
     }
     let mut src = out;
     for d in &decls {
