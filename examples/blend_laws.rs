@@ -21,8 +21,9 @@
 use alice_sdf::operations::{
     sdf_intersection_multi, sdf_smooth_intersection_rk, sdf_smooth_subtraction_rk,
     sdf_smooth_union_rk, sdf_union_multi, smooth_min, smooth_min_cubic, smooth_min_exp,
-    smooth_min_root, smooth_min_weight, SMOOTH_UNION_BLEND_GLSL,
+    smooth_min_root, smooth_min_weight, BlendMode, SmoothKernel, SMOOTH_UNION_BLEND_GLSL,
 };
+use alice_sdf::prelude::*;
 
 fn check(name: &str, got: f32, want: f64) {
     println!("  {name:<34} {got:>10.6}  (closed form {want:>10.6})");
@@ -112,6 +113,32 @@ fn main() {
         "  GLSL for a shader's own map: {} lines",
         SMOOTH_UNION_BLEND_GLSL.lines().count()
     );
+    println!();
+
+    // SdfNode::smooth_blend: one node, three kernels. Two half-spaces meeting at the origin's corner
+    // (x <= 0 and y <= 0 as planes with outward normals +x and +y) give distances a = x, b = y, so at
+    // a point with x = y = d the union is d minus the kernel's deficit at a = b
+    println!("SmoothBlend (a = b = {a6}, k = {k6}): union = a - deficit");
+    let plane_x = SdfNode::plane(Vec3::X, 0.0);
+    let plane_y = SdfNode::plane(Vec3::Y, 0.0);
+    let p = Vec3::new(a, a, 0.0);
+    for (kernel, deficit) in [
+        (
+            SmoothKernel::Circular,
+            1.0 - std::f64::consts::FRAC_1_SQRT_2,
+        ),
+        (SmoothKernel::Quartic, 3.0 / 16.0),
+        (SmoothKernel::Sigmoid, 1.0),
+    ] {
+        let node = plane_x
+            .clone()
+            .smooth_blend(plane_y.clone(), k, kernel, BlendMode::Union);
+        check(
+            &format!("smooth_blend {kernel:?}"),
+            eval(&node, p),
+            a6 - deficit * k6,
+        );
+    }
     println!();
     println!("all checks passed");
 }

@@ -373,4 +373,5 @@ pub trait PrimTable: Real {
     fn exp_smooth_union(inst: &Instruction, a: Self, b: Self) -> Self;
     fn exp_smooth_intersection(inst: &Instruction, a: Self, b: Self) -> Self;
     fn exp_smooth_subtraction(inst: &Instruction, a: Self, b: Self) -> Self;
+    fn smooth_blend(inst: &Instruction, a: Self, b: Self) -> Self;
 }

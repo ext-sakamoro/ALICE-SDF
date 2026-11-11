@@ -38,7 +38,7 @@ impl SdfCategory {
     pub const fn count(self) -> u32 {
         match self {
             Self::Primitive => 78,
-            Self::Operation => 25,
+            Self::Operation => 26,
             Self::Transform => 8,
             Self::Modifier => 25,
         }
@@ -1000,6 +1000,21 @@ pub enum SdfNode {
         /// Smoothness parameter
         k: f32,
     },
+    /// Smooth blend with a choice of kernel (circular / quartic / sigmoid) and
+    /// boolean (union / intersection / subtraction); law in
+    /// [`crate::operations::smooth_blend`]
+    SmoothBlend {
+        /// Left operand (for subtraction: the shape subtracted from)
+        a: Arc<Self>,
+        /// Right operand (for subtraction: the shape subtracted)
+        b: Arc<Self>,
+        /// Blend width (no blend when `k <= 0`)
+        k: f32,
+        /// The kernel of the smooth minimum
+        kernel: crate::operations::SmoothKernel,
+        /// The boolean being smoothed
+        mode: crate::operations::BlendMode,
+    },
 
     // === Transforms ===
     /// Translation
@@ -1500,7 +1515,8 @@ impl SdfNode {
             | Self::Tongue { .. }
             | Self::ExpSmoothUnion { .. }
             | Self::ExpSmoothIntersection { .. }
-            | Self::ExpSmoothSubtraction { .. } => SdfCategory::Operation,
+            | Self::ExpSmoothSubtraction { .. }
+            | Self::SmoothBlend { .. } => SdfCategory::Operation,
 
             // === Transforms ===
             Self::Translate { .. }
@@ -1634,6 +1650,7 @@ impl SdfNode {
             | Self::ExpSmoothUnion { a, b, .. }
             | Self::ExpSmoothIntersection { a, b, .. }
             | Self::ExpSmoothSubtraction { a, b, .. }
+            | Self::SmoothBlend { a, b, .. }
             | Self::Pipe { a, b, .. }
             | Self::Engrave { a, b, .. }
             | Self::Groove { a, b, .. }
@@ -1751,7 +1768,7 @@ mod tests {
 
     #[test]
     fn test_category_total() {
-        assert_eq!(SdfCategory::total(), 136);
+        assert_eq!(SdfCategory::total(), 137);
     }
 
     #[test]

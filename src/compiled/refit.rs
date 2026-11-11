@@ -588,6 +588,7 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
         | OpCode::ExpSmoothUnion
         | OpCode::ExpSmoothIntersection
         | OpCode::ExpSmoothSubtraction
+        | OpCode::SmoothBlend
         | OpCode::Translate
         | OpCode::Rotate
         | OpCode::Scale
@@ -656,6 +657,17 @@ fn csg_binary_aabb(opcode: OpCode, params: &[f32; 7], a: AabbPacked, b: AabbPack
         // Tongue `min(a, max(a - ra, |b| - rb))` adds material where
         // a <= ra and |b| <= rb, outside the LHS.
         OpCode::Tongue => a.union(&a.expand(params[0]).intersection(&b.expand(params[1]))),
+        // SmoothBlend: union adds material only where min(a, b) <= D(0) <= k (every
+        // kernel's deficit is at most k), so the union bound grows by k; intersection
+        // (max + D >= max) and subtraction (max(a, -b) + D) only remove material.
+        OpCode::SmoothBlend => {
+            let (_, mode) = crate::operations::smooth_blend_decode(params[1], params[2]);
+            match mode {
+                crate::operations::BlendMode::Union => a.union(&b).expand(params[0].law_max(0.0)),
+                crate::operations::BlendMode::Intersection => a.intersection(&b),
+                crate::operations::BlendMode::Subtraction => a,
+            }
+        }
         _ => unreachable!("csg_binary_aabb called with non-binary {opcode:?}"),
     }
 }

@@ -50,6 +50,7 @@ impl SdfNode {
             | Self::ExpSmoothUnion { a, b, .. }
             | Self::ExpSmoothIntersection { a, b, .. }
             | Self::ExpSmoothSubtraction { a, b, .. }
+            | Self::SmoothBlend { a, b, .. }
             | Self::XOR { a, b, .. }
             | Self::Pipe { a, b, .. }
             | Self::Engrave { a, b, .. }

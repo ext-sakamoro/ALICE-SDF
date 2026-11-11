@@ -762,7 +762,12 @@ type Emitter = (
     &'static [&'static str],
     &'static [(&'static str, &'static str)],
 );
-const EMITTERS: [Emitter; 13] = [
+const EMITTERS: [Emitter; 14] = [
+    (
+        "src/operations/smooth_blend.rs",
+        &["smooth_blend_helper_glsl", "smooth_blend_helper_hlsl"],
+        &[],
+    ),
     (
         "src/compiled/glsl/transpiler.rs",
         &GLSL_SCANNED,
@@ -1093,6 +1098,34 @@ fn texture_shaders_compute_every_float_into_a_precise_local() {
 
 /// The Nanite material function of every corpus node, from both writers: this crate's identifier
 /// (`io::export_nanite_hlsl_material`) and a caller's (`io::export_nanite_hlsl_material_with_provenance`)
+#[cfg(any(feature = "glsl", feature = "hlsl"))]
+/// The smooth-blend kernel helpers (operations::smooth_blend), read directly so every
+/// kernel is scanned whether or not a corpus scene reaches it
+#[test]
+fn smooth_blend_helpers_compute_every_float_into_a_precise_local() {
+    use alice_sdf::operations::{
+        smooth_blend_helper_glsl, smooth_blend_helper_hlsl, smooth_blend_helper_name, SmoothKernel,
+    };
+    let mut glsl: Vec<(&str, String, String)> = Vec::new();
+    let mut hlsl: Vec<(&str, String, String)> = Vec::new();
+    for kernel in SmoothKernel::ALL {
+        let name = smooth_blend_helper_name(kernel);
+        glsl.push((
+            "smooth_blend_helper_glsl",
+            format!("GLSL {name}"),
+            smooth_blend_helper_glsl(name).unwrap().to_string(),
+        ));
+        hlsl.push((
+            "smooth_blend_helper_hlsl",
+            format!("HLSL {name}"),
+            smooth_blend_helper_hlsl(name).unwrap().to_string(),
+        ));
+    }
+    assert_eq!(glsl.len(), 3);
+    check("SmoothBlend GLSL helpers", &glsl, "ALICE_PRECISE");
+    check("SmoothBlend HLSL helpers", &hlsl, "precise");
+}
+
 #[cfg(feature = "hlsl")]
 #[test]
 fn nanite_material_computes_every_float_into_a_precise_local() {

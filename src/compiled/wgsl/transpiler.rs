@@ -228,6 +228,7 @@ fn {name}(p: vec3<f32>) -> f32 {{
     const CAPSULE_RE_EMIT_PARAMS: bool = false;
     fn helper_source(name: &str) -> Option<&'static str> {
         match name {
+            n if n.starts_with("alice_smin_") => crate::operations::smooth_blend_helper_wgsl(n),
             "smooth_min" => Some(HELPER_SMOOTH_MIN),
             "smooth_max" => Some(HELPER_SMOOTH_MAX),
             "quat_rotate" => Some(HELPER_QUAT_ROTATE),
@@ -665,7 +666,8 @@ impl WgslShader {
             | SdfNode::Tongue { a, b, .. }
             | SdfNode::ExpSmoothUnion { a, b, .. }
             | SdfNode::ExpSmoothIntersection { a, b, .. }
-            | SdfNode::ExpSmoothSubtraction { a, b, .. } => {
+            | SdfNode::ExpSmoothSubtraction { a, b, .. }
+            | SdfNode::SmoothBlend { a, b, .. } => {
                 Self::collect_materials(a, out);
                 Self::collect_materials(b, out);
             }

@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1216 |
+| 🟢 Not ignored | 1230 |
 | 🔴 Red by design | 5 |
 | ⏱ Gated (runtime / diagnostic / manual) | 9 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1230** |
+| **Total** | **1244** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -52,7 +52,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu` (test_wgsl_chunk_ulp.rs) — runs on the macOS lane: llvmpipe cannot run the form before (a copy of the array per read)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1216)
+## 🟢 Not ignored (1230)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -81,8 +81,10 @@ Per-file counts (the test names are in `tests/`):
 | `test_io_format_oracle.rs` | 13 |
 | `test_texture_fit_oracle.rs` | 13 |
 | `test_union_bound_oracle.rs` | 13 |
+| `test_smooth_blend_oracle.rs` | 12 |
 | `test_validity_oracle.rs` | 12 |
 | `mesh_bvh_closest_triangle.rs` | 11 |
+| `sdf_semantics_id.rs` | 11 |
 | `test_binding_oracle.rs` | 11 |
 | `test_cache_correctness.rs` | 11 |
 | `test_hlsl_blinkscript_parity.rs` | 11 |
@@ -91,7 +93,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_polygon_2d_general_oracle.rs` | 11 |
 | `test_rendering_pipeline.rs` | 11 |
 | `test_tight_aabb_levelset_oracle.rs` | 11 |
-| `sdf_semantics_id.rs` | 10 |
 | `test_domain_modifier_oracle.rs` | 10 |
 | `test_evaluator_opcode_parity.rs` | 10 |
 | `test_metric_field_oracle.rs` | 10 |
@@ -126,6 +127,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_raycast_oracle.rs` | 7 |
 | `test_sdf2d_oracle.rs` | 7 |
 | `test_shader_no_fused_multiply_add.rs` | 7 |
+| `test_shader_precise_temporaries.rs` | 7 |
 | `test_sim_bridge_oracle.rs` | 7 |
 | `test_smooth_stack_load.rs` | 7 |
 | `test_terrain_api_oracle.rs` | 7 |
@@ -145,7 +147,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_sign_topology.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
 | `test_section_simplicity.rs` | 6 |
-| `test_shader_precise_temporaries.rs` | 6 |
 | `test_asp_bridge_oracle.rs` | 5 |
 | `test_collision_oracle.rs` | 5 |
 | `test_g8_example_text.rs` | 5 |

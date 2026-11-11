@@ -644,6 +644,42 @@ const GOLDEN: &[(&str, &str)] = &[
         "657193dc3aec2b05d0289ea7016a483a77f9f965085a703c79be915471fc5261",
     ),
     (
+        "smooth_blend_circular_union",
+        "7bf7e1afb075cae105da42c98ce68e9d9ff4865a21e5500af7a4e9ef2e17215d",
+    ),
+    (
+        "smooth_blend_circular_intersection",
+        "397f3e55924a3a6cee99b4e609da19e3c4b44e917b836bbe3223a90faeb56975",
+    ),
+    (
+        "smooth_blend_circular_subtract",
+        "b1c08c6af8daac4cb87dd0711f454fcc3da649f471b90aae4fb328a1eea7cd4b",
+    ),
+    (
+        "smooth_blend_quartic_union",
+        "32795017b0e39df8d432baff769a3298003aeab76856c396629c2663dfb7dde6",
+    ),
+    (
+        "smooth_blend_quartic_intersection",
+        "12c268d2fbbc390a21e9107b1c023f73db7278730ac51c088f3e71ba6df5839d",
+    ),
+    (
+        "smooth_blend_quartic_subtract",
+        "dbe3fe5a2aaeabfdfd55d3c62ff22a468d86d453560ffc5f1fba4e5ee2d440be",
+    ),
+    (
+        "smooth_blend_sigmoid_union",
+        "d023ac3cce49e898ca8b5739f0763d41215d98e14b512368fb226f822fd337c9",
+    ),
+    (
+        "smooth_blend_sigmoid_intersection",
+        "662b75fad0d4843b7bf4d492dc29600e8cf0b168a1f5753cb17e3acdb0ae37ae",
+    ),
+    (
+        "smooth_blend_sigmoid_subtract",
+        "f8a3d7dd43748f68d794f2fb154cdc81523ebf81096c3db978f2d9ef500ab6cc",
+    ),
+    (
         "translate",
         "0cc45d8562b4c872bf3ff6e9dba6cc54bb1442c5eb63f37066aba261587e33ef",
     ),
