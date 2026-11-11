@@ -103,7 +103,8 @@ fn every_kernel_and_mode_matches_its_closed_form() {
                 for &a in &grid() {
                     for &b in &grid() {
                         let got = f64::from(smooth_blend(a, b, k, kernel, mode));
-                        let want = blend_ref(kernel, mode, f64::from(a), f64::from(b), f64::from(k));
+                        let want =
+                            blend_ref(kernel, mode, f64::from(a), f64::from(b), f64::from(k));
                         let err = (got - want).abs() / (1.0 + want.abs());
                         worst = worst.max(err);
                         compared += 1;
@@ -184,11 +185,14 @@ fn circular_kernel_level_sets_are_arcs() {
             let v = (i as f64 / 20.0 - 0.5) * 2.0 * rho / std::f64::consts::SQRT_2 * 0.999;
             let u = c + std::f64::consts::SQRT_2 * rho - (rho * rho - v * v).sqrt();
             let (a, b) = (u + v, u - v);
-            let got = smooth_blend(a as f32, b as f32, k as f32, SmoothKernel::Circular, BlendMode::Union);
-            assert!(
-                (f64::from(got) - c).abs() < 2e-6,
-                "c={c} v={v}: got {got}"
+            let got = smooth_blend(
+                a as f32,
+                b as f32,
+                k as f32,
+                SmoothKernel::Circular,
+                BlendMode::Union,
             );
+            assert!((f64::from(got) - c).abs() < 2e-6, "c={c} v={v}: got {got}");
         }
     }
 }
@@ -236,7 +240,17 @@ fn blended_scene_is_one_lipschitz() {
 #[test]
 fn finite_input_gives_finite_output() {
     let vals = [
-        -1e30f32, -1e6, -1.0, -1e-30, 0.0, 1e-30, 1.0, 1e6, 1e30, f32::MAX, -f32::MAX,
+        -1e30f32,
+        -1e6,
+        -1.0,
+        -1e-30,
+        0.0,
+        1e-30,
+        1.0,
+        1e6,
+        1e30,
+        f32::MAX,
+        -f32::MAX,
     ];
     for kernel in KERNELS {
         for mode in MODES {
@@ -288,8 +302,86 @@ fn tree_and_compiled_agree() {
                 let p = Vec3::new(t * 2.0 - 1.0, (t * 7.0).sin() * 0.8, (t * 3.0).cos() * 0.5);
                 let tree = eval(&node, p);
                 let comp = eval_compiled(&compiled, p);
-                assert_eq!(tree.to_bits(), comp.to_bits(), "{kernel:?} {mode:?} at {p:?}");
+                assert_eq!(
+                    tree.to_bits(),
+                    comp.to_bits(),
+                    "{kernel:?} {mode:?} at {p:?}"
+                );
             }
+        }
+    }
+}
+
+/// The analytic gradient (`eval_gradient`, from `smooth_blend_weights`)
+/// against central differences of the tree evaluator, away from the
+/// operands' own creases.
+#[test]
+fn analytic_gradient_matches_central_differences() {
+    use alice_sdf::eval::eval_gradient;
+    let a = SdfNode::sphere(0.6).translate(-0.35, 0.0, 0.0);
+    let b = SdfNode::sphere(0.5).translate(0.4, 0.1, 0.0);
+    let h = 1e-3f32;
+    for kernel in KERNELS {
+        for mode in MODES {
+            let node = SdfNode::smooth_blend(a.clone(), b.clone(), 0.35, kernel, mode);
+            let mut compared = 0;
+            let mut worst = 0.0f32;
+            for i in 0..400 {
+                let t = i as f32 / 400.0;
+                let p = Vec3::new(t * 2.4 - 1.2, (t * 13.0).sin() * 0.9, (t * 5.0).cos() * 0.7);
+                // skip the spheres' centres, where their own gradient is undefined
+                if (p - Vec3::new(-0.35, 0.0, 0.0)).length() < 0.05
+                    || (p - Vec3::new(0.4, 0.1, 0.0)).length() < 0.05
+                {
+                    continue;
+                }
+                let fd = Vec3::new(
+                    eval(&node, p + Vec3::X * h) - eval(&node, p - Vec3::X * h),
+                    eval(&node, p + Vec3::Y * h) - eval(&node, p - Vec3::Y * h),
+                    eval(&node, p + Vec3::Z * h) - eval(&node, p - Vec3::Z * h),
+                ) / (2.0 * h);
+                let g = eval_gradient(&node, p);
+                worst = worst.max((g - fd).length());
+                compared += 1;
+            }
+            assert!(compared > 350, "{kernel:?} {mode:?}: {compared}");
+            assert!(
+                worst < 5e-3,
+                "{kernel:?} {mode:?}: |grad − fd| up to {worst}"
+            );
+        }
+    }
+}
+
+/// `.asdf.json` round trip keeps the kernel and mode (bit-identical
+/// distances), and a reader refuses a kernel or mode name it does not know.
+#[test]
+fn asdf_json_round_trip_and_unknown_names() {
+    use alice_sdf::io::{from_json_string, to_json_string};
+    let a = SdfNode::sphere(0.6).translate(-0.35, 0.0, 0.0);
+    let b = SdfNode::box3d(0.4, 0.5, 0.3).translate(0.4, 0.1, 0.0);
+    for kernel in KERNELS {
+        for mode in MODES {
+            let node = SdfNode::smooth_blend(a.clone(), b.clone(), 0.35, kernel, mode);
+            let json = to_json_string(&SdfTree::new(node.clone())).unwrap();
+            let back = from_json_string(&json).unwrap().root;
+            for i in 0..50 {
+                let p = Vec3::new(i as f32 * 0.04 - 1.0, 0.1, -0.2);
+                assert_eq!(eval(&node, p).to_bits(), eval(&back, p).to_bits());
+            }
+            let kname = format!("\"{kernel:?}\"");
+            let mname = format!("\"{mode:?}\"");
+            assert!(json.contains(&kname) && json.contains(&mname), "{json}");
+            let bad_kernel = json.replace(&kname, "\"Hyperbolic\"");
+            assert!(
+                from_json_string(&bad_kernel).is_err(),
+                "unknown kernel accepted"
+            );
+            let bad_mode = json.replace(&mname, "\"Xor\"");
+            assert!(
+                from_json_string(&bad_mode).is_err(),
+                "unknown mode accepted"
+            );
         }
     }
 }

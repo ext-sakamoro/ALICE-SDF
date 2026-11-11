@@ -144,9 +144,9 @@ fn corpus_covers_every_emitted_opcode() {
             seen.extend(ops);
         }
     }
-    // 128 OpCode variants minus `Animated` (compiler inlines the child) = 127.
+    // 129 OpCode variants minus `Animated` (compiler inlines the child) = 128.
     // `End` and `PopTransform` are emitted and counted.
-    let expected = 127;
+    let expected = 128;
     assert!(
         !seen.contains("Animated"),
         "compiler started emitting Animated; update the expected count"

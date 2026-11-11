@@ -221,7 +221,8 @@ fn get_children(node: &SdfNode) -> Vec<&SdfNode> {
         | SdfNode::Tongue { a, b, .. }
         | SdfNode::ExpSmoothUnion { a, b, .. }
         | SdfNode::ExpSmoothIntersection { a, b, .. }
-        | SdfNode::ExpSmoothSubtraction { a, b, .. } => vec![a.as_ref(), b.as_ref()],
+        | SdfNode::ExpSmoothSubtraction { a, b, .. }
+        | SdfNode::SmoothBlend { a, b, .. } => vec![a.as_ref(), b.as_ref()],
 
         // Single-child transforms and modifiers
         SdfNode::Translate { child, .. }

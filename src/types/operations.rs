@@ -276,4 +276,24 @@ impl SdfNode {
             k,
         }
     }
+
+    /// Smooth blend with `other`: `kernel` picks the smooth minimum
+    /// (circular / quartic / sigmoid), `mode` the boolean (union /
+    /// intersection / subtraction of `other` from `self`), `k` the width
+    #[inline]
+    pub fn smooth_blend(
+        self,
+        other: Self,
+        k: f32,
+        kernel: crate::operations::SmoothKernel,
+        mode: crate::operations::BlendMode,
+    ) -> Self {
+        Self::SmoothBlend {
+            a: Arc::new(self),
+            b: Arc::new(other),
+            k,
+            kernel,
+            mode,
+        }
+    }
 }

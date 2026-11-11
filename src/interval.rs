@@ -1033,6 +1033,33 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 k.law_max(1e-6) * std::f32::consts::LN_2 + sharp.hi,
             )
         }
+        // SmoothBlend: smin lies in [min(a, b) − D(0), min(a, b)] (every kernel's
+        // deficit is largest at a = b); intersection and subtraction mirror it
+        SdfNode::SmoothBlend {
+            a,
+            b,
+            k,
+            kernel,
+            mode,
+        } => {
+            let d0 = k.law_max(0.0) * kernel.max_deficit_per_width();
+            let ia = eval_interval(a, bounds);
+            let ib = eval_interval(b, bounds);
+            match mode {
+                crate::operations::BlendMode::Union => {
+                    let sharp = ia.min(ib);
+                    Interval::new(sharp.lo - d0, sharp.hi)
+                }
+                crate::operations::BlendMode::Intersection => {
+                    let sharp = ia.max(ib);
+                    Interval::new(sharp.lo, sharp.hi + d0)
+                }
+                crate::operations::BlendMode::Subtraction => {
+                    let sharp = ia.max(-ib);
+                    Interval::new(sharp.lo, sharp.hi + d0)
+                }
+            }
+        }
         // Affine domain map (`modifier_shear`): interval image is exact
         SdfNode::Shear { child, shear } => {
             let x = bounds.x;
@@ -1737,7 +1764,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::Tongue { a, b, .. }
         | SdfNode::ExpSmoothUnion { a, b, .. }
         | SdfNode::ExpSmoothIntersection { a, b, .. }
-        | SdfNode::ExpSmoothSubtraction { a, b, .. } => {
+        | SdfNode::ExpSmoothSubtraction { a, b, .. }
+        // SmoothBlend: every kernel's weights are convex (in [0, 1], sum 1)
+        | SdfNode::SmoothBlend { a, b, .. } => {
             eval_lipschitz(a).law_max(eval_lipschitz(b))
         }
         // Chamfer `(a + b)/√2 − r`, stairs (its 45° branch), engrave

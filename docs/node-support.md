@@ -51,8 +51,6 @@ GLSL, WGSL, HLSL and BlinkScript share one dispatch (`transpile_node_inner` in `
 | `InfiniteCylinder` | ok | ok | ok | err | err | ok | ok | ok | ok | ok | ok | ok |
 | `InfiniteCone` | ok | everything | ok | err | err | ok | ok | ok | ok | err | ok | ok |
 | `Gyroid` | ok | ok | ok | err | err | ok | ok | ok | ok | ok | ok | ok |
-| `Loft` | ok | ok | ok | err | err | ok | ok | ok | ok | err | missing | missing |
-| `LoftCurves` | ok | ok | ok | err | err | ok | ok | ok | ok | err | missing | missing |
 | `MetricBall` | ok | ok | ok | err | err | ok | ok | ok | ok | err | missing | missing |
 | `MetricBlend` | ok | ok | ok | err | err | ok | ok | ok | ok | ok | missing | missing |
 | `Heart` | ok | ok | ok | err | err | ok | ok | ok | ok | err | ok | ok |
@@ -94,8 +92,6 @@ GLSL, WGSL, HLSL and BlinkScript share one dispatch (`transpile_node_inner` in `
 | `Circle2D` | ok | ok | ok | err | err | ok | ok | ok | ok | err | ok | ok |
 | `Rect2D` | ok | ok | ok | err | err | ok | ok | ok | ok | err | ok | ok |
 | `Segment2D` | ok | everything | ok | err | err | ok | ok | ok | ok | err | ok | ok |
-| `SectionStack` | ok | ok | err | err | - | ok | ok | ok | ok | err | missing | missing |
-| `SmoothSectionStack` | ok | ok | err | err | - | ok | ok | ok | ok | err | missing | missing |
 | `Polygon2D` | ok | everything | ok | err | err | ok | ok | ok | ok | err | missing | ok |
 | `RoundedRect2D` | ok | ok | ok | err | err | ok | ok | ok | ok | err | ok | ok |
 | `Annular2D` | ok | ok | ok | err | err | ok | ok | ok | ok | err | ok | ok |
@@ -123,6 +119,7 @@ GLSL, WGSL, HLSL and BlinkScript share one dispatch (`transpile_node_inner` in `
 | `ExpSmoothUnion` | ok | ok | ok | err | err | ok | ok | ok | ok | ok | ok | ok |
 | `ExpSmoothIntersection` | ok | ok | ok | err | err | ok | ok | ok | ok | ok | ok | ok |
 | `ExpSmoothSubtraction` | ok | ok | ok | err | err | ok | ok | ok | ok | ok | ok | ok |
+| `SmoothBlend` | ok | ok | ok | err | err | ok | ok | ok | ok | err | missing | missing |
 | `Translate` | ok | ok | ok | ok | ok | ok | ok | ok | ok | err/ok | ok | ok |
 | `Rotate` | ok | ok | ok | ok | ok | ok | ok | ok | ok | err/ok | ok | ok |
 | `Scale` | ok | ok | ok | err/ok | err/ok | ok | ok | ok | ok | err/ok | ok | ok |
@@ -157,3 +154,7 @@ GLSL, WGSL, HLSL and BlinkScript share one dispatch (`transpile_node_inner` in `
 | `HeightmapDisplacement` | ok | ok | ok | err | err | ok | ok | ok | ok | err | ok | ok |
 | `SurfaceRoughness` | ok | ok | ok | err | err | ok | ok | ok | ok | err | ok | ok |
 | `Terrain` | ok | ok | err | err | - | ok | ok | ok | ok | err | missing | missing |
+| `Loft` | ok | ok | ok | err | err | ok | ok | ok | ok | err | missing | missing |
+| `LoftCurves` | ok | ok | ok | err | err | ok | ok | ok | ok | err | missing | missing |
+| `SectionStack` | ok | ok | err | err | - | ok | ok | ok | ok | err | missing | missing |
+| `SmoothSectionStack` | ok | ok | err | err | - | ok | ok | ok | ok | err | missing | missing |
