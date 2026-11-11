@@ -156,6 +156,12 @@ impl MslShader {
     /// Returns [`MslError`] if the WGSL emit does not parse or validate (which
     /// is a bug in the WGSL transpiler, not in the caller's input), or if naga
     /// cannot write MSL for it.
+    ///
+    /// The text is self-contained: a tree's data arrays (lofts, section stacks, height maps,
+    /// lattices, polygon outlines) are constants in it, with no extra buffer. A large tree's
+    /// constant arrays read at a run-time index are slow on some drivers; to evaluate such a tree in
+    /// this crate use [`crate::compiled::GpuEvaluator::new`], which on Metal reads the data from a
+    /// buffer.
     pub fn transpile(node: &SdfNode, mode: TranspileMode) -> Result<Self, MslError> {
         let wgsl = WgslShader::transpile(node, mode);
         Self::from_wgsl_pinned(&wgsl.to_compute_shader())

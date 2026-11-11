@@ -54,6 +54,18 @@ fn dispatch_finished(data: &[u8], end: usize, nonce: u32) -> Result<(), GpuError
     }
 }
 
+/// `Ok` when `len` f32 values of node data fit one storage binding of `limit` bytes, otherwise
+/// [`GpuError::NodeDataTooLarge`]: refused before any buffer or pipeline is made, so the caller
+/// gets the sizes instead of a failed buffer creation or a device lost
+pub const fn check_node_data_size(len: usize, limit: u64) -> Result<(), GpuError> {
+    let bytes = (len as u64).saturating_mul(4);
+    if bytes <= limit {
+        Ok(())
+    } else {
+        Err(GpuError::NodeDataTooLarge { bytes, limit })
+    }
+}
+
 /// Error type for GPU evaluation
 #[derive(Error, Debug)]
 pub enum GpuError {
@@ -67,6 +79,15 @@ pub enum GpuError {
         workgroup_size: u32,
         /// The device's limit per dimension
         limit: u32,
+    },
+    /// The tree's node data (binding 4) is larger than one storage binding of this device can be
+    #[error("node data of {bytes} bytes is larger than the device's storage binding limit of {limit} bytes")]
+    NodeDataTooLarge {
+        /// Bytes of node data the shader reads
+        bytes: u64,
+        /// The device's largest storage binding (wgpu `max_storage_buffer_binding_size`, Metal
+        /// `max_buffer_length`)
+        limit: u64,
     },
     /// Failed to create GPU adapter
     #[error("Failed to create GPU adapter")]
@@ -241,9 +262,25 @@ impl WgpuEngine {
         node_data: &[f32],
         checked: bool,
     ) -> Result<Self, GpuError> {
-        let workgroup_size = declared_workgroup_size(&source)?;
         let context = GpuContext::request("ALICE-SDF Device")?;
+        Self::build(context, source, node_data, checked)
+    }
+
+    /// The pipeline, bind group layout and buffers on `context`'s device: bindings 0-2 (points,
+    /// distances, point count), 4 (the node data, when not empty) and 5 (the read counter, when
+    /// `checked`). Shared by the blocking and the async constructors, so both bind the node data
+    fn build(
+        context: GpuContext,
+        source: wgpu::ShaderSource<'_>,
+        node_data: &[f32],
+        checked: bool,
+    ) -> Result<Self, GpuError> {
+        let workgroup_size = declared_workgroup_size(&source)?;
         let device = context.device();
+        check_node_data_size(
+            node_data.len(),
+            u64::from(device.limits().max_storage_buffer_binding_size),
+        )?;
 
         // Create shader module
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -780,84 +817,24 @@ impl WgpuEngine {
 
     /// Create a GPU evaluator from raw WGSL source (async)
     async fn from_wgsl_async(wgsl_source: &str) -> Result<Self, GpuError> {
-        let workgroup_size =
-            declared_workgroup_size(&wgpu::ShaderSource::Wgsl(wgsl_source.into()))?;
+        Self::from_wgsl_async_with_data(wgsl_source, &[]).await
+    }
+
+    /// [`WgpuEngine::from_wgsl_async`] with the node data buffer (binding 4) when `node_data` is
+    /// not empty
+    async fn from_wgsl_async_with_data(
+        wgsl_source: &str,
+        node_data: &[f32],
+    ) -> Result<Self, GpuError> {
+        // the shader's declared size is read before the device is requested, as before
+        declared_workgroup_size(&wgpu::ShaderSource::Wgsl(wgsl_source.into()))?;
         let context = GpuContext::request_async("ALICE-SDF Device").await?;
-        let device = context.device();
-
-        // Create shader module
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("ALICE-SDF Shader"),
-            source: wgpu::ShaderSource::Wgsl(wgsl_source.into()),
-        });
-
-        // Create bind group layout
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("ALICE-SDF Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        // Create pipeline layout
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("ALICE-SDF Pipeline Layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        // Create compute pipeline
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("ALICE-SDF Compute Pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &shader_module,
-            entry_point: Some("main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
-
-        Ok(context.hold(WgpuResources {
-            pipeline,
-            bind_group_layout,
-            param_buffer: None,
-            dynamic_shape: None,
-            dispatch_marker: std::sync::atomic::AtomicU32::new(0),
-            unusable: std::sync::atomic::AtomicBool::new(false),
-            full_pipeline: None,
-            dynamic_bind_group_layout: None,
-            workgroup_size,
-            node_data: None,
-            read_hits: None,
-        }))
+        Self::build(
+            context,
+            wgpu::ShaderSource::Wgsl(wgsl_source.into()),
+            node_data,
+            false,
+        )
     }
 
     /// Evaluate the SDF at multiple points using the GPU (async)
@@ -1963,18 +1940,53 @@ impl GpuEvaluator {
 
     /// Create a new GPU evaluator asynchronously
     ///
-    /// Use this when you want to initialize the GPU without blocking.
+    /// Use this when you want to initialize the GPU without blocking. The shader is the one
+    /// [`GpuEvaluator::new`] builds: per-node data goes to the node data buffer (binding 4)
+    ///
+    /// # Errors
+    ///
+    /// As [`GpuEvaluator::new`]
     pub async fn new_async(node: &SdfNode) -> Result<Self, GpuError> {
-        let shader = WgslShader::transpile(node, super::transpiler::TranspileMode::Hardcoded);
+        let shader = WgslShader::try_transpile_with_node_data(
+            node,
+            super::transpiler::TranspileMode::Hardcoded,
+        )
+        .map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
         Self::from_shader_async(&shader).await
     }
 
-    /// Create a GPU evaluator from a pre-generated WGSL shader (async)
+    /// Create a GPU evaluator from a pre-generated WGSL shader (async), with its node data buffer
+    /// (binding 4) when the shader has one
+    ///
+    /// # Errors
+    ///
+    /// As [`GpuEvaluator::from_shader`]
+    #[cfg_attr(
+        all(target_os = "macos", feature = "msl"),
+        allow(
+            clippy::unused_async,
+            reason = "the async signature serves the wgpu path; Metal has no async device request"
+        )
+    )]
     pub async fn from_shader_async(shader: &WgslShader) -> Result<Self, GpuError> {
         if !shader.node_data.is_empty() {
-            return Err(GpuError::InvalidFormat(
-                "node data buffer (binding 4) is bound by the synchronous constructor only (GpuEvaluator::from_shader)".into(),
-            ));
+            #[cfg(all(target_os = "macos", feature = "msl"))]
+            {
+                return Self::from_shader(shader);
+            }
+            #[cfg(not(all(target_os = "macos", feature = "msl")))]
+            {
+                let text = shader.to_compute_shader();
+                crate::provenance::shader_text_verdict(&text, false)?;
+                note_engine_build();
+                let mut evaluator = WgpuEngine::from_wgsl_async_with_data(&text, &shader.node_data)
+                    .await
+                    .map(|w| Self {
+                        engine: Engine::Wgpu(w),
+                    })?;
+                evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
+                return Ok(evaluator);
+            }
         }
         let compute_shader = shader.to_compute_shader();
         let mut evaluator = Self::from_wgsl_async_pinned(&compute_shader).await?;
@@ -2283,6 +2295,24 @@ mod dispatch_limit_tests {
     use super::*;
 
     #[test]
+    fn node_data_up_to_the_binding_limit_fits_and_past_it_is_an_error() {
+        // 0 values and exactly the limit fit; one value more does not, with both sizes reported
+        assert!(check_node_data_size(0, 0).is_ok());
+        assert!(check_node_data_size(1024, 4096).is_ok());
+        match check_node_data_size(1025, 4096) {
+            Err(GpuError::NodeDataTooLarge { bytes, limit }) => {
+                assert_eq!((bytes, limit), (4100, 4096));
+            }
+            other => panic!("1025 values in a 4096-byte binding: {other:?}"),
+        }
+        // the byte count does not wrap for any length
+        assert!(matches!(
+            check_node_data_size(usize::MAX, u64::MAX - 1),
+            Err(GpuError::NodeDataTooLarge { .. })
+        ));
+    }
+
+    #[test]
     fn a_dispatch_past_the_limit_is_an_error() {
         assert_eq!(dispatch_count(65_535, 1, 65_535).ok(), Some(65_535));
         assert_eq!(dispatch_count(0, 64, 65_535).ok(), Some(0));
@@ -2313,6 +2343,27 @@ mod tests {
             .map(|i| ((i * 7919) % 1000) as f32 / 1000.0)
             .collect();
         SdfNode::sphere(0.5).heightmap_displacement(map, w, h, 0.02, 1.0)
+    }
+
+    /// `new_async` builds the same shader as `new`: the tree's data is in the node data buffer
+    #[test]
+    fn the_async_constructor_puts_the_data_in_the_node_data_buffer() {
+        if !crate::gpu_test_support::gpu_ready(
+            "the_async_constructor_puts_the_data_in_the_node_data_buffer",
+        ) {
+            return;
+        }
+        let big = large_field();
+        let gpu = pollster::block_on(GpuEvaluator::new_async(&big)).unwrap();
+        assert!(
+            gpu.node_data_bytes() >= 90_000 * 4,
+            "new_async: {} bytes of node data for 90000 values",
+            gpu.node_data_bytes()
+        );
+        let p = [Vec3::new(0.1, 0.45, 0.2)];
+        let got = pollster::block_on(gpu.eval_batch_async(&p)).unwrap()[0];
+        let cpu = crate::eval::eval(&big, p[0]);
+        assert!((got - cpu).abs() < 2e-5, "{got} against {cpu}");
     }
 
     /// `new` puts a large tree's data in the node data buffer, a tree without data has none, and a

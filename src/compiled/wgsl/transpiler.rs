@@ -111,9 +111,15 @@ impl ShaderLang for WgslLang {
     fn global_float_at_fn(name: &str, arr: &str) -> String {
         format!("fn {name}(i: i32) -> f32 {{\n    return {arr}[i];\n}}\n")
     }
-    fn global_polygon_2d_fn(name: &str, arr: &str, n: usize) -> String {
+    fn global_polygon_2d_fn(name: &str, at: &dyn Fn(&str) -> String, n: usize) -> String {
         format!(
-            "fn {name}(q: vec2<f32>) -> f32 {{\n    let v0 = vec2<f32>({arr}[0], {arr}[1]);\n    var d = dot(q - v0, q - v0);\n    var s = 1.0;\n    var j = {last}i;\n    for (var i = 0i; i < {n}i; i = i + 1i) {{\n        let vi = vec2<f32>({arr}[2 * i], {arr}[2 * i + 1]);\n        let vj = vec2<f32>({arr}[2 * j], {arr}[2 * j + 1]);\n        let e = vj - vi;\n        let w = q - vi;\n        let b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);\n        d = min(d, dot(b, b));\n        let c1 = q.y >= vi.y;\n        let c2 = q.y < vj.y;\n        let c3 = e.x * w.y > e.y * w.x;\n        if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {{ s = -s; }}\n        j = i;\n    }}\n    return s * sqrt(d);\n}}\n",
+            "fn {name}(q: vec2<f32>) -> f32 {{\n    let v0 = vec2<f32>({a0}, {a1});\n    var d = dot(q - v0, q - v0);\n    var s = 1.0;\n    var j = {last}i;\n    for (var i = 0i; i < {n}i; i = i + 1i) {{\n        let vi = vec2<f32>({ai0}, {ai1});\n        let vj = vec2<f32>({aj0}, {aj1});\n        let e = vj - vi;\n        let w = q - vi;\n        let b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);\n        d = min(d, dot(b, b));\n        let c1 = q.y >= vi.y;\n        let c2 = q.y < vj.y;\n        let c3 = e.x * w.y > e.y * w.x;\n        if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {{ s = -s; }}\n        j = i;\n    }}\n    return s * sqrt(d);\n}}\n",
+            a0 = at("0"),
+            a1 = at("1"),
+            ai0 = at("2 * i"),
+            ai1 = at("2 * i + 1"),
+            aj0 = at("2 * j"),
+            aj1 = at("2 * j + 1"),
             last = n - 1
         )
     }
@@ -522,12 +528,19 @@ impl WgslShader {
     /// The node data buffer's declaration: a storage array of exactly the emitted length (no
     /// runtime-sized array, so no backend needs its length passed at dispatch, and no constructor,
     /// so the WGSL array-constructor limit does not apply)
-    fn node_data_decl(&self) -> String {
+    pub(crate) fn node_data_decl(&self) -> String {
+        self.node_data_decl_at(4)
+    }
+
+    /// [`WgslShader::node_data_decl`] at binding `binding`: for a pass of this crate whose own
+    /// bindings already use 4 (the eval source reads `alice_node_data` by name, so only the
+    /// declaration carries the slot). Empty for a shader without node data
+    pub(crate) fn node_data_decl_at(&self, binding: u32) -> String {
         if self.node_data.is_empty() {
             String::new()
         } else {
             format!(
-                "\n@group(0) @binding(4) var<storage, read> alice_node_data: array<f32, {}>;\n",
+                "\n@group(0) @binding({binding}) var<storage, read> alice_node_data: array<f32, {}>;\n",
                 self.node_data.len()
             )
         }
@@ -882,7 +895,7 @@ struct VolumeUniforms {{
 
 @group(0) @binding(0) var<storage, read_write> output_volume: array<f32>;
 @group(0) @binding(1) var<uniform> uniforms: VolumeUniforms;
-
+{data_decl}
 {sdf_func}
 
 @compute @workgroup_size(4, 4, 4)
@@ -903,6 +916,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     output_volume[idx] = distance;
 }}
 ",
+            data_decl = self.node_data_decl(),
             sdf_func = self.source,
         )
     }

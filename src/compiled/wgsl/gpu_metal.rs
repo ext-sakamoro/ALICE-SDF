@@ -180,6 +180,7 @@ impl MetalEngine {
         checked: bool,
     ) -> Result<Self, GpuError> {
         let device = Self::device()?;
+        super::gpu_eval::check_node_data_size(node_data.len(), device.max_buffer_length())?;
         let distance = Kernel::compile(&device, wgsl)?;
         let queue = device.new_command_queue();
         let node_data = (!node_data.is_empty()).then(|| {

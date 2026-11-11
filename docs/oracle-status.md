@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1212 |
+| 🟢 Not ignored | 1218 |
 | 🔴 Red by design | 5 |
 | ⏱ Gated (runtime / diagnostic / manual) | 9 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1226** |
+| **Total** | **1232** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -52,7 +52,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu` (test_wgsl_chunk_ulp.rs) — runs on the macOS lane: llvmpipe cannot run the form before (a copy of the array per read)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1212)
+## 🟢 Not ignored (1218)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -143,6 +143,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_orientation.rs` | 6 |
 | `test_mesh_overdraw_oracle.rs` | 6 |
 | `test_mesh_sign_topology.rs` | 6 |
+| `test_node_data_pipelines.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
 | `test_section_simplicity.rs` | 6 |
 | `test_shader_precise_temporaries.rs` | 6 |

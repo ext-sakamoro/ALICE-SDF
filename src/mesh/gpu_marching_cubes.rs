@@ -106,7 +106,7 @@ pub fn gpu_marching_cubes(
     bounds_max: Vec3,
     config: &GpuMarchingCubesConfig,
 ) -> Result<Mesh, GpuError> {
-    let shader = WgslShader::transpile(node, TranspileMode::Hardcoded);
+    let shader = data_shader(node)?;
     gpu_marching_cubes_from_shader(&shader, bounds_min, bounds_max, config)
 }
 
@@ -153,6 +153,19 @@ pub fn gpu_marching_cubes_from_shader(
 
     let context = GpuContext::request("ALICE-SDF GPU MC Device")?;
     let (device, queue) = (context.device(), context.queue());
+    crate::compiled::wgsl::check_node_data_size(
+        sdf_shader.node_data.len(),
+        u64::from(device.limits().max_storage_buffer_binding_size),
+    )?;
+    // the node data buffer, bound to the two passes that evaluate the SDF (1 and 3), each at the
+    // slot one past its own bindings (`gpu_mc_shaders::*_NODE_DATA_BINDING`)
+    let node_data_buffer = (!sdf_shader.node_data.is_empty()).then(|| {
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("MC Node Data Buffer"),
+            contents: bytemuck::cast_slice(&sdf_shader.node_data),
+            usage: wgpu::BufferUsages::STORAGE,
+        })
+    });
 
     let uniforms = McUniforms {
         resolution: res,
@@ -237,11 +250,15 @@ pub fn gpu_marching_cubes_from_shader(
     let pass1 = stage(
         "MC Pass 1",
         gpu_mc_shaders::generate_sdf_grid_shader(sdf_shader),
-        &[
-            (rw, &sdf_grid_buffer),
-            (uni, &uniform_buffer),
-            (ro, &axis_buffer),
-        ],
+        &with_node_data(
+            node_data_buffer.as_ref(),
+            vec![
+                (rw, &sdf_grid_buffer),
+                (uni, &uniform_buffer),
+                (ro, &axis_buffer),
+            ],
+            gpu_mc_shaders::SDF_GRID_NODE_DATA_BINDING,
+        ),
     );
     let pass2 = stage(
         "MC Pass 2",
@@ -369,13 +386,17 @@ pub fn gpu_marching_cubes_from_shader(
     let pass3 = stage(
         "MC Pass 3",
         gpu_mc_shaders::generate_vertex_shader(sdf_shader),
-        &[
-            (ro, &sdf_grid_buffer),
-            (uni, &uniform_buffer),
-            (ro, &point_offsets_buffer),
-            (rw, &vertex_buffer),
-            (ro, &axis_buffer),
-        ],
+        &with_node_data(
+            node_data_buffer.as_ref(),
+            vec![
+                (ro, &sdf_grid_buffer),
+                (uni, &uniform_buffer),
+                (ro, &point_offsets_buffer),
+                (rw, &vertex_buffer),
+                (ro, &axis_buffer),
+            ],
+            gpu_mc_shaders::VERTEX_NODE_DATA_BINDING,
+        ),
     );
     let pass4 = stage(
         "MC Pass 4",
@@ -427,6 +448,32 @@ pub fn gpu_marching_cubes_from_shader(
 // ====== Helper functions ======
 
 /// Create a bind group layout entry (compute, storage/uniform)
+/// The shader marching cubes runs: per-node data goes to the node data buffer, as in
+/// `GpuEvaluator::new`, so no data array is a module constant read at a run-time index
+pub(crate) fn data_shader(node: &SdfNode) -> Result<WgslShader, GpuError> {
+    WgslShader::try_transpile_with_node_data(node, TranspileMode::Hardcoded)
+        .map_err(|e| GpuError::InvalidFormat(e.to_string()))
+}
+
+/// A pass's bindings with the node data appended (read only). The stage numbers bindings by
+/// position, so the buffer lands on `slot` exactly when the pass has `slot` bindings of its own
+fn with_node_data<'a>(
+    data: Option<&'a wgpu::Buffer>,
+    mut bindings: Vec<(wgpu::BufferBindingType, &'a wgpu::Buffer)>,
+    slot: u32,
+) -> Vec<(wgpu::BufferBindingType, &'a wgpu::Buffer)> {
+    if let Some(data) = data {
+        assert_eq!(
+            bindings.len(),
+            slot as usize,
+            "node data slot {slot} after {} bindings",
+            bindings.len()
+        );
+        bindings.push((wgpu::BufferBindingType::Storage { read_only: true }, data));
+    }
+    bindings
+}
+
 const fn bgl_entry(binding: u32, ty: wgpu::BufferBindingType) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
@@ -847,5 +894,99 @@ mod tests {
             }
             Err(e) => panic!("GPU MC failed: {}", e),
         }
+    }
+}
+
+/// Every pass of this crate that embeds the SDF reads the node data at a binding of its own: no
+/// other buffer of the pass has that binding, and the buffer is declared once
+#[cfg(test)]
+mod node_data_binding_tests {
+    use super::*;
+
+    /// The `@binding(N)` numbers a WGSL text declares, in order
+    fn bindings(text: &str) -> Vec<u32> {
+        text.lines()
+            .filter_map(|l| {
+                let rest = l.split_once("@binding(")?.1;
+                rest.split_once(')')?.0.trim().parse().ok()
+            })
+            .collect()
+    }
+
+    /// A tree with node data (a height map), so every pass declares the buffer
+    fn data_tree() -> SdfNode {
+        let map: Vec<f32> = (0..16 * 16).map(|i| (i % 7) as f32 / 7.0).collect();
+        SdfNode::sphere(0.8).heightmap_displacement(map, 16, 16, 0.05, 1.0)
+    }
+
+    /// The volume bake's two passes over the same tree (none without the volume feature)
+    fn volume_passes() -> Vec<(&'static str, String)> {
+        #[cfg(feature = "volume")]
+        {
+            let bake = crate::volume::gpu_bake::data_shader(&data_tree()).unwrap();
+            vec![
+                ("volume bake", bake.to_volume_shader()),
+                (
+                    "volume bake with normals",
+                    crate::volume::gpu_bake::generate_volume_bake_shader_with_normals(&bake),
+                ),
+            ]
+        }
+        #[cfg(not(feature = "volume"))]
+        {
+            Vec::new()
+        }
+    }
+
+    #[test]
+    fn every_pass_that_embeds_the_sdf_has_its_own_node_data_binding() {
+        let shader = data_shader(&data_tree()).unwrap();
+        assert!(!shader.node_data.is_empty(), "the tree has node data");
+        let passes: Vec<(&str, String)> = [
+            ("GpuEvaluator", shader.to_compute_shader()),
+            (
+                "MC pass 1 (grid)",
+                gpu_mc_shaders::generate_sdf_grid_shader(&shader),
+            ),
+            (
+                "MC pass 3 (vertices)",
+                gpu_mc_shaders::generate_vertex_shader(&shader),
+            ),
+        ]
+        .into_iter()
+        .chain(volume_passes())
+        .collect();
+        let mut checked = 0;
+        for (name, text) in &passes {
+            assert!(text.contains("sdf_eval("), "{name}: does not embed the SDF");
+            let b = bindings(text);
+            let mut sorted = b.clone();
+            sorted.sort_unstable();
+            sorted.dedup();
+            assert_eq!(
+                sorted.len(),
+                b.len(),
+                "{name}: a binding is declared twice: {b:?}"
+            );
+            let decls = text
+                .lines()
+                .filter(|l| l.contains("var<storage, read> alice_node_data"))
+                .count();
+            assert_eq!(decls, 1, "{name}: {decls} node data declarations");
+            checked += 1;
+        }
+        // the two MC passes declare it at the slot the pipeline binds it to
+        assert!(passes[1].1.contains(&format!(
+            "@binding({}) var<storage, read> alice_node_data",
+            gpu_mc_shaders::SDF_GRID_NODE_DATA_BINDING
+        )));
+        assert!(passes[2].1.contains(&format!(
+            "@binding({}) var<storage, read> alice_node_data",
+            gpu_mc_shaders::VERTEX_NODE_DATA_BINDING
+        )));
+        assert!(checked >= 3, "only {checked} passes checked");
+        // a tree without data: no declaration in any pass
+        let plain = data_shader(&SdfNode::sphere(0.8)).unwrap();
+        assert!(!gpu_mc_shaders::generate_vertex_shader(&plain).contains("alice_node_data"));
     }
 }

@@ -117,11 +117,17 @@ impl ShaderLang for HlslLang {
             Self::decl_float("v", &format!("{arr}[i]"))
         )
     }
-    fn global_polygon_2d_fn(name: &str, arr: &str, n: usize) -> String {
+    fn global_polygon_2d_fn(name: &str, at: &dyn Fn(&str) -> String, n: usize) -> String {
         super::super::loft_shader::precise_c_like(
             &format!(
-            "float {name}(float2 q) {{\n    float2 v0 = float2({arr}[0], {arr}[1]);\n    float d = dot(q - v0, q - v0);\n    float s = 1.0;\n    int j = {last};\n    for (int i = 0; i < {n}; i++) {{\n        float2 vi = float2({arr}[2 * i], {arr}[2 * i + 1]);\n        float2 vj = float2({arr}[2 * j], {arr}[2 * j + 1]);\n        float2 e = vj - vi;\n        float2 w = q - vi;\n        float2 b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);\n        d = min(d, dot(b, b));\n        bool c1 = q.y >= vi.y;\n        bool c2 = q.y < vj.y;\n        bool c3 = e.x * w.y > e.y * w.x;\n        if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {{ s = -s; }}\n        j = i;\n    }}\n    return s * sqrt(d);\n}}\n",
-            last = n - 1
+            "float {name}(float2 q) {{\n    float2 v0 = float2({a0}, {a1});\n    float d = dot(q - v0, q - v0);\n    float s = 1.0;\n    int j = {last};\n    for (int i = 0; i < {n}; i++) {{\n        float2 vi = float2({ai0}, {ai1});\n        float2 vj = float2({aj0}, {aj1});\n        float2 e = vj - vi;\n        float2 w = q - vi;\n        float2 b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);\n        d = min(d, dot(b, b));\n        bool c1 = q.y >= vi.y;\n        bool c2 = q.y < vj.y;\n        bool c3 = e.x * w.y > e.y * w.x;\n        if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {{ s = -s; }}\n        j = i;\n    }}\n    return s * sqrt(d);\n}}\n",
+                        a0 = at("0"),
+            a1 = at("1"),
+            ai0 = at("2 * i"),
+            ai1 = at("2 * i + 1"),
+            aj0 = at("2 * j"),
+            aj1 = at("2 * j + 1"),
+last = n - 1
             ),
             "precise",
         )

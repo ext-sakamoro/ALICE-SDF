@@ -20,6 +20,12 @@
 
 use crate::compiled::WgslShader;
 
+/// The node data binding of Pass 1 (the SDF grid): one past its own bindings 0-2
+pub(crate) const SDF_GRID_NODE_DATA_BINDING: u32 = 3;
+/// The node data binding of Pass 3 (the vertices): one past its own bindings 0-4 (its binding 4
+/// is the lattice coordinates, so the node data cannot take the usual 4)
+pub(crate) const VERTEX_NODE_DATA_BINDING: u32 = 5;
+
 /// Generate Pass 1 shader: SDF Grid Evaluation
 ///
 /// Evaluates the SDF at every grid corner (res+1)^3.
@@ -45,7 +51,7 @@ struct GridUniforms {{
 @group(0) @binding(0) var<storage, read_write> sdf_grid: array<f32>;
 @group(0) @binding(1) var<uniform> uniforms: GridUniforms;
 @group(0) @binding(2) var<storage, read> axis_coords: array<f32>;
-
+{data_decl}
 {sdf_func}
 
 @compute @workgroup_size(4, 4, 4)
@@ -68,6 +74,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     sdf_grid[idx] = distance;
 }}
 ",
+        data_decl = sdf_shader.node_data_decl_at(SDF_GRID_NODE_DATA_BINDING),
         sdf_func = sdf_shader.source,
     ))
 }
@@ -243,7 +250,7 @@ struct GpuVertex {{
 @group(0) @binding(2) var<storage, read> point_offsets: array<u32>;
 @group(0) @binding(3) var<storage, read_write> output_vertices: array<GpuVertex>;
 @group(0) @binding(4) var<storage, read> axis_coords: array<f32>;
-{common}
+{common}{data_decl}
 {sdf_func}
 
 fn lattice(x: u32, y: u32, z: u32) -> vec3<f32> {{
@@ -322,6 +329,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 }}
 ",
         common = EDGE_COMMON,
+        data_decl = sdf_shader.node_data_decl_at(VERTEX_NODE_DATA_BINDING),
         sdf_func = sdf_shader.source,
     ))
 }

@@ -228,9 +228,10 @@ pub trait ShaderLang: private::Sealed + 'static {
     /// when a target lowers a dynamically indexed constant array to a local copy per access
     fn global_float_at_fn(name: &str, arr: &str) -> String;
     /// A module-scope `float name(vec2 q)` function: the signed distance to the closed polygon whose
-    /// `n` vertices are the pairs of the module-scope array `arr` (the loop of `sdf_polygon_2d_xy`:
-    /// the same edge order, clamp and even-odd sign rule)
-    fn global_polygon_2d_fn(name: &str, arr: &str, n: usize) -> String;
+    /// `n` vertices are the pairs read by `at` (the expression of the element at an integer index:
+    /// a module-scope array or the node data buffer, [`DataArr::at`]) (the loop of
+    /// `sdf_polygon_2d_xy`: the same edge order, clamp and even-odd sign rule)
+    fn global_polygon_2d_fn(name: &str, at: &dyn Fn(&str) -> String, n: usize) -> String;
     /// The module-scope data and functions of a [`crate::primitives::SectionStack`]: `name(p)` is
     /// its field (the law of `SectionStack::eval`: per level the even-odd signed distance over all
     /// its loops, linear in y between levels, the end caps like an extrusion, divided by the bound)
@@ -4349,9 +4350,10 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     let arr = format!("alice_poly_v_{id}");
                     let func = format!("alice_poly_{id}");
                     let flat: Vec<f32> = vertices.iter().flat_map(|q| [q.x, q.y]).collect();
-                    self.globals.push_str(&L::global_float_array(&arr, &flat));
+                    // a module-scope array, or with the node data buffer a range of it
+                    let d = self.data_array(&arr, &flat);
                     self.globals
-                        .push_str(&L::global_polygon_2d_fn(&func, &arr, n));
+                        .push_str(&L::global_polygon_2d_fn(&func, &|i| d.at(i), n));
                     code.push_str(&L::decl_float(
                         &format!("{v}_d2d"),
                         &format!("{func}({point_var}.xy)"),

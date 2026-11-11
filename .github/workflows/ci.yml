@@ -1444,6 +1444,17 @@ jobs:
           cargo test --features "gpu,glsl" --test test_glsl_array_form -- --nocapture 2>&1 | tee test_glsl_array_form.log
           python3 scripts/libtest_count.py test_glsl_array_form.log --min 3 --what "test_glsl_array_form"
 
+      # the pipelines this crate builds (volume bake, marching cubes, the async evaluator) read the
+      # node data buffer and agree with the CPU; every pass that embeds the SDF has its own binding
+      - name: Node data in the crate's pipelines
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features "gpu,volume,gpu-mesh" --test test_node_data_pipelines -- --nocapture 2>&1 | tee test_node_data_pipelines.log
+          python3 scripts/libtest_count.py test_node_data_pipelines.log --min 6 --what "test_node_data_pipelines"
+          cargo test --lib --features "gpu,volume,gpu-mesh" node_data -- --nocapture 2>&1 | tee node-data-unit.log
+          python3 scripts/libtest_count.py node-data-unit.log --min 5 --what "node data unit tests"
+
       # a large loft's WGSL and GLSL as SPIR-V: every instruction fits its 16-bit word count
       # (the module arrays are chunked), checked by the test's own walker and by spirv-val
       - name: Module arrays fit SPIR-V instructions (spirv-val)

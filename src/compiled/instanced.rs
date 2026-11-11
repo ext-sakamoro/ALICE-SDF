@@ -333,6 +333,13 @@ impl InstancedSdf {
     ///
     /// The text is a whole shader, so it carries this crate's semantics identifier on its first
     /// line (`// alice:semantics_id=<64 hex>`, see [`crate::provenance`]).
+    ///
+    /// The text is self-contained: a tree's data arrays (lofts, section stacks, height maps,
+    /// lattices, polygon outlines) are module constants in it, and its bindings 0-5 are taken (so
+    /// it has no node data buffer). A driver that copies a whole constant array at each read at a
+    /// run-time index makes a large tree slow here, or fails to build it; to evaluate such a tree
+    /// in this crate use [`crate::compiled::GpuEvaluator::new`], which reads the data from a
+    /// storage buffer.
     #[cfg(feature = "gpu")]
     pub fn to_instanced_wgsl(node: &crate::types::SdfNode) -> String {
         let base_wgsl =

@@ -20,6 +20,45 @@ use crate::compiled::{GpuError, TranspileMode, WgslShader};
 use crate::gpu_context::GpuContext;
 use crate::types::SdfNode;
 
+/// The bake's shader: per-node data goes to the node data buffer (binding 4, beside the bake's
+/// bindings 0 and 1), as in `GpuEvaluator::new`, so no data array is a module constant read at a
+/// run-time index
+pub(crate) fn data_shader(node: &SdfNode) -> Result<WgslShader, GpuError> {
+    WgslShader::try_transpile_with_node_data(node, TranspileMode::Hardcoded)
+        .map_err(|e| GpuError::InvalidFormat(e.to_string()))
+}
+
+/// The node data binding (4) of `shader` on `device`: its layout entry and buffer, or `None` for a
+/// shader without node data. Data past the device's storage binding limit is an error
+fn node_data_binding(
+    device: &wgpu::Device,
+    shader: &WgslShader,
+) -> Result<Option<(wgpu::BindGroupLayoutEntry, wgpu::Buffer)>, GpuError> {
+    if shader.node_data.is_empty() {
+        return Ok(None);
+    }
+    crate::compiled::wgsl::check_node_data_size(
+        shader.node_data.len(),
+        u64::from(device.limits().max_storage_buffer_binding_size),
+    )?;
+    let entry = wgpu::BindGroupLayoutEntry {
+        binding: 4,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Storage { read_only: true },
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    };
+    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Volume Bake Node Data Buffer"),
+        contents: bytemuck::cast_slice(&shader.node_data),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    Ok(Some((entry, buffer)))
+}
+
 /// Uniform buffer for volume bake parameters (48 bytes, 16-byte aligned)
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -41,7 +80,7 @@ struct VolumeBakeUniforms {
 /// # Returns
 /// Volume3D<f32> containing signed distances
 pub fn gpu_bake_volume(node: &SdfNode, config: &BakeConfig) -> Result<Volume3D<f32>, GpuError> {
-    let shader = WgslShader::transpile(node, TranspileMode::Hardcoded);
+    let shader = data_shader(node)?;
     gpu_bake_volume_from_shader(&shader, config)
 }
 
@@ -72,6 +111,7 @@ pub fn gpu_bake_volume_from_shader(
 
     let context = GpuContext::request("ALICE-SDF Volume Bake Device")?;
     let (device, queue) = (context.device(), context.queue());
+    let data = node_data_binding(device, shader)?;
 
     // Create shader module
     let shader_module: wgpu::ShaderModule =
@@ -113,30 +153,34 @@ pub fn gpu_bake_volume_from_shader(
     // Bind group layout
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("Volume Bake Bind Group Layout"),
-        entries: &[
-            // Output volume buffer
-            wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: false },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+        entries: &{
+            let mut e = vec![
+                // Output volume buffer
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            },
-            // Uniforms
-            wgpu::BindGroupLayoutEntry {
-                binding: 1,
-                visibility: wgpu::ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+                // Uniforms
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            },
-        ],
+            ];
+            e.extend(data.as_ref().map(|(entry, _)| *entry));
+            e
+        },
     });
 
     // Pipeline
@@ -159,16 +203,23 @@ pub fn gpu_bake_volume_from_shader(
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("Volume Bake Bind Group"),
         layout: &bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: output_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: uniform_buffer.as_entire_binding(),
-            },
-        ],
+        entries: &{
+            let mut e = vec![
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: output_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+            ];
+            e.extend(data.as_ref().map(|(_, buffer)| wgpu::BindGroupEntry {
+                binding: 4,
+                resource: buffer.as_entire_binding(),
+            }));
+            e
+        },
     });
 
     // Dispatch 3D compute
@@ -234,7 +285,7 @@ pub fn gpu_bake_volume_with_normals(
     config: &BakeConfig,
     gradient_epsilon: f32,
 ) -> Result<Volume3D<VoxelDistGrad>, GpuError> {
-    let shader = WgslShader::transpile(node, TranspileMode::Hardcoded);
+    let shader = data_shader(node)?;
     let res = config.resolution;
     let total = res[0] as usize * res[1] as usize * res[2] as usize;
 
@@ -255,6 +306,7 @@ pub fn gpu_bake_volume_with_normals(
 
     let context = GpuContext::request("ALICE-SDF Volume Bake Device")?;
     let (device, queue) = (context.device(), context.queue());
+    let data = node_data_binding(device, &shader)?;
 
     let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Volume Bake Normal Shader"),
@@ -294,28 +346,32 @@ pub fn gpu_bake_volume_with_normals(
 
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("Volume Bake Bind Group Layout"),
-        entries: &[
-            wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: false },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+        entries: &{
+            let mut e = vec![
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            },
-            wgpu::BindGroupLayoutEntry {
-                binding: 1,
-                visibility: wgpu::ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            },
-        ],
+            ];
+            e.extend(data.as_ref().map(|(entry, _)| *entry));
+            e
+        },
     });
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -336,16 +392,23 @@ pub fn gpu_bake_volume_with_normals(
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("Volume Bake Bind Group"),
         layout: &bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: output_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: uniform_buffer.as_entire_binding(),
-            },
-        ],
+        entries: &{
+            let mut e = vec![
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: output_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+            ];
+            e.extend(data.as_ref().map(|(_, buffer)| wgpu::BindGroupEntry {
+                binding: 4,
+                resource: buffer.as_entire_binding(),
+            }));
+            e
+        },
     });
 
     let wg = 4u32;
@@ -399,7 +462,7 @@ pub fn gpu_bake_volume_with_normals(
 }
 
 /// Generate WGSL compute shader for 3D volume baking (distance + normals)
-fn generate_volume_bake_shader_with_normals(shader: &WgslShader) -> String {
+pub(crate) fn generate_volume_bake_shader_with_normals(shader: &WgslShader) -> String {
     format!(
         r"// ALICE-SDF Volume Bake Shader - Distance + Normals (3D Dispatch)
 
@@ -418,7 +481,7 @@ struct VoxelDistGrad {{
 
 @group(0) @binding(0) var<storage, read_write> output_volume: array<VoxelDistGrad>;
 @group(0) @binding(1) var<uniform> uniforms: VolumeUniforms;
-
+{data_decl}
 {sdf_func}
 
 fn estimate_normal(p: vec3<f32>) -> vec3<f32> {{
@@ -458,6 +521,47 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     output_volume[idx].nz = n.z;
 }}
 ",
+        data_decl = shader.node_data_decl(),
         sdf_func = shader.source,
     )
+}
+
+#[cfg(test)]
+mod node_data_tests {
+    use super::*;
+
+    /// The bake's shader keeps a tree's data in the node data buffer (binding 4): no module-scope
+    /// data array in the volume shaders, and the declaration of the buffer in both
+    #[test]
+    fn the_bake_shader_reads_the_node_data_buffer() {
+        let map: Vec<f32> = (0..70 * 70).map(|i| (i % 10) as f32 / 10.0).collect();
+        let node = SdfNode::sphere(0.8).heightmap_displacement(map, 70, 70, 0.05, 1.0);
+        let shader = data_shader(&node).unwrap();
+        assert_eq!(
+            shader.node_data.len(),
+            70 * 70,
+            "the height map is in the buffer"
+        );
+        for (name, text) in [
+            ("distance", shader.to_volume_shader()),
+            ("normals", generate_volume_bake_shader_with_normals(&shader)),
+        ] {
+            assert!(
+                text.contains("@group(0) @binding(4) var<storage, read> alice_node_data"),
+                "{name}: no node data declaration"
+            );
+            let module_arrays = text
+                .lines()
+                .filter(|l| l.trim_start().starts_with("const ") && l.contains("array<f32"))
+                .count();
+            assert_eq!(
+                module_arrays, 0,
+                "{name}: a module-scope data array is left"
+            );
+        }
+        // a tree without data has no buffer and no declaration
+        let plain = data_shader(&SdfNode::sphere(0.8)).unwrap();
+        assert!(plain.node_data.is_empty());
+        assert!(!plain.to_volume_shader().contains("alice_node_data"));
+    }
 }
