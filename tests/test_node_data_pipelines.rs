@@ -49,6 +49,23 @@ fn a_polygon_outline_goes_to_the_node_data_buffer() {
         2 * n,
         "the buffer holds the outline's x, y pairs"
     );
+    // every read of the buffer is clamped to the outline's own range [0, 2n - 1]: a corrupted or
+    // stale index reads one of its values, never past it (the bound is the last element, not one past)
+    let reads: Vec<&str> = shader
+        .source
+        .match_indices("alice_node_data[clamp(")
+        .map(|(i, _)| &shader.source[i..])
+        .collect();
+    assert!(!reads.is_empty(), "no clamped read of the buffer");
+    let want = format!(", 0, {})]", 2 * n - 1);
+    for r in &reads {
+        let read = &r[..r.find(")]").map_or(r.len(), |k| k + 2)];
+        assert!(
+            read.ends_with(&want),
+            "a read is not clamped to [0, {}]: {read}",
+            2 * n - 1
+        );
+    }
     // the exported (self-contained) form keeps the outline in the text
     let text = WgslShader::transpile(&node, TranspileMode::Hardcoded);
     assert!(text.node_data.is_empty(), "the exported form has no buffer");
