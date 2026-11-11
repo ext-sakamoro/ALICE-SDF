@@ -251,7 +251,9 @@ mod volume_and_async {
                 }
             }
         }
-        eprintln!("gpu_bake_volume_with_normals: worst distance {worst_d:e}, worst normal {worst_n:e} over {compared} voxels");
+        eprintln!(
+            "gpu_bake_volume_with_normals: worst distance {worst_d:e}, worst normal {worst_n:e} over {compared} voxels, {on_tie} near a face tie skipped"
+        );
         assert!(compared > 0, "no normal compared");
         assert!(
             on_tie * 20 < compared,
