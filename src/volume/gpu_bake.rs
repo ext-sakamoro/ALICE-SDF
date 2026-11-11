@@ -462,7 +462,7 @@ pub fn gpu_bake_volume_with_normals(
 }
 
 /// Generate WGSL compute shader for 3D volume baking (distance + normals)
-pub(crate) fn generate_volume_bake_shader_with_normals(shader: &WgslShader) -> String {
+fn generate_volume_bake_shader_with_normals(shader: &WgslShader) -> String {
     format!(
         r"// ALICE-SDF Volume Bake Shader - Distance + Normals (3D Dispatch)
 
@@ -549,6 +549,34 @@ mod node_data_tests {
             assert!(
                 text.contains("@group(0) @binding(4) var<storage, read> alice_node_data"),
                 "{name}: no node data declaration"
+            );
+            // every binding of the pass is its own, and the buffer is declared once
+            let bindings: Vec<u32> = text
+                .lines()
+                .filter_map(|l| {
+                    l.split_once("@binding(")?
+                        .1
+                        .split_once(')')?
+                        .0
+                        .trim()
+                        .parse()
+                        .ok()
+                })
+                .collect();
+            let mut unique = bindings.clone();
+            unique.sort_unstable();
+            unique.dedup();
+            assert_eq!(
+                unique.len(),
+                bindings.len(),
+                "{name}: a binding is declared twice: {bindings:?}"
+            );
+            assert_eq!(
+                text.lines()
+                    .filter(|l| l.contains("var<storage, read> alice_node_data"))
+                    .count(),
+                1,
+                "{name}: node data declared other than once"
             );
             let module_arrays = text
                 .lines()

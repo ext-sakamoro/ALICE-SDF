@@ -898,7 +898,8 @@ mod tests {
 }
 
 /// Every pass of this crate that embeds the SDF reads the node data at a binding of its own: no
-/// other buffer of the pass has that binding, and the buffer is declared once
+/// other buffer of the pass has that binding, and the buffer is declared once (the evaluator and
+/// marching cubes here, the volume bake's two passes in `volume::gpu_bake`'s tests)
 #[cfg(test)]
 mod node_data_binding_tests {
     use super::*;
@@ -919,25 +920,6 @@ mod node_data_binding_tests {
         SdfNode::sphere(0.8).heightmap_displacement(map, 16, 16, 0.05, 1.0)
     }
 
-    /// The volume bake's two passes over the same tree (none without the volume feature)
-    fn volume_passes() -> Vec<(&'static str, String)> {
-        #[cfg(feature = "volume")]
-        {
-            let bake = crate::volume::gpu_bake::data_shader(&data_tree()).unwrap();
-            vec![
-                ("volume bake", bake.to_volume_shader()),
-                (
-                    "volume bake with normals",
-                    crate::volume::gpu_bake::generate_volume_bake_shader_with_normals(&bake),
-                ),
-            ]
-        }
-        #[cfg(not(feature = "volume"))]
-        {
-            Vec::new()
-        }
-    }
-
     #[test]
     fn every_pass_that_embeds_the_sdf_has_its_own_node_data_binding() {
         let shader = data_shader(&data_tree()).unwrap();
@@ -954,7 +936,6 @@ mod node_data_binding_tests {
             ),
         ]
         .into_iter()
-        .chain(volume_passes())
         .collect();
         let mut checked = 0;
         for (name, text) in &passes {

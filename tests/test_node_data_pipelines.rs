@@ -7,6 +7,8 @@
 //! storage binding limit is an error, not a failed pipeline. The exported text forms
 //! (`WgslShader::transpile`, the FFI and engine forms) keep their data in the text.
 
+#![cfg(feature = "gpu")]
+
 use alice_sdf::compiled::{TranspileMode, WgslShader};
 use alice_sdf::prelude::*;
 use glam::Vec2;
