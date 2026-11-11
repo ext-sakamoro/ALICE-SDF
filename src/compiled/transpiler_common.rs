@@ -689,7 +689,7 @@ fn chunk_reader(d: &ArrayDecl<'_>, dialect: &str, parts: usize, chunk: usize) ->
         if k + 1 < parts {
             body.push_str(&format!(
                 "    if (i < {}) {{ return {read}; }}\n",
-                (k + 1) * chunk
+                (k + 1) * chunk - 1
             ));
         } else {
             body.push_str(&format!("    return {read};\n"));
