@@ -158,6 +158,7 @@ impl ShaderLang for HlslLang {
     const CAPSULE_RE_EMIT_PARAMS: bool = true;
     fn helper_source(name: &str) -> Option<&'static str> {
         match name {
+            n if n.starts_with("alice_smin_") => crate::operations::smooth_blend_helper_hlsl(n),
             "quat_rotate" => Some(HELPER_QUAT_ROTATE),
             "alice_atan2" => Some(HELPER_ALICE_ATAN2),
             "hash_noise" => Some(HELPER_HASH_NOISE),

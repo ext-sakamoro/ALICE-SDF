@@ -1737,7 +1737,9 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::Tongue { a, b, .. }
         | SdfNode::ExpSmoothUnion { a, b, .. }
         | SdfNode::ExpSmoothIntersection { a, b, .. }
-        | SdfNode::ExpSmoothSubtraction { a, b, .. } => {
+        | SdfNode::ExpSmoothSubtraction { a, b, .. }
+        // SmoothBlend: every kernel's weights are convex (in [0, 1], sum 1)
+        | SdfNode::SmoothBlend { a, b, .. } => {
             eval_lipschitz(a).law_max(eval_lipschitz(b))
         }
         // Chamfer `(a + b)/√2 − r`, stairs (its 45° branch), engrave

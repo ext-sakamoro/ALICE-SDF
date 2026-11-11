@@ -627,6 +627,7 @@ pub(super) fn eval_bytecode<R: PrimTable>(
             OpCode::ExpSmoothUnion => bin!(inst, exp_smooth_union),
             OpCode::ExpSmoothIntersection => bin!(inst, exp_smooth_intersection),
             OpCode::ExpSmoothSubtraction => bin!(inst, exp_smooth_subtraction),
+            OpCode::SmoothBlend => bin!(inst, smooth_blend),
             // NOTE: no `_ =>` arm. Every OpCode variant must be handled above.
         }
     }

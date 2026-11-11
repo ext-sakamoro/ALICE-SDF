@@ -103,7 +103,8 @@ fn every_kernel_and_mode_matches_its_closed_form() {
                 for &a in &grid() {
                     for &b in &grid() {
                         let got = f64::from(smooth_blend(a, b, k, kernel, mode));
-                        let want = blend_ref(kernel, mode, f64::from(a), f64::from(b), f64::from(k));
+                        let want =
+                            blend_ref(kernel, mode, f64::from(a), f64::from(b), f64::from(k));
                         let err = (got - want).abs() / (1.0 + want.abs());
                         worst = worst.max(err);
                         compared += 1;
@@ -184,11 +185,14 @@ fn circular_kernel_level_sets_are_arcs() {
             let v = (i as f64 / 20.0 - 0.5) * 2.0 * rho / std::f64::consts::SQRT_2 * 0.999;
             let u = c + std::f64::consts::SQRT_2 * rho - (rho * rho - v * v).sqrt();
             let (a, b) = (u + v, u - v);
-            let got = smooth_blend(a as f32, b as f32, k as f32, SmoothKernel::Circular, BlendMode::Union);
-            assert!(
-                (f64::from(got) - c).abs() < 2e-6,
-                "c={c} v={v}: got {got}"
+            let got = smooth_blend(
+                a as f32,
+                b as f32,
+                k as f32,
+                SmoothKernel::Circular,
+                BlendMode::Union,
             );
+            assert!((f64::from(got) - c).abs() < 2e-6, "c={c} v={v}: got {got}");
         }
     }
 }
@@ -236,7 +240,17 @@ fn blended_scene_is_one_lipschitz() {
 #[test]
 fn finite_input_gives_finite_output() {
     let vals = [
-        -1e30f32, -1e6, -1.0, -1e-30, 0.0, 1e-30, 1.0, 1e6, 1e30, f32::MAX, -f32::MAX,
+        -1e30f32,
+        -1e6,
+        -1.0,
+        -1e-30,
+        0.0,
+        1e-30,
+        1.0,
+        1e6,
+        1e30,
+        f32::MAX,
+        -f32::MAX,
     ];
     for kernel in KERNELS {
         for mode in MODES {
@@ -288,7 +302,11 @@ fn tree_and_compiled_agree() {
                 let p = Vec3::new(t * 2.0 - 1.0, (t * 7.0).sin() * 0.8, (t * 3.0).cos() * 0.5);
                 let tree = eval(&node, p);
                 let comp = eval_compiled(&compiled, p);
-                assert_eq!(tree.to_bits(), comp.to_bits(), "{kernel:?} {mode:?} at {p:?}");
+                assert_eq!(
+                    tree.to_bits(),
+                    comp.to_bits(),
+                    "{kernel:?} {mode:?} at {p:?}"
+                );
             }
         }
     }

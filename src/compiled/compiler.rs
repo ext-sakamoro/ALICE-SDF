@@ -1222,6 +1222,19 @@ impl Compiler {
                     .push(Instruction::exp_smooth_subtraction(*k));
             }
 
+            SdfNode::SmoothBlend {
+                a,
+                b,
+                k,
+                kernel,
+                mode,
+            } => {
+                self.compile_node(a);
+                self.compile_node(b);
+                self.instructions
+                    .push(Instruction::smooth_blend(*k, *kernel, *mode));
+            }
+
             // === Shear modifier (point transform) ===
             SdfNode::Shear { child, shear } => {
                 let inst_idx = self.instructions.len();
@@ -1499,7 +1512,8 @@ pub fn compute_stack_depths(node: &SdfNode) -> (usize, usize) {
         | SdfNode::Tongue { a, b, .. }
         | SdfNode::ExpSmoothUnion { a, b, .. }
         | SdfNode::ExpSmoothIntersection { a, b, .. }
-        | SdfNode::ExpSmoothSubtraction { a, b, .. } => {
+        | SdfNode::ExpSmoothSubtraction { a, b, .. }
+        | SdfNode::SmoothBlend { a, b, .. } => {
             let (va, ca) = compute_stack_depths(a);
             let (vb, cb) = compute_stack_depths(b);
             // Left is evaluated first, leaving 1 value. Then right is evaluated on top.
@@ -1616,7 +1630,8 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         | SdfNode::Tongue { a, b, .. }
         | SdfNode::ExpSmoothUnion { a, b, .. }
         | SdfNode::ExpSmoothIntersection { a, b, .. }
-        | SdfNode::ExpSmoothSubtraction { a, b, .. } => {
+        | SdfNode::ExpSmoothSubtraction { a, b, .. }
+        | SdfNode::SmoothBlend { a, b, .. } => {
             validate_for_compile(a)?;
             validate_for_compile(b)?;
         }

@@ -489,6 +489,13 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
         SdfNode::ExpSmoothSubtraction { a, b, k } => {
             sdf_exp_smooth_subtraction(eval(a, point), eval(b, point), *k)
         }
+        SdfNode::SmoothBlend {
+            a,
+            b,
+            k,
+            kernel,
+            mode,
+        } => smooth_blend(eval(a, point), eval(b, point), *k, *kernel, *mode),
 
         // === Transforms ===
         // Transform point, then recurse.
@@ -734,6 +741,19 @@ pub fn eval_rest_point(node: &SdfNode, point: Vec3) -> Option<Vec3> {
         | SdfNode::StairsSubtraction { a, .. }
         | SdfNode::ColumnsSubtraction { a, .. }
         | SdfNode::ExpSmoothSubtraction { a, .. } => eval_rest_point(a, point),
+        SdfNode::SmoothBlend { a, b, mode, .. } => match mode {
+            BlendMode::Union => pick(a, b, true),
+            BlendMode::Intersection => {
+                // the farther child, as for the other intersections
+                let (da, db) = (eval(a, point), eval(b, point));
+                if da >= db {
+                    eval_rest_point(a, point)
+                } else {
+                    eval_rest_point(b, point)
+                }
+            }
+            BlendMode::Subtraction => eval_rest_point(a, point),
+        },
         SdfNode::WithMaterial { child, .. } => eval_rest_point(child, point),
         SdfNode::Translate { child, offset } => {
             eval_rest_point(child, point - *offset).map(|r| r + *offset)
@@ -831,6 +851,21 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
             let da = eval(a, point);
             let db = eval(b, point);
             if da >= -db {
+                eval_material(a, point)
+            } else {
+                eval_material(b, point)
+            }
+        }
+        SdfNode::SmoothBlend { a, b, mode, .. } => {
+            // the same choice as the plain operator of the same mode
+            let da = eval(a, point);
+            let db = eval(b, point);
+            let take_a = match mode {
+                BlendMode::Union => da <= db,
+                BlendMode::Intersection => da >= db,
+                BlendMode::Subtraction => da >= -db,
+            };
+            if take_a {
                 eval_material(a, point)
             } else {
                 eval_material(b, point)

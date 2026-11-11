@@ -1283,6 +1283,22 @@ impl Instruction {
         inst
     }
 
+    /// Create a smooth blend instruction (`params[1]` / `params[2]` hold the
+    /// kernel and mode codes)
+    #[inline]
+    pub const fn smooth_blend(
+        k: f32,
+        kernel: crate::operations::SmoothKernel,
+        mode: crate::operations::BlendMode,
+    ) -> Self {
+        let mut inst = Self::new(OpCode::SmoothBlend);
+        inst.params[0] = k;
+        inst.params[1] = kernel.code() as f32;
+        inst.params[2] = mode.code() as f32;
+        inst.child_count = 2;
+        inst
+    }
+
     /// Create a shear instruction
     #[inline]
     pub const fn shear(shear: glam::Vec3) -> Self {
