@@ -117,16 +117,113 @@ fn the_walker_finds_an_overflowed_word_count() {
     assert!(instructions(&short).unwrap_err().contains("ends at word"));
 }
 
+/// The height map's side (the field reads element `y * W + x`)
+const W: u32 = 300;
+
+/// A point whose height-map lookup reads texel `(x, y)` and its +1 neighbours with non-zero
+/// weights: on the XY face (|z| dominant), `u = x + 0.25`, `v = y + 0.25` in texel units
+fn point_reading(x: u32, y: u32) -> Vec3 {
+    let side = (W - 1) as f32;
+    let to = |t: u32| ((t as f32 + 0.25) / side) * 2.0 - 1.0;
+    Vec3::new(to(x), to(y), 1.5)
+}
+
+/// The elements the point's bilinear lookup reads (`heightmap_displacement` on the XY face)
+fn elements_read(p: Vec3) -> [usize; 4] {
+    let side = (W - 1) as f32;
+    let u = ((p.x * 0.5 + 0.5) * side).clamp(0.0, side);
+    let v = ((p.y * 0.5 + 0.5) * side).clamp(0.0, side);
+    let (u0, v0) = (u.floor() as u32, v.floor() as u32);
+    let (u1, v1) = ((u0 + 1).min(W - 1), (v0 + 1).min(W - 1));
+    let at = |x: u32, y: u32| (y * W + x) as usize;
+    [at(u0, v0), at(u1, v0), at(u0, v1), at(u1, v1)]
+}
+
+/// The points: for every chunk boundary `b` the elements `b - 1` and `b`, and the last element.
+/// The property is that the chunked arrays read back the right element on the GPU, so every chunk
+/// and both sides of every boundary are read, not many points (2048 points of this Hardcoded form
+/// did not finish in 600 s on llvmpipe, which copies the module arrays per invocation)
+fn boundary_points(chunk: usize, len: usize) -> Vec<Vec3> {
+    let mut want: Vec<usize> = Vec::new();
+    let mut b = chunk;
+    while b < len {
+        want.push(b - 1);
+        want.push(b);
+        b += chunk;
+    }
+    want.push(len - 1);
+    let mut pts: Vec<Vec3> = want
+        .iter()
+        .map(|&e| {
+            let (x, y) = ((e as u32) % W, (e as u32) / W);
+            // the last column and row have no +1 neighbour: read them as the +1 side
+            point_reading(x.min(W - 2), y.min(W - 2))
+        })
+        .collect();
+    // the element itself must be among the four read; at the last column / row it is the +1 one
+    for (p, e) in pts.iter().zip(&want) {
+        assert!(
+            elements_read(*p).contains(e),
+            "a point for element {e} does not read it"
+        );
+    }
+    pts.dedup();
+    pts
+}
+
 #[test]
 fn a_chunked_array_on_the_gpu_matches_the_cpu() {
     let node = large_field();
     // the Hardcoded emit, whose data is chunked module arrays (GpuEvaluator::new uses the node
     // data buffer instead)
     let wgsl = WgslShader::try_transpile(&node, TranspileMode::Hardcoded).expect("wgsl");
+    // the chunk size and the array length, read from the chunks' declared types
+    // (`const NAME_cK: array<f32, N> = ...`)
+    let sizes: Vec<usize> = wgsl
+        .source
+        .lines()
+        .filter(|l| l.starts_with("const ") && l.contains("_c"))
+        .filter_map(|l| {
+            l.split_once(": array<f32, ")?
+                .1
+                .split_once('>')?
+                .0
+                .parse::<usize>()
+                .ok()
+        })
+        .collect();
     assert!(
-        wgsl.source.contains("_c1"),
-        "the data is not large enough to be chunked"
+        sizes.len() >= 2,
+        "the data is not large enough to be chunked ({} chunks)",
+        sizes.len()
     );
+    let (chunk, len) = (sizes[0], sizes.iter().sum::<usize>());
+    assert_eq!(
+        len,
+        (W * W) as usize,
+        "the chunks hold the whole height map"
+    );
+    let pts = boundary_points(chunk, len);
+    assert!(!pts.is_empty(), "no point");
+    // every chunk is read, and both sides of every boundary
+    let read: std::collections::BTreeSet<usize> =
+        pts.iter().flat_map(|p| elements_read(*p)).collect();
+    let chunks_read: std::collections::BTreeSet<usize> = read.iter().map(|e| e / chunk).collect();
+    assert_eq!(
+        chunks_read.len(),
+        sizes.len(),
+        "chunks read {chunks_read:?} of {}",
+        sizes.len()
+    );
+    let mut b = chunk;
+    while b < len {
+        assert!(
+            read.contains(&(b - 1)) && read.contains(&b),
+            "boundary {b} not read on both sides"
+        );
+        b += chunk;
+    }
+    assert!(read.contains(&(len - 1)), "the last element is not read");
     let Ok(gpu) = GpuEvaluator::from_shader(&wgsl) else {
         assert!(
             std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
@@ -135,14 +232,12 @@ fn a_chunked_array_on_the_gpu_matches_the_cpu() {
         eprintln!("skipping: no GPU");
         return;
     };
-    let pts: Vec<Vec3> = (0..2048)
-        .map(|i| {
-            let t = i as f32 / 2048.0;
-            let (s, c) = alice_det_math::sin_cos(37.0 * t);
-            Vec3::new(0.35 * c, 1.7 * t - 0.1, 0.35 * s)
-        })
-        .collect();
     let got = gpu.eval_batch(&pts).expect("gpu");
+    eprintln!(
+        "wgsl: {} points over {} chunks of {chunk}",
+        pts.len(),
+        sizes.len()
+    );
     let mut worst = 0.0f32;
     for (p, g) in pts.iter().zip(&got) {
         worst = worst.max((eval(&node, *p) - g).abs());
