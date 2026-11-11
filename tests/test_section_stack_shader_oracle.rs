@@ -300,8 +300,10 @@ fn compile_and_run(cxx: &str, dir: &Path, name: &str, src: &str, pts: &[Vec3]) -
     writer.join().expect("writer").expect("write");
     assert!(child.wait().expect("wait").success(), "evaluator failed");
     assert_eq!(raw.len(), pts.len() * 4);
-    raw.chunks_exact(4)
-        .map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
+    raw.as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| f32::from_ne_bytes(*c))
         .collect()
 }
 

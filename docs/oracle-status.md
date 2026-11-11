@@ -6,24 +6,28 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1094 |
-| 🔴 Red by design | 1 |
-| ⏱ Gated (runtime / diagnostic / manual) | 4 |
+| 🟢 Not ignored | 1212 |
+| 🔴 Red by design | 5 |
+| ⏱ Gated (runtime / diagnostic / manual) | 9 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
-| 🟠 Known defect in one arm (the test runs) | 1 |
-| **Total** | **1099** |
+| 🟠 Known defect in one arm (the test runs) | 2 |
+| **Total** | **1226** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🔴 Red by design (1)
+## 🔴 Red by design (5)
 
 Oracles kept red on purpose: the implementation is not there yet, and a companion test pins
 today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected value is never loosened.
 
+- `the_call_sites_do_not_grow_with_the_lofts_and_stacks` (test_one_call_site.rs) — known defect: B1 lofts/stacks one-call-site pending (sdf b1 one call site)
+- `the_compile_memory_does_not_grow_with_the_lofts` (test_gpu_compile_memory.rs) — known defect: B1 lofts/stacks one-call-site pending (sdf b1 one call site)
+- `the_normal_is_steady_at_the_99th_percentile_on_a_torso_like_curve_loft` (test_loft_curve_oracle.rs) — known defect: LOFT-NORMAL-P99 — where L(s) jumps (the shrinking top), the band B(s) is narrow and the normal t…
+- `the_pipeline_time_does_not_grow_with_the_lofts` (test_one_call_site.rs) — known defect: B1 lofts/stacks one-call-site pending (sdf b1 one call site)
 - `torus_on_a_grid_plane_has_no_crossings` (test_dual_contouring_manifold.rs) — known defect: DC-TORUS-CROSS-001: torus(1.0, 0.5) at resolution 32 over ±1.6 has 1 crossing triangle pair in b…
 
-## 🟠 Known defect in one arm (1)
+## 🟠 Known defect in one arm (2)
 
 Tests that run and assert, where one arm (a backend, a platform) tolerates a tracked defect
 within a derived bound instead of asserting the exact result. The marker is a
@@ -31,18 +35,24 @@ within a derived bound instead of asserting the exact result. The marker is a
 exact assert by itself once the defect is gone (see the test's doc).
 
 - `a_large_twist_keeps_the_plain_bits_on_the_gpu` (test_union_bound_oracle.rs) — known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within c…
+- `no_checked_read_leaves_its_proven_range_on_the_gpu` (test_shader_data_bounds.rs) — known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within t…
 
-## ⏱ Gated (4)
+## ⏱ Gated (9)
 
 Correct tests that are too slow for every push, or that print a measurement table.
 Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ignored`.
 
+- `const_and_variable_arrays_agree_on_a_loft` (test_glsl_array_form.rs) — runs on the macOS lane, where Metal compiles the shader at pipeline creation
+- `gradient_norm_at_the_surface` (test_loft_oracle.rs) — measurement: |∇f| at the surface of the bent mm-scale loft (run with --ignored --nocapture)
+- `march_steps_of_the_global_bound` (test_loft_oracle.rs) — measurement: march step counts of the global bound (run with --ignored --nocapture)
 - `metal_default_fast_math_loses_the_sign_of_zero` (test_msl_metal_oracle.rs) — driver observation: Metal default fast math loses the sign of zero
 - `the_alembic_library_reads_the_mesh_and_the_identifier_bit_for_bit` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `the_alembic_library_refuses_a_broken_header` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
+- `the_smaller_wgsl_chunks_keep_a_large_height_map_as_close_to_the_cpu` (test_wgsl_chunk_ulp.rs) — runs on the macOS lane: llvmpipe cannot run the form before (a copy of the array per read)
+- `the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu` (test_wgsl_chunk_ulp.rs) — runs on the macOS lane: llvmpipe cannot run the form before (a copy of the array per read)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1094)
+## 🟢 Not ignored (1212)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -55,8 +65,10 @@ Per-file counts (the test names are in `tests/`):
 | `npr_shader_validate.rs` | 21 |
 | `test_live_sdf_oracle.rs` | 21 |
 | `test_lod_nanite_meshlet_oracle.rs` | 21 |
+| `test_loft_curve_oracle.rs` | 21 |
 | `test_smooth_ops_oracle.rs` | 21 |
 | `test_tight_aabb_fold_oracle.rs` | 21 |
+| `test_loft_oracle.rs` | 20 |
 | `test_grid_warp_oracle.rs` | 18 |
 | `test_shape_analysis_oracle.rs` | 18 |
 | `test_shader_text_provenance.rs` | 17 |
@@ -76,14 +88,15 @@ Per-file counts (the test names are in `tests/`):
 | `test_hlsl_blinkscript_parity.rs` | 11 |
 | `test_material_oracle.rs` | 11 |
 | `test_mesh_collision_fit_oracle.rs` | 11 |
+| `test_polygon_2d_general_oracle.rs` | 11 |
 | `test_rendering_pipeline.rs` | 11 |
 | `test_tight_aabb_levelset_oracle.rs` | 11 |
+| `sdf_semantics_id.rs` | 10 |
 | `test_domain_modifier_oracle.rs` | 10 |
 | `test_evaluator_opcode_parity.rs` | 10 |
 | `test_metric_field_oracle.rs` | 10 |
 | `test_rest_point.rs` | 10 |
 | `test_svo_api_oracle.rs` | 10 |
-| `sdf_semantics_id.rs` | 9 |
 | `test_mc_shared_vertex_oracle.rs` | 9 |
 | `test_mesh_fidelity.rs` | 9 |
 | `test_mesh_query_oracle.rs` | 9 |
@@ -100,6 +113,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_node_backend_matrix.rs` | 8 |
 | `test_npr_analytic.rs` | 8 |
 | `test_point_transform_oracle.rs` | 8 |
+| `test_shader_data_bounds.rs` | 8 |
 | `test_tight_aabb_elongate_oracle.rs` | 8 |
 | `test_volume_api_oracle.rs` | 8 |
 | `test_animation_oracle.rs` | 7 |
@@ -113,6 +127,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_sdf2d_oracle.rs` | 7 |
 | `test_shader_no_fused_multiply_add.rs` | 7 |
 | `test_sim_bridge_oracle.rs` | 7 |
+| `test_smooth_stack_load.rs` | 7 |
 | `test_terrain_api_oracle.rs` | 7 |
 | `deep_tree_drop.rs` | 6 |
 | `test_autodiff_oracle.rs` | 6 |
@@ -121,6 +136,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_hlsl_export_oracle.rs` | 6 |
 | `test_jit_dynamic_oracle.rs` | 6 |
 | `test_live_sdf_closed_loop.rs` | 6 |
+| `test_loft_load.rs` | 6 |
 | `test_mesh_cache_model_oracle.rs` | 6 |
 | `test_mesh_codec_oracle.rs` | 6 |
 | `test_mesh_fit_hull_oracle.rs` | 6 |
@@ -128,6 +144,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_overdraw_oracle.rs` | 6 |
 | `test_mesh_sign_topology.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
+| `test_section_simplicity.rs` | 6 |
 | `test_shader_precise_temporaries.rs` | 6 |
 | `test_asp_bridge_oracle.rs` | 5 |
 | `test_collision_oracle.rs` | 5 |
@@ -150,19 +167,24 @@ Per-file counts (the test names are in `tests/`):
 | `test_gpu_lifecycle_oracle.rs` | 4 |
 | `test_hlsl_dxc_compile.rs` | 4 |
 | `test_law_minmax_ties.rs` | 4 |
+| `test_loft_bend_refusal.rs` | 4 |
 | `test_mesh_cloud_hermite_oracle.rs` | 4 |
 | `test_metal_library_from_source_only.rs` | 4 |
 | `test_msl_metal_oracle.rs` | 4 |
 | `test_neural_mlp_closed_form.rs` | 4 |
 | `test_new_modifiers.rs` | 4 |
 | `test_sdf_eval_cache_oracle.rs` | 4 |
+| `test_section_stack_shader_oracle.rs` | 4 |
+| `test_smooth_stack_shader.rs` | 4 |
 | `test_soa_oracle.rs` | 4 |
 | `test_svo_query_oracle.rs` | 4 |
 | `npr_bytecode_wgsl_validate.rs` | 3 |
 | `test_bake_stored_forms.rs` | 3 |
 | `test_csg_multi_oracle.rs` | 3 |
 | `test_det_near_zero_probe.rs` | 3 |
+| `test_glsl_array_form.rs` | 3 |
 | `test_glsl_glslang_precise.rs` | 3 |
+| `test_gpu_compile_memory.rs` | 3 |
 | `test_gpu_noise_parity.rs` | 3 |
 | `test_gpu_submit_limit.rs` | 3 |
 | `test_jit_sincos_det.rs` | 3 |
@@ -170,26 +192,36 @@ Per-file counts (the test names are in `tests/`):
 | `test_law_scalar_minmax_ties.rs` | 3 |
 | `test_llm_schema_oracle.rs` | 3 |
 | `test_minmax_signed_zero_probe.rs` | 3 |
+| `test_module_array_chunks.rs` | 3 |
 | `test_neural_oracle.rs` | 3 |
+| `test_one_call_site.rs` | 3 |
 | `test_optimize_stats_oracle.rs` | 3 |
 | `test_rust_transpiler_oracle.rs` | 3 |
+| `test_shader_minimal_trees.rs` | 3 |
 | `float_environment.rs` | 2 |
 | `noise_shader_validate.rs` | 2 |
 | `test_aabb_unified_oracle.rs` | 2 |
 | `test_det_math_clamp_generation.rs` | 2 |
 | `test_det_near_zero_parity.rs` | 2 |
+| `test_gpu_dynamic_shape.rs` | 2 |
 | `test_instanced_wgsl_gpu_parity.rs` | 2 |
 | `test_interval_predicate_oracle.rs` | 2 |
 | `test_interval_soundness.rs` | 2 |
 | `test_live_sdf_gpu_parity.rs` | 2 |
 | `test_node_data_gpu_parity.rs` | 2 |
+| `test_shader_integer_wraps.rs` | 2 |
+| `test_shader_read_ranges.rs` | 2 |
 | `test_tight_aabb_cover_oracle.rs` | 2 |
 | `test_transpiler_naga_validate.rs` | 2 |
+| `test_wgsl_array_constructor_limit.rs` | 2 |
 | `mesh_sign_sliver.rs` | 1 |
 | `test_asdf_roundtrip_parity.rs` | 1 |
 | `test_det_parity.rs` | 1 |
 | `test_gpu_fma_contraction.rs` | 1 |
 | `test_gpu_readback_volume.rs` | 1 |
+| `test_gpu_wait_limit.rs` | 1 |
+| `test_loft_lift_bits.rs` | 1 |
+| `test_loft_shader_cpu_agreement.rs` | 1 |
 | `test_metadata_order.rs` | 1 |
 | `test_npr_bytecode_gpu_parity.rs` | 1 |
 | `test_texture_shader_gpu_parity.rs` | 1 |

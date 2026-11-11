@@ -410,7 +410,7 @@ fn plane_normal(k: usize, t: Vec3, n: Vec3, b: Vec3) -> Vec3 {
 /// of its max) already reaches the least so far: the min is the full one.
 pub fn far_bound(p: Vec3, pieces: &[f32]) -> f32 {
     let mut best = f32::INFINITY;
-    for pc in pieces.chunks_exact(PIECE_FLOATS) {
+    for pc in pieces.as_chunks::<PIECE_FLOATS>().0 {
         let t = Vec3::new(pc[0], pc[1], pc[2]);
         let n = Vec3::new(pc[3], pc[4], pc[5]);
         let b = Vec3::new(pc[6], pc[7], pc[8]);
@@ -2213,7 +2213,7 @@ mod tests {
         let d = Loft::from_flat(&block);
         let mut worst = f32::NEG_INFINITY;
         let mut checked = 0usize;
-        for (pc, piece) in b.pieces.chunks_exact(PIECE_FLOATS).enumerate() {
+        for (pc, piece) in b.pieces.as_chunks::<PIECE_FLOATS>().0.iter().enumerate() {
             let (t, n, bb) = (
                 Vec3::new(piece[0], piece[1], piece[2]),
                 Vec3::new(piece[3], piece[4], piece[5]),

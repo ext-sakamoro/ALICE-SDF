@@ -17,7 +17,7 @@
 //! # Hex form (earlier `alice-det-math` generations in [`SDF_SEMANTICS_BY_DET_MATH`])
 //!
 //! ```text
-//! 0f6ffc20efe7737c4cfbb95d35e74c62edd16c1c0d562faf35a2abdcc5ccb7e7
+//! 72277bd65112b8f7faa5884d6f12dfd507d6f891d4cdc4c12ff060888cf6d936
 //! ```
 //!
 //! # Fold
@@ -67,7 +67,7 @@ pub const MUL_ADD_RULE: &str = "alice-sdf: Real::mul_add is a * b + c with two r
 pub const SDF_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
     (
         "golden tests/test_det_golden.rs GOLDEN",
-        hex32("ecfb9c749cac3ec06f9fec60bf1735ee9aff187f0d2873825895e744682750a5"),
+        hex32("9014e45fd46635353576228b3e8cd1eedc54f3274895249b7718bfb88caf551c"),
     ),
     (
         "tag max / min rule",
@@ -316,7 +316,8 @@ const _: () = assert!(
 /// holding it)`. This build folds the functions it calls instead ([`DET_MATH_PINS`]); the table
 /// stays as the record of those identifiers.
 pub const SDF_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
-    // alice-det-math 0.5.2 at 2d01c63f, with the grid warp and the pose in the golden table (sin /
+    // alice-det-math 0.5.2 at 2d01c63f, with the grid warp and the pose in the golden table and
+    // without the rows added after it (the lofts and the section stacks) (sin /
     // cos at |x| >= 2^13 through sin64 / cos64, powf of a
     // negative base, powf64 as fdlibm e_pow, hypot of two subnormals; erf added). The rows of the
     // earlier generations are not folds of these pins any more (the golden table gained the
@@ -330,14 +331,17 @@ pub const SDF_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
 
 /// The identifier of what alice-sdf computes, in this build
 ///
-/// Hex: `0f6ffc20efe7737c4cfbb95d35e74c62edd16c1c0d562faf35a2abdcc5ccb7e7`, the fold of
+/// Hex: `72277bd65112b8f7faa5884d6f12dfd507d6f891d4cdc4c12ff060888cf6d936`, the fold of
 /// [`SDF_SEMANTICS_PINS`] and [`DET_MATH_PINS`]. The same value in every build, whatever cargo
 /// features are enabled.
 pub const SDF_SEMANTICS_ID: [u8; 32] =
-    hex32("0f6ffc20efe7737c4cfbb95d35e74c62edd16c1c0d562faf35a2abdcc5ccb7e7");
+    hex32("72277bd65112b8f7faa5884d6f12dfd507d6f891d4cdc4c12ff060888cf6d936");
 
 /// Earlier identifiers whose distances this build still computes to the same bits, newest first
 ///
+/// `0f6ffc20…` (the same per-function fold, before the lofts and the section stacks): those nodes
+/// only added golden rows, and every row of that build has the same bits here
+/// (`tests/sdf_semantics_id.rs` folds the table without the added rows back to it).
 /// `0f6c58d0…` (alice-det-math 0.5.2 at 2d01c63f folded whole): every golden row has the same bits
 /// here, only the det-math entries of the fold changed (`tests/sdf_semantics_id.rs` folds this
 /// build's golden and rule entries with that whole det-math entry back to it).
@@ -352,6 +356,7 @@ pub const SDF_SEMANTICS_ID: [u8; 32] =
 /// (`85e08846…`, `135c407d…`) therefore read as a mismatch; `tests/sdf_semantics_id.rs` shows
 /// which golden windows moved.
 pub const PREVIOUS_SDF_SEMANTICS_IDS: &[[u8; 32]] = &[
+    hex32("0f6ffc20efe7737c4cfbb95d35e74c62edd16c1c0d562faf35a2abdcc5ccb7e7"),
     hex32("0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f79d2f6b69a4"),
     hex32("ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f642257da4938"),
 ];
