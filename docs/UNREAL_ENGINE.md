@@ -55,7 +55,7 @@ UE5 Project
 | Requirement | Version |
 |-------------|---------|
 | Unreal Engine | **5.7 and 5.8** — CI builds and tests the plugin on both on every push (see [CI: engine compatibility](#ci-engine-compatibility)); 5.3–5.6 untested since 3.2.0 |
-| Rust | 1.87+ (`rust-toolchain.toml`) |
+| Rust | 1.88+ (the `rust-version` in `Cargo.toml`; `rust-toolchain.toml` pins the toolchain CI builds with) |
 | Visual Studio | 2022 (Windows) |
 | Xcode | 15+ (macOS) |
 | Target | Win64 (CI), Linux, macOS (build only) |
