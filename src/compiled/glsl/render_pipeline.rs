@@ -360,10 +360,6 @@ float ao(vec3 p,vec3 n){
   for(int i=1;i<=6;i++){float hr=0.008+0.12*float(i);float dd=sdf_map_lite(p+n*hr);occ+=(hr-dd)*sc;sc*=0.58;}
   return SAT(1.0-4.0*occ);
 }
-float shadowProxy(vec3 p,vec3 n,vec3 l){
-  float h1=0.1,h2=0.4;float d1=sdf_map_lite(p+l*h1);float d2=sdf_map_lite(p+l*h2);
-  float occ=SAT((d1/h1+d2/h2)*0.5);float NdL=max(dot(n,l),0.0);return occ*NdL;
-}
 float rainOcc(vec3 p){
   float t=0.3;
   for(int i=0;i<3;i++){float h=sdf_map_lite(p+vec3(0,t,0));if(h<0.08)return 0.0;t+=max(h,0.5);}
@@ -710,7 +706,7 @@ void main(){{
     vec3 keyCol=mix(vec3(0.06,0.08,0.18),vec3(1.5,1.35,1.1),dayF);
     keyCol=mix(keyCol,vec3(1.5,0.6,0.25),goldenF*0.7);
     keyCol+=vec3(2.0,2.2,2.8)*uLightning;
-    float keyShadow=shadowProxy(p+n*0.015,n,keyDir);
+    float keyShadow=sdf_soft_shadow(p+n*0.015,keyDir,0.02,{max_dist},8.0);
     vec3 fillDir=normalize(vec3(-0.35,0.35,-0.6));
     vec3 fillCol=mix(vec3(0.03,0.04,0.08),vec3(0.18,0.25,0.45),dayF);
     vec3 rimDir=normalize(vec3(0.0,0.25,-0.9));
@@ -903,6 +899,7 @@ out vec4 fragColor;
 {dual_sdf}
 {pbr}
 {normal_ao}
+{soft_shadow}
 {sky}
 {vol}
 {post}
@@ -925,6 +922,7 @@ out vec4 fragColor;
         dual_sdf = dual_sdf_section,
         pbr = PBR_BRDF,
         normal_ao = NORMAL_AO_SHADOW,
+        soft_shadow = crate::raycast::SOFT_SHADOW_GLSL,
         sky = SKY_ATMOSPHERE,
         vol = vol,
         post = post,

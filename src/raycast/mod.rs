@@ -143,6 +143,33 @@ pub fn soft_shadow(
     res.clamp(0.0, 1.0)
 }
 
+/// GLSL of [`soft_shadow`], for the full render pipeline and for any shader that
+/// marches its own shadow rays: `float sdf_soft_shadow(ro, rd, mint, maxt, k)`.
+///
+/// It reads the scene through `float sdf_map_lite(vec3 p)`, which the caller
+/// defines (the render pipeline maps it to the full scene or to the light
+/// `sdf_eval_lite`). Written operation for operation as [`soft_shadow`] is (the
+/// same 64-step budget, the same `h < 0.001` contact test, the same penumbra
+/// term `k · d / max(t − y, 0)` and the same clamp), so the GPU follows the CPU
+/// law; `tests/test_soft_shadow_glsl_parity.rs` runs both on the same rays.
+pub const SOFT_SHADOW_GLSL: &str = r"float sdf_soft_shadow(vec3 ro, vec3 rd, float mint, float maxt, float k) {
+    float res = 1.0;
+    float t = mint;
+    float ph = 1e10;
+    for (int i = 0; i < 64; i++) {
+        if (t >= maxt) { break; }
+        float h = sdf_map_lite(ro + rd * t);
+        if (h < 0.001) { return 0.0; }
+        float y = h * h / (2.0 * ph);
+        float d = sqrt(h * h + -(y * y));
+        res = min(res, k * d / max(t - y, 0.0));
+        ph = h;
+        t += h;
+    }
+    return clamp(res, 0.0, 1.0);
+}
+";
+
 /// Hard shadow test (Interpreter)
 ///
 /// Fast binary shadow test - just checks if anything blocks the ray.
