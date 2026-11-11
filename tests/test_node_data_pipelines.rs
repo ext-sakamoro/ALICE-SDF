@@ -10,6 +10,9 @@
 #![cfg(feature = "gpu")]
 
 use alice_sdf::compiled::{TranspileMode, WgslShader};
+
+#[path = "common/gpu_batches.rs"]
+mod gpu_batches;
 use alice_sdf::prelude::*;
 use glam::Vec2;
 
@@ -87,7 +90,7 @@ fn the_outline_from_the_buffer_agrees_with_the_cpu() {
         .collect();
     let inside = pts.iter().filter(|p| eval(&node, **p) < 0.0).count();
     assert!(inside > 100, "only {inside} points inside the outline");
-    let got = gpu.eval_batch(&pts).expect("dispatch");
+    let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("dispatch");
     let worst = pts
         .iter()
         .zip(&got)
