@@ -7,8 +7,8 @@ on:
   # A full run on demand (every job, no path filter): the release gate reads the
   # latest run of this workflow on the publish commit, and a CHANGELOG-only commit
   # would otherwise skip the code jobs, which the gate refuses
-  # weekly: a full run (every job, no path filter), so the lanes that run only on their own paths
-  # (the lavapipe chunk test) still run once a week
+  # weekly: only the lavapipe lane (gpu-parity, with the module-array chunk step), which otherwise
+  # runs only when the shader emitters change; every other job is skipped on this event
   schedule:
     - cron: "41 4 * * 0"
   workflow_dispatch:
@@ -59,7 +59,7 @@ jobs:
       lint: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.lint == 'true' }}
       boundary: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.boundary == 'true' }}
       alembic: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.alembic == 'true' }}
-      gpu_emit: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.gpu_emit == 'true' }}
+      gpu_emit: ${{ steps.base.outputs.full == 'true' || steps.base.outputs.weekly == 'true' || steps.filter.outputs.gpu_emit == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -73,8 +73,8 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           if [ "$EVENT" = "schedule" ]; then
-            echo "full=true" >> "$GITHUB_OUTPUT"
-            echo "weekly run: running every job"
+            echo "weekly=true" >> "$GITHUB_OUTPUT"
+            echo "weekly run: the lavapipe lane only (gpu_emit), no path filter"
             exit 0
           fi
           if [ "$FULL_INPUT" = "true" ]; then
@@ -92,7 +92,7 @@ jobs:
           fi
       - uses: dorny/paths-filter@v4
         id: filter
-        if: steps.base.outputs.full != 'true'
+        if: steps.base.outputs.full != 'true' && steps.base.outputs.weekly != 'true'
         with:
           base: ${{ steps.base.outputs.sha }}
           filters: |
@@ -140,7 +140,7 @@ jobs:
               - 'Cargo.toml'
               - 'Cargo.lock'
             # the shader emitters and GPU evaluation the lavapipe chunk test checks (about 16 min on
-            # llvmpipe, so it runs only when these change, plus the weekly full run)
+            # llvmpipe, so it runs only when these change, plus the weekly run of the lavapipe lane)
             gpu_emit:
               - 'src/compiled/**'
               - 'tests/test_module_array_chunks.rs'
@@ -575,6 +575,8 @@ jobs:
   # (検査対象 0 件は empty_scan で fail する) 軽量なので paths-filter の対象外にして常に走らせる
   wiring-guard:
     name: Wiring guard (${{ matrix.os }})
+    # every push; not the weekly run, which covers only the lavapipe lane
+    if: github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -1285,7 +1287,7 @@ jobs:
   gpu-parity:
     name: GPU parity (lavapipe)
     needs: changes
-    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.gpu_emit == 'true'
     # pinned: the bit-exact parity lane must not move with ubuntu-latest (26.04's mesa lavapipe crashes
     # in the GLSL execution parity; qualify 26.04 before moving it)
     runs-on: ubuntu-24.04
