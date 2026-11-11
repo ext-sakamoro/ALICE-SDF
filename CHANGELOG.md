@@ -66,6 +66,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `MeshBvh::closest_triangle(point) -> Option<(usize, Vec3, Vec3)>`: 最寄りの三角形の入力の index (`indices` の 3 個ずつの位置)・重心座標・点を返す 点は `closest_point` と同じ bits、同じ距離の三角形は index の小さい方、空の mesh と有限でない点は `None` 面積 0 の三角形は 3 辺の最寄り `BvhTriangle::closest_point_barycentric` も公開した (`BvhTriangle::closest_point` の bits は変わらない)
 
 ### Changed
+- CI: lavapipe の module 配列の chunk 試験 (`tests/test_module_array_chunks.rs`、llvmpipe で約 16 分) は shader の生成器と GPU 評価 (`src/compiled/**`)・その試験と補助・`Cargo.lock` が変わった時だけ走らせ、週 1 回の全 job の実行 (schedule) でも走らせる
 - `asp_bridge`: git の main の libasp は `AspPacket::to_bytes` (FlatBuffers) で I-packet の region を運ぶので、その経路でも scene が届く 試験 `flatbuffers_wire_format_drops_the_scene` (運ばれない制約を固定していた) を、FlatBuffers の bytes から読み戻した packet が送った scene と同じ場を返すことを見る `i_packet_survives_the_flatbuffers_wire_format` に替え、module の doc の transport の説明を直した
 - 定数の幅で切る `chunks_exact(N)` / `chunks_exact_mut(N)` を `as_chunks::<N>()` / `as_chunks_mut::<N>()` に替えた (src・試験・example、MSRV 1.88 で clippy の `chunks_exact_to_as_chunks` が有効になる) 端数を読む 3 か所 (BVH の 8 三角形の束、Alembic の 2 つの hash) は tuple の 2 つ目を使う 走査の順と端数の扱いは同じで、出力の bits は変わらない
 - MSRV を 1.87 から 1.88 に上げた (`rust-version`、CI の `msrv` job、preflight、README) git の main から引く libasp (feature `asp`) が 1.88 を宣言する (その alice-sync と alice-identity が要る) `msrv` job は `--features asp` も check する

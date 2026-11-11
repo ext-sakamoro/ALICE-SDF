@@ -7,6 +7,10 @@ on:
   # A full run on demand (every job, no path filter): the release gate reads the
   # latest run of this workflow on the publish commit, and a CHANGELOG-only commit
   # would otherwise skip the code jobs, which the gate refuses
+  # weekly: a full run (every job, no path filter), so the lanes that run only on their own paths
+  # (the lavapipe chunk test) still run once a week
+  schedule:
+    - cron: "41 4 * * 0"
   workflow_dispatch:
     inputs:
       full:
@@ -55,17 +59,24 @@ jobs:
       lint: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.lint == 'true' }}
       boundary: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.boundary == 'true' }}
       alembic: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.alembic == 'true' }}
+      gpu_emit: ${{ steps.base.outputs.full == 'true' || steps.filter.outputs.gpu_emit == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Change detection base (last successful CI on main)
         id: base
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}
           FULL_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.full }}
+          EVENT: ${{ github.event_name }}
         run: |
+          if [ "$EVENT" = "schedule" ]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            echo "weekly run: running every job"
+            exit 0
+          fi
           if [ "$FULL_INPUT" = "true" ]; then
             echo "full=true" >> "$GITHUB_OUTPUT"
             echo "workflow_dispatch with full=true: running every job"
@@ -127,6 +138,14 @@ jobs:
               - 'scripts/alembic_library_check.py'
               - 'scripts/test_alembic_library_check.py'
               - 'Cargo.toml'
+              - 'Cargo.lock'
+            # the shader emitters and GPU evaluation the lavapipe chunk test checks (about 16 min on
+            # llvmpipe, so it runs only when these change, plus the weekly full run)
+            gpu_emit:
+              - 'src/compiled/**'
+              - 'tests/test_module_array_chunks.rs'
+              - 'tests/common/gpu_batches.rs'
+              - 'tests/common/spirv.rs'
               - 'Cargo.lock'
             unreal:
               - 'unreal-plugin/**'
@@ -1426,6 +1445,7 @@ jobs:
       # a large loft's WGSL and GLSL as SPIR-V: every instruction fits its 16-bit word count
       # (the module arrays are chunked), checked by the test's own walker and by spirv-val
       - name: Module arrays fit SPIR-V instructions (spirv-val)
+        if: needs.changes.outputs.gpu_emit == 'true' || needs.changes.outputs.ci == 'true'
         shell: bash
         run: |
           set -euo pipefail
