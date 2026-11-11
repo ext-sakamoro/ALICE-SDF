@@ -4,7 +4,7 @@
 //! coordinates so x >= y >= z. This creates 48-fold symmetry
 //! (full octahedral symmetry group).
 //!
-//! Based on hg_sdf's pR45/octant approach.
+//! Method also known from Mercury's hg_sdf (`pR45` / octant folding).
 //!
 //! Author: Moroya Sakamoto
 

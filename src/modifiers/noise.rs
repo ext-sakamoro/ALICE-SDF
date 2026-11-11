@@ -144,7 +144,8 @@ const fn hash3d(x: i32, y: i32, z: i32, seed: u32) -> u32 {
 #[inline(always)]
 fn grad3d(hash: u32, x: f32, y: f32, z: f32) -> f32 {
     // Packed LUT: each entry is (u_src << 4 | v_src << 2 | u_sign << 1 | v_sign)
-    // Derived from Perlin's original gradient table
+    // The 12 cube-edge gradient directions (also known from Perlin's
+    // "Improving Noise", 2002), in our own packed encoding
     const LUT: [u8; 16] = [
         0b_00_01_00, // h=0:  +x +y
         0b_00_01_01, // h=1:  +x -y

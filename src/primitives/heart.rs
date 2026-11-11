@@ -2,7 +2,7 @@
 //!
 //! 3D heart shape — revolution of 2D heart contour around Y-axis.
 //!
-//! Based on Inigo Quilez's 2D heart formula, extended to 3D via revolution.
+//! Method also known from Inigo Quilez's articles as 2D heart , extended to 3D via revolution (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

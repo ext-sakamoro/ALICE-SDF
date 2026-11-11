@@ -1,6 +1,6 @@
 //! Groove operation for SDFs (Deep Fried Edition)
 //!
-//! Based on hg_sdf's fOpGroove. Cuts a groove of shape b into shape a.
+//! Method also known from Mercury's hg_sdf as `fOpGroove`. Cuts a groove of shape b into shape a.
 //!
 //! Author: Moroya Sakamoto
 

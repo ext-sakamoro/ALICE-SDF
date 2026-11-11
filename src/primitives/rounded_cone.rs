@@ -5,7 +5,7 @@
 //! Top at y = half_height with radius r2.
 //! Smoothly blended (rounded) edges at both caps.
 //!
-//! Based on Inigo Quilez's sdRoundCone formula.
+//! Method also known from Inigo Quilez's articles as sdRoundCone (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

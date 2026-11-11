@@ -2,7 +2,7 @@
 //!
 //! U-shaped (horseshoe) cross-section in XY plane with Z depth.
 //!
-//! Based on Inigo Quilez's sdHorseshoe formula.
+//! Method also known from Inigo Quilez's articles as sdHorseshoe (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 
@@ -11,7 +11,8 @@ use glam::{Vec2, Vec3};
 
 /// Exact SDF for a horseshoe shape centered at origin
 ///
-/// Inigo Quilez's `sdHorseshoe` in the XY plane (a ring arc opened by
+/// Horseshoe distance (method also known from Inigo Quilez's articles as
+/// `sdHorseshoe`) in the XY plane (a ring arc opened by
 /// `angle` on each side, extended by two straight legs of length
 /// `half_length`, band half-width `width`), extruded along Z by
 /// `thickness`. Every branch measures a distance to the band's centre

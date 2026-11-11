@@ -1,7 +1,7 @@
 //! Ellipsoid SDF (Deep Fried Edition)
 //!
 //! Approximate but high-quality SDF for an ellipsoid.
-//! Based on Inigo Quilez's formula: k0*(k0-1)/k1
+//! The approximation `k0*(k0-1)/k1` is also known from Inigo Quilez's articles.
 //!
 //! Author: Moroya Sakamoto
 
@@ -120,7 +120,8 @@ fn ellipsoid_sqr_distance(n: usize, e: [f32; 3], y: [f32; 3]) -> f32 {
 /// into the first orthant, bisect for the Lagrange parameter. Exact SDF
 /// inside and out, Lipschitz 1.
 ///
-/// Until 1.10.3 this was Inigo Quilez's `k0·(k0 − 1)/k1` approximation,
+/// Until 1.10.3 this was the `k0·(k0 − 1)/k1` approximation (also known from
+/// Inigo Quilez's articles),
 /// whose gradient grows like `(max r / min r)⁴` far from the surface and
 /// which is discontinuous at the centre — sphere tracing could skip an
 /// anisotropic ellipsoid and `eval_lipschitz` had no finite bound for it.

@@ -4,7 +4,7 @@
 //! Base square (side = 1) at y = -half_height,
 //! Tip at y = half_height.
 //!
-//! Based on Inigo Quilez's sdPyramid formula.
+//! Method also known from Inigo Quilez's articles as sdPyramid (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

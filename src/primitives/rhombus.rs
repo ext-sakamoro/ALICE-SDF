@@ -2,7 +2,7 @@
 //!
 //! 3D rhombus (diamond shape) centered at origin.
 //!
-//! Based on Inigo Quilez's sdRhombus formula.
+//! Method also known from Inigo Quilez's articles as sdRhombus (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

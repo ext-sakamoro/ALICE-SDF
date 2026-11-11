@@ -15,7 +15,7 @@ fn bezier_eval(p0: Vec2, p1: Vec2, p2: Vec2, t: f32) -> Vec2 {
     p0 * (omt * omt) + p1 * (2.0 * omt * t) + p2 * (t * t)
 }
 
-/// Distance from `q` to the quadratic Bézier `A B C` (Inigo Quilez's `sdBezier`).
+/// Distance from `q` to the quadratic Bézier `A B C` (method also known from Inigo Quilez's articles as `sdBezier`).
 ///
 /// The nearest parameter is a root of a depressed cubic, solved in closed
 /// form (one real root via Cardano, or three via the trigonometric form, of

@@ -285,7 +285,8 @@ fn polyhedra_and_columns_gpu_match_cpu() {
     );
 }
 
-/// Laws re-ported from Inigo Quilez's exact forms in 1.11.0 (the previous
+/// Laws replaced with exact forms in 1.11.0 (methods also known from Inigo
+/// Quilez's articles; the previous
 /// versions jumped or were not distance fields; found by the Lipschitz
 /// property test). Shader helpers are mirrored line by line.
 #[test]
