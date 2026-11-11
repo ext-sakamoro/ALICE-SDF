@@ -1,6 +1,6 @@
 //! Pipe operation for SDFs (Deep Fried Edition)
 //!
-//! Based on hg_sdf's fOpPipe. Creates a pipe-shaped surface at the
+//! Method also known from Mercury's hg_sdf as `fOpPipe`. Creates a pipe-shaped surface at the
 //! intersection of two shapes.
 //!
 //! Author: Moroya Sakamoto

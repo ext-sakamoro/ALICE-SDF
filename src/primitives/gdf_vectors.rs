@@ -1,7 +1,7 @@
 //! Generalized Distance Function (GDF) normal vectors
 //!
 //! Pre-normalized plane normals used by Platonic/Archimedean solid SDFs.
-//! Based on [hg_sdf](http://mercury.sexy/hg_sdf/) by Mercury.
+//! Method also known from [hg_sdf](http://mercury.sexy/hg_sdf/) by Mercury.
 //!
 //! Author: Moroya Sakamoto
 

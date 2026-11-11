@@ -2,7 +2,7 @@
 //!
 //! Box with rounded edges. More accurate than Box + Round modifier.
 //!
-//! Based on Inigo Quilez's sdRoundBox formula.
+//! Method also known from Inigo Quilez's articles as sdRoundBox (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

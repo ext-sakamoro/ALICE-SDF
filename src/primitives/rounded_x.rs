@@ -2,7 +2,7 @@
 //!
 //! X-shaped cross with rounding in XZ plane, extruded along Y-axis.
 //!
-//! Based on Inigo Quilez's 2D Rounded X formula.
+//! Method also known from Inigo Quilez's articles as 2D Rounded X (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

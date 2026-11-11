@@ -3,7 +3,7 @@
 //! Sphere with a spherical indentation (like the Death Star).
 //! A large sphere with a smaller sphere subtracted from one side.
 //!
-//! Based on Inigo Quilez's sdDeathStar formula.
+//! Method also known from Inigo Quilez's articles as sdDeathStar (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

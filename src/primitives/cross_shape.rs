@@ -2,7 +2,7 @@
 //!
 //! 2D cross/plus shape in XZ plane, extruded along Y-axis.
 //!
-//! Based on Inigo Quilez's sdCross formula.
+//! Method also known from Inigo Quilez's articles as sdCross (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

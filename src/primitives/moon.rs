@@ -2,7 +2,7 @@
 //!
 //! 2D crescent/moon shape in XZ plane, extruded along Y-axis.
 //!
-//! Based on Inigo Quilez's sdMoon formula.
+//! Method also known from Inigo Quilez's articles as sdMoon (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

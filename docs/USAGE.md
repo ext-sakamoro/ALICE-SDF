@@ -193,7 +193,7 @@ ALICE-SDF uses a layered architecture. Each SDF primitive/operation is implement
 
 ```
 Layer 1:  types.rs          -- SdfNode enum (AST definition)
-Layer 2:  primitives/       -- Mathematical SDF formulas (Inigo Quilez)
+Layer 2:  primitives/       -- Mathematical SDF formulas (own implementation)
 Layer 3:  eval/             -- Recursive interpreter
 Layer 4:  compiled/opcode   -- OpCode enum for VM
 Layer 5:  compiled/instr    -- Instruction encoding (params[7] + aux_offset/aux_len)
@@ -317,7 +317,7 @@ export_ue5_mesh(&mesh, "model.ue5_mesh", &Ue5MeshConfig::default())?;
 
 ### Platonic & Archimedean Solids (GDF)
 
-5 new Platonic/Archimedean solids using the Generalized Distance Function (GDF) approach from hg_sdf. Each is defined by a set of face normals — the SDF is the maximum abs-dot product minus the radius.
+5 new Platonic/Archimedean solids using the Generalized Distance Function (GDF) method (also known from hg_sdf). Each is defined by a set of face normals — the SDF is the maximum abs-dot product minus the radius.
 
 | Primitive | Normals | Description |
 |-----------|---------|-------------|
@@ -351,7 +351,7 @@ All use **double-angle identities** (`cos(2x) = 2cos²(x)-1`) to eliminate redun
 
 ### Advanced CSG Operations (9 new)
 
-| Operation | Formula | Source |
+| Operation | Formula | Also known from |
 |-----------|---------|--------|
 | `XOR` | `min(a,b).max(-max(a,b))` | IQ |
 | `Morph` | `a*(1-t) + b*t` | libfive/Curv |

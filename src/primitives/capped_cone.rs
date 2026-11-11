@@ -3,7 +3,7 @@
 //! Truncated cone (frustum) centered at origin along Y-axis.
 //! Bottom radius r1 at y = -half_height, top radius r2 at y = +half_height.
 //!
-//! Based on Inigo Quilez's sdCappedCone formula.
+//! Method also known from Inigo Quilez's articles as sdCappedCone (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

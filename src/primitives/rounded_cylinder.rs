@@ -2,7 +2,7 @@
 //!
 //! Cylinder with rounded edges along Y-axis.
 //!
-//! Based on Inigo Quilez's sdRoundedCylinder formula.
+//! Method also known from Inigo Quilez's articles as sdRoundedCylinder (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

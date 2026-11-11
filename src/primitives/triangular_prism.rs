@@ -2,7 +2,7 @@
 //!
 //! Equilateral triangular prism along Z-axis.
 //!
-//! Based on Inigo Quilez's sdTriPrism formula.
+//! Method also known from Inigo Quilez's articles as sdTriPrism (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

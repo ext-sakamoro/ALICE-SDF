@@ -105,7 +105,8 @@ pub fn ambient_occlusion(
 /// Soft shadow estimation (Interpreter)
 ///
 /// Calculates soft shadow factor using ray marching.
-/// Improved penumbra calculation (Inigo Quilez technique).
+/// Improved penumbra estimate (method also known from Inigo Quilez's articles,
+/// iquilezles.org/articles/rmshadows).
 #[inline(always)]
 pub fn soft_shadow(
     node: &SdfNode,

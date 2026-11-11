@@ -2,7 +2,7 @@
 //!
 //! 2D arc (thick ring sector) in XZ plane, extruded along Y-axis.
 //!
-//! Based on Inigo Quilez's sdArc formula.
+//! Method also known from Inigo Quilez's articles as sdArc (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

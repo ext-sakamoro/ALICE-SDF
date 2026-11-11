@@ -2,7 +2,7 @@
 //!
 //! 3D egg shape (revolution body) along Y-axis.
 //!
-//! Based on Inigo Quilez's Egg SDF formula.
+//! Method also known from Inigo Quilez's articles as Egg SDF (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 
@@ -10,7 +10,8 @@ use glam::{Vec2, Vec3};
 
 /// SDF for an egg shape
 ///
-/// Revolution body around Y-axis — Inigo Quilez's exact `sdEgg` in the
+/// Revolution body around Y-axis — exact egg distance (method also known from
+/// Inigo Quilez's articles as `sdEgg`) in the
 /// (|xz|, y) half-plane: a disc of radius `ra` below y = 0, two arcs of
 /// radius `2·(ra − rb)` centred at (∓(ra − rb), 0) meeting a cap of radius
 /// `rb` at the apex `y = √3·(ra − rb) + ra`. Every branch is a distance to a
