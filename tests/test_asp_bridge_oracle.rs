@@ -73,19 +73,19 @@ fn i_packet_survives_a_serde_wire_format() {
     assert_same_field(&back.root, &node);
 }
 
-/// libasp's default `to_bytes` (FlatBuffers) does not carry I-packet region
-/// descriptors, where the bridge stores the scene. The documented transport
-/// is therefore a serde format; this pins the limitation so a libasp
-/// release that starts carrying regions shows up here.
+/// libasp's default `to_bytes` (FlatBuffers) carries the I-packet region
+/// descriptors, where the bridge stores the scene: the packet read back from
+/// those bytes decodes to the same field as the scene that was sent (the same
+/// check as the serde path above).
 #[test]
-fn flatbuffers_wire_format_drops_the_scene() {
-    let tree = SdfTree::new(scene());
+fn i_packet_survives_the_flatbuffers_wire_format() {
+    let node = scene();
+    let tree = SdfTree::new(node.clone());
     let packet = create_sdf_i_packet(&tree, 9).expect("packet");
     let parsed = AspPacket::from_bytes(&packet.to_bytes().expect("serialise")).expect("parse");
-    assert_eq!(
-        decode_sdf_i_packet(&parsed).unwrap_err(),
-        "No regions in I-packet"
-    );
+    assert_eq!(parsed.header.sequence, 9);
+    let back = decode_sdf_i_packet(&parsed).expect("decode after the FlatBuffers wire");
+    assert_same_field(&back.root, &node);
 }
 
 #[test]

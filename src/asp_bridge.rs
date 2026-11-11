@@ -6,10 +6,11 @@
 //! # Transport
 //!
 //! The scene travels in the I-packet's region descriptor. libasp's default
-//! `AspPacket::to_bytes` (FlatBuffers) does not carry region descriptors, so a
-//! packet sent that way arrives without the scene. Serialise the packet with
-//! serde instead (`AspPacket` implements `Serialize` / `Deserialize`; libasp's
-//! `bincode-compat` feature adds `to_bytes_bincode`).
+//! `AspPacket::to_bytes` (FlatBuffers) carries the region descriptors, so a packet
+//! sent that way arrives with the scene; a serde format works as well
+//! (`AspPacket` implements `Serialize` / `Deserialize`; libasp's `bincode-compat`
+//! feature adds `to_bytes_bincode`). Both paths decode to the same field
+//! (tests/test_asp_bridge_oracle.rs).
 //!
 //! # Example
 //!
