@@ -83,10 +83,11 @@ jobs:
               - '.github/workflows/bake.yml'
 
   bake:
+    # GPU lanes run on a fixed image (ubuntu-24.04) so the software Vulkan stack doesn't change under the job; move deliberately when the image is retired
     name: Bake and verify (lavapipe)
     needs: changes
     if: needs.changes.outputs.bake == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       # "no adapter" is a failure here, not a skipped GPU mesh
