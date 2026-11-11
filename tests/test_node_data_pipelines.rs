@@ -103,6 +103,94 @@ fn the_outline_from_the_buffer_agrees_with_the_cpu() {
     assert!(worst < 1e-5, "outline: worst |gpu - cpu| {worst}");
 }
 
+/// Two identical outlines in the exported (self-contained) text share one module-scope array (the
+/// data arrays are deduplicated by content), and both polygon functions read it: one array, two
+/// functions naming it, and the text evaluated on the GPU agrees with the CPU around both copies
+#[test]
+fn identical_outlines_share_one_array_in_the_exported_text() {
+    let poly = || SdfNode::polygon_2d(outline(40), 0.25);
+    let node = poly()
+        .translate(-0.8, 0.0, 0.0)
+        .union(poly().translate(0.8, 0.0, 0.0));
+    let text = WgslShader::transpile(&node, TranspileMode::Hardcoded);
+    let arrays: Vec<&str> = text
+        .source
+        .lines()
+        .filter(|l| l.trim_start().starts_with("const alice_poly_v_"))
+        .collect();
+    assert_eq!(
+        arrays.len(),
+        1,
+        "identical outlines: {} arrays",
+        arrays.len()
+    );
+    let name = arrays[0]
+        .trim_start()
+        .trim_start_matches("const ")
+        .split(':')
+        .next()
+        .unwrap()
+        .trim()
+        .to_owned();
+    let functions = text
+        .source
+        .lines()
+        .filter(|l| l.starts_with("fn alice_poly_"))
+        .count();
+    assert_eq!(functions, 2, "one polygon function per copy");
+    let readers = text
+        .source
+        .split("fn alice_poly_")
+        .skip(1)
+        .filter(|f| {
+            f.split("\nfn ")
+                .next()
+                .unwrap_or(f)
+                .contains(&format!("{name}["))
+        })
+        .count();
+    assert_eq!(readers, 2, "both functions read {name}");
+    // a different outline gets its own array
+    let other = poly().union(SdfNode::polygon_2d(outline(41), 0.25).translate(1.5, 0.0, 0.0));
+    let other_arrays = WgslShader::transpile(&other, TranspileMode::Hardcoded)
+        .source
+        .lines()
+        .filter(|l| l.trim_start().starts_with("const alice_poly_v_"))
+        .count();
+    assert_eq!(other_arrays, 2, "different outlines share an array");
+
+    let gpu = match alice_sdf::compiled::GpuEvaluator::from_shader(&text) {
+        Ok(g) => g,
+        Err(e) => {
+            assert!(
+                std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+                "ALICE_SDF_REQUIRE_GPU is set but the GPU evaluator failed: {e}"
+            );
+            eprintln!("skipped ({e})");
+            return;
+        }
+    };
+    let pts: Vec<Vec3> = (0..41 * 21)
+        .map(|k| {
+            let (i, j) = (k % 41, k / 41);
+            Vec3::new(-1.6 + 0.08 * i as f32, -0.8 + 0.08 * j as f32, 0.05)
+        })
+        .collect();
+    let inside = pts.iter().filter(|p| eval(&node, **p) < 0.0).count();
+    assert!(inside > 200, "only {inside} points inside the two outlines");
+    let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("dispatch");
+    let worst = pts
+        .iter()
+        .zip(&got)
+        .map(|(p, g)| (eval(&node, *p) - g).abs())
+        .fold(0.0f32, f32::max);
+    eprintln!(
+        "shared outline: worst |gpu - cpu| {worst:e} over {} points ({inside} inside)",
+        pts.len()
+    );
+    assert!(worst < 1e-5, "shared outline: worst |gpu - cpu| {worst}");
+}
+
 /// A tree with node data in two forms: a 70 x 70 height map on a sphere, and a 40-vertex outline
 #[cfg(feature = "volume")]
 fn data_tree() -> SdfNode {

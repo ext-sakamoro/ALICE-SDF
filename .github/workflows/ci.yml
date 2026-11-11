@@ -1451,7 +1451,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo test --features "gpu,volume,gpu-mesh" --test test_node_data_pipelines -- --nocapture 2>&1 | tee test_node_data_pipelines.log
-          python3 scripts/libtest_count.py test_node_data_pipelines.log --min 6 --what "test_node_data_pipelines"
+          python3 scripts/libtest_count.py test_node_data_pipelines.log --min 7 --what "test_node_data_pipelines"
           cargo test --lib --features "gpu,volume,gpu-mesh" node_data -- --nocapture 2>&1 | tee node-data-unit.log
           python3 scripts/libtest_count.py node-data-unit.log --min 5 --what "node data unit tests"
 
