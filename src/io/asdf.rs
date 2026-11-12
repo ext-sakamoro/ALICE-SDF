@@ -341,6 +341,8 @@ fn load_asdf_checked(
         bincode::config::legacy().with_limit::<ASDF_BINCODE_LIMIT>(),
     )
     .map_err(|e| IoError::Serialization(e.to_string()))?;
+    crate::modifiers::check_repeat_cells_tree(&tree.root)
+        .map_err(|e| IoError::InvalidFormat(format!("ASDF: {e}")))?;
     Ok(Checked::new(tree, semantics))
 }
 

@@ -81,6 +81,7 @@ impl SdfNode {
             | Self::IcosahedralSymmetry { child, .. }
             | Self::RepeatInfinite { child, .. }
             | Self::RepeatFinite { child, .. }
+            | Self::RepeatCells { child, .. }
             | Self::PolarRepeat { child, .. }
             | Self::Displacement { child, .. }
             | Self::SineDisplacement { child, .. }

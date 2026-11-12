@@ -237,6 +237,7 @@ fn get_children(node: &SdfNode) -> Vec<&SdfNode> {
         | SdfNode::Bend { child, .. }
         | SdfNode::RepeatInfinite { child, .. }
         | SdfNode::RepeatFinite { child, .. }
+        | SdfNode::RepeatCells { child, .. }
         | SdfNode::Noise { child, .. }
         | SdfNode::Round { child, .. }
         | SdfNode::Onion { child, .. }
@@ -896,6 +897,21 @@ fn replace_child(node: &SdfNode, child_idx: usize, new_child: Arc<SdfNode>) -> S
         SdfNode::RepeatInfinite { spacing, .. } => SdfNode::RepeatInfinite {
             child: new_child,
             spacing: *spacing,
+        },
+        SdfNode::RepeatCells {
+            spacing,
+            count,
+            mirror,
+            neighbours,
+            variation,
+            ..
+        } => SdfNode::RepeatCells {
+            child: new_child,
+            spacing: *spacing,
+            count: *count,
+            mirror: *mirror,
+            neighbours: *neighbours,
+            variation: *variation,
         },
         SdfNode::RepeatFinite { count, spacing, .. } => SdfNode::RepeatFinite {
             child: new_child,
