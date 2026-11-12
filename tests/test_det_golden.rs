@@ -736,6 +736,10 @@ const GOLDEN: &[(&str, &str)] = &[
         "b4ffba3cf8d89dbc35b083b95725176797ed2d3876691f159bae43e0dff5630c",
     ),
     (
+        "bell_pull",
+        "ab95d4cad25d2f2e9da762a95a05c7ae4d515fc572fb7c9a76f9e731ac64c146",
+    ),
+    (
         "pose",
         "ef8a58c351ca0999bb0bd2f3adbfc3e358f363bb882ccc510f1c46619524a00e",
     ),

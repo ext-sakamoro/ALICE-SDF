@@ -53,7 +53,7 @@ fn caller_id() -> Provenance {
 }
 
 /// The identifier alice-sdf stamped with alice-det-math 0.5.2 at 39507d1b (`6e98f0be…`); this
-/// build no longer reproduces it (`PREVIOUS_SDF_SEMANTICS_IDS` is empty), so the loaders refuse
+/// build no longer reproduces it (it is not in `PREVIOUS_SDF_SEMANTICS_IDS`), so the loaders refuse
 /// it, while the shared judge given it as an earlier identifier reads it as `VerifiedPrevious`
 const EARLIER: [u8; 32] = {
     let hex = *b"6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37";
@@ -3412,9 +3412,13 @@ fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
 // paint tool would write it (no identifier), and the heightmap writer's output for it:
 //   heightmap_plain.png    34151b0d0efbd9f7fa65ccc76299d474e00ad48ddfe2b40ecfed7916f0db8098
 //   heightmap_plain.jpg    3b8303187e7a141798d8c3a8c72b26da9795da077b87fcc00856a717afc7dbcd
-//   heightmap_stamped.png  064ffa1e0e5fbb0968e73a76d765d203225d59beb02fc96a22d647244366f138
+//   heightmap_stamped.png  7f72a9e7074d5459b330ec2596253757b4dade3125fdbc22520f753e42093e22
 //                          Heightmap::from_image_bytes(plain.png, &HeightmapImageConfig::new(
 //                          40.0, 16.0, 12.0)).to_png(..) (16-bit grey, the identifier in tEXt)
+//   heightmap_stamped_dca9b092.png
+//                          064ffa1e0e5fbb0968e73a76d765d203225d59beb02fc96a22d647244366f138
+//                          the same written by the build whose identifier was dca9b092… (before
+//                          the bell pull), read as VerifiedPrevious: only a golden row was added
 //   heightmap_stamped_d2d2f0df.png
 //                          368d940700327c562c57738861574b9d5f0f0d9402b46a44aa20e81c741dd9b8
 //                          the same written by the build whose identifier was d2d2f0df… (before
@@ -3567,12 +3571,34 @@ fn heightmap_images_carry_and_check_the_identifier() {
     std::fs::remove_file(&path).ok();
     assert_eq!(pinned.heights, back.heights);
 
-    // the same image written under the earlier identifiers is refused, naming the identifier it
-    // carries: the heightmap face blend moved a golden row, so no earlier identifier names this
-    // build's bits (d2d2f0df… after the smooth blends, 72277bd6… before them, 0f6ffc20… before
-    // the lofts and section stacks, 0f6c58d0… with alice-det-math folded whole, ad04549c… before
-    // the grid warp and pose rows)
-    assert!(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS.is_empty());
+    // the same image written under dca9b092… (before the bell pull, which only added a golden row)
+    // reads as VerifiedPrevious, to the same heights
+    let dca9b092: [u8; 32] = core::array::from_fn(|i| {
+        u8::from_str_radix(
+            &"dca9b09275b952e2e45ab7cd9426cd99f86e3cc65a16ffc2ffd76b188b01780f"[2 * i..2 * i + 2],
+            16,
+        )
+        .unwrap()
+    });
+    assert_eq!(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS, &[dca9b092]);
+    let kept = std::fs::read(fixture("heightmap_stamped_dca9b092.png")).unwrap();
+    assert!(provenance::from_bytes(&kept)
+        .unwrap()
+        .is_written_under(&Provenance::new(dca9b092)));
+    let (kept_hm, kept_status) = Heightmap::from_image_bytes(&kept, &cfg)
+        .unwrap()
+        .into_parts();
+    assert_eq!(
+        kept_status,
+        StoredSemantics::VerifiedPrevious(Provenance::new(dca9b092))
+    );
+    assert_eq!(kept_hm.heights, back.heights);
+
+    // the same image written under the identifiers before it is refused, naming the identifier it
+    // carries: the heightmap face blend moved a golden row, so none of them names this build's
+    // bits (d2d2f0df… after the smooth blends, 72277bd6… before them, 0f6ffc20… before the lofts
+    // and section stacks, 0f6c58d0… with alice-det-math folded whole, ad04549c… before the grid
+    // warp and pose rows)
     let mut refused = 0;
     for (file, hex) in [
         (
