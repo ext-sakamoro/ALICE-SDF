@@ -334,6 +334,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "impl::Serialize for BoneTransform" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for GridWarp" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for GridWarpData" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for BellPull" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for BellPullData" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for Interpolation" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for Keyframe" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for LodChainConfig" = "local: writes this crate's own value; stamping the stored file is G8's"
@@ -1115,6 +1117,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # 1 local
 "impl::Deserialize for GridWarpData" = "local: authored grid maps the reader validates and recomputes the Lipschitz bound from; no stored value is one this crate computed under its arithmetic"
+"impl::Deserialize for BellPull" = "local: authored pulls the reader checks again (finite, positive width, slope sum at most MOST_SLOPE) and recomputes the slope bound from; no stored value is one this crate computed under its arithmetic"
+"impl::Deserialize for BellPullData" = "local: the plain authored pulls and width, validated when converted into BellPull; no stored value is one this crate computed under its arithmetic"
 [parser_exempt]
 "binding::pyo3::gpu_bake_volume" = "compiles the WGSL this crate transpiles from the given node of this process (volume::gpu_bake_volume)"
 "binding::pyo3::gpu_marching_cubes" = "compiles the WGSL this crate transpiles from the given node of this process (mesh::gpu_marching_cubes)"

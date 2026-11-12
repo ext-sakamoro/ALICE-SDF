@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1391 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1209 |
-| | **total** | **2609** |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1401 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1220 |
+| | **total** | **2630** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1391)
+## L1 — example-only (1401)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -88,7 +88,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/eval_simd.rs`: `eval_gradient_simd`
 - `src/compiled/eval_soa.rs`: `eval_compiled_batch_soa_into`
 - `src/compiled/glsl/render_pipeline.rs`: `BIOME_SYSTEM`, `DESTRUCTION_SYSTEM`, `DESTRUCTION_UNIFORMS`, `INTERIOR_MAPPING_LIB`, `MAT_STRUCT`, `MICRO_NORMAL_LIB`, `NOISE_LIB`, `NORMAL_AO_SHADOW`, `PBR_BRDF`, `POST_PROCESS`, `RenderConfig`, `SKY_ATMOSPHERE`, `SPECTRAL_LIB`, `UNIFORMS`, `VFX_LIB`, `VOLUMETRIC_LIGHT`, `build_full_shader`, `build_main_function`
-- `src/compiled/glsl/transpiler.rs`: `GlslShader::extract_params`, `GlslShader::get_eval_function`, `GlslShader::to_compute_shader`, `GlslShader::to_fragment_shader`, `GlslShader::to_fragment_shader_full`, `GlslShader::to_vulkan_compute_shader`, `GlslShader::try_transpile`
+- `src/compiled/glsl/transpiler.rs`: `GlslShader::extract_params`, `GlslShader::get_eval_function`, `GlslShader::to_compute_shader`, `GlslShader::to_fragment_shader`, `GlslShader::to_fragment_shader_full`, `GlslShader::to_vulkan_compute_shader`, `GlslShader::transpile_with_live_pull`, `GlslShader::transpile_with_scale`, `GlslShader::try_transpile`
 - `src/compiled/hlsl/transpiler.rs`: `HlslShader::export_ue5_material_function`, `HlslShader::export_unity_shader_graph`, `HlslShader::extract_params`, `HlslShader::get_eval_function`, `HlslShader::to_compute_shader`, `HlslShader::to_ue5_custom_node`, `HlslShader::to_unity_custom_function`, `HlslShader::try_transpile_checked`
 - `src/compiled/instanced.rs`: `InstancedSdf`, `InstancedSdf::add_at`, `InstancedSdf::add_instance`, `InstancedSdf::eval_min`, `InstancedSdf::eval_min_batch`, `InstancedSdf::eval_min_batch_simd`, `InstancedSdf::eval_min_simd`, `InstancedSdf::eval_per_instance`, `InstancedSdf::instance_count`, `InstancedSdf::new`, `InstancedSdf::to_instanced_wgsl`, `InstancedSdf::with_capacity`
 - `src/compiled/instruction.rs`: `Instruction::animated`, `Instruction::is_leaf`, `Instruction::next_instruction_index`
@@ -101,7 +101,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/refit.rs`: `refit_partial`
 - `src/compiled/rust/transpiler.rs`: `DEFAULT_NORMAL_EPSILON`, `RustSource`, `RustSource::instruction_count`, `RustSource::source`, `RustSource::transpile`, `RustSource::transpile_compiled`, `RustSource::transpile_with`, `RustTranspileError`, `RustTranspileOptions`, `RustTranspileOptions::with_det_math_path`, `RustTranspileOptions::with_normal_epsilon`, `is_supported`
 - `src/compiled/simd.rs`: `Quatx8`, `Quatx8::mul_vec3`, `Vec3x8::new`, `Vec3x8::splat`, `Vec3x8::to_array`
-- `src/compiled/transpiler_common.rs`: `GenericTranspiler::transpile_rest_inner`, `shader_unsupported_nodes`
+- `src/compiled/transpiler_common.rs`: `GenericTranspiler::transpile_rest_inner`, `GenericTranspiler::transpile_scaled`, `ScaledCode`, `shader_unsupported_nodes`
 - `src/compiled/wgsl/gpu_eval.rs`: `GpuEvalFuture`, `GpuEvalFuture::resolve`, `GpuEvalFuture::wait`, `GpuEvaluator::eval_batch`, `GpuEvaluator::eval_batch_async`, `GpuEvaluator::eval_batch_full`, `GpuEvaluator::eval_batch_submit`, `GpuEvaluator::from_glsl_compute`, `GpuEvaluator::from_glsl_compute_pinned`, `GpuEvaluator::from_shader_async`, `GpuEvaluator::from_wgsl`, `GpuEvaluator::from_wgsl_async`, `GpuEvaluator::from_wgsl_async_pinned`, `GpuEvaluator::new_async`, `GpuEvaluator::new_checked`, `GpuEvaluator::new_dynamic`, `GpuEvaluator::read_hits`, `GpuEvaluator::set_wait_limit`, `GpuEvaluator::update_params`
 - `src/compiled/wgsl/gpu_metal.rs`: `MetalEngine::eval_batch`, `MetalEngine::eval_batch_full`, `MetalEngine::new_dynamic`, `MetalEngine::read_hits`, `MetalEngine::update_params`
 - `src/compiled/wgsl/transpiler.rs`: `WgslShader::dynamic_shape`, `WgslShader::extract_params`, `WgslShader::get_eval_function`, `WgslShader::to_compute_shader_with_normals`, `WgslShader::transpile_dynamic`, `WgslShader::transpile_material`, `WgslShader::transpile_union_skip_count`, `WgslShader::transpile_with_node_data`, `WgslShader::transpile_with_rest_point`, `WgslShader::transpile_with_union_bounds`, `WgslShader::try_transpile_with_node_data_checked`, `WgslShader::with_workgroup_size`
@@ -113,6 +113,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/diff.rs`: `DiffError`, `DiffOp`, `TreePatch`, `TreePatch::is_empty`, `TreePatch::op_count`, `TreePath`, `apply_patch`, `invert_patch`, `merge_patches`, `node_children`, `tree_diff`, `tree_hash`
 - `src/eval/mod.rs`: `eval_rest_point`, `gradient`
 - `src/eval/parallel.rs`: `eval_batch`, `eval_grid`, `eval_grid_with_normals`, `grid_coords`, `grid_index`
+- `src/eval/scaled.rs`: `eval_scaled`
 - `src/eval/union_bounded.rs`: `UnionBoundStats`, `eval_union_bounded`, `eval_union_bounded_stats`
 - `src/eval_cache.rs`: `ExactEvalCache`, `ExactEvalCache::clear`, `ExactEvalCache::entries`, `ExactEvalCache::get`, `ExactEvalCache::get_or_eval`, `ExactEvalCache::hits_and_misses`, `ExactEvalCache::is_empty`, `ExactEvalCache::len`, `ExactEvalCache::new`, `ExactEvalCache::put`
 - `src/fidelity.rs`: `Fidelity`, `Fidelity::can_overshoot`, `Fidelity::safe_step_scale`, `distance_fidelity`
@@ -211,7 +212,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/primitives/torus.rs`: `sdf_torus_capped`
 - `src/provenance.rs`: `CONTENT_SHA256_KEY`, `Checked::semantics`, `PLAIN_SIDECAR_EXTENSIONS`, `Stamp::sdf_with_producer`, `Stored::is_written_under`, `bound_sidecar_id`, `check`, `check_producer`, `check_sdf`, `dds_reserved`, `from_bytes_with_producer`, `read`, `read_with_producer`, `sidecar_path`, `write_bound_sidecar`, `write_sidecar`
 - `src/raw_minmax.rs`: `RawMinMax`, `raw_max_f32`, `raw_max_f32x8`, `raw_min_f32`, `raw_min_f32x8`
-- `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::fast`, `RaymarchConfig::high_quality`, `RaymarchConfig::relaxed`, `RaymarchConfig::with_bound`, `RaymarchResult`, `raymarch`, `raymarch_batch`, `raymarch_batch_parallel`, `raymarch_compiled`, `raymarch_compiled_batch_parallel`, `raymarch_compiled_with_config`, `raymarch_detailed`, `raymarch_jit`, `raymarch_jit_batch_parallel`, `raymarch_jit_simd_8`, `raymarch_jit_with_config`, `raymarch_relaxed`, `raymarch_simd_8`, `raymarch_with_config`, `render_depth`, `render_depth_compiled`, `render_depth_compiled_simd`, `render_depth_jit`, `render_depth_jit_simd`, `render_normals`, `render_normals_compiled`
+- `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::fast`, `RaymarchConfig::high_quality`, `RaymarchConfig::relaxed`, `RaymarchConfig::with_bound`, `RaymarchResult`, `RaymarchResult::ran_out`, `raymarch`, `raymarch_batch`, `raymarch_batch_parallel`, `raymarch_compiled`, `raymarch_compiled_batch_parallel`, `raymarch_compiled_with_config`, `raymarch_detailed`, `raymarch_jit`, `raymarch_jit_batch_parallel`, `raymarch_jit_simd_8`, `raymarch_jit_with_config`, `raymarch_relaxed`, `raymarch_simd_8`, `raymarch_with_config`, `render_depth`, `render_depth_compiled`, `render_depth_compiled_simd`, `render_depth_jit`, `render_depth_jit_simd`, `render_normals`, `render_normals_compiled`
 - `src/raycast/mod.rs`: `SOFT_SHADOW_GLSL`, `ambient_occlusion`, `ambient_occlusion_compiled`, `hard_shadow`, `hard_shadow_compiled`, `raycast`, `raycast_batch`, `soft_shadow`, `soft_shadow_compiled`
 - `src/sdf2d.rs`: `Sdf2dNode`, `Sdf2dNode::circle`, `Sdf2dNode::ellipse`, `Sdf2dNode::intersect`, `Sdf2dNode::line`, `Sdf2dNode::onion`, `Sdf2dNode::rect`, `Sdf2dNode::regular_polygon`, `Sdf2dNode::ring`, `Sdf2dNode::rotate`, `Sdf2dNode::rounded_rect`, `Sdf2dNode::scale`, `Sdf2dNode::smooth_union`, `Sdf2dNode::star`, `Sdf2dNode::subtract`, `Sdf2dNode::translate`, `Sdf2dNode::uneven_capsule`, `Sdf2dNode::union`, `eval_2d`, `eval_2d_batch`, `eval_2d_normal`
 - `src/semantics.rs`: `MAX_MIN_RULE`, `MUL_ADD_RULE`, `SDF_SEMANTICS_BY_DET_MATH`, `SDF_SEMANTICS_PINS`, `check_sdf_semantics`
@@ -231,6 +232,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/texture/fitting.rs`: `fit_texture_pinned`, `reconstruct`
 - `src/texture/mod.rs`: `load_texture_fit`, `load_texture_fit_unverified`
 - `src/tight_aabb.rs`: `TightAabbConfig::preset_medium`, `compute_tight_aabb`
+- `src/transforms/grid_warp_build.rs`: `GridWarpBuildError`, `affine_posed_to_rest`, `grid_warp_from_triangles`
 - `src/transforms/rotate.rs`: `transform_rotate_euler`
 - `src/transforms/scale.rs`: `transform_scale_inverse`
 - `src/transforms/translate.rs`: `transform_translate_inverse`
@@ -239,7 +241,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/types/mod.rs`: `SdfNode::category`
 - `src/types/modifiers.rs`: `SdfNode::sine_displacement`, `SdfNode::sine_displacement_aniso`
 - `src/types/operations.rs`: `SdfNode::smooth_blend`
-- `src/types/transforms.rs`: `SdfNode::grid_warp`, `SdfNode::pose`, `SdfNode::rigid_pose`, `SdfNode::translate_vec`
+- `src/types/transforms.rs`: `SdfNode::bell_pull`, `SdfNode::grid_warp`, `SdfNode::pose`, `SdfNode::rigid_pose`, `SdfNode::translate_vec`
 - `src/unordered.rs`: `UnorderedMap::count_values_where`, `UnorderedMap::get_mut`, `UnorderedMap::is_empty`, `UnorderedMap::max_value`, `UnorderedMap::min_key_by`, `UnorderedMap::sorted_entries_mut`, `UnorderedMap::sorted_keys`, `UnorderedMap::update_each_value`, `UnorderedSet::clear`, `UnorderedSet::extend`, `UnorderedSet::is_empty`, `UnorderedSet::len`, `UnorderedSet::with_capacity`
 - `src/validity.rs`: `ErosionVerdict`, `ErosionVerdict::has_thick_region`, `PrintRequirements`, `PrintRequirements::fdm_0_4_nozzle`, `ValidatedExportError`, `ValidityReport`, `ValidityReport::is_printable`, `export_step_validated`, `export_step_validated_with_provenance`, `local_thickness`, `overhang_stats`, `prove_erosion`, `validate_for_printing`
 - `src/volume/bake.rs`: `bake_volume_compiled`, `bake_volume_with_normals`
