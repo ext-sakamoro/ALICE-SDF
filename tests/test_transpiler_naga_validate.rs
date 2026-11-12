@@ -70,7 +70,8 @@ fn the_no_law_nan_is_valid_wgsl_and_glsl() {
     };
     let wgsl = WgslShader::transpile(&node, TranspileMode::Hardcoded).source;
     assert!(wgsl.contains("0x7fc00000u"));
-    let module = naga::front::wgsl::parse_str(&wgsl).unwrap_or_else(|e| panic!("{}", e.emit_to_string(&wgsl)));
+    let module = naga::front::wgsl::parse_str(&wgsl)
+        .unwrap_or_else(|e| panic!("{}", e.emit_to_string(&wgsl)));
     validate(&module).expect("WGSL");
     #[cfg(feature = "glsl")]
     {

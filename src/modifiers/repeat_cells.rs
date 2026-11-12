@@ -49,7 +49,7 @@ pub struct CellVariation {
 }
 
 /// Why a [`SdfNode::RepeatCells`](crate::SdfNode::RepeatCells) was refused.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RepeatCellsError {
     /// A spacing component is negative or not finite, or every component is 0
     Spacing(String),
@@ -139,7 +139,7 @@ fn parity_sign_r<R: Real>(c: R) -> R {
 /// coordinate; `s <= 0` leaves the coordinate unchanged.
 #[inline(always)]
 fn axis_r<R: Real>(p: R, s: f32, count: u32, mirror: bool) -> R {
-    if !(s > 0.0) {
+    if s.is_nan() || s <= 0.0 {
         return p;
     }
     let (c, q) = axis_cell_r(p, s, count);
@@ -153,7 +153,12 @@ fn axis_r<R: Real>(p: R, s: f32, count: u32, mirror: bool) -> R {
 /// The local point of [`SdfNode::RepeatCells`](crate::SdfNode::RepeatCells)
 /// (generic over [`Real`]); `count` 0 on an axis means infinite.
 #[inline(always)]
-pub fn repeat_cells_r<R: Real>(p: Vec3R<R>, spacing: Vec3, count: [u32; 3], mirror: bool) -> Vec3R<R> {
+pub fn repeat_cells_r<R: Real>(
+    p: Vec3R<R>,
+    spacing: Vec3,
+    count: [u32; 3],
+    mirror: bool,
+) -> Vec3R<R> {
     Vec3R::new(
         axis_r(p.x, spacing.x, count[0], mirror),
         axis_r(p.y, spacing.y, count[1], mirror),
@@ -164,7 +169,12 @@ pub fn repeat_cells_r<R: Real>(p: Vec3R<R>, spacing: Vec3, count: [u32; 3], mirr
 /// The local point of [`SdfNode::RepeatCells`](crate::SdfNode::RepeatCells).
 #[inline(always)]
 #[must_use]
-pub fn modifier_repeat_cells(point: Vec3, spacing: Vec3, count: Option<[u32; 3]>, mirror: bool) -> Vec3 {
+pub fn modifier_repeat_cells(
+    point: Vec3,
+    spacing: Vec3,
+    count: Option<[u32; 3]>,
+    mirror: bool,
+) -> Vec3 {
     repeat_cells_r::<f32>(point.into(), spacing, count.unwrap_or([0; 3]), mirror).into()
 }
 
@@ -172,7 +182,12 @@ pub fn modifier_repeat_cells(point: Vec3, spacing: Vec3, count: Option<[u32; 3]>
 /// gradient (the gradient of a reflected axis is negated).
 #[inline]
 #[must_use]
-pub fn repeat_cells_mirror_sign(point: Vec3, spacing: Vec3, count: Option<[u32; 3]>, mirror: bool) -> Vec3 {
+pub fn repeat_cells_mirror_sign(
+    point: Vec3,
+    spacing: Vec3,
+    count: Option<[u32; 3]>,
+    mirror: bool,
+) -> Vec3 {
     if !mirror {
         return Vec3::ONE;
     }
@@ -194,7 +209,7 @@ pub fn repeat_cells_mirror_sign(point: Vec3, spacing: Vec3, count: Option<[u32; 
 /// Refuse a decoded tree holding a [`SdfNode::RepeatCells`](crate::SdfNode::RepeatCells)
 /// whose parameters [`validate_repeat_cells`] rejects (the readers call this on
 /// every decoded tree, so a stored `neighbours` / `variation` never reaches an evaluator).
-pub(crate) fn check_repeat_cells_tree(root: &crate::SdfNode) -> Result<(), RepeatCellsError> {
+pub fn check_repeat_cells_tree(root: &crate::SdfNode) -> Result<(), RepeatCellsError> {
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
         if let crate::SdfNode::RepeatCells {

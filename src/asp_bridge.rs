@@ -243,7 +243,8 @@ fn decode_checked(packet: &AspPacket, allow_unpinned: bool) -> Result<Checked<Sd
         bincode::config::legacy().with_limit::<ASP_BINCODE_LIMIT>(),
     );
     let (tree, _): (SdfTree, usize) = decoded.map_err(|e| format!("ASDF decode failed: {}", e))?;
-    crate::modifiers::check_repeat_cells_tree(&tree.root).map_err(|e| format!("ASP I-packet: {e}"))?;
+    crate::modifiers::check_repeat_cells_tree(&tree.root)
+        .map_err(|e| format!("ASP I-packet: {e}"))?;
     Ok(Checked::new(tree, semantics))
 }
 

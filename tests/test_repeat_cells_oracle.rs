@@ -121,7 +121,10 @@ fn mirrored_repetition_of_a_contained_child_is_exact() {
             worst = worst.max((got - want).abs());
         }
         assert!(pts.len() >= 3000);
-        assert!(worst <= 2e-6, "count {count:?}: worst |node − brute force| {worst}");
+        assert!(
+            worst <= 2e-6,
+            "count {count:?}: worst |node − brute force| {worst}"
+        );
     }
 }
 
@@ -140,8 +143,14 @@ fn a_child_wider_than_its_cell_is_approximate_and_over_estimates() {
             below += 1;
         }
     }
-    assert_eq!(below, 0, "the single-cell value went below the true distance");
-    assert!(worst > 0.05, "expected a measurable over-estimate, got {worst}");
+    assert_eq!(
+        below, 0,
+        "the single-cell value went below the true distance"
+    );
+    assert!(
+        worst > 0.05,
+        "expected a measurable over-estimate, got {worst}"
+    );
 }
 
 #[test]
@@ -162,7 +171,11 @@ fn mirrored_field_is_one_lipschitz_across_cell_boundaries() {
         let mut pairs = 0;
         let mut worst = 0.0f32;
         for &p in &points() {
-            for d in [Vec3::X * 0.013, Vec3::Y * 0.011, Vec3::new(0.007, -0.009, 0.004)] {
+            for d in [
+                Vec3::X * 0.013,
+                Vec3::Y * 0.011,
+                Vec3::new(0.007, -0.009, 0.004),
+            ] {
                 let q = p + d;
                 worst = worst.max((eval(&node, p) - eval(&node, q)).abs() / d.length());
                 pairs += 1;
@@ -175,8 +188,14 @@ fn mirrored_field_is_one_lipschitz_across_cell_boundaries() {
 
 #[test]
 fn tree_and_compiled_agree() {
-    for (count, mirror) in [(None, true), (Some([3, 4, 1]), true), (Some([2, 2, 1]), false)] {
-        let node = contained_child().repeat_cells(SPACING, count, mirror).unwrap();
+    for (count, mirror) in [
+        (None, true),
+        (Some([3, 4, 1]), true),
+        (Some([2, 2, 1]), false),
+    ] {
+        let node = contained_child()
+            .repeat_cells(SPACING, count, mirror)
+            .unwrap();
         let compiled = CompiledSdf::compile(&node);
         for &p in &points() {
             assert_eq!(
@@ -225,7 +244,13 @@ fn literal(neighbours: bool, variation: Option<CellVariation>) -> SdfNode {
 #[test]
 fn neighbours_and_variation_are_refused_until_they_are_implemented() {
     let node = literal(true, None);
-    let varied = literal(false, Some(CellVariation { seed: 7, scale: 0.1 }));
+    let varied = literal(
+        false,
+        Some(CellVariation {
+            seed: 7,
+            scale: 0.1,
+        }),
+    );
     for n in [&node, &varied] {
         assert!(matches!(
             n.validate_repeat_cells(),
@@ -235,7 +260,10 @@ fn neighbours_and_variation_are_refused_until_they_are_implemented() {
     use alice_sdf::io::{from_json_string, to_json_string};
     for n in [&node, &varied] {
         let json = to_json_string(&SdfTree::new(n.clone())).unwrap();
-        assert!(from_json_string(&json).is_err(), "reader accepted a batch-2 field");
+        assert!(
+            from_json_string(&json).is_err(),
+            "reader accepted a batch-2 field"
+        );
     }
     for (i, n) in [&node, &varied].into_iter().enumerate() {
         let path = std::env::temp_dir().join(format!(
@@ -257,7 +285,16 @@ fn neighbours_and_variation_are_refused_until_they_are_implemented() {
 #[test]
 fn i_packet_reader_refuses_neighbours_and_variation() {
     use alice_sdf::asp_bridge::{create_sdf_i_packet, decode_sdf_i_packet};
-    for n in [literal(true, None), literal(false, Some(CellVariation { seed: 7, scale: 0.1 }))] {
+    for n in [
+        literal(true, None),
+        literal(
+            false,
+            Some(CellVariation {
+                seed: 7,
+                scale: 0.1,
+            }),
+        ),
+    ] {
         let packet = create_sdf_i_packet(&SdfTree::new(n), 1).unwrap();
         assert!(decode_sdf_i_packet(&packet).is_err());
     }
@@ -279,12 +316,30 @@ fn the_evaluators_give_no_value_for_neighbours_and_variation() {
     let supported = contained_child().repeat_cells(SPACING, None, true).unwrap();
     let p = Vec3::new(0.3, -0.2, 0.1);
     assert!(eval(&supported, p).is_finite());
-    for n in [literal(true, None), literal(false, Some(CellVariation { seed: 7, scale: 0.1 }))] {
+    for n in [
+        literal(true, None),
+        literal(
+            false,
+            Some(CellVariation {
+                seed: 7,
+                scale: 0.1,
+            }),
+        ),
+    ] {
         assert!(eval(&n, p).is_nan());
-        assert!(eval(&n.clone().translate(1.0, 0.0, 0.0), p).is_nan(), "NaN lost through a transform");
+        assert!(
+            eval(&n.clone().translate(1.0, 0.0, 0.0), p).is_nan(),
+            "NaN lost through a transform"
+        );
         assert!(eval_gradient(&n, p).is_nan());
-        let iv = eval_interval(&n, Vec3Interval::from_bounds(Vec3::splat(-1.0), Vec3::splat(1.0)));
-        assert!(iv.lo == f32::NEG_INFINITY && iv.hi == f32::INFINITY, "{iv:?}");
+        let iv = eval_interval(
+            &n,
+            Vec3Interval::from_bounds(Vec3::splat(-1.0), Vec3::splat(1.0)),
+        );
+        assert!(
+            iv.lo == f32::NEG_INFINITY && iv.hi == f32::INFINITY,
+            "{iv:?}"
+        );
         shader_nan(&n, &supported);
     }
 }
