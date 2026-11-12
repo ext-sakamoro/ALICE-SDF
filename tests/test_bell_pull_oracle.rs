@@ -13,6 +13,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use alice_det_math::{exp64, hypot64};
 use alice_sdf::eval::eval;
 use alice_sdf::prelude::Vec3;
 use alice_sdf::transforms::bell_pull::{BELL_SLOPE, MOST_SLOPE};
@@ -21,10 +22,6 @@ use alice_sdf::SdfNode;
 
 /// `e^(−1/2)` in f64, the reference for `BELL_SLOPE`
 const SLOPE64: f64 = 0.606_530_659_712_633_4;
-
-fn exp64(x: f64) -> f64 {
-    x.exp()
-}
 
 /// The map in f64, written from the formula (not from the implementation)
 fn back64(pulls: [[f64; 4]; 2], sigma: f64, p: [f64; 3]) -> [f64; 3] {
@@ -39,7 +36,7 @@ fn back64(pulls: [[f64; 4]; 2], sigma: f64, p: [f64; 3]) -> [f64; 3] {
 }
 
 fn slope_sum64(pulls: [[f64; 4]; 2], sigma: f64) -> f64 {
-    pulls.iter().map(|u| u[2].hypot(u[3])).sum::<f64>() * SLOPE64 / sigma
+    pulls.iter().map(|u| hypot64(u[2], u[3])).sum::<f64>() * SLOPE64 / sigma
 }
 
 fn to64(p: [[f32; 4]; 2]) -> [[f64; 4]; 2] {
@@ -129,11 +126,14 @@ fn the_map_is_one_to_one_with_its_slope_bound() {
             let (jx, jy) = (d(0), d(1));
             // the xy block (z is the identity)
             let det = jx[0] * jy[1] - jy[0] * jx[1];
-            assert!(det >= (1.0 - s).powi(2) - 1e-6, "det {det} < (1 − {s})²");
+            assert!(
+                det >= (1.0 - s) * (1.0 - s) - 1e-6,
+                "det {det} < (1 − {s})²"
+            );
             // the spectral norm of the 2×2 block
             let (a, b, c, dd) = (jx[0], jy[0], jx[1], jy[1]);
             let t = a * a + b * b + c * c + dd * dd;
-            let norm = ((t + ((t * t) - 4.0 * det * det).max(0.0).sqrt()) / 2.0).sqrt();
+            let norm = f64::midpoint(t, ((t * t) - 4.0 * det * det).max(0.0).sqrt()).sqrt();
             assert!(norm <= 1.0 + s + 1e-6, "norm {norm} > 1 + {s}");
             compared += 1;
         }
@@ -167,7 +167,7 @@ fn the_value_is_one_lipschitz_and_a_distance_lower_bound() {
         let (mut lo, mut hi) = (0.0f32, 2.0f32);
         assert!(eval(&node, Vec3::ZERO) < 0.0 && eval(&node, dir * hi) > 0.0);
         for _ in 0..60 {
-            let mid = 0.5 * (lo + hi);
+            let mid = f32::midpoint(lo, hi);
             if eval(&node, dir * mid) < 0.0 {
                 lo = mid;
             } else {
