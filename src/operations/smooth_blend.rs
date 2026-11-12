@@ -91,25 +91,21 @@ impl BlendMode {
 /// The kernel and mode stored in a `SmoothBlend` instruction's
 /// `params[1]` / `params[2]` (codes as exact small floats).
 ///
-/// # Panics
-///
-/// On a code that names no kernel or mode: the bytecode was not produced by
-/// the compiler (a corrupted or hand-edited program), and evaluating it with
-/// a guessed kernel would return a wrong distance.
+/// `None` for a code that names no kernel or mode: the bytecode was not
+/// produced by the compiler (a corrupted or hand-edited program). The
+/// evaluators then return NaN (no distance) instead of guessing a kernel, and
+/// the bound refit takes the union bound, which contains every mode's.
 #[inline(always)]
 #[must_use]
-pub fn smooth_blend_decode(kernel_code: f32, mode_code: f32) -> (SmoothKernel, BlendMode) {
+pub fn smooth_blend_decode(kernel_code: f32, mode_code: f32) -> Option<(SmoothKernel, BlendMode)> {
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let (kc, mc) = (kernel_code as u32, mode_code as u32);
     match (
         SmoothKernel::from_code(kc).filter(|_| kc as f32 == kernel_code),
         BlendMode::from_code(mc).filter(|_| mc as f32 == mode_code),
     ) {
-        (Some(kn), Some(md)) => (kn, md),
-        _ => panic!(
-            "SmoothBlend instruction with kernel code {kernel_code} / mode code {mode_code}: \
-             not produced by the compiler"
-        ),
+        (Some(kn), Some(md)) => Some((kn, md)),
+        _ => None,
     }
 }
 

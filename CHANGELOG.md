@@ -161,6 +161,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `npm/index.d.ts`: package に含まれず (`package.json` の `files` は `dist/` と README、型は wasm-pack が生成する `dist/alice_sdf.d.ts`)、宣言した 23 関数のうち 17 はどこにも存在しなかった
 
 ### Fixed
+- `operations::smooth_blend_decode` は panic せず `Option` を返す: compiler が書かない核 / 演算の code を持つ `SmoothBlend` 命令 (BVH の命令は pub で書き換えられる) は、bytecode の refit が `RefitError::UnsupportedOpcode` で拒否し (bound を推測しない、`SdfNode` からの `refit_bvh` に戻る)、scalar / SIMD の評価は NaN を返す (核を推測した距離を返さない) 有効な code の結果は変わらない
 - node data form の多角形 (頂点 9 以上の `Polygon2D`) の輪郭が module の定数配列のまま残っていた (`WgslShader::transpile_with_node_data` でも `alice_poly_v_*` を module に置いていた) 他の data と同じく node data buffer の範囲から読む 書き出す自己完結の text は従来どおり輪郭を text に持つ (同じ輪郭の多角形は 1 本の配列を共有する)
 - GLSL の full render pipeline の主光源の影: 2 点だけ標本を取る近似 (`shadowProxy`、`N·L` を `pbrDirect` と二重に掛けていた) を、CPU の `raycast::soft_shadow` と同じ法則の `sdf_soft_shadow` (64 step の半影の推定) に置き換えた GLSL は `raycast::SOFT_SHADOW_GLSL` の 1 か所に置き、pipeline はそれをそのまま含める 試験 `tests/test_soft_shadow_glsl_parity.rs` (GPU と CPU を同じ 3721 本の光線で比べ最大差 1e-5 以内、照らされる・影・半影の各類が下限以上ある時だけ比較成立、半影の `k` を落とす変異で red、pipeline が共有の関数を呼ぶことの確認) を lavapipe の GPU parity step と preflight に追加
 - `tests/test_shader_read_ranges.rs` の縮約差の測定: x86-64 では C++ を `-march=x86-64-v3` で compile し、`-ffp-contract=fast` が image の既定 target に依らず積和を融合するようにする (Ubuntu 24.04 の gcc の既定では融合せず差は 0、26.04 では融合して `big_smooth_stack` で 2.28e-7) その x86-64 の測定で `big_smooth_stack` の予算を 4 倍の規則のまま 9.1e-7 から 9.2e-7 にする CI は compiler と既定の target を表示する

@@ -1604,8 +1604,11 @@ impl PrimTable for f32x8 {
     }
     #[inline(always)]
     fn smooth_blend(inst: &Instruction, a: Self, b: Self) -> Self {
-        let (kernel, mode) = smooth_blend_decode(inst.params[1], inst.params[2]);
-        smooth_blend_r(a, b, inst.params[0], kernel, mode)
+        match smooth_blend_decode(inst.params[1], inst.params[2]) {
+            Some((kernel, mode)) => smooth_blend_r(a, b, inst.params[0], kernel, mode),
+            // an instruction the compiler did not produce: no distance, not a guessed kernel
+            None => Self::splat(f32::NAN),
+        }
     }
 }
 
