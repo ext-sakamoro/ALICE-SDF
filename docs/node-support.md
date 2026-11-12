@@ -158,3 +158,4 @@ GLSL, WGSL, HLSL and BlinkScript share one dispatch (`transpile_node_inner` in `
 | `SectionStack` | ok | ok | err | err | - | ok | ok | ok | ok | err | missing | missing |
 | `SmoothSectionStack` | ok | ok | err | err | - | ok | ok | ok | ok | err | missing | missing |
 | `SmoothBlend` | ok | ok | ok | err | err | ok | ok | ok | ok | err | missing | missing |
+| `RepeatCells` | ok | ok | ok | err | err | ok | ok | ok | ok | err | missing | missing |
