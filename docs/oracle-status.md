@@ -6,23 +6,24 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1242 |
-| 🔴 Red by design | 5 |
+| 🟢 Not ignored | 1272 |
+| 🔴 Red by design | 6 |
 | ⏱ Gated (runtime / diagnostic / manual) | 9 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1256** |
+| **Total** | **1287** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🔴 Red by design (5)
+## 🔴 Red by design (6)
 
 Oracles kept red on purpose: the implementation is not there yet, and a companion test pins
 today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected value is never loosened.
 
 - `the_call_sites_do_not_grow_with_the_lofts_and_stacks` (test_one_call_site.rs) — known defect: B1 lofts/stacks one-call-site pending (sdf b1 one call site)
 - `the_compile_memory_does_not_grow_with_the_lofts` (test_gpu_compile_memory.rs) — known defect: B1 lofts/stacks one-call-site pending (sdf b1 one call site)
+- `the_compiled_marcher_agrees_with_the_interpreter_near_a_scaled_surface` (test_trace_hit_scale.rs) — known defect: SDF-COMPILED-HIT-SCALE-001: the compiled, SIMD and JIT marchers hit on |d| < eps while the inter…
 - `the_normal_is_steady_at_the_99th_percentile_on_a_torso_like_curve_loft` (test_loft_curve_oracle.rs) — known defect: LOFT-NORMAL-P99 — where L(s) jumps (the shrinking top), the band B(s) is narrow and the normal t…
 - `the_pipeline_time_does_not_grow_with_the_lofts` (test_one_call_site.rs) — known defect: B1 lofts/stacks one-call-site pending (sdf b1 one call site)
 - `torus_on_a_grid_plane_has_no_crossings` (test_dual_contouring_manifold.rs) — known defect: DC-TORUS-CROSS-001: torus(1.0, 0.5) at resolution 32 over ±1.6 has 1 crossing triangle pair in b…
@@ -52,7 +53,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu` (test_wgsl_chunk_ulp.rs) — runs on the macOS lane: llvmpipe cannot run the form before (a copy of the array per read)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1242)
+## 🟢 Not ignored (1272)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -78,10 +79,10 @@ Per-file counts (the test names are in `tests/`):
 | `test_compiled_evaluation.rs` | 14 |
 | `test_degenerate_input_oracle.rs` | 14 |
 | `test_gpu_law_parity.rs` | 14 |
+| `sdf_semantics_id.rs` | 13 |
 | `test_io_format_oracle.rs` | 13 |
 | `test_texture_fit_oracle.rs` | 13 |
 | `test_union_bound_oracle.rs` | 13 |
-| `sdf_semantics_id.rs` | 12 |
 | `test_smooth_blend_oracle.rs` | 12 |
 | `test_validity_oracle.rs` | 12 |
 | `mesh_bvh_closest_triangle.rs` | 11 |
@@ -118,10 +119,13 @@ Per-file counts (the test names are in `tests/`):
 | `test_tight_aabb_elongate_oracle.rs` | 8 |
 | `test_volume_api_oracle.rs` | 8 |
 | `test_animation_oracle.rs` | 7 |
+| `test_bell_pull_oracle.rs` | 7 |
 | `test_field_fidelity_oracle.rs` | 7 |
 | `test_g8_meaning_id.rs` | 7 |
 | `test_g8_mesh_import.rs` | 7 |
+| `test_glsl_cpu_shim.rs` | 7 |
 | `test_gpu_eval_api_oracle.rs` | 7 |
+| `test_grid_warp_from_triangles.rs` | 7 |
 | `test_node_data_pipelines.rs` | 7 |
 | `test_npr_bytecode_oracle.rs` | 7 |
 | `test_primitive_closed_form_oracle.rs` | 7 |
@@ -148,6 +152,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_sign_topology.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
 | `test_section_simplicity.rs` | 6 |
+| `test_trace_hit_scale.rs` | 6 |
 | `test_asp_bridge_oracle.rs` | 5 |
 | `test_collision_oracle.rs` | 5 |
 | `test_g8_example_text.rs` | 5 |
@@ -215,6 +220,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_node_data_gpu_parity.rs` | 2 |
 | `test_shader_integer_wraps.rs` | 2 |
 | `test_shader_read_ranges.rs` | 2 |
+| `test_stored_variant_index.rs` | 2 |
 | `test_tight_aabb_cover_oracle.rs` | 2 |
 | `test_transpiler_naga_validate.rs` | 2 |
 | `test_wgsl_array_constructor_limit.rs` | 2 |
