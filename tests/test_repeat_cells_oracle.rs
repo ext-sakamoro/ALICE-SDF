@@ -41,9 +41,11 @@ fn contained_child() -> SdfNode {
     SdfNode::box3d_half_extents(0.3, 0.2, 0.25).translate(0.45, 0.2, 0.0)
 }
 
-/// A child that reaches past its cell's boundary on x.
+/// A child that reaches past its cell's boundary on x (x in [0.75, 1.35] with
+/// the boundary at 1): for a point at x = 0.5 the own copy is 0.25 away but the
+/// mirrored neighbour's copy (x in [0.65, 1.25]) is 0.15 away.
 fn wide_child() -> SdfNode {
-    SdfNode::box3d_half_extents(0.6, 0.2, 0.25).translate(0.7, 0.0, 0.0)
+    SdfNode::box3d_half_extents(0.3, 0.2, 0.25).translate(1.05, 0.0, 0.0)
 }
 
 const SPACING: Vec3 = Vec3::new(2.0, 1.5, 0.0);
@@ -232,9 +234,34 @@ fn neighbours_and_variation_are_refused_until_they_are_implemented() {
         let json = to_json_string(&SdfTree::new(n.clone())).unwrap();
         assert!(from_json_string(&json).is_err(), "reader accepted a batch-2 field");
     }
+    for (i, n) in [&node, &varied].into_iter().enumerate() {
+        let path = std::env::temp_dir().join(format!(
+            "alice_sdf_repeat_cells_{}_{i}.asdf",
+            std::process::id()
+        ));
+        alice_sdf::io::save_asdf(&SdfTree::new(n.clone()), &path).unwrap();
+        let loaded = alice_sdf::io::load_asdf(&path);
+        let _ = std::fs::remove_file(&path);
+        assert!(loaded.is_err(), "binary reader accepted a batch-2 field");
+    }
     for n in [&node, &varied] {
         assert!(CompiledSdf::try_compile(n).is_err());
     }
+}
+
+/// The I-packet reader refuses the batch-2 fields too.
+#[cfg(feature = "asp")]
+#[test]
+fn i_packet_reader_refuses_neighbours_and_variation() {
+    use alice_sdf::asp_bridge::{create_sdf_i_packet, decode_sdf_i_packet};
+    for n in [literal(true, None), literal(false, Some(CellVariation { seed: 7, scale: 0.1 }))] {
+        let packet = create_sdf_i_packet(&SdfTree::new(n), 1).unwrap();
+        assert!(decode_sdf_i_packet(&packet).is_err());
+    }
+    // the same packet path accepts a supported node
+    let ok = contained_child().repeat_cells(SPACING, None, true).unwrap();
+    let packet = create_sdf_i_packet(&SdfTree::new(ok), 1).unwrap();
+    assert!(decode_sdf_i_packet(&packet).is_ok());
 }
 
 /// The tree evaluator refuses too (a direct enum literal cannot be stopped at

@@ -1219,6 +1219,57 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             };
             eval_interval(child, cell)
         }
+        // RepeatCells: per repeated axis the cell index over the box is an integer interval
+        // [c0, c1]; one cell gives the exact local range (negated in an odd mirrored cell),
+        // several give the union with the cell's half-width (symmetric when mirrored)
+        SdfNode::RepeatCells {
+            child,
+            spacing,
+            count,
+            mirror,
+            ..
+        } => {
+            let n = count.unwrap_or([0; 3]);
+            let axis = |iv: Interval, s: f32, cnt: u32| {
+                if !(s > 0.0) {
+                    return iv;
+                }
+                let inv = 1.0 / s;
+                let (h, top) = if cnt == 0 {
+                    (0.0, f32::INFINITY)
+                } else {
+                    ((cnt as f32 - 1.0) * 0.5, cnt as f32 - 1.0)
+                };
+                let cell = |x: f32| round_half_up(x * inv + h).law_max(if cnt == 0 { f32::NEG_INFINITY } else { 0.0 }).law_min(top);
+                let (c0, c1) = (cell(iv.lo), cell(iv.hi));
+                if c0 == c1 {
+                    let q = Interval::new(iv.lo - (c0 - h) * s, iv.hi - (c0 - h) * s);
+                    let odd = c0 - (c0 * 0.5).floor() * 2.0 != 0.0;
+                    if *mirror && odd {
+                        Interval::new(-q.hi, -q.lo)
+                    } else {
+                        q
+                    }
+                } else {
+                    let lo = (iv.lo - (c1 - h) * s).law_min(-0.5 * s);
+                    let hi = (iv.hi - (c0 - h) * s).law_max(0.5 * s);
+                    if *mirror {
+                        let m = lo.abs().law_max(hi.abs());
+                        Interval::new(-m, m)
+                    } else {
+                        Interval::new(lo, hi)
+                    }
+                }
+            };
+            eval_interval(
+                child,
+                Vec3Interval {
+                    x: axis(bounds.x, spacing.x, n[0]),
+                    y: axis(bounds.y, spacing.y, n[1]),
+                    z: axis(bounds.z, spacing.z, n[2]),
+                },
+            )
+        }
         // q = p - clamp(round(p / s), -limit, limit) · s: the cell index over the box
         // is an integer interval, so the image is [p.lo - cmax·s, p.hi - cmin·s]
         // (this also covers boxes outside the finite repetition range).
@@ -1844,6 +1895,16 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         SdfNode::RepeatInfinite { .. }
         | SdfNode::RepeatFinite { .. }
         | SdfNode::PolarRepeat { .. } => f32::INFINITY,
+        // RepeatCells with mirroring: the fold (reflection at every cell boundary) is
+        // continuous and piecewise an isometry, so the child's bound holds; without
+        // mirroring it jumps like RepeatInfinite
+        SdfNode::RepeatCells { child, mirror, .. } => {
+            if *mirror {
+                eval_lipschitz(child)
+            } else {
+                f32::INFINITY
+            }
+        }
 
         // Twist about Y: q = R(s·y)·p, ∂q/∂y = s·R'(s·y)·p_xz with |·| = s·r.
         // The Jacobian is a shear by v = s·r whose larger singular value is

@@ -693,6 +693,7 @@ impl WgslShader {
             | SdfNode::Bend { child, .. }
             | SdfNode::RepeatInfinite { child, .. }
             | SdfNode::RepeatFinite { child, .. }
+            | SdfNode::RepeatCells { child, .. }
             | SdfNode::Noise { child, .. }
             | SdfNode::Round { child, .. }
             | SdfNode::Onion { child, .. }

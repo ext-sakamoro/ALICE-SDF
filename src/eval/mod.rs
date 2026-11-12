@@ -180,6 +180,26 @@ fn descend(node: &SdfNode, point: Vec3) -> Step<'_> {
             count,
             spacing,
         } => Step::One(child, modifier_repeat_finite(point, *count, *spacing), NONE),
+        SdfNode::RepeatCells {
+            child,
+            spacing,
+            count,
+            mirror,
+            neighbours,
+            variation,
+        } => {
+            // a direct enum literal reaches here unchecked: the fields whose law has not
+            // landed give NaN (no distance), not the single-cell value with the field ignored
+            if *neighbours || variation.is_some() {
+                Step::Leaf(f32::NAN)
+            } else {
+                Step::One(
+                    child,
+                    modifier_repeat_cells(point, *spacing, *count, *mirror),
+                    NONE,
+                )
+            }
+        }
         SdfNode::Elongate { child, amount } => {
             let q = point - point.law_clamp(-*amount, *amount);
             Step::One(child, q, NONE)
@@ -860,6 +880,13 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::RepeatInfinite { child, spacing } => {
             eval_material(child, modifier_repeat_infinite(point, *spacing))
         }
+        SdfNode::RepeatCells {
+            child,
+            spacing,
+            count,
+            mirror,
+            ..
+        } => eval_material(child, modifier_repeat_cells(point, *spacing, *count, *mirror)),
         SdfNode::RepeatFinite {
             child,
             count,

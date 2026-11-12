@@ -120,6 +120,7 @@ fn validate_node_dimensions(node: &SdfNode) -> Result<(), String> {
         | SdfNode::Mirror { child, .. }
         | SdfNode::RepeatInfinite { child, .. }
         | SdfNode::RepeatFinite { child, .. }
+        | SdfNode::RepeatCells { child, .. }
         | SdfNode::Revolution { child, .. }
         | SdfNode::Extrude { child, .. } => {
             validate_node_dimensions(child)?;
