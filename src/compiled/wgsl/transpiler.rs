@@ -85,6 +85,9 @@ impl ShaderLang for WgslLang {
         // column period for negative operands.
         format!("(({a}) - ({b}) * floor(({a}) / ({b})))")
     }
+    fn nan_expr() -> &'static str {
+        "bitcast<f32>(0x7fc00000u)"
+    }
     fn cast_float(expr: &str) -> String {
         format!("f32({})", expr)
     }

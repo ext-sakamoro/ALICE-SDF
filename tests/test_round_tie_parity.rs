@@ -36,6 +36,18 @@ fn cases() -> Vec<(&'static str, SdfNode)> {
             offset_sphere().repeat_finite([4, 2, 4], Vec3::splat(2.0)),
         ),
         (
+            "repeat_cells_mirror",
+            offset_sphere()
+                .repeat_cells(Vec3::splat(2.0), None, true)
+                .unwrap(),
+        ),
+        (
+            "repeat_cells_finite_mirror",
+            offset_sphere()
+                .repeat_cells(Vec3::splat(2.0), Some([4, 2, 4]), true)
+                .unwrap(),
+        ),
+        (
             "polar_repeat",
             SdfNode::sphere(0.3)
                 .translate(0.8, 0.0, 0.2)
