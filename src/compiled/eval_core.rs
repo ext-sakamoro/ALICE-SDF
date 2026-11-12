@@ -281,6 +281,18 @@ pub(super) fn eval_bytecode<R: PrimTable>(
                 let recip = Vec3::new(inst.params[3], inst.params[4], inst.params[5]);
                 p = real::repeat_infinite(p, spacing, recip);
             }
+            OpCode::RepeatCells => {
+                // params[0..3] = spacing, params[3..6] = count (0 = infinite), params[6] = mirror
+                push_frame!(pc);
+                let spacing = Vec3::new(inst.params[0], inst.params[1], inst.params[2]);
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let count = [
+                    inst.params[3] as u32,
+                    inst.params[4] as u32,
+                    inst.params[5] as u32,
+                ];
+                p = crate::modifiers::repeat_cells_r(p, spacing, count, inst.params[6] != 0.0);
+            }
             OpCode::RepeatFinite => {
                 // params[0..3] = counts, params[3..6] = spacing
                 push_frame!(pc);

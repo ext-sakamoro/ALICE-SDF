@@ -242,9 +242,9 @@ fn decode_checked(packet: &AspPacket, allow_unpinned: bool) -> Result<Checked<Sd
         &bytes[offset..],
         bincode::config::legacy().with_limit::<ASP_BINCODE_LIMIT>(),
     );
-    decoded
-        .map(|(tree, _)| Checked::new(tree, semantics))
-        .map_err(|e| format!("ASDF decode failed: {}", e))
+    let (tree, _): (SdfTree, usize) = decoded.map_err(|e| format!("ASDF decode failed: {}", e))?;
+    crate::modifiers::check_repeat_cells_tree(&tree.root).map_err(|e| format!("ASP I-packet: {e}"))?;
+    Ok(Checked::new(tree, semantics))
 }
 
 /// Compute the ASP packet overhead for an SDF scene.

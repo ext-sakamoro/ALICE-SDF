@@ -1036,6 +1036,22 @@ impl Compiler {
                 step = Step::Wrap { child, inst_idx };
             }
 
+            SdfNode::RepeatCells {
+                child,
+                spacing,
+                count,
+                mirror,
+                ..
+            } => {
+                // neighbours / variation are refused by validate_for_compile
+                let inst_idx = self.instructions.len();
+                self.instructions
+                    .push(Instruction::repeat_cells(*spacing, *count, *mirror));
+                self.compile_node(child);
+                self.instructions.push(Instruction::pop_transform());
+                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+            }
+
             SdfNode::RepeatFinite {
                 child,
                 count,
@@ -1675,6 +1691,7 @@ fn depth_step(node: &SdfNode) -> DepthStep<'_> {
         | SdfNode::Bend { child, .. }
         | SdfNode::RepeatInfinite { child, .. }
         | SdfNode::RepeatFinite { child, .. }
+        | SdfNode::RepeatCells { child, .. }
         | SdfNode::Noise { child, .. }
         | SdfNode::Elongate { child, .. }
         | SdfNode::Mirror { child, .. }
@@ -1744,6 +1761,12 @@ enum Children<'a> {
 /// Check one node; say which children are checked next
 fn validate_node(node: &SdfNode) -> Children<'_> {
     match node {
+        // neighbours / variation have no bytecode law yet: refused, not ignored
+        SdfNode::RepeatCells { child, .. } => {
+            node.validate_repeat_cells()
+                .map_err(|e| CompileError::UnsupportedPrimitive(e.to_string()))?;
+            validate_for_compile(child)?;
+        }
         // Metric nodes: four and five params respectively, both within the
         // instruction's seven slots, and both have a VM law.
         SdfNode::MetricBall { .. } => {}

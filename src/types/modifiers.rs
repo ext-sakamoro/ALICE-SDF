@@ -30,6 +30,49 @@ impl SdfNode {
         }
     }
 
+    /// Cell repetition with optional mirroring (odd cells reflected), infinite
+    /// (`count: None`) or `count` cells per axis centred on the origin; spacing 0
+    /// leaves an axis unrepeated. Mirrored repetition of a child inside its cell
+    /// is exact; see [`crate::modifiers::modifier_repeat_cells`].
+    ///
+    /// # Errors
+    ///
+    /// As [`crate::modifiers::validate_repeat_cells`] (bad spacing or count).
+    pub fn repeat_cells(
+        self,
+        spacing: Vec3,
+        count: Option<[u32; 3]>,
+        mirror: bool,
+    ) -> Result<Self, crate::modifiers::RepeatCellsError> {
+        crate::modifiers::validate_repeat_cells(spacing, count, false, None)?;
+        Ok(Self::RepeatCells {
+            child: Arc::new(self),
+            spacing,
+            count,
+            mirror,
+            neighbours: false,
+            variation: None,
+        })
+    }
+
+    /// Check a `RepeatCells` node's parameters (any other node is `Ok`).
+    ///
+    /// # Errors
+    ///
+    /// As [`crate::modifiers::validate_repeat_cells`].
+    pub fn validate_repeat_cells(&self) -> Result<(), crate::modifiers::RepeatCellsError> {
+        match self {
+            Self::RepeatCells {
+                spacing,
+                count,
+                neighbours,
+                variation,
+                ..
+            } => crate::modifiers::validate_repeat_cells(*spacing, *count, *neighbours, *variation),
+            _ => Ok(()),
+        }
+    }
+
     /// Infinite repetition
     #[must_use]
     #[inline]
