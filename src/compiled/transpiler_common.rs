@@ -467,10 +467,12 @@ pub struct GenericTranspiler<L: ShaderLang> {
     pub read_errors: Vec<String>,
     /// When `Some`, every evaluated node instance is recorded (its result, its children, the
     /// values its scale needs) for [`GenericTranspiler::transpile_scale`]
+    #[cfg(feature = "glsl")]
     scale_trace: Option<ScaleTrace>,
     _phantom: std::marker::PhantomData<L>,
 }
 
+#[cfg(feature = "glsl")]
 /// How a node's scale (`eval::eval_scaled`) follows from its children's
 #[derive(Debug, Clone, Copy)]
 enum ScaleKind {
@@ -493,6 +495,7 @@ enum ScaleKind {
     One,
 }
 
+#[cfg(feature = "glsl")]
 /// The code of a field and its scale ([`GenericTranspiler::transpile_scaled`]): `value_code` is
 /// the body of `sdf_eval` without its `return`, `scale_code` follows it and only reads values it
 /// computed
@@ -508,6 +511,7 @@ pub(crate) struct ScaledCode {
     pub(crate) scale: String,
 }
 
+#[cfg(feature = "glsl")]
 /// One evaluated node instance: what its scale needs
 #[derive(Debug, Clone)]
 struct ScaleFrame {
@@ -517,6 +521,7 @@ struct ScaleFrame {
     notes: Vec<String>,
 }
 
+#[cfg(feature = "glsl")]
 /// The node instances of one walk, in order, with the stack of the ones being emitted
 #[derive(Debug, Clone, Default)]
 struct ScaleTrace {
@@ -524,6 +529,7 @@ struct ScaleTrace {
     open: Vec<usize>,
 }
 
+#[cfg(feature = "glsl")]
 fn scale_kind(node: &SdfNode) -> ScaleKind {
     use crate::compiled::real::LawMinMax;
     match node {
@@ -953,6 +959,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             data_seen: Vec::new(),
             checked_reads: false,
             read_errors: Vec::new(),
+            #[cfg(feature = "glsl")]
             scale_trace: None,
             _phantom: std::marker::PhantomData,
         }
@@ -1657,6 +1664,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         new_p
     }
 
+    #[cfg(feature = "glsl")]
     /// The field and its local scale (`eval::eval_scaled`) at `point_var`: the value's code exactly
     /// as [`Self::transpile_node`] writes it, the scale's code after it, and their names. The value is the walk `sdf_eval` is made of, so it is the same bits;
     /// the scale is a second pass over the recorded node instances that only combines values
@@ -1680,6 +1688,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         }
     }
 
+    #[cfg(feature = "glsl")]
     /// The scale of recorded instance `i` (see [`ScaleKind`]); its name or a literal
     fn emit_scale(&mut self, trace: &ScaleTrace, i: usize, code: &mut String) -> String {
         let f = &trace.frames[i];
@@ -1768,6 +1777,20 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         point_var: &str,
         code: &mut String,
     ) -> String {
+        #[cfg(not(feature = "glsl"))]
+        return self.transpile_node_value(node, point_var, code);
+        #[cfg(feature = "glsl")]
+        self.transpile_node_traced(node, point_var, code)
+    }
+
+    /// [`Self::transpile_node_inner`] with the scale trace recorded when there is one
+    #[cfg(feature = "glsl")]
+    fn transpile_node_traced(
+        &mut self,
+        node: &SdfNode,
+        point_var: &str,
+        code: &mut String,
+    ) -> String {
         let Some(trace) = self.scale_trace.as_mut() else {
             return self.transpile_node_value(node, point_var, code);
         };
@@ -1791,7 +1814,11 @@ impl<L: ShaderLang> GenericTranspiler<L> {
     }
 
     /// Record values the scale of the node being emitted needs (no-op without a scale trace)
+    #[cfg_attr(not(feature = "glsl"), allow(clippy::unused_self))]
     fn note_scale(&mut self, vars: &[&str]) {
+        #[cfg(not(feature = "glsl"))]
+        let _ = vars;
+        #[cfg(feature = "glsl")]
         if let Some(trace) = self.scale_trace.as_mut() {
             if let Some(&top) = trace.open.last() {
                 trace.frames[top]
