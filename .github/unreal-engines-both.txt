@@ -1,0 +1,16 @@
+# the changes that build EVERY engine of UE5_ENGINE_ROOTS on a ci/ push (scripts/unreal_engines.py);
+# any other ci/ change builds the newest engine only, and every engine builds after landing on main
+# and weekly. Read by scripts/changed_paths.py decide (same pattern syntax as .github/paths/).
+# Listed: what the engine version itself compiles or links against — the plugin's C++ and
+# shaders, the C header it includes, the HLSL emitters whose text the engine's shader compiler
+# compiles, the example that generates the plugin's corpus shaders, and this workflow and its
+# scripts.
+unreal-plugin/**
+include/alice_sdf.h
+src/compiled/hlsl/**
+src/compiled/transpiler_common.rs
+examples/unreal_corpus_oracle.rs
+scripts/unreal-*
+scripts/unreal_engines.py
+.github/workflows/unreal.yml
+.github/unreal-engines-both.txt

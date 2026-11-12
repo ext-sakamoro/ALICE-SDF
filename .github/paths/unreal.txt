@@ -3,10 +3,12 @@
 # (scripts/changed_paths.py sync)
 # every file that can change a job's result is listed: a missing one skips the job on a
 # change that alters it
+# the job builds the library (src, Cargo) and runs examples/unreal_corpus_oracle.rs, which reads
+# tests/common/corpus.rs and examples/support/**; no other test, bench or example is an input
 src/**
-tests/**
-benches/**
-examples/**
+tests/common/corpus.rs
+examples/unreal_corpus_oracle.rs
+examples/support/**
 Cargo.toml
 Cargo.lock
 rust-toolchain.toml
@@ -18,3 +20,5 @@ scripts/unreal-*
 scripts/ci-log-*
 scripts/changed_paths.py
 .github/paths/unreal.txt
+scripts/unreal_engines.py
+.github/unreal-engines-both.txt
