@@ -3,7 +3,7 @@
 //! Torus arc (partial torus) in XZ plane.
 //! The cap angle defines how much of the torus is visible.
 //!
-//! Based on Inigo Quilez's sdCappedTorus formula.
+//! Method also known from Inigo Quilez's articles as sdCappedTorus (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

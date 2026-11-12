@@ -1,6 +1,6 @@
 //! Column-based CSG operations for SDFs (Deep Fried Edition)
 //!
-//! Based on hg_sdf's fOpUnionColumns / fOpDifferenceColumns.
+//! Method also known from Mercury's hg_sdf as `fOpUnionColumns` / `fOpDifferenceColumns`.
 //! Creates column-shaped blending at the intersection of two surfaces.
 //!
 //! Author: Moroya Sakamoto

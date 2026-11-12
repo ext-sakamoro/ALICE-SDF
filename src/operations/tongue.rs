@@ -1,6 +1,6 @@
 //! Tongue operation for SDFs (Deep Fried Edition)
 //!
-//! Based on hg_sdf's fOpTongue. Inverse of groove: adds a tongue.
+//! Method also known from Mercury's hg_sdf as `fOpTongue`. Inverse of groove: adds a tongue.
 //!
 //! Author: Moroya Sakamoto
 

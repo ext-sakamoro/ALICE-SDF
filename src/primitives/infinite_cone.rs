@@ -2,7 +2,7 @@
 //!
 //! Infinite cone along Y-axis (extends upward from origin).
 //!
-//! Based on Inigo Quilez's sdCone (infinite version) formula.
+//! Method also known from Inigo Quilez's articles as sdCone (infinite version) (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

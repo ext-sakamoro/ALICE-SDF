@@ -3,7 +3,7 @@
 //! Exact SDF for a hexagonal prism centered at origin.
 //! Hexagon in the XY plane, extruded along Z-axis.
 //!
-//! Based on Inigo Quilez's sdHexPrism formula.
+//! Method also known from Inigo Quilez's articles as sdHexPrism (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

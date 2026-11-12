@@ -2,7 +2,7 @@
 //!
 //! A 3D cone sector (like a spotlight cone shape).
 //!
-//! Based on Inigo Quilez's sdSolidAngle formula.
+//! Method also known from Inigo Quilez's articles as sdSolidAngle (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

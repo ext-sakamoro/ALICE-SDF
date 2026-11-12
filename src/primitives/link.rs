@@ -3,7 +3,7 @@
 //! Exact SDF for a chain link shape centered at origin.
 //! A torus stretched along Y-axis.
 //!
-//! Based on Inigo Quilez's sdLink formula.
+//! Method also known from Inigo Quilez's articles as sdLink (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

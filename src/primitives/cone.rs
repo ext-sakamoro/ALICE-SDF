@@ -3,7 +3,7 @@
 //! Exact SDF for a capped cone along Y-axis.
 //! Base at y = -half_height with given radius, tip at y = half_height.
 //!
-//! Based on Inigo Quilez's exact cone SDF formula.
+//! Method also known from Inigo Quilez's articles as exact cone SDF (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

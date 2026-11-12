@@ -2,7 +2,7 @@
 //!
 //! Regular N-sided polygon in XZ plane, extruded along Y-axis.
 //!
-//! Based on Inigo Quilez's sdPolygon formula.
+//! Method also known from Inigo Quilez's articles as sdPolygon (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 
@@ -16,7 +16,8 @@ use glam::{Vec2, Vec3};
 /// - `half_height`: half the extrusion height along Y
 #[inline(always)]
 pub fn sdf_regular_polygon(p: Vec3, radius: f32, n_sides: f32, half_height: f32) -> f32 {
-    // Inigo Quilez "Regular Polygon" (exact), in the XZ plane with `radius` as the
+    // Exact regular-polygon distance (method also known from Inigo Quilez's
+    // articles as "Regular Polygon"), in the XZ plane with `radius` as the
     // circumradius. Before 1.9.2 the sector fold only handled z >= 0 and the 2D
     // term was a half-plane distance, which made the shape unbounded.
     let n = n_sides.law_max(3.0).trunc();

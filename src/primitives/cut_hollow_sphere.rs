@@ -2,7 +2,7 @@
 //!
 //! Hollow sphere shell with a planar cut.
 //!
-//! Based on Inigo Quilez's sdCutHollowSphere formula.
+//! Method also known from Inigo Quilez's articles as sdCutHollowSphere (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

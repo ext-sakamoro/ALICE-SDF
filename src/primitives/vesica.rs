@@ -2,7 +2,7 @@
 //!
 //! 3D vesica (lens/almond shape) — revolution of 2D vesica piscis around Y-axis.
 //!
-//! Based on Inigo Quilez's sdVesicaSegment formula (simplified, centered).
+//! Method also known from Inigo Quilez's articles as sdVesicaSegment (simplified, centered) (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

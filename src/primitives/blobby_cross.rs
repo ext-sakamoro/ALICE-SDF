@@ -2,21 +2,22 @@
 //!
 //! 2D blobby/organic cross shape in XZ plane, extruded along Y-axis.
 //!
-//! Based on Inigo Quilez's sdBlobbyCross formula using sqrt-based blending.
+//! Method also known from Inigo Quilez's articles as sdBlobbyCross using sqrt-based blending (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 
 use crate::compiled::real::LawMinMax;
 use glam::{Vec2, Vec3};
 
-/// Blobbiness of the cross arms (Inigo Quilez's `he`): the arms are
+/// Blobbiness of the cross arms (`he` in Inigo Quilez's articles): the arms are
 /// parabola segments `y = he·(1 − 2x²)` in the folded octant; 0.5 gives the
 /// canonical blobby cross whose arms reach the unit square's mid-edges.
 pub const BLOBBY_CROSS_HE: f32 = 0.5;
 
 /// SDF for a blobby (organic) cross shape, extruded along Y-axis
 ///
-/// Inigo Quilez's exact `sdBlobbyCross` (distance to the parabola-arm
+/// Exact blobby-cross distance (method also known from Inigo Quilez's articles
+/// as `sdBlobbyCross`: distance to the parabola-arm
 /// curve, obtained by solving the depressed cubic for the nearest
 /// parameter) evaluated on `|xz| / size` and scaled back by `size`, then
 /// extruded along Y. Exact SDF, Lipschitz 1.

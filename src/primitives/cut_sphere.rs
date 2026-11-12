@@ -2,7 +2,7 @@
 //!
 //! Sphere with a planar cut at a given height.
 //!
-//! Based on Inigo Quilez's sdCutSphere formula.
+//! Method also known from Inigo Quilez's articles as sdCutSphere (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

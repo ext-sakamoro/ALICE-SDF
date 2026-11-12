@@ -2,7 +2,7 @@
 //!
 //! 2D uneven capsule shape in XY plane, extruded along Z-axis.
 //!
-//! Based on Inigo Quilez's 2D Uneven Capsule formula.
+//! Method also known from Inigo Quilez's articles as 2D Uneven Capsule (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 

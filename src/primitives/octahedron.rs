@@ -2,7 +2,7 @@
 //!
 //! Exact SDF for a regular octahedron centered at origin.
 //!
-//! Based on Inigo Quilez's sdOctahedron (exact) formula.
+//! Method also known from Inigo Quilez's articles as sdOctahedron (exact) (iquilezles.org).
 //!
 //! Author: Moroya Sakamoto
 
