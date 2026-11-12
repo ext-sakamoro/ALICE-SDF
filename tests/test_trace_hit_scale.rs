@@ -227,6 +227,7 @@ fn the_value_is_eval_bit_for_bit_and_the_scale_is_one_without_a_local_factor() {
             || name.starts_with("projective")
             || name.starts_with("lattice")
             || name.starts_with("grid_warp")
+            || name.starts_with("bell_pull")
     };
     let mut trees = common::corpus::corpus();
     trees.push((

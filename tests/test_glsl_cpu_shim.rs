@@ -241,8 +241,10 @@ pub fn compile_and_run(cxx: &str, name: &str, src: &str, pts: &[Vec3], per: usiz
     writer.join().unwrap().unwrap();
     assert!(child.wait().unwrap().success(), "{name}: evaluator failed");
     assert_eq!(raw.len(), pts.len() * per * 4, "{name}: output size");
-    raw.chunks_exact(4)
-        .map(|b| f32::from_ne_bytes([b[0], b[1], b[2], b[3]]))
+    raw.as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| f32::from_ne_bytes(*b))
         .collect()
 }
 
