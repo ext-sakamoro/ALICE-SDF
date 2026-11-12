@@ -26,6 +26,10 @@ on:
     # ci/**: the owner's ci/ commits run here before they land (user decision); the
     # changes job and its policy step decide, the job's own `if:` repeats the guard
     branches: [main, 'ci/**']
+  # weekly: every engine of UE5_ENGINE_ROOTS against main, whatever changed (a ci/ push that is
+  # not engine-specific builds the newest engine only; scripts/unreal_engines.py)
+  schedule:
+    - cron: '17 19 * * 6'
   # 今日のように engine を入れ直した後で「commit を作らずに検証だけしたい」場合の入口
   # no workflow_dispatch: a job on the self-hosted host may start only from a
   # reviewed push to main (path-filtered), not from a manual run; a manual run
@@ -53,6 +57,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       run: ${{ steps.policy.outputs.run }}
+      engines: ${{ steps.engines.outputs.engines }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -83,6 +88,29 @@ jobs:
           if [ "$DECIDED" = true ] && [ "$ALLOWED" = true ]; then run=true; else run=false; fi
           echo "decided=$DECIDED allowed=$ALLOWED run=$run"
           echo "run=$run" >> "$GITHUB_OUTPUT"
+      # one runner builds the engines in series (about 50 minutes each): a ci/ push builds every
+      # engine only when the change is engine-specific (.github/unreal-engines-both.txt, a failed
+      # decision runs every engine), otherwise the newest; main and the weekly run build every engine
+      - name: engine-specific change
+        id: specific
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after || github.sha }}
+          CREATED: ${{ github.event.created }}
+          FORCED: ${{ github.event.forced }}
+        run: >-
+          python3 scripts/changed_paths.py decide --event "$EVENT"
+          --before "$BEFORE" --after "$AFTER" --created "$CREATED" --forced "$FORCED"
+          --patterns-file .github/unreal-engines-both.txt
+      - name: engines
+        id: engines
+        env:
+          ROOTS: ${{ vars.UE5_ENGINE_ROOTS || '["E:\\UE_5.7"]' }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          SPECIFIC: ${{ steps.specific.outputs.run }}
+        run: python3 scripts/unreal_engines.py --roots "$ROOTS" --event "$EVENT" --ref "$REF" --specific "$SPECIFIC"
 
   unreal-ue5:
     # the name carries the engine version, not its install path (the job log is public)
@@ -92,7 +120,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: ${{ fromJSON(vars.UE5_ENGINE_ROOTS || '["E:\\UE_5.7"]') }}
+        engine: ${{ fromJSON(needs.changes.outputs.engines) }}
     runs-on: [self-hosted, windows, ue5]
     timeout-minutes: 90
     env:
