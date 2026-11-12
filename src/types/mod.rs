@@ -40,7 +40,7 @@ impl SdfCategory {
             Self::Primitive => 78,
             Self::Operation => 26,
             Self::Transform => 9,
-            Self::Modifier => 25,
+            Self::Modifier => 26,
         }
     }
 

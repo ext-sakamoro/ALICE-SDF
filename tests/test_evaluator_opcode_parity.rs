@@ -144,9 +144,9 @@ fn corpus_covers_every_emitted_opcode() {
             seen.extend(ops);
         }
     }
-    // 129 OpCode variants minus `Animated` (compiler inlines the child) = 128.
+    // 130 OpCode variants minus `Animated` (compiler inlines the child) = 129.
     // `End` and `PopTransform` are emitted and counted.
-    let expected = 128;
+    let expected = 129;
     assert!(
         !seen.contains("Animated"),
         "compiler started emitting Animated; update the expected count"
@@ -562,8 +562,9 @@ fn lipschitz_claims_are_finite_where_the_law_is_lipschitz() {
         "only {finite} finite claims; infinite: {infinite:?}"
     );
     // Exactly the by-design non-Lipschitz laws: columns ×3, lattice deform,
-    // domain repetition ×10 (repeat / polar repeat corpus variants, including
-    // the half- and full-turn wedges added in 3.1.1), taper, heightmap
+    // domain repetition ×11 (repeat / polar repeat corpus variants, including
+    // the half- and full-turn wedges added in 3.1.1, and the unmirrored
+    // RepeatCells, which jumps at cell boundaries like RepeatInfinite), taper, heightmap
     // displacement, IFS ×2 (the nearest-image choice jumps between
     // transforms; 2.2.0), and the metric blend (the gradient it adds across
     // the skin is `|f_in - f_out| * |grad w|`, a property of the two fields
@@ -572,8 +573,8 @@ fn lipschitz_claims_are_finite_where_the_law_is_lipschitz() {
     // ball, whose bound is the exact closed form of its weighted norm.
     assert_eq!(
         infinite.len(),
-        19,
-        "infinite claims changed (expected the 19 by-design laws): {infinite:?}"
+        20,
+        "infinite claims changed (expected the 20 by-design laws): {infinite:?}"
     );
     for name in &infinite {
         assert!(

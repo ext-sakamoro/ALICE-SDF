@@ -760,6 +760,18 @@ const GOLDEN: &[(&str, &str)] = &[
         "02a339ec31cffceff7fdcdafbecd0de9394f8d22680c6354cfe746d49402a901",
     ),
     (
+        "repeat_cells_mirror",
+        "0dd2935612a3af29a96035ac15b80267ab8af4b3509e05f4ff5879e37d5b47c0",
+    ),
+    (
+        "repeat_cells_finite_mirror",
+        "78fd372f349fe388f7d3c088a92369d24e68bfa6f0e388242558caa21bd065fb",
+    ),
+    (
+        "repeat_cells_finite_plain",
+        "2db5a25c7cc78f988f324b293f021a424977d7933801fb0fab7eb47153a7eee9",
+    ),
+    (
         "repeat_finite",
         "fa7823d2ce3fe10f023d8b7569155d1402ca4f04b5e2386c587f291c63e39301",
     ),
