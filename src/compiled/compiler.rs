@@ -1749,6 +1749,46 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A `SmoothBlend` instruction whose kernel / mode code the compiler never writes
+    /// (a corrupted program) evaluates to NaN in the scalar and the SIMD tables: no
+    /// guessed kernel, no panic. Valid codes still evaluate.
+    #[test]
+    fn undecodable_smooth_blend_instruction_evaluates_to_nan() {
+        use crate::compiled::{eval_compiled, eval_compiled_simd, Vec3x8};
+        use crate::operations::{BlendMode, SmoothKernel};
+        let node = SdfNode::smooth_blend(
+            SdfNode::sphere(0.6),
+            SdfNode::box3d(0.5, 0.4, 0.3).translate(0.4, 0.0, 0.0),
+            0.3,
+            SmoothKernel::Quartic,
+            BlendMode::Union,
+        );
+        let mut c = CompiledSdf::compile(&node);
+        let p = glam::Vec3::new(0.2, 0.1, 0.0);
+        assert!(eval_compiled(&c, p).is_finite());
+        let i = c
+            .instructions
+            .iter()
+            .position(|x| x.opcode == OpCode::SmoothBlend)
+            .expect("the program has a SmoothBlend instruction");
+        for (k, m) in [
+            (3.0, 0.0),
+            (0.0, 3.0),
+            (0.5, 0.0),
+            (0.0, -1.0),
+            (f32::NAN, 0.0),
+        ] {
+            let mut bad = c.clone();
+            bad.instructions[i].params[1] = k;
+            bad.instructions[i].params[2] = m;
+            assert!(eval_compiled(&bad, p).is_nan(), "scalar, codes {k} / {m}");
+            let simd = eval_compiled_simd(&bad, Vec3x8::splat(p)).to_array();
+            assert!(simd.iter().all(|d| d.is_nan()), "simd, codes {k} / {m}");
+        }
+        c.instructions[i].params[1] = 2.0;
+        assert!(eval_compiled(&c, p).is_finite());
+    }
     use super::super::opcode::OpCode;
     use super::*;
 

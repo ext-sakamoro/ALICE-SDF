@@ -343,6 +343,18 @@ fn walk_and_recompute(
                     instruction_index: i,
                     opcode,
                 })?;
+                // a SmoothBlend whose kernel / mode code the compiler never writes (the
+                // instructions are pub on the BVH) is refused, not refit with a guess: the
+                // caller falls back to the SdfNode-based refit_bvh, which rebuilds it
+                if opcode == OpCode::SmoothBlend
+                    && crate::operations::smooth_blend_decode(inst.params[1], inst.params[2])
+                        .is_none()
+                {
+                    return Err(RefitError::UnsupportedOpcode {
+                        opcode,
+                        instruction_index: i,
+                    });
+                }
                 let aabb = if should_recompute(i) {
                     let new_aabb = csg_binary_aabb(opcode, &inst.params, a, b);
                     bvh.aabbs[i] = new_aabb;
@@ -661,11 +673,14 @@ fn csg_binary_aabb(opcode: OpCode, params: &[f32; 7], a: AabbPacked, b: AabbPack
         // kernel's deficit is at most k), so the union bound grows by k; intersection
         // (max + D >= max) and subtraction (max(a, -b) + D) only remove material.
         OpCode::SmoothBlend => {
-            let (_, mode) = crate::operations::smooth_blend_decode(params[1], params[2]);
-            match mode {
-                crate::operations::BlendMode::Union => a.union(&b).expand(params[0].law_max(0.0)),
-                crate::operations::BlendMode::Intersection => a.intersection(&b),
-                crate::operations::BlendMode::Subtraction => a,
+            // unreachable from the walker (it refuses an undecodable instruction first);
+            // the union bound contains every mode's, so it is the safe value regardless
+            match crate::operations::smooth_blend_decode(params[1], params[2]).map(|(_, m)| m) {
+                Some(crate::operations::BlendMode::Union) | None => {
+                    a.union(&b).expand(params[0].law_max(0.0))
+                }
+                Some(crate::operations::BlendMode::Intersection) => a.intersection(&b),
+                Some(crate::operations::BlendMode::Subtraction) => a,
             }
         }
         _ => unreachable!("csg_binary_aabb called with non-binary {opcode:?}"),
