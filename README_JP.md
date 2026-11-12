@@ -229,7 +229,7 @@ feature 付きで実行する CI ステップが無いと CI を失敗させる 
 | VRChat | [`vrchat-package/`](vrchat-package/README_JP.md) | プレイヤーが歩き、衝突できる SDF 表面の VRChat パッケージ |
 | Godot 4 | [`docs/GODOT_GUIDE.md`](docs/GODOT_GUIDE.md) | `--features godot` |
 | Python | [`python/`](python/)、[`docs/PYTHON_GUIDE.md`](docs/PYTHON_GUIDE.md) | `--features python`、NumPy による一括評価とメッシュ出力 |
-| WebAssembly / Three.js | [`docs/WASM_GUIDE.md`](docs/WASM_GUIDE.md)、[`npm/`](npm/README.md) | `--features wasm` |
+| WebAssembly / Three.js | [`docs/WASM_GUIDE.md`](docs/WASM_GUIDE.md)、[`npm/`](npm/README.md) | `--features wasm`、npm package は `npm/` から build する (npm registry には無い) |
 | iOS / Android | [`mobile/`](mobile/README.md) | C ABI 上の XCFramework と Kotlin バインディング |
 | Bevy / Blender / Houdini / Maya / Nuke / Cinema 4D / OpenXR / visionOS | [`bindings/`](bindings/README.md)、[`docs/INTEGRATIONS_JP.md`](docs/INTEGRATIONS_JP.md) | 参照実装 |
 
