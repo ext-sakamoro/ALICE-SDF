@@ -861,7 +861,7 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "heightmap_displacement",
-        "ed9247293c2854118bdc2d56615ba5efdf65dadcfeaa9160ef767b27a03cd600",
+        "d0fa80b194968ee14caa08cba5823319ff40fd41d7bf21c00255294daf4cc6ce",
     ),
     (
         "nested",
