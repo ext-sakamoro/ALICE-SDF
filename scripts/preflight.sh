@@ -100,6 +100,9 @@ python3 scripts/check_pipe_grep_q.py
 step "changed paths: oracle + trigger lint (no on.push paths off main, pattern files = pull_request paths)"
 python3 scripts/test_changed_paths.py
 python3 scripts/changed_paths.py sync
+python3 scripts/test_unreal_engines.py
+python3 scripts/test_hlsl_emitters.py
+python3 scripts/hlsl_emitters.py
 
 step "self-hosted job guard: oracle + every self-hosted job requires the owner's push"
 python3 scripts/test_self_hosted_guard.py

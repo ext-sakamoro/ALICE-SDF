@@ -610,6 +610,9 @@ jobs:
         run: |
           python scripts/test_changed_paths.py
           python scripts/changed_paths.py sync
+          python scripts/test_unreal_engines.py
+          python scripts/test_hlsl_emitters.py
+          python scripts/hlsl_emitters.py
       # every job on the self-hosted runner requires the repository, actor and triggering actor
       # (the owner's own pushes only), and its workflow has no workflow_dispatch and never cancels
       - name: Self-hosted job guard (tests, then the workflows)
