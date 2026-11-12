@@ -231,6 +231,9 @@ struct WgpuResources {
     /// The checked reads' counter (binding 5, one `atomic<u32>`), present for a shader from
     /// [`WgslShader::try_transpile_with_node_data_checked`]
     read_hits: Option<wgpu::Buffer>,
+    /// The data texture (binding 4) of a separate-data export, in place of the node data buffer
+    /// ([`crate::compiled::data_export`]); the texture is kept alive with its view
+    data_texture: Option<(wgpu::Texture, wgpu::TextureView)>,
 }
 
 type WgpuEngine = Held<WgpuResources>;
@@ -263,7 +266,17 @@ impl WgpuEngine {
         checked: bool,
     ) -> Result<Self, GpuError> {
         let context = GpuContext::request("ALICE-SDF Device")?;
-        Self::build(context, source, node_data, checked)
+        Self::build(context, source, node_data, checked, None)
+    }
+
+    /// [`WgpuEngine::from_source`] with a separate-data export's texture bound at binding 4 (an
+    /// R32F texture read with `textureLoad`)
+    fn from_source_with_texture(
+        source: wgpu::ShaderSource<'_>,
+        texture: &crate::compiled::data_export::DataTexture,
+    ) -> Result<Self, GpuError> {
+        let context = GpuContext::request("ALICE-SDF Device")?;
+        Self::build(context, source, &[], false, Some(texture))
     }
 
     /// The pipeline, bind group layout and buffers on `context`'s device: bindings 0-2 (points,
@@ -274,7 +287,12 @@ impl WgpuEngine {
         source: wgpu::ShaderSource<'_>,
         node_data: &[f32],
         checked: bool,
+        data_texture: Option<&crate::compiled::data_export::DataTexture>,
     ) -> Result<Self, GpuError> {
+        assert!(
+            node_data.is_empty() || data_texture.is_none(),
+            "binding 4 holds the node data buffer or the data texture, not both"
+        );
         let workgroup_size = declared_workgroup_size(&source)?;
         let device = context.device();
         check_node_data_size(
@@ -336,6 +354,19 @@ impl WgpuEngine {
                 count: None,
             });
         }
+        if data_texture.is_some() {
+            // an R32F texture: not filterable, read with exact texel loads
+            layout_entries.push(wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            });
+        }
         if checked {
             layout_entries.push(wgpu::BindGroupLayoutEntry {
                 binding: 5,
@@ -377,6 +408,40 @@ impl WgpuEngine {
                 usage: wgpu::BufferUsages::STORAGE,
             })
         });
+        let data_texture = data_texture.map(|t| {
+            let size = wgpu::Extent3d {
+                width: t.width,
+                height: t.height,
+                depth_or_array_layers: 1,
+            };
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("ALICE-SDF Data Texture"),
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::R32Float,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            context.queue().write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                bytemuck::cast_slice(&t.texels),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(t.width * 4),
+                    rows_per_image: Some(t.height),
+                },
+                size,
+            );
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            (texture, view)
+        });
         let read_hits = checked.then(|| {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("ALICE-SDF Read Counter"),
@@ -398,6 +463,7 @@ impl WgpuEngine {
             workgroup_size,
             node_data,
             read_hits,
+            data_texture,
         }))
     }
 
@@ -685,6 +751,12 @@ impl WgpuEngine {
                 resource: data.as_entire_binding(),
             });
         }
+        if let Some((_, view)) = &self.data_texture {
+            entries.push(wgpu::BindGroupEntry {
+                binding: 4,
+                resource: wgpu::BindingResource::TextureView(view),
+            });
+        }
         if let Some(hits) = &self.read_hits {
             entries.push(wgpu::BindGroupEntry {
                 binding: 5,
@@ -834,6 +906,7 @@ impl WgpuEngine {
             wgpu::ShaderSource::Wgsl(wgsl_source.into()),
             node_data,
             false,
+            None,
         )
     }
 
@@ -1159,6 +1232,7 @@ impl WgpuEngine {
             workgroup_size: shader.workgroup_size,
             node_data,
             read_hits: None,
+            data_texture: None,
         }))
     }
 
@@ -1724,6 +1798,41 @@ impl GpuEvaluator {
             }
         }
         let mut evaluator = Self::from_wgsl_pinned(&shader.to_compute_shader())?;
+        evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
+        Ok(evaluator)
+    }
+
+    /// An evaluator for a separate-data WGSL export
+    /// ([`crate::compiled::WgslShader::export_with_data_texture`]), binding its data texture at
+    /// binding 4. It runs through wgpu on every platform (with `msl` on macOS too, where
+    /// [`GpuEvaluator::from_shader`] builds the Metal engine); an export without data is the
+    /// single-file text and is built as [`GpuEvaluator::from_shader`] builds it
+    ///
+    /// # Errors
+    ///
+    /// As [`GpuEvaluator::from_shader`]
+    pub fn from_data_export(
+        export: &crate::compiled::data_export::DataExport,
+    ) -> Result<Self, GpuError> {
+        let shader = WgslShader {
+            source: export.source.clone(),
+            helper_count: 0,
+            param_layout: Vec::new(),
+            mode: super::transpiler::TranspileMode::Hardcoded,
+            workgroup_size: 256,
+            node_data: Vec::new(),
+        };
+        let Some(texture) = &export.data else {
+            return Self::from_shader(&shader);
+        };
+        let text = shader.to_compute_shader();
+        crate::provenance::shader_text_verdict(&text, false)?;
+        note_engine_build();
+        let mut evaluator =
+            WgpuEngine::from_source_with_texture(wgpu::ShaderSource::Wgsl(text.into()), texture)
+                .map(|w| Self {
+                    engine: Engine::Wgpu(w),
+                })?;
         evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
         Ok(evaluator)
     }

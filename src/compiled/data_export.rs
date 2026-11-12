@@ -125,17 +125,94 @@ pub struct DataExport {
     pub data: Option<DataTexture>,
 }
 
+/// The name the node data buffer has in the emitted text; every read of it is
+/// `alice_node_data[<index>]`
+const BUFFER_NAME: &str = "alice_node_data";
+
+/// `source` with every read `alice_node_data[<index>]` replaced by `read(<index>)` (the index
+/// expression may itself hold brackets)
+///
+/// # Panics
+///
+/// On an unbalanced read (the emitted text is this crate's own: never)
+fn reads_through(source: &str, read: &dyn Fn(&str) -> String) -> String {
+    let open = format!("{BUFFER_NAME}[");
+    let mut out = String::with_capacity(source.len());
+    let mut rest = source;
+    while let Some(at) = rest.find(&open) {
+        out.push_str(&rest[..at]);
+        let inner_start = at + open.len();
+        let mut depth = 1usize;
+        let mut end = None;
+        for (k, c) in rest[inner_start..].char_indices() {
+            match c {
+                '[' => depth += 1,
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(inner_start + k);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let end = end.expect("a node data read has its closing bracket");
+        out.push_str(&read(&rest[inner_start..end]));
+        rest = &rest[end + 1..];
+    }
+    out.push_str(rest);
+    assert!(
+        !out.contains(BUFFER_NAME),
+        "every node data read went through the texture"
+    );
+    out
+}
+
+/// `decl` placed after the text's leading `//` block (the block that carries the crate's
+/// identifier, which a reader takes from the first lines of the text)
+fn after_leading_comments(source: &str, decl: &str) -> String {
+    let mut head = 0;
+    for line in source.split_inclusive('\n') {
+        if !line.trim_start().starts_with("//") {
+            break;
+        }
+        head += line.len();
+    }
+    format!("{}{decl}{}", &source[..head], &source[head..])
+}
+
 #[cfg(feature = "gpu")]
 impl crate::compiled::WgslShader {
-    /// The separate-data WGSL export of `node` (see the module documentation)
+    /// The separate-data WGSL export of `node` (see the module documentation): the text declares
+    /// `@group(0) @binding(4) var alice_data_tex: texture_2d<f32>` (an R32F texture, unfilterable
+    /// float) and reads it with `textureLoad`
     ///
     /// # Errors
     ///
     /// [`DataExportError::Transpile`] as [`crate::compiled::WgslShader::try_transpile`];
     /// [`DataExportError::TooLarge`] when the data does not fit one texture
     pub fn export_with_data_texture(node: &crate::SdfNode) -> Result<DataExport, DataExportError> {
-        let _ = node;
-        todo!("STUB: A2 separate-data WGSL export not implemented")
+        let with_buffer = Self::try_transpile_plain_with_node_data(node)?;
+        if with_buffer.node_data.is_empty() {
+            return Ok(DataExport {
+                source: Self::try_transpile(node, crate::compiled::TranspileMode::Hardcoded)?
+                    .source,
+                data: None,
+            });
+        }
+        let data = DataTexture::try_from_values(&with_buffer.node_data)?;
+        let body = reads_through(&with_buffer.source, &|i| format!("alice_data(i32({i}))"));
+        let decl = format!(
+            "\n@group(0) @binding(4) var {DATA_TEXTURE_NAME}: texture_2d<f32>;\n\
+             fn alice_data(i: i32) -> f32 {{\n    \
+             return textureLoad({DATA_TEXTURE_NAME}, vec2<i32>(i % {w}, i / {w}), 0).x;\n}}\n",
+            w = DATA_TEXTURE_WIDTH
+        );
+        Ok(DataExport {
+            source: after_leading_comments(&body, &decl),
+            data: Some(data),
+        })
     }
 }
 
@@ -164,19 +241,6 @@ impl crate::compiled::HlslShader {
     pub fn export_with_data_texture(node: &crate::SdfNode) -> Result<DataExport, DataExportError> {
         let _ = node;
         todo!("STUB: A2 separate-data HLSL export not implemented")
-    }
-}
-
-#[cfg(feature = "gpu")]
-impl crate::compiled::GpuEvaluator {
-    /// An evaluator for a separate-data WGSL export, binding its data texture
-    ///
-    /// # Errors
-    ///
-    /// As [`crate::compiled::GpuEvaluator::from_shader`]
-    pub fn from_data_export(export: &DataExport) -> Result<Self, crate::compiled::GpuError> {
-        let _ = export;
-        todo!("STUB: A2 evaluator for the separate-data export not implemented")
     }
 }
 
