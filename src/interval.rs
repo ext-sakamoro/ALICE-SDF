@@ -1227,8 +1227,13 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             spacing,
             count,
             mirror,
-            ..
+            neighbours,
+            variation,
         } => {
+            // the fields whose law has not landed: nothing is known about the value
+            if *neighbours || variation.is_some() {
+                return Interval::entire();
+            }
             let n = count.unwrap_or([0; 3]);
             let axis = |iv: Interval, s: f32, cnt: u32| {
                 if !(s > 0.0) {
