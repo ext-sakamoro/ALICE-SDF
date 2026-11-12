@@ -1330,6 +1330,7 @@ jobs:
           --test test_instanced_wgsl_gpu_parity
           --test test_gpu_eval_api_oracle
           --test test_glsl_export_oracle
+          --test test_soft_shadow_glsl_parity
           --test test_shader_precise_temporaries
           --test test_grid_warp_oracle
           --test test_rest_point
