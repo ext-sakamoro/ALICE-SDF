@@ -21,11 +21,14 @@
 //!   1-Lipschitz child (sampled difference quotients);
 //! * tree and compiled bytecode agree to the bit;
 //! * `neighbours` / `variation` (batch 2) are refused with a typed error at
-//!   construction and in the readers; an invalid spacing or count is refused.
+//!   construction, in the readers and by the compiler; the evaluators that
+//!   cannot return an error give no value (NaN distance and gradient, an
+//!   unbounded interval, a NaN in each shader); an invalid spacing or count is
+//!   refused.
 //!
 //! The three `SdfNode::RepeatCells { .. }` literals below are deliberate: they
 //! bypass the checked constructor to show that every other entry (validation,
-//! readers, compiler, tree evaluator) still refuses the batch-2 fields.
+//! readers, compiler, evaluators) still refuses the batch-2 fields.
 #![allow(
     clippy::disallowed_methods,
     reason = "test code: the reference is built with the platform libm"
@@ -264,10 +267,51 @@ fn i_packet_reader_refuses_neighbours_and_variation() {
     assert!(decode_sdf_i_packet(&packet).is_ok());
 }
 
-/// The tree evaluator refuses too (a direct enum literal cannot be stopped at
-/// construction): it panics with the reason instead of returning a wrong value.
+/// The evaluators that cannot return an error (a direct enum literal is not
+/// stopped at construction) give "no value" for the batch-2 fields instead of
+/// the single-cell value with the field ignored: the tree distance and gradient
+/// are NaN (and the NaN reaches a caller through a transform), the interval is
+/// unbounded, and each shader returns a quiet NaN for the node. The checked
+/// entries (construction, readers, compile) refuse with an error, above.
 #[test]
-#[should_panic(expected = "RepeatCells")]
-fn tree_evaluator_refuses_neighbours() {
-    let _ = eval(&literal(true, None), Vec3::ZERO);
+fn the_evaluators_give_no_value_for_neighbours_and_variation() {
+    use alice_sdf::interval::{eval_interval, Vec3Interval};
+    let supported = contained_child().repeat_cells(SPACING, None, true).unwrap();
+    let p = Vec3::new(0.3, -0.2, 0.1);
+    assert!(eval(&supported, p).is_finite());
+    for n in [literal(true, None), literal(false, Some(CellVariation { seed: 7, scale: 0.1 }))] {
+        assert!(eval(&n, p).is_nan());
+        assert!(eval(&n.clone().translate(1.0, 0.0, 0.0), p).is_nan(), "NaN lost through a transform");
+        assert!(eval_gradient(&n, p).is_nan());
+        let iv = eval_interval(&n, Vec3Interval::from_bounds(Vec3::splat(-1.0), Vec3::splat(1.0)));
+        assert!(iv.lo == f32::NEG_INFINITY && iv.hi == f32::INFINITY, "{iv:?}");
+        shader_nan(&n, &supported);
+    }
+}
+
+/// Each shader returns a quiet NaN for a node with the batch-2 fields, and the
+/// supported form has none.
+#[allow(unused_variables)]
+fn shader_nan(n: &SdfNode, supported: &SdfNode) {
+    #[cfg(feature = "glsl")]
+    {
+        use alice_sdf::compiled::{GlslShader, GlslTranspileMode};
+        let t = |x: &SdfNode| GlslShader::transpile(x, GlslTranspileMode::Hardcoded).source;
+        assert!(t(n).contains("uintBitsToFloat(0x7fc00000u)"), "GLSL");
+        assert!(!t(supported).contains("0x7fc00000u"));
+    }
+    #[cfg(feature = "hlsl")]
+    {
+        use alice_sdf::compiled::{HlslShader, HlslTranspileMode};
+        let t = |x: &SdfNode| HlslShader::transpile(x, HlslTranspileMode::Hardcoded).source;
+        assert!(t(n).contains("asfloat(0x7fc00000u)"), "HLSL");
+        assert!(!t(supported).contains("0x7fc00000u"));
+    }
+    #[cfg(feature = "gpu")]
+    {
+        use alice_sdf::compiled::{TranspileMode, WgslShader};
+        let t = |x: &SdfNode| WgslShader::transpile(x, TranspileMode::Hardcoded).source;
+        assert!(t(n).contains("bitcast<f32>(0x7fc00000u)"), "WGSL");
+        assert!(!t(supported).contains("0x7fc00000u"));
+    }
 }
