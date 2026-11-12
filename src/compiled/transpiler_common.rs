@@ -848,6 +848,74 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         }
     }
 
+    /// The bilinear sample of a height map at the face coordinates `(u, v)` (before the scale and
+    /// the mapping to [0, w-1] x [0, h-1]), as `modifiers::heightmap_displacement`'s face sample
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the face's coordinates and the map's constants"
+    )]
+    fn heightmap_face_sample(
+        &mut self,
+        code: &mut String,
+        arr: &DataArr,
+        u: &str,
+        v: &str,
+        sc: &str,
+        wm1: &str,
+        hm1: &str,
+        width: u32,
+        height: u32,
+    ) -> String {
+        let (uu, vv) = (self.next_var(), self.next_var());
+        code.push_str(&L::decl_float(
+            &uu,
+            &format!("clamp(({u} * {sc} * 0.5 + 0.5) * {wm1}, 0.0, {wm1})"),
+        ));
+        code.push_str(&L::decl_float(
+            &vv,
+            &format!("clamp(({v} * {sc} * 0.5 + 0.5) * {hm1}, 0.0, {hm1})"),
+        ));
+        let (u0, v0, u1, v1) = (
+            self.next_var(),
+            self.next_var(),
+            self.next_var(),
+            self.next_var(),
+        );
+        let (fu, fv) = (self.next_var(), self.next_var());
+        let wi = i64::from(width);
+        code.push_str(&L::decl_int(&u0, &L::cast_int(&format!("floor({uu})"))));
+        code.push_str(&L::decl_int(&v0, &L::cast_int(&format!("floor({vv})"))));
+        code.push_str(&L::decl_int(&u1, &format!("min({u0} + 1, {})", wi - 1)));
+        code.push_str(&L::decl_int(
+            &v1,
+            &format!("min({v0} + 1, {})", i64::from(height) - 1),
+        ));
+        code.push_str(&L::decl_float(&fu, &format!("{uu} - floor({uu})")));
+        code.push_str(&L::decl_float(&fv, &format!("{vv} - floor({vv})")));
+        let (a, b, s) = (self.next_var(), self.next_var(), self.next_var());
+        code.push_str(&L::decl_float(
+            &a,
+            &format!(
+                "{} * (1.0 - {fu}) + {} * {fu}",
+                arr.at(&format!("{v0} * {wi} + {u0}")),
+                arr.at(&format!("{v0} * {wi} + {u1}"))
+            ),
+        ));
+        code.push_str(&L::decl_float(
+            &b,
+            &format!(
+                "{} * (1.0 - {fu}) + {} * {fu}",
+                arr.at(&format!("{v1} * {wi} + {u0}")),
+                arr.at(&format!("{v1} * {wi} + {u1}"))
+            ),
+        ));
+        code.push_str(&L::decl_float(
+            &s,
+            &format!("{a} * (1.0 - {fv}) + {b} * {fv}"),
+        ));
+        s
+    }
+
     /// Register a per-node data array: appended to the node data buffer when it is enabled,
     /// otherwise emitted as a module-scope constant array named `name`.
     pub fn data_array(&mut self, name: &str, values: &[f32]) -> DataArr {
@@ -3705,77 +3773,80 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let amp = self.param(*amplitude);
                 let p = point_var;
                 let ap = self.next_var();
-                let u = self.next_var();
-                let v = self.next_var();
                 code.push_str(&L::decl_vec3(&ap, &format!("abs({p})")));
+                // the law of `heightmap_displacement`: the dominant face, with the other faces blended
+                // in within FACE_BLEND_BAND (1/16) of the dominant component, as
+                // h_dom + sum_{i != dom} (w_i / sum w) * (h_i - h_dom) in axis order (a face with no
+                // weight adds exactly 0)
                 let x_dom = format!("{ap}.x > {ap}.y && {ap}.x > {ap}.z");
                 let y_dom = format!("{ap}.y > {ap}.z");
+                let (m, lo) = (self.next_var(), self.next_var());
                 code.push_str(&L::decl_float(
-                    &u,
+                    &m,
+                    &format!("max(max({ap}.x, {ap}.y), {ap}.z)"),
+                ));
+                code.push_str(&L::decl_float(
+                    &lo,
+                    &format!("{m} - {m} * {}", lit(crate::modifiers::FACE_BLEND_BAND)),
+                ));
+                let wts: Vec<String> = ["x", "y", "z"]
+                    .iter()
+                    .map(|c| {
+                        let w = self.next_var();
+                        code.push_str(&L::decl_float(&w, &format!("max({ap}.{c} - {lo}, 0.0)")));
+                        w
+                    })
+                    .collect();
+                let total = self.next_var();
+                code.push_str(&L::decl_float(
+                    &total,
+                    &format!("({} + {}) + {}", wts[0], wts[1], wts[2]),
+                ));
+                let faces = [
+                    (format!("{p}.y"), format!("{p}.z")),
+                    (format!("{p}.x"), format!("{p}.z")),
+                    (format!("{p}.x"), format!("{p}.y")),
+                ];
+                let samples: Vec<String> = faces
+                    .iter()
+                    .map(|(u, v)| {
+                        self.heightmap_face_sample(
+                            code, &arr, u, v, &sc, &wm1, &hm1, *width, *height,
+                        )
+                    })
+                    .collect();
+                let h_dom = self.next_var();
+                code.push_str(&L::decl_float(
+                    &h_dom,
                     &L::select_float(
                         &x_dom,
-                        &format!("{p}.y"),
-                        &L::select_float(&y_dom, &format!("{p}.x"), &format!("{p}.x")),
+                        &samples[0],
+                        &L::select_float(&y_dom, &samples[1], &samples[2]),
                     ),
                 ));
-                code.push_str(&L::decl_float(
-                    &v,
-                    &L::select_float(
-                        &x_dom,
-                        &format!("{p}.z"),
-                        &L::select_float(&y_dom, &format!("{p}.z"), &format!("{p}.y")),
-                    ),
-                ));
-                let uu = self.next_var();
-                let vv = self.next_var();
-                code.push_str(&L::decl_float(
-                    &uu,
-                    &format!("clamp(({u} * {sc} * 0.5 + 0.5) * {wm1}, 0.0, {wm1})"),
-                ));
-                code.push_str(&L::decl_float(
-                    &vv,
-                    &format!("clamp(({v} * {sc} * 0.5 + 0.5) * {hm1}, 0.0, {hm1})"),
-                ));
-                let (u0, v0, u1, v1) = (
-                    self.next_var(),
-                    self.next_var(),
-                    self.next_var(),
-                    self.next_var(),
-                );
-                let (fu, fv) = (self.next_var(), self.next_var());
-                let wi = *width as i64;
-                code.push_str(&L::decl_int(&u0, &L::cast_int(&format!("floor({uu})"))));
-                code.push_str(&L::decl_int(&v0, &L::cast_int(&format!("floor({vv})"))));
-                code.push_str(&L::decl_int(&u1, &format!("min({u0} + 1, {})", wi - 1)));
-                code.push_str(&L::decl_int(
-                    &v1,
-                    &format!("min({v0} + 1, {})", *height as i64 - 1),
-                ));
-                code.push_str(&L::decl_float(&fu, &format!("{uu} - floor({uu})")));
-                code.push_str(&L::decl_float(&fv, &format!("{vv} - floor({vv})")));
-                let a = self.next_var();
-                let b = self.next_var();
-                code.push_str(&L::decl_float(
-                    &a,
-                    &format!(
-                        "{} * (1.0 - {fu}) + {} * {fu}",
-                        arr.at(&format!("{v0} * {wi} + {u0}")),
-                        arr.at(&format!("{v0} * {wi} + {u1}"))
-                    ),
-                ));
-                code.push_str(&L::decl_float(
-                    &b,
-                    &format!(
-                        "{} * (1.0 - {fu}) + {} * {fu}",
-                        arr.at(&format!("{v1} * {wi} + {u0}")),
-                        arr.at(&format!("{v1} * {wi} + {u1}"))
-                    ),
-                ));
+                let not_dom = [
+                    format!("!({x_dom})"),
+                    format!("(({x_dom}) || !({y_dom}))"),
+                    format!("(({x_dom}) || ({y_dom}))"),
+                ];
+                let mut acc = h_dom.clone();
+                for axis in 0..3 {
+                    let next = self.next_var();
+                    code.push_str(&L::decl_float(
+                        &next,
+                        &L::select_float(
+                            &format!("{} && {} > 0.0", not_dom[axis], wts[axis]),
+                            &format!(
+                                "{acc} + ({} / {total}) * ({} - {h_dom})",
+                                wts[axis], samples[axis]
+                            ),
+                            &acc,
+                        ),
+                    ));
+                    acc = next;
+                }
                 let var = self.next_var();
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("{d} - ({a} * (1.0 - {fv}) + {b} * {fv}) * {amp}"),
-                ));
+                code.push_str(&L::decl_float(&var, &format!("{d} - {acc} * {amp}")));
                 var
             }
 
