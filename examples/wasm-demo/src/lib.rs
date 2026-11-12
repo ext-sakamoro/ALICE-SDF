@@ -245,15 +245,16 @@ impl Raymarcher {
 ///
 /// ## Usage (JavaScript)
 /// ```js
+/// const wasm = await init();
 /// const soa = new SoABuffer(10000);
 /// // Set positions directly
 /// for (let i = 0; i < 10000; i++) {
 ///     soa.set_point(i, x[i], y[i], z[i]);
 /// }
-/// // Get typed array views (zero-copy)
-/// const xBuf = soa.x_buffer();  // Float32Array view
-/// const yBuf = soa.y_buffer();
-/// const zBuf = soa.z_buffer();
+/// // Typed array views over WebAssembly memory (zero-copy, valid until the memory grows)
+/// const xBuf = new Float32Array(wasm.memory.buffer, soa.x_ptr(), soa.len());
+/// const yBuf = new Float32Array(wasm.memory.buffer, soa.y_ptr(), soa.len());
+/// const zBuf = new Float32Array(wasm.memory.buffer, soa.z_ptr(), soa.len());
 /// // Upload directly to WebGPU
 /// device.queue.writeBuffer(gpuBuffer, 0, xBuf);
 /// ```

@@ -730,6 +730,10 @@ jobs:
         run: python scripts/test_readme_sync.py
       - name: README sync (feature 表 / MSRV / 使用例 / MODULES.md が code と一致、比較 0 件で fail)
         run: python scripts/readme_sync.py --check
+      # the npm package is wasm-pack's build of examples/wasm-demo: the names its README and the
+      # crate's JavaScript doc examples use must be #[wasm_bindgen] exports (0 compared fails)
+      - name: npm README names only wasm exports (test, then check)
+        run: python scripts/test_npm_readme_symbols.py && python scripts/npm_readme_symbols.py
       - name: Version sync checker (tests)
         run: python scripts/test_version_sync.py
       - name: Version sync (metadata and install lines follow Cargo.toml)
