@@ -239,7 +239,7 @@ volume and inertia) and keeps them as a workflow artifact.
 | VRChat | [`vrchat-package/`](vrchat-package/README.md) | a VRChat package: SDF surfaces players can walk on and collide with |
 | Godot 4 | [`docs/GODOT_GUIDE.md`](docs/GODOT_GUIDE.md) | `--features godot` |
 | Python | [`python/`](python/), [`docs/PYTHON_GUIDE.md`](docs/PYTHON_GUIDE.md) | `--features python`; NumPy batch evaluation and mesh export |
-| WebAssembly / Three.js | [`docs/WASM_GUIDE.md`](docs/WASM_GUIDE.md), [`npm/`](npm/README.md) | `--features wasm` |
+| WebAssembly / Three.js | [`docs/WASM_GUIDE.md`](docs/WASM_GUIDE.md), [`npm/`](npm/README.md) | `--features wasm`; the npm package is built from `npm/` (not on the npm registry) |
 | iOS / Android | [`mobile/`](mobile/README.md) | XCFramework and Kotlin bindings over the C ABI |
 | Bevy, Blender, Houdini, Maya, Nuke, Cinema 4D, OpenXR, visionOS | [`bindings/`](bindings/README.md), [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) | reference integrations |
 
