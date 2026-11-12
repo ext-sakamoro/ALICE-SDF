@@ -446,6 +446,9 @@ cargo test --features "jit,physics" --test test_det_parity --test test_jit_sinco
 
 step "test: NPR shader validation (glsl + gpu、naga のみで GPU adapter 不要)"
 cargo test --features "glsl,gpu" --test npr_shader_validate
+step "test: the transpiler's GLSL on the CPU through the shim (ci.yml と対、7 件未満で fail)"
+ALICE_SDF_REQUIRE_CXX=1 cargo test --features glsl --test test_glsl_cpu_shim 2>&1 | tee "${CARGO_TARGET_DIR:-target}/glsl-cpu-shim.log"
+python3 scripts/libtest_count.py "${CARGO_TARGET_DIR:-target}/glsl-cpu-shim.log" --min 7 --what "GLSL CPU shim tests"
 
 step "test: Rust source emit oracle (rustc で compile した出力 vs eval_compiled、ci.yml と対)"
 cargo test --features rust --test test_rust_transpiler_oracle

@@ -14,7 +14,7 @@
 //! Author: Moroya Sakamoto
 
 use crate::compiled::real::LawMinMax;
-use crate::eval::{eval, normal};
+use crate::eval::{eval_scaled, normal};
 use crate::fidelity::distance_fidelity;
 use crate::interval::eval_lipschitz;
 use crate::types::{Hit, Ray};
@@ -45,12 +45,23 @@ pub struct RaymarchConfig {
     /// field). The default (256) leaves ≲ 0.1 % of random rays through a
     /// thin TPMS shell unresolved — rays that graze the shell and creep by
     /// `≈ ε` per step; raise it or use `high_quality` for those.
+    ///
+    /// A tree with a grid warp (or a non-uniform scale, lattice deform or projective transform)
+    /// costs more: the interpreter marchers hit on `|d| · s < ε` (`eval_scaled`), and near a
+    /// surface where the field is the distance divided by Λ each step closes about 1 / Λ of what
+    /// is left. Measured on a sheet squeezed to a tenth (Λ ≈ 10): mean 93.4 → 139.3 steps per hit
+    /// ray, the longest hit at step 297 (a budget of 298), more than the default; raise it for
+    /// such trees, and use
+    /// [`raymarch_detailed`] with [`RaymarchResult::ran_out`] to tell an unresolved ray from a
+    /// miss.
     pub max_steps: u32,
     /// Distance threshold for surface hit
     pub epsilon: f32,
     /// Minimum step in field units (divided by `lipschitz` like `d`);
     /// prevents infinite loops. Keep `min_step ≤ epsilon` so the floor
-    /// cannot carry a sample across the `|d| < epsilon` hit band.
+    /// cannot carry a sample across the `|d| < epsilon` hit band (the
+    /// interpreter marchers test `|d| · s < epsilon` and floor at
+    /// `min_step / s`, see [`crate::eval::eval_scaled`]).
     pub min_step: f32,
     /// Step relaxation factor (omega for over-relaxation, ω ∈ [1, 2))
     pub omega: f32,
@@ -226,7 +237,15 @@ impl RelaxedStepper {
     /// (call after [`Self::overshoot`] returned `None`).
     #[inline(always)]
     fn advance(&mut self, t: f32, d: f32) -> f32 {
-        let step = (d * self.inv_lip * self.omega).law_max(self.min_step);
+        self.advance_scaled(t, d, 1.0)
+    }
+
+    /// [`Self::advance`] for a hit test on `|d| · scale < ε`: the floor is `min_step / scale`, so
+    /// it stays inside the hit band in the units the test uses (`min_step ≤ ε` there) and cannot
+    /// carry a sample across a surface whose band in d is narrowed by the scale
+    #[inline(always)]
+    fn advance_scaled(&mut self, t: f32, d: f32, scale: f32) -> f32 {
+        let step = (d * self.inv_lip * self.omega).law_max(self.min_step / scale);
         self.prev_t = t;
         self.prev_radius = d.abs() * self.inv_lip;
         self.prev_step = step;
@@ -247,6 +266,16 @@ pub struct RaymarchResult {
     pub normal: Vec3,
     /// Number of steps taken
     pub steps: u32,
+}
+
+impl RaymarchResult {
+    /// Whether the march stopped because it used up `config.max_steps` before reaching
+    /// `max_distance` (the arguments it was run with) without a hit: the ray is unresolved, not a
+    /// ray that met nothing
+    #[must_use]
+    pub fn ran_out(&self, config: &RaymarchConfig, max_distance: f32) -> bool {
+        !self.hit && self.steps >= config.max_steps && self.distance < max_distance
+    }
 }
 
 // ============================================================================
@@ -291,7 +320,9 @@ pub fn raymarch_with_config(
 
     while t < max_distance && steps < config.max_steps {
         let point = ray.at(t);
-        let d = eval(node, point);
+        // d steps (it is the sound bound); d · s is the value in the child laws' units, so a value
+        // shrunk by a warp's local slope bound is not taken for the surface (`eval_scaled`)
+        let (d, scale) = eval_scaled(node, point);
 
         if let Some(back) = stepper.overshoot(d) {
             t = back;
@@ -299,7 +330,7 @@ pub fn raymarch_with_config(
             continue;
         }
 
-        if d.abs() < config.epsilon {
+        if d.abs() * scale < config.epsilon {
             return Some(Hit {
                 distance: t,
                 point,
@@ -308,7 +339,7 @@ pub fn raymarch_with_config(
             });
         }
 
-        t = stepper.advance(t, d);
+        t = stepper.advance_scaled(t, d, scale);
         steps += 1;
     }
 
@@ -347,7 +378,9 @@ pub fn raymarch_detailed(
 
     while t < max_distance && steps < config.max_steps {
         let point = ray.at(t);
-        let d = eval(node, point);
+        // d steps (it is the sound bound); d · s is the value in the child laws' units, so a value
+        // shrunk by a warp's local slope bound is not taken for the surface (`eval_scaled`)
+        let (d, scale) = eval_scaled(node, point);
 
         if let Some(back) = stepper.overshoot(d) {
             t = back;
@@ -355,7 +388,7 @@ pub fn raymarch_detailed(
             continue;
         }
 
-        if d.abs() < config.epsilon {
+        if d.abs() * scale < config.epsilon {
             return RaymarchResult {
                 hit: true,
                 distance: t,
@@ -365,7 +398,7 @@ pub fn raymarch_detailed(
             };
         }
 
-        t = stepper.advance(t, d);
+        t = stepper.advance_scaled(t, d, scale);
         steps += 1;
     }
 

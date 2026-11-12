@@ -135,6 +135,16 @@ impl SdfNode {
     /// Domain warp by a grid of affine maps ([`crate::transforms::GridWarp`])
     #[must_use]
     #[inline]
+    pub fn bell_pull(self, pull: crate::transforms::BellPull) -> Self {
+        Self::BellPull {
+            child: Arc::new(self),
+            pull,
+        }
+    }
+
+    /// Domain warp by a grid of affine maps, see [`crate::transforms::GridWarp`]
+    #[must_use]
+    #[inline]
     pub fn grid_warp(self, warp: crate::transforms::GridWarp) -> Self {
         Self::GridWarp {
             child: Arc::new(self),
