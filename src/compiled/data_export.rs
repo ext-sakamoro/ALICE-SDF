@@ -1,6 +1,7 @@
-//! The separate-data shader export: shader text that reads its per-node data arrays (a loft's
-//! rows, a stack's sections, a polygon outline, a heightmap) from one R32F texture instead of
-//! holding them as constants in the text.
+//! The separate-data shader export: data arrays read from one R32F texture
+//!
+//! The shader text reads its per-node data arrays (a loft's rows, a stack's sections, a polygon
+//! outline, a heightmap) from the texture instead of holding them as constants in the text.
 //!
 //! The single-file export (`transpile` in [`TranspileMode::Hardcoded`]) stays the default and is
 //! unchanged: it is right for small shapes. A large shape's constants make the text large and
@@ -125,12 +126,14 @@ pub struct DataExport {
     pub data: Option<DataTexture>,
 }
 
-/// The name the node data buffer has in the emitted text; every read of it is
-/// `alice_node_data[<index>]`
+/// The name the node data buffer has in the emitted text
+///
+/// Every read of it is `alice_node_data[<index>]`
 const BUFFER_NAME: &str = "alice_node_data";
 
-/// `source` with every read `alice_node_data[<index>]` replaced by `read(<index>)` (the index
-/// expression may itself hold brackets)
+/// `source` with every read `alice_node_data[<index>]` replaced by `read(<index>)`
+///
+/// The index expression may itself hold brackets
 ///
 /// # Panics
 ///
@@ -169,8 +172,9 @@ fn reads_through(source: &str, read: &dyn Fn(&str) -> String) -> String {
     out
 }
 
-/// `decl` placed after the text's leading `//` block (the block that carries the crate's
-/// identifier, which a reader takes from the first lines of the text)
+/// `decl` placed after the text's leading `//` block
+///
+/// That block carries the crate's identifier, which a reader takes from the first lines
 fn after_leading_comments(source: &str, decl: &str) -> String {
     let mut head = 0;
     for line in source.split_inclusive('\n') {
@@ -184,9 +188,10 @@ fn after_leading_comments(source: &str, decl: &str) -> String {
 
 #[cfg(feature = "gpu")]
 impl crate::compiled::WgslShader {
-    /// The separate-data WGSL export of `node` (see the module documentation): the text declares
-    /// `@group(0) @binding(4) var alice_data_tex: texture_2d<f32>` (an R32F texture, unfilterable
-    /// float) and reads it with `textureLoad`
+    /// The separate-data WGSL export of `node` (see the module documentation)
+    ///
+    /// The text declares `@group(0) @binding(4) var alice_data_tex: texture_2d<f32>` (an R32F
+    /// texture, unfilterable float) and reads it with `textureLoad`
     ///
     /// # Errors
     ///
@@ -216,8 +221,10 @@ impl crate::compiled::WgslShader {
     }
 }
 
-/// The GLSL export's texture declaration (OpenGL / WebGL 2 / OpenGL ES 3.0 form; `highp`, since
-/// a sampler in an OpenGL ES fragment shader is `lowp` by default and would not keep the bits)
+/// The GLSL export's texture declaration (OpenGL / WebGL 2 / OpenGL ES 3.0 form)
+///
+/// `highp`, since a sampler in an OpenGL ES fragment shader is `lowp` by default and would not
+/// keep the bits
 #[cfg(feature = "glsl")]
 pub(crate) const GLSL_TEXTURE_DECL: &str = "uniform highp sampler2D alice_data_tex;";
 
@@ -227,9 +234,10 @@ pub(crate) const GLSL_FETCH: &str = "texelFetch(alice_data_tex, ";
 
 #[cfg(feature = "glsl")]
 impl crate::compiled::glsl::GlslShader {
-    /// The separate-data GLSL export of `node` (see the module documentation): the text declares
-    /// `uniform highp sampler2D alice_data_tex` (an R32F texture with nearest filtering and no
-    /// mipmaps) and reads it with `texelFetch`
+    /// The separate-data GLSL export of `node` (see the module documentation)
+    ///
+    /// The text declares `uniform highp sampler2D alice_data_tex` (an R32F texture with nearest
+    /// filtering and no mipmaps) and reads it with `texelFetch`
     ///
     /// # Errors
     ///
@@ -262,13 +270,34 @@ impl crate::compiled::glsl::GlslShader {
 impl crate::compiled::HlslShader {
     /// The separate-data HLSL export of `node` (see the module documentation)
     ///
+    /// The text declares `Texture2D<float> alice_data_tex` (no register: the engine binds it)
+    /// and reads it with `Load`. Checked here as text and by DXC in its own workflow; not executed
+    /// on a GPU
+    ///
     /// # Errors
     ///
     /// [`DataExportError::Transpile`] as the single-file HLSL transpile;
     /// [`DataExportError::TooLarge`] when the data does not fit one texture
     pub fn export_with_data_texture(node: &crate::SdfNode) -> Result<DataExport, DataExportError> {
-        let _ = node;
-        todo!("STUB: A2 separate-data HLSL export not implemented")
+        use crate::compiled::HlslTranspileMode;
+        let (with_buffer, values) = Self::try_transpile_with_node_data(node)?;
+        if values.is_empty() {
+            return Ok(DataExport {
+                source: Self::try_transpile(node, HlslTranspileMode::Hardcoded)?.source,
+                data: None,
+            });
+        }
+        let data = DataTexture::try_from_values(&values)?;
+        let body = reads_through(&with_buffer.source, &|i| format!("alice_data(int({i}))"));
+        let decl = format!(
+            "\nTexture2D<float> {DATA_TEXTURE_NAME};\nfloat alice_data(int i) {{\n    \
+             return {DATA_TEXTURE_NAME}.Load(int3(i % {w}, i / {w}, 0));\n}}\n",
+            w = DATA_TEXTURE_WIDTH
+        );
+        Ok(DataExport {
+            source: after_leading_comments(&body, &decl),
+            data: Some(data),
+        })
     }
 }
 

@@ -117,6 +117,7 @@ in the evaluator and law directories.
 | `tests/test_det_parity.rs` | every CPU evaluator against the tree evaluator, bit for bit | macOS (ARM64), Linux (x86_64), Windows (x86_64); the JIT with `--features jit` |
 | `tests/test_det_golden.rs` | a SHA-256 of the tree evaluator's bits per corpus shape | the same three |
 | `tests/test_gpu_law_parity.rs` | WGSL against the CPU within a tolerance; axis ties of `atan2` exactly | Linux, on a software Vulkan device (lavapipe) |
+| `tests/test_separate_data_export.rs` | the separate-data shader against the single-file shader: bit for bit for every data kind on the Metal engine (fast math off); through wgpu bit for bit where the data is read with run-time indices, within 2 rounding units elsewhere (wgpu compiles Metal with fast math on), the lattice no further from the CPU. HLSL is compiled with DXC, not run | macOS (Metal engine, `msl`); Linux (lavapipe); DXC on Linux |
 <!-- claim-test: tree_evaluator_bits_match_recorded_hashes -->
 
 **Not covered.** `wasm32` is built in CI but the tests above are not run on
@@ -146,7 +147,7 @@ needs, is listed in [`docs/MODULES.md`](docs/MODULES.md). API details are on
 | Operations | union, intersection, subtraction and their smooth, chamfer, stairs, exponential and column variants; XOR, morph; `MetricBlend` |
 | Transforms and modifiers | translate, rotate, scale, projective, lattice deformation, skinning; twist, bend, repetition, mirror and symmetry folds, displacement, shell, IFS |
 | Evaluation | tree evaluator, compiled bytecode (scalar, SIMD, BVH), Cranelift JIT, GPU compute through wgpu; interval arithmetic, analytic and automatic gradients, Lipschitz bounds |
-| Shader output | GLSL, WGSL, HLSL, Metal (from the WGSL output through naga), BlinkScript, and dependency-free Rust source |
+| Shader output | GLSL, WGSL, HLSL, Metal (from the WGSL output through naga), BlinkScript, and dependency-free Rust source; for large shapes a separate-data form whose data arrays are one R32F texture (2048 wide, at most 2048 rows, refused above) instead of constants in the text (WGSL, GLSL for WebGL 2 / OpenGL ES 3.0, HLSL) |
 | Meshing | marching cubes (uniform, adaptive, GPU), dual contouring, decimation, LOD chains, manifold repair, UV unwrap, meshlets, meshopt-compatible codecs |
 | File formats | `.asdf` / `.asdf.json` trees; OBJ, glTF, FBX, USD, Alembic, STL, PLY, 3MF, STEP, IGES, MagicaVoxel, Gaussian splats, OpenVDB |
 | Analysis | printability (erosion proof with a three-valued verdict, wall thickness, overhang), volume and surface area, tight bounding boxes, SDF-to-SDF collision |

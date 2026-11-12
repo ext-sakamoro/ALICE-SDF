@@ -178,7 +178,7 @@ mod simd;
 #[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
 pub mod transpiler_common;
 
-/// The separate-data shader export (per-node data in one R32F texture)
+// the separate-data shader export (per-node data in one R32F texture), documented in the module
 #[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
 pub mod data_export;
 

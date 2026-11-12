@@ -112,6 +112,7 @@ CPU の評価器 (木の評価器、コンパイル済みスカラー、8 幅 SI
 | `tests/test_det_parity.rs` | すべての CPU 評価器を木の評価器とビット単位で比較 | macOS (ARM64)、Linux (x86_64)、Windows (x86_64)、JIT は `--features jit` |
 | `tests/test_det_golden.rs` | コーパスの形状ごとに木の評価器のビット列の SHA-256 | 同じ 3 環境 |
 | `tests/test_gpu_law_parity.rs` | WGSL を CPU と許容誤差内で比較、`atan2` の軸上の値は厳密に一致 | Linux、ソフトウェア Vulkan (lavapipe) |
+| `tests/test_separate_data_export.rs` | 別データ形式と 1 ファイル形式の shader を比較: Metal engine (fast math off) では data の全種で bit 一致、wgpu では run-time の index で読む種は bit 一致・他は丸め単位 2 以内 (wgpu は Metal を fast math on で compile する)・lattice は CPU からの距離が 1 ファイル以下。HLSL は DXC で compile のみ (実行しない) | macOS (Metal engine、`msl`)、Linux (lavapipe)、DXC は Linux |
 <!-- claim-test: tree_evaluator_bits_match_recorded_hashes -->
 
 **対象外** `wasm32` は CI でビルドするが、上のテストは実行していない GPU
@@ -139,7 +140,7 @@ box 系の形に掛けると Cranelift JIT が `NaN` を返し、基準である
 | 演算 | 和・積・差と、その smooth / chamfer / stairs / exponential / column 版、XOR、morph、`MetricBlend` |
 | 変換とモディファイア | 平行移動・回転・拡大縮小・射影・格子変形・スキニング、twist・bend・繰り返し・鏡映と対称折り返し・displacement・shell・IFS |
 | 評価 | 木の評価器、コンパイル済みバイトコード (スカラー / SIMD / BVH)、Cranelift JIT、wgpu による GPU 計算、区間演算、解析的・自動微分の勾配、リプシッツ上界 |
-| シェーダー出力 | GLSL、WGSL、HLSL、Metal (WGSL 出力から naga で変換)、BlinkScript、依存のない Rust ソース |
+| シェーダー出力 | GLSL、WGSL、HLSL、Metal (WGSL 出力から naga で変換)、BlinkScript、依存のない Rust ソース。大きい形には data 配列を文中の定数でなく 1 枚の R32F texture (幅 2048、最大 2048 行、超えると拒否) に置く別データ形式 (WGSL、WebGL 2 / OpenGL ES 3.0 向け GLSL、HLSL) |
 | メッシュ化 | marching cubes (一様 / 適応 / GPU)、dual contouring、間引き、LOD チェーン、多様体修復、UV 展開、meshlet、meshopt 互換コーデック |
 | ファイル形式 | `.asdf` / `.asdf.json` の木、OBJ、glTF、FBX、USD、Alembic、STL、PLY、3MF、STEP、IGES、MagicaVoxel、Gaussian splat、OpenVDB |
 | 解析 | 印刷可能性 (3 値の判定を返す侵食の証明、肉厚、オーバーハング)、体積と表面積、タイトな境界箱、SDF 同士の衝突 |

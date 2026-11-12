@@ -395,13 +395,19 @@ impl WgslShader {
         Self::transpile_bounded(node, mode, true, true, UnionBoundsOutput::Value)
     }
 
-    /// The plain Hardcoded tree (no union bounds, no leaf loops: the structure of
-    /// [`Self::try_transpile`]) with every data array in the node data buffer: the text of
-    /// [`Self::try_transpile`] but for where the data is read from. The separate-data export's base
+    /// The plain Hardcoded tree with every data array in the node data buffer (binding 4)
+    ///
+    /// No union bounds and no leaf loops: the structure of [`Self::try_transpile`]. The
+    /// text of [`Self::try_transpile`] but for where the data is read from, and the arithmetic of
+    /// the separate-data export ([`Self::export_with_data_texture`] reads the same values from a
+    /// texture). [`Self::try_transpile_with_node_data`] adds the union bounds and the loops over
+    /// operands of one kind
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::try_transpile`]
     #[cfg(feature = "gpu")]
-    pub(crate) fn try_transpile_plain_with_node_data(
-        node: &SdfNode,
-    ) -> Result<Self, TranspileError> {
+    pub fn try_transpile_plain_with_node_data(node: &SdfNode) -> Result<Self, TranspileError> {
         Self::transpile_plain(node, TranspileMode::Hardcoded, true)
     }
 

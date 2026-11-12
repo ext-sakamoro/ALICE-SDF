@@ -283,6 +283,27 @@ impl HlslShader {
         Self::transpile_reads(node, mode, true)
     }
 
+    /// The Hardcoded text with the data arrays in a node data buffer (read as
+    /// `alice_node_data[..]`, not declared) and that buffer: the separate-data export's base
+    pub(crate) fn try_transpile_with_node_data(
+        node: &SdfNode,
+    ) -> Result<(Self, Vec<f32>), TranspileError> {
+        let mut transpiler = HlslTranspiler::new(HlslTranspileMode::Hardcoded);
+        transpiler.node_data = Some(Vec::new());
+        let body = transpiler.transpile_node(node, "p");
+        TranspileError::from_reads(std::mem::take(&mut transpiler.read_errors))?;
+        let source = transpiler.generate_shader(&body);
+        Ok((
+            Self {
+                source,
+                helper_count: transpiler.helper_functions.len(),
+                param_layout: transpiler.params,
+                mode: HlslTranspileMode::Hardcoded,
+            },
+            transpiler.node_data.unwrap_or_default(),
+        ))
+    }
+
     fn transpile_reads(
         node: &SdfNode,
         mode: HlslTranspileMode,
@@ -649,6 +670,9 @@ struct HlslTranspiler {
     globals: String,
     checked_reads: bool,
     read_errors: Vec<String>,
+    /// The node data buffer of the separate-data export (`compiled::data_export`): when `Some`,
+    /// the data arrays are appended here and read as `alice_node_data[..]`, rewritten by the export
+    node_data: Option<Vec<f32>>,
 }
 
 impl HlslTranspiler {
@@ -661,6 +685,7 @@ impl HlslTranspiler {
             globals: String::new(),
             checked_reads: false,
             read_errors: Vec::new(),
+            node_data: None,
         }
     }
 
@@ -676,7 +701,9 @@ impl HlslTranspiler {
         generic.helper_functions = std::mem::take(&mut self.helper_functions);
         generic.globals = std::mem::take(&mut self.globals);
         generic.checked_reads = self.checked_reads;
+        generic.node_data = self.node_data.take();
         let body = generic.transpile_node(node, point_var);
+        self.node_data = generic.node_data.take();
         self.read_errors.append(&mut generic.read_errors);
         self.globals = generic.globals;
         self.var_counter = generic.var_counter;

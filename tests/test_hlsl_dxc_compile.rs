@@ -315,6 +315,50 @@ fn dxc_compiles_every_hlsl_output_for_every_corpus_node() {
     );
 }
 
+/// The separate-data export (`compiled::data_export`) of every corpus node with data arrays
+/// compiles with `dxc` inside a compute entry calling `sdf_eval` (the text declares its own
+/// `Texture2D<float>`): the HLSL form is checked here and not executed, the WGSL and GLSL forms are
+/// run on a GPU (`test_separate_data_export.rs`)
+#[test]
+fn dxc_compiles_the_separate_data_export_of_every_corpus_node_with_data() {
+    let Some(dxc) =
+        dxc_or_skip("dxc_compiles_the_separate_data_export_of_every_corpus_node_with_data")
+    else {
+        return;
+    };
+    let dir = scratch("dxc_separate_data");
+    let mut units = Vec::new();
+    for (name, node) in corpus() {
+        let export = HlslShader::export_with_data_texture(&node).expect("export");
+        if export.data.is_none() {
+            continue;
+        }
+        units.push(Unit {
+            name: format!("{name}.separate_data"),
+            profile: "cs_6_0",
+            entry: "cs_main",
+            include: None,
+            src: format!("{}{}", export.source, compute_entry("sdf_eval(p)")),
+        });
+    }
+    let results = compile_all(&dxc, &dir, &units);
+    let failed: Vec<String> = units
+        .iter()
+        .zip(&results)
+        .filter_map(|(u, r)| r.as_ref().err().map(|e| format!("{}:\n{e}", u.name)))
+        .collect();
+    eprintln!(
+        "dxc: compiled {} separate-data exports, {} failed",
+        results.iter().filter(|r| r.is_ok()).count(),
+        failed.len()
+    );
+    assert!(failed.is_empty(), "{}", failed.join("\n"));
+    assert!(
+        !units.is_empty(),
+        "no corpus node has data arrays: nothing compared"
+    );
+}
+
 /// Rewrite the Custom node body so every module-scope data array of the
 /// source is an initialised field of the struct instead of a `static const`
 /// local of the member function that reads it.

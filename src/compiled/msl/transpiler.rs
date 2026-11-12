@@ -246,11 +246,14 @@ impl MslShader {
                 var.space,
                 naga::AddressSpace::Storage { access } if access.contains(naga::StorageAccess::STORE)
             );
+            // a texture (the separate-data export's data texture) goes to `texture(N)`, every
+            // other binding to `buffer(N)`
+            let image = matches!(module.types[var.ty].inner, naga::TypeInner::Image { .. });
             resources.insert(
                 br.clone(),
                 msl::BindTarget {
-                    buffer: Some(slot),
-                    texture: None,
+                    buffer: (!image).then_some(slot),
+                    texture: image.then_some(slot),
                     sampler: None,
                     mutable,
                 },

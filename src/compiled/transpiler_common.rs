@@ -980,6 +980,37 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             let d = self.data_array(arr, &values);
             let src = self.render_data(&funcs, arr, values.len(), Some((&d, 0)), &|x| x);
             self.globals.push_str(&src);
+        } else if self.node_data.is_some() {
+            // the C-like dialects with the node data buffer (the separate-data export): the same
+            // values as the WGSL array (the block, the pieces, the 16 directions), each of the
+            // C-like arrays (the block without its pieces, each piece, the directions) a range of it
+            let values = crate::compiled::loft_shader::wgsl_values(flat);
+            let d = self.data_array(arr, &values);
+            let pieces = flat[16] as usize;
+            let mut src = funcs;
+            if pieces > 0 {
+                let at = crate::compiled::loft_shader::pieces_at(flat);
+                src = self.render_data(&src, arr, at, Some((&d, 0)), &|x| x);
+                for q in 0..pieces {
+                    src = self.render_data(
+                        &src,
+                        &format!("{arr}_p{q}"),
+                        PIECE_FLOATS_SHADER,
+                        Some((&d, at + q * PIECE_FLOATS_SHADER)),
+                        &|x| x,
+                    );
+                }
+                src = self.render_data(
+                    &src,
+                    &format!("{arr}_dir"),
+                    32,
+                    Some((&d, values.len() - 32)),
+                    &|x| x,
+                );
+            } else {
+                src = self.render_data(&src, arr, values.len(), Some((&d, 0)), &|x| x);
+            }
+            self.globals.push_str(&src);
         } else {
             self.globals
                 .push_str(&crate::compiled::loft_shader::loft_array(
@@ -4274,9 +4305,10 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     data.loop_start.len(),
                     data.vert_start.len(),
                 );
-                if self.node_data.is_some() && L::NAME == "wgsl" {
+                if self.node_data.is_some() {
                     // the four arrays as one range of the node data buffer (integers stored exactly as
-                    // f32, all below 2^24), the module-scope declarations dropped
+                    // f32, all below 2^24), the module-scope declarations dropped (one line each, in
+                    // every dialect)
                     let (oy, ov, ol, os) = (0, ny, ny + nv, ny + nv + nl);
                     let mut values = data.levels.clone();
                     values.extend_from_slice(&data.verts);
@@ -4284,10 +4316,11 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     values.extend(data.vert_start.iter().map(|&x| x as f32));
                     let d = self.data_array(&format!("{name}_data"), &values);
                     let mut kept = String::with_capacity(src.len());
-                    for l in src
-                        .lines()
-                        .filter(|l| !l.starts_with(&format!("const {name}_")))
-                    {
+                    let own = format!(" {name}_");
+                    for l in src.lines().filter(|l| {
+                        !((l.starts_with("const ") || l.starts_with("static const "))
+                            && l.contains(&own))
+                    }) {
                         writeln!(kept, "{l}").unwrap();
                     }
                     let src = kept;
@@ -4295,13 +4328,14 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                         self.render_data(&src, &format!("{name}_y"), ny, Some((&d, oy)), &|x| x);
                     let src =
                         self.render_data(&src, &format!("{name}_v"), nv, Some((&d, ov)), &|x| x);
+                    let int = if L::NAME == "wgsl" { "i32" } else { "int" };
                     let src =
                         self.render_data(&src, &format!("{name}_ls"), nl, Some((&d, ol)), &|x| {
-                            format!("i32({x})")
+                            format!("{int}({x})")
                         });
                     let src =
                         self.render_data(&src, &format!("{name}_vs"), ns, Some((&d, os)), &|x| {
-                            format!("i32({x})")
+                            format!("{int}({x})")
                         });
                     self.globals.push_str(&src);
                 } else {
@@ -4330,7 +4364,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &flat,
                     L::NAME,
                 );
-                if self.node_data.is_some() && L::NAME == "wgsl" {
+                if self.node_data.is_some() {
                     // the node data buffer: no module-scope array (a WGSL array constructor is limited
                     // to 32767 elements), every read a range of `alice_node_data`
                     let d = self.data_array(&arr, &flat);

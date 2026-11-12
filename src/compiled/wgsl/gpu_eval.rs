@@ -279,8 +279,9 @@ impl WgpuEngine {
         Self::build(context, source, &[], false, Some((texture, false)))
     }
 
-    /// [`WgpuEngine::from_source_with_texture`] with a non-filtering sampler at binding 5 (the
-    /// Vulkan GLSL form reads the texture through `sampler2D(texture, sampler)`)
+    /// [`WgpuEngine::from_source_with_texture`] with a non-filtering sampler at binding 5
+    ///
+    /// The Vulkan GLSL form reads the texture through `sampler2D(texture, sampler)`
     #[cfg(feature = "glsl")]
     fn from_source_with_texture_and_sampler(
         source: wgpu::ShaderSource<'_>,
@@ -1831,10 +1832,11 @@ impl GpuEvaluator {
         Ok(evaluator)
     }
 
-    /// An evaluator for a separate-data WGSL export
-    /// ([`crate::compiled::WgslShader::export_with_data_texture`]), binding its data texture at
-    /// binding 4. It runs through wgpu on every platform (with `msl` on macOS too, where
-    /// [`GpuEvaluator::from_shader`] builds the Metal engine); an export without data is the
+    /// An evaluator for a separate-data WGSL export, binding its data texture
+    ///
+    /// The export is [`crate::compiled::WgslShader::export_with_data_texture`]'s; the texture is at
+    /// binding 4: through wgpu, or on macOS with `msl` the Metal engine with fast math off (as
+    /// [`GpuEvaluator::from_shader`]), the texture at `texture(4)`; an export without data is the
     /// single-file text and is built as [`GpuEvaluator::from_shader`] builds it
     ///
     /// # Errors
@@ -1857,13 +1859,25 @@ impl GpuEvaluator {
         let text = shader.to_compute_shader();
         crate::provenance::shader_text_verdict(&text, false)?;
         note_engine_build();
-        let mut evaluator =
-            WgpuEngine::from_source_with_texture(wgpu::ShaderSource::Wgsl(text.into()), texture)
-                .map(|w| Self {
-                    engine: Engine::Wgpu(w),
-                })?;
-        evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
-        Ok(evaluator)
+        // on macOS with msl, the Metal engine (fast math off) as for `from_shader`
+        #[cfg(all(target_os = "macos", feature = "msl"))]
+        {
+            super::gpu_metal::MetalEngine::from_wgsl_with_texture(&text, texture).map(|m| Self {
+                engine: Engine::Metal(m),
+            })
+        }
+        #[cfg(not(all(target_os = "macos", feature = "msl")))]
+        {
+            let mut evaluator = WgpuEngine::from_source_with_texture(
+                wgpu::ShaderSource::Wgsl(text.into()),
+                texture,
+            )
+            .map(|w| Self {
+                engine: Engine::Wgpu(w),
+            })?;
+            evaluator.set_wgpu_workgroup_size(shader.workgroup_size);
+            Ok(evaluator)
+        }
     }
 
     /// Create a GPU evaluator from raw WGSL source, with what is known about the arithmetic it was
@@ -1949,9 +1963,10 @@ impl GpuEvaluator {
         Self::build_from_glsl_compute(glsl_source)
     }
 
-    /// An evaluator for a separate-data GLSL export
-    /// ([`crate::compiled::glsl::GlslShader::export_with_data_texture`]) in its Vulkan compute
-    /// form, binding its data texture: the export's texture declaration and fetch become the
+    /// An evaluator for a separate-data GLSL export in its Vulkan compute form
+    ///
+    /// The export is [`crate::compiled::glsl::GlslShader::export_with_data_texture`]'s: the
+    /// export's texture declaration and fetch become the
     /// Vulkan form (`texture2D` at binding 4 and a non-filtering `sampler` at binding 5, read
     /// through `sampler2D(texture, sampler)`); the rest of the text is the export's. An export
     /// without data is the single-file text and is built as [`GpuEvaluator::from_glsl_compute`]

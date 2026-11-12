@@ -155,6 +155,8 @@ pub(super) struct MetalEngine {
     node_data: Option<metal::Buffer>,
     /// The checked reads' counter (`buffer(5)`, one `atomic_uint`)
     read_hits: Option<metal::Buffer>,
+    /// The data texture of a separate-data export (`texture(4)`, R32F)
+    data_texture: Option<metal::Texture>,
 }
 
 impl MetalEngine {
@@ -207,7 +209,33 @@ impl MetalEngine {
             dynamic_shape: None,
             node_data,
             read_hits,
+            data_texture: None,
         })
+    }
+
+    /// [`MetalEngine::from_wgsl`] with a separate-data export's texture at `texture(4)`
+    ///
+    /// R32F, read with `textureLoad`, so no sampler
+    pub(super) fn from_wgsl_with_texture(
+        wgsl: &str,
+        texture: &crate::compiled::data_export::DataTexture,
+    ) -> Result<Self, GpuError> {
+        let mut engine = Self::from_wgsl_with_data(wgsl, &[], false)?;
+        let desc = metal::TextureDescriptor::new();
+        desc.set_pixel_format(metal::MTLPixelFormat::R32Float);
+        desc.set_width(u64::from(texture.width));
+        desc.set_height(u64::from(texture.height));
+        desc.set_usage(metal::MTLTextureUsage::ShaderRead);
+        desc.set_storage_mode(metal::MTLStorageMode::Shared);
+        let tex = engine.device.new_texture(&desc);
+        tex.replace_region(
+            metal::MTLRegion::new_2d(0, 0, u64::from(texture.width), u64::from(texture.height)),
+            0,
+            texture.texels.as_ptr().cast(),
+            u64::from(texture.width) * 4,
+        );
+        engine.data_texture = Some(tex);
+        Ok(engine)
     }
 
     /// The checked reads that left their proven range since the engine was built (`None` without
@@ -244,6 +272,7 @@ impl MetalEngine {
             dynamic_shape: Some(WgslShader::dynamic_shape(node).0),
             node_data,
             read_hits: None,
+            data_texture: None,
         })
     }
 
@@ -383,6 +412,9 @@ impl MetalEngine {
         }
         if let Some(hits) = &self.read_hits {
             enc.set_buffer(5, Some(hits), 0);
+        }
+        if let Some(tex) = &self.data_texture {
+            enc.set_texture(4, Some(tex));
         }
         enc.set_buffer(kernel.sizes_slot, Some(&sizes_buf), 0);
         let groups = (n as u64).div_ceil(kernel.threads);

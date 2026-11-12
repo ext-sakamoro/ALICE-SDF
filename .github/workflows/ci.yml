@@ -144,6 +144,7 @@ jobs:
             gpu_emit:
               - 'src/compiled/**'
               - 'tests/test_module_array_chunks.rs'
+              - 'tests/test_separate_data_export.rs'
               - 'tests/common/gpu_batches.rs'
               - 'tests/common/spirv.rs'
               - 'Cargo.lock'
@@ -486,6 +487,20 @@ jobs:
           set -euo pipefail
           cargo test --features msl --test test_gpu_fma_contraction -- --nocapture 2>&1 | tee gpu-fma.log
           python3 scripts/libtest_count.py gpu-fma.log --min 1 --what "GpuEvaluator fma contraction tests (msl, Metal)"
+
+      # The separate-data export gives the single file's bits for every data kind on the Metal engine
+      # (fast math off): the strict lane of tests/test_separate_data_export.rs. A missing device fails
+      # (ALICE_SDF_REQUIRE_METAL=1), the test ignored off msl runs 0 and libtest_count fails
+      - name: Test (separate-data export bit-for-bit on the Metal engine, macOS only)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        env:
+          ALICE_SDF_REQUIRE_METAL: "1"
+          ALICE_SDF_REQUIRE_GPU: "1"
+        run: |
+          set -euo pipefail
+          cargo test --features msl --test test_separate_data_export every_kind_agrees_bit_for_bit_on_the_metal_engine -- --exact --nocapture 2>&1 | tee separate-data-metal.log
+          python3 scripts/libtest_count.py separate-data-metal.log --min 1 --what "separate-data export on the Metal engine (msl)"
 
       # The const and variable GLSL arrays agree on a loft (12 arrays). Metal compiles the shader when
       # the pipeline is created, where llvmpipe compiles the const form at the first dispatch and does
@@ -1374,6 +1389,10 @@ jobs:
           python3 scripts/libtest_count.py test_section_stack_shader_oracle.log --min 4 --what "test_section_stack_shader_oracle"
           cargo test --features "gpu,glsl,hlsl" --test test_smooth_stack_shader -- --nocapture 2>&1 | tee test_smooth_stack_shader.log
           python3 scripts/libtest_count.py test_smooth_stack_shader.log --min 4 --what "test_smooth_stack_shader"
+          # the separate-data export (data arrays in a texture): the wgpu lane (bit-equal for the
+          # kinds read with run-time indices, within 2 units of the single file for the others)
+          cargo test --features "gpu,glsl,hlsl" --test test_separate_data_export -- --nocapture 2>&1 | tee test_separate_data_export.log
+          python3 scripts/libtest_count.py test_separate_data_export.log --min 12 --what "test_separate_data_export (wgpu lane)"
           # the CPU side evaluates about 1e6 field values: release, without the link time work
           CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 cargo test --release --features "gpu,glsl,hlsl" --test test_shader_data_bounds -- --nocapture 2>&1 | tee test_shader_data_bounds.log
           python3 scripts/libtest_count.py test_shader_data_bounds.log --min 8 --what "test_shader_data_bounds"
