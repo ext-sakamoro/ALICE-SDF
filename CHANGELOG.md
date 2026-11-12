@@ -154,6 +154,9 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - **動作の変更:** `BvhTriangle::closest_point` (と `MeshBvh` の距離の問い合わせ) は、計算した面積が 0 の三角形 (`(v1 − v0) × (v2 − v0)` が 0) で 3 辺 (v0v1、v1v2、v2v0 の順) の最寄りの点を返す 以前は辺の領域の判定の式で求めていたので、その三角形に限り点が ulp の差で動くことがある 面積のある三角形の値は変わらない
 - **動作の変更:** `MeshBvh::closest_point` と `MeshBvh::unsigned_distance` は `MeshBvh::closest_triangle` と同じ木の歩きを通る 距離がちょうど等しい三角形が複数ある時、`closest_point` は入力の index が最小の三角形の点を返す (以前は木の歩きが先に見た方) 距離の値は変わらない `ExteriorFloodFill` の符号は帯の中で最寄りの点から外へ歩くので、同距離の点でだけ歩く向きが変わりうる `MeshBvh::signed_distance` は別の歩きのまま
 
+### Removed
+- `npm/index.d.ts`: package に含まれず (`package.json` の `files` は `dist/` と README、型は wasm-pack が生成する `dist/alice_sdf.d.ts`)、宣言した 23 関数のうち 17 はどこにも存在しなかった
+
 ### Fixed
 - node data form の多角形 (頂点 9 以上の `Polygon2D`) の輪郭が module の定数配列のまま残っていた (`WgslShader::transpile_with_node_data` でも `alice_poly_v_*` を module に置いていた) 他の data と同じく node data buffer の範囲から読む 書き出す自己完結の text は従来どおり輪郭を text に持つ (同じ輪郭の多角形は 1 本の配列を共有する)
 - `tests/test_shader_read_ranges.rs` の縮約差の測定: x86-64 では C++ を `-march=x86-64-v3` で compile し、`-ffp-contract=fast` が image の既定 target に依らず積和を融合するようにする (Ubuntu 24.04 の gcc の既定では融合せず差は 0、26.04 では融合して `big_smooth_stack` で 2.28e-7) その x86-64 の測定で `big_smooth_stack` の予算を 4 倍の規則のまま 9.1e-7 から 9.2e-7 にする CI は compiler と既定の target を表示する
@@ -190,6 +193,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - CI: `unity-vrchat.yml` / `unity-sdf-universe.yml` の changes job と gate job の shell を bash にした (workflow の既定の shell が pwsh で、changes job の判定の step が動かなかった)
 - CI: `semver-checks.yml` を手動起動 (workflow_dispatch) だけにした changes job と gate を外し、`.github/paths/semver-checks.txt` を消した preflight の full 実行は同じ command を走らせる
 - `mesh::dual_contouring` (全 topology): max 側の最後の格子の層の辺 (`x = res - 1` など、4 つの cell がそろう辺) の quad を作っていなかったので、max の境界から 1 cell 以内に来る形に穴が開いていた (半径 0.75 の球を (0.2, 0.2, 0.2) に置き ±1 / 解像度 8 で開いた辺 48) min 側と同じく作るようにした (DC-LAST-LAYER-001)
+- npm package (`@alice-sdf/wasm`) の `npm/README.md` が `examples/wasm-demo` に無い API (`SdfEvaluator.sphere` / `to_mesh` / `to_wgsl` 等) を説明していた wasm-pack が build する `examples/wasm-demo` の `#[wasm_bindgen]` export (`SdfEvaluator` / `SdfType` / `Raymarcher` / `SoABuffer` / `generate_instanced_wgsl` / `benchmark_eval`) に書き直した 同 crate の `SoABuffer` の doc の例が存在しない `x_buffer()` を呼んでいたので `x_ptr()` と wasm の memory の view にした CI (wiring-guard、全 OS) と `scripts/preflight.sh`: `scripts/npm_readme_symbols.py` が README の JavaScript の例・API の節と crate の doc の JavaScript の例が使う名前 (import / `new X(` / `X.fn(` / method / enum の variant / 関数) を `#[wasm_bindgen]` の export と突合する (比較 0 件で fail、試験 `scripts/test_npm_readme_symbols.py` は 1 か所ずつ存在しない名前を植えて red を確かめる)
 
 ## [7.0.0] - 2026-10-17
 

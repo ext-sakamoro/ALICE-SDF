@@ -182,6 +182,9 @@ python3 scripts/test_tracked_binaries.py
 python3 scripts/tracked_binaries.py
 python3 scripts/test_readme_sync.py
 python3 scripts/readme_sync.py --check
+# the npm README and the wasm-demo JavaScript examples name only #[wasm_bindgen] exports
+python3 scripts/test_npm_readme_symbols.py
+python3 scripts/npm_readme_symbols.py
 python3 scripts/test_version_sync.py
 python3 scripts/version_sync.py --check
 python3 scripts/test_shared_files.py
