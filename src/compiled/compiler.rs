@@ -1305,6 +1305,9 @@ impl Compiler {
             SdfNode::GridWarp { .. } => {
                 unreachable!("GridWarp: refused by validate_for_compile()");
             }
+            SdfNode::BellPull { .. } => {
+                unreachable!("BellPull: refused by validate_for_compile()");
+            }
 
             SdfNode::SdfSkinning { child, bones } => {
                 // Serialize: [bone_count, (inv_bind_pose[16], current_pose[16], weight) × N]
@@ -1601,6 +1604,10 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         // by the WGSL transpiler, which reads them from the node data buffer)
         SdfNode::GridWarp { .. } => {
             return Err(CompileError::UnsupportedPrimitive("GridWarp".into()));
+        }
+        // Unsupported: evaluated by `eval` and written by the shader transpilers
+        SdfNode::BellPull { .. } => {
+            return Err(CompileError::UnsupportedPrimitive("BellPull".into()));
         }
         // Unsupported: no bytecode law (previously compiled to a silent sphere)
         SdfNode::Terrain { .. } => {

@@ -270,6 +270,11 @@ required-features = ["rust"]
 
 # GLSL / HLSL / BlinkScript exports: compute, fragment and full-pipeline
 # shaders, the Unreal material function, Dynamic parameter layouts.
+# a shape pulled by Gaussian bells, on the CPU and as the live-pull GLSL a page moves per frame
+[[example]]
+name = "bell_pull_live"
+required-features = ["glsl"]
+
 [[example]]
 name = "shader_export"
 required-features = ["glsl", "hlsl", "blinkscript"]

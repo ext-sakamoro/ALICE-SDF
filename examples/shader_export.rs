@@ -82,6 +82,13 @@ pub fn run(out_dir: Option<&std::path::Path>) -> Vec<std::path::PathBuf> {
     assert!(fragment.contains("uniform vec2 iResolution;") && fragment.contains("sdf_eval(p)"));
     emit("sdf_shadertoy.frag", &fragment, Kind::Whole);
 
+    // the library with `vec2 sdf_eval_scaled(vec3 p)` for a tracer: step on .x, hit on
+    // abs(.x) * .y < eps (pasted into the host's fragment shader)
+    let scaled = GlslShader::transpile_with_scale(&shape, GlslTranspileMode::Hardcoded);
+    assert!(scaled.source.starts_with(&glsl.source));
+    assert!(scaled.source.contains("vec2 sdf_eval_scaled(vec3 p)"));
+    emit("sdf_eval_scaled.glsl", &scaled.source, Kind::Fragment);
+
     let config = RenderConfig {
         max_steps: 160,
         max_distance: 120.0,

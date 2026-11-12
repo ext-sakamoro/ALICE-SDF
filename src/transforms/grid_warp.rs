@@ -579,17 +579,25 @@ impl GridWarp {
     #[inline]
     #[must_use]
     pub fn finish(&self, c: f32, b: f32, lam: f32, fl: f32) -> f32 {
+        self.finish_with_term(c, b, lam, fl).0
+    }
+
+    /// [`GridWarp::finish`] and whether the child's term `c / Λ` gives the value (inside the box,
+    /// not clamped by the reach, above the floor) Where it does, the value is the child's divided
+    /// by Λ; elsewhere it is a distance in the posed space (the floor, the reach, the box)
+    #[inline]
+    #[must_use]
+    pub fn finish_with_term(&self, c: f32, b: f32, lam: f32, fl: f32) -> (f32, bool) {
         let e = law_max_f32(b, 0.0);
         let r = self.data.reach;
         // beyond the reach, |c| / Λ_g (a bound over the whole box) still holds: the clamp widens to it
         let cg = c / self.lambda_global;
-        let v = law_min_f32(
-            law_max_f32(c / lam, law_min_f32(-r, cg)),
-            law_max_f32(r, cg),
-        );
+        let own = c / lam;
+        let v = law_min_f32(law_max_f32(own, law_min_f32(-r, cg)), law_max_f32(r, cg));
         let d = law_max_f32(v, law_min_f32(law_max_f32(fl, -r), r));
         let dp = law_max_f32(d, 0.0);
-        law_max_f32(d + ((e * e + dp * dp).sqrt() - dp), b)
+        let out = law_max_f32(d + ((e * e + dp * dp).sqrt() - dp), b);
+        (out, e == 0.0 && d == own && out == own)
     }
 }
 
