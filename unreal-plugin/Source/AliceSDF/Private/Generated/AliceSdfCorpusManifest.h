@@ -8,8 +8,8 @@
 
 #include "CoreMinimal.h"
 
-#define ALICE_SDF_CORPUS_COUNT 169
-#define ALICE_SDF_CORPUS_SHADER_COUNT 169
+#define ALICE_SDF_CORPUS_COUNT 170
+#define ALICE_SDF_CORPUS_SHADER_COUNT 170
 #define ALICE_SDF_CORPUS_GRID_POINTS 577
 #define ALICE_SDF_CORPUS_RANDOM_POINTS 512
 
@@ -137,6 +137,7 @@ static const TCHAR* const GAliceSdfCorpusNames[ALICE_SDF_CORPUS_COUNT] = {
 	TEXT("sdf_skinning"),
 	TEXT("sdf_skinning_two_bones"),
 	TEXT("grid_warp"),
+	TEXT("bell_pull"),
 	TEXT("pose"),
 	TEXT("twist"),
 	TEXT("bend"),
@@ -310,6 +311,7 @@ static const bool GAliceSdfCorpusCompilable[ALICE_SDF_CORPUS_COUNT] = {
 	true, // sdf_skinning
 	true, // sdf_skinning_two_bones
 	false, // grid_warp
+	false, // bell_pull
 	true, // pose
 	true, // twist
 	true, // bend
@@ -482,6 +484,7 @@ static const TCHAR* const GAliceSdfCorpusShaderNames[ALICE_SDF_CORPUS_SHADER_COU
 	TEXT("sdf_skinning"),
 	TEXT("sdf_skinning_two_bones"),
 	TEXT("grid_warp"),
+	TEXT("bell_pull"),
 	TEXT("pose"),
 	TEXT("twist"),
 	TEXT("bend"),

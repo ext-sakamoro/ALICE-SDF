@@ -17,7 +17,7 @@
 //! # Hex form (earlier `alice-det-math` generations in [`SDF_SEMANTICS_BY_DET_MATH`])
 //!
 //! ```text
-//! dca9b09275b952e2e45ab7cd9426cd99f86e3cc65a16ffc2ffd76b188b01780f
+//! db7ff4a4b7daf3f242f353fc7af2c448832e8625c19f2522561d3b83a496f775
 //! ```
 //!
 //! # Fold
@@ -67,7 +67,7 @@ pub const MUL_ADD_RULE: &str = "alice-sdf: Real::mul_add is a * b + c with two r
 pub const SDF_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
     (
         "golden tests/test_det_golden.rs GOLDEN",
-        hex32("971e07cc5904ec6c28de7295bf5bef53bb4ea1c45d1553481d31b911fe05099b"),
+        hex32("08621647ba1fa80888533c53e4b012c40a52180962e9d2d98cf08801c1106344"),
     ),
     (
         "tag max / min rule",
@@ -335,20 +335,22 @@ pub const SDF_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
 
 /// The identifier of what alice-sdf computes, in this build
 ///
-/// Hex: `dca9b09275b952e2e45ab7cd9426cd99f86e3cc65a16ffc2ffd76b188b01780f`, the fold of
+/// Hex: `db7ff4a4b7daf3f242f353fc7af2c448832e8625c19f2522561d3b83a496f775`, the fold of
 /// [`SDF_SEMANTICS_PINS`] and [`DET_MATH_PINS`]. The same value in every build, whatever cargo
 /// features are enabled.
 pub const SDF_SEMANTICS_ID: [u8; 32] =
-    hex32("dca9b09275b952e2e45ab7cd9426cd99f86e3cc65a16ffc2ffd76b188b01780f");
+    hex32("db7ff4a4b7daf3f242f353fc7af2c448832e8625c19f2522561d3b83a496f775");
 
 /// Earlier identifiers whose distances this build still computes to the same bits, newest first
 ///
-/// Empty: the heightmap displacement blends the faces within 1/16 of the dominant component
-/// (continuous at the face ties), so its distances near a tie have other bits than under every
-/// earlier identifier. `d2d2f0df…` (after the smooth blends), `72277bd6…`, `0f6ffc20…`,
-/// `0f6c58d0…` and `ad04549c…` therefore read as a mismatch; `tests/sdf_semantics_id.rs` folds
-/// each from this build's table with the added rows removed and the heightmap row back at its old
-/// hash, so the heightmap row is the only row that moved. Older ones were already refused:
+/// `dca9b092…` (after the heightmap face blend, before the bell pull): the bell pull only added a
+/// golden row, every row of that build has the same bits here (`tests/sdf_semantics_id.rs`
+/// `the_dca9b092_rows_are_unchanged`). Earlier ones read as a mismatch: the heightmap displacement
+/// blends the faces within 1/16 of the dominant component (continuous at the face ties), so its
+/// distances near a tie have other bits than under `d2d2f0df…` (after the smooth blends),
+/// `72277bd6…`, `0f6ffc20…`, `0f6c58d0…` and `ad04549c…`; `tests/sdf_semantics_id.rs` folds each
+/// from this build's table with the added rows removed and the heightmap row back at its old hash,
+/// so the heightmap row is the only row that moved. Older ones were already refused:
 /// alice-det-math at 2d01c63f reduces `sin` / `cos` / `sin_cos` arguments from `2^13` on in
 /// double precision and evaluates `hypot` of two subnormals in `f64`, and this crate calls them on
 /// the caller's coordinates (twist, bend, noise, the cylinder and cone families), so a distance at
@@ -356,7 +358,9 @@ pub const SDF_SEMANTICS_ID: [u8; 32] =
 /// 39507d1b), `151079595…` (0.5.1, 7.0.0) and the det-math identifiers 6.0 / 6.1 exposed
 /// (`85e08846…`, `135c407d…`) read as a mismatch; `tests/sdf_semantics_id.rs` shows which golden
 /// windows moved.
-pub const PREVIOUS_SDF_SEMANTICS_IDS: &[[u8; 32]] = &[];
+pub const PREVIOUS_SDF_SEMANTICS_IDS: &[[u8; 32]] = &[hex32(
+    "dca9b09275b952e2e45ab7cd9426cd99f86e3cc65a16ffc2ffd76b188b01780f",
+)];
 
 /// Whether a stored identifier names what this build computes
 ///
