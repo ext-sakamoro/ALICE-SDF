@@ -573,6 +573,22 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let p = modifier_repeat_infinite(point, *spacing);
             eval(child, p)
         }
+        SdfNode::RepeatCells {
+            child,
+            spacing,
+            count,
+            mirror,
+            neighbours,
+            variation,
+        } => {
+            // a direct enum literal reaches here unchecked: refuse the fields whose law has
+            // not landed instead of returning a wrong distance
+            assert!(
+                !*neighbours && variation.is_none(),
+                "RepeatCells neighbours / variation is not supported yet (refused, not ignored)"
+            );
+            eval(child, modifier_repeat_cells(point, *spacing, *count, *mirror))
+        }
         SdfNode::RepeatFinite {
             child,
             count,
@@ -896,6 +912,13 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::RepeatInfinite { child, spacing } => {
             eval_material(child, modifier_repeat_infinite(point, *spacing))
         }
+        SdfNode::RepeatCells {
+            child,
+            spacing,
+            count,
+            mirror,
+            ..
+        } => eval_material(child, modifier_repeat_cells(point, *spacing, *count, *mirror)),
         SdfNode::RepeatFinite {
             child,
             count,

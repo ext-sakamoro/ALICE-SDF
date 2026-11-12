@@ -612,6 +612,7 @@ fn primitive_aabb(opcode: OpCode, inst: &Instruction, aux_data: &[f32]) -> AabbP
         | OpCode::Bend
         | OpCode::RepeatInfinite
         | OpCode::RepeatFinite
+        | OpCode::RepeatCells
         | OpCode::Round
         | OpCode::Onion
         | OpCode::Elongate
@@ -760,6 +761,28 @@ fn transform_or_modifier_aabb(opcode: OpCode, params: &[f32; 7], child: AabbPack
             let sz = params[5];
             let expand = Vec3::new(cx * sx, cy * sy, cz * sz);
             AabbPacked::new(child.min() - expand, child.max() + expand)
+        }
+        OpCode::RepeatCells => {
+            // params[0..3] = spacing, params[3..6] = count (0 = infinite), params[6] = mirror.
+            // A repeated finite axis spans the cell centres ±(n−1)/2·s plus the child's
+            // largest extent on that axis (covers the mirrored copies); an infinite axis
+            // makes the scene infinite; an unrepeated axis keeps the child's range.
+            let (cmin, cmax) = (child.min(), child.max());
+            let mut lo = cmin;
+            let mut hi = cmax;
+            for i in 0..3 {
+                let (s, n) = (params[i], params[3 + i]);
+                if s > 0.0 {
+                    if n == 0.0 {
+                        return AabbPacked::infinite();
+                    }
+                    let e = cmin[i].abs().law_max(cmax[i].abs());
+                    let half = (n - 1.0) * 0.5 * s + e;
+                    lo[i] = -half;
+                    hi[i] = half;
+                }
+            }
+            AabbPacked::new(lo, hi)
         }
         OpCode::Mirror => {
             // params[0..3] = axis mask (non-zero → mirrored). Match the BVH

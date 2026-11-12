@@ -55,8 +55,15 @@ const fn unsupported_name(node: &SdfNode) -> Option<&'static str> {
     // the release after 5.0.0 while this returned `None`;
     // `tests/test_node_backend_matrix.rs` now fails when an arm forwards the
     // child of a node that changes the distance and this list is silent.
-    let _ = node;
-    None
+    match node {
+        // neighbours / variation have no shader law yet (refused, not ignored)
+        SdfNode::RepeatCells {
+            neighbours,
+            variation,
+            ..
+        } if *neighbours || variation.is_some() => Some("RepeatCells (neighbours / variation)"),
+        _ => None,
+    }
 }
 
 /// Names of the nodes in `node`'s tree that the transpilers pass through
@@ -3422,6 +3429,63 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                         inv = L::vec3_ctor(&isx, &isy, &isz),
                     ),
                 ));
+                self.transpile_node_inner(child, &new_p, code)
+            }
+
+            SdfNode::RepeatCells {
+                child,
+                spacing,
+                count,
+                mirror,
+                neighbours,
+                variation,
+            } => {
+                assert!(
+                    !*neighbours && variation.is_none(),
+                    "RepeatCells neighbours / variation has no shader law yet (refused, not ignored)"
+                );
+                // the law of modifiers::repeat_cells, operation for operation: per repeated axis
+                // c = floor(p·(1/s) [+ h] + 0.5) (clamped to [0, n−1] when finite),
+                // q = p − c·s (or p − (c − h)·s), and q·(1 − 2·(c − 2·floor(c/2))) when mirrored
+                let c = count.unwrap_or([0; 3]);
+                let comps = ["x", "y", "z"];
+                let mut axes = Vec::with_capacity(3);
+                for i in 0..3 {
+                    let s = spacing[i];
+                    let pc = format!("{point_var}.{}", comps[i]);
+                    if !(s > 0.0) {
+                        axes.push(pc);
+                        continue;
+                    }
+                    let sv = self.param(s);
+                    let inv = self.param(1.0 / s);
+                    let cell = self.next_var();
+                    let q = self.next_var();
+                    if c[i] == 0 {
+                        code.push_str(&L::decl_float(&cell, &format!("floor({pc} * {inv} + 0.5)")));
+                        code.push_str(&L::decl_float(&q, &format!("{pc} - {cell} * {sv}")));
+                    } else {
+                        let h = self.param((c[i] as f32 - 1.0) * 0.5);
+                        let top = self.param(c[i] as f32 - 1.0);
+                        code.push_str(&L::decl_float(
+                            &cell,
+                            &format!("min(max(floor({pc} * {inv} + {h} + 0.5), 0.0), {top})"),
+                        ));
+                        code.push_str(&L::decl_float(&q, &format!("{pc} - ({cell} - {h}) * {sv}")));
+                    }
+                    if *mirror {
+                        let m = self.next_var();
+                        code.push_str(&L::decl_float(
+                            &m,
+                            &format!("{q} * (1.0 - ({cell} - floor({cell} * 0.5) * 2.0) * 2.0)"),
+                        ));
+                        axes.push(m);
+                    } else {
+                        axes.push(q);
+                    }
+                }
+                let new_p = self.next_var();
+                code.push_str(&L::decl_vec3(&new_p, &L::vec3_ctor(&axes[0], &axes[1], &axes[2])));
                 self.transpile_node_inner(child, &new_p, code)
             }
 

@@ -62,6 +62,8 @@ pub fn split(mut value: serde_json::Value) -> Result<(SdfTree, Option<[u8; 32]>)
     )]
     let tree: SdfTree =
         serde_json::from_value(value).map_err(|e| IoError::Serialization(e.to_string()))?;
+    crate::modifiers::check_repeat_cells_tree(&tree.root)
+        .map_err(|e| IoError::InvalidFormat(format!("{FORMAT}: {e}")))?;
     Ok((tree, stored))
 }
 

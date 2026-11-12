@@ -1406,6 +1406,24 @@ pub enum SdfNode {
         /// The boolean being smoothed
         mode: crate::operations::BlendMode,
     },
+    /// Cell repetition with optional mirroring (odd cells reflected, so copies meet
+    /// seamlessly); law in [`crate::modifiers::modifier_repeat_cells`]. `neighbours` and
+    /// `variation` are present for the stored form and refused until their law lands.
+    /// Appended last (stored indices of earlier variants are fixed).
+    RepeatCells {
+        /// Child node
+        child: Arc<Self>,
+        /// Spacing per axis (0 = the axis is not repeated)
+        spacing: Vec3,
+        /// Cells per axis centred on the origin, or `None` for infinite repetition
+        count: Option<[u32; 3]>,
+        /// Reflect odd cells
+        mirror: bool,
+        /// Minimum over the neighbouring cells (not yet supported)
+        neighbours: bool,
+        /// Per-cell variation (not yet supported)
+        variation: Option<crate::modifiers::CellVariation>,
+    },
 }
 
 impl SdfNode {
@@ -1535,6 +1553,7 @@ impl SdfNode {
             | Self::Bend { .. }
             | Self::RepeatInfinite { .. }
             | Self::RepeatFinite { .. }
+            | Self::RepeatCells { .. }
             | Self::Noise { .. }
             | Self::Round { .. }
             | Self::Onion { .. }
@@ -1671,6 +1690,7 @@ impl SdfNode {
             | Self::Bend { child, .. }
             | Self::RepeatInfinite { child, .. }
             | Self::RepeatFinite { child, .. }
+            | Self::RepeatCells { child, .. }
             | Self::Noise { child, .. }
             | Self::Round { child, .. }
             | Self::Onion { child, .. }

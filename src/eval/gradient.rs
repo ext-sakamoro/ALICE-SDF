@@ -472,6 +472,18 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             let p = modifier_repeat_infinite(point, *spacing);
             eval_gradient(child, p)
         }
+        SdfNode::RepeatCells {
+            child,
+            spacing,
+            count,
+            mirror,
+            ..
+        } => {
+            // piecewise translation, with the mirrored axes negated in odd cells
+            let p = crate::modifiers::modifier_repeat_cells(point, *spacing, *count, *mirror);
+            eval_gradient(child, p)
+                * crate::modifiers::repeat_cells_mirror_sign(point, *spacing, *count, *mirror)
+        }
         SdfNode::RepeatFinite {
             child,
             count,
