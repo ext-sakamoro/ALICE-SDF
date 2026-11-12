@@ -8,8 +8,14 @@ The package is built with `wasm-pack` from `examples/wasm-demo` (`npm run build`
 
 ## Install
 
+The package is not on the npm registry. Build it from this repository (needs `wasm-pack`) and
+install the folder:
+
 ```bash
-npm install @alice-sdf/wasm
+cd npm
+npm run build              # --target web; build:bundler / build:node for the other targets
+cd ../your-app
+npm install ../ALICE-SDF/npm
 ```
 
 ## Quick start

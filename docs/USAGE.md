@@ -1309,11 +1309,9 @@ ALICE-SDF runs in the browser via WebAssembly with WebGPU/Canvas2D support.
 
 ### npm Package (`@alice-sdf/wasm`)
 
-```bash
-npm install @alice-sdf/wasm
-```
-
-Full TypeScript type definitions included. Supports all 74 primitives, 25 CSG operations, transforms, mesh conversion, and shader generation (WGSL/GLSL).
+Not on the npm registry: build it from `npm/` with `npm run build` and install that folder
+(see [`npm/README.md`](../npm/README.md), which lists what the package exports; its typings are
+the ones `wasm-pack` generates).
 
 ### Building the WASM Demo
 

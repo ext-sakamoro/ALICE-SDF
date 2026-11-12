@@ -1194,11 +1194,8 @@ ALICE-SDFはWebAssemblyでブラウザ上で動作し、WebGPU/Canvas2Dをサポ
 
 ### npmパッケージ（`@alice-sdf/wasm`）
 
-```bash
-npm install @alice-sdf/wasm
-```
-
-TypeScript型定義を完備。68プリミティブ、24 CSG演算、トランスフォーム、メッシュ変換、シェーダー生成（WGSL/GLSL）を全サポート。
+npm registry には無い: `npm/` で `npm run build` して、その folder を install する
+([`npm/README.md`](../npm/README.md) に package が出す API の一覧がある、型定義は `wasm-pack` が生成するもの)
 
 ### WASMデモのビルド
 
