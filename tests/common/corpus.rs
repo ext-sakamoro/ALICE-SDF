@@ -618,6 +618,17 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
             }),
         ),
         (
+            "bell_pull",
+            // two pulls under one bell width: one along x, one diagonal (slope sum 0.57, one to one)
+            unit_box().bell_pull(
+                alice_sdf::transforms::BellPull::new(
+                    [[0.3, 0.0, 0.25, 0.0], [-0.2, 0.4, -0.12, 0.18]],
+                    0.5,
+                )
+                .expect("one to one"),
+            ),
+        ),
+        (
             "pose",
             // a rigid pose: measures as the same rotate then translate (the rest point differs)
             unit_box().rigid_pose(
