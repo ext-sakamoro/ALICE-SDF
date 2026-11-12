@@ -1156,7 +1156,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
         // Grid warp: the node is `eval_lipschitz(node)`-Lipschitz everywhere (the warp's computed
         // bound divides the child, the outside extension is 1-Lipschitz), so the box's values lie
         // within the centre's value ± L · half-diagonal.
-        SdfNode::GridWarp { .. } => {
+        SdfNode::GridWarp { .. } | SdfNode::BellPull { .. } => {
             let c = Vec3::new(
                 bounds.x.lo.midpoint(bounds.x.hi),
                 bounds.y.lo.midpoint(bounds.y.hi),
@@ -1817,6 +1817,8 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         SdfNode::GridWarp { child, warp } => {
             alice_det_math::max(eval_lipschitz(child), 1.0) + (warp.lipschitz() - 1.0)
         }
+        // Bell pull: the map's slope is at most Λ and the value is divided by Λ
+        SdfNode::BellPull { child, .. } => eval_lipschitz(child),
         // SDF Skinning: LBS preserves distance (approximately)
         // One affine map: L(child) · ‖A‖ (Frobenius ≥ spectral norm).
         SdfNode::SdfSkinning { child, bones } => match skinning_affine(bones) {

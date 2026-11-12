@@ -11,12 +11,14 @@
 
 pub mod gradient;
 pub mod parallel;
+pub mod scaled;
 pub mod union_bounded;
 
 use crate::compiled::real::LawMinMax;
 use crate::compiled::real::LawVec;
 pub use gradient::{eval_gradient, eval_normal};
 pub use parallel::{eval_batch, eval_batch_parallel, eval_grid, eval_grid_with_normals};
+pub use scaled::eval_scaled;
 pub use union_bounded::{eval_union_bounded, eval_union_bounded_stats, UnionBoundStats};
 
 use crate::modifiers::*;
@@ -559,6 +561,7 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             let (x, e, lam, fl) = warp.warp(point);
             warp.finish(eval(child, x), e, lam, fl)
         }
+        SdfNode::BellPull { child, pull } => eval(child, pull.back(point)) / pull.lambda(),
 
         // === Modifiers ===
         SdfNode::Twist { child, strength } => {
@@ -766,6 +769,7 @@ pub fn eval_rest_point(node: &SdfNode, point: Vec3) -> Option<Vec3> {
         }
         SdfNode::Pose { child } => eval_rest_point_posed(child, point),
         SdfNode::GridWarp { child, warp } => eval_rest_point(child, warp.warp(point).0),
+        SdfNode::BellPull { child, pull } => eval_rest_point(child, pull.back(point)),
         n if crate::diff::node_children(n).is_empty() => Some(point),
         _ => None,
     }
@@ -946,6 +950,7 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::HeightmapDisplacement { child, .. } => eval_material(child, point),
         SdfNode::SurfaceRoughness { child, .. } => eval_material(child, point),
         SdfNode::GridWarp { child, warp } => eval_material(child, warp.warp(point).0),
+        SdfNode::BellPull { child, pull } => eval_material(child, pull.back(point)),
 
         // Primitives: no material assigned
         _ => 0,

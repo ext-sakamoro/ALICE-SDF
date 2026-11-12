@@ -368,6 +368,20 @@ jobs:
       - name: Test (integration, NPR shader validation — glsl + gpu)
         run: cargo test --features "glsl,gpu" --test npr_shader_validate
 
+      # the transpiler's GLSL run on the CPU through a shim written from the GLSL specification
+      # (tests/common/glsl_cpu_shim.h, compiled with the runner's C++ compiler), against the CPU
+      # law: the bell pull, the scaled value, the precise qualifier. glsl-gated (0 tests without
+      # the feature) and skipped without a compiler unless ALICE_SDF_REQUIRE_CXX is set; counted
+      - name: Test (GLSL on the CPU through the shim)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          ALICE_SDF_REQUIRE_CXX: "1"
+        run: |
+          set -euo pipefail
+          cargo test --features glsl --test test_glsl_cpu_shim 2>&1 | tee glsl-cpu-shim.log
+          python3 scripts/libtest_count.py glsl-cpu-shim.log --min 7 --what "GLSL CPU shim tests"
+
       # compiled::rust の出力を rustc で compile・実行し eval_compiled と to_bits で突合する
       # (file 先頭が `#![cfg(feature = "rust")]`、feature 無しでは 0 本になる)
       - name: Test (integration, Rust source emit oracle — rust)
