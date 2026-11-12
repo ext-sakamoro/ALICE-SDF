@@ -15,10 +15,9 @@ use alice_sdf::{
 use sha2::{Digest, Sha256};
 
 const GOLDEN_SOURCE: &str = include_str!("test_det_golden.rs");
-// each alice-det-math function the crate calls folded as its own entry; 0f6c58d0… (alice-det-math
-// 0.5.2 at 2d01c63f folded whole) and ad04549c… (the same without the grid warp and pose rows)
-// are the previous identifiers this build still reproduces
-const RECORDED_HEX: &str = "d2d2f0df6d15b8a1ecc092d47c5c86813767e0c44be2f447fff1ed0ee4609545";
+// each alice-det-math function the crate calls folded as its own entry; no earlier identifier is
+// reproduced (the heightmap face blend moved a golden row, see `ROWS_MOVED_AFTER_D2D2F0DF`)
+const RECORDED_HEX: &str = "dca9b09275b952e2e45ab7cd9426cd99f86e3cc65a16ffc2ffd76b188b01780f";
 
 /// The alice-det-math entry of the generations that folded it whole: its 0.5.2 at 2d01c63f
 /// identifier
@@ -53,9 +52,34 @@ const ROWS_ADDED_AFTER_72277BD6: &[&str] = &[
     "smooth_blend_sigmoid_subtract",
 ];
 
-/// The golden table digest without the rows named in `added` (each must be a row of the table)
-fn golden_without(added: &[&[&str]]) -> [u8; 32] {
+/// The golden rows added after `d2d2f0df…` (and so after every earlier identifier): the band of
+/// the heightmap face blend, sampled across the face ties
+const ROWS_ADDED_AFTER_D2D2F0DF: &[&str] = &["heightmap_face_tie_band"];
+
+/// The golden rows whose bits moved after `d2d2f0df…`, with the hash they had then: the heightmap
+/// displacement blends the faces within 1/16 of the dominant component, and the shared point grid
+/// holds axis ties. Every earlier identifier saw these rows with the old hash
+const ROWS_MOVED_AFTER_D2D2F0DF: &[(&str, &str)] = &[(
+    "heightmap_displacement",
+    "ed9247293c2854118bdc2d56615ba5efdf65dadcfeaa9160ef767b27a03cd600",
+)];
+
+/// The golden table digest of an earlier build: without the rows named in `added` (each must be a
+/// row of the table) and with each row in `moved` back at the hash it had then (each must be a row
+/// whose hash now differs)
+fn golden_before(added: &[&[&str]], moved: &[(&str, &str)]) -> [u8; 32] {
     let mut rows = golden_rows();
+    for (name, then) in moved {
+        let row = rows
+            .iter_mut()
+            .find(|(n, _)| n == name)
+            .unwrap_or_else(|| panic!("moved row {name} is not a row"));
+        assert_ne!(
+            row.1, *then,
+            "row {name} is listed as moved but has its old hash"
+        );
+        (*then).clone_into(&mut row.1);
+    }
     let all = rows.len();
     let names: Vec<&str> = added.iter().flat_map(|l| l.iter().copied()).collect();
     rows.retain(|(n, _)| !names.contains(&n.as_str()));
@@ -193,7 +217,14 @@ fn the_det_math_pins_are_the_resolved_function_identifiers() {
 fn the_identifier_is_the_fold_and_every_earlier_row_is_its_whole_det_math_fold() {
     assert!(!SDF_SEMANTICS_BY_DET_MATH.is_empty());
     for (det_math, id) in SDF_SEMANTICS_BY_DET_MATH {
-        let golden = golden_without(&[ROWS_ADDED_AFTER_0F6FFC20, ROWS_ADDED_AFTER_72277BD6]);
+        let golden = golden_before(
+            &[
+                ROWS_ADDED_AFTER_D2D2F0DF,
+                ROWS_ADDED_AFTER_0F6FFC20,
+                ROWS_ADDED_AFTER_72277BD6,
+            ],
+            ROWS_MOVED_AFTER_D2D2F0DF,
+        );
         let mut pins: Vec<(&str, [u8; 32])> = SDF_SEMANTICS_PINS
             .iter()
             .map(|&(n, d)| {
@@ -232,21 +263,18 @@ fn check_reads_this_identifier_and_refuses_the_earlier_ones() {
         check_sdf_semantics(&SDF_SEMANTICS_ID),
         SemanticsCheck::Verified
     );
-    assert_eq!(PREVIOUS_SDF_SEMANTICS_IDS.len(), 4);
-    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[0]), ID_72277BD6);
-    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[1]), ID_0F6FFC20);
-    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[2]), ID_0F6C58D0);
-    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[3]), AD04549C);
-    for previous in PREVIOUS_SDF_SEMANTICS_IDS {
-        assert_eq!(
-            check_sdf_semantics(previous),
-            SemanticsCheck::VerifiedPrevious(*previous)
-        );
-    }
+    // the heightmap face blend moved a golden row, so no earlier identifier names this build's
+    // bits (each one's oracle below shows it was exactly that row)
+    assert!(PREVIOUS_SDF_SEMANTICS_IDS.is_empty());
     // the identifiers earlier releases stamped (6e98f0be with alice-det-math 0.5.2 at 39507d1b,
     // 151079595 with 0.5.1 by 7.0.0, the det-math identifiers 6.0 / 6.1 exposed) are refused
     let mut refused = 0;
     for earlier in [
+        ID_D2D2F0DF,
+        ID_72277BD6,
+        ID_0F6FFC20,
+        ID_0F6C58D0,
+        AD04549C,
         "6e98f0bed3f8691ca470ae2fe2c404c893856a3e3f6a9cda9d67528ae8074b37",
         "151079595c1e8d8fc661909bac7ea0dde0ba5a8b3ef500019d01c6af64defb69",
         "85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315",
@@ -261,7 +289,7 @@ fn check_reads_this_identifier_and_refuses_the_earlier_ones() {
         );
         refused += 1;
     }
-    assert_eq!(refused, 4);
+    assert_eq!(refused, 9);
     assert_eq!(check_sdf_semantics(&[0u8; 32]), SemanticsCheck::Mismatch);
 }
 
@@ -329,15 +357,23 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
                 && !ROWS_ADDED_AFTER_AD04549C.contains(&n.as_str())
                 && !ROWS_ADDED_AFTER_0F6FFC20.contains(&n.as_str())
                 && !ROWS_ADDED_AFTER_72277BD6.contains(&n.as_str())
+                && !ROWS_ADDED_AFTER_D2D2F0DF.contains(&n.as_str())
         })
         .cloned()
+        .map(
+            |(n, h)| match ROWS_MOVED_AFTER_D2D2F0DF.iter().find(|(m, _)| *m == n) {
+                Some((_, then)) => (n, (*then).to_owned()),
+                None => (n, h),
+            },
+        )
         .collect();
     assert_eq!(
         older.len()
             + windows.len()
             + ROWS_ADDED_AFTER_AD04549C.len()
             + ROWS_ADDED_AFTER_0F6FFC20.len()
-            + ROWS_ADDED_AFTER_72277BD6.len(),
+            + ROWS_ADDED_AFTER_72277BD6.len()
+            + ROWS_ADDED_AFTER_D2D2F0DF.len(),
         rows.len(),
         "every window is a row"
     );
@@ -370,40 +406,23 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
 }
 
 /// The oracle that shows this build reproduces what an earlier identifier stamped:
-/// `(identifier, test file, test function)`. Empty with `PREVIOUS_SDF_SEMANTICS_IDS`; an
-/// identifier put back into the previous list needs its oracle here
-const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[
-    (
-        ID_72277BD6,
-        "tests/sdf_semantics_id.rs",
-        "the_72277bd6_rows_are_unchanged",
-    ),
-    (
-        ID_0F6FFC20,
-        "tests/sdf_semantics_id.rs",
-        "the_0f6ffc20_rows_are_unchanged",
-    ),
-    (
-        ID_0F6C58D0,
-        "tests/sdf_semantics_id.rs",
-        "the_0f6c58d0_golden_is_unchanged",
-    ),
-    (
-        AD04549C,
-        "tests/sdf_semantics_id.rs",
-        "the_ad04549c_rows_are_unchanged",
-    ),
-];
+/// `(identifier, test file, test function)`. Empty with `PREVIOUS_SDF_SEMANTICS_IDS` (the heightmap
+/// face blend moved a row every earlier identifier pinned); an identifier put back into the
+/// previous list needs its oracle here
+const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[];
 
 const ID_72277BD6: &str = "72277bd65112b8f7faa5884d6f12dfd507d6f891d4cdc4c12ff060888cf6d936";
 
-/// `72277bd6…` (the per-function fold before the smooth blends) is a previous identifier of
-/// this build: the golden table without `ROWS_ADDED_AFTER_72277BD6` hashes to its golden pin,
+/// `72277bd6…` (the per-function fold before the smooth blends) was an identifier of an earlier
+/// build, refused now that the heightmap row moved: the golden table without `ROWS_ADDED_AFTER_72277BD6` hashes to its golden pin,
 /// and that pin folds with this build's rule entries and det-math function entries to it. Any
 /// moved row of that build, or a row added without being listed, fails here
 #[test]
-fn the_72277bd6_rows_are_unchanged() {
-    let golden = golden_without(&[ROWS_ADDED_AFTER_72277BD6]);
+fn the_72277bd6_identifier_was_these_rows_and_is_refused() {
+    let golden = golden_before(
+        &[ROWS_ADDED_AFTER_D2D2F0DF, ROWS_ADDED_AFTER_72277BD6],
+        ROWS_MOVED_AFTER_D2D2F0DF,
+    );
     assert_eq!(
         hex(&golden),
         "9014e45fd46635353576228b3e8cd1eedc54f3274895249b7718bfb88caf551c"
@@ -419,17 +438,28 @@ fn the_72277bd6_rows_are_unchanged() {
         })
         .collect();
     assert_eq!(hex(&fold_owned(&entries)), ID_72277BD6);
+    assert_eq!(
+        check_sdf_semantics(&unhex(ID_72277BD6)),
+        SemanticsCheck::Mismatch
+    );
 }
 
 const ID_0F6FFC20: &str = "0f6ffc20efe7737c4cfbb95d35e74c62edd16c1c0d562faf35a2abdcc5ccb7e7";
 
-/// `0f6ffc20…` (the per-function fold before the lofts and the section stacks) is a previous
-/// identifier of this build: the golden table without `ROWS_ADDED_AFTER_0F6FFC20` hashes to its
+/// `0f6ffc20…` (the per-function fold before the lofts and the section stacks) was an identifier
+/// of an earlier build, refused now that the heightmap row moved: the golden table without `ROWS_ADDED_AFTER_0F6FFC20` hashes to its
 /// golden pin, and that pin folds with this build's rule entries and det-math function entries to
 /// it. Any moved row of that build, or a row added without being listed, fails here
 #[test]
-fn the_0f6ffc20_rows_are_unchanged() {
-    let golden = golden_without(&[ROWS_ADDED_AFTER_0F6FFC20, ROWS_ADDED_AFTER_72277BD6]);
+fn the_0f6ffc20_identifier_was_these_rows_and_is_refused() {
+    let golden = golden_before(
+        &[
+            ROWS_ADDED_AFTER_D2D2F0DF,
+            ROWS_ADDED_AFTER_0F6FFC20,
+            ROWS_ADDED_AFTER_72277BD6,
+        ],
+        ROWS_MOVED_AFTER_D2D2F0DF,
+    );
     assert_eq!(
         hex(&golden),
         "ecfb9c749cac3ec06f9fec60bf1735ee9aff187f0d2873825895e744682750a5"
@@ -445,42 +475,99 @@ fn the_0f6ffc20_rows_are_unchanged() {
         })
         .collect();
     assert_eq!(hex(&fold_owned(&entries)), ID_0F6FFC20);
+    assert_eq!(
+        check_sdf_semantics(&unhex(ID_0F6FFC20)),
+        SemanticsCheck::Mismatch
+    );
 }
 
 const ID_0F6C58D0: &str = "0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f79d2f6b69a4";
 
-/// `0f6c58d0…` (alice-det-math 0.5.2 at 2d01c63f folded whole) is a previous identifier of this
-/// build: every golden row has the bits it had then (the golden pin, checked against the table by
+/// `0f6c58d0…` (alice-det-math 0.5.2 at 2d01c63f folded whole) was an identifier of an earlier
+/// build, refused now that the heightmap row moved: every golden row has the bits it had then (the golden pin, checked against the table by
 /// `every_entry_matches_its_source`, folds with that build's rule entries and its whole
 /// alice-det-math entry to it). A moved golden row fails here
 #[test]
-fn the_0f6c58d0_golden_is_unchanged() {
-    let golden = golden_without(&[ROWS_ADDED_AFTER_0F6FFC20, ROWS_ADDED_AFTER_72277BD6]);
+fn the_0f6c58d0_identifier_was_this_golden_and_is_refused() {
+    let golden = golden_before(
+        &[
+            ROWS_ADDED_AFTER_D2D2F0DF,
+            ROWS_ADDED_AFTER_0F6FFC20,
+            ROWS_ADDED_AFTER_72277BD6,
+        ],
+        ROWS_MOVED_AFTER_D2D2F0DF,
+    );
     assert_eq!(
         hex(&golden),
         "ecfb9c749cac3ec06f9fec60bf1735ee9aff187f0d2873825895e744682750a5"
     );
     assert_eq!(hex(&whole_det_math_fold(Some(golden))), ID_0F6C58D0);
+    assert_eq!(
+        check_sdf_semantics(&unhex(ID_0F6C58D0)),
+        SemanticsCheck::Mismatch
+    );
 }
 
 const AD04549C: &str = "ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f642257da4938";
 
-/// `ad04549c…` is a previous identifier of this build: the golden table without the rows added
+/// `ad04549c…` was an identifier of an earlier build, refused now that the heightmap row moved: the golden table without the rows added
 /// after it hashes to its golden pin, and that pin folds with this build's rule entries and the
 /// whole alice-det-math entry of 2d01c63f to it. Any moved row of that build, or a row added without being listed in
 /// `ROWS_ADDED_AFTER_AD04549C`, fails here
 #[test]
-fn the_ad04549c_rows_are_unchanged() {
-    let golden = golden_without(&[
-        ROWS_ADDED_AFTER_AD04549C,
-        ROWS_ADDED_AFTER_0F6FFC20,
-        ROWS_ADDED_AFTER_72277BD6,
-    ]);
+fn the_ad04549c_identifier_was_these_rows_and_is_refused() {
+    let golden = golden_before(
+        &[
+            ROWS_ADDED_AFTER_D2D2F0DF,
+            ROWS_ADDED_AFTER_AD04549C,
+            ROWS_ADDED_AFTER_0F6FFC20,
+            ROWS_ADDED_AFTER_72277BD6,
+        ],
+        ROWS_MOVED_AFTER_D2D2F0DF,
+    );
     assert_eq!(
         hex(&golden),
         "84831086d072608aa773445b0a838e5aa530c32d936fc1d6bf62ff02325b709d"
     );
     assert_eq!(hex(&whole_det_math_fold(Some(golden))), AD04549C);
+    assert_eq!(
+        check_sdf_semantics(&unhex(AD04549C)),
+        SemanticsCheck::Mismatch
+    );
+}
+
+const ID_D2D2F0DF: &str = "d2d2f0df6d15b8a1ecc092d47c5c86813767e0c44be2f447fff1ed0ee4609545";
+
+/// `d2d2f0df…` (after the smooth blends, before the heightmap face blend) is refused, and the
+/// reason is exactly the heightmap row: the table without `ROWS_ADDED_AFTER_D2D2F0DF` and with
+/// `ROWS_MOVED_AFTER_D2D2F0DF` back at their old hashes is that build's golden pin, which folds
+/// with this build's rule and det-math entries to it. Any other moved row, or a moved row not
+/// listed, fails here
+#[test]
+fn the_d2d2f0df_identifier_is_refused_because_exactly_the_heightmap_row_moved() {
+    let golden = golden_before(&[ROWS_ADDED_AFTER_D2D2F0DF], ROWS_MOVED_AFTER_D2D2F0DF);
+    assert_eq!(
+        hex(&golden),
+        "2086642eedf9958d1ebd7ff9c336cf0c758798394107661a9b4078ce186d601a"
+    );
+    let entries: Vec<(String, [u8; 32])> = all_entries()
+        .into_iter()
+        .map(|(n, d)| {
+            if n.starts_with("golden ") {
+                (n, golden)
+            } else {
+                (n, d)
+            }
+        })
+        .collect();
+    assert_eq!(hex(&fold_owned(&entries)), ID_D2D2F0DF);
+    assert_eq!(
+        check_sdf_semantics(&unhex(ID_D2D2F0DF)),
+        SemanticsCheck::Mismatch
+    );
+    // the moved row is the heightmap row, and only it: the current table differs from that
+    // build's in exactly the listed rows (the added band row aside)
+    assert_eq!(ROWS_MOVED_AFTER_D2D2F0DF.len(), 1);
 }
 
 /// Every previous identifier has an oracle that exists as a test (the file holds `#[test]` and

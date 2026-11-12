@@ -112,7 +112,27 @@ fn far_scenes() -> Vec<(&'static str, SdfNode, Vec<Vec3>)> {
             .collect()
     };
     let cylinder = || SdfNode::infinite_cylinder(0.0);
+    // heightmap displacement across the face ties: an 8x8 map with large neighbour differences,
+    // points on each tie plane (|x| = |y|, |y| = |z|, |x| = |z|) and stepped across the band of
+    // 1/16 of the dominant component, where the faces are blended (plain arithmetic, no libm)
+    let heightmap = || {
+        let map: Vec<f32> = (0..64u32).map(|i| ((i * 37) % 17) as f32 / 17.0).collect();
+        SdfNode::sphere(1.0).heightmap_displacement(map, 8, 8, 0.1, 1.0)
+    };
+    let band = || -> Vec<Vec3> {
+        let mut pts = Vec::new();
+        for k in 0..24u32 {
+            let c = 0.6 + 0.05 * k as f32;
+            let off = c * (k % 8) as f32 / 112.0; // 0 to 7/112 of c: across the 1/16 band
+            let s = (k % 5) as f32 * 0.1 - 0.2;
+            pts.push(Vec3::new(c, c - off, s * c));
+            pts.push(Vec3::new(s * c, c, -(c - off)));
+            pts.push(Vec3::new(-(c - off), s * c, c));
+        }
+        pts
+    };
     vec![
+        ("heightmap_face_tie_band", heightmap(), band()),
         ("twist_plane_below_2_13", twist(), heights(8128)),
         ("twist_plane_from_2_13", twist(), heights(8192)),
         ("infinite_cylinder_r0_normal", cylinder(), tiny(0x0080_0000)),
@@ -897,7 +917,7 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "heightmap_displacement",
-        "ed9247293c2854118bdc2d56615ba5efdf65dadcfeaa9160ef767b27a03cd600",
+        "d0fa80b194968ee14caa08cba5823319ff40fd41d7bf21c00255294daf4cc6ce",
     ),
     (
         "nested",
@@ -914,6 +934,10 @@ const GOLDEN: &[(&str, &str)] = &[
     (
         "nan_pair_intersection",
         "93c0bc9f17a70ce2700ec245a89580ae6622ee59ab5e72cdf35a2bbc48fdda7c",
+    ),
+    (
+        "heightmap_face_tie_band",
+        "3acc35993d7fe8bf003c0bb4d2c46dbe7932516d0a15d8cfc7c291f972f675b5",
     ),
     (
         "twist_plane_below_2_13",

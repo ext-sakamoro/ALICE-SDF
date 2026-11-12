@@ -244,30 +244,34 @@ mod volume_and_async {
     use alice_sdf::volume::gpu_bake::{gpu_bake_volume, gpu_bake_volume_with_normals};
     use alice_sdf::volume::BakeConfig;
 
-    /// The bake's box. Its bounds differ per axis: the height map picks its face by the dominant
-    /// axis, and its field is discontinuous where two axes tie (|y| = |z|), so a grid on a box
-    /// symmetric in its axes lands on ties, where implementations that round the comparison apart
-    /// pick different faces (measured: 0.0385 at (-0.67, 0.913, -0.913), about the 0.05 amplitude)
+    /// The bake's box, symmetric in its axes: its grid lands on the height map's face ties
+    /// (|x| = |y| and so on), where the face changes. The law blends the faces there, so the field is
+    /// continuous and every voxel is compared (a hard choice of face jumped by up to the amplitude
+    /// at a tie, and implementations that rounded the comparison apart disagreed there)
     fn config(res: u32) -> BakeConfig {
         BakeConfig {
             resolution: [res, res, res],
-            bounds_min: Vec3::new(-1.3711, -1.4137, -1.2911),
-            bounds_max: Vec3::new(1.4329, 1.3317, 1.4719),
+            bounds_min: Vec3::splat(-1.4),
+            bounds_max: Vec3::splat(1.4),
             ..Default::default()
         }
     }
 
-    /// How far `p` is from a tie between two axes (|x| = |y|, |y| = |z| or |x| = |z|). The height
-    /// map picks its face by the dominant axis, so its field is discontinuous on those planes, and
-    /// implementations that round the comparison apart pick different faces there (measured: 0.0346
-    /// at (0.497, -0.497, -0.186), about the 0.05 amplitude). Off the planes the field is one
-    /// formula and the implementations agree
-    fn tie_gap(p: Vec3) -> f32 {
-        let a = p.abs();
-        (a.x - a.y)
-            .abs()
-            .min((a.y - a.z).abs())
-            .min((a.x - a.z).abs())
+    /// The number of grid points exactly on a face tie (so the test is known to cross them)
+    fn ties(cfg: &BakeConfig) -> usize {
+        let r = cfg.resolution;
+        let mut n = 0;
+        for z in 0..r[2] {
+            for y in 0..r[1] {
+                for x in 0..r[0] {
+                    let a = node_pos(cfg, x, y, z).abs();
+                    if a.x == a.y || a.y == a.z || a.x == a.z {
+                        n += 1;
+                    }
+                }
+            }
+        }
+        n
     }
 
     /// The point of voxel (x, y, z): `bounds_min + i·size/(res−1)`, the bake's grid
@@ -292,15 +296,13 @@ mod volume_and_async {
         assert_eq!(gpu.data.len(), 24 * 24 * 24, "the bake has every voxel");
         // the reference is the tree's own field at each grid point (`eval`); the CPU bake agrees too
         let cpu = bake_volume(&node, &cfg);
-        let (mut worst, mut worst_cpu, mut compared, mut on_tie) = (0.0f32, 0.0f32, 0usize, 0usize);
+        let on_tie = ties(&cfg);
+        assert!(on_tie > 100, "the grid crosses only {on_tie} face ties");
+        let (mut worst, mut worst_cpu, mut compared) = (0.0f32, 0.0f32, 0usize);
         for z in 0..24 {
             for y in 0..24 {
                 for x in 0..24 {
                     let p = node_pos(&cfg, x, y, z);
-                    if tie_gap(p) < 1e-5 {
-                        on_tie += 1;
-                        continue;
-                    }
                     let want = eval(&node, p);
                     worst = worst.max((gpu.get(x, y, z) - want).abs());
                     worst_cpu = worst_cpu.max((cpu.get(x, y, z) - want).abs());
@@ -308,11 +310,8 @@ mod volume_and_async {
                 }
             }
         }
-        eprintln!("gpu_bake_volume: {compared} voxels compared, {on_tie} on a face tie skipped");
-        assert!(
-            on_tie * 100 < compared,
-            "too many voxels on a tie: {on_tie} of {compared}"
-        );
+        eprintln!("gpu_bake_volume: {compared} voxels compared, {on_tie} of them on a face tie");
+        assert_eq!(compared, 24 * 24 * 24, "every voxel is compared");
         assert!(
             worst_cpu < 1e-4,
             "the CPU bake is not the field here: {worst_cpu}"
@@ -339,17 +338,14 @@ mod volume_and_async {
             Vec3::new(-1.0, 1.0, -1.0),
             Vec3::new(1.0, 1.0, 1.0),
         ];
-        let (mut worst_d, mut worst_n, mut compared, mut on_tie) = (0.0f32, 0.0f32, 0usize, 0usize);
+        let on_tie = ties(&cfg);
+        assert!(on_tie > 50, "the grid crosses only {on_tie} face ties");
+        let (mut worst_d, mut worst_n, mut compared) = (0.0f32, 0.0f32, 0usize);
         let r = cfg.resolution;
         for z in 0..r[2] {
             for y in 0..r[1] {
                 for x in 0..r[0] {
                     let p = node_pos(&cfg, x, y, z);
-                    // the 4 samples reach ε·√3 from p: a tie that close splits them across faces
-                    if tie_gap(p) < 2.0 * eps * 3f32.sqrt() {
-                        on_tie += 1;
-                        continue;
-                    }
                     let v = gpu.get(x, y, z);
                     worst_d = worst_d.max((v.distance - eval(&node, p)).abs());
                     let g: Vec3 = ks.iter().map(|k| *k * eval(&node, p + *k * eps)).sum();
@@ -362,13 +358,9 @@ mod volume_and_async {
             }
         }
         eprintln!(
-            "gpu_bake_volume_with_normals: worst distance {worst_d:e}, worst normal {worst_n:e} over {compared} voxels, {on_tie} near a face tie skipped"
+            "gpu_bake_volume_with_normals: worst distance {worst_d:e}, worst normal {worst_n:e} over {compared} voxels, {on_tie} grid points on a face tie"
         );
         assert!(compared > 0, "no normal compared");
-        assert!(
-            on_tie * 20 < compared,
-            "too many voxels near a tie: {on_tie} of {compared}"
-        );
         assert!(worst_d < 1e-4, "distance: worst |gpu - cpu| {worst_d}");
         // the 4 samples differ by f32 rounding of the field (~1e-7) over 2ε: ~1e-4 in the gradient
         assert!(worst_n < 1e-2, "normal: worst |gpu - cpu| {worst_n}");

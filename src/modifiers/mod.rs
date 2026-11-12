@@ -34,7 +34,7 @@ mod twist;
 pub use bend::{modifier_bend, modifier_bend_cheap, modifier_bend_x, modifier_bend_z};
 pub use displacement::{modifier_displacement, modifier_sine_displacement};
 pub use extrude::{modifier_extrude, modifier_extrude_point};
-pub use heightmap_displacement::{bilinear_sample, heightmap_displacement};
+pub use heightmap_displacement::{bilinear_sample, heightmap_displacement, FACE_BLEND_BAND};
 pub use icosahedral::icosahedral_fold;
 pub use ifs::{ifs_fold, ifs_fold_with_scale};
 pub use mirror::{modifier_mirror, modifier_mirror_x, modifier_mirror_y, modifier_mirror_z};
