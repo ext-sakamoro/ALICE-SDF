@@ -211,6 +211,9 @@ pub enum OpCode {
     ExpSmoothIntersection = 138,
     /// ExpSmoothSubtraction: `params[0]` = k
     ExpSmoothSubtraction = 139,
+    /// SmoothBlend: `params[0]` = k, `params[1]` = kernel code, `params[2]` = mode code
+    /// (`SmoothKernel::code` / `BlendMode::code`)
+    SmoothBlend = 141,
 
     // === Transforms (modify point, then evaluate child) ===
     /// Translate: `params[0..3]` = offset (x, y, z)
@@ -492,7 +495,8 @@ impl OpCode {
             | Self::Tongue
             | Self::ExpSmoothUnion
             | Self::ExpSmoothIntersection
-            | Self::ExpSmoothSubtraction => OpKind::Binary,
+            | Self::ExpSmoothSubtraction
+            | Self::SmoothBlend => OpKind::Binary,
             Self::Translate
             | Self::Rotate
             | Self::Scale

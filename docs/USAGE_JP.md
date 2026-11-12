@@ -401,6 +401,16 @@ IQの指数スムースmin/max — 指数減衰によるC-無限滑らかなブ�
 | `ExpSmoothIntersection` | 反転ExpSmoothUnion | 指数スムースインターセクション |
 | `ExpSmoothSubtraction` | ExpSmoothIntersection(a, -b) | 指数スムースサブトラクション |
 
+### SmoothBlend（核を選べる平滑合成）
+
+`SdfNode::smooth_blend(other, k, kernel, mode)`: 3 種の smooth min を 1 つの node で扱う `smin(a, b) = min(a, b) − D(|a − b|)` `mode` は `Union` / `Intersection` (`−smin(−a, −b)`) / `Subtraction` (`−smin(−a, b)`)、`k <= 0` は合成なし 同じ方法は Inigo Quilez の記事 (smin) でも知られる
+
+| `SmoothKernel` | `x < k` での `D(x)` | 連続性 | `a = b` での食い込み |
+|----------------|--------------------|--------|----------------------|
+| `Circular` | `k − x/2 − √(k²/2 − x²/4)` (等値線が円弧) | C1 | `k(1 − 1/√2)` |
+| `Quartic` | `k·h³(4 − h)/16`, `h = 1 − x/k` | C2 | `3k/16` |
+| `Sigmoid` | `x / (eˣᐟᵏ − 1)` (台が有界でない) | C∞ | `k` |
+
 ### Shearトランスフォーム
 
 3軸せん断変形: `y' = y - shear.x * x`, `z' = z - shear.y * x - shear.z * y`。イタリック文字、建築的傾斜、非剛体変形に有用。

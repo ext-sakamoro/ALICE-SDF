@@ -210,7 +210,10 @@ pub const fn is_supported(op: OpCode) -> bool {
         | OpCode::IcosahedralSymmetry
         | OpCode::IFS
         | OpCode::HeightmapDisplacement
-        | OpCode::SurfaceRoughness => false,
+        | OpCode::SurfaceRoughness
+        // no emitter yet: the sigmoid kernel's branches (Kahan expm1) are not
+        // written out as standalone Rust; the transpiler reports it unsupported
+        | OpCode::SmoothBlend => false,
     }
 }
 

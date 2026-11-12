@@ -16,6 +16,7 @@ mod intersection;
 mod morph;
 mod pipe;
 mod smooth;
+mod smooth_blend;
 mod stairs;
 mod subtraction;
 mod tongue;
@@ -37,6 +38,11 @@ pub use smooth::{
     sdf_smooth_subtraction_rk, sdf_smooth_union, sdf_smooth_union_rk, smooth_max, smooth_max_rk,
     smooth_min, smooth_min_cubic, smooth_min_exp, smooth_min_rk, smooth_min_root,
     smooth_min_weight, SMOOTH_UNION_BLEND_GLSL,
+};
+pub use smooth_blend::{
+    smooth_blend, smooth_blend_decode, smooth_blend_helper_glsl, smooth_blend_helper_hlsl,
+    smooth_blend_helper_name, smooth_blend_helper_wgsl, smooth_blend_min_r, smooth_blend_r,
+    smooth_blend_weights, BlendMode, SmoothKernel,
 };
 pub use stairs::{
     sdf_stairs_intersection, sdf_stairs_subtraction, sdf_stairs_union, stairs_max, stairs_min,

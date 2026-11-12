@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1390 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1189 |
-| | **total** | **2588** |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1391 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1208 |
+| | **total** | **2608** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1390)
+## L1 — example-only (1391)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -238,6 +238,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/types/containers.rs`: `Aabb::center`, `Aabb::contains`, `Aabb::empty`, `Aabb::expand_aabb`, `Aabb::expand_point`, `Aabb::from_center_extents`, `Aabb::half_extents`, `Aabb::longest_axis`, `Aabb::signed_distance`, `Aabb::size`, `Aabb::surface_area`, `Aabb::union`, `Hit`, `Ray`, `Ray::at`, `Ray::new`, `SdfTree::with_metadata`
 - `src/types/mod.rs`: `SdfNode::category`
 - `src/types/modifiers.rs`: `SdfNode::sine_displacement`, `SdfNode::sine_displacement_aniso`
+- `src/types/operations.rs`: `SdfNode::smooth_blend`
 - `src/types/transforms.rs`: `SdfNode::grid_warp`, `SdfNode::pose`, `SdfNode::rigid_pose`, `SdfNode::translate_vec`
 - `src/unordered.rs`: `UnorderedMap::count_values_where`, `UnorderedMap::get_mut`, `UnorderedMap::is_empty`, `UnorderedMap::max_value`, `UnorderedMap::min_key_by`, `UnorderedMap::sorted_entries_mut`, `UnorderedMap::sorted_keys`, `UnorderedMap::update_each_value`, `UnorderedSet::clear`, `UnorderedSet::extend`, `UnorderedSet::is_empty`, `UnorderedSet::len`, `UnorderedSet::with_capacity`
 - `src/validity.rs`: `ErosionVerdict`, `ErosionVerdict::has_thick_region`, `PrintRequirements`, `PrintRequirements::fdm_0_4_nozzle`, `ValidatedExportError`, `ValidityReport`, `ValidityReport::is_printable`, `export_step_validated`, `export_step_validated_with_provenance`, `local_thickness`, `overhang_stats`, `prove_erosion`, `validate_for_printing`

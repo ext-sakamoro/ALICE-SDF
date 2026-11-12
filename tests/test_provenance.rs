@@ -3406,9 +3406,13 @@ fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
 // paint tool would write it (no identifier), and the heightmap writer's output for it:
 //   heightmap_plain.png    34151b0d0efbd9f7fa65ccc76299d474e00ad48ddfe2b40ecfed7916f0db8098
 //   heightmap_plain.jpg    3b8303187e7a141798d8c3a8c72b26da9795da077b87fcc00856a717afc7dbcd
-//   heightmap_stamped.png  b5135d96e908fbea25f55c82d0759e25c510251716a16046d3b89cdec6bba5bc
+//   heightmap_stamped.png  368d940700327c562c57738861574b9d5f0f0d9402b46a44aa20e81c741dd9b8
 //                          Heightmap::from_image_bytes(plain.png, &HeightmapImageConfig::new(
 //                          40.0, 16.0, 12.0)).to_png(..) (16-bit grey, the identifier in tEXt)
+//   heightmap_stamped_72277bd6.png
+//                          b5135d96e908fbea25f55c82d0759e25c510251716a16046d3b89cdec6bba5bc
+//                          the same written by the build whose identifier was 72277bd6… (before
+//                          the smooth blend golden rows), now a previous identifier
 //   heightmap_stamped_0f6ffc20.png
 //                          a9230e94cb0ae152fd588c30829f0a3bc8f201996f0219aa1b1670b9b1a5f766
 //                          the same written by the build whose identifier was 0f6ffc20… (before
@@ -3555,13 +3559,15 @@ fn heightmap_images_carry_and_check_the_identifier() {
     assert_eq!(pinned.heights, back.heights);
 
     // the same image written under the previous identifiers reads as VerifiedPrevious with the
-    // same heights: 0f6ffc20… (before the loft and section stack golden rows), 0f6c58d0…
+    // same heights: 72277bd6… (before the smooth blend golden rows), 0f6ffc20… (before the loft
+    // and section stack golden rows), 0f6c58d0…
     // (alice-det-math folded whole) and ad04549c… (the build before the grid warp and pose golden
     // rows)
     for (file, at) in [
-        ("heightmap_stamped_0f6ffc20.png", 0),
-        ("heightmap_stamped_0f6c58d0.png", 1),
-        ("heightmap_stamped_ad04549c.png", 2),
+        ("heightmap_stamped_72277bd6.png", 0),
+        ("heightmap_stamped_0f6ffc20.png", 1),
+        ("heightmap_stamped_0f6c58d0.png", 2),
+        ("heightmap_stamped_ad04549c.png", 3),
     ] {
         let previous = std::fs::read(fixture(file)).unwrap();
         let (old, status) = Heightmap::from_image_bytes(&previous, &cfg)

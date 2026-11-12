@@ -19,6 +19,7 @@ use crate::compiled::real::LawMinMax;
 use crate::compiled::real::LawVec;
 use crate::eval::eval;
 use crate::modifiers::*;
+use crate::operations::smooth_blend_weights;
 use crate::transforms::{transform_rotate, transform_rotate_inverse, transform_translate};
 use crate::types::SdfNode;
 use glam::{Vec2, Vec3};
@@ -222,6 +223,18 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             let wa = wa_raw / sum;
             let wb = wb_raw / sum;
             ga * wa - gb * wb
+        }
+        SdfNode::SmoothBlend {
+            a,
+            b,
+            k,
+            kernel,
+            mode,
+        } => {
+            let da = eval(a, point);
+            let db = eval(b, point);
+            let (wa, wb) = smooth_blend_weights(da, db, *k, *kernel, *mode);
+            eval_gradient(a, point) * wa + eval_gradient(b, point) * wb
         }
         SdfNode::ChamferUnion { a, b, r } => {
             let da = eval(a, point);

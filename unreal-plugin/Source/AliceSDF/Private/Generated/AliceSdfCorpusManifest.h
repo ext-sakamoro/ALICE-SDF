@@ -8,8 +8,8 @@
 
 #include "CoreMinimal.h"
 
-#define ALICE_SDF_CORPUS_COUNT 160
-#define ALICE_SDF_CORPUS_SHADER_COUNT 160
+#define ALICE_SDF_CORPUS_COUNT 169
+#define ALICE_SDF_CORPUS_SHADER_COUNT 169
 #define ALICE_SDF_CORPUS_GRID_POINTS 577
 #define ALICE_SDF_CORPUS_RANDOM_POINTS 512
 
@@ -118,6 +118,15 @@ static const TCHAR* const GAliceSdfCorpusNames[ALICE_SDF_CORPUS_COUNT] = {
 	TEXT("exp_smooth_union"),
 	TEXT("exp_smooth_intersection"),
 	TEXT("exp_smooth_subtract"),
+	TEXT("smooth_blend_circular_union"),
+	TEXT("smooth_blend_circular_intersection"),
+	TEXT("smooth_blend_circular_subtract"),
+	TEXT("smooth_blend_quartic_union"),
+	TEXT("smooth_blend_quartic_intersection"),
+	TEXT("smooth_blend_quartic_subtract"),
+	TEXT("smooth_blend_sigmoid_union"),
+	TEXT("smooth_blend_sigmoid_intersection"),
+	TEXT("smooth_blend_sigmoid_subtract"),
 	TEXT("translate"),
 	TEXT("rotate"),
 	TEXT("scale"),
@@ -282,6 +291,15 @@ static const bool GAliceSdfCorpusCompilable[ALICE_SDF_CORPUS_COUNT] = {
 	true, // exp_smooth_union
 	true, // exp_smooth_intersection
 	true, // exp_smooth_subtract
+	true, // smooth_blend_circular_union
+	true, // smooth_blend_circular_intersection
+	true, // smooth_blend_circular_subtract
+	true, // smooth_blend_quartic_union
+	true, // smooth_blend_quartic_intersection
+	true, // smooth_blend_quartic_subtract
+	true, // smooth_blend_sigmoid_union
+	true, // smooth_blend_sigmoid_intersection
+	true, // smooth_blend_sigmoid_subtract
 	true, // translate
 	true, // rotate
 	true, // scale
@@ -445,6 +463,15 @@ static const TCHAR* const GAliceSdfCorpusShaderNames[ALICE_SDF_CORPUS_SHADER_COU
 	TEXT("exp_smooth_union"),
 	TEXT("exp_smooth_intersection"),
 	TEXT("exp_smooth_subtract"),
+	TEXT("smooth_blend_circular_union"),
+	TEXT("smooth_blend_circular_intersection"),
+	TEXT("smooth_blend_circular_subtract"),
+	TEXT("smooth_blend_quartic_union"),
+	TEXT("smooth_blend_quartic_intersection"),
+	TEXT("smooth_blend_quartic_subtract"),
+	TEXT("smooth_blend_sigmoid_union"),
+	TEXT("smooth_blend_sigmoid_intersection"),
+	TEXT("smooth_blend_sigmoid_subtract"),
 	TEXT("translate"),
 	TEXT("rotate"),
 	TEXT("scale"),

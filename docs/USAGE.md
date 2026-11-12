@@ -402,6 +402,16 @@ IQ's exponential smooth min/max — C-infinity smooth with exponential falloff. 
 | `ExpSmoothIntersection` | Negated ExpSmoothUnion | Exponential smooth intersection |
 | `ExpSmoothSubtraction` | ExpSmoothIntersection(a, -b) | Exponential smooth subtraction |
 
+### SmoothBlend (kernel choice)
+
+`SdfNode::smooth_blend(other, k, kernel, mode)`: one node for three smooth minima, `smin(a, b) = min(a, b) − D(|a − b|)`. `mode` is `Union`, `Intersection` (`−smin(−a, −b)`) or `Subtraction` (`−smin(−a, b)`); `k <= 0` means no blend. The methods are also known from Inigo Quilez's articles (smin).
+
+| `SmoothKernel` | `D(x)` for `x < k` | Continuity | Deficit at `a = b` |
+|----------------|-------------------|------------|--------------------|
+| `Circular` | `k − x/2 − √(k²/2 − x²/4)` (level sets are circular arcs) | C1 | `k(1 − 1/√2)` |
+| `Quartic` | `k·h³(4 − h)/16`, `h = 1 − x/k` | C2 | `3k/16` |
+| `Sigmoid` | `x / (eˣᐟᵏ − 1)` (unbounded support) | C∞ | `k` |
+
 ### Shear Transform
 
 3-axis shear deformation: `y' = y - shear.x * x`, `z' = z - shear.y * x - shear.z * y`. Useful for italic text, architectural slopes, and non-rigid deformation.

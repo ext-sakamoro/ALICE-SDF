@@ -1071,4 +1071,9 @@ impl PrimTable for f32 {
     fn exp_smooth_subtraction(inst: &Instruction, a: Self, b: Self) -> Self {
         sdf_exp_smooth_subtraction_r(a, b, inst.params[0])
     }
+    #[inline(always)]
+    fn smooth_blend(inst: &Instruction, a: Self, b: Self) -> Self {
+        let (kernel, mode) = smooth_blend_decode(inst.params[1], inst.params[2]);
+        smooth_blend_r(a, b, inst.params[0], kernel, mode)
+    }
 }

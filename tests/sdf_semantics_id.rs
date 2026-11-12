@@ -18,7 +18,7 @@ const GOLDEN_SOURCE: &str = include_str!("test_det_golden.rs");
 // each alice-det-math function the crate calls folded as its own entry; 0f6c58d0… (alice-det-math
 // 0.5.2 at 2d01c63f folded whole) and ad04549c… (the same without the grid warp and pose rows)
 // are the previous identifiers this build still reproduces
-const RECORDED_HEX: &str = "72277bd65112b8f7faa5884d6f12dfd507d6f891d4cdc4c12ff060888cf6d936";
+const RECORDED_HEX: &str = "d2d2f0df6d15b8a1ecc092d47c5c86813767e0c44be2f447fff1ed0ee4609545";
 
 /// The alice-det-math entry of the generations that folded it whole: its 0.5.2 at 2d01c63f
 /// identifier
@@ -36,6 +36,21 @@ const ROWS_ADDED_AFTER_0F6FFC20: &[&str] = &[
     "loft_nofade",
     "section_stack",
     "smooth_section_stack",
+];
+
+/// The golden rows added after `72277bd6…` (and so after every earlier identifier): the
+/// smooth blends (circular / quartic / sigmoid kernel × union / intersection / subtraction),
+/// new nodes, no row of that build changed
+const ROWS_ADDED_AFTER_72277BD6: &[&str] = &[
+    "smooth_blend_circular_union",
+    "smooth_blend_circular_intersection",
+    "smooth_blend_circular_subtract",
+    "smooth_blend_quartic_union",
+    "smooth_blend_quartic_intersection",
+    "smooth_blend_quartic_subtract",
+    "smooth_blend_sigmoid_union",
+    "smooth_blend_sigmoid_intersection",
+    "smooth_blend_sigmoid_subtract",
 ];
 
 /// The golden table digest without the rows named in `added` (each must be a row of the table)
@@ -178,7 +193,7 @@ fn the_det_math_pins_are_the_resolved_function_identifiers() {
 fn the_identifier_is_the_fold_and_every_earlier_row_is_its_whole_det_math_fold() {
     assert!(!SDF_SEMANTICS_BY_DET_MATH.is_empty());
     for (det_math, id) in SDF_SEMANTICS_BY_DET_MATH {
-        let golden = golden_without(&[ROWS_ADDED_AFTER_0F6FFC20]);
+        let golden = golden_without(&[ROWS_ADDED_AFTER_0F6FFC20, ROWS_ADDED_AFTER_72277BD6]);
         let mut pins: Vec<(&str, [u8; 32])> = SDF_SEMANTICS_PINS
             .iter()
             .map(|&(n, d)| {
@@ -217,10 +232,11 @@ fn check_reads_this_identifier_and_refuses_the_earlier_ones() {
         check_sdf_semantics(&SDF_SEMANTICS_ID),
         SemanticsCheck::Verified
     );
-    assert_eq!(PREVIOUS_SDF_SEMANTICS_IDS.len(), 3);
-    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[0]), ID_0F6FFC20);
-    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[1]), ID_0F6C58D0);
-    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[2]), AD04549C);
+    assert_eq!(PREVIOUS_SDF_SEMANTICS_IDS.len(), 4);
+    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[0]), ID_72277BD6);
+    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[1]), ID_0F6FFC20);
+    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[2]), ID_0F6C58D0);
+    assert_eq!(hex(&PREVIOUS_SDF_SEMANTICS_IDS[3]), AD04549C);
     for previous in PREVIOUS_SDF_SEMANTICS_IDS {
         assert_eq!(
             check_sdf_semantics(previous),
@@ -312,6 +328,7 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
             !windows.contains(&n.as_str())
                 && !ROWS_ADDED_AFTER_AD04549C.contains(&n.as_str())
                 && !ROWS_ADDED_AFTER_0F6FFC20.contains(&n.as_str())
+                && !ROWS_ADDED_AFTER_72277BD6.contains(&n.as_str())
         })
         .cloned()
         .collect();
@@ -319,7 +336,8 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
         older.len()
             + windows.len()
             + ROWS_ADDED_AFTER_AD04549C.len()
-            + ROWS_ADDED_AFTER_0F6FFC20.len(),
+            + ROWS_ADDED_AFTER_0F6FFC20.len()
+            + ROWS_ADDED_AFTER_72277BD6.len(),
         rows.len(),
         "every window is a row"
     );
@@ -356,6 +374,11 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
 /// identifier put back into the previous list needs its oracle here
 const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[
     (
+        ID_72277BD6,
+        "tests/sdf_semantics_id.rs",
+        "the_72277bd6_rows_are_unchanged",
+    ),
+    (
         ID_0F6FFC20,
         "tests/sdf_semantics_id.rs",
         "the_0f6ffc20_rows_are_unchanged",
@@ -372,6 +395,32 @@ const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[
     ),
 ];
 
+const ID_72277BD6: &str = "72277bd65112b8f7faa5884d6f12dfd507d6f891d4cdc4c12ff060888cf6d936";
+
+/// `72277bd6…` (the per-function fold before the smooth blends) is a previous identifier of
+/// this build: the golden table without `ROWS_ADDED_AFTER_72277BD6` hashes to its golden pin,
+/// and that pin folds with this build's rule entries and det-math function entries to it. Any
+/// moved row of that build, or a row added without being listed, fails here
+#[test]
+fn the_72277bd6_rows_are_unchanged() {
+    let golden = golden_without(&[ROWS_ADDED_AFTER_72277BD6]);
+    assert_eq!(
+        hex(&golden),
+        "9014e45fd46635353576228b3e8cd1eedc54f3274895249b7718bfb88caf551c"
+    );
+    let entries: Vec<(String, [u8; 32])> = all_entries()
+        .into_iter()
+        .map(|(n, d)| {
+            if n.starts_with("golden ") {
+                (n, golden)
+            } else {
+                (n, d)
+            }
+        })
+        .collect();
+    assert_eq!(hex(&fold_owned(&entries)), ID_72277BD6);
+}
+
 const ID_0F6FFC20: &str = "0f6ffc20efe7737c4cfbb95d35e74c62edd16c1c0d562faf35a2abdcc5ccb7e7";
 
 /// `0f6ffc20…` (the per-function fold before the lofts and the section stacks) is a previous
@@ -380,7 +429,7 @@ const ID_0F6FFC20: &str = "0f6ffc20efe7737c4cfbb95d35e74c62edd16c1c0d562faf35a2a
 /// it. Any moved row of that build, or a row added without being listed, fails here
 #[test]
 fn the_0f6ffc20_rows_are_unchanged() {
-    let golden = golden_without(&[ROWS_ADDED_AFTER_0F6FFC20]);
+    let golden = golden_without(&[ROWS_ADDED_AFTER_0F6FFC20, ROWS_ADDED_AFTER_72277BD6]);
     assert_eq!(
         hex(&golden),
         "ecfb9c749cac3ec06f9fec60bf1735ee9aff187f0d2873825895e744682750a5"
@@ -406,7 +455,7 @@ const ID_0F6C58D0: &str = "0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f
 /// alice-det-math entry to it). A moved golden row fails here
 #[test]
 fn the_0f6c58d0_golden_is_unchanged() {
-    let golden = golden_without(&[ROWS_ADDED_AFTER_0F6FFC20]);
+    let golden = golden_without(&[ROWS_ADDED_AFTER_0F6FFC20, ROWS_ADDED_AFTER_72277BD6]);
     assert_eq!(
         hex(&golden),
         "ecfb9c749cac3ec06f9fec60bf1735ee9aff187f0d2873825895e744682750a5"
@@ -422,7 +471,11 @@ const AD04549C: &str = "ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f6422
 /// `ROWS_ADDED_AFTER_AD04549C`, fails here
 #[test]
 fn the_ad04549c_rows_are_unchanged() {
-    let golden = golden_without(&[ROWS_ADDED_AFTER_AD04549C, ROWS_ADDED_AFTER_0F6FFC20]);
+    let golden = golden_without(&[
+        ROWS_ADDED_AFTER_AD04549C,
+        ROWS_ADDED_AFTER_0F6FFC20,
+        ROWS_ADDED_AFTER_72277BD6,
+    ]);
     assert_eq!(
         hex(&golden),
         "84831086d072608aa773445b0a838e5aa530c32d936fc1d6bf62ff02325b709d"

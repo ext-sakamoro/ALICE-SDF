@@ -216,6 +216,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # 2 local
 "impl::Deserialize for SdfNode" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
+"impl::Deserialize for SmoothKernel" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
+"impl::Deserialize for BlendMode" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
 "impl::Deserialize for SdfTree" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
 
 # 8 handshake
@@ -345,6 +347,8 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "impl::Serialize for ParticleMaterial" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for SdfMetadata" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for SdfNode" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for SmoothKernel" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for BlendMode" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for SdfTree" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for LoftBounds" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for SectionStack" = "local: writes this crate's own value; stamping the stored file is G8's"
@@ -969,6 +973,10 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # 13 local
 "fn::compiled::glsl::render_pipeline::build_full_shader" = "local: generates shader text"
+"fn::operations::smooth_blend::smooth_blend_helper_glsl" = "local: generates shader text"
+"fn::operations::smooth_blend::smooth_blend_helper_hlsl" = "local: generates shader text"
+"fn::operations::smooth_blend::smooth_blend_helper_name" = "local: generates shader text"
+"fn::operations::smooth_blend::smooth_blend_helper_wgsl" = "local: generates shader text"
 "fn::compiled::transpiler_common::lit" = "local: generates shader text"
 "fn::compiled::transpiler_common::shader_unsupported_nodes" = "local: generates shader text"
 "fn::mesh::gpu_mc_shaders::generate_classify_shader" = "local: generates shader text"

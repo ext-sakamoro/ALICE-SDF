@@ -8,6 +8,7 @@
 
 use crate::compiled::real::LawMinMax;
 use crate::modifiers::TERRAIN_NOISE_SEED;
+use crate::operations::BlendMode;
 use crate::types::SdfNode;
 use std::fmt::Write;
 
@@ -1308,6 +1309,11 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             | SdfNode::ExpSmoothSubtraction { a, .. } => {
                 self.transpile_rest_inner(a, point_var, code)
             }
+            SdfNode::SmoothBlend { a, b, mode, .. } => match mode {
+                BlendMode::Union => pick(self, a, b, "<=", code),
+                BlendMode::Intersection => pick(self, a, b, ">=", code),
+                BlendMode::Subtraction => self.transpile_rest_inner(a, point_var, code),
+            },
             SdfNode::WithMaterial { child, .. } => {
                 self.transpile_rest_inner(child, point_var, code)
             }
@@ -4696,6 +4702,31 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &var,
                     &format!("{} + log({}) * {}", m, s, self.param(k.law_max(1e-6))),
                 ));
+                var
+            }
+
+            SdfNode::SmoothBlend {
+                a,
+                b,
+                k,
+                kernel,
+                mode,
+            } => {
+                // the kernel table's shader helper (operations::smooth_blend), with
+                // the mode's negations as on the CPU: intersection −smin(−a, −b),
+                // subtraction −smin(−a, b)
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                let helper = crate::operations::smooth_blend_helper_name(*kernel);
+                self.ensure_helper(helper);
+                let kk = self.param(*k);
+                let var = self.next_var();
+                let expr = match mode {
+                    BlendMode::Union => format!("{helper}({d_a}, {d_b}, {kk})"),
+                    BlendMode::Intersection => format!("-{helper}(-{d_a}, -{d_b}, {kk})"),
+                    BlendMode::Subtraction => format!("-{helper}(-{d_a}, {d_b}, {kk})"),
+                };
+                code.push_str(&L::decl_float(&var, &expr));
                 var
             }
 
