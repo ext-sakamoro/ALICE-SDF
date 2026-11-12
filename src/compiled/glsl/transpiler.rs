@@ -88,6 +88,9 @@ impl ShaderLang for GlslLang {
     fn atan2_expr(y: &str, x: &str) -> String {
         format!("alice_atan2({y}, {x})")
     }
+    fn nan_expr() -> &'static str {
+        "uintBitsToFloat(0x7fc00000u)"
+    }
     fn cast_float(expr: &str) -> String {
         format!("float({})", expr)
     }

@@ -478,8 +478,13 @@ pub fn eval_gradient(node: &SdfNode, point: Vec3) -> Vec3 {
             spacing,
             count,
             mirror,
-            ..
+            neighbours,
+            variation,
         } => {
+            // the fields whose law has not landed: no gradient (as eval gives NaN)
+            if *neighbours || variation.is_some() {
+                return Vec3::NAN;
+            }
             // piecewise translation, with the mirrored axes negated in odd cells
             let p = crate::modifiers::modifier_repeat_cells(point, *spacing, *count, *mirror);
             eval_gradient(child, p)

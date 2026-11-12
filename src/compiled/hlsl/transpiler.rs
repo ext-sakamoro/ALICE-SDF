@@ -91,6 +91,9 @@ impl ShaderLang for HlslLang {
         // HLSL has no `mix`.
         format!("lerp({a}, {b}, {t})")
     }
+    fn nan_expr() -> &'static str {
+        "asfloat(0x7fc00000u)"
+    }
     fn cast_float(expr: &str) -> String {
         format!("(float)({})", expr)
     }
