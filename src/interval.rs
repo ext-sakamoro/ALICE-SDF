@@ -1236,7 +1236,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             }
             let n = count.unwrap_or([0; 3]);
             let axis = |iv: Interval, s: f32, cnt: u32| {
-                if !(s > 0.0) {
+                if s.is_nan() || s <= 0.0 {
                     return iv;
                 }
                 let inv = 1.0 / s;
@@ -1245,7 +1245,11 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 } else {
                     ((cnt as f32 - 1.0) * 0.5, cnt as f32 - 1.0)
                 };
-                let cell = |x: f32| round_half_up(x * inv + h).law_max(if cnt == 0 { f32::NEG_INFINITY } else { 0.0 }).law_min(top);
+                let cell = |x: f32| {
+                    round_half_up(x * inv + h)
+                        .law_max(if cnt == 0 { f32::NEG_INFINITY } else { 0.0 })
+                        .law_min(top)
+                };
                 let (c0, c1) = (cell(iv.lo), cell(iv.hi));
                 if c0 == c1 {
                     let q = Interval::new(iv.lo - (c0 - h) * s, iv.hi - (c0 - h) * s);

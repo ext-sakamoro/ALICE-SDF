@@ -886,7 +886,10 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
             count,
             mirror,
             ..
-        } => eval_material(child, modifier_repeat_cells(point, *spacing, *count, *mirror)),
+        } => eval_material(
+            child,
+            modifier_repeat_cells(point, *spacing, *count, *mirror),
+        ),
         SdfNode::RepeatFinite {
             child,
             count,
