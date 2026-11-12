@@ -19,10 +19,10 @@ mod icosahedral;
 mod ifs;
 mod mirror;
 mod noise;
-mod repeat_cells;
 mod octant_mirror;
 mod polar_repeat;
 mod repeat;
+mod repeat_cells;
 mod revolution;
 mod shear;
 mod surface_roughness;
@@ -32,11 +32,6 @@ mod sweep;
 mod taper;
 mod twist;
 
-pub(crate) use repeat_cells::check_repeat_cells_tree;
-pub use repeat_cells::{
-    modifier_repeat_cells, repeat_cells_mirror_sign, repeat_cells_r, validate_repeat_cells, CellVariation,
-    RepeatCellsError,
-};
 pub use bend::{modifier_bend, modifier_bend_cheap, modifier_bend_x, modifier_bend_z};
 pub use displacement::{modifier_displacement, modifier_sine_displacement};
 pub use extrude::{modifier_extrude, modifier_extrude_point};
@@ -51,6 +46,9 @@ pub use repeat::{
     modifier_repeat_finite, modifier_repeat_infinite, modifier_repeat_infinite_rk,
     modifier_repeat_polar, modifier_repeat_x, modifier_repeat_y, modifier_repeat_z,
 };
+pub(crate) use repeat_cells::check_repeat_cells_tree;
+pub use repeat_cells::{modifier_repeat_cells, CellVariation, RepeatCellsError};
+pub(crate) use repeat_cells::{repeat_cells_mirror_sign, repeat_cells_r, validate_repeat_cells};
 pub use revolution::modifier_revolution;
 pub use shear::modifier_shear;
 #[cfg(feature = "texture-fit")]
