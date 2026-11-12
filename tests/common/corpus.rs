@@ -630,6 +630,27 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
         ("bend", unit_box().bend(0.8)),
         ("repeat_infinite", sphere().repeat_infinite(2.0, 2.0, 2.0)),
         (
+            "repeat_cells_mirror",
+            sphere()
+                .translate(0.4, 0.2, 0.0)
+                .repeat_cells(Vec3::new(2.0, 1.5, 0.0), None, true)
+                .unwrap(),
+        ),
+        (
+            "repeat_cells_finite_mirror",
+            sphere()
+                .translate(0.4, 0.2, 0.0)
+                .repeat_cells(Vec3::new(2.0, 1.5, 2.0), Some([3, 2, 1]), true)
+                .unwrap(),
+        ),
+        (
+            "repeat_cells_finite_plain",
+            sphere()
+                .translate(0.4, 0.0, 0.0)
+                .repeat_cells(Vec3::new(2.0, 0.0, 2.0), Some([2, 1, 4]), false)
+                .unwrap(),
+        ),
+        (
             "repeat_finite",
             sphere().repeat_finite([2, 1, 2], Vec3::splat(1.5)),
         ),

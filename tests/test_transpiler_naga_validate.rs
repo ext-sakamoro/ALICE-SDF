@@ -54,6 +54,43 @@ fn every_corpus_node_transpiles_to_valid_wgsl() {
     );
 }
 
+/// The NaN a shader returns for a node it has no law for (a `RepeatCells` with
+/// the not-yet-supported `neighbours`) is valid WGSL and GLSL, not only the
+/// supported corpus.
+#[test]
+fn the_no_law_nan_is_valid_wgsl_and_glsl() {
+    use alice_sdf::prelude::{SdfNode, Vec3};
+    let node = SdfNode::RepeatCells {
+        child: std::sync::Arc::new(SdfNode::sphere(0.3)),
+        spacing: Vec3::new(2.0, 0.0, 0.0),
+        count: None,
+        mirror: true,
+        neighbours: true,
+        variation: None,
+    };
+    let wgsl = WgslShader::transpile(&node, TranspileMode::Hardcoded).source;
+    assert!(wgsl.contains("0x7fc00000u"));
+    let module = naga::front::wgsl::parse_str(&wgsl).unwrap_or_else(|e| panic!("{}", e.emit_to_string(&wgsl)));
+    validate(&module).expect("WGSL");
+    #[cfg(feature = "glsl")]
+    {
+        use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode};
+        let glsl = GlslShader::transpile(&node, GlslTranspileMode::Hardcoded).source;
+        assert!(glsl.contains("0x7fc00000u"));
+        let source = format!(
+            "{glsl}\nout vec4 alice_frag;\nvoid main() {{ alice_frag = vec4(sdf_eval(vec3(0.1, 0.2, 0.3))); }}\n"
+        );
+        let options = naga::front::glsl::Options {
+            stage: naga::ShaderStage::Fragment,
+            defines: naga::FastHashMap::default(),
+        };
+        let module = naga::front::glsl::Frontend::default()
+            .parse(&options, &source)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        validate(&module).expect("GLSL");
+    }
+}
+
 #[cfg(feature = "glsl")]
 #[test]
 fn every_corpus_node_transpiles_to_valid_glsl() {

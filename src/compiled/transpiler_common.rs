@@ -196,6 +196,8 @@ pub trait ShaderLang: private::Sealed + 'static {
     }
     /// "f32(x)" / "float(x)"
     fn cast_float(expr: &str) -> String;
+    /// A quiet NaN (bits 0x7fc00000): the value of a node the shader has no law for
+    fn nan_expr() -> &'static str;
     /// Scalar select: `cond ? a : b`, used where the CPU law is a branch-free
     /// `select` so the tie / sign convention matches. Default is the C-style
     /// ternary (GLSL / HLSL); WGSL overrides with `select(b, a, cond)`.
@@ -3440,10 +3442,13 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 neighbours,
                 variation,
             } => {
-                assert!(
-                    !*neighbours && variation.is_none(),
-                    "RepeatCells neighbours / variation has no shader law yet (refused, not ignored)"
-                );
+                if *neighbours || variation.is_some() {
+                    // no shader law yet (shader_unsupported_nodes names it): NaN, not the
+                    // single-cell value with the field ignored
+                    let v = self.next_var();
+                    code.push_str(&L::decl_float(&v, L::nan_expr()));
+                    return v;
+                }
                 // the law of modifiers::repeat_cells, operation for operation: per repeated axis
                 // c = floor(p·(1/s) [+ h] + 0.5) (clamped to [0, n−1] when finite),
                 // q = p − c·s (or p − (c − h)·s), and q·(1 − 2·(c − 2·floor(c/2))) when mirrored

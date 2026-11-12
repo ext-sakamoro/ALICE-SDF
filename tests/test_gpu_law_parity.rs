@@ -172,6 +172,20 @@ fn repeat_laws_gpu_match_cpu_at_ties() {
         &offset_sphere().repeat_finite([3, 2, 3], Vec3::splat(2.0)),
         1e-4,
     );
+    assert_gpu_matches_cpu(
+        "repeat_cells_mirror",
+        &offset_sphere()
+            .repeat_cells(Vec3::splat(2.0), None, true)
+            .unwrap(),
+        1e-4,
+    );
+    assert_gpu_matches_cpu(
+        "repeat_cells_finite_mirror",
+        &offset_sphere()
+            .repeat_cells(Vec3::splat(2.0), Some([3, 2, 3]), true)
+            .unwrap(),
+        1e-4,
+    );
     // atan2 on the GPU is not libm, so an *exact* sector tie (count 4 on the
     // diagonals, odd counts at π) can resolve differently on the GPU — that is
     // the documented GPU transcendental domain, not a law drift. Count 6 has no
