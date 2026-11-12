@@ -37,7 +37,9 @@ impl SdfNode {
     ///
     /// # Errors
     ///
-    /// As [`crate::modifiers::validate_repeat_cells`] (bad spacing or count).
+    /// [`RepeatCellsError::Spacing`](crate::modifiers::RepeatCellsError::Spacing) for a
+    /// negative or non-finite spacing component or an all-zero spacing,
+    /// [`RepeatCellsError::Count`](crate::modifiers::RepeatCellsError::Count) for a zero cell count.
     pub fn repeat_cells(
         self,
         spacing: Vec3,
@@ -59,7 +61,9 @@ impl SdfNode {
     ///
     /// # Errors
     ///
-    /// As [`crate::modifiers::validate_repeat_cells`].
+    /// As [`Self::repeat_cells`], and
+    /// [`RepeatCellsError::NotYetSupported`](crate::modifiers::RepeatCellsError::NotYetSupported)
+    /// for `neighbours` or `variation` (a literal node can carry them).
     pub fn validate_repeat_cells(&self) -> Result<(), crate::modifiers::RepeatCellsError> {
         match self {
             Self::RepeatCells {

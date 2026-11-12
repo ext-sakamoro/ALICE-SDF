@@ -218,6 +218,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "impl::Deserialize for SdfNode" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
 "impl::Deserialize for SmoothKernel" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
 "impl::Deserialize for BlendMode" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
+"impl::Deserialize for CellVariation" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), which also refuse a RepeatCells carrying it until its law lands, and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
 "impl::Deserialize for SdfTree" = "local: the type's field layout, not a stored-form reader; the stored forms' identifier check is the loaders' (io::load, load_asdf, load_asdf_json, from_json_string, decode_sdf_i_packet), and no reader in this crate reads the type by bare serde (scripts/bare_serde_reads.py)"
 
 # 8 handshake
@@ -349,6 +350,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "impl::Serialize for SdfNode" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for SmoothKernel" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for BlendMode" = "local: writes this crate's own value; stamping the stored file is G8's"
+"impl::Serialize for CellVariation" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for SdfTree" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for LoftBounds" = "local: writes this crate's own value; stamping the stored file is G8's"
 "impl::Serialize for SectionStack" = "local: writes this crate's own value; stamping the stored file is G8's"
@@ -993,6 +995,7 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 # 30 local
 "fn::atan2_expr" = "local: shader text builders over names and expressions"
 "fn::cast_float" = "local: shader text builders over names and expressions"
+"fn::nan_expr" = "local: shader text builders over names and expressions"
 "fn::cast_int" = "local: shader text builders over names and expressions"
 "fn::decl_float" = "local: shader text builders over names and expressions"
 "fn::decl_int" = "local: shader text builders over names and expressions"

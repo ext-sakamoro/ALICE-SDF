@@ -3458,7 +3458,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 for i in 0..3 {
                     let s = spacing[i];
                     let pc = format!("{point_var}.{}", comps[i]);
-                    if !(s > 0.0) {
+                    if s.is_nan() || s <= 0.0 {
                         axes.push(pc);
                         continue;
                     }
@@ -3490,7 +3490,10 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     }
                 }
                 let new_p = self.next_var();
-                code.push_str(&L::decl_vec3(&new_p, &L::vec3_ctor(&axes[0], &axes[1], &axes[2])));
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &L::vec3_ctor(&axes[0], &axes[1], &axes[2]),
+                ));
                 self.transpile_node_inner(child, &new_p, code)
             }
 

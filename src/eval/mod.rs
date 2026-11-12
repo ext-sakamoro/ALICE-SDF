@@ -586,7 +586,10 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             if *neighbours || variation.is_some() {
                 f32::NAN
             } else {
-                eval(child, modifier_repeat_cells(point, *spacing, *count, *mirror))
+                eval(
+                    child,
+                    modifier_repeat_cells(point, *spacing, *count, *mirror),
+                )
             }
         }
         SdfNode::RepeatFinite {
@@ -918,7 +921,10 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
             count,
             mirror,
             ..
-        } => eval_material(child, modifier_repeat_cells(point, *spacing, *count, *mirror)),
+        } => eval_material(
+            child,
+            modifier_repeat_cells(point, *spacing, *count, *mirror),
+        ),
         SdfNode::RepeatFinite {
             child,
             count,
