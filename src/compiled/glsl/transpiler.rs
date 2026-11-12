@@ -328,6 +328,28 @@ impl GlslShader {
         })
     }
 
+    /// The Hardcoded text with the data arrays in a node data buffer (read as
+    /// `alice_node_data[..]`, not declared) and that buffer: the separate-data export's base
+    pub(crate) fn try_transpile_with_node_data(
+        node: &SdfNode,
+    ) -> Result<(Self, Vec<f32>), TranspileError> {
+        let mut transpiler = GlslTranspiler::new(GlslTranspileMode::Hardcoded);
+        transpiler.node_data = Some(Vec::new());
+        let body = transpiler.transpile_node(node, "p");
+        TranspileError::from_reads(std::mem::take(&mut transpiler.read_errors))?;
+        let source = transpiler.generate_shader(&body);
+        Ok((
+            Self {
+                source,
+                helper_count: transpiler.helper_functions.len(),
+                param_layout: transpiler.params,
+                mode: GlslTranspileMode::Hardcoded,
+                version: 450,
+            },
+            transpiler.node_data.unwrap_or_default(),
+        ))
+    }
+
     /// Extract parameter values from an SDF node tree
     ///
     /// Returns the same parameter layout as produced by `transpile()` in Dynamic mode.
@@ -715,6 +737,9 @@ struct GlslTranspiler {
     globals: String,
     checked_reads: bool,
     read_errors: Vec<String>,
+    /// The node data buffer of the separate-data export (`compiled::data_export`): when `Some`,
+    /// the data arrays are appended here and read as `alice_node_data[..]`, rewritten by the export
+    node_data: Option<Vec<f32>>,
 }
 
 impl GlslTranspiler {
@@ -727,6 +752,7 @@ impl GlslTranspiler {
             globals: String::new(),
             checked_reads: false,
             read_errors: Vec::new(),
+            node_data: None,
         }
     }
 
@@ -742,7 +768,9 @@ impl GlslTranspiler {
         generic.helper_functions = std::mem::take(&mut self.helper_functions);
         generic.globals = std::mem::take(&mut self.globals);
         generic.checked_reads = self.checked_reads;
+        generic.node_data = self.node_data.take();
         let body = generic.transpile_node(node, point_var);
+        self.node_data = generic.node_data.take();
         self.read_errors.append(&mut generic.read_errors);
         self.globals = generic.globals;
         self.var_counter = generic.var_counter;

@@ -153,7 +153,7 @@ fn the_glsl_export_reads_the_texture_with_texel_fetches() {
     assert!(export.data.is_some());
     assert!(export
         .source
-        .contains(&format!("uniform sampler2D {DATA_TEXTURE_NAME}")));
+        .contains(&format!("uniform highp sampler2D {DATA_TEXTURE_NAME}")));
     assert!(
         export.source.contains("texelFetch("),
         "exact fetch, no filtering"
@@ -199,7 +199,10 @@ fn grid() -> Vec<glam::Vec3> {
 fn the_glsl_separate_data_and_single_file_agree_bit_for_bit_on_the_gpu() {
     use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode};
     use alice_sdf::compiled::GpuEvaluator;
-    let node = large_shape();
+    // 4,000 vertices: the single-file Vulkan form holds its data as a private array, and at the
+    // 12,000 of `large_shape` that array is past the stack Metal gives a compute function (the
+    // pipeline is refused); the separate-data form has no array and runs there too (below)
+    let node = SdfNode::polygon_2d(outline(4_000), 0.25);
     let single =
         GlslShader::transpile(&node, GlslTranspileMode::Hardcoded).to_vulkan_compute_shader();
     let export = GlslShader::export_with_data_texture(&node).expect("export");
@@ -222,6 +225,36 @@ fn the_glsl_separate_data_and_single_file_agree_bit_for_bit_on_the_gpu() {
         .filter(|&k| da[k].to_bits() != db[k].to_bits())
         .count();
     assert_eq!(differ, 0, "{differ} of {} points differ", pts.len());
+    // the large shape: the separate-data form builds and gives the same values as the WGSL
+    // separate-data form (the same text but for the language)
+    let big = large_shape();
+    let Some(g) = gpu_or_skip(
+        "GLSL separate-data, large",
+        GpuEvaluator::from_glsl_data_export(
+            &GlslShader::export_with_data_texture(&big).expect("export"),
+        ),
+    ) else {
+        return;
+    };
+    let Some(w) = gpu_or_skip(
+        "WGSL separate-data, large",
+        GpuEvaluator::from_data_export(
+            &WgslShader::export_with_data_texture(&big).expect("export"),
+        ),
+    ) else {
+        return;
+    };
+    let dg = gpu_batches::eval_in_batches(&g, &pts).expect("dispatch");
+    let dw = gpu_batches::eval_in_batches(&w, &pts).expect("dispatch");
+    let far = (0..pts.len())
+        .filter(|&k| (dg[k] - dw[k]).abs() > 1e-5)
+        .count();
+    assert_eq!(
+        far,
+        0,
+        "{far} of {} points differ by more than 1e-5",
+        pts.len()
+    );
 }
 
 #[test]

@@ -233,7 +233,7 @@ struct WgpuResources {
     read_hits: Option<wgpu::Buffer>,
     /// The data texture (binding 4) of a separate-data export, in place of the node data buffer
     /// ([`crate::compiled::data_export`]); the texture is kept alive with its view
-    data_texture: Option<(wgpu::Texture, wgpu::TextureView)>,
+    data_texture: Option<(wgpu::Texture, wgpu::TextureView, Option<wgpu::Sampler>)>,
 }
 
 type WgpuEngine = Held<WgpuResources>;
@@ -276,7 +276,18 @@ impl WgpuEngine {
         texture: &crate::compiled::data_export::DataTexture,
     ) -> Result<Self, GpuError> {
         let context = GpuContext::request("ALICE-SDF Device")?;
-        Self::build(context, source, &[], false, Some(texture))
+        Self::build(context, source, &[], false, Some((texture, false)))
+    }
+
+    /// [`WgpuEngine::from_source_with_texture`] with a non-filtering sampler at binding 5 (the
+    /// Vulkan GLSL form reads the texture through `sampler2D(texture, sampler)`)
+    #[cfg(feature = "glsl")]
+    fn from_source_with_texture_and_sampler(
+        source: wgpu::ShaderSource<'_>,
+        texture: &crate::compiled::data_export::DataTexture,
+    ) -> Result<Self, GpuError> {
+        let context = GpuContext::request("ALICE-SDF Device")?;
+        Self::build(context, source, &[], false, Some((texture, true)))
     }
 
     /// The pipeline, bind group layout and buffers on `context`'s device: bindings 0-2 (points,
@@ -287,7 +298,7 @@ impl WgpuEngine {
         source: wgpu::ShaderSource<'_>,
         node_data: &[f32],
         checked: bool,
-        data_texture: Option<&crate::compiled::data_export::DataTexture>,
+        data_texture: Option<(&crate::compiled::data_export::DataTexture, bool)>,
     ) -> Result<Self, GpuError> {
         assert!(
             node_data.is_empty() || data_texture.is_none(),
@@ -367,6 +378,14 @@ impl WgpuEngine {
                 count: None,
             });
         }
+        if data_texture.is_some_and(|(_, sampler)| sampler) {
+            layout_entries.push(wgpu::BindGroupLayoutEntry {
+                binding: 5,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                count: None,
+            });
+        }
         if checked {
             layout_entries.push(wgpu::BindGroupLayoutEntry {
                 binding: 5,
@@ -408,7 +427,7 @@ impl WgpuEngine {
                 usage: wgpu::BufferUsages::STORAGE,
             })
         });
-        let data_texture = data_texture.map(|t| {
+        let data_texture = data_texture.map(|(t, with_sampler)| {
             let size = wgpu::Extent3d {
                 width: t.width,
                 height: t.height,
@@ -440,7 +459,11 @@ impl WgpuEngine {
                 size,
             );
             let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            (texture, view)
+            // nearest, no mipmaps: the fetch is exact either way, the sampler only completes the
+            // GLSL form's combined sampler
+            let sampler =
+                with_sampler.then(|| device.create_sampler(&wgpu::SamplerDescriptor::default()));
+            (texture, view, sampler)
         });
         let read_hits = checked.then(|| {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -751,11 +774,17 @@ impl WgpuEngine {
                 resource: data.as_entire_binding(),
             });
         }
-        if let Some((_, view)) = &self.data_texture {
+        if let Some((_, view, sampler)) = &self.data_texture {
             entries.push(wgpu::BindGroupEntry {
                 binding: 4,
                 resource: wgpu::BindingResource::TextureView(view),
             });
+            if let Some(sampler) = sampler {
+                entries.push(wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                });
+            }
         }
         if let Some(hits) = &self.read_hits {
             entries.push(wgpu::BindGroupEntry {
@@ -1918,6 +1947,66 @@ impl GpuEvaluator {
     pub fn from_glsl_compute_pinned(glsl_source: &str) -> Result<Self, GpuError> {
         crate::provenance::shader_text_verdict(glsl_source, false)?;
         Self::build_from_glsl_compute(glsl_source)
+    }
+
+    /// An evaluator for a separate-data GLSL export
+    /// ([`crate::compiled::glsl::GlslShader::export_with_data_texture`]) in its Vulkan compute
+    /// form, binding its data texture: the export's texture declaration and fetch become the
+    /// Vulkan form (`texture2D` at binding 4 and a non-filtering `sampler` at binding 5, read
+    /// through `sampler2D(texture, sampler)`); the rest of the text is the export's. An export
+    /// without data is the single-file text and is built as [`GpuEvaluator::from_glsl_compute`]
+    ///
+    /// # Errors
+    ///
+    /// As [`GpuEvaluator::from_glsl_compute_pinned`]
+    #[cfg(feature = "glsl")]
+    pub fn from_glsl_data_export(
+        export: &crate::compiled::data_export::DataExport,
+    ) -> Result<Self, GpuError> {
+        use crate::compiled::data_export::{GLSL_FETCH, GLSL_TEXTURE_DECL};
+        use crate::compiled::glsl::{GlslShader, GlslTranspileMode};
+        let source = match &export.data {
+            None => export.source.clone(),
+            Some(_) => {
+                assert_eq!(export.source.matches(GLSL_TEXTURE_DECL).count(), 1);
+                assert_eq!(export.source.matches(GLSL_FETCH).count(), 1);
+                export
+                    .source
+                    .replace(
+                        GLSL_TEXTURE_DECL,
+                        "layout(set = 0, binding = 4) uniform texture2D alice_data_tex_t;\n\
+                         layout(set = 0, binding = 5) uniform sampler alice_data_smp;",
+                    )
+                    .replace(
+                        GLSL_FETCH,
+                        "texelFetch(sampler2D(alice_data_tex_t, alice_data_smp), ",
+                    )
+            }
+        };
+        let text = GlslShader {
+            source,
+            helper_count: 0,
+            param_layout: Vec::new(),
+            mode: GlslTranspileMode::Hardcoded,
+            version: 450,
+        }
+        .to_vulkan_compute_shader();
+        let Some(texture) = &export.data else {
+            return Self::from_glsl_compute_pinned(&text);
+        };
+        crate::provenance::shader_text_verdict(&text, false)?;
+        note_engine_build();
+        WgpuEngine::from_source_with_texture_and_sampler(
+            wgpu::ShaderSource::Glsl {
+                shader: text.into(),
+                stage: wgpu::naga::ShaderStage::Compute,
+                defines: wgpu::naga::FastHashMap::default(),
+            },
+            texture,
+        )
+        .map(|w| Self {
+            engine: Engine::Wgpu(w),
+        })
     }
 
     #[cfg(feature = "glsl")]

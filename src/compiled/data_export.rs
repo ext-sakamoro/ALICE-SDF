@@ -216,17 +216,45 @@ impl crate::compiled::WgslShader {
     }
 }
 
+/// The GLSL export's texture declaration (OpenGL / WebGL 2 / OpenGL ES 3.0 form; `highp`, since
+/// a sampler in an OpenGL ES fragment shader is `lowp` by default and would not keep the bits)
+#[cfg(feature = "glsl")]
+pub(crate) const GLSL_TEXTURE_DECL: &str = "uniform highp sampler2D alice_data_tex;";
+
+/// The GLSL export's fetch of value `i` (the accessor's body)
+#[cfg(feature = "glsl")]
+pub(crate) const GLSL_FETCH: &str = "texelFetch(alice_data_tex, ";
+
 #[cfg(feature = "glsl")]
 impl crate::compiled::glsl::GlslShader {
-    /// The separate-data GLSL export of `node` (see the module documentation)
+    /// The separate-data GLSL export of `node` (see the module documentation): the text declares
+    /// `uniform highp sampler2D alice_data_tex` (an R32F texture with nearest filtering and no
+    /// mipmaps) and reads it with `texelFetch`
     ///
     /// # Errors
     ///
     /// [`DataExportError::Transpile`] as the single-file GLSL transpile;
     /// [`DataExportError::TooLarge`] when the data does not fit one texture
     pub fn export_with_data_texture(node: &crate::SdfNode) -> Result<DataExport, DataExportError> {
-        let _ = node;
-        todo!("STUB: A2 separate-data GLSL export not implemented")
+        use crate::compiled::glsl::GlslTranspileMode;
+        let (with_buffer, values) = Self::try_transpile_with_node_data(node)?;
+        if values.is_empty() {
+            return Ok(DataExport {
+                source: Self::try_transpile(node, GlslTranspileMode::Hardcoded)?.source,
+                data: None,
+            });
+        }
+        let data = DataTexture::try_from_values(&values)?;
+        let body = reads_through(&with_buffer.source, &|i| format!("alice_data(int({i}))"));
+        let decl = format!(
+            "\n{GLSL_TEXTURE_DECL}\nfloat alice_data(int i) {{\n    \
+             return {GLSL_FETCH}ivec2(i % {w}, i / {w}), 0).r;\n}}\n",
+            w = DATA_TEXTURE_WIDTH
+        );
+        Ok(DataExport {
+            source: after_leading_comments(&body, &decl),
+            data: Some(data),
+        })
     }
 }
 
@@ -241,20 +269,6 @@ impl crate::compiled::HlslShader {
     pub fn export_with_data_texture(node: &crate::SdfNode) -> Result<DataExport, DataExportError> {
         let _ = node;
         todo!("STUB: A2 separate-data HLSL export not implemented")
-    }
-}
-
-#[cfg(all(feature = "gpu", feature = "glsl"))]
-impl crate::compiled::GpuEvaluator {
-    /// An evaluator for a separate-data GLSL export (its Vulkan compute form), binding its data
-    /// texture
-    ///
-    /// # Errors
-    ///
-    /// As [`crate::compiled::GpuEvaluator::from_glsl_compute`]
-    pub fn from_glsl_data_export(export: &DataExport) -> Result<Self, crate::compiled::GpuError> {
-        let _ = export;
-        todo!("STUB: A2 GLSL evaluator for the separate-data export not implemented")
     }
 }
 
