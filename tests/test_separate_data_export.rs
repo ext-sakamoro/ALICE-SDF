@@ -5,12 +5,16 @@
 //! holds the very values the single-file text holds as constants, in order; (3) for a large shape
 //! the text is a small fraction of the single-file text; (4) on the GPU the separate-data shader
 //! with its texture bound gives the same bits as the single-file shader at every point (the same
-//! arithmetic, only the place the data is read from differs); (5) the GLSL and HLSL exports
-//! declare the texture and read it with exact texel fetches.
+//! arithmetic, only the place the data is read from differs), for WGSL and for GLSL (its Vulkan
+//! compute form); (5) the GLSL and HLSL exports declare the texture and read it with exact texel
+//! fetches (HLSL is checked as text here and by DXC in its own workflow, not executed); (6) a tree
+//! whose data does not fit one texture is refused with a typed error.
 
 #![cfg(feature = "gpu")]
 
-use alice_sdf::compiled::data_export::{DATA_TEXTURE_NAME, DATA_TEXTURE_WIDTH};
+use alice_sdf::compiled::data_export::{
+    DataExportError, DATA_TEXTURE_NAME, DATA_TEXTURE_WIDTH, MAX_DATA_TEXTURE_ROWS,
+};
 use alice_sdf::compiled::{TranspileMode, WgslShader};
 
 #[path = "common/gpu_batches.rs"]
@@ -171,4 +175,65 @@ fn the_hlsl_export_reads_the_texture_with_loads() {
         "exact fetch, no filtering"
     );
     assert!(!export.source.contains("alice_poly_v_"));
+}
+
+/// The points the GPU checks use: a grid across the outline (inside, on, outside) at three heights
+fn grid() -> Vec<glam::Vec3> {
+    let mut pts = Vec::new();
+    for j in 0..48 {
+        for i in 0..48 {
+            for z in [-0.3f32, 0.0, 0.2] {
+                pts.push(glam::Vec3::new(
+                    i as f32 / 47.0 * 1.8 - 0.9,
+                    j as f32 / 47.0 * 1.8 - 0.9,
+                    z,
+                ));
+            }
+        }
+    }
+    pts
+}
+
+#[cfg(feature = "glsl")]
+#[test]
+fn the_glsl_separate_data_and_single_file_agree_bit_for_bit_on_the_gpu() {
+    use alice_sdf::compiled::glsl::{GlslShader, GlslTranspileMode};
+    use alice_sdf::compiled::GpuEvaluator;
+    let node = large_shape();
+    let single =
+        GlslShader::transpile(&node, GlslTranspileMode::Hardcoded).to_vulkan_compute_shader();
+    let export = GlslShader::export_with_data_texture(&node).expect("export");
+    let Some(a) = gpu_or_skip(
+        "GLSL single-file",
+        GpuEvaluator::from_glsl_compute(&single).map(|c| c.into_parts().0),
+    ) else {
+        return;
+    };
+    let Some(b) = gpu_or_skip(
+        "GLSL separate-data",
+        GpuEvaluator::from_glsl_data_export(&export),
+    ) else {
+        return;
+    };
+    let pts = grid();
+    let da = gpu_batches::eval_in_batches(&a, &pts).expect("dispatch");
+    let db = gpu_batches::eval_in_batches(&b, &pts).expect("dispatch");
+    let differ = (0..pts.len())
+        .filter(|&k| da[k].to_bits() != db[k].to_bits())
+        .count();
+    assert_eq!(differ, 0, "{differ} of {} points differ", pts.len());
+}
+
+#[test]
+fn a_tree_whose_data_does_not_fit_one_texture_is_refused() {
+    // one value more than a texture holds, as a lattice-free polygon outline (two values a vertex)
+    let max = (DATA_TEXTURE_WIDTH * MAX_DATA_TEXTURE_ROWS) as usize;
+    let node = SdfNode::polygon_2d(outline(max / 2 + 1), 0.25);
+    assert_eq!(
+        WgslShader::export_with_data_texture(&node).map(|_| ()),
+        Err(DataExportError::TooLarge {
+            values: max + 2,
+            max_values: max
+        })
+    );
 }

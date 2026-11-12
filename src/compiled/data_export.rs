@@ -14,10 +14,57 @@
 //! value `i` with an exact texel fetch (no filtering) at `(i % width, i / width)`, so each value
 //! keeps its bits.
 //!
+//! Limits: the texture is at most [`DATA_TEXTURE_WIDTH`] x [`MAX_DATA_TEXTURE_ROWS`] (2048 x 2048,
+//! 4,194,304 values), inside the smallest maximum texture size WebGL 2 and OpenGL ES 3.0 guarantee
+//! (2048); a tree with more data is refused ([`DataExportError::TooLarge`]), never truncated. The
+//! targets need an R32F (single-channel 32-bit float) texture and an exact fetch: WebGL 2 / OpenGL
+//! ES 3.0 (`texelFetch`, R32F is not filterable there and is not filtered), GLSL 1.30+ / Vulkan,
+//! HLSL Shader Model 4+ (`Texture2D<float>::Load`), WGSL (`textureLoad` on an unfilterable float
+//! texture).
+//!
 //! [`TranspileMode::Hardcoded`]: crate::compiled::TranspileMode
 
-/// Texels per row of the data texture (well inside every target's minimum texture size)
-pub const DATA_TEXTURE_WIDTH: u32 = 4096;
+/// Texels per row of the data texture (the smallest maximum texture size WebGL 2 / OpenGL ES 3.0
+/// guarantee)
+pub const DATA_TEXTURE_WIDTH: u32 = 2048;
+
+/// The most rows a data texture may have (the same guaranteed minimum): at most
+/// `DATA_TEXTURE_WIDTH * MAX_DATA_TEXTURE_ROWS` values
+pub const MAX_DATA_TEXTURE_ROWS: u32 = 2048;
+
+/// Why a separate-data export was refused
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DataExportError {
+    /// the tree cannot be transpiled (as the single-file export refuses it)
+    Transpile(crate::compiled::TranspileError),
+    /// the tree's data does not fit one texture of the guaranteed size
+    TooLarge {
+        /// the values the tree holds
+        values: usize,
+        /// the most a data texture holds
+        max_values: usize,
+    },
+}
+
+impl core::fmt::Display for DataExportError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Transpile(e) => write!(f, "{e}"),
+            Self::TooLarge { values, max_values } => write!(
+                f,
+                "the tree holds {values} data values, more than one data texture holds ({max_values})"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for DataExportError {}
+
+impl From<crate::compiled::TranspileError> for DataExportError {
+    fn from(e: crate::compiled::TranspileError) -> Self {
+        Self::Transpile(e)
+    }
+}
 
 /// The name the exported shader binds the data texture under
 pub const DATA_TEXTURE_NAME: &str = "alice_data_tex";
@@ -37,18 +84,28 @@ pub struct DataTexture {
 
 impl DataTexture {
     /// The texture holding `values` (at least one row, so an engine never binds a 0-height texture)
-    #[must_use]
-    pub fn from_values(values: &[f32]) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// [`DataExportError::TooLarge`] past `DATA_TEXTURE_WIDTH * MAX_DATA_TEXTURE_ROWS` values
+    pub fn try_from_values(values: &[f32]) -> Result<Self, DataExportError> {
         let width = DATA_TEXTURE_WIDTH as usize;
+        let max_values = width * MAX_DATA_TEXTURE_ROWS as usize;
+        if values.len() > max_values {
+            return Err(DataExportError::TooLarge {
+                values: values.len(),
+                max_values,
+            });
+        }
         let rows = values.len().div_ceil(width).max(1);
         let mut texels = values.to_vec();
         texels.resize(rows * width, 0.0);
-        Self {
+        Ok(Self {
             width: DATA_TEXTURE_WIDTH,
-            height: u32::try_from(rows).unwrap_or(u32::MAX),
+            height: u32::try_from(rows).expect("rows <= MAX_DATA_TEXTURE_ROWS"),
             texels,
             len: values.len(),
-        }
+        })
     }
 
     /// value `i` of the data, as the shader reads it (`None` past the data)
@@ -74,10 +131,9 @@ impl crate::compiled::WgslShader {
     ///
     /// # Errors
     ///
-    /// As [`crate::compiled::WgslShader::try_transpile`]
-    pub fn export_with_data_texture(
-        node: &crate::SdfNode,
-    ) -> Result<DataExport, crate::compiled::TranspileError> {
+    /// [`DataExportError::Transpile`] as [`crate::compiled::WgslShader::try_transpile`];
+    /// [`DataExportError::TooLarge`] when the data does not fit one texture
+    pub fn export_with_data_texture(node: &crate::SdfNode) -> Result<DataExport, DataExportError> {
         let _ = node;
         todo!("STUB: A2 separate-data WGSL export not implemented")
     }
@@ -89,10 +145,9 @@ impl crate::compiled::glsl::GlslShader {
     ///
     /// # Errors
     ///
-    /// As the single-file GLSL transpile
-    pub fn export_with_data_texture(
-        node: &crate::SdfNode,
-    ) -> Result<DataExport, crate::compiled::TranspileError> {
+    /// [`DataExportError::Transpile`] as the single-file GLSL transpile;
+    /// [`DataExportError::TooLarge`] when the data does not fit one texture
+    pub fn export_with_data_texture(node: &crate::SdfNode) -> Result<DataExport, DataExportError> {
         let _ = node;
         todo!("STUB: A2 separate-data GLSL export not implemented")
     }
@@ -104,10 +159,9 @@ impl crate::compiled::HlslShader {
     ///
     /// # Errors
     ///
-    /// As the single-file HLSL transpile
-    pub fn export_with_data_texture(
-        node: &crate::SdfNode,
-    ) -> Result<DataExport, crate::compiled::TranspileError> {
+    /// [`DataExportError::Transpile`] as the single-file HLSL transpile;
+    /// [`DataExportError::TooLarge`] when the data does not fit one texture
+    pub fn export_with_data_texture(node: &crate::SdfNode) -> Result<DataExport, DataExportError> {
         let _ = node;
         todo!("STUB: A2 separate-data HLSL export not implemented")
     }
@@ -126,6 +180,20 @@ impl crate::compiled::GpuEvaluator {
     }
 }
 
+#[cfg(all(feature = "gpu", feature = "glsl"))]
+impl crate::compiled::GpuEvaluator {
+    /// An evaluator for a separate-data GLSL export (its Vulkan compute form), binding its data
+    /// texture
+    ///
+    /// # Errors
+    ///
+    /// As [`crate::compiled::GpuEvaluator::from_glsl_compute`]
+    pub fn from_glsl_data_export(export: &DataExport) -> Result<Self, crate::compiled::GpuError> {
+        let _ = export;
+        todo!("STUB: A2 GLSL evaluator for the separate-data export not implemented")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,9 +201,9 @@ mod tests {
     #[test]
     fn values_fill_rows_in_order_and_the_last_row_is_padded() {
         let values: Vec<f32> = (0..5000).map(|i| i as f32 * 0.5).collect();
-        let t = DataTexture::from_values(&values);
-        assert_eq!((t.width, t.height, t.len), (4096, 2, 5000));
-        assert_eq!(t.texels.len(), 8192);
+        let t = DataTexture::try_from_values(&values).unwrap();
+        assert_eq!((t.width, t.height, t.len), (2048, 3, 5000));
+        assert_eq!(t.texels.len(), 6144);
         assert_eq!(
             t.value(4097).map(f32::to_bits),
             Some((4097.0f32 * 0.5).to_bits())
@@ -146,7 +214,26 @@ mod tests {
 
     #[test]
     fn no_values_still_make_one_row() {
-        let t = DataTexture::from_values(&[]);
-        assert_eq!((t.height, t.len, t.texels.len()), (1, 0, 4096));
+        let t = DataTexture::try_from_values(&[]).unwrap();
+        assert_eq!((t.height, t.len, t.texels.len()), (1, 0, 2048));
+    }
+
+    #[test]
+    fn the_largest_texture_is_accepted_and_one_value_more_is_refused() {
+        let max = (DATA_TEXTURE_WIDTH * MAX_DATA_TEXTURE_ROWS) as usize;
+        let full = vec![1.5f32; max];
+        let t = DataTexture::try_from_values(&full).unwrap();
+        assert_eq!(
+            (t.width, t.height),
+            (DATA_TEXTURE_WIDTH, MAX_DATA_TEXTURE_ROWS)
+        );
+        let over = vec![1.5f32; max + 1];
+        assert_eq!(
+            DataTexture::try_from_values(&over),
+            Err(DataExportError::TooLarge {
+                values: max + 1,
+                max_values: max
+            })
+        );
     }
 }
