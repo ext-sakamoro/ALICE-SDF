@@ -178,6 +178,9 @@ mod simd;
 #[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
 pub mod transpiler_common;
 
+/// The separate-data shader export (per-node data in one R32F texture)
+pub mod data_export;
+
 /// The loft's law as shader source (one template rendered per dialect)
 #[cfg(any(feature = "gpu", feature = "hlsl", feature = "glsl"))]
 pub mod loft_shader;
