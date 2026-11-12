@@ -196,6 +196,21 @@ fn optimize_children(node: &SdfNode) -> SdfNode {
             child: Arc::new(optimize(child)),
             spacing: *spacing,
         },
+        SdfNode::RepeatCells {
+            child,
+            spacing,
+            count,
+            mirror,
+            neighbours,
+            variation,
+        } => SdfNode::RepeatCells {
+            child: Arc::new(optimize(child)),
+            spacing: *spacing,
+            count: *count,
+            mirror: *mirror,
+            neighbours: *neighbours,
+            variation: *variation,
+        },
         SdfNode::RepeatFinite {
             child,
             count,

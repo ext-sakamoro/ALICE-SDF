@@ -19,6 +19,7 @@ mod icosahedral;
 mod ifs;
 mod mirror;
 mod noise;
+mod repeat_cells;
 mod octant_mirror;
 mod polar_repeat;
 mod repeat;
@@ -31,6 +32,11 @@ mod sweep;
 mod taper;
 mod twist;
 
+pub(crate) use repeat_cells::check_repeat_cells_tree;
+pub use repeat_cells::{
+    modifier_repeat_cells, repeat_cells_mirror_sign, repeat_cells_r, validate_repeat_cells, CellVariation,
+    RepeatCellsError,
+};
 pub use bend::{modifier_bend, modifier_bend_cheap, modifier_bend_x, modifier_bend_z};
 pub use displacement::{modifier_displacement, modifier_sine_displacement};
 pub use extrude::{modifier_extrude, modifier_extrude_point};
