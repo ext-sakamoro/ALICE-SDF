@@ -5,8 +5,8 @@ The script fetches ALICE-Law at the revision .github/law-ratchets-pin names and 
 ratchet, structural lint and added-function pins on one tree. An export of HEAD passes with every
 count read; one production `unwrap()` more is a finding (exit 1); a pin with a wrong SHA-256 or a
 malformed pin fails before anything is read (exit 2); a tree with no production Rust code compared
-nothing and fails (exit 2); a tree that does not depend on alice-det-math skips the added-function
-check and says so."""
+nothing and fails (exit 2); a tree whose source does not use alice_det_math skips the added-function
+check and says so, and one that does runs it whatever form its Cargo.toml dependency takes."""
 import os
 import shutil
 import subprocess
@@ -89,7 +89,18 @@ class LawRatchets(unittest.TestCase):
         (empty / "Cargo.toml").write_text('[package]\nname = "x"\n', encoding="utf-8", newline="\n")
         r = self.run_script(empty)
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
-        self.assertIn("does not depend on alice-det-math", r.stdout)
+        self.assertIn("no production source of ALICE-SDF uses alice_det_math", r.stdout)
+
+    def test_a_det_math_dependency_written_as_a_table_still_runs_the_pin_check(self):
+        # the decision reads the source, so the Cargo.toml spelling does not matter
+        cargo = self.tree / "Cargo.toml"
+        text = cargo.read_text(encoding="utf-8")
+        line = next(l for l in text.splitlines() if l.lstrip().startswith("alice-det-math"))
+        cargo.write_text(text.replace(line, "") + "\n[dependencies.alice-det-math]\nversion = \"0.6\"\n",
+                         encoding="utf-8", newline="\n")
+        r = self.run_script()
+        self.assertIn("added_function_pins: added functions", r.stdout + r.stderr)
+        self.assertNotIn("nothing to fold", r.stdout)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,8 @@
 #     iteration, ast-grep-ignore markers) against conformance/structural-lint-baseline.toml;
 #   - scripts/added_function_pins.py: a call of an alice-det-math function added after its
 #     SEMANTICS_ID was cut is folded with that function's own pin (only for a repository whose
-#     Cargo.toml depends on alice-det-math; the checker has nothing to compare otherwise).
+#     production source (*/src/*.rs) uses alice_det_math; the checker has nothing to compare
+#     otherwise).
 # A count above the baseline is red, and so is one below it until ALICE-Law's baseline is
 # lowered (the pin then moves to that revision): the counts only go down.
 #
@@ -83,6 +84,10 @@ for entry in "${checked[@]}"; do
     echo "$pin: needs '${entry##*:} <64 hex>'" >&2
     exit 2
   fi
+  if [[ ! -f "$law/$path" ]]; then
+    echo "$path: not in ALICE-Law at $rev" >&2
+    exit 2
+  fi
   got=$(sum "$law/$path")
   if [[ "$got" != "$want" ]]; then
     echo "$path at $rev has sha256 $got, $pin says $want" >&2
@@ -133,9 +138,13 @@ run() {
 }
 run "$law/scripts/no_panic_ratchet.py" --only "$name=$tree"
 run "$law/scripts/structural_lint.py" --only "$name=$tree"
-if grep -Eq '^[[:space:]]*alice-det-math[[:space:]]*=' "$tree/Cargo.toml"; then
+# decided by what the checker reads (production source naming alice_det_math), not by how Cargo.toml
+# spells the dependency (a table, a workspace or a target dependency would slip past a line match)
+uses=$(find "$tree" -path '*/src/*.rs' -not -path '*/target/*' -print0 \
+  | xargs -0 grep -lE '\balice_det_math\b' 2>/dev/null | head -n 1 || true)
+if [[ -n "$uses" ]]; then
   run "$law/scripts/added_function_pins.py" --only "$name=$tree"
 else
-  echo "added_function_pins: $name does not depend on alice-det-math (Cargo.toml), nothing to fold"
+  echo "added_function_pins: no production source of $name uses alice_det_math, nothing to fold"
 fi
 exit "$status"
