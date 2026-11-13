@@ -73,9 +73,9 @@ pub fn level_from_fn(
                                     (bz as usize * BRICK + z) as f32,
                                 )) * h;
                             let c = chan(p);
-                            if c.len() != 2 && c.len() != 4 {
+                            if !matches!(c.len(), 2 | 4 | 7) {
                                 return Err(SheetFieldError::Shape(format!(
-                                    "{} channels (2 or 4)",
+                                    "{} channels (2, 4 or 7)",
                                     c.len()
                                 )));
                             }

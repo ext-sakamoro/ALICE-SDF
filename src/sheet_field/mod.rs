@@ -140,6 +140,9 @@ pub struct Sample {
     pub masked: bool,
     /// UV of the nearest surface point, when the sheet carries UV channels and a level answered.
     pub uv: Option<[f32; 2]>,
+    /// The author normal of the nearest surface point (interpolated, not normalized), when the sheet carries the
+    /// author-normal channels 4-6 and a level answered.
+    pub attr_normal: Option<[f32; 3]>,
     /// The interpolated side channel `s` (0 when no level answered).
     pub s: f32,
     /// The interpolated boundary channel `d_b` (0 when no level answered, or in a brick that stores no `d_b`:
@@ -210,7 +213,7 @@ impl Level {
 }
 
 struct CellLookup {
-    values: [f32; 4],
+    values: [f32; 8],
     nch: usize,
     umin: f32,
     q0: f32,
@@ -253,14 +256,14 @@ impl Sheet {
             ];
             let t = [w[0] - c[0] as f32, w[1] - c[1] as f32, w[2] - c[2] as f32];
             let mut out = CellLookup {
-                values: [0.0; 4],
-                nch: lv.channels.len().min(4),
+                values: [0.0; 8],
+                nch: lv.channels.len().min(8),
                 umin: f32::INFINITY,
                 q0: 0.0,
                 q1: 0.0,
                 h: lv.h,
             };
-            for (ci, ch) in lv.channels.iter().take(4).enumerate() {
+            for (ci, ch) in lv.channels.iter().take(8).enumerate() {
                 let mut acc = 0.0f32;
                 let row = ch.rows[k];
                 if row >= 0 {
@@ -302,6 +305,7 @@ impl Sheet {
                 inside: false,
                 masked: false,
                 uv: None,
+                attr_normal: None,
                 s: 0.0,
                 db: 0.0,
                 db_step: 0.0,
@@ -320,12 +324,14 @@ impl Sheet {
         } else {
             None
         };
+        let attr_normal = (c.nch >= 7).then(|| [c.values[4], c.values[5], c.values[6]]);
         Sample {
             f,
             g,
             inside: true,
             masked,
             uv,
+            attr_normal,
             s,
             db,
             db_step: c.q1,
@@ -598,6 +604,7 @@ impl SheetField {
             s(p + Vec3::Y * e) - s(p - Vec3::Y * e),
             s(p + Vec3::Z * e) - s(p - Vec3::Z * e),
         );
+        let at = sh.sample(p, self.rule);
         let normal = if n.length() > 1e-12 {
             n.normalize()
         } else {
@@ -607,8 +614,12 @@ impl SheetField {
             t,
             sheet: k,
             normal,
-            uv: sh.sample(p, self.rule).uv,
-            attr_normal: None,
+            uv: at.uv,
+            attr_normal: at
+                .attr_normal
+                .map(Vec3::from_array)
+                .filter(|n| n.length() > 1e-12)
+                .map(Vec3::normalize),
         }
     }
 }
