@@ -43,5 +43,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     println!("rays 225: hits {hits}, misses {misses}, undecided {undecided}");
+    let agree = (0..225)
+        .filter(|i| {
+            let o = Vec3::new(-7.0 + (i % 15) as f32, -7.0 + (i / 15) as f32, 10.0);
+            field.march(o, Vec3::NEG_Z, 30.0, 4000)
+                == field.march_linear(o, Vec3::NEG_Z, 30.0, 4000)
+        })
+        .count();
+    println!("BVH march equals the linear march on {agree} of 225 rays");
     Ok(())
 }
