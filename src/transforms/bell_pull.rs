@@ -26,8 +26,8 @@ pub const BELL_SLOPE: f32 = 0.606_530_66;
 pub const MOST_SLOPE: f32 = 0.95;
 
 /// Up to two pulls under one bell width
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(try_from = "BellPullData", into = "BellPullData")]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(into = "BellPullData")]
 pub struct BellPull {
     pulls: [[f32; 4]; 2],
     sigma: f32,
@@ -61,6 +61,25 @@ impl std::fmt::Display for BellPullError {
 }
 
 impl std::error::Error for BellPullError {}
+
+/// The reader of a stored bell pull: `SdfNode::BellPull`'s `pull` field reads through it
+/// (`#[serde(deserialize_with)]`) rather than a `Deserialize` impl of [`BellPull`], so the type has no
+/// reader that code naming the type would reach. It reads [`BellPullData`] and checks it again
+/// ([`BellPull::new`]: finite values, a positive width, a slope sum at most [`MOST_SLOPE`])
+///
+/// # Errors
+///
+/// The data does not parse, or [`BellPull::new`] refuses it
+#[allow(
+    clippy::disallowed_methods,
+    reason = "stored form other-type: the pulls are read as a field of an SdfNode, whose stored tree goes through the tree loader's identifier check; this reads BellPullData and checks it again (the slope bound is recomputed, none is read)"
+)]
+// ALLOW-UNWIRED: called by the derived Deserialize of SdfNode through #[serde(deserialize_with = "crate::transforms::bell_pull::deserialize_pull")] on the BellPull variant's pull field (src/types/mod.rs), a string the guard does not read
+pub(crate) fn deserialize_pull<'de, D: serde::Deserializer<'de>>(
+    de: D,
+) -> Result<BellPull, D::Error> {
+    BellPull::try_from(BellPullData::deserialize(de)?).map_err(serde::de::Error::custom)
+}
 
 impl TryFrom<BellPullData> for BellPull {
     type Error = BellPullError;

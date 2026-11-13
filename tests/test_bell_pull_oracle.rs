@@ -214,10 +214,13 @@ fn widths_values_and_folding_pulls_are_refused() {
 /// The stored form is checked again when it is read back: a folding pull in the data is refused
 #[test]
 fn a_stored_pull_is_checked_again_on_load() {
+    // the type itself has no reader: a pull is read as the field of a tree node
     let ok = BellPull::new([[0.3, 0.0, 0.25, 0.0], [0.0; 4]], 0.5).expect("ok");
-    let text = serde_json::to_string(&ok).expect("writes");
-    assert_eq!(serde_json::from_str::<BellPull>(&text).expect("reads"), ok);
+    let node = SdfNode::sphere(0.6).bell_pull(ok);
+    let text = serde_json::to_string(&node).expect("writes");
+    let back: SdfNode = serde_json::from_str(&text).expect("reads");
+    assert_eq!(serde_json::to_string(&back).expect("writes"), text);
     let bad = text.replace("0.25", "0.9");
     assert_ne!(bad, text);
-    assert!(serde_json::from_str::<BellPull>(&bad).is_err(), "{bad}");
+    assert!(serde_json::from_str::<SdfNode>(&bad).is_err(), "{bad}");
 }
