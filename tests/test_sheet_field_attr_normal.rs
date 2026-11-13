@@ -90,6 +90,8 @@ fn a_seven_channel_sheet_returns_the_author_normal_at_the_hit() {
         .iter()
         .map(|o| f.march(*o, -Vec3::Z, 1.0, 4000))
         .collect();
+    // added to only with the gpu feature
+    #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
     let mut checked = check("cpu", &cpu, &os, &mut wrong);
     #[cfg(feature = "gpu")]
     match alice_sdf::sheet_field::gpu::GpuSheetField::new(&f) {
