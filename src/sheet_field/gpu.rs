@@ -442,6 +442,7 @@ impl GpuSheetField {
                     sheet: r[0][2] as usize,
                     normal: Vec3::new(r[1][0], r[1][1], r[1][2]),
                     uv: (r[2][2] != 0.0).then_some([r[2][0], r[2][1]]),
+                    attr_normal: None,
                 }),
                 0 => MarchResult::Miss,
                 2 => MarchResult::Undecided,
