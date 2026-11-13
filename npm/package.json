@@ -3,16 +3,20 @@
   "version": "7.0.0",
   "description": "ALICE-SDF WebAssembly bindings - Mathematical 3D shape compression via Signed Distance Functions",
   "main": "dist/alice_sdf.js",
-  "module": "dist/alice_sdf_bg.js",
+  "module": "dist/alice_sdf.js",
   "types": "dist/alice_sdf.d.ts",
   "files": [
     "dist/",
+    "check-dist.mjs",
     "README.md"
   ],
   "scripts": {
-    "build": "cd ../examples/wasm-demo && wasm-pack build --target web --out-dir ../../npm/dist",
-    "build:bundler": "cd ../examples/wasm-demo && wasm-pack build --target bundler --out-dir ../../npm/dist",
-    "build:node": "cd ../examples/wasm-demo && wasm-pack build --target nodejs --out-dir ../../npm/dist",
+    "build": "cd ../examples/wasm-demo && wasm-pack build --target web --out-dir ../../npm/dist --out-name alice_sdf",
+    "postbuild": "node check-dist.mjs",
+    "build:bundler": "cd ../examples/wasm-demo && wasm-pack build --target bundler --out-dir ../../npm/dist --out-name alice_sdf",
+    "postbuild:bundler": "node check-dist.mjs",
+    "build:node": "cd ../examples/wasm-demo && wasm-pack build --target nodejs --out-dir ../../npm/dist --out-name alice_sdf",
+    "postbuild:node": "node check-dist.mjs",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
