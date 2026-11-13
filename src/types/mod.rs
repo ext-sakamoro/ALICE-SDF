@@ -1413,7 +1413,9 @@ pub enum SdfNode {
     BellPull {
         /// Child node
         child: Arc<Self>,
-        /// The pulls
+        /// The pulls (read through `transforms::bell_pull::deserialize_pull`, which checks them
+        /// again)
+        #[serde(deserialize_with = "crate::transforms::bell_pull::deserialize_pull")]
         pull: crate::transforms::BellPull,
     },
 }

@@ -547,9 +547,13 @@ fn a_bell_pull_that_could_fold_is_refused() {
         BellPull::new([[f32::NAN, 0.0, 0.0, 0.0], [0.0; 4]], 0.3),
         Err(BellPullError::Bad)
     );
-    // stored: read through the same check
-    let json = r#"{"pulls":[[0,0,0.6,0],[0,0,0,0]],"sigma":0.34}"#;
-    assert!(serde_json::from_str::<BellPull>(json).is_err());
+    // stored: read through the same check (a pull is read as the field of a tree node)
+    let fits = SdfNode::sphere(0.5)
+        .bell_pull(BellPull::new([[0.0, 0.0, 0.46, 0.0], [0.0; 4]], 0.34).expect("one to one"));
+    let json = serde_json::to_string(&fits).unwrap();
+    let folds = json.replace("0.46", "0.6");
+    assert_ne!(folds, json);
+    assert!(serde_json::from_str::<SdfNode>(&folds).is_err());
     let (child, pull) = pulled();
     let tree = child.bell_pull(pull);
     let round: SdfNode = serde_json::from_str(&serde_json::to_string(&tree).unwrap()).unwrap();
