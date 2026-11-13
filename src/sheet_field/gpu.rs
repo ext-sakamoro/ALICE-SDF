@@ -209,7 +209,11 @@ impl GpuSheetField {
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sheet field"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
+            source: wgpu::ShaderSource::Wgsl(
+                SHADER
+                    .replace("__MAX_LIVE__", &MAX_LIVE_SHEETS.to_string())
+                    .into(),
+            ),
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("sheet field"),
@@ -432,7 +436,7 @@ const BRICK: u32 = 8u;
 const NODES: u32 = 9u;
 const BRICK_NODES: u32 = 729u;
 const HALF_DIAG: f32 = 0.8660254;
-const MAX_LIVE: u32 = 64u;
+const MAX_LIVE: u32 = __MAX_LIVE__u;
 
 struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool };
 
@@ -548,8 +552,8 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (i >= U.count) { return; }
     let o = INPUT[i].xyz;
     let d = U.dir;
-    var prev_k: array<u32, 64>;
-    var prev_g: array<f32, 64>;
+    var prev_k: array<u32, __MAX_LIVE__>;
+    var prev_g: array<f32, __MAX_LIVE__>;
     var n_prev = 0u;
     var overflow = false;
     for (var k = 0u; k < U.n_sheets; k = k + 1u) {
@@ -566,8 +570,8 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         let dd = eval_union(p).f;
         var stop = dd < 0.01;
         var thit = 1e30;
-        var cur_k: array<u32, 64>;
-        var cur_g: array<f32, 64>;
+        var cur_k: array<u32, __MAX_LIVE__>;
+        var cur_g: array<f32, __MAX_LIVE__>;
         var n_cur = 0u;
         for (var k = 0u; k < U.n_sheets; k = k + 1u) {
             if (!in_box(k, p)) { continue; }
