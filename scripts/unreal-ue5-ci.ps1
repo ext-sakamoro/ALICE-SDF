@@ -156,10 +156,94 @@ if (Test-Path (Join-Path $Staged "HostProject~")) { Remove-Item -Recurse -Force 
 # ── 4. UAT BuildPlugin (UnrealEditor + UnrealGame, Win64) ──────────────────
 Step "RunUAT BuildPlugin (Win64, editor + game targets)"
 $UatLog = Join-Path $Logs "buildplugin.log"
-& (Join-Path $EngineRoot "Engine\Build\BatchFiles\RunUAT.bat") BuildPlugin `
-    -Plugin="$Staged\AliceSDF.uplugin" -Package="$Packaged" -TargetPlatforms=Win64 -Rocket 2>&1 |
-    Tee-Object -FilePath $UatLog | Select-String -Pattern "error|warning C|Result:|BUILD " | ForEach-Object { $_.Line }
-if ($LASTEXITCODE -ne 0) { Fail "BuildPlugin failed (see $UatLog)" }
+# The compile on this runner has stopped part-way (the cl.exe processes alive at ~0 CPU on an
+# idle machine, no line printed) until timeout-minutes cancelled the job, where a good run
+# compiles the plugin's 21 actions in ~13 min. It stopped with the Unreal Build Accelerator
+# (UBA) and again with UBA off (UBT's parallel executor), so UBA is not the cause; the cause is
+# not known yet. What this step does about it:
+#  - UBA stays off (it was not the cause; the parallel executor keeps the compile in plain
+#    cl.exe processes, which are easier to inspect). BuildPlugin has no switch that reaches UBT,
+#    so the setting goes through UBT's environment config (UnrealBuildTool_<Category>__<Field>,
+#    written by UBT to UnrealBuildTool.Env.BuildConfiguration.xml on every run; the same as
+#    -NoUBA). The log checks below fail if UBA ran anyway.
+#  - the compilers' PDB server (mspdbsrv) gets an endpoint of this job's own, so a server left
+#    by an earlier job (one that was killed or timed out) is not shared, and the servers this
+#    job started are stopped at the end.
+#  - the build processes already running before the build, the process tree at a hang and any
+#    process still holding the output after BuildPlugin exits are printed: the evidence for the
+#    cause.
+#  - a build that goes silent for $StallMinutes min is stopped and fails with a HANG line and the
+#    last line it printed, well before timeout-minutes (no single silent stretch of a good build
+#    is near 20 minutes; the whole 21-action compile is ~13).
+$env:UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor = "false"
+$env:_MSPDBSRV_ENDPOINT_ = "alicesdf-" + [guid]::NewGuid().ToString("N")
+$StallMinutes = 20
+$BuildStart = Get-Date
+$BuildProcs = "cl", "link", "mspdbsrv", "UbaHost", "UnrealBuildTool", "ShaderCompileWorker", "ispc", "dotnet", "MSBuild", "UnrealEditor-Cmd"
+
+# name, pid, parent, start time and CPU seconds of the build processes, and whether each one is
+# inside the tree of $Root (when given)
+function Show-BuildProcesses([string] $Title, $Root = $null) {
+    $all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+    $inTree = @{}
+    if ($Root) {
+        $inTree[[int]$Root.Id] = $true
+        $grew = $true
+        while ($grew) {
+            $grew = $false
+            foreach ($q in $all) {
+                if ($inTree.ContainsKey([int]$q.ParentProcessId) -and -not $inTree.ContainsKey([int]$q.ProcessId)) {
+                    $inTree[[int]$q.ProcessId] = $true
+                    $grew = $true
+                }
+            }
+        }
+    }
+    $rows = @(Get-Process -Name $BuildProcs -ErrorAction SilentlyContinue)
+    Write-Host "== processes: $Title ($($rows.Count))"
+    foreach ($r in $rows) {
+        $parent = ($all | Where-Object { $_.ProcessId -eq $r.Id } | Select-Object -First 1).ParentProcessId
+        $where = if (-not $Root) { "" } elseif ($inTree.ContainsKey([int]$r.Id)) { " in-tree" } else { " OUTSIDE-tree" }
+        Write-Host ("  {0} pid={1} parent={2} start={3:HH:mm:ss} cpu={4:N1}s{5}" -f $r.ProcessName, $r.Id, $parent, $r.StartTime, $r.CPU, $where)
+    }
+}
+
+foreach ($p in @($Staged, $Packaged)) {
+    if ($p -match '\s') { Fail "the BuildPlugin paths must not contain spaces (RunUAT.bat re-parses its arguments through cmd): $p" }
+}
+Show-BuildProcesses "already running before BuildPlugin"
+Import-Module (Join-Path $PSScriptRoot "ci-log-stall-watch.psm1") -Force
+$Uat = Invoke-StallWatched -FilePath (Join-Path $EngineRoot "Engine\Build\BatchFiles\RunUAT.bat") `
+    -ArgumentList @("BuildPlugin", "-Plugin=$Staged\AliceSDF.uplugin", "-Package=$Packaged", "-TargetPlatforms=Win64", "-Rocket") `
+    -LogPath $UatLog -StallSeconds ($StallMinutes * 60) -PollSeconds 15 `
+    -OnHang { param($root) Show-BuildProcesses "at the hang, before the kill" $root }
+if (-not $Uat.Drained) {
+    Show-BuildProcesses "still holding BuildPlugin's output after it exited ($($Uat.DroppedLines) later line(s) dropped)"
+}
+# the PDB servers of this job's endpoint: started after $BuildStart (one job runs at a time on
+# this runner); left running they would hold files of the next job's work directory
+$OwnPdb = @(Get-Process -Name mspdbsrv -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -ge $BuildStart })
+foreach ($q in $OwnPdb) {
+    Write-Host ("stopping this job's mspdbsrv pid={0} start={1:HH:mm:ss}" -f $q.Id, $q.StartTime)
+    Stop-Process -Id $q.Id -Force -ErrorAction SilentlyContinue
+}
+$UatText = (Read-Shared $UatLog) + "`n" + (Read-Shared $Uat.StderrPath)
+$UatText -split "`r?`n" | Where-Object { $_ -match "error|warning C|Result:|BUILD |\[\d+/\d+\]|executor" } | ForEach-Object { $_ }
+if ($Uat.Hung) {
+    Fail "HANG: BuildPlugin printed nothing for $StallMinutes min and was stopped; last line: $($Uat.LastLine)"
+}
+if ($Uat.ExitCode -ne 0) { Fail "BuildPlugin failed with exit code $($Uat.ExitCode) (see $UatLog)" }
+# UBT prints "Using <executor> executor to run N action(s)" for each target it compiles; the
+# only other place the UBA name is printed is that executor's own name
+if ($UatText.Contains("Unreal Build Accelerator")) {
+    Fail "BuildPlugin used the Unreal Build Accelerator although UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor=false"
+}
+if (-not $UatText.Contains("Using Parallel executor to run")) {
+    Fail "BuildPlugin compiled nothing on the parallel executor (no 'Using Parallel executor to run' line, see $UatLog)"
+}
+if (-not $UatText.Contains("BUILD SUCCESSFUL")) {
+    Fail "BuildPlugin exited 0 without BUILD SUCCESSFUL (see $UatLog)"
+}
 if (-not (Test-Path (Join-Path $Packaged "Binaries\Win64\UnrealEditor-AliceSDF.dll"))) {
     Fail "BuildPlugin produced no UnrealEditor-AliceSDF.dll"
 }

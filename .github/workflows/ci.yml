@@ -636,6 +636,12 @@ jobs:
       - name: Self-hosted log sanitizer + retention (tests)
         shell: pwsh
         run: pwsh -NoProfile -File scripts/test-ci-log-retain.ps1
+      # the ue5 job's BuildPlugin runs under this watch: a command gone silent is killed with its
+      # whole process tree and reported as a hang with its last line, steady output (stdout or
+      # stderr) runs to its own exit code
+      - name: Self-hosted build stall watch (tests)
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/test-ci-log-stall-watch.ps1
       - name: CI test coverage oracle (検査器自身の試験)
         run: python scripts/test_ci_test_coverage_check.py
       - name: CI test coverage (feature 付き oracle を走らせる cargo test が CI にある)
