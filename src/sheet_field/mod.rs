@@ -171,6 +171,10 @@ pub struct Hit {
     pub normal: Vec3,
     /// UV at the hit, when the owning sheet carries UV channels.
     pub uv: Option<[f32; 2]>,
+    /// The author normal at the hit (normalized), when the owning sheet carries the 3 author-normal channels
+    /// (channels 4-6). Its orientation is the author's; a renderer that shades like the source mesh flips it by
+    /// the side of [`Hit::normal`] it sees, as it would flip a mesh normal by the triangle's face.
+    pub attr_normal: Option<Vec3>,
 }
 
 /// The result of marching one ray.
@@ -604,6 +608,7 @@ impl SheetField {
             sheet: k,
             normal,
             uv: sh.sample(p, self.rule).uv,
+            attr_normal: None,
         }
     }
 }
