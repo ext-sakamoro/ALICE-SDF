@@ -123,6 +123,56 @@ class Concurrency(unittest.TestCase):
             with self.subTest(extra=extra):
                 self.assertEqual(run(self.wf(self.CHANGES + extra + self.SH_JOB + self.HOSTED_GATE)), 1)
 
+    # a decision-only step from DECISION_SCRIPTS: the exact command shape, reading the diff / the
+    # environment and writing $GITHUB_OUTPUT only (scripts/unreal_engines.py picks the engines)
+    ENGINES = ("      - name: engines\n"
+               "        run: python3 scripts/unreal_engines.py --roots \"$ROOTS\" --event \"$EVENT\""
+               " --ref \"$REF\" --specific \"$SPECIFIC\"\n")
+    SECOND_DECIDE = ("      - name: engine-specific change\n        run: >-\n"
+                     "          python3 scripts/changed_paths.py decide --event \"$EVENT\"\n"
+                     "          --patterns-file .github/unreal-engines-both.txt\n")
+
+    def test_two_decides_with_the_policy_are_exempt(self):
+        jobs = self.CHANGES + self.POLICY + self.SECOND_DECIDE
+        self.assertEqual(run(self.wf(jobs + self.SH_JOB + self.HOSTED_GATE)), 0)
+
+    def test_a_listed_decision_script_is_exempt(self):
+        jobs = self.CHANGES + self.POLICY + self.SECOND_DECIDE + self.ENGINES
+        self.assertEqual(run(self.wf(jobs + self.SH_JOB + self.HOSTED_GATE)), 0)
+
+    def test_a_decision_script_in_another_shape_is_not_exempt(self):
+        for engines in (self.ENGINES.replace(' --specific "$SPECIFIC"', ""),
+                        self.ENGINES.replace('"$SPECIFIC"\n', '"$SPECIFIC"; cargo build\n'),
+                        self.ENGINES.replace('"$SPECIFIC"\n', '"$SPECIFIC" && curl -sO https://x\n'),
+                        self.ENGINES.replace("--roots", "--roots $(id)"),
+                        self.ENGINES.replace("unreal_engines.py", "unreal_engines.py --extra")):
+            with self.subTest(engines=engines):
+                jobs = self.CHANGES + self.POLICY + engines
+                self.assertEqual(run(self.wf(jobs + self.SH_JOB + self.HOSTED_GATE)), 1)
+
+    def test_an_unlisted_script_or_a_build_step_is_not_exempt(self):
+        for extra in ("      - run: python3 scripts/other_choice.py --roots \"$ROOTS\"\n",
+                      "      - run: cargo build --release\n",
+                      "      - run: curl -sSfLO https://example.invalid/x.tar.gz\n",
+                      "      - run: pip install pyyaml\n"):
+            with self.subTest(extra=extra):
+                jobs = self.CHANGES + self.POLICY + self.ENGINES + extra
+                self.assertEqual(run(self.wf(jobs + self.SH_JOB + self.HOSTED_GATE)), 1)
+
+    def test_a_decision_script_without_a_decide_is_not_exempt(self):
+        changes = "  changes:\n    runs-on: ubuntu-latest\n    steps:\n" + self.ENGINES
+        self.assertEqual(run(self.wf(changes + self.SH_JOB + self.HOSTED_GATE)), 1)
+
+    def test_a_decide_with_a_command_substitution_is_not_exempt(self):
+        changes = self.CHANGES.replace("--patterns-file", "--patterns-file $(cargo build)")
+        self.assertEqual(run(self.wf(changes + self.SH_JOB + self.HOSTED_GATE)), 1)
+
+    def test_a_repeated_policy_or_decision_step_is_not_exempt(self):
+        for extra in (self.POLICY, self.ENGINES):
+            with self.subTest(extra=extra):
+                jobs = self.CHANGES + self.POLICY + self.ENGINES + extra
+                self.assertEqual(run(self.wf(jobs + self.SH_JOB + self.HOSTED_GATE)), 1)
+
     def test_a_job_that_only_mentions_the_gate_is_not_exempt(self):
         gate = self.HOSTED_GATE.replace("      - run: python3", "      - run: echo changed_paths.py gate; python3")
         self.assertEqual(run(self.wf(self.CHANGES + self.SH_JOB + gate)), 1)
