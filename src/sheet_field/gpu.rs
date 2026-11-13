@@ -276,7 +276,7 @@ impl GpuSheetField {
                 layout: Some(&pl),
                 module: &module,
                 entry_point: Some(entry_point),
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
                 cache: None,
             })
         };
@@ -298,7 +298,7 @@ impl GpuSheetField {
         })
     }
 
-    fn uniforms(&self, count: u32, steps: u32, dir: Vec3, tmax: f32) -> Uniforms {
+    const fn uniforms(&self, count: u32, steps: u32, dir: Vec3, tmax: f32) -> Uniforms {
         let b = self.bases;
         Uniforms {
             n_sheets: self.n_sheets,
@@ -432,7 +432,9 @@ impl GpuSheetField {
             self.uniforms(origins.len() as u32, steps, dir, tmax),
         )?;
         let mut res = Vec::with_capacity(origins.len());
-        for r in out.chunks_exact(3) {
+        let (rows, rest) = out.as_chunks::<3>();
+        debug_assert!(rest.is_empty(), "3 output words a ray");
+        for r in rows {
             let kind = r[0][1] as i32;
             res.push(match kind {
                 1 => MarchResult::Hit(Hit {
@@ -454,7 +456,7 @@ impl GpuSheetField {
     }
 }
 
-const SHADER: &str = r#"
+const SHADER: &str = r"
 struct SheetInfo { lo: vec3<f32>, hc: f32, hi: vec3<f32>, level_start: u32, level_count: u32, p0: u32, p1: u32, p2: u32 };
 struct LevelInfo { lo: vec3<f32>, h: f32, nb: vec3<u32>, index_off: u32, nch: u32, p0: u32, p1: u32, p2: u32,
                    rows_off: vec4<u32>, q_off: vec4<u32>, sc_off: vec4<u32> };
@@ -750,4 +752,4 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     OUT[3u * i + 1u] = vec4<f32>(nrm, 0.0);
     OUT[3u * i + 2u] = vec4<f32>(uv, 0.0);
 }
-"#;
+";

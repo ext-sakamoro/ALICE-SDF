@@ -25,7 +25,15 @@ use glam::Vec3;
 const L: f32 = 1.2;
 const OUTSIDE: [f32; 4] = [0.005, 0.01, 0.02, 0.05];
 const INSIDE: [f32; 2] = [-0.005, -0.05];
-const ANGLES_DEG: [f32; 5] = [90.0, 45.0, 10.0, 2.0, 0.5];
+/// (angle from the plane in degrees, its tangent): directions are built from the slope (the crate forbids
+/// f32::sin / cos, even in tests); 90 degrees is straight down
+const ANGLES: [(f32, f32); 5] = [
+    (90.0, f32::INFINITY),
+    (45.0, 1.0),
+    (10.0, 0.176_326_98),
+    (2.0, 0.034_920_77),
+    (0.5, 0.008_726_867),
+];
 
 fn square_db(x: f32, y: f32) -> f32 {
     let dx = x.abs() - 1.0;
@@ -49,8 +57,14 @@ fn patch() -> SheetField {
 /// (label, direction) for every family and angle
 fn directions() -> Vec<(String, Vec3)> {
     let mut out = Vec::new();
-    for a in ANGLES_DEG {
-        let (c, s) = (a.to_radians().cos(), a.to_radians().sin());
+    for (a, m) in ANGLES {
+        // unit (cos, sin) of the angle from its tangent
+        let (c, s) = if m.is_infinite() {
+            (0.0, 1.0)
+        } else {
+            let n = (1.0 + m * m).sqrt();
+            (1.0 / n, m / n)
+        };
         out.push((format!("across outward {a} deg"), Vec3::new(c, 0.0, -s)));
         out.push((format!("across inward {a} deg"), Vec3::new(-c, 0.0, -s)));
         out.push((format!("along the rim {a} deg"), Vec3::new(0.0, c, -s)));

@@ -4,8 +4,9 @@ use glam::Vec3;
 
 use super::{Channel, Level, Sheet, SheetFieldError, BRICK, BRICK_NODES, NODES};
 
-/// Quantize one channel's node values for the active bricks (`values[brick][node]`) to bytes with a per-brick
-/// scale and offset. With `drop_nonpositive`, a brick whose nodes are all <= 0 is dropped (row -1): its
+/// Quantize one channel's node values for the active bricks (`values[brick][node]`) to bytes.
+///
+/// Each brick has its own scale and offset. With `drop_nonpositive`, a brick whose nodes are all <= 0 is dropped (row -1): its
 /// trilinear value is then <= 0 everywhere in the brick, so `max(value, 0) = 0` exactly (the `d_b` channel).
 pub fn quantize(values: &[Vec<f32>], drop_nonpositive: bool) -> Channel {
     let mut ch = Channel {
@@ -34,8 +35,9 @@ pub fn quantize(values: &[Vec<f32>], drop_nonpositive: bool) -> Channel {
     ch
 }
 
-/// One level from a channel function: bricks of `BRICK^3` cells of size `h` from `lo`, `nb` per axis; a brick
-/// is active when `active(brick_center, brick_edge)` says so. `chan(p)` returns `[s, d_b]` or `[s, d_b, u, v]`.
+/// One level from a channel function: bricks of `BRICK^3` cells of size `h` from `lo`, `nb` per axis.
+///
+/// A brick is active when `active(brick_center, brick_edge)` says so. `chan(p)` returns `[s, d_b]` or `[s, d_b, u, v]`.
 pub fn level_from_fn(
     lo: Vec3,
     h: f32,
@@ -43,7 +45,7 @@ pub fn level_from_fn(
     active: impl Fn(Vec3, f32) -> bool,
     chan: impl Fn(Vec3) -> Vec<f32>,
 ) -> Result<Level, SheetFieldError> {
-    if !(h > 0.0) || nb.iter().any(|&n| n == 0) {
+    if !h.is_finite() || h <= 0.0 || nb.contains(&0) {
         return Err(SheetFieldError::Shape(format!("h {h}, nb {nb:?}")));
     }
     let edge = BRICK as f32 * h;

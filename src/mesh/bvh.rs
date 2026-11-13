@@ -322,7 +322,9 @@ fn closest_on_segment(p: Vec3, a: Vec3, b: Vec3) -> (Vec3, f32) {
     (a + ab * t, t)
 }
 
-/// A primitive the BVH builder can split: anything with an axis-aligned box. The triangle path
+/// A primitive the BVH builder can split: anything with an axis-aligned box.
+///
+/// The triangle path
 /// ([`MeshBvh::build`]) and the box path ([`BvhNode::build_over_boxes`]) share one builder, so a box BVH
 /// over triangle boxes is node for node the triangle BVH.
 pub trait HasAabb {

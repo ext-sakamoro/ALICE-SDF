@@ -67,7 +67,7 @@ impl ValidRule {
 }
 
 /// Errors from building or loading a sheet field.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SheetFieldError {
     /// The form names a validity rule this crate does not know.
     UnknownRule(String),
@@ -194,7 +194,7 @@ pub fn outside_lower_bound(p: Vec3, lo: Vec3, hi: Vec3, hc: f32) -> f32 {
 }
 
 impl Level {
-    fn node(&self, ch: &Channel, brick: usize, x: usize, y: usize, z: usize) -> Option<f32> {
+    fn node(ch: &Channel, brick: usize, x: usize, y: usize, z: usize) -> Option<f32> {
         let row = ch.rows[brick];
         if row < 0 {
             return None;
@@ -266,8 +266,7 @@ impl Sheet {
                                 let ww = (if dx == 1 { t[0] } else { 1.0 - t[0] })
                                     * (if dy == 1 { t[1] } else { 1.0 - t[1] })
                                     * (if dz == 1 { t[2] } else { 1.0 - t[2] });
-                                let v = lv
-                                    .node(ch, k, c[0] + dx, c[1] + dy, c[2] + dz)
+                                let v = Level::node(ch, k, c[0] + dx, c[1] + dy, c[2] + dz)
                                     .unwrap_or(0.0);
                                 acc += ww * v;
                                 if ci == 0 {
@@ -305,14 +304,13 @@ impl Sheet {
             };
         };
         let (s, db) = (c.values[0], c.values[1]);
-        let mut f = (s * s + db.max(0.0) * db.max(0.0)).sqrt();
-        let mut g = if s < 0.0 { -f } else { f };
-        let mut masked = false;
-        if rule == ValidRule::CellV1 && c.umin > HALF_DIAG * c.h + c.q0 {
-            f = (c.umin - c.q0 - HALF_DIAG * c.h).max(0.05);
-            g = f;
-            masked = true;
-        }
+        let (f, g, masked) = if rule == ValidRule::CellV1 && c.umin > HALF_DIAG * c.h + c.q0 {
+            let v = (c.umin - c.q0 - HALF_DIAG * c.h).max(0.05);
+            (v, v, true)
+        } else {
+            let f = (s * s + db.max(0.0) * db.max(0.0)).sqrt();
+            (f, if s < 0.0 { -f } else { f }, false)
+        };
         let uv = if c.nch >= 4 {
             Some([c.values[2], c.values[3]])
         } else {
@@ -344,7 +342,7 @@ impl SheetField {
     }
 
     /// The flattened BVH over the sheet boxes.
-    pub fn index(&self) -> &FlatNodes {
+    pub const fn index(&self) -> &FlatNodes {
         &self.index
     }
 
@@ -556,7 +554,7 @@ impl SheetField {
                 }
                 let (mut a, mut b, mut ga) = (tprev, t, gp);
                 for _ in 0..30 {
-                    let mid = 0.5 * (a + b);
+                    let mid = f32::midpoint(a, b);
                     let gm = sh.sample(origin + dir * mid, self.rule).g;
                     if (gm < 0.0) == (ga < 0.0) {
                         a = mid;
@@ -565,7 +563,7 @@ impl SheetField {
                         b = mid;
                     }
                 }
-                let tm = 0.5 * (a + b);
+                let tm = f32::midpoint(a, b);
                 if sh.crossing_inside(origin + dir * tm, self.rule) && tm < thit {
                     thit = tm;
                     khit = k;
