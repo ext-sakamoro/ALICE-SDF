@@ -755,6 +755,17 @@ jobs:
         run: |
           python3 scripts/test_g11_table.py
           scripts/g11_table.sh
+      # ALICE-Law's ratchets on this repository before it lands (they also run daily in ALICE-Law, which only
+      # notices after the fact): production panic sites, the ast-grep structural rules and the alice-det-math
+      # added-function pins, each against ALICE-Law's baseline at .github/law-ratchets-pin (checkers and
+      # baselines SHA-256 pinned, ast-grep at the pinned version). A count above or below the baseline, or
+      # nothing compared, fails. The counts read source syntax, the same on every OS: Linux only
+      - name: ALICE-Law ratchets (no-panic, structural lint, added-function pins)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 scripts/test_law_ratchets.py
+          scripts/law_ratchets.sh
       # ALICE-Law G11: ALICE-Law's own self-check at the pinned revision (table, rows, shared copies, own copies
       # at their targets, manifest), on every OS of the matrix
       - name: ALICE-Law G11 self-check (the four G11 checks at the pinned revision)
