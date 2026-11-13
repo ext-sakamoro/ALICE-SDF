@@ -49,7 +49,7 @@ const FOLDED_PARTS: u32 = 24;
 fn folded_rack(parts: u32) -> SdfNode {
     let (hook_width, height, hook_depth, wall, opening) = (30.0_f32, 150.0_f32, 25.0, 5.0, 15.0);
     let pitch = hook_width + 10.0;
-    let outer_hx = (parts as f32 * pitch + 10.0) * 0.5;
+    let outer_hx = f32::midpoint(parts as f32 * pitch, 10.0);
     let outer_hy = height * 0.5;
     let outer_hz = wall * 0.5;
     let (arm_hy, arm_hz, tip_hy) = (4.0, hook_depth * 0.5, opening * 0.5);
@@ -176,7 +176,7 @@ fn assert_same_and_not_vacuous(values: &[(f32, f32)]) {
 fn the_folded_smooth_union_chain_fits_a_test_thread() {
     let tree = folded_rack(FOLDED_PARTS);
     assert_eq!(depth(&tree), 2 * FOLDED_PARTS as usize + 5);
-    let extent = (FOLDED_PARTS as f32 * 40.0 + 10.0) * 0.5;
+    let extent = f32::midpoint(FOLDED_PARTS as f32 * 40.0, 10.0);
     let values = values_on_thread(tree, probe_points(extent), TEST_THREAD_BYTES);
     assert_same_and_not_vacuous(&values);
 }

@@ -32,9 +32,9 @@ use glam::Vec3;
 ///
 /// Recursively traverses the tree and computes the signed distance.
 ///
-/// The recursion holds only what it needs across a child's evaluation: [`descend`] reads a node
+/// The recursion holds only what it needs across a child's evaluation: `descend` reads a node
 /// (a leaf's value, or the children and the moved point), the children are evaluated, and
-/// [`combine`] / [`finish`] apply the node's law to their values. Those three and the leaf
+/// `combine` / `finish` apply the node's law to their values. Those three and the leaf
 /// evaluator are never inlined here, so each level of a deep tree costs one small frame whatever
 /// the number of node kinds or the size of their arms (an unoptimised build gives every arm of a
 /// match its own stack slots; a smooth-union chain folded one part at a time, 2 × 24 deep, has to
