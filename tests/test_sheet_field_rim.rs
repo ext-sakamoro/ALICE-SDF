@@ -246,6 +246,8 @@ fn the_normal_near_the_rim_is_the_plane_normal() {
     let mut wrong = Vec::new();
     for (label, d) in directions() {
         let origins: Vec<Vec3> = deltas.iter().map(|&dl| origin(d, dl)).collect();
+        // pushed to only with the gpu feature
+        #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
         let mut results: Vec<(&str, Vec<MarchResult>)> = vec![(
             "cpu",
             origins
