@@ -160,8 +160,8 @@ pub mod heatmap;
 pub mod incremental;
 pub mod measure;
 pub mod sdf2d;
-pub mod shell;
 pub mod sheet_field;
+pub mod shell;
 pub mod validity;
 
 // `font` alone is inert on crates.io (no `alice-font` dep declared);
