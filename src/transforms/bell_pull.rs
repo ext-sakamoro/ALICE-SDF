@@ -24,6 +24,17 @@ use serde::{Deserialize, Serialize};
 pub const BELL_SLOPE: f32 = 0.606_530_66;
 /// [`BellPull::new`] refuses a slope sum `S` above this
 pub const MOST_SLOPE: f32 = 0.95;
+/// The narrowest bell width [`BellPull::new`] accepts: `2σ²` stays a normal f32 (below it the
+/// exponent `r² / 2σ²` is `0 / 0` at the pull point)
+pub const LEAST_SIGMA: f32 = 1e-18;
+/// The widest bell width [`BellPull::new`] accepts: `2σ²` stays finite (above it the exponent is
+/// `∞ / ∞` far from the pull)
+pub const MOST_SIGMA: f32 = 1e18;
+/// The most slope sum the live-pull shader lets the page's uniforms reach
+///
+/// In `GlslShader::transpile_with_live_pull`, pulls above it are scaled down to it. It is just
+/// under [`MOST_SLOPE`], so a clamped value is one [`BellPull::new`] accepts after rounding
+pub const LIVE_SLOPE: f32 = 0.94;
 
 /// Up to two pulls under one bell width
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -104,9 +115,14 @@ fn length(v: [f32; 4]) -> f32 {
 impl BellPull {
     /// # Errors
     ///
-    /// A value that is not finite, a width that is not positive, or pulls that could fold the shape
+    /// A value that is not finite, a width outside [`LEAST_SIGMA`]..=[`MOST_SIGMA`], or pulls that
+    /// could fold the shape
     pub fn new(pulls: [[f32; 4]; 2], sigma: f32) -> Result<Self, BellPullError> {
-        if !sigma.is_finite() || sigma <= 0.0 || pulls.iter().flatten().any(|v| !v.is_finite()) {
+        // σ within [LEAST_SIGMA, MOST_SIGMA] keeps 2σ² a normal, finite f32 (the exponent is never
+        // 0/0 or ∞/∞); NaN fails both comparisons
+        if !(LEAST_SIGMA..=MOST_SIGMA).contains(&sigma)
+            || pulls.iter().flatten().any(|v| !v.is_finite())
+        {
             return Err(BellPullError::Bad);
         }
         let s = (length(pulls[0]) + length(pulls[1])) * BELL_SLOPE / sigma;

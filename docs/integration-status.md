@@ -9,8 +9,8 @@ References are resolved to one definition each, so items that share a name are t
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
 | L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1401 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1221 |
-| | **total** | **2631** |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1224 |
+| | **total** | **2634** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.

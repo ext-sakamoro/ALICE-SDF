@@ -1310,11 +1310,51 @@ impl<L: ShaderLang> GenericTranspiler<L> {
     ) -> (String, String) {
         let [a, b] = pull.pulls();
         let (ua, ub, sigma) = if self.live_pull {
-            (
-                "uPull".to_owned(),
-                "uPull2".to_owned(),
-                "uPullSigma".to_owned(),
-            )
+            // the uniforms are what the page sends: clamp them to what BellPull::new accepts, so the
+            // map stays one to one whatever arrives. The width to [LEAST_SIGMA, MOST_SIGMA]; a slope
+            // sum above LIVE_SLOPE scales both pull vectors down to it
+            use crate::transforms::bell_pull::{BELL_SLOPE, LEAST_SIGMA, LIVE_SLOPE, MOST_SIGMA};
+            let (sig, s, k) = (self.next_var(), self.next_var(), self.next_var());
+            code.push_str(&L::decl_float(
+                &sig,
+                &format!(
+                    "clamp(uPullSigma, {}, {})",
+                    lit(LEAST_SIGMA),
+                    lit(MOST_SIGMA)
+                ),
+            ));
+            let len = |u: &str| {
+                format!(
+                    "length({})",
+                    L::vec2_ctor(&format!("{u}.z"), &format!("{u}.w"))
+                )
+            };
+            code.push_str(&L::decl_float(
+                &s,
+                &format!(
+                    "({} + {}) * {} / {sig}",
+                    len("uPull"),
+                    len("uPull2"),
+                    lit(BELL_SLOPE)
+                ),
+            ));
+            code.push_str(&L::decl_float(
+                &k,
+                &L::select_expr(
+                    &format!("{s} > {}", lit(LIVE_SLOPE)),
+                    &format!("{} / {s}", lit(LIVE_SLOPE)),
+                    "1.0",
+                ),
+            ));
+            let scaled = |u: &str| {
+                L::vec4_ctor(
+                    &format!("{u}.x"),
+                    &format!("{u}.y"),
+                    &format!("{u}.z * {k}"),
+                    &format!("{u}.w * {k}"),
+                )
+            };
+            (scaled("uPull"), scaled("uPull2"), sig)
         } else {
             let v4 = |u: [f32; 4]| L::vec4_ctor(&lit(u[0]), &lit(u[1]), &lit(u[2]), &lit(u[3]));
             (v4(a), v4(b), lit(pull.sigma()))

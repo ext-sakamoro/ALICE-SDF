@@ -533,6 +533,84 @@ fn a_bell_pull_in_the_shader_is_the_bell_pull_on_the_cpu() {
     }
 }
 
+/// The live pull's uniforms are whatever the page sends: the shader clamps them to what
+/// `BellPull::new` would accept, so the map stays one to one. The width goes to
+/// [`LEAST_SIGMA`, `MOST_SIGMA`]; a slope sum `S` above `LIVE_SLOPE` scales both pull vectors by
+/// `LIVE_SLOPE / S`. Oracle: `eval_scaled` of the clamped pulls (built through `BellPull::new`, which
+/// accepts them), computed on the CPU
+#[test]
+fn the_live_pull_clamps_uniforms_that_would_fold_the_shape() {
+    use alice_sdf::transforms::bell_pull::{BELL_SLOPE, LEAST_SIGMA, LIVE_SLOPE, MOST_SLOPE};
+    use alice_sdf::transforms::BellPull;
+    const { assert!(LIVE_SLOPE < MOST_SLOPE && LIVE_SLOPE > 0.9) };
+    let Some(cxx) = cxx_or_skip() else { return };
+    let (child, ok) = pulled();
+    let len = |u: [f32; 4]| (u[2] * u[2] + u[3] * u[3]).sqrt();
+    // (pulls sent, width sent): S = 1.6 (folds), a width below the bound with no pull, S exactly 1
+    let cases: [([[f32; 4]; 2], f32); 3] = [
+        ([[0.1, 0.0, 0.6, 0.3], [-0.2, 0.1, -0.2, 0.25]], 0.34),
+        ([[0.0; 4], [0.0; 4]], 1e-30),
+        ([[0.0, 0.1, 0.0, 0.4], [0.0; 4]], 0.4 * BELL_SLOPE),
+    ];
+    let mut compared = 0;
+    for (sent, sigma) in cases {
+        let sigma_c = sigma.max(LEAST_SIGMA);
+        let s = (len(sent[0]) + len(sent[1])) * BELL_SLOPE / sigma_c;
+        let k = if s > LIVE_SLOPE { LIVE_SLOPE / s } else { 1.0 };
+        let clamped = sent.map(|u| [u[0], u[1], u[2] * k, u[3] * k]);
+        let reference = BellPull::new(clamped, sigma_c).expect("the clamped pulls are accepted");
+        let tree = child.clone().bell_pull(reference);
+        // the source is made from any node (the pull's values come from the uniforms)
+        let live = GlslShader::transpile_with_live_pull(&child.clone().bell_pull(ok)).source;
+        let set = format!(
+            "static vec4 uPull = vec4({:e}f, {:e}f, {:e}f, {:e}f);\nstatic vec4 uPull2 = vec4({:e}f, {:e}f, {:e}f, {:e}f);\nstatic float uPullSigma = {:e}f;",
+            sent[0][0], sent[0][1], sent[0][2], sent[0][3], sent[1][0], sent[1][1], sent[1][2], sent[1][3], sigma
+        );
+        let live = live.replace(
+            "uniform vec4 uPull;\nuniform vec4 uPull2;\nuniform float uPullSigma;",
+            &set,
+        );
+        assert!(!live.contains("uniform"), "the uniforms were not replaced");
+        let src = program(&[live], 2, |_| {
+            "vec2 v = t0::sdf_eval_scaled(p); o[0] = v.x; o[1] = v.y;".to_owned()
+        });
+        // random points, and each pull's own point g + v (where r = 0, the exponent's 0 / 0 when
+        // the width is not clamped)
+        let mut pts = points(94, 0x0bad_5eed);
+        pts.extend(
+            sent.iter()
+                .map(|u| Vec3::new(u[0] + u[2] * k, u[1] + u[3] * k, 0.0)),
+        );
+        let got = compile_and_run(&cxx, "bell_pull_clamp", &src, &pts, 2);
+        let mut bad = Vec::new();
+        for (j, p) in pts.iter().enumerate() {
+            let (d, sc) = alice_sdf::eval::eval_scaled(&tree, *p);
+            let (gd, gs) = (got[j * 2], got[j * 2 + 1]);
+            assert!(
+                gd.is_finite() && gs.is_finite(),
+                "σ {sigma:e} at {p:?}: ({gd}, {gs})"
+            );
+            assert!(
+                gs <= 1.0 + LIVE_SLOPE + 1e-4,
+                "σ {sigma:e}: Λ {gs} above 1 + LIVE_SLOPE"
+            );
+            if (gd - d).abs() > 1e-4 * d.abs().max(1.0)
+                || (gs - sc).abs() > 1e-4 * sc.abs().max(1.0)
+            {
+                bad.push(format!("σ {sigma:e} at {p:?}: ({gd}, {gs}) vs ({d}, {sc})"));
+            }
+            compared += 1;
+        }
+        assert!(
+            bad.is_empty(),
+            "{} differ, e.g.\n{}",
+            bad.len(),
+            bad[..bad.len().min(6)].join("\n")
+        );
+    }
+    assert_eq!(compared, 3 * 96);
+}
+
 #[test]
 fn a_bell_pull_that_could_fold_is_refused() {
     use alice_sdf::transforms::{BellPull, BellPullError};

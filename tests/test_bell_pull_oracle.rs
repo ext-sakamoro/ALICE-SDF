@@ -224,3 +224,43 @@ fn a_stored_pull_is_checked_again_on_load() {
     assert_ne!(bad, text);
     assert!(serde_json::from_str::<SdfNode>(&bad).is_err(), "{bad}");
 }
+
+/// The width keeps `2σ²` a normal, finite f32: below that the bell's exponent is `0 / 0` at the
+/// pull point (NaN, also from an unused `[0; 4]` pull at the origin), above it `∞ / ∞`. Inside the
+/// range every value the map makes from stored parameters is finite, at the pull point and far away
+#[test]
+fn widths_that_would_make_the_exponent_undefined_are_refused() {
+    use alice_sdf::transforms::bell_pull::{LEAST_SIGMA, MOST_SIGMA};
+    // the bounds themselves: 2σ² normal and finite (checked in f64, not by the implementation)
+    let two_sq = |s: f32| 2.0 * f64::from(s) * f64::from(s);
+    assert!(two_sq(LEAST_SIGMA) >= f64::from(f32::MIN_POSITIVE));
+    assert!(two_sq(MOST_SIGMA) <= f64::from(f32::MAX));
+    let mut checked = 0;
+    for sigma in [1e-20f32, 1e-30, f32::MIN_POSITIVE, 1e19, 1e30, f32::MAX] {
+        assert_eq!(
+            BellPull::new([[0.0; 4]; 2], sigma),
+            Err(BellPullError::Bad),
+            "σ {sigma:e} accepted"
+        );
+        checked += 1;
+    }
+    for sigma in [LEAST_SIGMA, MOST_SIGMA] {
+        let pull = BellPull::new([[0.0; 4]; 2], sigma).expect("inside the range");
+        for p in [
+            Vec3::ZERO,
+            Vec3::new(1e-30, 0.0, 0.0),
+            Vec3::new(1e19, -1e19, 1.0),
+            Vec3::new(f32::MAX, 0.0, 0.0),
+        ] {
+            let x = pull.back(p);
+            assert!(x.is_finite(), "σ {sigma:e} at {p}: {x}");
+            let d = eval(
+                &SdfNode::sphere(0.5).bell_pull(pull),
+                p.min(Vec3::splat(1e30)),
+            );
+            assert!(!d.is_nan(), "σ {sigma:e} at {p}: {d}");
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 6 + 2 * 4);
+}
