@@ -165,7 +165,9 @@ $UatLog = Join-Path $Logs "buildplugin.log"
 #    cl.exe processes, which are easier to inspect). BuildPlugin has no switch that reaches UBT,
 #    so the setting goes through UBT's environment config (UnrealBuildTool_<Category>__<Field>,
 #    written by UBT to UnrealBuildTool.Env.BuildConfiguration.xml on every run; the same as
-#    -NoUBA). The log checks below fail if UBA ran anyway.
+#    -NoUBA). UE 5.7 then compiles on its parallel executor; UE 5.8 always runs the UBA
+#    executor and the setting turns its detouring off. The check below reads that file back, so
+#    it fails if the setting did not reach UBT, whichever executor the engine names.
 #  - the compilers' PDB server (mspdbsrv) gets an endpoint of this job's own, so a server left
 #    by an earlier job (one that was killed or timed out) is not shared, and the servers this
 #    job started are stopped at the end.
@@ -233,13 +235,19 @@ if ($Uat.Hung) {
     Fail "HANG: BuildPlugin printed nothing for $StallMinutes min and was stopped; last line: $($Uat.LastLine)"
 }
 if ($Uat.ExitCode -ne 0) { Fail "BuildPlugin failed with exit code $($Uat.ExitCode) (see $UatLog)" }
-# UBT prints "Using <executor> executor to run N action(s)" for each target it compiles; the
-# only other place the UBA name is printed is that executor's own name
-if ($UatText.Contains("Unreal Build Accelerator")) {
-    Fail "BuildPlugin used the Unreal Build Accelerator although UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor=false"
+# UBT writes its environment config under the writable engine directory, which for an installed
+# engine is %LOCALAPPDATA%\UnrealEngine; it is rewritten from the environment on every run
+$UbtEnvXml = Join-Path $env:LOCALAPPDATA "UnrealEngine\Intermediate\Build\UnrealBuildTool.Env.BuildConfiguration.xml"
+$UbtEnvText = Read-Shared $UbtEnvXml
+if ($null -eq $UbtEnvText) { Fail "UBT wrote no environment config at $UbtEnvXml" }
+Write-Host "UBT environment config ($UbtEnvXml):"
+Write-Host $UbtEnvText
+if ($UbtEnvText -notmatch "<bAllowUBAExecutor>\s*false\s*</bAllowUBAExecutor>") {
+    Fail "UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor=false did not reach UBT (not in $UbtEnvXml)"
 }
-if (-not $UatText.Contains("Using Parallel executor to run")) {
-    Fail "BuildPlugin compiled nothing on the parallel executor (no 'Using Parallel executor to run' line, see $UatLog)"
+# UBT prints "Using <executor> executor to run N action(s)" for each target it compiles
+if ($UatText -notmatch "Using .+ executor to run \d+ action") {
+    Fail "BuildPlugin compiled nothing (no 'Using ... executor to run N action(s)' line, see $UatLog)"
 }
 if (-not $UatText.Contains("BUILD SUCCESSFUL")) {
     Fail "BuildPlugin exited 0 without BUILD SUCCESSFUL (see $UatLog)"
