@@ -124,6 +124,9 @@ impl CompiledSdf {
 
         let mut compiler = Compiler::new();
         compiler.compile_node(node);
+        if let Some(e) = compiler.refused.take() {
+            return Err(e);
+        }
         compiler.instructions.push(Instruction::end());
 
         Ok(Self {
@@ -153,6 +156,10 @@ struct Compiler {
     instructions: Vec<Instruction>,
     aux_data: Vec<f32>,
     node_count: usize,
+    /// The first node the bytecode has no law for (validate_for_compile refuses the same nodes
+    /// before compiling; this keeps the compiler itself total: it records the refusal and emits
+    /// nothing for that node, and try_compile returns the error)
+    refused: Option<CompileError>,
 }
 
 impl Compiler {
@@ -161,6 +168,14 @@ impl Compiler {
             instructions: Vec::with_capacity(256),
             aux_data: Vec::new(),
             node_count: 0,
+            refused: None,
+        }
+    }
+
+    /// Record that the bytecode cannot represent `name` (the first refusal is kept)
+    fn refuse(&mut self, name: &str) {
+        if self.refused.is_none() {
+            self.refused = Some(CompileError::UnsupportedPrimitive(name.to_owned()));
         }
     }
 
@@ -267,20 +282,12 @@ impl Compiler {
                     .push(Instruction::link(*half_length, *r1, *r2));
             }
 
-            SdfNode::Triangle { .. } => {
-                unreachable!("Triangle: validated by validate_for_compile()");
-            }
+            SdfNode::Triangle { .. } => self.refuse("Triangle"),
 
-            SdfNode::SectionStack(_) => {
-                unreachable!("SectionStack: validated by validate_for_compile()");
-            }
-            SdfNode::SmoothSectionStack(_) => {
-                unreachable!("SmoothSectionStack: validated by validate_for_compile()");
-            }
+            SdfNode::SectionStack(_) => self.refuse("SectionStack"),
+            SdfNode::SmoothSectionStack(_) => self.refuse("SmoothSectionStack"),
 
-            SdfNode::Bezier { .. } => {
-                unreachable!("Bezier: validated by validate_for_compile()");
-            }
+            SdfNode::Bezier { .. } => self.refuse("Bezier"),
 
             // === Extended Primitives (38 new) ===
             SdfNode::RoundedBox {
@@ -1197,9 +1204,7 @@ impl Compiler {
 
             // Terrain has no bytecode law yet (FBM heightfield lives only in the tree
             // evaluator); rejected by `validate_for_compile` so this arm is unreachable.
-            SdfNode::Terrain { .. } => {
-                unreachable!("Terrain rejected by validate_for_compile()");
-            }
+            SdfNode::Terrain { .. } => self.refuse("Terrain"),
 
             // === ExpSmooth operations ===
             SdfNode::ExpSmoothUnion { a, b, k } => {
@@ -1302,12 +1307,8 @@ impl Compiler {
                 self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
             }
 
-            SdfNode::GridWarp { .. } => {
-                unreachable!("GridWarp: refused by validate_for_compile()");
-            }
-            SdfNode::BellPull { .. } => {
-                unreachable!("BellPull: refused by validate_for_compile()");
-            }
+            SdfNode::GridWarp { .. } => self.refuse("GridWarp"),
+            SdfNode::BellPull { .. } => self.refuse("BellPull"),
 
             SdfNode::SdfSkinning { child, bones } => {
                 // Serialize: [bone_count, (inv_bind_pose[16], current_pose[16], weight) × N]
@@ -1798,6 +1799,135 @@ mod tests {
     }
     use super::super::opcode::OpCode;
     use super::*;
+
+    /// One tree of each variant validate_for_compile refuses (the bytecode has no law for them),
+    /// with the name its refusal carries
+    fn refused_trees() -> Vec<(&'static str, SdfNode)> {
+        use glam::{Vec2, Vec3};
+        let ring = |n: usize, rx: f32, ry: f32| -> Vec<Vec2> {
+            (0..n)
+                .map(|i| {
+                    let (s, c) =
+                        alice_det_math::sin_cos(i as f32 / n as f32 * std::f32::consts::TAU);
+                    Vec2::new(rx * c, ry * s)
+                })
+                .collect()
+        };
+        let identity_maps: Vec<f32> = (0..27)
+            .flat_map(|_| [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0])
+            .collect();
+        vec![
+            (
+                "Triangle",
+                SdfNode::Triangle {
+                    point_a: Vec3::X,
+                    point_b: Vec3::Y,
+                    point_c: Vec3::Z,
+                },
+            ),
+            (
+                "Bezier",
+                SdfNode::Bezier {
+                    point_a: Vec3::ZERO,
+                    point_b: Vec3::Y,
+                    point_c: Vec3::X,
+                    radius: 0.1,
+                },
+            ),
+            (
+                "Terrain",
+                SdfNode::Terrain {
+                    scale: 1.3,
+                    amplitude: 0.4,
+                },
+            ),
+            (
+                "SectionStack",
+                SdfNode::section_stack(
+                    vec![-0.4, 0.0, 0.4],
+                    vec![
+                        vec![ring(16, 0.3, 0.25)],
+                        vec![ring(16, 0.35, 0.3)],
+                        vec![ring(16, 0.2, 0.15)],
+                    ],
+                )
+                .expect("a valid stack"),
+            ),
+            (
+                "SmoothSectionStack",
+                SdfNode::smooth_section_stack(
+                    vec![-0.45, -0.15, 0.15, 0.45],
+                    vec![
+                        vec![ring(10, 0.3, 0.25)],
+                        vec![ring(10, 0.35, 0.3)],
+                        vec![ring(10, 0.3, 0.28)],
+                        vec![ring(10, 0.2, 0.15)],
+                    ],
+                    0.01,
+                    0.1,
+                )
+                .expect("a valid smooth stack"),
+            ),
+            (
+                "GridWarp",
+                SdfNode::box3d(0.5, 0.5, 0.5).grid_warp(
+                    crate::transforms::GridWarp::new(crate::transforms::GridWarpData {
+                        origin: [-2.0; 3],
+                        cell: 2.0,
+                        dims: [3, 3, 3],
+                        maps: identity_maps,
+                        reach: 1.0,
+                        floor: Vec::new(),
+                    })
+                    .expect("a valid grid"),
+                ),
+            ),
+            (
+                "BellPull",
+                SdfNode::box3d(0.5, 0.5, 0.5).bell_pull(
+                    crate::transforms::BellPull::new(
+                        [[0.3, 0.0, 0.25, 0.0], [-0.2, 0.4, -0.12, 0.18]],
+                        0.5,
+                    )
+                    .expect("one to one"),
+                ),
+            ),
+        ]
+    }
+
+    #[test]
+    fn every_refused_variant_is_an_unsupported_primitive_error() {
+        let trees = refused_trees();
+        assert_eq!(trees.len(), 7);
+        for (name, node) in trees {
+            // alone and under a union: the whole tree is refused
+            for tree in [node.clone(), SdfNode::sphere(0.3).union(node)] {
+                match CompiledSdf::try_compile(&tree) {
+                    Err(CompileError::UnsupportedPrimitive(n)) => assert_eq!(n, name),
+                    other => panic!("{name}: {other:?}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_compiler_refuses_without_validation_and_does_not_panic() {
+        // validate_for_compile bypassed: the compiler itself must refuse, not panic
+        for (name, node) in refused_trees() {
+            for tree in [node.clone(), SdfNode::sphere(0.3).union(node)] {
+                let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let mut c = Compiler::new();
+                    c.compile_node(&tree);
+                    c.refused
+                }));
+                let recorded = r.unwrap_or_else(|_| panic!("{name}: the compiler panicked"));
+                match recorded {
+                    Some(CompileError::UnsupportedPrimitive(n)) => assert_eq!(n, name),
+                    other => panic!("{name}: the compiler recorded {other:?}"),
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_compile_sphere() {
