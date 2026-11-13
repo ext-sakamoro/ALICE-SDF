@@ -109,7 +109,7 @@ wide = "0.7"  # Portable SIMD (AVX2/AVX-512/NEON)
 alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", branch = "main", version = "0.6", features = ["simd"] }
 # ALICE-Law G8: the stored forms' meaning identifiers are law-id v2 (alice_zip::law_id::LawIdHasher,
 # the one owner of that encoding)
-alice-zip = { git = "https://github.com/ext-sakamoro/ALICE-Zip", branch = "main", version = "0.11", default-features = false }
+alice-zip = { git = "https://github.com/ext-sakamoro/ALICE-Zip", branch = "main", version = "0.12", default-features = false }
 
 # Parallel processing
 rayon = "1.10"

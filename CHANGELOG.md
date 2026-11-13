@@ -68,6 +68,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `MeshBvh::closest_triangle(point) -> Option<(usize, Vec3, Vec3)>`: 最寄りの三角形の入力の index (`indices` の 3 個ずつの位置)・重心座標・点を返す 点は `closest_point` と同じ bits、同じ距離の三角形は index の小さい方、空の mesh と有限でない点は `None` 面積 0 の三角形は 3 辺の最寄り `BvhTriangle::closest_point_barycentric` も公開した (`BvhTriangle::closest_point` の bits は変わらない)
 
 ### Changed
+- 依存: alice-zip を 0.12 に (展開の上限が必須になった版、この crate は Law の識別子の hasher だけを使い展開を呼ばない) alice-zip の識別子は動かず、同じ main の alice-det-math は関数を足しただけで `SEMANTICS_ID` が同じ bits なので、この crate の識別子も動かない
 - CI: 共有の `scripts/lock_sources_check.py` と試験を ALICE-Edge と同じ新しい bytes にした 追跡している全ての Cargo.lock の間で git から取る alice-* の source が同じかも見る
 - **Breaking** `SDF_SEMANTICS_ID` が `dca9b092…` になり、`PREVIOUS_SDF_SEMANTICS_IDS` は空 (`d2d2f0df…` / `72277bd6…` / `0f6ffc20…` / `0f6c58d0…` / `ad04549c…` はどれも `Mismatch`) heightmap displacement の面の境目の法則を変えたため (下の Fixed) 既存の golden の行 `heightmap_displacement` の bits が動いた 違うのは面の境目から主成分の 1/16 以内の点の heightmap の値だけで、他の行は同じ bits (`tests/sdf_semantics_id.rs` が今の表から足した行を除き heightmap の行を旧 hash に戻すと各旧 id に畳めることを示す) 旧 id を刻んだ保存物は `Mismatch` として読まれる 利用側: alice-sdf の識別子を pin する crate (識別子の表に `alice-sdf` の値を持つもの、書き出しの主の識別子に使うもの) は lock を上げる時に pin を更新する
 - **Breaking** `GpuError::NodeDataTooLarge { bytes, limit }`: 木の node data が device の storage binding の上限 (wgpu `max_storage_buffer_binding_size`、Metal `max_buffer_length`) を超える時、buffer や pipeline を作る前にこの error を返す (`GpuEvaluator` の全 constructor、volume bake、GPU marching cubes)
