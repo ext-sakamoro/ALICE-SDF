@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1276 |
+| 🟢 Not ignored | 1283 |
 | 🔴 Red by design | 6 |
 | ⏱ Gated (runtime / diagnostic / manual) | 9 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1291** |
+| **Total** | **1298** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -53,7 +53,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu` (test_wgsl_chunk_ulp.rs) — runs on the macOS lane: llvmpipe cannot run the form before (a copy of the array per read)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1276)
+## 🟢 Not ignored (1283)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -133,6 +133,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_sdf2d_oracle.rs` | 7 |
 | `test_shader_no_fused_multiply_add.rs` | 7 |
 | `test_shader_precise_temporaries.rs` | 7 |
+| `test_sheet_field_oracle.rs` | 7 |
 | `test_sim_bridge_oracle.rs` | 7 |
 | `test_smooth_stack_load.rs` | 7 |
 | `test_terrain_api_oracle.rs` | 7 |
