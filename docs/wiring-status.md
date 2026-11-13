@@ -4,19 +4,9 @@ _Generated from `scripts/wiring-baseline.txt` and `scripts/wiring_guard.py` (no 
 
 ## Status
 
-❌ **NEW violations detected** — Must be resolved or added to baseline
+🟡 **24 baseline items** — Permitted violations, ratchet in place
 
 ---
-
-## 🔴 NEW: Unwired Items (5)
-
-```
-unwired: src/sheet_field/build.rs::level_from_fn: level_from_fn: production code から 1 度も参照されていない (test / doc / use のみ)
-unwired: src/sheet_field/build.rs::sheet: sheet: production code から 1 度も参照されていない (test / doc / use のみ)
-unwired: src/sheet_field/mod.rs::from_name: from_name: production code から 1 度も参照されていない (test / doc / use のみ)
-unwired: src/sheet_field/mod.rs::MarchResult: MarchResult: 未配線の item の本体 (または自己再帰) からしか参照されていない
-unwired: src/sheet_field/mod.rs::march: march: production code から 1 度も参照されていない (test / doc / use のみ)
-```
 
 ## 📋 Baseline (24 permitted)
 
