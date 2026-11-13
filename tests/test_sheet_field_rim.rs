@@ -223,3 +223,55 @@ fn a_sign_jump_between_levels_is_not_a_crossing() {
         }
     }
 }
+
+/// Near its rim the sheet is still flat: a hit 0.005 / 0.01 / 0.03 mm inside the rim (within the 0.05 mm
+/// differencing reach of the normal) has the plane's normal `+z` (the direction `s` grows), `dot >= 0.9999`,
+/// for every direction, CPU and GPU. Oracle: the plane `z = 0`. A normal differenced from the distance
+/// (`g = sign(s) hypot(s, max(d_b, 0))`) bends toward the rim there, because `d_b > 0` on the outer half of
+/// the stencil; the surface normal is the gradient of `s` alone.
+#[test]
+fn the_normal_near_the_rim_is_the_plane_normal() {
+    let f = patch();
+    #[cfg(feature = "gpu")]
+    let g = alice_sdf::sheet_field::gpu::GpuSheetField::new(&f).ok();
+    #[cfg(feature = "gpu")]
+    if g.is_none() {
+        assert!(
+            std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+            "ALICE_SDF_REQUIRE_GPU set but no GPU"
+        );
+    }
+    let deltas = [-0.005f32, -0.01, -0.03];
+    let mut checked = 0;
+    let mut wrong = Vec::new();
+    for (label, d) in directions() {
+        let origins: Vec<Vec3> = deltas.iter().map(|&dl| origin(d, dl)).collect();
+        let mut results: Vec<(&str, Vec<MarchResult>)> = vec![(
+            "cpu",
+            origins
+                .iter()
+                .map(|o| f.march(*o, d, 2.0 * L, 4000))
+                .collect(),
+        )];
+        #[cfg(feature = "gpu")]
+        if let Some(g) = &g {
+            results.push(("gpu", g.march_batch(&origins, d, 2.0 * L, 4000).unwrap()));
+        }
+        for (who, rs) in &results {
+            for (dl, r) in deltas.iter().zip(rs) {
+                match r {
+                    MarchResult::Hit(h) if h.normal.z >= 0.9999 => {}
+                    r => wrong.push(format!("{who} {label}, {} inside: {r:?}", -dl)),
+                }
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked >= 15 * 3, "rays checked {checked}");
+    assert!(
+        wrong.is_empty(),
+        "{} of {checked} normals wrong:\n{}",
+        wrong.len(),
+        wrong.join("\n")
+    );
+}
