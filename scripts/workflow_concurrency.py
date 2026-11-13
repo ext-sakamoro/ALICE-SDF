@@ -11,9 +11,11 @@ A workflow whose jobs ALL run on `self-hosted` runners (one machine) may keep on
 per ref on main instead of one per commit (the `changes` job that runs `changed_paths.py
 decide` and the job that runs `changed_paths.py gate` may run on a hosted runner: they only
 decide and report, so the machine still runs one workflow's jobs; each is recognised by its
-steps, not by text: every `run:` step of the `changes` job is exactly the decide call, and the
-gate job has exactly one `run:` step, which is exactly the gate call; the changes job may also
-have the one policy step, POLICY_RUN, that ANDs decide with a condition): a per-commit group
+steps, not by text: every `run:` step of the `changes` job is a decide call (at least one), and
+the gate job has exactly one `run:` step, which is exactly the gate call; the changes job may also
+have the one policy step, POLICY_RUN, that ANDs decide with a condition, and at most one step of
+each command in DECISION_SCRIPTS, each an exact command shape that only reads the diff or the
+environment and writes $GITHUB_OUTPUT; any other step voids the exemption): a per-commit group
 would let a burst of pushes queue without bound on that machine, while a per-ref group
 keeps at most one pending run (the latest main commit is always run; an older pending one may be
 superseded). It must say so in a comment line starting with SELF_HOSTED_REASON and
@@ -59,6 +61,16 @@ POLICY_RUN = (
     'echo "decided=$DECIDED allowed=$ALLOWED run=$run"\n'
     'echo "run=$run" >> "$GITHUB_OUTPUT"'
 )
+# decision-only steps a changes job may also have, at most one each: the exact command shape (the
+# arguments are environment variables, so no command can ride along); each script only reads the
+# diff or the environment and writes $GITHUB_OUTPUT. A new entry is a deliberate change here.
+DECISION_SCRIPTS = (
+    # which installed Unreal engines a run builds (ALICE-SDF's Unreal workflow)
+    re.compile(
+        r'\s*python3?\s+scripts/unreal_engines\.py\s+--roots\s+"\$ROOTS"\s+--event\s+"\$EVENT"'
+        r'\s+--ref\s+"\$REF"\s+--specific\s+"\$SPECIFIC"\s*'
+    ),
+)
 
 
 def run_steps(job: dict) -> list[str]:
@@ -74,6 +86,17 @@ def self_hosted(runs_on) -> bool:
     if isinstance(runs_on, dict):
         return self_hosted(runs_on.get("labels"))
     return False
+
+
+def decision_only(runs: list[str]) -> bool:
+    """whether a changes job's run steps only decide: at least one decide call, at most one
+    POLICY_RUN, at most one step of each DECISION_SCRIPTS shape, and nothing else"""
+    decides = [r for r in runs if DECIDE_RUN.fullmatch(r) and "$(" not in r]
+    policies = [r for r in runs if r.strip() == POLICY_RUN]
+    scripts = [[r for r in runs if shape.fullmatch(r)] for shape in DECISION_SCRIPTS]
+    known = len(decides) + len(policies) + sum(len(s) for s in scripts)
+    return (len(decides) >= 1 and len(policies) <= 1 and all(len(s) <= 1 for s in scripts)
+            and known == len(runs))
 
 
 def all_jobs_self_hosted(data) -> bool:
@@ -92,11 +115,8 @@ def all_jobs_self_hosted(data) -> bool:
         runs = run_steps(job)
         if not runs or not all(isinstance(r, str) for r in runs):
             return False
-        if jid == "changes":
-            decides = [r for r in runs if DECIDE_RUN.fullmatch(r) and "$(" not in r]
-            others = [r for r in runs if r not in decides]
-            if len(decides) == 1 and all(r.strip() == POLICY_RUN for r in others) and len(others) <= 1:
-                continue
+        if jid == "changes" and decision_only(runs):
+            continue
         if len(runs) == 1 and GATE_RUN.fullmatch(runs[0]):
             continue
         return False
