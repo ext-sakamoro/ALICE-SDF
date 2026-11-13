@@ -475,9 +475,10 @@ const BRICK: u32 = 8u;
 const NODES: u32 = 9u;
 const BRICK_NODES: u32 = 729u;
 const HALF_DIAG: f32 = 0.8660254;
+const JUMP_S: f32 = 0.02;
 const MAX_LIVE: u32 = __MAX_LIVE__u;
 
-struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool };
+struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool, s: f32, db: f32, db_step: f32 };
 
 fn qbyte(byte_index: u32) -> f32 {
     let w = QW[byte_index >> 2u];
@@ -510,6 +511,7 @@ fn sample_sheet(k: u32, p: vec3<f32>) -> Sample {
         var vals = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
         var umin = 1e30;
         var q0 = 0.0;
+        var q1 = 0.0;
         for (var ci = 0u; ci < lv.nch; ci = ci + 1u) {
             let row = bitcast<i32>(IX[U.rows_base + lv.rows_off[ci] + u32(k_)]);
             var acc = 0.0;
@@ -530,6 +532,7 @@ fn sample_sheet(k: u32, p: vec3<f32>) -> Sample {
                     }
                 }
                 if (ci == 0u) { q0 = sc; }
+                if (ci == 1u) { q1 = sc; }
             }
             vals[ci] = acc;
         }
@@ -544,13 +547,22 @@ fn sample_sheet(k: u32, p: vec3<f32>) -> Sample {
             out.masked = true;
         }
         out.f = f; out.g = g; out.inside = true;
+        out.s = s; out.db = vals[1]; out.db_step = q1;
         out.has_uv = lv.nch >= 4u;
         out.uv = vec2<f32>(vals[2], vals[3]);
         return out;
     }
     let v = outside_bound(p, sh);
     out.f = v; out.g = v; out.inside = false; out.masked = false; out.has_uv = false;
+    out.s = 0.0; out.db = 0.0; out.db_step = 0.0;
     return out;
+}
+
+// a bisected sign change of sheet k's g at p is a crossing of the sheet: answered, unmasked, |s| <= JUMP_S,
+// d_b <= step/2 (inside the boundary up to the rounding of the stored d_b), as SheetField::march
+fn crossing_inside(k: u32, p: vec3<f32>) -> bool {
+    let c = sample_sheet(k, p);
+    return c.inside && !c.masked && abs(c.s) <= JUMP_S && c.db <= 0.5 * c.db_step;
 }
 
 fn in_box(k: u32, p: vec3<f32>) -> bool {
@@ -683,11 +695,12 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var t = 0.0;
     var tprev = 0.0;
     var kind = 2;
+    var own = 0u;
     for (var step = 0u; step < U.steps && !overflow; step = step + 1u) {
         let p = o + d * t;
         let dd = eval_union(p).f;
-        var stop = dd < 0.01;
         var thit = 1e30;
+        var khit = 0u;
         var cur_k: array<u32, __MAX_LIVE__>;
         var cur_g: array<f32, __MAX_LIVE__>;
         var n_cur = 0u;
@@ -697,7 +710,7 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let k = lv[li];
             let gc = sample_sheet(k, p).g;
             cur_k[n_cur] = k; cur_g[n_cur] = gc; n_cur = n_cur + 1u;
-            if (stop || t <= 0.0) { continue; }
+            if (t <= 0.0) { continue; }
             var found = false; var gp = 0.0;
             for (var j = 0u; j < n_prev; j = j + 1u) { if (prev_k[j] == k) { found = true; gp = prev_g[j]; } }
             if (!found) { continue; }
@@ -709,11 +722,10 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 if ((gm < 0.0) == (ga < 0.0)) { a = mid; ga = gm; } else { b = mid; }
             }
             let tm = 0.5 * (a + b);
-            if (sample_sheet(k, o + d * tm).f < 0.02) { thit = min(thit, tm); }
+            if (tm < thit && crossing_inside(k, o + d * tm)) { thit = tm; khit = k; }
         }
         if (overflow) { break; }
-        if (thit < 1e29) { t = thit; stop = true; }
-        if (stop) { kind = 1; break; }
+        if (thit < 1e29) { t = thit; own = khit; kind = 1; break; }
         tprev = t;
         for (var j = 0u; j < n_cur; j = j + 1u) { prev_k[j] = cur_k[j]; prev_g[j] = cur_g[j]; }
         n_prev = n_cur;
@@ -723,17 +735,9 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (overflow) { OUT[3u * i] = vec4<f32>(0.0, 3.0, 0.0, 0.0); return; }
     var nrm = vec3<f32>(0.0, 0.0, 1.0);
     var uv = vec3<f32>(0.0);
-    var own = 0u;
     if (kind == 1) {
         let p = o + d * t;
         let e = 0.05;
-        var best = 1e30;
-        for (var k = 0u; k < U.n_sheets; k = k + 1u) {
-            let sh = SHEETS[k];
-            if (!(all(p >= sh.lo - vec3<f32>(e)) && all(p <= sh.hi + vec3<f32>(e)))) { continue; }
-            let v = sample_sheet(k, p).f;
-            if (v < best) { best = v; own = k; }
-        }
         let n = vec3<f32>(
             sample_sheet(own, p + vec3<f32>(e, 0.0, 0.0)).g - sample_sheet(own, p - vec3<f32>(e, 0.0, 0.0)).g,
             sample_sheet(own, p + vec3<f32>(0.0, e, 0.0)).g - sample_sheet(own, p - vec3<f32>(0.0, e, 0.0)).g,

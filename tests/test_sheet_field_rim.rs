@@ -7,7 +7,9 @@
 //! `L = 1.2` away along the ray: a hit must be at `t = L`.
 //!
 //! - `delta` = 0.005, 0.01, 0.02, 0.05 mm outside: miss (never a hit, never undecided).
-//! - `delta` = -0.005, -0.05 mm inside: hit at `t = L` within 1e-3 mm.
+//! - `delta` = -0.005, -0.05 mm inside: hit at `t = L`, the hit point within 1e-3 mm of the plane
+//!   (`|t - L| * sin(angle) <= 1e-3`: along the ray the position is ill-conditioned at grazing angles, so the
+//!   oracle bounds the distance to the surface, which is what a hit has to get right).
 //!
 //! Directions: across the rim outward and inward, and along the rim, at 90, 45, 10, 2 and 0.5 degrees from
 //! the plane (edge-on and grazing views). `h = 0.0625` keeps the u8 rounding of `d_b` (half a step,
@@ -76,7 +78,7 @@ fn rays_outside_the_rim_miss_and_inside_hit() {
         }
         for delta in INSIDE {
             match f.march(origin(d, delta), d, 2.0 * L, 4000) {
-                MarchResult::Hit(h) if (h.t - L).abs() <= 1e-3 && h.sheet == 0 => {}
+                MarchResult::Hit(h) if (h.t - L).abs() * -d.z <= 1e-3 && h.sheet == 0 => {}
                 r => wrong.push(format!("{label}, {} inside: {r:?}", -delta)),
             }
             checked += 1;
@@ -118,7 +120,7 @@ fn the_gpu_marcher_ends_the_sheet_at_its_rim_too() {
             let ok = if *dl > 0.0 {
                 *r == MarchResult::Miss
             } else {
-                matches!(r, MarchResult::Hit(h) if (h.t - L).abs() <= 1e-3 && h.sheet == 0)
+                matches!(r, MarchResult::Hit(h) if (h.t - L).abs() * -d.z <= 1e-3 && h.sheet == 0)
             };
             let agree = match (r, &cpu) {
                 (MarchResult::Hit(a), MarchResult::Hit(b)) => {
