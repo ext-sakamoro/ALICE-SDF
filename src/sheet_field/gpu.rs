@@ -740,10 +740,11 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (kind == 1) {
         let p = o + d * t;
         let e = 0.05;
+        // normal = gradient of the sheet's side channel s (the distance g bends toward the rim), as SheetField
         let n = vec3<f32>(
-            sample_sheet(own, p + vec3<f32>(e, 0.0, 0.0)).g - sample_sheet(own, p - vec3<f32>(e, 0.0, 0.0)).g,
-            sample_sheet(own, p + vec3<f32>(0.0, e, 0.0)).g - sample_sheet(own, p - vec3<f32>(0.0, e, 0.0)).g,
-            sample_sheet(own, p + vec3<f32>(0.0, 0.0, e)).g - sample_sheet(own, p - vec3<f32>(0.0, 0.0, e)).g);
+            sample_sheet(own, p + vec3<f32>(e, 0.0, 0.0)).s - sample_sheet(own, p - vec3<f32>(e, 0.0, 0.0)).s,
+            sample_sheet(own, p + vec3<f32>(0.0, e, 0.0)).s - sample_sheet(own, p - vec3<f32>(0.0, e, 0.0)).s,
+            sample_sheet(own, p + vec3<f32>(0.0, 0.0, e)).s - sample_sheet(own, p - vec3<f32>(0.0, 0.0, e)).s);
         if (length(n) > 1e-12) { nrm = normalize(n); }
         let s = sample_sheet(own, p);
         if (s.has_uv && s.inside) { uv = vec3<f32>(s.uv, 1.0); }
