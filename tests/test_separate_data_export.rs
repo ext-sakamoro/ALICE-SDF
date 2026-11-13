@@ -571,6 +571,8 @@ fn every_kind_agrees_bit_for_bit_on_the_metal_engine() {
         ) else {
             return;
         };
+        // the device the strict lane ran on, in the log (a hosted macOS runner is a VM)
+        eprintln!("{name}: {}", c.device_info());
         assert!(
             c.device_info().contains("fast math off"),
             "{}",
