@@ -194,6 +194,10 @@ step "ci.yml / wiring-guard: G11 table matches the declared gates"
 python3 scripts/test_g11_table.py
 scripts/g11_table.sh
 
+step "ci.yml / wiring-guard: ALICE-Law ratchets (no-panic, structural lint, added-function pins)"
+python3 scripts/test_law_ratchets.py
+scripts/law_ratchets.sh
+
 step "ci.yml / wiring-guard: ALICE-Law G11 self-check (the four G11 checks at the pinned revision)"
 (
   set -euo pipefail
