@@ -496,7 +496,8 @@ fn outside_bound(p: vec3<f32>, s: SheetInfo) -> f32 {
     return max(box_distance(p, s.lo, s.hi), 3.0 * s.hc);
 }
 
-fn sample_sheet(k: u32, p: vec3<f32>) -> Sample {
+// sheet k at p, interpolating the first nmax channels only (2 while marching; attributes once, at the hit)
+fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
     let sh = SHEETS[k];
     var out: Sample;
     for (var li = 0u; li < sh.level_count; li = li + 1u) {
@@ -515,7 +516,8 @@ fn sample_sheet(k: u32, p: vec3<f32>) -> Sample {
         var umin = 1e30;
         var q0 = 0.0;
         var q1 = 0.0;
-        for (var ci = 0u; ci < lv.nch; ci = ci + 1u) {
+        let nch = min(lv.nch, nmax);
+        for (var ci = 0u; ci < nch; ci = ci + 1u) {
             let row = bitcast<i32>(IX[U.rows_base + lv.rows_off[ci / 4u][ci % 4u] + u32(k_)]);
             var acc = 0.0;
             if (row >= 0) {
@@ -551,8 +553,8 @@ fn sample_sheet(k: u32, p: vec3<f32>) -> Sample {
         }
         out.f = f; out.g = g; out.inside = true;
         out.s = s; out.db = vals[1]; out.db_step = q1;
-        out.has_uv = lv.nch >= 4u;
-        out.has_an = lv.nch >= 7u;
+        out.has_uv = nch >= 4u;
+        out.has_an = nch >= 7u;
         out.an = vec3<f32>(vals[4], vals[5], vals[6]);
         out.uv = vec2<f32>(vals[2], vals[3]);
         return out;
@@ -566,7 +568,7 @@ fn sample_sheet(k: u32, p: vec3<f32>) -> Sample {
 // a bisected sign change of sheet k's g at p is a crossing of the sheet: answered, unmasked, |s| <= JUMP_S,
 // d_b <= step/2 (inside the boundary up to the rounding of the stored d_b), as SheetField::march
 fn crossing_inside(k: u32, p: vec3<f32>) -> bool {
-    let c = sample_sheet(k, p);
+    let c = sample_sheet(k, p, 2u);
     return c.inside && !c.masked && abs(c.s) <= JUMP_S && c.db <= 0.5 * c.db_step;
 }
 
@@ -598,7 +600,7 @@ fn eval_union(p: vec3<f32>) -> Union {
                 let sh = SHEETS[k];
                 var v: f32; var w: f32; var m = false;
                 if (box_distance(p, sh.lo, sh.hi) == 0.0) {
-                    let s = sample_sheet(k, p);
+                    let s = sample_sheet(k, p, 2u);
                     v = s.f; w = s.g; m = s.masked;
                 } else {
                     v = outside_bound(p, sh); w = v;
@@ -694,7 +696,7 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let n0 = live_sheets(o, &lv);
     if (n0 > MAX_LIVE) { overflow = true; }
     else {
-        for (var j = 0u; j < n0; j = j + 1u) { prev_k[j] = lv[j]; prev_g[j] = sample_sheet(lv[j], o).g; }
+        for (var j = 0u; j < n0; j = j + 1u) { prev_k[j] = lv[j]; prev_g[j] = sample_sheet(lv[j], o, 2u).g; }
         n_prev = n0;
     }
     var t = 0.0;
@@ -713,7 +715,7 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (nl > MAX_LIVE) { overflow = true; break; }
         for (var li = 0u; li < nl; li = li + 1u) {
             let k = lv[li];
-            let gc = sample_sheet(k, p).g;
+            let gc = sample_sheet(k, p, 2u).g;
             cur_k[n_cur] = k; cur_g[n_cur] = gc; n_cur = n_cur + 1u;
             if (t <= 0.0) { continue; }
             var found = false; var gp = 0.0;
@@ -723,7 +725,7 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             var a = tprev; var b = t; var ga = gp;
             for (var it = 0; it < 30; it = it + 1) {
                 let mid = 0.5 * (a + b);
-                let gm = sample_sheet(k, o + d * mid).g;
+                let gm = sample_sheet(k, o + d * mid, 2u).g;
                 if ((gm < 0.0) == (ga < 0.0)) { a = mid; ga = gm; } else { b = mid; }
             }
             let tm = 0.5 * (a + b);
@@ -746,11 +748,11 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         let e = 0.05;
         // normal = gradient of the sheet's side channel s (the distance g bends toward the rim), as SheetField
         let n = vec3<f32>(
-            sample_sheet(own, p + vec3<f32>(e, 0.0, 0.0)).s - sample_sheet(own, p - vec3<f32>(e, 0.0, 0.0)).s,
-            sample_sheet(own, p + vec3<f32>(0.0, e, 0.0)).s - sample_sheet(own, p - vec3<f32>(0.0, e, 0.0)).s,
-            sample_sheet(own, p + vec3<f32>(0.0, 0.0, e)).s - sample_sheet(own, p - vec3<f32>(0.0, 0.0, e)).s);
+            sample_sheet(own, p + vec3<f32>(e, 0.0, 0.0), 2u).s - sample_sheet(own, p - vec3<f32>(e, 0.0, 0.0), 2u).s,
+            sample_sheet(own, p + vec3<f32>(0.0, e, 0.0), 2u).s - sample_sheet(own, p - vec3<f32>(0.0, e, 0.0), 2u).s,
+            sample_sheet(own, p + vec3<f32>(0.0, 0.0, e), 2u).s - sample_sheet(own, p - vec3<f32>(0.0, 0.0, e), 2u).s);
         if (length(n) > 1e-12) { nrm = normalize(n); }
-        let s = sample_sheet(own, p);
+        let s = sample_sheet(own, p, 8u);
         if (s.has_uv && s.inside) { uv = vec3<f32>(s.uv, 1.0); }
         if (s.has_an && s.inside && length(s.an) > 1e-12) { an = vec4<f32>(normalize(s.an), 1.0); }
     }
