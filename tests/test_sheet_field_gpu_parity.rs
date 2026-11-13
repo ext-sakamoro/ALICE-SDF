@@ -179,3 +179,91 @@ fn a_gpu_ray_out_of_steps_is_undecided() {
         .unwrap();
     assert_eq!(out[0], MarchResult::Undecided);
 }
+
+/// 300 small sheets (the BVH oracle's cloud): the GPU's BVH walks return the CPU's answers (values, masked
+/// flags, owning sheets via the march).
+fn cloud() -> SheetField {
+    let mut s = 3u64;
+    let mut r = move || {
+        s = s
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        ((s >> 40) as f32) / ((1u64 << 24) as f32)
+    };
+    let mut sheets = Vec::new();
+    for _ in 0..300 {
+        let c = Vec3::new(r(), r(), r()) * 40.0;
+        let n = Vec3::new(r() - 0.5, r() - 0.5, r() - 0.5).normalize();
+        let lv = level_from_fn(
+            c - Vec3::splat(2.13),
+            0.5,
+            [1, 1, 1],
+            |_c, _e| true,
+            move |p| {
+                let q = p - c;
+                let along = q.dot(n);
+                vec![along, (q - n * along).length() - 1.5]
+            },
+        )
+        .unwrap();
+        sheets.push(sheet(vec![lv]).unwrap());
+    }
+    SheetField::new(sheets, ValidRule::CellV1)
+}
+
+#[test]
+fn many_sheets_match_the_cpu() {
+    let f = cloud();
+    let Some(g) = gpu(&f) else { return };
+    let pts: Vec<Vec3> = points(41)
+        .iter()
+        .map(|p| *p * 2.5 + Vec3::splat(20.0))
+        .collect();
+    let out = g.eval_batch(&pts).unwrap();
+    for (p, o) in pts.iter().zip(&out) {
+        let (fc, gc, _) = f.eval(*p);
+        assert!(
+            (o.f - fc).abs() <= TOL * fc.abs().max(1.0),
+            "{p:?}: f gpu {} cpu {fc}",
+            o.f
+        );
+        assert!(
+            (o.g - gc).abs() <= TOL * gc.abs().max(1.0),
+            "{p:?}: g gpu {} cpu {gc}",
+            o.g
+        );
+    }
+    let origins: Vec<Vec3> = (0..400)
+        .map(|i| {
+            Vec3::new(
+                (i % 20) as f32 * 2.0 + 0.5,
+                (i / 20) as f32 * 2.0 + 0.5,
+                60.0,
+            )
+        })
+        .collect();
+    let d = Vec3::new(0.05, -0.03, -1.0).normalize();
+    let rays = g.march_batch(&origins, d, 120.0, 4000).unwrap();
+    let mut hits = 0;
+    for (o, r) in origins.iter().zip(&rays) {
+        match (f.march(*o, d, 120.0, 4000), *r) {
+            (MarchResult::Hit(a), MarchResult::Hit(b)) => {
+                hits += 1;
+                assert!(
+                    (a.t - b.t).abs() <= 1e-3 && a.sheet == b.sheet,
+                    "{o:?}: cpu {} #{} gpu {} #{}",
+                    a.t,
+                    a.sheet,
+                    b.t,
+                    b.sheet
+                );
+            }
+            (a, b) => assert_eq!(
+                std::mem::discriminant(&a),
+                std::mem::discriminant(&b),
+                "{o:?}: cpu {a:?} gpu {b:?}"
+            ),
+        }
+    }
+    assert!(hits > 20, "hits {hits}");
+}
