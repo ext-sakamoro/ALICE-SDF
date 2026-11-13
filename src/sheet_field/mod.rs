@@ -226,11 +226,13 @@ impl Sheet {
     /// unmasked, `|s| <= JUMP_S`, and `d_b <= step/2` (inside the boundary up to the rounding of the stored
     /// `d_b`; a brick that stores no `d_b` has every node `<= 0`, so its points are inside).
     fn crossing_inside(&self, p: Vec3, rule: ValidRule) -> bool {
-        let c = self.sample(p, rule);
+        let c = self.sample_geom(p, rule);
         c.inside && !c.masked && c.s.abs() <= JUMP_S && c.db <= 0.5 * c.db_step
     }
 
-    fn lookup(&self, p: Vec3) -> Option<CellLookup> {
+    /// The cell value at `p` from the first level that answers, interpolating the first `nmax` channels only
+    /// (the march needs `s` and `d_b`; attributes are read once, at the hit).
+    fn lookup(&self, p: Vec3, nmax: usize) -> Option<CellLookup> {
         for lv in &self.levels {
             let u = (p - lv.lo) / lv.h;
             let b = BRICK as f32;
@@ -257,13 +259,13 @@ impl Sheet {
             let t = [w[0] - c[0] as f32, w[1] - c[1] as f32, w[2] - c[2] as f32];
             let mut out = CellLookup {
                 values: [0.0; 8],
-                nch: lv.channels.len().min(8),
+                nch: lv.channels.len().min(8).min(nmax),
                 umin: f32::INFINITY,
                 q0: 0.0,
                 q1: 0.0,
                 h: lv.h,
             };
-            for (ci, ch) in lv.channels.iter().take(8).enumerate() {
+            for (ci, ch) in lv.channels.iter().take(8.min(nmax)).enumerate() {
                 let mut acc = 0.0f32;
                 let row = ch.rows[k];
                 if row >= 0 {
@@ -295,9 +297,18 @@ impl Sheet {
         None
     }
 
-    /// The sheet's value at `p` under `rule`.
+    /// The sheet's value at `p` under `rule`, with every stored channel (UV and author normal included).
     pub fn sample(&self, p: Vec3, rule: ValidRule) -> Sample {
-        let Some(c) = self.lookup(p) else {
+        self.sample_n(p, rule, 8)
+    }
+
+    /// The geometric part of [`Sheet::sample`] (`f`, `g`, `s`, `d_b`; no attributes): what marching needs.
+    fn sample_geom(&self, p: Vec3, rule: ValidRule) -> Sample {
+        self.sample_n(p, rule, 2)
+    }
+
+    fn sample_n(&self, p: Vec3, rule: ValidRule, nmax: usize) -> Sample {
+        let Some(c) = self.lookup(p, nmax) else {
             let v = outside_lower_bound(p, self.lo, self.hi, self.hc);
             return Sample {
                 f: v,
@@ -439,7 +450,7 @@ impl SheetField {
                     let k = k as usize;
                     let sh = &self.sheets[k];
                     let (v, w) = if box_distance(p, sh.lo, sh.hi) == 0.0 {
-                        let s = sh.sample(p, self.rule);
+                        let s = sh.sample_geom(p, self.rule);
                         (s.f, s.g)
                     } else {
                         let v = outside_lower_bound(p, sh.lo, sh.hi, sh.hc);
@@ -499,7 +510,7 @@ impl SheetField {
         let (mut fb, mut gb, mut kb) = (f32::INFINITY, f32::INFINITY, None);
         for (k, sh) in self.sheets.iter().enumerate() {
             let (v, w) = if box_distance(p, sh.lo, sh.hi) == 0.0 {
-                let s = sh.sample(p, self.rule);
+                let s = sh.sample_geom(p, self.rule);
                 (s.f, s.g)
             } else {
                 let v = outside_lower_bound(p, sh.lo, sh.hi, sh.hc);
@@ -529,7 +540,7 @@ impl SheetField {
         let mut gprev: Vec<Option<f32>> = (0..k_n)
             .map(|k| {
                 if self.sheet_in_box(k, origin) {
-                    Some(self.sheets[k].sample(origin, self.rule).g)
+                    Some(self.sheets[k].sample_geom(origin, self.rule).g)
                 } else {
                     None
                 }
@@ -553,7 +564,7 @@ impl SheetField {
             };
             for k in live {
                 let sh = &self.sheets[k];
-                let gc = sh.sample(p, self.rule).g;
+                let gc = sh.sample_geom(p, self.rule).g;
                 gcur[k] = Some(gc);
                 if t <= 0.0 {
                     continue;
@@ -565,7 +576,7 @@ impl SheetField {
                 let (mut a, mut b, mut ga) = (tprev, t, gp);
                 for _ in 0..30 {
                     let mid = f32::midpoint(a, b);
-                    let gm = sh.sample(origin + dir * mid, self.rule).g;
+                    let gm = sh.sample_geom(origin + dir * mid, self.rule).g;
                     if (gm < 0.0) == (ga < 0.0) {
                         a = mid;
                         ga = gm;
@@ -598,7 +609,7 @@ impl SheetField {
     fn hit_on(&self, p: Vec3, t: f32, k: usize) -> Hit {
         let e = 0.05f32;
         let sh = &self.sheets[k];
-        let s = |q: Vec3| sh.sample(q, self.rule).s;
+        let s = |q: Vec3| sh.sample_geom(q, self.rule).s;
         let n = Vec3::new(
             s(p + Vec3::X * e) - s(p - Vec3::X * e),
             s(p + Vec3::Y * e) - s(p - Vec3::Y * e),
