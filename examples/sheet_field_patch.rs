@@ -22,10 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         |_center, _edge| true,
         |p| vec![p.z, square_db(p.x, p.y), 0.5 + 0.01 * p.x, 0.5 + 0.01 * p.y],
     )?;
-    let field = SheetField {
-        sheets: vec![sheet(vec![level])?],
-        rule,
-    };
+    let field = SheetField::new(vec![sheet(vec![level])?], rule);
     let (mut hits, mut misses, mut undecided) = (0, 0, 0);
     for i in 0..15 {
         for j in 0..15 {

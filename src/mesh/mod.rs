@@ -50,6 +50,7 @@ impl std::fmt::Display for MeshInputError {
 impl std::error::Error for MeshInputError {}
 
 pub mod bvh;
+pub mod gpu_bvh;
 pub mod collision;
 pub mod decimate;
 pub mod dual_contouring;

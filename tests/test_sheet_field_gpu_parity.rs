@@ -42,10 +42,7 @@ fn field(jump: bool) -> SheetField {
         },
     )
     .unwrap();
-    SheetField {
-        sheets: vec![sheet(vec![lv]).unwrap()],
-        rule: ValidRule::CellV1,
-    }
+    SheetField::new(vec![sheet(vec![lv]).unwrap()], ValidRule::CellV1)
 }
 
 fn gpu(f: &SheetField) -> Option<GpuSheetField> {
