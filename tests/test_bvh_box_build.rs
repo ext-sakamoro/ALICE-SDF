@@ -12,7 +12,12 @@ fn grid_mesh(n: usize, warp: f32) -> (Vec<Vec3>, Vec<u32>) {
     for i in 0..=n {
         for j in 0..=n {
             let (x, y) = (i as f32 / n as f32 * 10.0, j as f32 / n as f32 * 10.0);
-            v.push(Vec3::new(x, y, (x * warp).sin() * 2.0 + (y * 0.7).cos()));
+            // a non-planar height field (polynomial: the crate forbids f32::sin / cos even in tests)
+            v.push(Vec3::new(
+                x,
+                y,
+                0.02 * warp * x * (x - 5.0) * (x - 9.0) + 0.05 * y * (y - 6.0),
+            ));
         }
     }
     let mut idx = Vec::new();
@@ -30,7 +35,7 @@ fn grid_mesh(n: usize, warp: f32) -> (Vec<Vec3>, Vec<u32>) {
     (v, idx)
 }
 
-fn bits(a: &Aabb) -> [u32; 6] {
+const fn bits(a: &Aabb) -> [u32; 6] {
     [
         a.min.x.to_bits(),
         a.min.y.to_bits(),
@@ -46,7 +51,7 @@ fn same(a: &BvhNode, b: &BvhNode, nodes: &mut usize) {
     assert_eq!(bits(a.aabb()), bits(b.aabb()), "node box");
     match (a, b) {
         (BvhNode::Leaf { triangles: ta, .. }, BvhNode::Leaf { triangles: tb, .. }) => {
-            assert_eq!(ta, tb, "leaf entries")
+            assert_eq!(ta, tb, "leaf entries");
         }
         (
             BvhNode::Internal {
