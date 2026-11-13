@@ -3,7 +3,7 @@
 //! Functions for evaluating SDF trees at points.
 //!
 //! # Deep Fried Optimizations
-//! - **Forced Inlining**: `eval` is marked `#[inline]` to allow recursion unrolling by LLVM.
+//! - **Small recursive frame**: `eval` keeps one small value per tree level (see [`eval`]).
 //! - **Direct Dispatch**: Primitives are called directly without wrapper overhead.
 //! - **Swizzle Normals**: Uses Vec3 swizzles for efficient gradient computation.
 //!
@@ -28,10 +28,17 @@ use crate::transforms::*;
 use crate::types::SdfNode;
 use glam::Vec3;
 
-/// Evaluate an SDF tree at a single point (Deep Fried)
+/// Evaluate an SDF tree at a single point
 ///
 /// Recursively traverses the tree and computes the signed distance.
-/// Marked `#[inline]` to encourage the compiler to inline small tree traversals.
+///
+/// The recursion holds only what it needs across a child's evaluation: [`descend`] reads a node
+/// (a leaf's value, or the children and the moved point), the children are evaluated, and
+/// [`combine`] / [`finish`] apply the node's law to their values. Those three and the leaf
+/// evaluator are never inlined here, so each level of a deep tree costs one small frame whatever
+/// the number of node kinds or the size of their arms (an unoptimised build gives every arm of a
+/// match its own stack slots; a smooth-union chain folded one part at a time, 2 × 24 deep, has to
+/// fit a 2 MiB test thread, and `tests/test_eval_stack_budget.rs` holds each level to a byte budget)
 ///
 /// # Arguments
 /// * `node` - The SDF tree root
@@ -39,8 +46,296 @@ use glam::Vec3;
 ///
 /// # Returns
 /// Signed distance to the surface
-#[inline]
 pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
+    match descend(node, point) {
+        Step::Leaf(d) => d,
+        Step::Two(a, b) => {
+            let d1 = eval(a, point);
+            let d2 = eval(b, point);
+            combine(node, d1, d2, point)
+        }
+        Step::One(child, q, extra) => finish(node, eval(child, q), point, extra),
+    }
+}
+
+/// What [`eval`] does at one node
+enum Step<'a> {
+    /// a node without children: its value
+    Leaf(f32),
+    /// two operands evaluated at the same point, combined by [`combine`]
+    Two(&'a SdfNode, &'a SdfNode),
+    /// one child evaluated at a moved point, then [`finish`] with up to three values the move
+    /// produced
+    One(&'a SdfNode, Vec3, [f32; 3]),
+}
+
+/// Reads one node for [`eval`]: a leaf's value, or its children and the point they are evaluated at
+#[inline(never)]
+fn descend(node: &SdfNode, point: Vec3) -> Step<'_> {
+    const NONE: [f32; 3] = [0.0; 3];
+    match node {
+        SdfNode::Union { a, b }
+        | SdfNode::Intersection { a, b }
+        | SdfNode::Subtraction { a, b }
+        | SdfNode::SmoothUnion { a, b, .. }
+        | SdfNode::SmoothIntersection { a, b, .. }
+        | SdfNode::SmoothSubtraction { a, b, .. }
+        | SdfNode::ChamferUnion { a, b, .. }
+        | SdfNode::ChamferIntersection { a, b, .. }
+        | SdfNode::ChamferSubtraction { a, b, .. }
+        | SdfNode::StairsUnion { a, b, .. }
+        | SdfNode::StairsIntersection { a, b, .. }
+        | SdfNode::StairsSubtraction { a, b, .. }
+        | SdfNode::XOR { a, b }
+        | SdfNode::Morph { a, b, .. }
+        | SdfNode::ColumnsUnion { a, b, .. }
+        | SdfNode::ColumnsIntersection { a, b, .. }
+        | SdfNode::ColumnsSubtraction { a, b, .. }
+        | SdfNode::Pipe { a, b, .. }
+        | SdfNode::Engrave { a, b, .. }
+        | SdfNode::Groove { a, b, .. }
+        | SdfNode::Tongue { a, b, .. }
+        | SdfNode::ExpSmoothUnion { a, b, .. }
+        | SdfNode::ExpSmoothIntersection { a, b, .. }
+        | SdfNode::ExpSmoothSubtraction { a, b, .. }
+        | SdfNode::SmoothBlend { a, b, .. } => Step::Two(a, b),
+        // `inner` first, as the lerp reads them
+        SdfNode::MetricBlend { inner, outer, .. } => Step::Two(inner, outer),
+
+        // === Transforms ===
+        SdfNode::Translate { child, offset } => {
+            // `transform_translate` is `#[inline(always)]`: the same single subtract
+            Step::One(child, transform_translate(point, *offset), NONE)
+        }
+        SdfNode::Rotate { child, rotation } => {
+            // Same formula as the compiled / SIMD paths (`Real::rotate_inverse`),
+            // not `glam`: bit-identical rotation keeps sign-discontinuous laws
+            // (pyramid base) on the same side on every path.
+            let p = crate::compiled::real::rotate_inverse::<f32>(*rotation, point.into()).into();
+            Step::One(child, p, NONE)
+        }
+        SdfNode::Scale { child, factor } => {
+            // `p * (1/s)`, the compiled evaluators' law (`Instruction::scale`
+            // precomputes the reciprocal); `p / s` differs by an ulp and the
+            // tree must be bit-identical to them (`tests/test_det_parity.rs`)
+            // (`transform_scale` is exactly that law and returns the multiplier `s`)
+            let (p, mult) = transform_scale(point, *factor);
+            Step::One(child, p, [mult, 0.0, 0.0])
+        }
+        SdfNode::ScaleNonUniform { child, factors } => {
+            let (p, mult) = transform_scale_nonuniform(point, *factors);
+            Step::One(child, p, [mult, 0.0, 0.0])
+        }
+        SdfNode::ProjectiveTransform {
+            child,
+            inv_matrix,
+            lipschitz_bound,
+        } => {
+            let (q, correction) =
+                crate::transforms::projective::projective_transform(point, inv_matrix);
+            Step::One(child, q, [correction.law_min(*lipschitz_bound), 0.0, 0.0])
+        }
+        SdfNode::LatticeDeform {
+            child,
+            control_points,
+            nx,
+            ny,
+            nz,
+            bbox_min,
+            bbox_max,
+        } => {
+            let (q, correction) = crate::transforms::lattice::lattice_deform(
+                point,
+                control_points,
+                *nx,
+                *ny,
+                *nz,
+                *bbox_min,
+                *bbox_max,
+            );
+            Step::One(child, q, [correction, 0.0, 0.0])
+        }
+        SdfNode::SdfSkinning { child, bones } => {
+            let (q, _) = crate::transforms::skinning::sdf_skinning(point, bones);
+            Step::One(child, q, NONE)
+        }
+        SdfNode::GridWarp { child, warp } => {
+            let (x, e, lam, fl) = warp.warp(point);
+            Step::One(child, x, [e, lam, fl])
+        }
+        SdfNode::BellPull { child, pull } => Step::One(child, pull.back(point), NONE),
+
+        // === Modifiers ===
+        SdfNode::Twist { child, strength } => {
+            Step::One(child, modifier_twist(point, *strength), NONE)
+        }
+        SdfNode::Bend { child, curvature } => {
+            Step::One(child, modifier_bend(point, *curvature), NONE)
+        }
+        SdfNode::RepeatInfinite { child, spacing } => {
+            Step::One(child, modifier_repeat_infinite(point, *spacing), NONE)
+        }
+        SdfNode::RepeatFinite {
+            child,
+            count,
+            spacing,
+        } => Step::One(child, modifier_repeat_finite(point, *count, *spacing), NONE),
+        SdfNode::Elongate { child, amount } => {
+            let q = point - point.law_clamp(-*amount, *amount);
+            Step::One(child, q, NONE)
+        }
+        SdfNode::Mirror { child, axes } => Step::One(child, modifier_mirror(point, *axes), NONE),
+        SdfNode::OctantMirror { child } => Step::One(child, modifier_octant_mirror(point), NONE),
+        SdfNode::Revolution { child, offset } => {
+            Step::One(child, modifier_revolution(point, *offset), NONE)
+        }
+        SdfNode::Extrude { child, .. } => Step::One(child, modifier_extrude_point(point), NONE),
+        SdfNode::Taper { child, factor, .. } => {
+            Step::One(child, modifier_taper(point, *factor), NONE)
+        }
+        SdfNode::PolarRepeat { child, count } => {
+            Step::One(child, modifier_polar_repeat(point, *count), NONE)
+        }
+        SdfNode::SweepBezier { child, p0, p1, p2 } => {
+            Step::One(child, modifier_sweep_bezier(point, *p0, *p1, *p2), NONE)
+        }
+        SdfNode::Shear { child, shear } => Step::One(child, modifier_shear(point, *shear), NONE),
+        SdfNode::IcosahedralSymmetry { child } => {
+            Step::One(child, crate::modifiers::icosahedral_fold(point), NONE)
+        }
+        SdfNode::IFS {
+            child,
+            transforms,
+            iterations,
+        } => {
+            let (q, scale) = crate::modifiers::ifs_fold_with_scale(point, transforms, *iterations);
+            Step::One(child, q, [scale, 0.0, 0.0])
+        }
+        // the child at the same point; the node's law reads the point in `finish`
+        // (Animated: static evaluation, animation is time-dependent; WithMaterial and Pose are
+        // transparent for distance evaluation)
+        SdfNode::Noise { child, .. }
+        | SdfNode::Round { child, .. }
+        | SdfNode::Onion { child, .. }
+        | SdfNode::Displacement { child, .. }
+        | SdfNode::SineDisplacement { child, .. }
+        | SdfNode::Animated { child, .. }
+        | SdfNode::WithMaterial { child, .. }
+        | SdfNode::Pose { child }
+        | SdfNode::HeightmapDisplacement { child, .. }
+        | SdfNode::SurfaceRoughness { child, .. } => Step::One(child, point, NONE),
+
+        _ => Step::Leaf(eval_leaf(node, point)),
+    }
+}
+
+/// The law of a two-operand node of [`descend`] on its operands' values
+#[inline(never)]
+fn combine(node: &SdfNode, d1: f32, d2: f32, point: Vec3) -> f32 {
+    match node {
+        SdfNode::Union { .. } => sdf_union(d1, d2),
+        SdfNode::Intersection { .. } => sdf_intersection(d1, d2),
+        SdfNode::Subtraction { .. } => sdf_subtraction(d1, d2),
+        SdfNode::SmoothUnion { k, .. } => sdf_smooth_union(d1, d2, *k),
+        SdfNode::SmoothIntersection { k, .. } => sdf_smooth_intersection(d1, d2, *k),
+        SdfNode::SmoothSubtraction { k, .. } => sdf_smooth_subtraction(d1, d2, *k),
+        SdfNode::ChamferUnion { r, .. } => sdf_chamfer_union(d1, d2, *r),
+        SdfNode::ChamferIntersection { r, .. } => sdf_chamfer_intersection(d1, d2, *r),
+        SdfNode::ChamferSubtraction { r, .. } => sdf_chamfer_subtraction(d1, d2, *r),
+        SdfNode::StairsUnion { r, n, .. } => sdf_stairs_union(d1, d2, *r, *n),
+        SdfNode::StairsIntersection { r, n, .. } => sdf_stairs_intersection(d1, d2, *r, *n),
+        SdfNode::StairsSubtraction { r, n, .. } => sdf_stairs_subtraction(d1, d2, *r, *n),
+        SdfNode::XOR { .. } => sdf_xor(d1, d2),
+        SdfNode::Morph { t, .. } => sdf_morph(d1, d2, *t),
+        SdfNode::ColumnsUnion { r, n, .. } => sdf_columns_union(d1, d2, *r, *n),
+        SdfNode::ColumnsIntersection { r, n, .. } => sdf_columns_intersection(d1, d2, *r, *n),
+        SdfNode::ColumnsSubtraction { r, n, .. } => sdf_columns_subtraction(d1, d2, *r, *n),
+        SdfNode::Pipe { r, .. } => sdf_pipe(d1, d2, *r),
+        SdfNode::Engrave { r, .. } => sdf_engrave(d1, d2, *r),
+        SdfNode::Groove { ra, rb, .. } => sdf_groove(d1, d2, *ra, *rb),
+        SdfNode::Tongue { ra, rb, .. } => sdf_tongue(d1, d2, *ra, *rb),
+        SdfNode::ExpSmoothUnion { k, .. } => sdf_exp_smooth_union(d1, d2, *k),
+        SdfNode::ExpSmoothIntersection { k, .. } => sdf_exp_smooth_intersection(d1, d2, *k),
+        SdfNode::ExpSmoothSubtraction { k, .. } => sdf_exp_smooth_subtraction(d1, d2, *k),
+        SdfNode::SmoothBlend {
+            k, kernel, mode, ..
+        } => smooth_blend(d1, d2, *k, *kernel, *mode),
+        SdfNode::MetricBlend {
+            center,
+            radius,
+            skin,
+            ..
+        } => {
+            // exactly `outer` beyond the skin and exactly `inner` within it:
+            // the weight saturates and the interpolation is endpoint-exact
+            let t = alice_det_math::metric::smoothstep(
+                *radius,
+                *radius + *skin,
+                (point - *center).length(),
+            );
+            alice_det_math::metric::lerp(d1, d2, t)
+        }
+        _ => unreachable!("combine: descend gives two operands only for the nodes above"),
+    }
+}
+
+/// The law of a one-child node of [`descend`] on its child's value `d` (`point` is the node's
+/// point, `extra` what `descend` computed while moving it)
+#[inline(never)]
+fn finish(node: &SdfNode, d: f32, point: Vec3, extra: [f32; 3]) -> f32 {
+    match node {
+        SdfNode::Scale { .. } | SdfNode::ScaleNonUniform { .. } => d * extra[0],
+        SdfNode::ProjectiveTransform { .. } => d * extra[0],
+        SdfNode::LatticeDeform { .. } => d / extra[0],
+        SdfNode::GridWarp { warp, .. } => warp.finish(d, extra[0], extra[1], extra[2]),
+        SdfNode::BellPull { pull, .. } => d / pull.lambda(),
+        SdfNode::IFS { .. } => d / extra[0].law_max(1e-6),
+        SdfNode::Noise {
+            amplitude,
+            frequency,
+            seed,
+            ..
+        } => modifier_noise_perlin(d, point, *amplitude, *frequency, *seed),
+        // Direct arithmetic operations (no function call overhead)
+        SdfNode::Round { radius, .. } => d - radius,
+        SdfNode::Onion { thickness, .. } => d.abs() - thickness,
+        SdfNode::Extrude { half_height, .. } => modifier_extrude(d, point.z, *half_height),
+        SdfNode::Taper { factor, reach, .. } => {
+            crate::compiled::real::taper_bound::<f32>(d, point.into(), *factor, *reach)
+        }
+        SdfNode::Displacement { strength, .. } => modifier_displacement(d, point, *strength),
+        SdfNode::SineDisplacement {
+            amplitude,
+            frequency,
+            ..
+        } => crate::modifiers::modifier_sine_displacement(d, point, *amplitude, *frequency),
+        SdfNode::HeightmapDisplacement {
+            heightmap,
+            width,
+            height,
+            amplitude,
+            scale,
+            ..
+        } => {
+            let disp = crate::modifiers::heightmap_displacement(
+                point, heightmap, *width, *height, *amplitude, *scale,
+            );
+            d - disp
+        }
+        SdfNode::SurfaceRoughness {
+            frequency,
+            amplitude,
+            octaves,
+            ..
+        } => crate::modifiers::surface_roughness(point, d, *frequency, *amplitude, *octaves),
+        // the child's value as it is (a rigid move, a fold, a repetition, or a transparent node)
+        _ => d,
+    }
+}
+
+/// The value of a node without children
+#[inline(never)]
+fn eval_leaf(node: &SdfNode, point: Vec3) -> f32 {
     match node {
         // === Primitives (Leaf Nodes) ===
         // These are the hot paths at the bottom of the recursion
@@ -182,22 +477,6 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
             w_linf,
         } => sdf_metric_ball(point, *radius, *w_l1, *w_l2, *w_linf),
 
-        SdfNode::MetricBlend {
-            inner,
-            outer,
-            center,
-            radius,
-            skin,
-        } => {
-            // exactly `outer` beyond the skin and exactly `inner` within it:
-            // the weight saturates and the interpolation is endpoint-exact
-            let t = alice_det_math::metric::smoothstep(
-                *radius,
-                *radius + *skin,
-                (point - *center).length(),
-            );
-            alice_det_math::metric::lerp(eval(inner, point), eval(outer, point), t)
-        }
         SdfNode::Heart { size } => sdf_heart(point, *size),
         SdfNode::Tube {
             outer_radius,
@@ -373,325 +652,6 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
                 a_fbm *= 0.48;
             }
             point.y - v * amplitude
-        }
-
-        // === Operations ===
-        // Recurse first, then combine. Compiler can reorder these instruction streams.
-        SdfNode::Union { a, b } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_union(d1, d2)
-        }
-        SdfNode::Intersection { a, b } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_intersection(d1, d2)
-        }
-        SdfNode::Subtraction { a, b } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_subtraction(d1, d2)
-        }
-        SdfNode::SmoothUnion { a, b, k } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_smooth_union(d1, d2, *k)
-        }
-        SdfNode::SmoothIntersection { a, b, k } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_smooth_intersection(d1, d2, *k)
-        }
-        SdfNode::SmoothSubtraction { a, b, k } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_smooth_subtraction(d1, d2, *k)
-        }
-        SdfNode::ChamferUnion { a, b, r } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_chamfer_union(d1, d2, *r)
-        }
-        SdfNode::ChamferIntersection { a, b, r } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_chamfer_intersection(d1, d2, *r)
-        }
-        SdfNode::ChamferSubtraction { a, b, r } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_chamfer_subtraction(d1, d2, *r)
-        }
-        SdfNode::StairsUnion { a, b, r, n } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_stairs_union(d1, d2, *r, *n)
-        }
-        SdfNode::StairsIntersection { a, b, r, n } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_stairs_intersection(d1, d2, *r, *n)
-        }
-        SdfNode::StairsSubtraction { a, b, r, n } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_stairs_subtraction(d1, d2, *r, *n)
-        }
-        SdfNode::XOR { a, b } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_xor(d1, d2)
-        }
-        SdfNode::Morph { a, b, t } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_morph(d1, d2, *t)
-        }
-        SdfNode::ColumnsUnion { a, b, r, n } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_columns_union(d1, d2, *r, *n)
-        }
-        SdfNode::ColumnsIntersection { a, b, r, n } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_columns_intersection(d1, d2, *r, *n)
-        }
-        SdfNode::ColumnsSubtraction { a, b, r, n } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_columns_subtraction(d1, d2, *r, *n)
-        }
-        SdfNode::Pipe { a, b, r } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_pipe(d1, d2, *r)
-        }
-        SdfNode::Engrave { a, b, r } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_engrave(d1, d2, *r)
-        }
-        SdfNode::Groove { a, b, ra, rb } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_groove(d1, d2, *ra, *rb)
-        }
-        SdfNode::Tongue { a, b, ra, rb } => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
-            sdf_tongue(d1, d2, *ra, *rb)
-        }
-        SdfNode::ExpSmoothUnion { a, b, k } => {
-            sdf_exp_smooth_union(eval(a, point), eval(b, point), *k)
-        }
-        SdfNode::ExpSmoothIntersection { a, b, k } => {
-            sdf_exp_smooth_intersection(eval(a, point), eval(b, point), *k)
-        }
-        SdfNode::ExpSmoothSubtraction { a, b, k } => {
-            sdf_exp_smooth_subtraction(eval(a, point), eval(b, point), *k)
-        }
-        SdfNode::SmoothBlend {
-            a,
-            b,
-            k,
-            kernel,
-            mode,
-        } => smooth_blend(eval(a, point), eval(b, point), *k, *kernel, *mode),
-
-        // === Transforms ===
-        // Transform point, then recurse.
-        SdfNode::Translate { child, offset } => {
-            // `transform_translate` is `#[inline(always)]`: the same single subtract
-            eval(child, transform_translate(point, *offset))
-        }
-        SdfNode::Rotate { child, rotation } => {
-            // Same formula as the compiled / SIMD paths (`Real::rotate_inverse`),
-            // not `glam`: bit-identical rotation keeps sign-discontinuous laws
-            // (pyramid base) on the same side on every path.
-            let p = crate::compiled::real::rotate_inverse::<f32>(*rotation, point.into()).into();
-            eval(child, p)
-        }
-        SdfNode::Scale { child, factor } => {
-            // `p * (1/s)`, the compiled evaluators' law (`Instruction::scale`
-            // precomputes the reciprocal); `p / s` differs by an ulp and the
-            // tree must be bit-identical to them (`tests/test_det_parity.rs`)
-            // (`transform_scale` is exactly that law and returns the multiplier `s`)
-            let (p, mult) = transform_scale(point, *factor);
-            eval(child, p) * mult
-        }
-        SdfNode::ScaleNonUniform { child, factors } => {
-            let (p, mult) = transform_scale_nonuniform(point, *factors);
-            eval(child, p) * mult
-        }
-        SdfNode::ProjectiveTransform {
-            child,
-            inv_matrix,
-            lipschitz_bound,
-        } => {
-            let (q, correction) =
-                crate::transforms::projective::projective_transform(point, inv_matrix);
-            eval(child, q) * correction.law_min(*lipschitz_bound)
-        }
-        SdfNode::LatticeDeform {
-            child,
-            control_points,
-            nx,
-            ny,
-            nz,
-            bbox_min,
-            bbox_max,
-        } => {
-            let (q, correction) = crate::transforms::lattice::lattice_deform(
-                point,
-                control_points,
-                *nx,
-                *ny,
-                *nz,
-                *bbox_min,
-                *bbox_max,
-            );
-            eval(child, q) / correction
-        }
-        SdfNode::SdfSkinning { child, bones } => {
-            let (q, _) = crate::transforms::skinning::sdf_skinning(point, bones);
-            eval(child, q)
-        }
-        SdfNode::GridWarp { child, warp } => {
-            let (x, e, lam, fl) = warp.warp(point);
-            warp.finish(eval(child, x), e, lam, fl)
-        }
-        SdfNode::BellPull { child, pull } => eval(child, pull.back(point)) / pull.lambda(),
-
-        // === Modifiers ===
-        SdfNode::Twist { child, strength } => {
-            let p = modifier_twist(point, *strength);
-            eval(child, p)
-        }
-        SdfNode::Bend { child, curvature } => {
-            let p = modifier_bend(point, *curvature);
-            eval(child, p)
-        }
-        SdfNode::RepeatInfinite { child, spacing } => {
-            let p = modifier_repeat_infinite(point, *spacing);
-            eval(child, p)
-        }
-        SdfNode::RepeatFinite {
-            child,
-            count,
-            spacing,
-        } => {
-            let p = modifier_repeat_finite(point, *count, *spacing);
-            eval(child, p)
-        }
-        SdfNode::Noise {
-            child,
-            amplitude,
-            frequency,
-            seed,
-        } => {
-            let d = eval(child, point);
-            modifier_noise_perlin(d, point, *amplitude, *frequency, *seed)
-        }
-
-        // Direct arithmetic operations (no function call overhead)
-        SdfNode::Round { child, radius } => eval(child, point) - radius,
-        SdfNode::Onion { child, thickness } => eval(child, point).abs() - thickness,
-        SdfNode::Elongate { child, amount } => {
-            let q = point - point.law_clamp(-*amount, *amount);
-            eval(child, q)
-        }
-        SdfNode::Mirror { child, axes } => {
-            let p = modifier_mirror(point, *axes);
-            eval(child, p)
-        }
-        SdfNode::OctantMirror { child } => {
-            let p = modifier_octant_mirror(point);
-            eval(child, p)
-        }
-        SdfNode::Revolution { child, offset } => {
-            let p = modifier_revolution(point, *offset);
-            eval(child, p)
-        }
-        SdfNode::Extrude { child, half_height } => {
-            let p_flat = modifier_extrude_point(point);
-            let d = eval(child, p_flat);
-            modifier_extrude(d, point.z, *half_height)
-        }
-        SdfNode::Taper {
-            child,
-            factor,
-            reach,
-        } => {
-            let d = eval(child, modifier_taper(point, *factor));
-            crate::compiled::real::taper_bound::<f32>(d, point.into(), *factor, *reach)
-        }
-        SdfNode::Displacement { child, strength } => {
-            let d = eval(child, point);
-            modifier_displacement(d, point, *strength)
-        }
-        SdfNode::SineDisplacement {
-            child,
-            amplitude,
-            frequency,
-        } => {
-            let d = eval(child, point);
-            crate::modifiers::modifier_sine_displacement(d, point, *amplitude, *frequency)
-        }
-        // frequency は Vec3 で型一致、 上記呼び出しが Vec3 を受ける
-        SdfNode::PolarRepeat { child, count } => {
-            let p = modifier_polar_repeat(point, *count);
-            eval(child, p)
-        }
-        SdfNode::SweepBezier { child, p0, p1, p2 } => {
-            let p = modifier_sweep_bezier(point, *p0, *p1, *p2);
-            eval(child, p)
-        }
-        SdfNode::Shear { child, shear } => eval(child, modifier_shear(point, *shear)),
-        SdfNode::Animated { child, .. } => {
-            // Static evaluation: animation is time-dependent, evaluate child as-is
-            eval(child, point)
-        }
-
-        // Material assignment is transparent for distance evaluation
-        SdfNode::WithMaterial { child, .. } => eval(child, point),
-        SdfNode::Pose { child } => eval(child, point),
-
-        // New modifiers
-        SdfNode::IcosahedralSymmetry { child } => {
-            let q = crate::modifiers::icosahedral_fold(point);
-            eval(child, q)
-        }
-        SdfNode::IFS {
-            child,
-            transforms,
-            iterations,
-        } => {
-            let (q, scale) = crate::modifiers::ifs_fold_with_scale(point, transforms, *iterations);
-            eval(child, q) / scale.law_max(1e-6)
-        }
-        SdfNode::HeightmapDisplacement {
-            child,
-            heightmap,
-            width,
-            height,
-            amplitude,
-            scale,
-        } => {
-            let d = eval(child, point);
-            let disp = crate::modifiers::heightmap_displacement(
-                point, heightmap, *width, *height, *amplitude, *scale,
-            );
-            d - disp
-        }
-        SdfNode::SurfaceRoughness {
-            child,
-            frequency,
-            amplitude,
-            octaves,
-        } => {
-            let d = eval(child, point);
-            crate::modifiers::surface_roughness(point, d, *frequency, *amplitude, *octaves)
         }
 
         #[allow(unreachable_patterns)]
