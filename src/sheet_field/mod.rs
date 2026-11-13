@@ -582,16 +582,17 @@ impl SheetField {
         MarchResult::Undecided
     }
 
-    /// The hit at `p` on sheet `k` (the sheet whose crossing it is): normal from the sheet's own signed field,
-    /// UV from its channels.
+    /// The hit at `p` on sheet `k` (the sheet whose crossing it is): normal = the gradient of the sheet's own
+    /// side channel `s` (central differences, 0.05 mm); the distance `g` would bend it toward the rim where
+    /// `d_b > 0` reaches the stencil. UV from its channels.
     fn hit_on(&self, p: Vec3, t: f32, k: usize) -> Hit {
         let e = 0.05f32;
         let sh = &self.sheets[k];
-        let g = |q: Vec3| sh.sample(q, self.rule).g;
+        let s = |q: Vec3| sh.sample(q, self.rule).s;
         let n = Vec3::new(
-            g(p + Vec3::X * e) - g(p - Vec3::X * e),
-            g(p + Vec3::Y * e) - g(p - Vec3::Y * e),
-            g(p + Vec3::Z * e) - g(p - Vec3::Z * e),
+            s(p + Vec3::X * e) - s(p - Vec3::X * e),
+            s(p + Vec3::Y * e) - s(p - Vec3::Y * e),
+            s(p + Vec3::Z * e) - s(p - Vec3::Z * e),
         );
         let normal = if n.length() > 1e-12 {
             n.normalize()
