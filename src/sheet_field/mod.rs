@@ -18,10 +18,14 @@
 //! jump in an unmasked cell can still cross, at most `(sqrt(3) + sqrt(3)/2) * h + scale` from the sheet.
 //!
 //! Union: `f = min` over sheets of (`f_k` inside sheet k's box, else `max(distance to the box, 3 h_k)`), a lower
-//! bound on the distance to sheet k. Ray hits ([`SheetField::march`]) take a stop where the union `f < 0.01`,
-//! or a sign change of one sheet's own `g_k` between two steps whose bisected point has `f_k < 0.02` (the
-//! union's `g` jumps where the nearest sheet switches, so it is not used for crossings). A ray that runs out of
-//! steps before the far distance is reported as undecided, never as a hit.
+//! bound on the distance to sheet k. A ray hit ([`SheetField::march`]) is a sign change of one sheet's own
+//! `g_k` between two steps (the union's `g` jumps where the nearest sheet switches, so it is not used for
+//! crossings), bisected, and accepted only where that sheet answers unmasked with `|s| <= 0.02` (a sign jump
+//! of `s` is not a crossing) and `d_b <= step/2`: inside its boundary up to the rounding of the stored `d_b`
+//! (half a quantization step). A crossing of the sheet's plane outside its rim is no hit, and nothing stops a
+//! ray by proximity alone (a distance threshold would widen every rim and every sheet by that threshold). The
+//! hit's owner is the sheet whose crossing it is. A ray that runs out of steps before the far distance is
+//! reported as undecided, never as a hit.
 
 pub mod build;
 #[cfg(feature = "gpu")]
@@ -40,6 +44,8 @@ pub const NODES: usize = BRICK + 1;
 /// Nodes per brick.
 pub const BRICK_NODES: usize = NODES * NODES * NODES;
 const HALF_DIAG: f32 = 0.866_025_4;
+/// A bisected sign change with `|s|` above this is a sign jump of `s`, not a crossing of the sheet.
+const JUMP_S: f32 = 0.02;
 
 /// Which cells' sign is trusted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,6 +140,13 @@ pub struct Sample {
     pub masked: bool,
     /// UV of the nearest surface point, when the sheet carries UV channels and a level answered.
     pub uv: Option<[f32; 2]>,
+    /// The interpolated side channel `s` (0 when no level answered).
+    pub s: f32,
+    /// The interpolated boundary channel `d_b` (0 when no level answered, or in a brick that stores no `d_b`:
+    /// every node there is `<= 0`, so the point is inside the boundary).
+    pub db: f32,
+    /// The quantization step of `d_b` in the answering brick (0 when the brick stores no `d_b`).
+    pub db_step: f32,
 }
 
 /// The union of sheets.
@@ -197,10 +210,19 @@ struct CellLookup {
     nch: usize,
     umin: f32,
     q0: f32,
+    q1: f32,
     h: f32,
 }
 
 impl Sheet {
+    /// Whether a bisected sign change of this sheet's `g` at `p` is a crossing of the sheet: a level answers,
+    /// unmasked, `|s| <= JUMP_S`, and `d_b <= step/2` (inside the boundary up to the rounding of the stored
+    /// `d_b`; a brick that stores no `d_b` has every node `<= 0`, so its points are inside).
+    fn crossing_inside(&self, p: Vec3, rule: ValidRule) -> bool {
+        let c = self.sample(p, rule);
+        c.inside && !c.masked && c.s.abs() <= JUMP_S && c.db <= 0.5 * c.db_step
+    }
+
     fn lookup(&self, p: Vec3) -> Option<CellLookup> {
         for lv in &self.levels {
             let u = (p - lv.lo) / lv.h;
@@ -231,6 +253,7 @@ impl Sheet {
                 nch: lv.channels.len().min(4),
                 umin: f32::INFINITY,
                 q0: 0.0,
+                q1: 0.0,
                 h: lv.h,
             };
             for (ci, ch) in lv.channels.iter().take(4).enumerate() {
@@ -255,6 +278,8 @@ impl Sheet {
                     }
                     if ci == 0 {
                         out.q0 = ch.scale[row as usize];
+                    } else if ci == 1 {
+                        out.q1 = ch.scale[row as usize];
                     }
                 }
                 out.values[ci] = acc;
@@ -274,6 +299,9 @@ impl Sheet {
                 inside: false,
                 masked: false,
                 uv: None,
+                s: 0.0,
+                db: 0.0,
+                db_step: 0.0,
             };
         };
         let (s, db) = (c.values[0], c.values[1]);
@@ -296,6 +324,9 @@ impl Sheet {
             inside: true,
             masked,
             uv,
+            s,
+            db,
+            db_step: c.q1,
         }
     }
 }
@@ -504,8 +535,8 @@ impl SheetField {
             } else {
                 self.eval_linear(p)
             };
-            let mut stop = dd < 0.01;
             let mut thit = f32::INFINITY;
+            let mut khit = 0usize;
             let mut gcur: Vec<Option<f32>> = vec![None; k_n];
             let live: Vec<usize> = if bvh {
                 self.sheets_containing(p)
@@ -516,7 +547,7 @@ impl SheetField {
                 let sh = &self.sheets[k];
                 let gc = sh.sample(p, self.rule).g;
                 gcur[k] = Some(gc);
-                if stop || t <= 0.0 {
+                if t <= 0.0 {
                     continue;
                 }
                 let Some(gp) = gprev[k] else { continue };
@@ -535,16 +566,13 @@ impl SheetField {
                     }
                 }
                 let tm = 0.5 * (a + b);
-                if sh.sample(origin + dir * tm, self.rule).f < 0.02 {
-                    thit = thit.min(tm);
+                if sh.crossing_inside(origin + dir * tm, self.rule) && tm < thit {
+                    thit = tm;
+                    khit = k;
                 }
             }
             if thit.is_finite() {
-                t = thit;
-                stop = true;
-            }
-            if stop {
-                return MarchResult::Hit(self.hit_at(origin + dir * t, t));
+                return MarchResult::Hit(self.hit_on(origin + dir * thit, thit, khit));
             }
             tprev = t;
             gprev = gcur;
@@ -556,20 +584,11 @@ impl SheetField {
         MarchResult::Undecided
     }
 
-    fn hit_at(&self, p: Vec3, t: f32) -> Hit {
+    /// The hit at `p` on sheet `k` (the sheet whose crossing it is): normal from the sheet's own signed field,
+    /// UV from its channels.
+    fn hit_on(&self, p: Vec3, t: f32, k: usize) -> Hit {
         let e = 0.05f32;
-        let mut best = (f32::INFINITY, 0usize);
-        for (k, sh) in self.sheets.iter().enumerate() {
-            let pe = p.cmpge(sh.lo - Vec3::splat(e)).all() && p.cmple(sh.hi + Vec3::splat(e)).all();
-            if !pe {
-                continue;
-            }
-            let v = sh.sample(p, self.rule).f;
-            if v < best.0 {
-                best = (v, k);
-            }
-        }
-        let sh = &self.sheets[best.1];
+        let sh = &self.sheets[k];
         let g = |q: Vec3| sh.sample(q, self.rule).g;
         let n = Vec3::new(
             g(p + Vec3::X * e) - g(p - Vec3::X * e),
@@ -583,7 +602,7 @@ impl SheetField {
         };
         Hit {
             t,
-            sheet: best.1,
+            sheet: k,
             normal,
             uv: sh.sample(p, self.rule).uv,
         }
