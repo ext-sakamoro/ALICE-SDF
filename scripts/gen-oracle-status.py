@@ -268,8 +268,34 @@ When an oracle goes green:
     return report
 
 
+def write_or_check(output_file, report, check):
+    """Write `report` to `output_file`, or with `check` compare it to the committed file and write nothing
+
+    Returns 0 when written, or when the committed file already matches; 1 when it is missing or differs
+    (the difference is printed), so a stale table stops the check that runs before the push instead of
+    only the workflow that diffs the file after it
+    """
+    import difflib
+    import sys
+
+    if not check:
+        output_file.write_text(report, encoding='utf-8')
+        return 0
+    old = output_file.read_text(encoding='utf-8') if output_file.exists() else ''
+    if old == report:
+        print(f"up to date: {output_file.name}", file=sys.stderr)
+        return 0
+    sys.stderr.writelines(difflib.unified_diff(
+        old.splitlines(keepends=True), report.splitlines(keepends=True),
+        f"a/docs/{output_file.name}", f"b/docs/{output_file.name}"))
+    print(f"ERROR: docs/{output_file.name} is stale: run "
+          f"'python3 scripts/{Path(__file__).name}' and commit the result with the change", file=sys.stderr)
+    return 1
+
+
 def main():
     import sys
+    check = '--check' in sys.argv[1:]
     print("Scanning ALICE-SDF oracle tests...", file=sys.stderr)
 
     categorized = run_tests_and_categorize()
@@ -281,9 +307,10 @@ def main():
     report = generate_markdown_report(categorized)
 
     output_file = DOCS_DIR / "oracle-status.md"
-    output_file.write_text(report, encoding='utf-8')
+    if write_or_check(output_file, report, check):
+        sys.exit(1)
 
-    print(f"✅ Generated {output_file}", file=sys.stderr)
+    print(f"✅ {'Checked' if check else 'Generated'} {output_file}", file=sys.stderr)
     print(f"   Implemented: {len(categorized['implemented'])}", file=sys.stderr)
     print(f"   Partial: {len(categorized['partial'])}", file=sys.stderr)
     print(f"   Pending: {len(categorized['pending'])}", file=sys.stderr)

@@ -255,5 +255,38 @@ class OracleClassify(unittest.TestCase):
         self.assertIn("**Total** | **4**", a)
 
 
+class WriteOrCheck(unittest.TestCase):
+    """--check compares the generated table with the committed one and writes nothing"""
+
+    def run_both(self, committed):
+        for mod in (wiring, oracle):
+            d = Path(_mkdtemp(prefix="status-check-"))
+            out = d / "status.md"
+            if committed is not None:
+                out.write_text(committed, encoding="utf-8")
+            yield mod, out
+
+    def test_a_matching_table_passes_and_is_not_rewritten(self):
+        for mod, out in self.run_both("same\n"):
+            before = out.stat().st_mtime_ns
+            self.assertEqual(mod.write_or_check(out, "same\n", True), 0, mod.__name__)
+            self.assertEqual(out.stat().st_mtime_ns, before, mod.__name__)
+
+    def test_a_stale_table_fails_and_is_left_as_it_was(self):
+        for mod, out in self.run_both("old\n"):
+            self.assertEqual(mod.write_or_check(out, "new\n", True), 1, mod.__name__)
+            self.assertEqual(out.read_text(encoding="utf-8"), "old\n", mod.__name__)
+
+    def test_a_missing_table_fails_and_is_not_created(self):
+        for mod, out in self.run_both(None):
+            self.assertEqual(mod.write_or_check(out, "new\n", True), 1, mod.__name__)
+            self.assertFalse(out.exists(), mod.__name__)
+
+    def test_without_check_the_table_is_written(self):
+        for mod, out in self.run_both("old\n"):
+            self.assertEqual(mod.write_or_check(out, "new\n", False), 0, mod.__name__)
+            self.assertEqual(out.read_text(encoding="utf-8"), "new\n", mod.__name__)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

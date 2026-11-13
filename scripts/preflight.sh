@@ -166,8 +166,8 @@ python3 scripts/test_gen_status.py
 step "law-readme-block.yml: README ALICE-Law block (tests, then the check the job runs, at the block's ALICE-Law pin)"
 python3 scripts/test_law_readme_block_check.py
 python3 scripts/law_readme_block_check.py
-python3 scripts/gen-wiring-status.py
-python3 scripts/gen-oracle-status.py
+python3 scripts/gen-wiring-status.py --check
+python3 scripts/gen-oracle-status.py --check
 
 step "public-text.yml / public-text: Public text (ALICE-Law checker at the pin; tree, then the commits)"
 python3 scripts/test_public_text.py
