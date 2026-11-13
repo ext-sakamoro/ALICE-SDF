@@ -142,3 +142,70 @@ fn the_gpu_marcher_ends_the_sheet_at_its_rim_too() {
         wrong.join("\n")
     );
 }
+
+/// A sign jump of `s` where one level ends and another answers is not a crossing: the fine level (`x < 0`) has
+/// its surface at `z = 0`, the coarse level at `z = -0.1`; a ray parallel to both at `z = -0.05` sees `s` flip
+/// from -0.05 to +0.05 at the level seam but crosses no surface, so it misses. The check is `|s| <= 0.02` at the
+/// bisected point (a ramp inside one level passes through 0 and is a true crossing; a jump between levels
+/// stays at |s| ~ 0.05). A ray that does cross the fine surface still hits.
+#[test]
+fn a_sign_jump_between_levels_is_not_a_crossing() {
+    let fine = level_from_fn(
+        Vec3::new(-1.5 + 0.013, -1.5 + 0.021, -0.5 + 0.007),
+        0.0625,
+        [3, 6, 2],
+        |_c, _e| true,
+        |p| vec![p.z, square_db(p.x, p.y)],
+    )
+    .unwrap();
+    let coarse = level_from_fn(
+        Vec3::new(-1.5 + 0.013, -1.5 + 0.021, -0.5 + 0.007),
+        0.125,
+        [3, 3, 1],
+        |_c, _e| true,
+        |p| vec![p.z + 0.1, square_db(p.x, p.y)],
+    )
+    .unwrap();
+    let f = SheetField::new(vec![sheet(vec![fine, coarse]).unwrap()], ValidRule::CellV1);
+    let parallel = f.march(Vec3::new(-0.8, 0.2, -0.05), Vec3::X, 1.2, 4000);
+    assert_eq!(
+        parallel,
+        MarchResult::Miss,
+        "the level seam's sign jump read as a hit"
+    );
+    match f.march(Vec3::new(-0.5, 0.2, 0.3), -Vec3::Z, 1.0, 4000) {
+        MarchResult::Hit(h) => assert!((h.t - 0.3).abs() <= 1e-3, "t {}", h.t),
+        r => panic!("a ray through the fine surface: {r:?}"),
+    }
+    #[cfg(feature = "gpu")]
+    {
+        use alice_sdf::sheet_field::gpu::GpuSheetField;
+        match GpuSheetField::new(&f) {
+            Ok(g) => {
+                let par = g
+                    .march_batch(&[Vec3::new(-0.8, 0.2, -0.05)], Vec3::X, 1.2, 4000)
+                    .unwrap();
+                assert_eq!(
+                    par[0],
+                    MarchResult::Miss,
+                    "gpu: the level seam's sign jump read as a hit"
+                );
+                let thr = g
+                    .march_batch(&[Vec3::new(-0.5, 0.2, 0.3)], -Vec3::Z, 1.0, 4000)
+                    .unwrap();
+                assert!(
+                    matches!(thr[0], MarchResult::Hit(h) if (h.t - 0.3).abs() <= 1e-3),
+                    "gpu: {:?}",
+                    thr[0]
+                );
+            }
+            Err(e) => {
+                assert!(
+                    std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+                    "ALICE_SDF_REQUIRE_GPU set but no GPU: {e}"
+                );
+                eprintln!("gpu-test: skipped (no GPU: {e})");
+            }
+        }
+    }
+}
