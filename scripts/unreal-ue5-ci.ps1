@@ -156,10 +156,42 @@ if (Test-Path (Join-Path $Staged "HostProject~")) { Remove-Item -Recurse -Force 
 # ── 4. UAT BuildPlugin (UnrealEditor + UnrealGame, Win64) ──────────────────
 Step "RunUAT BuildPlugin (Win64, editor + game targets)"
 $UatLog = Join-Path $Logs "buildplugin.log"
-& (Join-Path $EngineRoot "Engine\Build\BatchFiles\RunUAT.bat") BuildPlugin `
-    -Plugin="$Staged\AliceSDF.uplugin" -Package="$Packaged" -TargetPlatforms=Win64 -Rocket 2>&1 |
-    Tee-Object -FilePath $UatLog | Select-String -Pattern "error|warning C|Result:|BUILD " | ForEach-Object { $_.Line }
-if ($LASTEXITCODE -ne 0) { Fail "BuildPlugin failed (see $UatLog)" }
+# The compile runs on UBT's parallel executor, not the Unreal Build Accelerator (UBA). On this
+# runner the UBA local executor stops making progress part-way through the plugin's 21 actions:
+# the cl.exe processes stay alive at ~0 CPU on an idle machine and no line is printed until
+# timeout-minutes (90 min) cancels the job, where a good run finishes the same 21 actions in
+# ~13 min. BuildPlugin has no switch that reaches UBT, so the setting goes through UBT's
+# environment config (UnrealBuildTool_<Category>__<Field>, written by UBT to
+# UnrealBuildTool.Env.BuildConfiguration.xml on every run; the same as -NoUBA). The log check
+# below fails if UBA ran anyway.
+$env:UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor = "false"
+# A build that still goes silent fails here with a HANG line and the last line it printed,
+# well before timeout-minutes: no single silent stretch of a good build is near 20 minutes
+# (the whole 21-action compile is ~13).
+$StallMinutes = 20
+foreach ($p in @($Staged, $Packaged)) {
+    if ($p -match '\s') { Fail "the BuildPlugin paths must not contain spaces (Start-Process joins the arguments): $p" }
+}
+Import-Module (Join-Path $PSScriptRoot "ci-log-stall-watch.psm1") -Force
+$Uat = Invoke-StallWatched -FilePath (Join-Path $EngineRoot "Engine\Build\BatchFiles\RunUAT.bat") `
+    -ArgumentList @("BuildPlugin", "-Plugin=$Staged\AliceSDF.uplugin", "-Package=$Packaged", "-TargetPlatforms=Win64", "-Rocket") `
+    -LogPath $UatLog -StallSeconds ($StallMinutes * 60) -PollSeconds 15
+Select-String -LiteralPath $UatLog -Pattern "error|warning C|Result:|BUILD |\[\d+/\d+\]|Executor|executor" | ForEach-Object { $_.Line }
+if ($Uat.Hung) {
+    Fail "HANG: BuildPlugin printed nothing for $StallMinutes min and was stopped; last line: $($Uat.LastLine)"
+}
+if ($Uat.ExitCode -ne 0) { Fail "BuildPlugin failed with exit code $($Uat.ExitCode) (see $UatLog)" }
+# UBT prints "Using <executor> executor to run N action(s)" for each target it compiles; the
+# only other place the UBA name is printed is that executor's own name
+if (Select-String -LiteralPath $UatLog -SimpleMatch "Unreal Build Accelerator" -Quiet) {
+    Fail "BuildPlugin used the Unreal Build Accelerator although UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor=false"
+}
+if (-not (Select-String -LiteralPath $UatLog -SimpleMatch "Using Parallel executor to run" -Quiet)) {
+    Fail "BuildPlugin compiled nothing on the parallel executor (no 'Using Parallel executor to run' line, see $UatLog)"
+}
+if (-not (Select-String -LiteralPath $UatLog -SimpleMatch "BUILD SUCCESSFUL" -Quiet)) {
+    Fail "BuildPlugin exited 0 without BUILD SUCCESSFUL (see $UatLog)"
+}
 if (-not (Test-Path (Join-Path $Packaged "Binaries\Win64\UnrealEditor-AliceSDF.dll"))) {
     Fail "BuildPlugin produced no UnrealEditor-AliceSDF.dll"
 }
