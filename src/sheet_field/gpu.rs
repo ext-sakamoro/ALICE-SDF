@@ -332,6 +332,8 @@ impl GpuSheetField {
             pass.dispatch_workgroups((n as u32).div_ceil(WG), 1, 1);
         }
         enc.copy_buffer_to_buffer(&b_out, 0, &staging, 0, out_bytes);
+        // the GPU's writes -> the CPU's read of the mapped staging buffer (see GpuContext::before_host_read)
+        self.context.before_host_read(&mut enc);
         queue.submit(std::iter::once(enc.finish()));
         let slice = staging.slice(..);
         let (sender, receiver) = std::sync::mpsc::channel();
