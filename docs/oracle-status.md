@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1278 |
+| 🟢 Not ignored | 1288 |
 | 🔴 Red by design | 6 |
 | ⏱ Gated (runtime / diagnostic / manual) | 9 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1293** |
+| **Total** | **1303** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -53,7 +53,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu` (test_wgsl_chunk_ulp.rs) — runs on the macOS lane: llvmpipe cannot run the form before (a copy of the array per read)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1278)
+## 🟢 Not ignored (1288)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -105,6 +105,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_new_transforms.rs` | 9 |
 | `test_physics_bridge_determinism.rs` | 9 |
 | `test_relaxed_tracing.rs` | 9 |
+| `test_repeat_cells_oracle.rs` | 9 |
 | `meshopt_reference_vectors.rs` | 8 |
 | `test_batch_operations.rs` | 8 |
 | `test_bell_pull_oracle.rs` | 8 |
@@ -207,6 +208,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_optimize_stats_oracle.rs` | 3 |
 | `test_rust_transpiler_oracle.rs` | 3 |
 | `test_shader_minimal_trees.rs` | 3 |
+| `test_transpiler_naga_validate.rs` | 3 |
 | `float_environment.rs` | 2 |
 | `noise_shader_validate.rs` | 2 |
 | `test_aabb_unified_oracle.rs` | 2 |
@@ -224,7 +226,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_smooth_blend_decode.rs` | 2 |
 | `test_stored_variant_index.rs` | 2 |
 | `test_tight_aabb_cover_oracle.rs` | 2 |
-| `test_transpiler_naga_validate.rs` | 2 |
 | `test_wgsl_array_constructor_limit.rs` | 2 |
 | `mesh_sign_sliver.rs` | 1 |
 | `test_asdf_roundtrip_parity.rs` | 1 |
