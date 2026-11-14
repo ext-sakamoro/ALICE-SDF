@@ -40,6 +40,7 @@ pub mod build;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 pub mod nearest;
+pub mod stream;
 
 use glam::Vec3;
 
