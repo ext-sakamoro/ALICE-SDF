@@ -10,8 +10,14 @@
 //!
 //! The union is the BVH walk of [`SheetField::eval`]; the march keeps, per ray, the previous signed value of
 //! each sheet whose box holds the current point (found by the BVH walk of [`SheetField::sheets_containing`])
-//! in a fixed list of [`MAX_LIVE_SHEETS`] entries. A ray that would need more reports [`GpuError`] for the
-//! batch (never a guessed answer).
+//! in a list compiled per field: [`max_live_for`]`(`[`live_bound`]`(field))` entries, at least [`MAX_LIVE_SHEETS`].
+//! The bound: a point held by the boxes of a set S of sheets lies in every box of S, so every box of S meets
+//! every other box of S (inclusive intersection of the same `f32` boxes the shader tests), and |S| is at most
+//! the count of boxes meeting any one of them, itself included; [`live_bound`] is the largest such count over
+//! the sheets. The list length is not in the arithmetic, so a field whose bound is at most 64 compiles the same
+//! program as the earlier fixed 64 list and gives the same results. A ray that would still need more (it
+//! cannot, by the bound) reports [`GpuError`] for the batch (never a guessed answer); a bound over
+//! [`MAX_LIVE_CAP`] is refused at upload.
 
 use glam::Vec3;
 use wgpu::util::DeviceExt;
@@ -20,8 +26,52 @@ use super::{Hit, MarchResult, SheetField, ValidRule, BRICK_NODES};
 use crate::compiled::GpuError;
 use crate::gpu_context::GpuContext;
 
-/// Sheets whose boxes may hold one march point at once (per-ray list on the GPU).
+/// The smallest per-ray list of live sheets the march compiles (fields whose [`live_bound`] is at most this).
 pub const MAX_LIVE_SHEETS: u32 = 64;
+/// The largest per-ray list the march compiles; a field whose [`live_bound`] is over it is refused.
+pub const MAX_LIVE_CAP: u32 = 1024;
+
+/// The most sheet boxes that can hold one point of `field`: over the sheets, the count of boxes meeting that
+/// sheet's box (inclusive, itself included). See the module docs for why no point is in more boxes.
+#[must_use]
+pub fn live_bound(field: &SheetField) -> u32 {
+    let s = &field.sheets;
+    let mut order: Vec<usize> = (0..s.len()).collect();
+    order.sort_by(|&a, &b| s[a].lo.x.total_cmp(&s[b].lo.x));
+    let mut count = vec![1u32; s.len()];
+    // sweep in x: a pair can meet only if their x ranges overlap
+    for (i, &a) in order.iter().enumerate() {
+        for &b in &order[i + 1..] {
+            if s[b].lo.x > s[a].hi.x {
+                break;
+            }
+            if s[a].lo.cmple(s[b].hi).all() && s[b].lo.cmple(s[a].hi).all() {
+                count[a] += 1;
+                count[b] += 1;
+            }
+        }
+    }
+    count.into_iter().max().unwrap_or(0)
+}
+
+/// The list size compiled for a bound: [`MAX_LIVE_SHEETS`] up to it, then the next power of two up to
+/// [`MAX_LIVE_CAP`] (at most 5 programs per process: 64, 128, 256, 512, 1024). Refuses a bound over the cap.
+pub fn max_live_for(bound: u32) -> Result<u32, GpuError> {
+    if bound > MAX_LIVE_CAP {
+        return Err(GpuError::InvalidFormat(format!(
+            "sheet field: {bound} sheet boxes can hold one point, over the march's cap {MAX_LIVE_CAP}"
+        )));
+    }
+    Ok(bound.max(MAX_LIVE_SHEETS).next_power_of_two())
+}
+
+/// The march program's text for a list of `max_live` live sheets.
+#[must_use]
+pub fn march_shader(max_live: u32) -> String {
+    SHADER
+        .replace("__MAX_LIVE__", &max_live.to_string())
+        .replace("__MIN_STEP__", &format!("{:?}", super::MIN_STEP))
+}
 const WG: u32 = 64;
 
 /// What the GPU says at one point.
@@ -103,6 +153,7 @@ pub struct GpuSheetField {
     eval_pipeline: wgpu::ComputePipeline,
     march_pipeline: wgpu::ComputePipeline,
     layout: wgpu::BindGroupLayout,
+    max_live: u32,
 }
 
 fn storage_init(device: &wgpu::Device, label: &str, bytes: &[u8]) -> wgpu::Buffer {
@@ -229,6 +280,7 @@ impl GpuSheetField {
             bp: b_bp,
             bn_len: bvh.nodes.len() as u32,
         };
+        let max_live = max_live_for(live_bound(field))?;
         let context = GpuContext::request_with_adapter_storage_limits("ALICE-SDF sheet field")?;
         let device = context.device();
         let max = u64::from(device.limits().max_storage_buffer_binding_size);
@@ -269,12 +321,7 @@ impl GpuSheetField {
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sheet field"),
-            source: wgpu::ShaderSource::Wgsl(
-                SHADER
-                    .replace("__MAX_LIVE__", &MAX_LIVE_SHEETS.to_string())
-                    .replace("__MIN_STEP__", &format!("{:?}", super::MIN_STEP))
-                    .into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(march_shader(max_live).into()),
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("sheet field"),
@@ -306,6 +353,7 @@ impl GpuSheetField {
             march_pipeline,
             layout,
             context,
+            max_live,
         })
     }
 
@@ -402,6 +450,12 @@ impl GpuSheetField {
         Ok(out)
     }
 
+    /// The per-ray list size this field's march was compiled with ([`max_live_for`] of [`live_bound`]).
+    #[must_use]
+    pub const fn max_live(&self) -> u32 {
+        self.max_live
+    }
+
     /// The union value at each point.
     pub fn eval_batch(&self, points: &[Vec3]) -> Result<Vec<GpuSample>, GpuError> {
         if points.is_empty() {
@@ -469,7 +523,8 @@ impl GpuSheetField {
                 2 => MarchResult::Undecided,
                 _ => {
                     return Err(GpuError::InvalidFormat(format!(
-                        "sheet field march: more than {MAX_LIVE_SHEETS} sheet boxes hold one point"
+                        "sheet field march: more than {} sheet boxes hold one point",
+                        self.max_live
                     )))
                 }
             });
