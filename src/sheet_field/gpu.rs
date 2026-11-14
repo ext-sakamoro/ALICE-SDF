@@ -10,7 +10,7 @@
 //!
 //! The union is the BVH walk of [`SheetField::eval`]; the march keeps, per ray, the previous signed value of
 //! each sheet whose box holds the current point (found by the BVH walk of [`SheetField::sheets_containing`])
-//! in a list compiled per field: [`max_live_for`]`(`[`live_bound`]`(field))` entries, at least [`MAX_LIVE_SHEETS`].
+//! in a list compiled per field: [`max_live_for`] of [`live_bound`] entries, at least [`MAX_LIVE_SHEETS`].
 //! The bound: a point held by the boxes of a set S of sheets lies in every box of S, so every box of S meets
 //! every other box of S (inclusive intersection of the same `f32` boxes the shader tests), and |S| is at most
 //! the count of boxes meeting any one of them, itself included; [`live_bound`] is the largest such count over
@@ -31,8 +31,9 @@ pub const MAX_LIVE_SHEETS: u32 = 64;
 /// The largest per-ray list the march compiles; a field whose [`live_bound`] is over it is refused.
 pub const MAX_LIVE_CAP: u32 = 1024;
 
-/// The most sheet boxes that can hold one point of `field`: over the sheets, the count of boxes meeting that
-/// sheet's box (inclusive, itself included). See the module docs for why no point is in more boxes.
+/// The most sheet boxes that can hold one point of `field`.
+///
+/// Over the sheets, the count of boxes meeting that sheet's box (inclusive, itself included). See the module docs for why no point is in more boxes.
 #[must_use]
 pub fn live_bound(field: &SheetField) -> u32 {
     let s = &field.sheets;
@@ -54,8 +55,9 @@ pub fn live_bound(field: &SheetField) -> u32 {
     count.into_iter().max().unwrap_or(0)
 }
 
-/// The list size compiled for a bound: [`MAX_LIVE_SHEETS`] up to it, then the next power of two up to
-/// [`MAX_LIVE_CAP`] (at most 5 programs per process: 64, 128, 256, 512, 1024). Refuses a bound over the cap.
+/// The list size compiled for a bound.
+///
+/// [`MAX_LIVE_SHEETS`] up to it, then the next power of two up to [`MAX_LIVE_CAP`] (at most 5 programs per process: 64, 128, 256, 512, 1024). Refuses a bound over the cap.
 pub fn max_live_for(bound: u32) -> Result<u32, GpuError> {
     if bound > MAX_LIVE_CAP {
         return Err(GpuError::InvalidFormat(format!(
