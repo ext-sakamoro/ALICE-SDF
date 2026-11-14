@@ -153,8 +153,8 @@ fn read_f32<R: Read>(r: &mut R) -> Result<f32, StreamError> {
 fn read_words<R: Read>(r: &mut R, n: usize) -> Result<Vec<[u8; 4]>, StreamError> {
     let mut b = vec![0u8; n * 4];
     r.read_exact(&mut b)?;
-    Ok(b.chunks_exact(4)
-        .map(|c| [c[0], c[1], c[2], c[3]])
+    Ok((0..n)
+        .map(|i| [b[4 * i], b[4 * i + 1], b[4 * i + 2], b[4 * i + 3]])
         .collect())
 }
 
@@ -471,8 +471,9 @@ fn merge(acc: &mut [Option<MarchResult>], part: &[MarchResult], base: usize) {
     }
 }
 
-/// March `n_rays` rays through the field in `index`, reading one batch of chunks at a time from `r`. `march` is
-/// called once per chunk with that chunk's field and must return one result per ray (CPU or GPU; the caller
+/// March `n_rays` rays through the field in `index`, reading one batch of chunks at a time from `r`.
+///
+/// `march` is called once per chunk with that chunk's field and must return one result per ray (CPU or GPU; the caller
 /// owns the rays). Returns the merged results (sheets numbered as in the file) and what was read.
 pub fn march_streamed<R, F>(
     index: &AshfIndex,
