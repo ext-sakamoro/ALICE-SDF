@@ -237,12 +237,24 @@ fn past_the_native_levels_each_walker_hands_off_to_its_loop() {
 /// recursion alone, and the bytecode compiler does not refuse them
 #[test]
 fn at_the_native_levels_and_one_past_each_walker_gives_the_same_result() {
-    /// the shortest chain `depth` levels deep
+    /// `n` smooth unions over a gyroid: the deepest node is the gyroid, whose bound is not 1
+    /// (the spheres' and the unions' are), so the part handed to the loop changes the result
+    fn gyroid_chain(n: usize) -> SdfNode {
+        let mut result = SdfNode::gyroid(1.0, 0.1);
+        for i in 1..=n {
+            result = result.smooth_union(
+                SdfNode::sphere(1.0).translate(i as f32 * 1.5, 0.0, 0.0),
+                0.5,
+            );
+        }
+        result
+    }
+    /// the shortest such chain `depth` levels deep
     fn chain_of_depth(depth: u32) -> SdfNode {
         let n = (0..4 * depth as usize)
-            .find(|&n| tree_depth(&sphere_chain(n)) == depth)
+            .find(|&n| tree_depth(&gyroid_chain(n)) == depth)
             .expect("a chain of that depth");
-        sphere_chain(n)
+        gyroid_chain(n)
     }
     let checked = std::thread::Builder::new()
         .stack_size(THREAD_BYTES)
@@ -270,6 +282,12 @@ fn at_the_native_levels_and_one_past_each_walker_gives_the_same_result() {
                     assert!(
                         b[0] == b[1] && b[1] == b[2],
                         "bound at depth {depth}: {b:?}"
+                    );
+                    // the gyroid at the bottom sets it: a loop that lost the deepest node gives 1
+                    assert!(
+                        f32::from_bits(b[2]) > 1.0,
+                        "bound at depth {depth}: {}",
+                        f32::from_bits(b[2])
                     );
                     let d: Vec<(usize, usize)> = [0, DEPTHS_NATIVE_LEVELS, u32::MAX]
                         .iter()

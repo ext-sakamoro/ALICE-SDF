@@ -1636,10 +1636,10 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
     lipschitz_rec(node, 0, LIPSCHITZ_NATIVE_LEVELS)
 }
 
-/// Levels `lipschitz_rec` recurses natively before it hands a subtree to `lipschitz_iter` (the
-/// stack it uses is bounded by this many small frames, up to 384 B each in an unoptimised build, so
-/// 112 levels keep one walk within 64 KiB; deeper trees go to the heap)
-pub(crate) const LIPSCHITZ_NATIVE_LEVELS: u32 = 112;
+/// Levels `lipschitz_rec` recurses natively before it hands a subtree to `lipschitz_iter` (largest
+/// frame 384 B, arm64 debug; 152 keeps one walk within 64 KiB with a tenth to spare; deeper trees go
+/// to the heap)
+pub(crate) const LIPSCHITZ_NATIVE_LEVELS: u32 = 152;
 
 /// The bound of `node` at `depth` levels below the root: native recursion for the first
 /// `native_levels` levels (most scenes have fewer), the work-stack loop below that (both apply the

@@ -230,8 +230,9 @@ pub fn compile_with_native_levels(
     (c.instructions, c.aux_data, c.node_count, c.refused)
 }
 
-/// Levels `Compiler::compile_rec` recurses natively before it hands a subtree to the loop
-pub const COMPILE_NATIVE_LEVELS: u32 = 112;
+/// Levels `Compiler::compile_rec` recurses natively before it hands a subtree to the loop (largest
+/// frame 463 B, x86-64 debug; 128 keeps one walk within 64 KiB with a tenth to spare)
+pub const COMPILE_NATIVE_LEVELS: u32 = 128;
 
 /// What `Compiler::compile_node` still has to do, innermost last
 enum Owed<'a> {
@@ -1456,9 +1457,9 @@ pub fn compute_stack_depths(node: &SdfNode) -> (usize, usize) {
     depths_rec(node, 0, DEPTHS_NATIVE_LEVELS)
 }
 
-/// Levels `depths_rec` recurses natively before it hands a subtree to `depths_iter` (its frame is
-/// up to 320 B in an unoptimised build: 112 levels keep one walk within 64 KiB)
-pub const DEPTHS_NATIVE_LEVELS: u32 = 112;
+/// Levels `depths_rec` recurses natively before it hands a subtree to `depths_iter` (largest frame
+/// 320 B, arm64 debug; 184 keeps one walk within 64 KiB with a tenth to spare)
+pub const DEPTHS_NATIVE_LEVELS: u32 = 184;
 
 /// The depths of `node` at `depth` levels below the root: native recursion for the first
 /// `native_levels` levels, the work-stack loop below that (both read `depth_step`;

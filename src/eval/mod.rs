@@ -50,8 +50,9 @@ pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
     eval_rec(node, point, 0, EVAL_NATIVE_LEVELS)
 }
 
-/// Levels `eval_rec` recurses natively before it hands a subtree to `eval_iter`
-pub(crate) const EVAL_NATIVE_LEVELS: u32 = 112;
+/// Levels `eval_rec` recurses natively before it hands a subtree to `eval_iter` (largest frame
+/// 592 B, x86-64 release; 96 keeps one walk within 64 KiB with a tenth to spare)
+pub(crate) const EVAL_NATIVE_LEVELS: u32 = 96;
 
 /// `node` at `point`, `depth` levels below the root: native recursion for the first
 /// `native_levels` levels, the work-stack loop below that (both through `descend`, `combine` and
