@@ -1708,6 +1708,10 @@ fn depth_step(node: &SdfNode) -> DepthStep<'_> {
 }
 
 /// Recursively validate that all nodes in the tree are supported by the bytecode compiler.
+///
+/// Kept out of line (once per compile): the stack budget gate checks in the release binary that
+/// this loop does not call itself, which needs its symbol.
+#[inline(never)]
 fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
     // depth first, left before right, without recursing: the first refusal found is reported
     let mut next: WorkStack<&SdfNode, 128> = WorkStack::new();

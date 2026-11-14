@@ -15,7 +15,8 @@
 #   headless Chromium, a background thread (scripts/browser_stack_canary.py): the deepest chain
 #                   the browser engine runs, at least the wasm canary's depth
 # Fails when a test fails, when a test binary ran 0 tests, when a walker calls itself or is not
-# found, or when the browser stays below the depth.
+# found, or when the browser stays below the depth. A frame check that fails does not stop the run:
+# every build is still measured, and the run fails at the end.
 #
 # Usage: scripts/stack_budget.sh [--native-only]
 #
@@ -79,10 +80,20 @@ run_tests() {
   echo "stack-budget: $label: $n test(s) passed"
 }
 
+# a frame check that fails is counted and the run goes on, so that one run reports every
+# driver's frame in every build (the run fails at the end when any check failed)
+FRAME_FAILURES=0
+frame_check() {
+  "$@" || {
+    FRAME_FAILURES=$((FRAME_FAILURES + 1))
+    echo "stack-budget: frame check failed (counted; the other builds are still measured)"
+  }
+}
+
 gate() {
   local name=$1 bin=$2
   shift 2
-  local g=(python3 scripts/stack_frame_gate.py "$bin" --objdump "$OBJDUMP")
+  local g=(frame_check python3 scripts/stack_frame_gate.py "$bin" --objdump "$OBJDUMP")
   if [ "${1:-}" = --wasm ]; then
     # the wasm module: each recursive driver's shadow-stack frame (its prologue's reservation off
     # __stack_pointer) times K fits the walk budget, as on native; the self-call check reads native
@@ -163,5 +174,9 @@ native release
 if [ "${1:-}" != "--native-only" ]; then
   wasm
   python3 scripts/browser_stack_canary.py
+fi
+if [ "$FRAME_FAILURES" -gt 0 ]; then
+  echo "stack-budget: FAIL $FRAME_FAILURES frame check(s) failed (see the stack-frame lines above)"
+  exit 1
 fi
 echo "stack-budget: OK"

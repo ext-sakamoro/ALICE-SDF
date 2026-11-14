@@ -54,7 +54,7 @@ def segment_pattern(path: str) -> re.Pattern[str]:
 _FUNC = re.compile(r"^[0-9a-f]+ <(.+)>:$")
 
 
-def objdump_functions(text: str, limit: int | None = 16) -> dict[str, list[str]]:
+def objdump_functions(text: str, limit: int | None = 64) -> dict[str, list[str]]:
     """symbol (leading underscores of the Mach-O spelling removed) -> its first `limit`
     instructions (all of them with `limit=None`)"""
     funcs: dict[str, list[str]] = {}
@@ -90,7 +90,11 @@ def _imm(s: str) -> int:
 
 
 def native_frame(instructions: list[str]) -> int | None:
-    """Bytes the prologue reserves; None when a size is held in a register (unreadable)"""
+    """Bytes the prologue reserves; None when a size is held in a register (unreadable)
+
+    The scan runs up to the first call: a shrink-wrapped function tests its argument and
+    branches (or returns, or tail-jumps) before its prologue, so branches and returns do not end
+    it; a call does, since the prologue that saves the return address comes before any call"""
     total, x86, pending_x9 = 0, False, None
     for ins in instructions:
         if m := re.match(r"stp \S+, \S+, \[sp, #-(\w+)\]!", ins) or re.match(
@@ -116,7 +120,7 @@ def native_frame(instructions: list[str]) -> int | None:
             total, x86 = total + ((~mask) & 0xFFFF_FFFF_FFFF_FFFF), True
         elif re.match(r"sub[q]? %\w+, ?%rsp", ins):
             return None
-        elif re.match(r"(bl|b|ret|call|jmp)\b", ins):
+        elif re.match(r"(bl|blr|call[q]?) ", ins):
             break
     return total + (8 if x86 else 0)
 
@@ -258,11 +262,11 @@ def measure(binary: Path, kind: str, objdump: str) -> dict[str, int | None]:
 
 
 def gate(
-    frames: dict[str, int | None], paths: list[str], budget: int, nonzero: bool = False
+    frames: dict[str, int | None], paths: list[str], budget: int, nonzero: bool = True
 ) -> tuple[list[str], list[str]]:
-    """(report lines, failures); with `nonzero`, a 0-byte frame fails: the wasm reader returns 0
-    both for a function without a shadow-stack frame and for a prologue it could not read, and a
-    recursive walker's driver keeps its node and point on that stack, so 0 means not measured"""
+    """(report lines, failures); with `nonzero` (the default), a 0-byte frame fails: a recursive
+    driver saves its return address (native) or keeps its node on the shadow stack (wasm), so 0
+    means a prologue the reader did not find, not a frame (the wasm reader returns 0 for both)"""
     report, fails = [], []
     if not paths:
         fails.append("no function to measure")
@@ -334,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.budget is None:
         ap.error("--budget is required without --no-recursion")
     frames = measure(a.binary, "wasm" if a.wasm else "native", a.objdump)
-    report, fails = gate(frames, a.function, a.budget, nonzero=a.wasm)
+    report, fails = gate(frames, a.function, a.budget)
     for line in report:
         print(f"stack-frame: {line}")
     for line in fails:

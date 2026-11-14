@@ -146,6 +146,62 @@ class Native(unittest.TestCase):
         self.assertEqual(fails, ["no function to measure"])
 
 
+# shrink-wrapped: the driver tests its depth and leaves (a tail jump to the loop, a return)
+# before its prologue; the frame is the prologue after those branches
+SHRINK_WRAPPED = """
+0000000100006000 <__RNvNtNtCs1_9alice_sdf8compiled8compiler10depths_rec>:
+100006000:     \tcmp\tw1, w2
+100006004:     \tb.hs\t0x100006040 <__RNvNtNtCs1_9alice_sdf8compiled8compiler10depths_rec+0x40>
+100006008:     \tcbz\tx0, 0x100006048 <__RNvNtNtCs1_9alice_sdf8compiled8compiler10depths_rec+0x48>
+10000600c:     \tstp\tx29, x30, [sp, #-0x20]!
+100006010:     \tsub\tsp, sp, #0x20
+100006014:     \tbl\t0x100007000 <__RNvNtNtCs1_9alice_sdf8compiled8compiler10depth_step>
+100006018:     \tsub\tsp, sp, #0x400
+0000000100008000 <_ZN9alice_sdf8interval13lipschitz_rec17h0011223344556677E>:
+   100008000:\tcmp    %edx,%esi
+   100008002:\tjae    100008040 <_ZN9alice_sdf8interval13lipschitz_rec17h0011223344556677E+0x40>
+   100008004:\tret
+   100008005:\tpush   %rbx
+   100008006:\tsub    $0x30,%rsp
+   10000800a:\tcall   100009000 <_ZN9alice_sdf8interval15lipschitz_visit17h0011223344556677E>
+"""
+
+# a recursive driver whose prologue the reader cannot find: no frame op before the first call
+NO_PROLOGUE = """
+000000010000a000 <__RNvNtCs1_9alice_sdf4eval8eval_rec>:
+10000a000:     \tcmp\tw1, w2
+10000a004:     \tbl\t0x10000b000 <__RNvNtCs1_9alice_sdf4eval9eval_iter>
+"""
+
+
+class ShrinkWrapped(unittest.TestCase):
+    """the prologue after the depth test is read; 0 bytes is not a measurement (the gate read
+    these as 0 B and passed them while it stopped at the first branch)"""
+
+    def frames(self, text):
+        return {s: g.native_frame(i) for s, i in g.objdump_functions(text).items()}
+
+    def test_the_prologue_after_the_branches_is_read(self):
+        f = self.frames(SHRINK_WRAPPED)
+        rep, fails = g.gate(f, ["alice_sdf::compiled::compiler::depths_rec"], 128)
+        self.assertEqual(fails, [])
+        self.assertIn("64 B", rep[0])  # stp 0x20 + sub 0x20, up to the call
+        rep, fails = g.gate(f, ["alice_sdf::interval::lipschitz_rec"], 128)
+        self.assertEqual(fails, [])
+        self.assertIn(f"{8 + 0x30 + 8} B", rep[0])  # push + sub + return address
+
+    def test_over_budget_after_the_branches_fails(self):
+        f = self.frames(SHRINK_WRAPPED)
+        _, fails = g.gate(f, ["alice_sdf::compiled::compiler::depths_rec"], 48)
+        self.assertEqual(len(fails), 1)
+        self.assertIn("64 B per call > budget 48 B", fails[0])
+
+    def test_no_prologue_before_the_call_fails(self):
+        _, fails = g.gate(self.frames(NO_PROLOGUE), ["alice_sdf::eval::eval_rec"], 512)
+        self.assertEqual(len(fails), 1)
+        self.assertIn("not readable", fails[0])
+
+
 RECURSIVE = """
 0000000100001000 <__RNvNtCs1_9alice_sdf4eval4eval>:
 100001000:     \tsub\tsp, sp, #0x40
@@ -215,7 +271,7 @@ class Wasm(unittest.TestCase):
         frames = g.wasm_functions(wasm_module(0))
         _, fails = g.gate(frames, ["alice_sdf::eval"], 512, nonzero=True)
         self.assertEqual(fails, ["alice_sdf::eval: prologue not readable (_RNvCs1_9alice_sdf4eval)"])
-        self.assertEqual(g.gate(frames, ["alice_sdf::eval"], 512)[1], [])
+        self.assertEqual(g.gate(frames, ["alice_sdf::eval"], 512, nonzero=False)[1], [])
 
     def test_not_wasm(self):
         with self.assertRaises(ValueError):

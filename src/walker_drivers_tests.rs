@@ -229,3 +229,73 @@ fn past_the_native_levels_each_walker_hands_off_to_its_loop() {
     assert!(d >= 2, "value depth {d}");
     assert!(c as usize > 3 * DEPTH, "{c} instructions");
 }
+
+/// What a tree deeper than a walker's native levels gets: the same result, from the loop (no
+/// error, no refusal). For each walker, chains exactly K and K + 1 levels deep (K its shipped
+/// native levels: at K the deepest node is still reached by recursion, at K + 1 it is the first
+/// handed to the loop) give bitwise the same result with the shipped K, the loop alone and
+/// recursion alone, and the bytecode compiler does not refuse them
+#[test]
+fn at_the_native_levels_and_one_past_each_walker_gives_the_same_result() {
+    /// the shortest chain `depth` levels deep
+    fn chain_of_depth(depth: u32) -> SdfNode {
+        let n = (0..4 * depth as usize)
+            .find(|&n| tree_depth(&sphere_chain(n)) == depth)
+            .expect("a chain of that depth");
+        sphere_chain(n)
+    }
+    let checked = std::thread::Builder::new()
+        .stack_size(THREAD_BYTES)
+        .spawn(|| {
+            let mut checked = 0usize;
+            for k in [
+                EVAL_NATIVE_LEVELS,
+                COMPILE_NATIVE_LEVELS,
+                DEPTHS_NATIVE_LEVELS,
+                LIPSCHITZ_NATIVE_LEVELS,
+            ] {
+                for depth in [k, k + 1] {
+                    let t = chain_of_depth(depth);
+                    assert_eq!(tree_depth(&t), depth);
+                    let p = Vec3::new(0.3, -0.2, 0.1);
+                    let e: Vec<u32> = [0, EVAL_NATIVE_LEVELS, u32::MAX]
+                        .iter()
+                        .map(|&l| eval_rec(&t, p, 0, l).to_bits())
+                        .collect();
+                    assert!(e[0] == e[1] && e[1] == e[2], "eval at depth {depth}: {e:?}");
+                    let b: Vec<u32> = [0, LIPSCHITZ_NATIVE_LEVELS, u32::MAX]
+                        .iter()
+                        .map(|&l| lipschitz_rec(&t, 0, l).to_bits())
+                        .collect();
+                    assert!(
+                        b[0] == b[1] && b[1] == b[2],
+                        "bound at depth {depth}: {b:?}"
+                    );
+                    let d: Vec<(usize, usize)> = [0, DEPTHS_NATIVE_LEVELS, u32::MAX]
+                        .iter()
+                        .map(|&l| depths_rec(&t, 0, l))
+                        .collect();
+                    assert!(
+                        d[0] == d[1] && d[1] == d[2],
+                        "depths at depth {depth}: {d:?}"
+                    );
+                    let c: Vec<String> = [0, COMPILE_NATIVE_LEVELS, u32::MAX]
+                        .iter()
+                        .map(|&l| {
+                            let (inst, aux, n, refused) = compile_with_native_levels(&t, l);
+                            assert!(refused.is_none(), "depth {depth}: refused {refused:?}");
+                            let aux: Vec<u32> = aux.iter().map(|f| f.to_bits()).collect();
+                            format!("{inst:?}|{aux:?}|{n}")
+                        })
+                        .collect();
+                    assert!(c[0] == c[1] && c[1] == c[2], "bytecode at depth {depth}");
+                    checked += 1;
+                }
+            }
+            checked
+        })
+        .expect("spawn")
+        .join()
+        .expect("the thread finished");
+    assert_eq!(checked, 8, "two depths for each of the four walkers");
+}
