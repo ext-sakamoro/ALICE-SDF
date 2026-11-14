@@ -1456,8 +1456,9 @@ pub fn compute_stack_depths(node: &SdfNode) -> (usize, usize) {
     depths_rec(node, 0, DEPTHS_NATIVE_LEVELS)
 }
 
-/// Levels `depths_rec` recurses natively before it hands a subtree to `depths_iter`
-pub const DEPTHS_NATIVE_LEVELS: u32 = 512;
+/// Levels `depths_rec` recurses natively before it hands a subtree to `depths_iter` (its frame is
+/// up to 320 B in an unoptimised build: 112 levels keep one walk within 64 KiB)
+pub const DEPTHS_NATIVE_LEVELS: u32 = 112;
 
 /// The depths of `node` at `depth` levels below the root: native recursion for the first
 /// `native_levels` levels, the work-stack loop below that (both read `depth_step`;
