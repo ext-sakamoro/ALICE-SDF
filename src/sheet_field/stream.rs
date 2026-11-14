@@ -360,8 +360,9 @@ impl AshfIndex {
     }
 }
 
-/// Split the sheets into contiguous chunks whose channel bytes stay within `cap`; a sheet larger than `cap` gets
-/// a chunk of its own, up to `single_max` (the device's storage binding limit). Depends only on the field and the
+/// Split the sheets into contiguous chunks whose channel bytes stay within `cap`.
+///
+/// A sheet larger than `cap` ends up in a chunk of its own (nothing fits beside it), up to `single_max` (the device's storage binding limit). Depends only on the field and the
 /// two caps, never on free memory. Refuses a sheet over `single_max`.
 pub fn chunk_split(
     index: &AshfIndex,
@@ -376,15 +377,6 @@ pub fn chunk_split(
                 "sheet {k} alone has {} channel bytes, over the device's storage binding limit {single_max}",
                 s.channel_bytes
             )));
-        }
-        if s.channel_bytes > cap {
-            if k > start {
-                out.push(start..k);
-            }
-            out.push(k..k + 1);
-            start = k + 1;
-            bytes = 0;
-            continue;
         }
         if bytes + s.channel_bytes > cap && k > start {
             out.push(start..k);
