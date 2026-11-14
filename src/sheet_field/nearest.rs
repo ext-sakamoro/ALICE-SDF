@@ -40,7 +40,7 @@ pub enum Formula {
 
 /// The formula the builder uses for a mesh of `n_faces` faces.
 #[must_use]
-pub fn formula_for(n_faces: usize) -> Formula {
+pub const fn formula_for(n_faces: usize) -> Formula {
     if n_faces < BRUTE_FACES {
         Formula::PlaneSeg
     } else {
@@ -113,7 +113,8 @@ fn plane_seg(p: V3, a: V3, b: V3, c: V3) -> f64 {
     let n = cross(ab, ac);
     let nn = dot(n, n);
     let (ab2, ac2, abac) = (dot(ab, ab), dot(ac, ac), dot(ab, ac));
-    let det = maxf(ab2 * ac2 - abac * abac, 1e-30);
+    let abac_sq = abac * abac; // (ab . ac)^2
+    let det = maxf(ab2 * ac2 - abac_sq, 1e-30);
     let u = (ac2 * d1 - abac * d2) / det;
     let v = (ab2 * d2 - abac * d1) / det;
     if u >= 0.0 && v >= 0.0 && u + v <= 1.0 {
@@ -171,8 +172,9 @@ pub fn face_distance(formula: Formula, p: V3, a: V3, b: V3, c: V3) -> f64 {
     }
 }
 
-/// The relative conditioning below which a face skips the hierarchy and is evaluated for every query: `|ab x ac|^2 <= COND |ab|^2 |ac|^2`
-/// (sin^2 of the corner angle at `a`). On such faces the formulas can stray from the true distance by more than the pruning tolerance
+/// Faces with `|ab x ac|^2 <= COND |ab|^2 |ac|^2` (sin^2 of the corner angle at `a`) skip the hierarchy and are evaluated for every query.
+///
+/// On such faces the formulas can stray from the true distance by more than the pruning tolerance
 /// (a zero-area face gives a plane-or-edge distance of 0 from anywhere, the clamped determinant making every projection "inside"), so
 /// box bounds cannot exclude them; the exhaustive minimum still includes them.
 pub const COND: f64 = 1e-6;
@@ -180,8 +182,10 @@ pub const COND: f64 = 1e-6;
 fn ill_conditioned(a: V3, b: V3, c: V3) -> bool {
     let (ab, ac) = (sub(b, a), sub(c, a));
     let (ab2, ac2, abac) = (dot(ab, ab), dot(ac, ac), dot(ab, ac));
-    let det = ab2 * ac2 - abac * abac;
-    !(det > COND * ab2 * ac2) || !(det > 1e-30)
+    let abac_sq = abac * abac; // (ab . ac)^2
+    let det = ab2 * ac2 - abac_sq;
+    // a non-finite det (overflow) also counts as ill-conditioned
+    !det.is_finite() || det <= COND * ab2 * ac2 || det <= 1e-30
 }
 
 struct Node {
@@ -229,9 +233,9 @@ impl Bvh {
                 a[2].max(b[2]).max(c[2]),
             ];
             cen.push([
-                (l[0] + h[0]) * 0.5,
-                (l[1] + h[1]) * 0.5,
-                (l[2] + h[2]) * 0.5,
+                f64::midpoint(l[0], h[0]),
+                f64::midpoint(l[1], h[1]),
+                f64::midpoint(l[2], h[2]),
             ]);
             lo.push(l);
             hi.push(h);
@@ -279,7 +283,7 @@ impl Bvh {
             stack.push(left);
             stack.push(left + 1);
         }
-        Bvh { nodes, order }
+        Self { nodes, order }
     }
 }
 
