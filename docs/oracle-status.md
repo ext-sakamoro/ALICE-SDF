@@ -6,21 +6,22 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1278 |
-| 🔴 Red by design | 6 |
+| 🟢 Not ignored | 1282 |
+| 🔴 Red by design | 7 |
 | ⏱ Gated (runtime / diagnostic / manual) | 9 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1293** |
+| **Total** | **1298** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🔴 Red by design (6)
+## 🔴 Red by design (7)
 
 Oracles kept red on purpose: the implementation is not there yet, and a companion test pins
 today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected value is never loosened.
 
+- `eval_reaches_the_wasm_canary_depth_in_a_browser_thread` (test_browser_stack_canary.rs) — known defect: recursive eval reaches 1096 in V8; closed by explicit work stacks
 - `the_call_sites_do_not_grow_with_the_lofts_and_stacks` (test_one_call_site.rs) — known defect: B1 lofts/stacks one-call-site pending (sdf b1 one call site)
 - `the_compile_memory_does_not_grow_with_the_lofts` (test_gpu_compile_memory.rs) — known defect: B1 lofts/stacks one-call-site pending (sdf b1 one call site)
 - `the_compiled_marcher_agrees_with_the_interpreter_near_a_scaled_surface` (test_trace_hit_scale.rs) — known defect: SDF-COMPILED-HIT-SCALE-001: the compiled, SIMD and JIT marchers hit on |d| < eps while the inter…
@@ -53,7 +54,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu` (test_wgsl_chunk_ulp.rs) — runs on the macOS lane: llvmpipe cannot run the form before (a copy of the array per read)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1278)
+## 🟢 Not ignored (1282)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -189,6 +190,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_svo_query_oracle.rs` | 4 |
 | `npr_bytecode_wgsl_validate.rs` | 3 |
 | `test_bake_stored_forms.rs` | 3 |
+| `test_compile_stack_budget.rs` | 3 |
 | `test_csg_multi_oracle.rs` | 3 |
 | `test_det_near_zero_probe.rs` | 3 |
 | `test_glsl_array_form.rs` | 3 |
@@ -232,6 +234,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_gpu_fma_contraction.rs` | 1 |
 | `test_gpu_readback_volume.rs` | 1 |
 | `test_gpu_wait_limit.rs` | 1 |
+| `test_lipschitz_golden.rs` | 1 |
 | `test_loft_lift_bits.rs` | 1 |
 | `test_loft_shader_cpu_agreement.rs` | 1 |
 | `test_metadata_order.rs` | 1 |

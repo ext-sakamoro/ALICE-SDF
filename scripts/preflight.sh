@@ -163,6 +163,10 @@ python3 scripts/glam_feature_check.py
 step "status generators: oracle + 走査件数 0 で fail (docs/wiring-status.md / docs/oracle-status.md)"
 python3 scripts/test_gen_status.py
 
+step "stack-budget: the frame gate's and the browser canary's own tests (prologue readers, result check, 0 measured fails)"
+python3 scripts/test_stack_frame_gate.py
+python3 scripts/test_browser_stack_canary.py
+
 step "law-readme-block.yml: README ALICE-Law block (tests, then the check the job runs, at the block's ALICE-Law pin)"
 python3 scripts/test_law_readme_block_check.py
 python3 scripts/law_readme_block_check.py
@@ -369,7 +373,8 @@ if [[ $quick -eq 1 ]]; then
   echo "  RAN     : fmt / clippy / MSRV / feature builds / wasm target / fuzz build / cargo test --lib"
   echo "            (+ scip reach when a scip input differs from origin/main)"
   echo "  NOT RUN : cargo test --tests (integration), feature-gated oracles (svo / texture-fit /"
-  echo "            jit parity / MSL), ffi + shaders, doctests, bridges, aaa, release wasm, cargo audit"
+  echo "            jit parity / MSL), ffi + shaders, doctests, bridges, aaa, release wasm, cargo audit,"
+  echo "            stack budget (release / wasm32)"
   echo "  => この green は「integration / oracle が通った」ことを意味しない。"
   echo "     それらを確認するには --quick を外して実行する。"
   exit 0
@@ -388,6 +393,9 @@ cargo fetch --locked
 
 step "test: cargo test --tests (integration)"
 cargo test --tests
+
+step "stack-budget: tree walkers' stack per level in native debug / release and wasm32 release (ci.yml stack-budget)"
+scripts/stack_budget.sh
 
 step "test: goldens and the semantics identifier, counted (G4 / G6)"
 for spec in test_det_golden:4 sdf_semantics_id:4; do

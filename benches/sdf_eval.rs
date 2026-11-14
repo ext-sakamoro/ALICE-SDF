@@ -731,6 +731,51 @@ fn bench_jit_compile(c: &mut Criterion) {
     group.finish();
 }
 
+/// A rack of `parts` hooks folded into a smooth union one at a time, two holes subtracted, turned
+/// upright (the chain a downstream generator builds; depth `2 · parts + 5`)
+fn folded_rack(parts: u32) -> SdfNode {
+    let pitch = 40.0_f32;
+    let outer_hx = f32::midpoint(parts as f32 * pitch, 10.0);
+    let x_start = -(parts as f32 - 1.0) * pitch * 0.5;
+    let mut result = SdfNode::rounded_box(outer_hx, 75.0, 2.5, 3.0);
+    for i in 0..parts {
+        let x = i as f32 * pitch + x_start;
+        let arm = SdfNode::rounded_box(15.0, 4.0, 12.5, 2.0).translate(x, -30.0, 15.0);
+        let tip = SdfNode::rounded_box(15.0, 7.5, 4.0, 2.0).translate(x, -41.5, 27.5);
+        result = result.smooth_union(arm, 2.0).smooth_union(tip, 2.0);
+    }
+    for side in [-1.0_f32, 1.0] {
+        let hole = SdfNode::cylinder(2.25, 12.0).translate(side * outer_hx * 0.85, 52.5, 0.0);
+        result = result.subtract(hole);
+    }
+    result.rotate(glam::Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
+}
+
+/// The compile path (validation, stack depths, Lipschitz bound, bytecode) on folded chains, and
+/// the tree evaluator on the rack: the recursion of each keeps a thin frame per tree level
+fn bench_compile_path(c: &mut Criterion) {
+    let mut group = c.benchmark_group("compile_path");
+    let rack = folded_rack(24);
+    let mut chain = SdfNode::sphere(1.0);
+    for i in 1..=256 {
+        chain = chain.smooth_union(
+            SdfNode::sphere(1.0).translate(i as f32 * 1.5, 0.0, 0.0),
+            0.5,
+        );
+    }
+    group.bench_function("compile_rack_24", |b| {
+        b.iter(|| CompiledSdf::compile(black_box(&rack)))
+    });
+    group.bench_function("compile_chain_256", |b| {
+        b.iter(|| CompiledSdf::compile(black_box(&chain)))
+    });
+    let p = Vec3::new(13.0, 4.0, -21.0);
+    group.bench_function("eval_rack_24", |b| {
+        b.iter(|| eval(black_box(&rack), black_box(p)))
+    });
+    group.finish();
+}
+
 #[cfg(feature = "jit")]
 criterion_group!(
     benches,
@@ -751,6 +796,7 @@ criterion_group!(
     bench_transcendental_laws,
     bench_soa_throughput,
     bench_jit_compile,
+    bench_compile_path,
 );
 
 #[cfg(not(feature = "jit"))]
@@ -772,6 +818,7 @@ criterion_group!(
     bench_bvh_complex,
     bench_transcendental_laws,
     bench_soa_throughput,
+    bench_compile_path,
 );
 
 criterion_main!(benches);

@@ -1632,6 +1632,87 @@ fn ia_bsphere(bounds: Vec3Interval, radius: f32) -> Interval {
 /// 1.7–7.0×), so `RaymarchConfig::relaxed` skipped their surface: Neovius
 /// and IWP could not be rendered at all (external review, 2026-09-15).
 pub fn eval_lipschitz(node: &SdfNode) -> f32 {
+    // The only recursive part: it keeps the children's bounds and nothing else per tree level, so
+    // its frame stays small (`tests/test_compile_stack_budget.rs` holds it in unoptimised and
+    // optimised builds); the laws are in `lipschitz_law`, which an unoptimised build does not
+    // inline into this frame.
+    let (la, lb) = match lipschitz_children(node) {
+        LipschitzChildren::None => (0.0, 0.0),
+        LipschitzChildren::One(child) => (eval_lipschitz(child), 0.0),
+        LipschitzChildren::Two(a, b) => (eval_lipschitz(a), eval_lipschitz(b)),
+    };
+    lipschitz_law(node, la, lb)
+}
+
+/// The children whose bounds a node's law reads
+enum LipschitzChildren<'a> {
+    None,
+    One(&'a SdfNode),
+    Two(&'a SdfNode, &'a SdfNode),
+}
+
+/// Which children's bounds `lipschitz_law` reads for `node` (a node whose law does not read a
+/// child, such as domain repetition's `INFINITY`, has none)
+#[cfg_attr(debug_assertions, inline(never))]
+fn lipschitz_children(node: &SdfNode) -> LipschitzChildren<'_> {
+    match node {
+        SdfNode::Union { a, b, .. }
+        | SdfNode::Intersection { a, b, .. }
+        | SdfNode::Subtraction { a, b, .. }
+        | SdfNode::SmoothUnion { a, b, .. }
+        | SdfNode::SmoothIntersection { a, b, .. }
+        | SdfNode::SmoothSubtraction { a, b, .. }
+        | SdfNode::XOR { a, b, .. }
+        | SdfNode::Groove { a, b, .. }
+        | SdfNode::Tongue { a, b, .. }
+        | SdfNode::ExpSmoothUnion { a, b, .. }
+        | SdfNode::ExpSmoothIntersection { a, b, .. }
+        | SdfNode::ExpSmoothSubtraction { a, b, .. }
+        | SdfNode::SmoothBlend { a, b, .. }
+        | SdfNode::ChamferUnion { a, b, .. }
+        | SdfNode::ChamferIntersection { a, b, .. }
+        | SdfNode::ChamferSubtraction { a, b, .. }
+        | SdfNode::StairsUnion { a, b, .. }
+        | SdfNode::StairsIntersection { a, b, .. }
+        | SdfNode::StairsSubtraction { a, b, .. }
+        | SdfNode::Engrave { a, b, .. }
+        | SdfNode::Pipe { a, b, .. }
+        | SdfNode::Morph { a, b, .. } => LipschitzChildren::Two(a, b),
+        SdfNode::Translate { child, .. }
+        | SdfNode::Rotate { child, .. }
+        | SdfNode::Scale { child, .. }
+        | SdfNode::ScaleNonUniform { child, .. }
+        | SdfNode::ProjectiveTransform { child, .. }
+        | SdfNode::GridWarp { child, .. }
+        | SdfNode::BellPull { child, .. }
+        | SdfNode::SdfSkinning { child, .. }
+        | SdfNode::Round { child, .. }
+        | SdfNode::Onion { child, .. }
+        | SdfNode::Elongate { child, .. }
+        | SdfNode::Mirror { child, .. }
+        | SdfNode::OctantMirror { child, .. }
+        | SdfNode::Revolution { child, .. }
+        | SdfNode::Extrude { child, .. }
+        | SdfNode::SweepBezier { child, .. }
+        | SdfNode::Twist { child, .. }
+        | SdfNode::Bend { child, .. }
+        | SdfNode::Noise { child, .. }
+        | SdfNode::Displacement { child, .. }
+        | SdfNode::SineDisplacement { child, .. }
+        | SdfNode::Shear { child, .. }
+        | SdfNode::Animated { child, .. }
+        | SdfNode::IcosahedralSymmetry { child, .. }
+        | SdfNode::SurfaceRoughness { child, .. }
+        | SdfNode::WithMaterial { child, .. }
+        | SdfNode::Pose { child, .. } => LipschitzChildren::One(child),
+        _ => LipschitzChildren::None,
+    }
+}
+
+/// The bound of `node` from its children's bounds: `la` is the bound of `a` (of `child` for a
+/// node with one child), `lb` the bound of `b` (`lipschitz_children` says which a node has)
+#[cfg_attr(debug_assertions, inline(never))]
+fn lipschitz_law(node: &SdfNode, la: f32, lb: f32) -> f32 {
     match node {
         // Exact SDFs (|∇f| = 1 almost everywhere, L = 1); a section stack is divided by its own
         // bound at construction, so it is 1-Lipschitz
@@ -1753,38 +1834,38 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
 
         // min / max and every convex blend (smooth, exp-smooth: the weights
         // on ∇a and ∇b sum to 1) are 1-Lipschitz in (a, b).
-        SdfNode::Union { a, b }
-        | SdfNode::Intersection { a, b }
-        | SdfNode::Subtraction { a, b }
-        | SdfNode::SmoothUnion { a, b, .. }
-        | SdfNode::SmoothIntersection { a, b, .. }
-        | SdfNode::SmoothSubtraction { a, b, .. }
-        | SdfNode::XOR { a, b }
-        | SdfNode::Groove { a, b, .. }
-        | SdfNode::Tongue { a, b, .. }
-        | SdfNode::ExpSmoothUnion { a, b, .. }
-        | SdfNode::ExpSmoothIntersection { a, b, .. }
-        | SdfNode::ExpSmoothSubtraction { a, b, .. }
+        SdfNode::Union { a: _, b: _ }
+        | SdfNode::Intersection { a: _, b: _ }
+        | SdfNode::Subtraction { a: _, b: _ }
+        | SdfNode::SmoothUnion { a: _, b: _, .. }
+        | SdfNode::SmoothIntersection { a: _, b: _, .. }
+        | SdfNode::SmoothSubtraction { a: _, b: _, .. }
+        | SdfNode::XOR { a: _, b: _ }
+        | SdfNode::Groove { a: _, b: _, .. }
+        | SdfNode::Tongue { a: _, b: _, .. }
+        | SdfNode::ExpSmoothUnion { a: _, b: _, .. }
+        | SdfNode::ExpSmoothIntersection { a: _, b: _, .. }
+        | SdfNode::ExpSmoothSubtraction { a: _, b: _, .. }
         // SmoothBlend: every kernel's weights are convex (in [0, 1], sum 1)
-        | SdfNode::SmoothBlend { a, b, .. } => {
-            eval_lipschitz(a).law_max(eval_lipschitz(b))
+        | SdfNode::SmoothBlend { a: _, b: _, .. } => {
+            la.law_max(lb)
         }
         // Chamfer `(a + b)/√2 − r`, stairs (its 45° branch), engrave
         // `(a + r − |b|)/√2`: |∇a + ∇b| / √2 ≤ √2·max(La, Lb).
-        SdfNode::ChamferUnion { a, b, .. }
-        | SdfNode::ChamferIntersection { a, b, .. }
-        | SdfNode::ChamferSubtraction { a, b, .. }
-        | SdfNode::StairsUnion { a, b, .. }
-        | SdfNode::StairsIntersection { a, b, .. }
-        | SdfNode::StairsSubtraction { a, b, .. }
-        | SdfNode::Engrave { a, b, .. } => {
-            std::f32::consts::SQRT_2 * eval_lipschitz(a).law_max(eval_lipschitz(b))
+        SdfNode::ChamferUnion { a: _, b: _, .. }
+        | SdfNode::ChamferIntersection { a: _, b: _, .. }
+        | SdfNode::ChamferSubtraction { a: _, b: _, .. }
+        | SdfNode::StairsUnion { a: _, b: _, .. }
+        | SdfNode::StairsIntersection { a: _, b: _, .. }
+        | SdfNode::StairsSubtraction { a: _, b: _, .. }
+        | SdfNode::Engrave { a: _, b: _, .. } => {
+            std::f32::consts::SQRT_2 * la.law_max(lb)
         }
         // Pipe `√(a² + b²) − r`: |(a∇a + b∇b)| / √(a² + b²) ≤ √(La² + Lb²).
-        SdfNode::Pipe { a, b, .. } => alice_det_math::hypot(eval_lipschitz(a), eval_lipschitz(b)),
+        SdfNode::Pipe { a: _, b: _, .. } => alice_det_math::hypot(la, lb),
         // Morph `a(1 − t) + b·t`.
-        SdfNode::Morph { a, b, t } => {
-            t.abs() * eval_lipschitz(b) + ((1.0 - t).abs() * eval_lipschitz(a))
+        SdfNode::Morph { a: _, b: _, t } => {
+            t.abs() * lb + ((1.0 - t).abs() * la)
         }
         // Columns (hg_sdf fOp*Columns): polar modulo of the (a, b) plane
         // — the field jumps between columns, no finite bound.
@@ -1793,50 +1874,50 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         | SdfNode::ColumnsSubtraction { .. } => f32::INFINITY,
 
         // Distance-preserving transforms
-        SdfNode::Translate { child, .. } | SdfNode::Rotate { child, .. } => eval_lipschitz(child),
+        SdfNode::Translate { child: _, .. } | SdfNode::Rotate { child: _, .. } => la,
         // Uniform scale: SDF(p/s)*s, gradient = (1/s)*∇child*s = ∇child
-        SdfNode::Scale { child, .. } => eval_lipschitz(child),
+        SdfNode::Scale { child: _, .. } => la,
         // Non-uniform scale: gradient stretches by max/min factor ratio
-        SdfNode::ScaleNonUniform { child, factors } => {
+        SdfNode::ScaleNonUniform { child: _, factors } => {
             let s = [factors.x.abs(), factors.y.abs(), factors.z.abs()];
             let min_s = s[0].law_min(s[1]).law_min(s[2]).law_max(1e-6);
             let max_s = s[0].law_max(s[1]).law_max(s[2]);
-            eval_lipschitz(child) * max_s / min_s
+            la * max_s / min_s
         }
         // Projective transform: use user-provided bound
         SdfNode::ProjectiveTransform {
-            child,
+            child: _,
             lipschitz_bound,
             ..
-        } => eval_lipschitz(child) * lipschitz_bound,
+        } => la * lipschitz_bound,
         // Lattice deform is the identity outside the lattice box and the
         // deformed field inside: the two disagree on the box faces.
         SdfNode::LatticeDeform { .. } => f32::INFINITY,
         // Grid warp: the child divided by the warp's computed bound inside the box; outside, the
         // hypot extension and the box clip are 1-Lipschitz (see `transforms::grid_warp`)
-        SdfNode::GridWarp { child, warp } => {
-            alice_det_math::max(eval_lipschitz(child), 1.0) + (warp.lipschitz() - 1.0)
+        SdfNode::GridWarp { child: _, warp } => {
+            alice_det_math::max(la, 1.0) + (warp.lipschitz() - 1.0)
         }
         // Bell pull: the map's slope is at most Λ and the value is divided by Λ
-        SdfNode::BellPull { child, .. } => eval_lipschitz(child),
+        SdfNode::BellPull { child: _, .. } => la,
         // SDF Skinning: LBS preserves distance (approximately)
         // One affine map: L(child) · ‖A‖ (Frobenius ≥ spectral norm).
-        SdfNode::SdfSkinning { child, bones } => match skinning_affine(bones) {
-            Some((a, _)) => eval_lipschitz(child) * a.iter().map(|v| v * v).sum::<f32>().sqrt(),
-            None => eval_lipschitz(child),
+        SdfNode::SdfSkinning { child: _, bones } => match skinning_affine(bones) {
+            Some((a, _)) => la * a.iter().map(|v| v * v).sum::<f32>().sqrt(),
+            None => la,
         },
 
         // Modifiers with Jacobian norm ≤ 1
-        SdfNode::Round { child, .. }
-        | SdfNode::Onion { child, .. }
-        | SdfNode::Elongate { child, .. }
-        | SdfNode::Mirror { child, .. }
-        | SdfNode::OctantMirror { child, .. }
-        | SdfNode::Revolution { child, .. }
-        | SdfNode::Extrude { child, .. } => eval_lipschitz(child),
+        SdfNode::Round { child: _, .. }
+        | SdfNode::Onion { child: _, .. }
+        | SdfNode::Elongate { child: _, .. }
+        | SdfNode::Mirror { child: _, .. }
+        | SdfNode::OctantMirror { child: _, .. }
+        | SdfNode::Revolution { child: _, .. }
+        | SdfNode::Extrude { child: _, .. } => la,
         // Sweep along a Bézier: (distance to the curve, y) is 1-Lipschitz in p
         // (closed-form nearest point since 1.11.0).
-        SdfNode::SweepBezier { child, .. } => eval_lipschitz(child),
+        SdfNode::SweepBezier { child: _, .. } => la,
 
         // Domain repetition evaluates one copy per cell / sector; unless the
         // child is symmetric inside its cell (not knowable here) the field
@@ -1851,32 +1932,32 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         // corner), the far-field derivative of a distance field through this
         // map is bounded by the same s·r_max.
         SdfNode::Twist { child, strength } => {
-            eval_lipschitz(child)
+            la
                 * shear_singular_value(strength.abs() * child_radius(child, Axis::Y))
         }
         // Bend about Z: q = R(k·x)·p_xy, ∂q/∂x = R + k·(−q_y, q_x), so
         // ‖J‖ ≤ 1 + k·r with r the child's largest XY radius.
         SdfNode::Bend { child, curvature } => {
-            eval_lipschitz(child) * (curvature.abs() * child_radius(child, Axis::Z) + 1.0)
+            la * (curvature.abs() * child_radius(child, Axis::Z) + 1.0)
         }
 
         // Displacements add the gradient of the offset field.
         // Perlin: |∇perlin| ≤ PERLIN_GRAD (numerical supremum, 4 seeds).
         SdfNode::Noise {
-            child,
+            child: _,
             amplitude,
             frequency,
             ..
-        } => (amplitude * frequency).abs() * PERLIN_GRAD + eval_lipschitz(child),
+        } => (amplitude * frequency).abs() * PERLIN_GRAD + la,
         // Taper divides XZ by `1 − f·y`, singular on the plane y = 1/f. The
         // value is a distance *bound* (`real::taper_bound`) safe for plain
         // sphere tracing, but it has no finite global Lipschitz constant.
         SdfNode::Taper { .. } => f32::INFINITY,
         // `d + s·sin(5x)·sin(5y)·sin(5z)`: |∇(sin·sin·sin)| ≤ 1, times 5.
-        SdfNode::Displacement { child, strength } => strength.abs() * 5.0 + eval_lipschitz(child),
+        SdfNode::Displacement { child: _, strength } => strength.abs() * 5.0 + la,
         // `d + a·sin(fx·x)·sin(fy·y)·sin(fz·z)`: ≤ a·max|f|.
         SdfNode::SineDisplacement {
-            child,
+            child: _,
             amplitude,
             frequency,
         } => {
@@ -1885,14 +1966,14 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
                 .abs()
                 .law_max(frequency.y.abs())
                 .law_max(frequency.z.abs());
-            (amplitude * f).abs() + eval_lipschitz(child)
+            (amplitude * f).abs() + la
         }
-        SdfNode::Shear { child, shear } => {
+        SdfNode::Shear { child: _, shear } => {
             let max_shear = shear.x.abs().law_max(shear.y.abs()).law_max(shear.z.abs());
-            eval_lipschitz(child) * (1.0 + max_shear)
+            la * (1.0 + max_shear)
         }
-        SdfNode::Animated { child, .. } => eval_lipschitz(child),
-        SdfNode::IcosahedralSymmetry { child } => eval_lipschitz(child),
+        SdfNode::Animated { child: _, .. } => la,
+        SdfNode::IcosahedralSymmetry { child: _ } => la,
         // The nearest-image choice switches between transforms: the folded
         // point jumps across the switching surfaces, so there is no finite
         // global constant (like domain repetition). `2 · L(child)` until 2.2.0
@@ -1904,17 +1985,17 @@ pub fn eval_lipschitz(node: &SdfNode) -> f32 {
         // fbm of value noise: each octave contributes 0.5ⁱ·2ⁱ·|∇hash_noise|
         // with |∇hash_noise_3d| ≤ 2·1.5·√3 (range 2, smoothstep slope 1.5).
         SdfNode::SurfaceRoughness {
-            child,
+            child: _,
             amplitude,
             frequency,
             octaves,
         } => {
             (amplitude * frequency * *octaves as f32).abs() * VALUE_NOISE_GRAD
-                + eval_lipschitz(child)
+                + la
         }
 
-        SdfNode::WithMaterial { child, .. } => eval_lipschitz(child),
-        SdfNode::Pose { child } => eval_lipschitz(child),
+        SdfNode::WithMaterial { child: _, .. } => la,
+        SdfNode::Pose { child: _ } => la,
     }
 }
 

@@ -160,6 +160,21 @@ struct Compiler {
     /// before compiling; this keeps the compiler itself total: it records the refusal and emits
     /// nothing for that node, and try_compile returns the error)
     refused: Option<CompileError>,
+    /// The operations of the binary nodes whose operands are being compiled, innermost last
+    /// (kept here, not in the recursion's frame: an instruction is a 64-byte aligned value)
+    pending_ops: Vec<Instruction>,
+}
+
+/// How the compiler continues below a node (see `Compiler::open`)
+enum Step<'a> {
+    /// No children
+    Leaf,
+    /// One child that adds no instruction of its own (material, animation, pose)
+    Pass(&'a SdfNode),
+    /// Two operands, then the operation `open` put on `Compiler::pending_ops`
+    Binary { a: &'a SdfNode, b: &'a SdfNode },
+    /// One child inside the coordinate frame opened by the instruction at `inst_idx`
+    Wrap { child: &'a SdfNode, inst_idx: usize },
 }
 
 impl Compiler {
@@ -169,6 +184,7 @@ impl Compiler {
             aux_data: Vec::new(),
             node_count: 0,
             refused: None,
+            pending_ops: Vec::new(),
         }
     }
 
@@ -186,9 +202,59 @@ impl Compiler {
         (offset, data.len() as u32)
     }
 
-    /// Compile a single node (recursive)
+    /// Compile a node and its subtree
+    ///
+    /// The only recursive function of the compiler: it keeps one `Step` per tree level and
+    /// nothing else, so its frame stays within the budget `tests/test_compile_stack_budget.rs`
+    /// holds in unoptimised and optimised builds. The per-node work (the instruction, its aux
+    /// data) is in `open`, which an unoptimised build does not inline into this frame (an
+    /// optimised one shares the slots of `open`'s arms and may inline it).
     fn compile_node(&mut self, node: &SdfNode) {
+        match self.open(node) {
+            Step::Leaf => {}
+            Step::Pass(child) => self.compile_node(child),
+            Step::Binary { a, b } => {
+                // post-order: left, right, op
+                self.compile_node(a);
+                self.compile_node(b);
+                self.close_binary();
+            }
+            Step::Wrap { child, inst_idx } => {
+                self.compile_node(child);
+                self.close_wrap(inst_idx);
+            }
+        }
+    }
+
+    /// Close a transform or modifier: pop its coordinate frame and point its skip offset past
+    /// the pop
+    #[cfg_attr(debug_assertions, inline(never))]
+    fn close_wrap(&mut self, inst_idx: usize) {
+        self.instructions.push(Instruction::pop_transform());
+        self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+    }
+
+    /// Close a binary operation: emit the operation `open` set aside for it (its operands are
+    /// compiled between, and each of them takes back exactly what it set aside, so the last one
+    /// set aside is this node's)
+    #[cfg_attr(debug_assertions, inline(never))]
+    fn close_binary(&mut self) {
+        let op = self
+            .pending_ops
+            .pop()
+            .expect("open set aside the operation of every binary node");
+        self.instructions.push(op);
+    }
+
+    /// Emit what a node puts before its children and say how its children are compiled
+    ///
+    /// A leaf emits its instruction (or records a refusal); a transform or modifier emits its
+    /// opening instruction; a binary operation emits nothing yet and hands back the instruction
+    /// that follows its two operands.
+    #[cfg_attr(debug_assertions, inline(never))]
+    fn open<'a>(&mut self, node: &'a SdfNode) -> Step<'a> {
         self.node_count += 1;
+        let mut step = Step::Leaf;
 
         match node {
             // === Primitives ===
@@ -430,11 +496,10 @@ impl Compiler {
                 skin,
             } => {
                 // stack order matches the binary ops: inner first, outer second
-                self.compile_node(inner);
-                self.compile_node(outer);
-                self.instructions.push(Instruction::metric_blend(
+                self.pending_ops.push(Instruction::metric_blend(
                     center.x, center.y, center.z, *radius, *skin,
                 ));
+                step = Step::Binary { a: inner, b: outer };
             }
 
             SdfNode::Heart { size } => {
@@ -738,134 +803,112 @@ impl Compiler {
             // === Binary Operations ===
             // For binary operations, we use post-order: left, right, op
             SdfNode::Union { a, b } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::union());
+                self.pending_ops.push(Instruction::union());
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::Intersection { a, b } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::intersection());
+                self.pending_ops.push(Instruction::intersection());
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::Subtraction { a, b } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::subtraction());
+                self.pending_ops.push(Instruction::subtraction());
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::SmoothUnion { a, b, k } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::smooth_union(*k));
+                self.pending_ops.push(Instruction::smooth_union(*k));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::SmoothIntersection { a, b, k } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::smooth_intersection(*k));
+                self.pending_ops.push(Instruction::smooth_intersection(*k));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::SmoothSubtraction { a, b, k } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::smooth_subtraction(*k));
+                self.pending_ops.push(Instruction::smooth_subtraction(*k));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::ChamferUnion { a, b, r } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::chamfer_union(*r));
+                self.pending_ops.push(Instruction::chamfer_union(*r));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::ChamferIntersection { a, b, r } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions
-                    .push(Instruction::chamfer_intersection(*r));
+                self.pending_ops.push(Instruction::chamfer_intersection(*r));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::ChamferSubtraction { a, b, r } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::chamfer_subtraction(*r));
+                self.pending_ops.push(Instruction::chamfer_subtraction(*r));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::StairsUnion { a, b, r, n } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::stairs_union(*r, *n));
+                self.pending_ops.push(Instruction::stairs_union(*r, *n));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::StairsIntersection { a, b, r, n } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions
+                self.pending_ops
                     .push(Instruction::stairs_intersection(*r, *n));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::StairsSubtraction { a, b, r, n } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions
+                self.pending_ops
                     .push(Instruction::stairs_subtraction(*r, *n));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::XOR { a, b } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::xor());
+                self.pending_ops.push(Instruction::xor());
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::Morph { a, b, t } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::morph(*t));
+                self.pending_ops.push(Instruction::morph(*t));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::ColumnsUnion { a, b, r, n } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::columns_union(*r, *n));
+                self.pending_ops.push(Instruction::columns_union(*r, *n));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::ColumnsIntersection { a, b, r, n } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions
+                self.pending_ops
                     .push(Instruction::columns_intersection(*r, *n));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::ColumnsSubtraction { a, b, r, n } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions
+                self.pending_ops
                     .push(Instruction::columns_subtraction(*r, *n));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::Pipe { a, b, r } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::pipe(*r));
+                self.pending_ops.push(Instruction::pipe(*r));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::Engrave { a, b, r } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::engrave(*r));
+                self.pending_ops.push(Instruction::engrave(*r));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::Groove { a, b, ra, rb } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::groove(*ra, *rb));
+                self.pending_ops.push(Instruction::groove(*ra, *rb));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::Tongue { a, b, ra, rb } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::tongue(*ra, *rb));
+                self.pending_ops.push(Instruction::tongue(*ra, *rb));
+                step = Step::Binary { a: a, b: b };
             }
 
             // === Transforms ===
@@ -874,10 +917,10 @@ impl Compiler {
                 let inst_idx = self.instructions.len();
                 self.instructions
                     .push(Instruction::translate(offset.x, offset.y, offset.z));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                // Update skip_offset to point past the pop
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::Rotate { child, rotation } => {
@@ -885,17 +928,19 @@ impl Compiler {
                 self.instructions.push(Instruction::rotate(
                     rotation.x, rotation.y, rotation.z, rotation.w,
                 ));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::Scale { child, factor } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::scale(*factor));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::ScaleNonUniform { child, factors } => {
@@ -903,26 +948,29 @@ impl Compiler {
                 self.instructions.push(Instruction::scale_non_uniform(
                     factors.x, factors.y, factors.z,
                 ));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             // === Modifiers ===
             SdfNode::Twist { child, strength } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::twist(*strength));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::Bend { child, curvature } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::bend(*curvature));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::RepeatInfinite { child, spacing } => {
@@ -930,9 +978,10 @@ impl Compiler {
                 self.instructions.push(Instruction::repeat_infinite(
                     spacing.x, spacing.y, spacing.z,
                 ));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::RepeatFinite {
@@ -949,9 +998,10 @@ impl Compiler {
                     spacing.y,
                     spacing.z,
                 ));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::Noise {
@@ -964,67 +1014,75 @@ impl Compiler {
                 let inst_idx = self.instructions.len();
                 self.instructions
                     .push(Instruction::noise(*amplitude, *frequency, *seed));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::Round { child, radius } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::round(*radius));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::Onion { child, thickness } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::onion(*thickness));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::Elongate { child, amount } => {
                 let inst_idx = self.instructions.len();
                 self.instructions
                     .push(Instruction::elongate(amount.x, amount.y, amount.z));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::Mirror { child, axes } => {
                 let inst_idx = self.instructions.len();
                 self.instructions
                     .push(Instruction::mirror(axes.x, axes.y, axes.z));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::OctantMirror { child } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::octant_mirror());
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::Revolution { child, offset } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::revolution(*offset));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::Extrude { child, half_height } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::extrude(*half_height));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::SweepBezier { child, p0, p1, p2 } => {
@@ -1032,9 +1090,10 @@ impl Compiler {
                 self.instructions.push(Instruction::sweep_bezier(
                     p0.x, p0.y, p1.x, p1.y, p2.x, p2.y,
                 ));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::Taper {
@@ -1044,17 +1103,19 @@ impl Compiler {
             } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::taper(*factor, *reach));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::Displacement { child, strength } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::displacement(*strength));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             // Phase 27: SineDisplacement (= bytecode 経路は未実装、 raymarch は eval/mod.rs 直接経路使用)
@@ -1072,23 +1133,25 @@ impl Compiler {
                     frequency.y,
                     frequency.z,
                 ));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::PolarRepeat { child, count } => {
                 let inst_idx = self.instructions.len();
                 self.instructions
                     .push(Instruction::polar_repeat(*count as f32));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             // WithMaterial is transparent for distance evaluation
             SdfNode::WithMaterial { child, .. } | SdfNode::Pose { child } => {
-                self.compile_node(child);
+                step = Step::Pass(child);
             }
 
             // === 2D Primitives ===
@@ -1208,23 +1271,20 @@ impl Compiler {
 
             // === ExpSmooth operations ===
             SdfNode::ExpSmoothUnion { a, b, k } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions.push(Instruction::exp_smooth_union(*k));
+                self.pending_ops.push(Instruction::exp_smooth_union(*k));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::ExpSmoothIntersection { a, b, k } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions
+                self.pending_ops
                     .push(Instruction::exp_smooth_intersection(*k));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::ExpSmoothSubtraction { a, b, k } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions
+                self.pending_ops
                     .push(Instruction::exp_smooth_subtraction(*k));
+                step = Step::Binary { a: a, b: b };
             }
 
             SdfNode::SmoothBlend {
@@ -1234,24 +1294,24 @@ impl Compiler {
                 kernel,
                 mode,
             } => {
-                self.compile_node(a);
-                self.compile_node(b);
-                self.instructions
+                self.pending_ops
                     .push(Instruction::smooth_blend(*k, *kernel, *mode));
+                step = Step::Binary { a: a, b: b };
             }
 
             // === Shear modifier (point transform) ===
             SdfNode::Shear { child, shear } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::shear(*shear));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             // === Animated modifier (passthrough) ===
             SdfNode::Animated { child, .. } => {
-                self.compile_node(child);
+                step = Step::Pass(child);
             }
 
             // === New Transforms (7 variants) ===
@@ -1266,9 +1326,10 @@ impl Compiler {
                 inst.aux_offset = aux_off;
                 inst.aux_len = aux_len;
                 self.instructions.push(inst);
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::LatticeDeform {
@@ -1302,9 +1363,10 @@ impl Compiler {
                 inst.aux_offset = aux_off;
                 inst.aux_len = aux_len;
                 self.instructions.push(inst);
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::GridWarp { .. } => self.refuse("GridWarp"),
@@ -1325,18 +1387,20 @@ impl Compiler {
                 inst.aux_offset = aux_off;
                 inst.aux_len = aux_len;
                 self.instructions.push(inst);
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             // === New Modifiers (4 variants) ===
             SdfNode::IcosahedralSymmetry { child } => {
                 let inst_idx = self.instructions.len();
                 self.instructions.push(Instruction::icosahedral_symmetry());
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::IFS {
@@ -1356,9 +1420,10 @@ impl Compiler {
                 inst.aux_offset = aux_off;
                 inst.aux_len = aux_len;
                 self.instructions.push(inst);
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::HeightmapDisplacement {
@@ -1380,9 +1445,10 @@ impl Compiler {
                 inst.aux_offset = aux_off;
                 inst.aux_len = aux_len;
                 self.instructions.push(inst);
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
 
             SdfNode::SurfaceRoughness {
@@ -1395,11 +1461,13 @@ impl Compiler {
                 self.instructions.push(Instruction::surface_roughness(
                     *frequency, *amplitude, *octaves,
                 ));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap {
+                    child: child,
+                    inst_idx,
+                };
             }
         }
+        step
     }
 }
 
@@ -1575,44 +1643,74 @@ pub fn compute_stack_depths(node: &SdfNode) -> (usize, usize) {
 
 /// Recursively validate that all nodes in the tree are supported by the bytecode compiler.
 fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
+    let mut refused = None;
+    validate_subtree(node, &mut refused);
+    refused.map_or(Ok(()), Err)
+}
+
+/// Check `node` and its subtree, depth first (left before right); stop at the first refusal and
+/// leave it in `refused`. The only recursive part: one `Children` per tree level (the checks,
+/// and the error values they build, are in `validate_node`, outside this frame)
+fn validate_subtree(node: &SdfNode, refused: &mut Option<CompileError>) -> bool {
+    match validate_node(node) {
+        Children::Refused(e) => {
+            *refused = Some(e);
+            false
+        }
+        Children::None => true,
+        Children::One(child) => validate_subtree(child, refused),
+        Children::Two(a, b) => validate_subtree(a, refused) && validate_subtree(b, refused),
+    }
+}
+
+/// What `validate_node` found at a node: the refusal, or the children checked next
+enum Children<'a> {
+    Refused(CompileError),
+    None,
+    One(&'a SdfNode),
+    Two(&'a SdfNode, &'a SdfNode),
+}
+
+/// Check one node; say which children are checked next
+#[cfg_attr(debug_assertions, inline(never))]
+fn validate_node(node: &SdfNode) -> Children<'_> {
     match node {
         // Metric nodes: four and five params respectively, both within the
         // instruction's seven slots, and both have a VM law.
         SdfNode::MetricBall { .. } => {}
         SdfNode::MetricBlend { inner, outer, .. } => {
-            validate_for_compile(inner)?;
-            validate_for_compile(outer)?;
+            return Children::Two(inner, outer);
         }
         // Unsupported primitives (exceed params[6] limit)
         SdfNode::Triangle { .. } => {
-            return Err(CompileError::UnsupportedPrimitive("Triangle".into()));
+            return Children::Refused(CompileError::UnsupportedPrimitive("Triangle".into()));
         }
         // no bytecode law yet (its levels and loops live in aux data, the next step): refused, not
         // compiled to a stand-in
         SdfNode::SectionStack(_) => {
-            return Err(CompileError::UnsupportedPrimitive("SectionStack".into()));
+            return Children::Refused(CompileError::UnsupportedPrimitive("SectionStack".into()));
         }
         // no bytecode law yet (the levels and loops go to aux data next): refused, not compiled to a stand-in
         SdfNode::SmoothSectionStack(_) => {
-            return Err(CompileError::UnsupportedPrimitive(
+            return Children::Refused(CompileError::UnsupportedPrimitive(
                 "SmoothSectionStack".into(),
             ));
         }
         SdfNode::Bezier { .. } => {
-            return Err(CompileError::UnsupportedPrimitive("Bezier".into()));
+            return Children::Refused(CompileError::UnsupportedPrimitive("Bezier".into()));
         }
         // Unsupported: the grid's maps are not carried by the bytecode (evaluated by `eval` and
         // by the WGSL transpiler, which reads them from the node data buffer)
         SdfNode::GridWarp { .. } => {
-            return Err(CompileError::UnsupportedPrimitive("GridWarp".into()));
+            return Children::Refused(CompileError::UnsupportedPrimitive("GridWarp".into()));
         }
         // Unsupported: evaluated by `eval` and written by the shader transpilers
         SdfNode::BellPull { .. } => {
-            return Err(CompileError::UnsupportedPrimitive("BellPull".into()));
+            return Children::Refused(CompileError::UnsupportedPrimitive("BellPull".into()));
         }
         // Unsupported: no bytecode law (previously compiled to a silent sphere)
         SdfNode::Terrain { .. } => {
-            return Err(CompileError::UnsupportedPrimitive("Terrain".into()));
+            return Children::Refused(CompileError::UnsupportedPrimitive("Terrain".into()));
         }
         // Binary operations — validate both children
         SdfNode::Union { a, b }
@@ -1640,8 +1738,7 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         | SdfNode::ExpSmoothIntersection { a, b, .. }
         | SdfNode::ExpSmoothSubtraction { a, b, .. }
         | SdfNode::SmoothBlend { a, b, .. } => {
-            validate_for_compile(a)?;
-            validate_for_compile(b)?;
+            return Children::Two(a, b);
         }
         // Transforms and modifiers — validate child
         SdfNode::Translate { child, .. }
@@ -1676,7 +1773,7 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         | SdfNode::IFS { child, .. }
         | SdfNode::HeightmapDisplacement { child, .. }
         | SdfNode::SurfaceRoughness { child, .. } => {
-            validate_for_compile(child)?;
+            return Children::One(child);
         }
         // All supported primitives (leaf nodes, no children to validate)
         SdfNode::Sphere { .. }
@@ -1752,7 +1849,7 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
         | SdfNode::RoundedRect2D { .. }
         | SdfNode::Annular2D { .. } => {}
     }
-    Ok(())
+    Children::None
 }
 
 #[cfg(test)]

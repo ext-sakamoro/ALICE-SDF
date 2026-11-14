@@ -34,11 +34,13 @@ use glam::Vec3;
 ///
 /// The recursion holds only what it needs across a child's evaluation: `descend` reads a node
 /// (a leaf's value, or the children and the moved point), the children are evaluated, and
-/// `combine` / `finish` apply the node's law to their values. Those three and the leaf
-/// evaluator are never inlined here, so each level of a deep tree costs one small frame whatever
-/// the number of node kinds or the size of their arms (an unoptimised build gives every arm of a
+/// `combine` / `finish` apply the node's law to their values. In an unoptimised build those three
+/// and the leaf evaluator are not inlined here, so each level of a deep tree costs one small frame
+/// whatever the number of node kinds or the size of their arms (such a build gives every arm of a
 /// match its own stack slots; a smooth-union chain folded one part at a time, 2 × 24 deep, has to
-/// fit a 2 MiB test thread, and `tests/test_eval_stack_budget.rs` holds each level to a byte budget)
+/// fit a 2 MiB test thread). An optimised build shares the arms' slots and may inline them (an
+/// extra call per level costs time there); `tests/test_eval_stack_budget.rs` holds each level to
+/// the same byte budget in both builds
 ///
 /// # Arguments
 /// * `node` - The SDF tree root
@@ -46,6 +48,7 @@ use glam::Vec3;
 ///
 /// # Returns
 /// Signed distance to the surface
+#[inline]
 pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
     match descend(node, point) {
         Step::Leaf(d) => d,
@@ -70,7 +73,7 @@ enum Step<'a> {
 }
 
 /// Reads one node for [`eval`]: a leaf's value, or its children and the point they are evaluated at
-#[inline(never)]
+#[cfg_attr(debug_assertions, inline(never))]
 fn descend(node: &SdfNode, point: Vec3) -> Step<'_> {
     const NONE: [f32; 3] = [0.0; 3];
     match node {
@@ -230,7 +233,7 @@ fn descend(node: &SdfNode, point: Vec3) -> Step<'_> {
 }
 
 /// The law of a two-operand node of [`descend`] on its operands' values
-#[inline(never)]
+#[cfg_attr(debug_assertions, inline(never))]
 fn combine(node: &SdfNode, d1: f32, d2: f32, point: Vec3) -> f32 {
     match node {
         SdfNode::Union { .. } => sdf_union(d1, d2),
@@ -281,7 +284,7 @@ fn combine(node: &SdfNode, d1: f32, d2: f32, point: Vec3) -> f32 {
 
 /// The law of a one-child node of [`descend`] on its child's value `d` (`point` is the node's
 /// point, `extra` what `descend` computed while moving it)
-#[inline(never)]
+#[cfg_attr(debug_assertions, inline(never))]
 fn finish(node: &SdfNode, d: f32, point: Vec3, extra: [f32; 3]) -> f32 {
     match node {
         SdfNode::Scale { .. } | SdfNode::ScaleNonUniform { .. } => d * extra[0],
@@ -334,7 +337,7 @@ fn finish(node: &SdfNode, d: f32, point: Vec3, extra: [f32; 3]) -> f32 {
 }
 
 /// The value of a node without children
-#[inline(never)]
+#[cfg_attr(debug_assertions, inline(never))]
 fn eval_leaf(node: &SdfNode, point: Vec3) -> f32 {
     match node {
         // === Primitives (Leaf Nodes) ===
