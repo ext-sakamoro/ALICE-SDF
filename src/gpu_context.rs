@@ -92,7 +92,7 @@ fn limits_for(adapter: &wgpu::Adapter, wanted: Wanted) -> wgpu::Limits {
     }
 }
 
-fn device_descriptor(label: &str, limits: wgpu::Limits) -> wgpu::DeviceDescriptor<'_> {
+const fn device_descriptor(label: &str, limits: wgpu::Limits) -> wgpu::DeviceDescriptor<'_> {
     wgpu::DeviceDescriptor {
         label: Some(label),
         required_features: wgpu::Features::empty(),
