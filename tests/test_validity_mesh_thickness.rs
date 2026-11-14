@@ -90,18 +90,19 @@ fn triangle_with_normal(centre: Vec3, normal: Vec3, size: f32) -> Mesh {
     let n = normal.normalize();
     let u = n.any_orthonormal_vector();
     let v = n.cross(u);
-    let corner = |a: f32| centre + (u * a.cos() + v * a.sin()) * size;
-    let third = std::f32::consts::TAU / 3.0;
+    // an equilateral triangle without trigonometry: corners at angles 0, 120 and 240 degrees
+    const HALF_SQRT3: f32 = 0.866_025_4;
+    let corners = [
+        centre + u * size,
+        centre + (u * -0.5 + v * HALF_SQRT3) * size,
+        centre + (u * -0.5 - v * HALF_SQRT3) * size,
+    ];
     let vertex = |p: Vec3| Vertex {
         position: p,
         ..Default::default()
     };
     let m = Mesh {
-        vertices: vec![
-            vertex(corner(0.0)),
-            vertex(corner(third)),
-            vertex(corner(2.0 * third)),
-        ],
+        vertices: corners.iter().map(|&p| vertex(p)).collect(),
         indices: vec![0, 1, 2],
     };
     let face = (m.vertices[1].position - m.vertices[0].position)
