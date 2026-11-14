@@ -1,0 +1,9 @@
+# Settings for the public text check (scripts/public_text.sh).
+#
+# scripts/browser_stack_canary/index.html starts the stack canary's background thread with the
+# browser's standard constructor for one (a Web API identifier): there the word is that
+# identifier, so the agent-word check treats it as technical in that one file (a line with any
+# other agent word is still a finding).
+
+[public-text]
+technical-paths = ["scripts/browser_stack_canary/index.html"]
