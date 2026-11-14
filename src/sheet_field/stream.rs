@@ -360,17 +360,31 @@ impl AshfIndex {
     }
 }
 
-/// Split the sheets into contiguous chunks whose channel bytes stay within `cap` (one GPU storage binding).
-/// Depends only on the field and `cap`. Refuses a sheet that alone exceeds `cap`.
-pub fn chunk_split(index: &AshfIndex, cap: u64) -> Result<Vec<Range<usize>>, StreamError> {
+/// Split the sheets into contiguous chunks whose channel bytes stay within `cap`; a sheet larger than `cap` gets
+/// a chunk of its own, up to `single_max` (the device's storage binding limit). Depends only on the field and the
+/// two caps, never on free memory. Refuses a sheet over `single_max`.
+pub fn chunk_split(
+    index: &AshfIndex,
+    cap: u64,
+    single_max: u64,
+) -> Result<Vec<Range<usize>>, StreamError> {
     let mut out = Vec::new();
     let (mut start, mut bytes) = (0usize, 0u64);
     for (k, s) in index.spans.iter().enumerate() {
-        if s.channel_bytes > cap {
+        if s.channel_bytes > single_max {
             return Err(StreamError::Budget(format!(
-                "sheet {k} alone has {} channel bytes, over the binding cap {cap}",
+                "sheet {k} alone has {} channel bytes, over the device's storage binding limit {single_max}",
                 s.channel_bytes
             )));
+        }
+        if s.channel_bytes > cap {
+            if k > start {
+                out.push(start..k);
+            }
+            out.push(k..k + 1);
+            start = k + 1;
+            bytes = 0;
+            continue;
         }
         if bytes + s.channel_bytes > cap && k > start {
             out.push(start..k);

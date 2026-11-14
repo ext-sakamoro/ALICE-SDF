@@ -154,7 +154,7 @@ fn hits_are_the_analytic_first_square_and_do_not_depend_on_the_budget() {
     let ix = AshfIndex::scan(&mut Cursor::new(&b)).unwrap();
     // a cap of ~2 sheets of channel bytes: several chunks, split by the field only
     let cap = ix.spans.iter().map(|s| s.channel_bytes).max().unwrap() * 2;
-    let chunks = chunk_split(&ix, cap).unwrap();
+    let chunks = chunk_split(&ix, cap, cap).unwrap();
     assert!(chunks.len() >= 4, "{chunks:?}");
     let cost = |c: &std::ops::Range<usize>| {
         ix.spans[c.clone()]
@@ -248,7 +248,7 @@ fn the_merge_keeps_the_nearest_the_earlier_chunk_on_ties_and_undecided_anywhere(
         square(1.0, 0.0, 0.0, 2.0, false),
     ]);
     let ix = AshfIndex::scan(&mut Cursor::new(&b)).unwrap();
-    let chunks = chunk_split(&ix, ix.spans[0].channel_bytes).unwrap();
+    let chunks = chunk_split(&ix, ix.spans[0].channel_bytes, ix.spans[0].channel_bytes).unwrap();
     assert_eq!(chunks, vec![0..1, 1..2, 2..3]);
     let m = MarchResult::Miss;
     let u = MarchResult::Undecided;
@@ -321,10 +321,10 @@ fn bad_input_and_over_budget_are_refused() {
     );
     let small = ix.spans.iter().map(|s| s.channel_bytes).min().unwrap() - 1;
     assert!(
-        matches!(chunk_split(&ix, small), Err(StreamError::Budget(_))),
+        matches!(chunk_split(&ix, small, small), Err(StreamError::Budget(_))),
         "a sheet over the cap"
     );
-    let chunks = chunk_split(&ix, u64::MAX).unwrap();
+    let chunks = chunk_split(&ix, u64::MAX, u64::MAX).unwrap();
     assert_eq!(chunks.len(), 1);
     assert!(
         matches!(host_batches(&ix, &chunks, 1), Err(StreamError::Budget(_))),
@@ -364,7 +364,7 @@ fn the_gpu_march_streamed_equals_the_cpu_march_streamed_per_chunk_split() {
     let b = field_bytes(stack().into_iter().map(|s| s.0).collect());
     let ix = AshfIndex::scan(&mut Cursor::new(&b)).unwrap();
     let cap = ix.spans.iter().map(|s| s.channel_bytes).max().unwrap() * 3;
-    let chunks = chunk_split(&ix, cap).unwrap();
+    let chunks = chunk_split(&ix, cap, cap).unwrap();
     let origins = rays();
     let one = chunks
         .iter()
@@ -433,4 +433,178 @@ fn the_gpu_march_streamed_equals_the_cpu_march_streamed_per_chunk_split() {
         }
         Err(e) => panic!("{e}"),
     }
+}
+
+#[test]
+fn a_sheet_over_the_cap_gets_its_own_chunk_up_to_the_device_limit() {
+    // the split's contract (module docs), checked as properties on the measured sizes: the chunks tile the sheets
+    // in order; a sheet over `cap` is a chunk alone; a chunk of several sheets stays within `cap`; a chunk is not
+    // cut early (the next sheet would push it over `cap`, or is over `cap` itself)
+    let b = field_bytes(stack().into_iter().map(|s| s.0).collect());
+    let ix = AshfIndex::scan(&mut Cursor::new(&b)).unwrap();
+    let mut sizes: Vec<u64> = ix.spans.iter().map(|s| s.channel_bytes).collect();
+    let max = *sizes.iter().max().unwrap();
+    sizes.sort_unstable();
+    let cap = sizes[sizes.len() / 2]; // the median: some sheets over it, pairs of small ones under it
+    let over = ix.spans.iter().filter(|s| s.channel_bytes > cap).count();
+    assert!(over >= 3, "{over} sheets over the cap {cap}");
+    let chunks = chunk_split(&ix, cap, max).unwrap();
+    let cb = |c: &std::ops::Range<usize>| {
+        ix.spans[c.clone()]
+            .iter()
+            .map(|s| s.channel_bytes)
+            .sum::<u64>()
+    };
+    assert_eq!(chunks.first().unwrap().start, 0);
+    assert_eq!(chunks.last().unwrap().end, 12);
+    for w in chunks.windows(2) {
+        assert_eq!(w[0].end, w[1].start, "{chunks:?}");
+    }
+    for (i, c) in chunks.iter().enumerate() {
+        assert!(!c.is_empty());
+        if c.len() > 1 {
+            assert!(cb(c) <= cap, "chunk {c:?} over the cap");
+        }
+        for k in c.clone() {
+            if ix.spans[k].channel_bytes > cap {
+                assert_eq!(c.len(), 1, "sheet {k} over the cap shares chunk {c:?}");
+            }
+        }
+        if let Some(next) = chunks.get(i + 1) {
+            let n = ix.spans[next.start].channel_bytes;
+            assert!(
+                n > cap || cb(c) > cap || cb(c) + n > cap,
+                "chunk {c:?} cut early before sheet {}",
+                next.start
+            );
+        }
+    }
+    assert!(chunks.iter().filter(|c| c.len() == 1).count() >= over);
+    // one byte under the largest sheet: refused, typed
+    assert!(matches!(
+        chunk_split(&ix, cap, max - 1),
+        Err(StreamError::Budget(_))
+    ));
+    // the march over that split: owners as with one chunk per 3 x the largest sheet (merge and renumbering across singles)
+    let origins = rays();
+    let batches = host_batches(&ix, &chunks, u64::MAX).unwrap();
+    let (r, st) = march_streamed(
+        &ix,
+        &mut Cursor::new(&b),
+        &chunks,
+        &batches,
+        origins.len(),
+        cpu(&origins),
+    )
+    .unwrap();
+    assert_eq!(st.chunks, chunks.len());
+    let fixed = chunk_split(&ix, 3 * max, 3 * max).unwrap();
+    let all = host_batches(&ix, &fixed, u64::MAX).unwrap();
+    let (r2, _) = march_streamed(
+        &ix,
+        &mut Cursor::new(&b),
+        &fixed,
+        &all,
+        origins.len(),
+        cpu(&origins),
+    )
+    .unwrap();
+    let owners = |v: &[MarchResult]| {
+        v.iter()
+            .map(|m| match m {
+                MarchResult::Hit(h) => Some(h.sheet),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        owners(&r),
+        owners(&r2),
+        "hit owners do not depend on the chunk split"
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn a_sheet_over_128_mib_marches_on_the_gpu_like_the_cpu() {
+    use alice_sdf::sheet_field::gpu::{storage_binding_limit, GpuSheetField};
+    // one flat square 640 mm wide, h = 0.25 (2 mm bricks): 320 x 320 bricks, 4 channels -> over 200 MB of q,
+    // over the default 128 MiB storage binding
+    let half = 300.0f32;
+    let lo = Vec3::new(-320.0 + 0.013, -320.0 + 0.021, -1.0 + 0.007);
+    let lv = level_from_fn(
+        lo,
+        H,
+        [320, 320, 1],
+        |_c, _e| true,
+        |p| {
+            let (dx, dy) = (p.x.abs() - half, p.y.abs() - half);
+            // s, d_b, u, v: s, u and v are stored in every brick (d_b only near the rim), so q is ~3 x 75 MB
+            vec![
+                p.z,
+                Vec3::new(dx.max(0.0), dy.max(0.0), 0.0).length() + dx.max(dy).min(0.0),
+                p.x / 640.0 + 0.5,
+                p.y / 640.0 + 0.5,
+            ]
+        },
+    )
+    .unwrap();
+    let q: usize = lv.channels.iter().map(|c| c.q.len()).sum();
+    assert!(q > 128 << 20, "q {q} B is not over 128 MiB");
+    let field = SheetField::new(vec![sheet(vec![lv]).unwrap()], ValidRule::CellV1);
+    let limit = match storage_binding_limit() {
+        Ok(l) => l,
+        Err(e) => {
+            assert!(
+                std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+                "ALICE_SDF_REQUIRE_GPU set but no GPU: {e}"
+            );
+            eprintln!("gpu-test: skipped (no GPU: {e})");
+            return;
+        }
+    };
+    if (q as u64) > limit {
+        // the adapter lacks it: the upload is refused, typed, never truncated
+        assert!(matches!(
+            GpuSheetField::new(&field),
+            Err(alice_sdf::compiled::GpuError::InvalidFormat(_))
+        ));
+        eprintln!("gpu-test: adapter storage limit {limit} B under {q} B: refusal checked");
+        return;
+    }
+    let g = GpuSheetField::new(&field).expect("upload over 128 MiB with the adapter's limits");
+    let origins: Vec<Vec3> = (0..400)
+        .map(|i| {
+            Vec3::new(
+                -310.0 + 620.0 * ((i % 20) as f32 + 0.37) / 20.0,
+                -310.0 + 620.0 * ((i / 20) as f32 + 0.61) / 20.0,
+                5.0,
+            )
+        })
+        .collect();
+    let gpu = g.march_batch_decided(&origins, -Vec3::Z, 10.0).unwrap();
+    let mut hits = 0;
+    for (o, m) in origins.iter().zip(&gpu) {
+        let inside = o.x.abs() < half - 0.05 && o.y.abs() < half - 0.05;
+        let outside = o.x.abs() > half + 0.05 || o.y.abs() > half + 0.05;
+        match m {
+            MarchResult::Hit(h) if inside => {
+                // analytic plane z = 0 from z = 5: t = 5 within one s step (2 mm / 255)
+                assert!((h.t - 5.0).abs() <= 2.0 / 255.0, "ray {o}: t {}", h.t);
+                hits += 1;
+            }
+            MarchResult::Miss if outside => {}
+            m if !inside && !outside => {
+                let _ = m;
+            }
+            m => panic!("ray {o}: {m:?}"),
+        }
+        let c = field.march_decided(*o, -Vec3::Z, 10.0);
+        assert_eq!(
+            matches!(c, MarchResult::Hit(_)),
+            matches!(m, MarchResult::Hit(_)),
+            "ray {o}: cpu {c:?} gpu {m:?}"
+        );
+    }
+    assert!(hits > 300, "hits {hits}");
 }

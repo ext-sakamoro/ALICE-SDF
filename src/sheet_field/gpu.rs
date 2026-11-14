@@ -138,6 +138,15 @@ const fn entry(binding: u32, ty: wgpu::BufferBindingType) -> wgpu::BindGroupLayo
     }
 }
 
+/// The largest storage binding a sheet field can use on this machine's GPU, in bytes: the adapter's
+/// limits as [`GpuContext::request_with_adapter_storage_limits`] requests them (the smaller of the
+/// binding and buffer sizes). A chunk of sheets whose channel bytes exceed it cannot be uploaded.
+pub fn storage_binding_limit() -> Result<u64, GpuError> {
+    let context = GpuContext::request_with_adapter_storage_limits("ALICE-SDF sheet field limits")?;
+    let l = context.device().limits();
+    Ok(u64::from(l.max_storage_buffer_binding_size).min(l.max_buffer_size))
+}
+
 impl GpuSheetField {
     /// Upload `field` and build the pipelines.
     pub fn new(field: &SheetField) -> Result<Self, GpuError> {
@@ -219,7 +228,7 @@ impl GpuSheetField {
             bp: b_bp,
             bn_len: bvh.nodes.len() as u32,
         };
-        let context = GpuContext::request("ALICE-SDF sheet field")?;
+        let context = GpuContext::request_with_adapter_storage_limits("ALICE-SDF sheet field")?;
         let device = context.device();
         let max = u64::from(device.limits().max_storage_buffer_binding_size);
         for (name, len) in [
