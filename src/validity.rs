@@ -39,10 +39,13 @@
 //!
 //! **B — local thickness, measured exactly per triangle** ([`local_thickness`])
 //!
-//! From each triangle centroid, march inward along `-n` by sphere tracing: while
-//! inside, `-d(p)` is the exact distance to the nearest surface, so stepping by
-//! it never overshoots, and the distance at which the ray leaves the solid is
-//! the local thickness at that point. Every individual measurement is exact
+//! From each triangle centroid, march inward by sphere tracing: while inside,
+//! `-d(p)` is the exact distance to the nearest surface, so stepping by it never
+//! overshoots, and the distance at which the ray leaves the solid is the local
+//! thickness at that point. The direction is the negative SDF gradient read just
+//! below the surface, not the mesh face normal: a remeshed tessellation can carry
+//! rim slivers and flipped faces whose normal points out through a neighbouring
+//! face, which measured micrometre "walls" on millimetre parts. Every individual measurement is exact
 //! (it reads the SDF, it does not estimate); what is sampled is *where* the
 //! measurements are taken, and that is the mesh tessellation — a density the
 //! caller chose and can state. This is the approach mesh-repair tools take.
@@ -64,7 +67,7 @@
 //! so [`overhang_stats`] reports the geometric angle and leaves the policy out.
 
 use crate::compiled::real::LawMinMax;
-use crate::eval::eval;
+use crate::eval::{eval, eval_normal};
 use crate::interval::{eval_interval, Vec3Interval};
 use crate::mesh::{validate_mesh, Mesh, MeshValidation};
 use crate::types::SdfNode;
@@ -256,6 +259,29 @@ pub fn local_thickness(node: &SdfNode, origin: Vec3, inward: Vec3, max_march: f3
     }
 }
 
+/// Depth below the surface at which the inward direction is read (see [`surface_sample`]).
+const SAMPLE_DEPTH: f32 = 1e-3;
+
+/// Where and in which direction to measure the wall under a tessellation point `p`.
+///
+/// The mesh face normal is not used: a remeshed or repaired tessellation can carry faces whose
+/// normal is tilted or opposed to the surface (a rim sliver, a flipped face), and a ray along such
+/// a normal leaves the solid through a neighbouring face after a few micrometres. Instead `p` is
+/// moved along the SDF gradient to the depth [`SAMPLE_DEPTH`] below the surface, and the inward
+/// direction is the negative gradient **there**. Inside a solid the gradient of an exact SDF is the
+/// normal of the nearest surface, so at a convex edge it is one face's normal (never the bisector
+/// a rounded tessellation suggests), and the march crosses that face's wall.
+///
+/// Returns the point just outside the surface on that line and the inward unit direction, the
+/// arguments [`local_thickness`] takes.
+fn surface_sample(node: &SdfNode, p: Vec3) -> (Vec3, Vec3) {
+    let d = eval(node, p);
+    let inside = p - eval_normal(node, p) * (d + SAMPLE_DEPTH);
+    let n = eval_normal(node, inside);
+    let to_surface = -eval(node, inside);
+    (inside + n * (to_surface + MARCH_EPS), -n)
+}
+
 /// Decides whether **any** region of the shape survives erosion by
 /// `min_wall / 2` (see [`ErosionVerdict`]).
 ///
@@ -332,18 +358,20 @@ pub fn validate_for_printing(
     let (max_overhang, overhang_triangles) =
         overhang_stats(mesh, req.build_direction, req.max_overhang);
 
-    // B — 三角形ごとに重心から内向き (−n) に march して局所厚さを測る
+    // B — 三角形ごとに、重心の下の壁を SDF の勾配の向きで測る (面の法線は向きに使わない)
     // march 上限は bound の対角長 (それを超えるなら bound の外)
     let span = (bmax - bmin).length();
     let mut min_local: Option<f32> = None;
     let mut thin_triangles = 0_usize;
     for idx in mesh.indices.as_chunks::<3>().0.iter() {
-        let Some(normal) = face_normal(mesh, idx) else {
+        // 面積 0 の三角形は標本にしない (重心が表面の点として意味を持たない)
+        if face_normal(mesh, idx).is_none() {
             continue;
-        };
+        }
         let p = |i: u32| mesh.vertices[i as usize].position;
         let centroid = (p(idx[0]) + p(idx[1]) + p(idx[2])) / 3.0;
-        if let Some(thickness) = local_thickness(node, centroid, -normal, span) {
+        let (origin, inward) = surface_sample(node, centroid);
+        if let Some(thickness) = local_thickness(node, origin, inward, span) {
             min_local = Some(min_local.map_or(thickness, |m| m.law_min(thickness)));
             if thickness < req.min_wall {
                 thin_triangles += 1;
