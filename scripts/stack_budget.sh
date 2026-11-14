@@ -8,7 +8,8 @@
 # no walker calls itself (scripts/stack_frame_gate.py --no-recursion). Builds:
 #   native debug and release
 #   wasm32-wasip1 release under wasmtime, linked with the rust-lld default 1 MiB stack (the
-#                   browser background thread's), canary on the module's stack; the engine's own
+#                   browser background thread's), canary on the module's stack, and each recursive
+#                   driver's shadow-stack frame times K within the walk budget; the engine's own
 #                   stack (the native frames wasm functions run on) at max-wasm-stack = 1 MiB, and
 #                   the smallest engine stack that passes is bisected and reported
 #   headless Chromium, a background thread (scripts/browser_stack_canary.py): the deepest chain
@@ -81,11 +82,24 @@ run_tests() {
 gate() {
   local name=$1 bin=$2
   shift 2
+  local g=(python3 scripts/stack_frame_gate.py "$bin" --objdump "$OBJDUMP")
   if [ "${1:-}" = --wasm ]; then
-    # the wasm module: the canaries on its stacks and the engine floor are the checks there
+    # the wasm module: each recursive driver's shadow-stack frame (its prologue's reservation off
+    # __stack_pointer) times K fits the walk budget, as on native; the self-call check reads native
+    # disassembly, and the engine's own stack is the engine floor's
+    case $name in
+      test_eval_stack_budget)
+        "${g[@]}" --wasm --budget $((WALK_BUDGET / EVAL_K)) --function alice_sdf::eval::eval_rec
+        ;;
+      test_compile_stack_budget)
+        "${g[@]}" --wasm --budget $((WALK_BUDGET / COMPILE_K)) --function alice_sdf::compiled::compiler::Compiler::compile_rec
+        "${g[@]}" --wasm --budget $((WALK_BUDGET / DEPTHS_K)) --function alice_sdf::compiled::compiler::depths_rec
+        "${g[@]}" --wasm --budget $((WALK_BUDGET / LIPSCHITZ_K)) --function alice_sdf::interval::lipschitz_rec
+        ;;
+      *) echo "stack-budget: FAIL unexpected test binary $name"; return 1 ;;
+    esac
     return 0
   fi
-  local g=(python3 scripts/stack_frame_gate.py "$bin" --objdump "$OBJDUMP")
   case $name in
     test_eval_stack_budget)
       "${g[@]}" --budget $((WALK_BUDGET / EVAL_K)) --function alice_sdf::eval::eval_rec

@@ -257,8 +257,12 @@ def measure(binary: Path, kind: str, objdump: str) -> dict[str, int | None]:
     return {s: native_frame(ins) for s, ins in objdump_functions(text).items()}
 
 
-def gate(frames: dict[str, int | None], paths: list[str], budget: int) -> tuple[list[str], list[str]]:
-    """(report lines, failures)"""
+def gate(
+    frames: dict[str, int | None], paths: list[str], budget: int, nonzero: bool = False
+) -> tuple[list[str], list[str]]:
+    """(report lines, failures); with `nonzero`, a 0-byte frame fails: the wasm reader returns 0
+    both for a function without a shadow-stack frame and for a prologue it could not read, and a
+    recursive walker's driver keeps its node and point on that stack, so 0 means not measured"""
     report, fails = [], []
     if not paths:
         fails.append("no function to measure")
@@ -269,7 +273,7 @@ def gate(frames: dict[str, int | None], paths: list[str], budget: int) -> tuple[
             fails.append(f"{path}: not found in the binary")
             continue
         for sym, b in hits:
-            if b is None:
+            if b is None or (nonzero and b == 0):
                 fails.append(f"{path}: prologue not readable ({sym})")
             else:
                 report.append(f"{path}: {b} B per call ({sym})")
@@ -330,7 +334,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.budget is None:
         ap.error("--budget is required without --no-recursion")
     frames = measure(a.binary, "wasm" if a.wasm else "native", a.objdump)
-    report, fails = gate(frames, a.function, a.budget)
+    report, fails = gate(frames, a.function, a.budget, nonzero=a.wasm)
     for line in report:
         print(f"stack-frame: {line}")
     for line in fails:

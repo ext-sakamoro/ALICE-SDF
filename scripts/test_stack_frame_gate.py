@@ -202,6 +202,21 @@ class Wasm(unittest.TestCase):
             rc = g.main([str(p), "--wasm", "--budget", "512", "--function", "alice_sdf::eval"])
             self.assertEqual(rc, 0)
 
+    def test_a_zero_frame_is_not_measured(self):
+        # on wasm a 0-byte reservation reads the same as no readable prologue: not a measurement
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "m.wasm"
+            p.write_bytes(wasm_module(0))
+            rc = g.main([str(p), "--wasm", "--budget", "512", "--function", "alice_sdf::eval"])
+            self.assertEqual(rc, 1)
+            p.write_bytes(wasm_module(96))
+            rc = g.main([str(p), "--wasm", "--budget", "512", "--function", "alice_sdf::absent"])
+            self.assertEqual(rc, 1)
+        frames = g.wasm_functions(wasm_module(0))
+        _, fails = g.gate(frames, ["alice_sdf::eval"], 512, nonzero=True)
+        self.assertEqual(fails, ["alice_sdf::eval: prologue not readable (_RNvCs1_9alice_sdf4eval)"])
+        self.assertEqual(g.gate(frames, ["alice_sdf::eval"], 512)[1], [])
+
     def test_not_wasm(self):
         with self.assertRaises(ValueError):
             g.wasm_functions(b"\x7fELF....")
