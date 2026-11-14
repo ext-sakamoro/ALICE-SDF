@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>stack canary</title>
+<script>
+// scripts/browser_stack_canary.py serves this page; a background thread runs the canary and the
+// page posts the thread's result back to the server
+const w = new Worker("thread.js");
+w.onmessage = (e) => fetch("/result", { method: "POST", body: JSON.stringify(e.data) });
+w.onerror = (e) => fetch("/result", { method: "POST", body: JSON.stringify({ error: String(e.message) }) });
+</script>

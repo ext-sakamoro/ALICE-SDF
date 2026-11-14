@@ -101,6 +101,7 @@ dependencies = [
  "alice-det-math",
  "alice-physics",
  "alice-zip",
+ "arrayvec",
  "ash",
  "bincode",
  "bytemuck",

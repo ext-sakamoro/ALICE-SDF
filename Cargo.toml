@@ -102,6 +102,8 @@ aaa = ["volume", "gpu-mesh", "svo-gpu", "destruction", "terrain", "gi"]  # All A
 [dependencies]
 # SIMD math
 glam = { version = "0.29", features = ["serde"] }
+# the inline part of the tree walkers' work stacks (src/work_stack.rs)
+arrayvec = { version = "0.7.8", default-features = false }
 wide = "0.7"  # Portable SIMD (AVX2/AVX-512/NEON)
 # 3.1.0: every transcendental in the evaluator and the laws goes through
 # alice-det-math (cross-platform bit-exact, scalar + f32x8) — the same crate
@@ -194,7 +196,6 @@ js-sys = { version = "0.3", optional = true }
 vdb-rs = { version = "0.6", optional = true }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
 naga = { version = "24", default-features = false, features = ["wgsl-in", "glsl-in", "spv-out"] }
 # tests/test_provenance.rs: an independent binary STL parser reads files carrying the identifier
 stl_io = "0.11"
@@ -202,6 +203,11 @@ stl_io = "0.11"
 fbxcel = { version = "0.9", features = ["tree"] }
 # tests/test_provenance.rs: an independent glTF parser reads the .glb / .gltf carrying the identifier
 gltf = { version = "1", default-features = false }
+
+# The benches (criterion does not build for wasm32: the stack budget tests run there,
+# scripts/stack_budget.sh)
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 
 # tests/test_msl_metal_oracle.rs: compile and run the emitted MSL on the real
 # Metal runtime compiler (MTLDevice::newLibraryWithSource), so no Xcode Metal
@@ -240,6 +246,11 @@ harness = false
 # in the `alice-font` path dep — currently disabled for the 1.7.7 crates.io
 # publish per the note above). Gating the example here keeps
 # `cargo check --all-targets` (default features) green.
+# a wasm module for scripts/browser_stack_canary.py (plain exports, no main to run)
+[[example]]
+name = "stack_canary_wasm"
+crate-type = ["cdylib"]
+
 [[example]]
 name = "rest_point"
 required-features = ["gpu"]

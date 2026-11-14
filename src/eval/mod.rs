@@ -26,19 +26,18 @@ use crate::operations::*;
 use crate::primitives::*;
 use crate::transforms::*;
 use crate::types::SdfNode;
+use crate::work_stack::WorkStack;
 use glam::Vec3;
 
 /// Evaluate an SDF tree at a single point
 ///
-/// Recursively traverses the tree and computes the signed distance.
-///
-/// The recursion holds only what it needs across a child's evaluation: `descend` reads a node
-/// (a leaf's value, or the children and the moved point), the children are evaluated, and
-/// `combine` / `finish` apply the node's law to their values. Those three and the leaf
-/// evaluator are never inlined here, so each level of a deep tree costs one small frame whatever
-/// the number of node kinds or the size of their arms (an unoptimised build gives every arm of a
-/// match its own stack slots; a smooth-union chain folded one part at a time, 2 × 24 deep, has to
-/// fit a 2 MiB test thread, and `tests/test_eval_stack_budget.rs` holds each level to a byte budget)
+/// `descend` reads a node (a leaf's value, or the children and the moved point) and
+/// `combine` / `finish` apply the node's law to the children's values. The first
+/// `EVAL_NATIVE_LEVELS` levels recurse natively (one small frame per level); a deeper subtree goes
+/// to a loop that keeps what it owes each node on a work stack, so the depth of a tree is bounded by
+/// the heap, not by the stack of the thread or of a wasm module (`tests/test_eval_stack_budget.rs`,
+/// `scripts/browser_stack_canary.py`). Both drivers call the same three functions, so each law is
+/// written once (`src/walker_drivers_tests.rs` compares them bitwise).
 ///
 /// # Arguments
 /// * `node` - The SDF tree root
@@ -46,16 +45,98 @@ use glam::Vec3;
 ///
 /// # Returns
 /// Signed distance to the surface
+#[inline]
 pub fn eval(node: &SdfNode, point: Vec3) -> f32 {
+    eval_rec(node, point, 0, EVAL_NATIVE_LEVELS)
+}
+
+/// Levels `eval_rec` recurses natively before it hands a subtree to `eval_iter`
+pub(crate) const EVAL_NATIVE_LEVELS: u32 = 112;
+
+/// `node` at `point`, `depth` levels below the root: native recursion for the first
+/// `native_levels` levels, the work-stack loop below that (both through `descend`, `combine` and
+/// `finish`; `native_levels` is `EVAL_NATIVE_LEVELS` except in the test that runs both drivers
+/// alone)
+pub(crate) fn eval_rec(node: &SdfNode, point: Vec3, depth: u32, native_levels: u32) -> f32 {
+    if depth >= native_levels {
+        return eval_iter(node, point);
+    }
     match descend(node, point) {
         Step::Leaf(d) => d,
         Step::Two(a, b) => {
-            let d1 = eval(a, point);
-            let d2 = eval(b, point);
+            let d1 = eval_rec(a, point, depth + 1, native_levels);
+            let d2 = eval_rec(b, point, depth + 1, native_levels);
             combine(node, d1, d2, point)
         }
-        Step::One(child, q, extra) => finish(node, eval(child, q), point, extra),
+        Step::One(child, q, extra) => finish(
+            node,
+            eval_rec(child, q, depth + 1, native_levels),
+            point,
+            extra,
+        ),
     }
+}
+
+/// `node` at `point` without recursing
+// out of line: it runs only past the native levels, and the gate checks by name that it does
+// not call itself
+#[inline(never)]
+fn eval_iter(node: &SdfNode, point: Vec3) -> f32 {
+    let mut pending: WorkStack<Pending<'_>, 128> = WorkStack::new();
+    // the first operand's value of each two-operand node whose second operand is being evaluated
+    let mut firsts: WorkStack<f32, 128> = WorkStack::new();
+    let (mut node, mut point) = (node, point);
+    loop {
+        // down the first children to a leaf
+        let mut d = loop {
+            match descend(node, point) {
+                Step::Leaf(d) => break d,
+                Step::Two(a, b) => {
+                    // one entry per level: the second operand, which becomes the combine once
+                    // the second operand is under way
+                    pending.push(Pending::Second(node, b, point));
+                    node = a;
+                }
+                Step::One(child, q, extra) => {
+                    pending.push(Pending::Finish(node, point, extra));
+                    node = child;
+                    point = q;
+                }
+            }
+        };
+        // back up, applying the laws owed, until a second operand is next or the root is done
+        loop {
+            match pending.pop() {
+                None => return d,
+                Some(Pending::Second(n, b, q)) => {
+                    firsts.push(d);
+                    pending.push(Pending::Combine(n, q));
+                    node = b;
+                    point = q;
+                    break;
+                }
+                Some(Pending::Combine(n, q)) => {
+                    let d1 = firsts.pop().expect(
+                        "a two-operand node's first value is set aside before its second operand",
+                    );
+                    d = combine(n, d1, d, q);
+                }
+                Some(Pending::Finish(n, q, extra)) => d = finish(n, d, q, extra),
+            }
+        }
+    }
+}
+
+/// What [`eval`] still owes a node while one of its children is evaluated
+enum Pending<'a> {
+    /// evaluate this two-operand node's second operand at the node's point, then combine (the
+    /// first operand's value goes on `firsts`)
+    Second(&'a SdfNode, &'a SdfNode, Vec3),
+    /// apply this two-operand node's law to its operands' values, at the node's point
+    Combine(&'a SdfNode, Vec3),
+    /// apply this one-child node's law to its child's value (the node's point, and what
+    /// `descend` computed while moving it)
+    Finish(&'a SdfNode, Vec3, [f32; 3]),
 }
 
 /// What [`eval`] does at one node
@@ -70,7 +151,7 @@ enum Step<'a> {
 }
 
 /// Reads one node for [`eval`]: a leaf's value, or its children and the point they are evaluated at
-#[inline(never)]
+#[cfg_attr(not(debug_assertions), inline(always))]
 fn descend(node: &SdfNode, point: Vec3) -> Step<'_> {
     const NONE: [f32; 3] = [0.0; 3];
     match node {
@@ -230,7 +311,7 @@ fn descend(node: &SdfNode, point: Vec3) -> Step<'_> {
 }
 
 /// The law of a two-operand node of [`descend`] on its operands' values
-#[inline(never)]
+#[cfg_attr(not(debug_assertions), inline(always))]
 fn combine(node: &SdfNode, d1: f32, d2: f32, point: Vec3) -> f32 {
     match node {
         SdfNode::Union { .. } => sdf_union(d1, d2),
@@ -281,7 +362,7 @@ fn combine(node: &SdfNode, d1: f32, d2: f32, point: Vec3) -> f32 {
 
 /// The law of a one-child node of [`descend`] on its child's value `d` (`point` is the node's
 /// point, `extra` what `descend` computed while moving it)
-#[inline(never)]
+#[cfg_attr(not(debug_assertions), inline(always))]
 fn finish(node: &SdfNode, d: f32, point: Vec3, extra: [f32; 3]) -> f32 {
     match node {
         SdfNode::Scale { .. } | SdfNode::ScaleNonUniform { .. } => d * extra[0],
@@ -334,7 +415,7 @@ fn finish(node: &SdfNode, d: f32, point: Vec3, extra: [f32; 3]) -> f32 {
 }
 
 /// The value of a node without children
-#[inline(never)]
+#[cfg_attr(not(debug_assertions), inline(always))]
 fn eval_leaf(node: &SdfNode, point: Vec3) -> f32 {
     match node {
         // === Primitives (Leaf Nodes) ===

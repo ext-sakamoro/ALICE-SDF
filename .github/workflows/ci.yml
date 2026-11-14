@@ -904,6 +904,47 @@ jobs:
       - name: Test wasm (host, lib-only)
         run: cargo build --lib --no-default-features --features wasm
 
+  # The tree walkers (eval, the bytecode compiler, its validation and stack depths, the Lipschitz
+  # bound) recurse once per tree level: each level's stack is held to 512 B in native debug and
+  # release and in wasm32 release (1 MiB module stack, the browser background thread's), by the runtime
+  # canaries and by the frame read from each function's prologue, and the browser engine's depth
+  # is measured in a headless Chrome background thread (scripts/stack_budget.sh)
+  stack-budget:
+    name: Stack budget (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ci == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      # rust-toolchain.toml pins the toolchain: add the target to the pinned one
+      - name: wasm32 targets for the pinned toolchain
+        run: rustup target add wasm32-wasip1 wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: stack-budget
+      - name: Install wasmtime
+        uses: bytecodealliance/actions/wasmtime/setup@v1
+      - name: wasmtime and Chrome are on the path
+        run: |
+          wasmtime --version
+          if [ "$RUNNER_OS" = macOS ]; then
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
+          else
+            google-chrome --version
+          fi
+      - name: Frame gate and browser canary (tests of the prologue readers and the result check)
+        run: |
+          python3 scripts/test_stack_frame_gate.py
+          python3 scripts/test_browser_stack_canary.py
+      - name: Stack budget (native debug / release, wasm32 release)
+        run: scripts/stack_budget.sh
+
   openvdb:
     name: OpenVDB I/O
     needs: changes

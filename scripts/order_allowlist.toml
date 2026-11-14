@@ -211,3 +211,7 @@
     "114998e5a80ce7f6fde6a5153d7c82e8ff3c883bf2cae9c7421dbec387f690cd", # data.par_chunks_mut(slice_size)
 ], reason = "each work item writes only its own slice (par_chunks_mut / par_iter_mut by index), so the output does not depend on scheduling" }
 "Cargo.toml::rayon" = { count = 1, reason = "the parallel evaluators, mesh builders and bakers above; each listed site keeps input order or combines with a commutative and associative Law operation" }
+"src/walker_drivers_tests.rs::threads" = { count = 2, lines = [
+    "132c0a450652f2a3bbceead45622f83eefef2511c57121cf9b71e98f2f5594bc", # let (compared, deep) = std::thread::Builder::new()
+    "cdb55ce918cdc8ba667db0728feaecf22ef33890574054b471aa4bb559e59d26", # std::thread::Builder::new()
+], reason = "test-only (cfg(test)): each thread exists to give one walk a stack of a chosen size and is joined before its result is read; nothing is shared or ordered across threads" }

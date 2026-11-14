@@ -257,3 +257,9 @@ pub use instruction::Instruction;
 pub use opcode::{OpCode, OpKind};
 pub use refit::RefitError;
 pub use simd::{Quatx8, Vec3x8};
+
+/// for the test that compares the compile drivers bitwise (`src/walker_drivers_tests.rs`)
+#[cfg(test)]
+pub(crate) use compiler::{
+    compile_with_native_levels, depths_rec, COMPILE_NATIVE_LEVELS, DEPTHS_NATIVE_LEVELS,
+};

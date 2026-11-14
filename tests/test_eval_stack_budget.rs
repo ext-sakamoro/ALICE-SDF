@@ -29,9 +29,22 @@ use std::sync::Arc;
 /// below the 43 KiB per level a recursive `match` over every node kind reached.
 const EVAL_FRAME_BUDGET_BYTES: usize = 512;
 
-/// Depth of the canary chain: deep enough that the levels, not the thread start-up and the leaf
-/// evaluation at the bottom, decide the stack used
+/// Depth of the canary chain: deep enough that the levels, not the thread start-up and the
+/// non-recursive work, decide the stack used
+#[cfg(not(target_arch = "wasm32"))]
 const CANARY_DEPTH: usize = 2048;
+
+/// The stack a wasm module runs on: the rust-lld default (1 MiB of linear memory), which the
+/// browser background thread that evaluates scenes uses; the wasm test build sets it explicitly
+/// (`-C link-arg=-zstack-size=1048576`, `scripts/stack_budget.sh`) so a change of the default
+/// does not move the test
+#[cfg(target_arch = "wasm32")]
+const WASM_STACK_BYTES: usize = 1024 * 1024;
+
+/// On wasm32 there are no threads: the canary runs on the module's stack, as deep as the budget
+/// allows in it (the shadow stack is at the start of linear memory, so running past it traps)
+#[cfg(target_arch = "wasm32")]
+const CANARY_DEPTH: usize = (WASM_STACK_BYTES - CANARY_BASE_BYTES) / EVAL_FRAME_BUDGET_BYTES;
 
 /// Stack for everything that is not a tree level: the thread start-up, the test closure, and the
 /// non-recursive calls at the bottom of the tree (the leaf evaluator and its primitive)
@@ -109,6 +122,8 @@ fn depth(node: &SdfNode) -> usize {
 /// larger frame than `eval`, and its budget is not what these tests hold
 const REFERENCE_THREAD_BYTES: usize = 256 * 1024 * 1024;
 
+/// Run `f` on a thread with `stack` bytes
+#[cfg(not(target_arch = "wasm32"))]
 fn on_thread<T: Send + 'static>(stack: usize, f: impl FnOnce() -> T + Send + 'static) -> T {
     std::thread::Builder::new()
         .stack_size(stack)
@@ -116,6 +131,13 @@ fn on_thread<T: Send + 'static>(stack: usize, f: impl FnOnce() -> T + Send + 'st
         .expect("spawn a thread")
         .join()
         .expect("the thread finished")
+}
+
+/// wasm32-wasip1 has no threads: run `f` on the module's stack (`WASM_STACK_BYTES`, the size the
+/// test build links with; the canary depth is chosen for it)
+#[cfg(target_arch = "wasm32")]
+fn on_thread<T>(_stack: usize, f: impl FnOnce() -> T) -> T {
+    f()
 }
 
 /// `eval` at each point on a thread with `stack` bytes, beside the bytecode evaluator's value

@@ -88,8 +88,17 @@ pub mod collision;
 pub mod compiled;
 mod crispy;
 pub mod eval;
+/// lets the shared test corpus (`tests/common/corpus.rs`, written against `alice_sdf::`) build inside
+/// the crate's own tests
+#[cfg(test)]
+extern crate self as alice_sdf;
 pub mod fidelity;
 pub mod unordered;
+/// every tree walker's native-recursion and work-stack drivers compared bitwise
+#[cfg(test)]
+mod walker_drivers_tests;
+/// the inline-then-heap stack the non-recursive tree walkers use
+mod work_stack;
 #[cfg(all(test, feature = "gpu"))]
 mod gpu_test_support {
     //! Test support: whether a GPU test can run here, said in the test log

@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1287 |
+| 🟢 Not ignored | 1292 |
 | 🔴 Red by design | 6 |
 | ⏱ Gated (runtime / diagnostic / manual) | 9 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1302** |
+| **Total** | **1307** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -53,7 +53,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu` (test_wgsl_chunk_ulp.rs) — runs on the macOS lane: llvmpipe cannot run the form before (a copy of the array per read)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1287)
+## 🟢 Not ignored (1292)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -190,6 +190,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_svo_query_oracle.rs` | 4 |
 | `npr_bytecode_wgsl_validate.rs` | 3 |
 | `test_bake_stored_forms.rs` | 3 |
+| `test_compile_stack_budget.rs` | 3 |
 | `test_csg_multi_oracle.rs` | 3 |
 | `test_det_near_zero_probe.rs` | 3 |
 | `test_glsl_array_form.rs` | 3 |
@@ -229,10 +230,12 @@ Per-file counts (the test names are in `tests/`):
 | `test_wgsl_array_constructor_limit.rs` | 2 |
 | `mesh_sign_sliver.rs` | 1 |
 | `test_asdf_roundtrip_parity.rs` | 1 |
+| `test_compile_bytecode_golden.rs` | 1 |
 | `test_det_parity.rs` | 1 |
 | `test_gpu_fma_contraction.rs` | 1 |
 | `test_gpu_readback_volume.rs` | 1 |
 | `test_gpu_wait_limit.rs` | 1 |
+| `test_lipschitz_golden.rs` | 1 |
 | `test_loft_lift_bits.rs` | 1 |
 | `test_loft_shader_cpu_agreement.rs` | 1 |
 | `test_metadata_order.rs` | 1 |
