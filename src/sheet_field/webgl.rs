@@ -3,7 +3,8 @@
 //! The same arithmetic as the WGSL compute march in `gpu.rs` (its `sample_sheet`, `crossing_inside`, `eval_union`,
 //! `live_sheets` and `march_main`, line for line), for pages that have WebGL2 and no compute: the storage buffers
 //! become `R32UI` textures [`TEX_WIDTH`] texels wide (a table entry `i` is the texel `(i % TEX_WIDTH, i / TEX_WIDTH)`),
-//! floats are read with `uintBitsToFloat`, and `countOneBits` (not in GLSL ES 3.00) is written out. Nothing here
+//! floats are read with `uintBitsToFloat`, and `countOneBits` (not in GLSL ES 3.00) is written out. The loops whose
+//! bounds are constants in the WGSL take them from uniforms here ([`LOOP_BOUNDS`]), so a driver cannot unroll them. Nothing here
 //! needs `wgpu`: [`pack`] lays out the tables, [`march_fragment_shader`] gives the program text, and the page
 //! uploads and draws them.
 //!
@@ -16,6 +17,9 @@
 
 use super::{SheetField, SheetFieldError, MIN_STEP};
 
+/// The values the page sets for the uniforms `n_corners`, `n_bisect` and `n_taps` (8 trilinear corners, 30 bisection
+/// steps, 6 normal taps, as the compute march).
+pub const LOOP_BOUNDS: (u32, i32, u32) = (8, 30, 6);
 /// Texels per row of every table texture.
 pub const TEX_WIDTH: u32 = 4096;
 /// The clear value of the output targets (a NaN no march writes), the same pattern as the compute march's.
@@ -235,6 +239,9 @@ uniform sampler2D INPUT;
 uniform uint n_sheets; uniform uint rule; uniform uint steps; uniform vec3 dir; uniform float tmax;
 uniform uint index_base; uniform uint rows_base; uniform uint bn_base; uniform uint bl_base; uniform uint bp_base;
 uniform uint bn_len; uniform uint band_base; uniform uint work_budget; uniform uint width;
+// loop bounds the page sets to 8, 30 and 6: uniforms, so the compiler keeps each loop (and the sample_sheet it calls) once
+// instead of unrolling it (unrolled, the program took 55.9 s to link on a Tegra Orin)
+uniform uint n_corners; uniform int n_bisect; uniform uint n_taps;
 layout(location = 0) out vec4 out0;
 layout(location = 1) out vec4 out1;
 layout(location = 2) out vec4 out2;
@@ -299,41 +306,33 @@ Sample sample_sheet(uint k, vec3 p, uint nmax) {
             float acc = 0.0;
             uint nn = lvw(L, 36u + ci);
             uint qo = lvw(L, 20u + ci); uint so = lvw(L, 28u + ci);
-            if (row >= 0 && nn == 0u) {
+            if (row >= 0) {
+                // one corner loop for the three layouts (band, coarse grid, full grid), corners in the order dx, dy, dz
                 float sc = scf(2u * (so + uint(row))); float off = scf(2u * (so + uint(row)) + 1u);
+                bool band = nn == 0u; bool coarse = !band && nn != NODES;
                 uint mw = band_base + lvw(L, 9u) + uint(k_) * BAND_WORDS;
-                uint start = ixw(band_base + lvw(L, 44u + ci) + uint(row));
-                for (uint dx = 0u; dx < 2u; dx++) { for (uint dy = 0u; dy < 2u; dy++) { for (uint dz = 0u; dz < 2u; dz++) {
-                    float wx = dx == 1u ? t.x : 1.0 - t.x; float wy = dy == 1u ? t.y : 1.0 - t.y; float wz = dz == 1u ? t.z : 1.0 - t.z;
-                    uint node = ((c.x + dx) * NODES + (c.y + dy)) * NODES + (c.z + dz);
-                    uint word = ixw(mw + node / 32u); uint bit = node % 32u;
-                    if (((word >> bit) & 1u) == 0u) { band_miss = true; continue; }
-                    uint rank = popc(word & ((1u << bit) - 1u));
-                    for (uint j = 0u; j < node / 32u; j++) { rank += popc(ixw(mw + j)); }
-                    acc = acc + (wx * wy * wz) * (qbyte(qo + start + rank) * sc + off);
-                } } }
-            } else if (row >= 0 && nn != NODES) {
-                float sc = scf(2u * (so + uint(row))); float off = scf(2u * (so + uint(row)) + 1u);
-                vec3 wc = w / float(BRICK / (nn - 1u));
-                uvec3 cc = min(uvec3(max(floor(wc), vec3(0.0))), uvec3(nn - 2u));
-                vec3 tc = wc - vec3(cc);
-                uint base = qo + uint(row) * nn * nn * nn;
-                for (uint dx = 0u; dx < 2u; dx++) { for (uint dy = 0u; dy < 2u; dy++) { for (uint dz = 0u; dz < 2u; dz++) {
-                    float wx = dx == 1u ? tc.x : 1.0 - tc.x; float wy = dy == 1u ? tc.y : 1.0 - tc.y; float wz = dz == 1u ? tc.z : 1.0 - tc.z;
-                    uint node = ((cc.x + dx) * nn + (cc.y + dy)) * nn + (cc.z + dz);
-                    acc = acc + (wx * wy * wz) * (qbyte(base + node) * sc + off);
-                } } }
-            } else if (row >= 0) {
-                float sc = scf(2u * (so + uint(row))); float off = scf(2u * (so + uint(row)) + 1u);
-                for (uint dx = 0u; dx < 2u; dx++) { for (uint dy = 0u; dy < 2u; dy++) { for (uint dz = 0u; dz < 2u; dz++) {
-                    float wx = dx == 1u ? t.x : 1.0 - t.x; float wy = dy == 1u ? t.y : 1.0 - t.y; float wz = dz == 1u ? t.z : 1.0 - t.z;
-                    uint node = ((c.x + dx) * NODES + (c.y + dy)) * NODES + (c.z + dz);
-                    float v = qbyte(qo + uint(row) * BRICK_NODES + node) * sc + off;
+                uint start = band ? ixw(band_base + lvw(L, 44u + ci) + uint(row)) : 0u;
+                vec3 tt = t; uvec3 cb = c; uint nd = NODES; uint base = qo + uint(row) * BRICK_NODES;
+                if (coarse) { vec3 wc = w / float(BRICK / (nn - 1u)); cb = min(uvec3(max(floor(wc), vec3(0.0))), uvec3(nn - 2u)); tt = wc - vec3(cb); nd = nn; base = qo + uint(row) * nn * nn * nn; }
+                for (uint corner = 0u; corner < n_corners; corner++) {
+                    uint dx = corner >> 2u; uint dy = (corner >> 1u) & 1u; uint dz = corner & 1u;
+                    float wx = dx == 1u ? tt.x : 1.0 - tt.x; float wy = dy == 1u ? tt.y : 1.0 - tt.y; float wz = dz == 1u ? tt.z : 1.0 - tt.z;
+                    uint node = ((cb.x + dx) * nd + (cb.y + dy)) * nd + (cb.z + dz);
+                    float v;
+                    if (band) {
+                        uint word = ixw(mw + node / 32u); uint bit = node % 32u;
+                        if (((word >> bit) & 1u) == 0u) { band_miss = true; continue; }
+                        uint rank = popc(word & ((1u << bit) - 1u));
+                        for (uint j = 0u; j < node / 32u; j++) { rank += popc(ixw(mw + j)); }
+                        v = qbyte(qo + start + rank) * sc + off;
+                    } else {
+                        v = qbyte(base + node) * sc + off;
+                    }
                     acc = acc + (wx * wy * wz) * v;
-                    if (ci == 0u) { umin = min(umin, abs(v)); }
-                } } }
-                if (ci == 0u) { q0 = sc; }
-                if (ci == 1u) { q1 = sc; }
+                    if (!band && !coarse && ci == 0u) { umin = min(umin, abs(v)); }
+                }
+                if (!band && !coarse && ci == 0u) { q0 = sc; }
+                if (!band && !coarse && ci == 1u) { q1 = sc; }
             }
             vals[ci] = acc;
         }
@@ -355,10 +354,6 @@ Sample sample_sheet(uint k, vec3 p, uint nmax) {
     return o;
 }
 
-bool crossing_inside(uint k, vec3 p) {
-    Sample c = sample_sheet(k, p, 2u);
-    return c.inside && !c.masked && abs(c.s) <= JUMP_S && c.db <= 0.5 * c.db_step;
-}
 bool in_box(uint k, vec3 p) { return all(greaterThanEqual(p, sh_lo(k))) && all(lessThanEqual(p, sh_hi(k))); }
 vec3 nlo(uint i) { return vec3(uintBitsToFloat(ixw(bn_base + 8u * i)), uintBitsToFloat(ixw(bn_base + 8u * i + 1u)), uintBitsToFloat(ixw(bn_base + 8u * i + 2u))); }
 vec3 nhi(uint i) { return vec3(uintBitsToFloat(ixw(bn_base + 8u * i + 4u)), uintBitsToFloat(ixw(bn_base + 8u * i + 5u)), uintBitsToFloat(ixw(bn_base + 8u * i + 6u))); }
@@ -433,9 +428,8 @@ void main() {
     vec3 o = texelFetch(INPUT, q, 0).xyz;
     vec3 d = dir;
     uint prev_k[MAX_LIVE]; float prev_g[MAX_LIVE]; uint n_prev = 0u; bool overflow = false;
-    uint n0 = live_sheets(o);
-    if (n0 > MAX_LIVE) { overflow = true; }
-    else { for (uint j = 0u; j < n0; j++) { prev_k[j] = LV[j]; prev_g[j] = sample_sheet(LV[j], o, 2u).g; } n_prev = n0; }
+    // the compute march fills prev from o before the loop; step 0 (t = 0) samples o again and replaces prev before any
+    // comparison (`t <= 0` skips them), and checks the same overflow, so that pass is left out here (a call site less)
     float t = 0.0; float tprev = 0.0; int kind = 2; uint own = 0u; uint work = 0u;
     for (uint step = 0u; step < steps && !overflow; step++) {
         vec3 p = o + d * t;
@@ -449,21 +443,29 @@ void main() {
         work = work + w;
         for (uint li = 0u; li < nl; li++) {
             uint k = LV[li];
-            float gc = sample_sheet(k, p, 2u).g;
-            cur_k[n_cur] = k; cur_g[n_cur] = gc; n_cur++;
-            if (t <= 0.0) { continue; }
-            bool found = false; float gp = 0.0;
-            for (uint j = 0u; j < n_prev; j++) { if (prev_k[j] == k) { found = true; gp = prev_g[j]; } }
-            if (!found) { continue; }
-            if ((gc < 0.0) == (gp < 0.0)) { continue; }
-            float a = tprev; float b = t; float ga = gp;
-            for (int it = 0; it < 30; it++) {
-                float mid = 0.5 * (a + b);
-                float gm = sample_sheet(k, o + d * mid, 2u).g;
-                if ((gm < 0.0) == (ga < 0.0)) { a = mid; ga = gm; } else { b = mid; }
+            // one loop, one call site: iteration -1 samples the sheet at p (its g for this step); if that is a sign
+            // change against the previous step, iterations 0 .. n_bisect - 1 halve [tprev, t] and iteration n_bisect
+            // tests the crossing at the final midpoint (crossing_inside of the compute march)
+            float gc = 0.0; bool found = false; float gp = 0.0; float a = tprev; float b = t; float ga = 0.0;
+            for (int it = -1; it <= n_bisect; it++) {
+                float mid = it < 0 ? t : 0.5 * (a + b);
+                Sample sm = sample_sheet(k, o + d * mid, 2u);
+                if (it < 0) {
+                    gc = sm.g;
+                    cur_k[n_cur] = k; cur_g[n_cur] = gc; n_cur++;
+                    if (t <= 0.0) { break; }
+                    for (uint j = 0u; j < n_prev; j++) { if (prev_k[j] == k) { found = true; gp = prev_g[j]; } }
+                    if (!found) { break; }
+                    if ((gc < 0.0) == (gp < 0.0)) { break; }
+                    ga = gp;
+                    continue;
+                }
+                if (it == n_bisect) {
+                    if (mid < thit && sm.inside && !sm.masked && abs(sm.s) <= JUMP_S && sm.db <= 0.5 * sm.db_step) { thit = mid; khit = k; }
+                    break;
+                }
+                if ((sm.g < 0.0) == (ga < 0.0)) { a = mid; ga = sm.g; } else { b = mid; }
             }
-            float tm = 0.5 * (a + b);
-            if (tm < thit && crossing_inside(k, o + d * tm)) { thit = tm; khit = k; }
         }
         if (overflow) { break; }
         if (thit < 1e29) { t = thit; own = khit; kind = 1; break; }
@@ -477,12 +479,17 @@ void main() {
     vec3 nrm = vec3(0.0, 0.0, 1.0); vec3 uv = vec3(0.0); vec4 an = vec4(0.0); float miss = 0.0;
     if (kind == 1) {
         vec3 p = o + d * t; float e = 0.05;
-        vec3 n = vec3(
-            sample_sheet(own, p + vec3(e, 0.0, 0.0), 2u).s - sample_sheet(own, p - vec3(e, 0.0, 0.0), 2u).s,
-            sample_sheet(own, p + vec3(0.0, e, 0.0), 2u).s - sample_sheet(own, p - vec3(0.0, e, 0.0), 2u).s,
-            sample_sheet(own, p + vec3(0.0, 0.0, e), 2u).s - sample_sheet(own, p - vec3(0.0, 0.0, e), 2u).s);
+        // the 6 normal taps (+x, -x, +y, -y, +z, -z, channels s and d_b) and then the attributes at p (all channels),
+        // through one call site
+        float tap[6]; for (int z = 0; z < 6; z++) { tap[z] = 0.0; }
+        Sample s;
+        for (uint a = 0u; a <= n_taps; a++) {
+            vec3 off = vec3(0.0); if (a < n_taps) { off[a / 2u] = (a % 2u == 0u) ? e : -e; }
+            Sample sa = sample_sheet(own, p + off, a < n_taps ? 2u : 8u);
+            if (a < n_taps) { tap[a] = sa.s; } else { s = sa; }
+        }
+        vec3 n = vec3(tap[0] - tap[1], tap[2] - tap[3], tap[4] - tap[5]);
         if (length(n) > 1e-12) { nrm = normalize(n); }
-        Sample s = sample_sheet(own, p, 8u);
         if (s.band_miss) { miss = 1.0; }
         if (s.has_uv && s.inside) { uv = vec3(s.uv, 1.0); }
         if (s.has_an && s.inside && length(s.an) > 1e-12) { an = vec4(normalize(s.an), 1.0); }
