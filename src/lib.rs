@@ -44,6 +44,7 @@
 //! | Feature | Default | Description |
 //! |---------|:-------:|-------------|
 //! | `cli` | yes | The `alice-sdf` command-line tool (clap). |
+//! | `asdf` | yes | Binary `.asdf` files through bincode (`save_asdf` / `load_asdf`, `io::save` / `io::load` on a `.asdf` path). Turned on by `cli`, `asp`, `ffi` and `python`; without it bincode is not built and a `.asdf` path is refused (`.asdf.json` still works). |
 //! | `image` | | PNG / JPEG decoding for heightmaps and texture fitting. |
 //! | `texture-fit` | | Fit a bitmap texture with procedural noise formulas. Implies `image` and `cli`. |
 //! | `jit` | | Native evaluation through Cranelift (scalar and 8-wide). |
@@ -301,10 +302,12 @@ pub mod prelude {
     pub use crate::io::{
         export_alembic, export_fbx, export_glb, export_glb_bytes, export_gltf_json, export_nanite,
         export_nanite_json, export_nanite_with_config, export_obj, export_usda, get_info,
-        import_fbx, import_glb, import_glb_bytes, import_obj, load, load_asdf, load_asdf_json,
-        save, save_asdf, save_asdf_json, AlembicConfig, FbxConfig, FbxFormat, FbxUpAxis,
-        GltfConfig, NaniteExportConfig, ObjConfig, UsdConfig, UsdUpAxis,
+        import_fbx, import_glb, import_glb_bytes, import_obj, load, load_asdf_json, save,
+        save_asdf_json, AlembicConfig, FbxConfig, FbxFormat, FbxUpAxis, GltfConfig,
+        NaniteExportConfig, ObjConfig, UsdConfig, UsdUpAxis,
     };
+    #[cfg(feature = "asdf")]
+    pub use crate::io::{load_asdf, save_asdf};
     #[cfg(feature = "physics")]
     pub use crate::live_sdf::{LiveMesh, LiveMeshConfig, LiveSdf};
     pub use crate::material::{
