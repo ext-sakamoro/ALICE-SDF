@@ -184,9 +184,31 @@ fn the_results_do_not_depend_on_the_dispatch_sizes_and_the_sizes_follow_the_rule
             os.len() + st.reissued_rays as usize,
             "{name}"
         );
-        for w in st.dispatches.windows(2) {
+        assert_eq!(
+            st.dispatch_work.len(),
+            st.dispatches.len(),
+            "{name}: a work total per dispatch"
+        );
+        assert_eq!(
+            st.dispatch_round.len(),
+            st.dispatches.len(),
+            "{name}: a round per dispatch"
+        );
+        assert!(
+            st.dispatch_work.iter().all(|&w| w > 0),
+            "{name}: a dispatch with no work"
+        );
+        // the size rule holds between first issues; re-issue rounds halve the cut size instead
+        let first: Vec<(usize, f64)> = st
+            .dispatches
+            .iter()
+            .zip(&st.dispatch_round)
+            .filter(|(_, &k)| k == 0)
+            .map(|(d, _)| *d)
+            .collect();
+        for w in first.windows(2) {
             let ((r0, t0), (r1, _)) = (w[0], w[1]);
-            let last = w[1] == *st.dispatches.last().unwrap();
+            let last = w[1] == *first.last().unwrap();
             assert!(
                 r1 <= (2 * r0).max(MIN_DISPATCH) || last,
                 "{name}: size {r0} -> {r1}"

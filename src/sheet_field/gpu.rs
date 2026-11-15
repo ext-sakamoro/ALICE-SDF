@@ -209,6 +209,12 @@ pub const MAX_REISSUE_ROUNDS: u32 = 8;
 pub struct MarchStats {
     /// `(rays, seconds)` of each dispatch, in order, re-issues included.
     pub dispatches: Vec<(usize, f64)>,
+    /// The summed per-ray work (see [`MARCH_WORK_BUDGET`]) of each dispatch, in the order of `dispatches` (the rays
+    /// it wrote; re-issued rays count in the dispatch that wrote them).
+    pub dispatch_work: Vec<u64>,
+    /// The re-issue round of each dispatch, in the order of `dispatches`: 0 for a first issue, k for the k-th round of
+    /// re-issue after a cut (those follow the halving of the cut size, not the size rule of [`next_dispatch`]).
+    pub dispatch_round: Vec<u32>,
     /// Dispatches that left some of their rays unwritten (each such ray was issued again in a smaller dispatch).
     pub cut_dispatches: u64,
     /// Rays issued again because a dispatch left them unwritten (a ray counts once per re-issue).
@@ -859,6 +865,8 @@ impl GpuSheetField {
                 for piece in pending.chunks(piece_size) {
                     let part: Vec<Vec3> = piece.iter().map(|&i| origins[i]).collect();
                     let t0 = std::time::Instant::now();
+                    stats.dispatch_work.push(0);
+                    stats.dispatch_round.push(round);
                     let unwritten = self.march_dispatch(
                         &part, piece, dir, tmax, steps, budget, &mut res, &mut stats,
                     )?;
@@ -956,6 +964,7 @@ impl GpuSheetField {
             }
             let kind = r[0][1] as i32;
             let work = r[1][3] as u32;
+            *stats.dispatch_work.last_mut().expect("a dispatch slot") += u64::from(work);
             stats.max_work = stats.max_work.max(work);
             if u64::from(work) * 2 >= u64::from(budget) {
                 stats.over_half_budget += 1;
