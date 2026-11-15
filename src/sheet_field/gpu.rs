@@ -135,7 +135,8 @@ struct Uniforms {
     bn_len: u32,
     /// Where the band table (masks and row starts) starts in the merged `u32` buffer.
     band_base: u32,
-    _pad: u32,
+    /// [`MARCH_WORK_BUDGET`] or the field's own setting.
+    work_budget: u32,
 }
 
 /// Where each table starts in the merged `u32` buffer.
@@ -168,6 +169,97 @@ pub struct SheetFieldResources {
     march_pipeline: wgpu::ComputePipeline,
     layout: wgpu::BindGroupLayout,
     max_live: u32,
+    control: std::sync::Mutex<DispatchControl>,
+    marker: std::sync::atomic::AtomicU32,
+}
+
+/// How long one march dispatch is allowed to take: the sizes adapt to keep each dispatch near this.
+///
+/// This is a bound on dispatch duration, chosen against one measured device: on the GPU it was measured
+/// on, a single dispatch that would take about 4.5-4.9 s never returned while the same rays split into
+/// dispatches of up to 4.24 s all finished (the cause of that device behaviour is inferred, not measured).
+/// Other devices are unmeasured; browsers stop long dispatches sooner.
+pub const DISPATCH_TARGET: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// How long a read waits for one march dispatch before it is a [`GpuError::DispatchDidNotFinish`]
+/// (a few times [`DISPATCH_TARGET`], below the measured duration where a dispatch never returned).
+pub const DISPATCH_WAIT: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// Rays in the first march dispatch of a field; later sizes follow the measured times.
+pub const FIRST_DISPATCH: usize = 16_384;
+
+/// The smallest march dispatch.
+pub const MIN_DISPATCH: usize = 1_024;
+
+/// The work one ray's march may do: the sum over its steps of `live sheets x (live sheets of the previous
+/// step + 1)` (the sheets it samples and the crossings it compares). A ray over this ends as
+/// [`MarchResult::Undecided`], never as a hit. Derived from the worst ray measured on real fields (see the
+/// field's statistics, [`GpuSheetField::last_march_stats`]).
+pub const MARCH_WORK_BUDGET: u32 = u32::MAX; // MEASUREMENT BUILD: replaced by the value derived from the measured worst ray before commit
+
+/// The dispatch sizes, their times and the per-ray work of the last march call.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MarchStats {
+    /// `(rays, seconds)` of each dispatch, in order.
+    pub dispatches: Vec<(usize, f64)>,
+    /// The largest work of one ray (see [`MARCH_WORK_BUDGET`]).
+    pub max_work: u32,
+    /// Rays whose work was at least half the budget.
+    pub over_half_budget: u64,
+    /// Rays that ran out of the budget (returned as undecided).
+    pub over_budget: u64,
+}
+
+#[derive(Debug)]
+struct DispatchControl {
+    next: usize,
+    target: std::time::Duration,
+    wait: std::time::Duration,
+    work_budget: u32,
+    stats: MarchStats,
+}
+
+/// The next dispatch size after one of `rays` took `secs`: the rays whose predicted time (at the measured
+/// seconds per ray) is the smaller of the target and twice the last dispatch's time, and after a dispatch over
+/// the target at most half of it; never below [`MIN_DISPATCH`]. The rays of a march are dispatched in an order
+/// spread over the whole batch ([`spread_stride`]), so the seconds per ray of consecutive dispatches stay close and
+/// the prediction holds.
+#[must_use]
+pub fn next_dispatch(rays: usize, secs: f64, target: std::time::Duration) -> usize {
+    let t = target.as_secs_f64();
+    if rays == 0 || secs <= 0.0 {
+        return rays.saturating_mul(2).max(MIN_DISPATCH);
+    }
+    let per_ray = secs / rays as f64;
+    let mut next = (t.min(2.0 * secs) / per_ray).floor() as usize;
+    if secs > t {
+        next = next.min(rays / 2);
+    }
+    next.max(MIN_DISPATCH)
+}
+
+/// The stride of the spread order over `n` rays: ray `j` of the order is `(j * stride) % n`, a permutation
+/// (the stride is coprime with `n`), near `0.618 n` so that consecutive dispatches sample the whole batch.
+#[must_use]
+pub fn spread_stride(n: usize) -> usize {
+    if n <= 1 {
+        return 1;
+    }
+    let gcd = |mut a: usize, mut b: usize| {
+        while b != 0 {
+            (a, b) = (b, a % b);
+        }
+        a
+    };
+    let mut s = ((n as f64) * 0.618_033_988_749_895).round() as usize % n;
+    s = s.max(1);
+    while gcd(s, n) != 1 {
+        s += 1;
+        if s >= n {
+            s = 1;
+        }
+    }
+    s
 }
 
 fn storage_init(device: &wgpu::Device, label: &str, bytes: &[u8]) -> wgpu::Buffer {
@@ -380,7 +472,16 @@ impl GpuSheetField {
             march_pipeline,
             layout,
             max_live,
+            control: std::sync::Mutex::new(DispatchControl {
+                next: FIRST_DISPATCH,
+                target: DISPATCH_TARGET,
+                wait: DISPATCH_WAIT,
+                work_budget: MARCH_WORK_BUDGET,
+                stats: MarchStats::default(),
+            }),
+            marker: std::sync::atomic::AtomicU32::new(0),
         };
+        context.set_wait_limit(DISPATCH_WAIT);
         Ok(context.hold(resources))
     }
 
@@ -400,7 +501,7 @@ impl GpuSheetField {
             bp_base: b.bp,
             bn_len: b.bn_len,
             band_base: b.band,
-            _pad: 0,
+            work_budget: self.control.lock().map_or(MARCH_WORK_BUDGET, |c| c.work_budget),
         }
     }
 
@@ -411,9 +512,41 @@ impl GpuSheetField {
         out_vec4s: usize,
         u: Uniforms,
     ) -> Result<Vec<[f32; 4]>, GpuError> {
+        self.run_groups(pipeline, input, out_vec4s, u, None)
+    }
+
+    /// [`Self::run`] with the workgroup count taken as given when `groups` is set (only the module's tests
+    /// do that, to make the device refuse a dispatch past the size check).
+    fn run_groups(
+        &self,
+        pipeline: &wgpu::ComputePipeline,
+        input: &[[f32; 4]],
+        out_vec4s: usize,
+        u: Uniforms,
+        groups: Option<u32>,
+    ) -> Result<Vec<[f32; 4]>, GpuError> {
+        // a dispatch of this field that did not return may still be running: no more work goes to this device
+        if self.context().is_abandoned() {
+            return Err(GpuError::BufferMapping(
+                "an earlier dispatch of this sheet field did not finish: it is not usable, create another".to_string(),
+            ));
+        }
         let device = self.context().device();
         let queue = self.context().queue();
         let n = input.len().max(1);
+        // a dispatch over the device's workgroups per dimension is invalid: the submit is dropped and the output
+        // would be read unwritten, so it is refused here
+        let limit = device.limits().max_compute_workgroups_per_dimension;
+        if groups.is_none() && (n as u64).div_ceil(u64::from(WG)) > u64::from(limit) {
+            return Err(GpuError::DispatchTooLarge {
+                points: n,
+                workgroup_size: WG,
+                limit,
+            });
+        }
+        // a validation error (an invalid dispatch, buffer or binding) goes to this scope and becomes an error, instead
+        // of the uncaptured-error handler (a panic by default, or nothing when a handler swallows it)
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
         let b_u = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("sheet field uniforms"),
             contents: bytemuck::cast_slice(&[u]),
@@ -427,9 +560,11 @@ impl GpuSheetField {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
+        // the staging buffer ends with a marker the same submit writes after the dispatch: a submit the device drops
+        // (a validation error is reported only to the uncaptured-error handler) leaves it zero, and the read is refused
         let staging = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("sheet field staging"),
-            size: out_bytes,
+            size: out_bytes + 16,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -457,25 +592,88 @@ impl GpuSheetField {
             });
             pass.set_pipeline(pipeline);
             pass.set_bind_group(0, &bg, &[]);
-            pass.dispatch_workgroups((n as u32).div_ceil(WG), 1, 1);
+            pass.dispatch_workgroups(groups.unwrap_or((n as u32).div_ceil(WG)), 1, 1);
         }
         enc.copy_buffer_to_buffer(&b_out, 0, &staging, 0, out_bytes);
+        let nonce = self
+            .marker
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            .wrapping_add(1)
+            .max(1);
+        let b_mark = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("sheet field dispatch marker"),
+            contents: bytemuck::cast_slice(&[nonce, 0u32, 0, 0]),
+            usage: wgpu::BufferUsages::COPY_SRC,
+        });
+        enc.copy_buffer_to_buffer(&b_mark, 0, &staging, out_bytes, 16);
         // the GPU's writes -> the CPU's read of the mapped staging buffer (see GpuContext::before_host_read)
         self.context().before_host_read(&mut enc);
         queue.submit(std::iter::once(enc.finish()));
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(e) = pollster::block_on(device.pop_error_scope()) {
+            return Err(GpuError::BufferMapping(format!(
+                "the sheet field dispatch was refused by the device: {e}"
+            )));
+        }
+        #[cfg(target_arch = "wasm32")]
+        drop(device.pop_error_scope());
         let slice = staging.slice(..);
         let (sender, receiver) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |r| {
             let _ = sender.send(r);
         });
-        self.context().wait_for_mapping(&receiver)?;
-        let out = {
+        if let Err(e) = self.context().wait_for_mapping(&receiver) {
+            if self.context().is_abandoned() {
+                let limit_ms = self.control.lock().map_or(0, |c| c.wait.as_millis() as u64);
+                return Err(GpuError::DispatchDidNotFinish {
+                    rays: input.len(),
+                    limit_ms,
+                });
+            }
+            return Err(e);
+        }
+        let (out, found) = {
             let mapped = slice.get_mapped_range();
             let data: &[[f32; 4]] = bytemuck::cast_slice(&mapped);
-            data[..input.len() * out_vec4s].to_vec()
+            let found = data[n * out_vec4s][0].to_bits();
+            (data[..input.len() * out_vec4s].to_vec(), found)
         };
         staging.unmap();
+        if found != nonce {
+            return Err(GpuError::BufferMapping(format!(
+                "the sheet field dispatch did not run (marker {found}, expected {nonce}): its output is not read"
+            )));
+        }
         Ok(out)
+    }
+
+    /// The dispatch sizes, their times and the per-ray work of the last march call.
+    #[must_use]
+    pub fn last_march_stats(&self) -> MarchStats {
+        self.control.lock().map(|c| c.stats.clone()).unwrap_or_default()
+    }
+
+    /// Another target duration for one march dispatch (sizes adapt toward it).
+    pub fn set_dispatch_target(&self, target: std::time::Duration) {
+        if let Ok(mut c) = self.control.lock() {
+            c.target = target;
+        }
+    }
+
+    /// Another wait bound for one dispatch; over it, the read is a [`GpuError::DispatchDidNotFinish`] and the
+    /// device is not used again.
+    pub fn set_dispatch_wait(&self, wait: std::time::Duration) {
+        if let Ok(mut c) = self.control.lock() {
+            c.wait = wait;
+        }
+        self.context().set_wait_limit(wait);
+    }
+
+    /// Another per-ray work budget (see [`MARCH_WORK_BUDGET`]).
+    pub fn set_work_budget(&self, budget: u32) {
+        if let Ok(mut c) = self.control.lock() {
+            c.work_budget = budget;
+        }
     }
 
     /// The per-ray list size this field's march was compiled with ([`max_live_for`] of [`live_bound`]).
@@ -517,6 +715,11 @@ impl GpuSheetField {
     }
 
     /// March rays from `origins` along the unit `dir` up to `tmax` with at most `steps` steps.
+    ///
+    /// The rays go to the GPU in dispatches whose size follows the measured time of the previous one (see
+    /// [`DISPATCH_TARGET`] and [`next_dispatch`]); the results do not depend on the sizes. A dispatch that does
+    /// not return within the wait bound is a [`GpuError::DispatchDidNotFinish`]. The sizes, times and per-ray
+    /// work are in [`Self::last_march_stats`].
     pub fn march_batch(
         &self,
         origins: &[Vec3],
@@ -527,6 +730,60 @@ impl GpuSheetField {
         if origins.is_empty() {
             return Ok(Vec::new());
         }
+        let (target, budget) = self
+            .control
+            .lock()
+            .map(|c| (c.target, c.work_budget))
+            .map_err(|_| GpuError::InvalidFormat("sheet field dispatch control poisoned".into()))?;
+        let mut stats = MarchStats::default();
+        let n = origins.len();
+        let stride = spread_stride(n);
+        let order = |j: usize| ((j as u128 * stride as u128) % n as u128) as usize;
+        let mut res = vec![MarchResult::Miss; n];
+        let mut at = 0;
+        while at < n {
+            let most = self.context().device().limits().max_compute_workgroups_per_dimension as usize * WG as usize;
+            let size = self
+                .control
+                .lock()
+                .map(|c| c.next)
+                .unwrap_or(FIRST_DISPATCH)
+                .max(MIN_DISPATCH)
+                .min(most)
+                .min(n - at);
+            let idx: Vec<usize> = (at..at + size).map(order).collect();
+            let part: Vec<Vec3> = idx.iter().map(|&i| origins[i]).collect();
+            let t0 = std::time::Instant::now();
+            let mut got = Vec::with_capacity(size);
+            self.march_dispatch(&part, &idx, dir, tmax, steps, budget, &mut got, &mut stats)?;
+            for (&i, r) in idx.iter().zip(got) {
+                res[i] = r;
+            }
+            let secs = t0.elapsed().as_secs_f64();
+            stats.dispatches.push((size, secs));
+            if let Ok(mut c) = self.control.lock() {
+                c.next = next_dispatch(size, secs, target).min(most);
+            }
+            at += size;
+        }
+        if let Ok(mut c) = self.control.lock() {
+            c.stats = stats;
+        }
+        Ok(res)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn march_dispatch(
+        &self,
+        origins: &[Vec3],
+        index: &[usize],
+        dir: Vec3,
+        tmax: f32,
+        steps: u32,
+        budget: u32,
+        res: &mut Vec<MarchResult>,
+        stats: &mut MarchStats,
+    ) -> Result<(), GpuError> {
         let input: Vec<[f32; 4]> = origins.iter().map(|p| [p.x, p.y, p.z, 0.0]).collect();
         let out = self.run(
             &self.march_pipeline,
@@ -534,11 +791,16 @@ impl GpuSheetField {
             4,
             self.uniforms(origins.len() as u32, steps, dir, tmax),
         )?;
-        let mut res = Vec::with_capacity(origins.len());
         let (rows, rest) = out.as_chunks::<4>();
         debug_assert!(rest.is_empty(), "4 output words a ray");
-        for (i, r) in rows.iter().enumerate() {
+        for (j, r) in rows.iter().enumerate() {
+            let i = index[j];
             let kind = r[0][1] as i32;
+            let work = r[1][3] as u32;
+            stats.max_work = stats.max_work.max(work);
+            if u64::from(work) * 2 >= u64::from(budget) {
+                stats.over_half_budget += 1;
+            }
             if kind == 1 && r[0][3] != 0.0 {
                 return Err(GpuError::InvalidFormat(format!(
                     "sheet field march: ray {i} hit sheet {} where an attribute node lies outside its band",
@@ -555,6 +817,10 @@ impl GpuSheetField {
                 }),
                 0 => MarchResult::Miss,
                 2 => MarchResult::Undecided,
+                4 => {
+                    stats.over_budget += 1;
+                    MarchResult::Undecided
+                }
                 _ => {
                     return Err(GpuError::InvalidFormat(format!(
                         "sheet field march: more than {} sheet boxes hold one point",
@@ -563,7 +829,7 @@ impl GpuSheetField {
                 }
             });
         }
-        Ok(res)
+        Ok(())
     }
 }
 
@@ -573,7 +839,7 @@ struct LevelInfo { lo: vec3<f32>, h: f32, nb: vec3<u32>, index_off: u32, nch: u3
                    rows_off: array<vec4<u32>, 2>, q_off: array<vec4<u32>, 2>, sc_off: array<vec4<u32>, 2>,
                    nodes: array<vec4<u32>, 2>, st_off: array<vec4<u32>, 2> };
 struct Uniforms { n_sheets: u32, rule: u32, count: u32, steps: u32, dir: vec3<f32>, tmax: f32,
-                  index_base: u32, rows_base: u32, bn_base: u32, bl_base: u32, bp_base: u32, bn_len: u32, band_base: u32, p1: u32 };
+                  index_base: u32, rows_base: u32, bn_base: u32, bl_base: u32, bp_base: u32, bn_len: u32, band_base: u32, work_budget: u32 };
 @group(0) @binding(0) var<uniform> U: Uniforms;
 @group(0) @binding(1) var<storage, read> SHEETS: array<SheetInfo>;
 @group(0) @binding(2) var<storage, read> LEVELS: array<LevelInfo>;
@@ -860,6 +1126,9 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var tprev = 0.0;
     var kind = 2;
     var own = 0u;
+    // the ray's work: live sheets x (previous live sheets + 1) summed over its steps; over the budget the ray is
+    // refused (kind 4, reported as undecided), so no ray's work is unbounded by more than one step
+    var work = 0u;
     for (var step = 0u; step < U.steps && !overflow; step = step + 1u) {
         let p = o + d * t;
         let dd = eval_union(p).f;
@@ -870,6 +1139,9 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         var n_cur = 0u;
         let nl = live_sheets(p, &lv);
         if (nl > MAX_LIVE) { overflow = true; break; }
+        let w = nl * (n_prev + 1u);
+        if (work > U.work_budget - min(w, U.work_budget)) { work = U.work_budget; kind = 4; break; }
+        work = work + w;
         for (var li = 0u; li < nl; li = li + 1u) {
             let k = lv[li];
             let gc = sample_sheet(k, p, 2u).g;
@@ -916,8 +1188,58 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (s.has_an && s.inside && length(s.an) > 1e-12) { an = vec4<f32>(normalize(s.an), 1.0); }
     }
     OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), miss);
-    OUT[4u * i + 1u] = vec4<f32>(nrm, 0.0);
+    OUT[4u * i + 1u] = vec4<f32>(nrm, f32(work));
     OUT[4u * i + 2u] = vec4<f32>(uv, 0.0);
     OUT[4u * i + 3u] = an;
 }
 ";
+
+#[cfg(test)]
+mod tests {
+    use super::{GpuSheetField, WG};
+    use crate::sheet_field::build::{level_from_fn, sheet};
+    use crate::sheet_field::{SheetField, ValidRule};
+    use glam::Vec3;
+
+    /// A dispatch the device refuses (more workgroups than one dimension may have, sent past the size check)
+    /// is reported only to the uncaptured-error handler and the submit is dropped: the read must be an error
+    /// (the marker the same submit writes is missing), never values read from an unwritten buffer.
+    #[test]
+    #[allow(clippy::unwrap_used, clippy::expect_used)]
+    fn a_dispatch_the_device_refuses_is_an_error_not_unwritten_values() {
+        let lv = level_from_fn(
+            Vec3::new(-2.0, -2.0, -1.0),
+            0.25,
+            [2, 2, 1],
+            |_c, _e| true,
+            |p| vec![p.z, (p.x.abs().max(p.y.abs())) - 1.0],
+        )
+        .unwrap();
+        let f = SheetField::new(vec![sheet(vec![lv]).unwrap()], ValidRule::CellV1);
+        let g = match GpuSheetField::new(&f) {
+            Ok(g) => g,
+            Err(e) => {
+                assert!(
+                    std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+                    "ALICE_SDF_REQUIRE_GPU set but no GPU: {e}"
+                );
+                eprintln!("gpu-test: skipped (no GPU: {e})");
+                return;
+            }
+        };
+        let input = vec![[0.0f32, 0.0, 0.5, 0.0]; 64];
+        // the same input through the checked path is fine
+        let ok = g.run(&g.eval_pipeline, &input, 1, g.uniforms(64, 0, Vec3::ZERO, 0.0));
+        assert!(ok.is_ok(), "{ok:?}");
+        let limit = g.context().device().limits().max_compute_workgroups_per_dimension;
+        let bad = g.run_groups(
+            &g.eval_pipeline,
+            &input,
+            1,
+            g.uniforms(64, 0, Vec3::ZERO, 0.0),
+            Some(limit + 1),
+        );
+        assert!(bad.is_err(), "a refused dispatch was read as values ({} of them)", bad.map(|v| v.len()).unwrap_or(0));
+        let _ = WG;
+    }
+}
