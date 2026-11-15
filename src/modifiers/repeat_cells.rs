@@ -11,10 +11,12 @@
 //!   ends use the end cell);
 //! * `mirror`: the local coordinate is negated in every other cell, so
 //!   neighbouring copies are reflections of each other across the cell
-//!   boundary. The parity is that of `c − ⌊(n − 1)/2⌋` (of `c` when infinite),
-//!   so the cell holding the origin is never reflected: with an odd count the
-//!   centre cell keeps the child as it is, as the origin cell of the infinite
-//!   repetition does.
+//!   boundary. The parity is that of `c − ⌊(n − 1)/2⌋` (of `c` when infinite):
+//!   with an odd count the centre cell holds the origin and keeps the child as
+//!   it is, as the origin cell of the infinite repetition does; with an even
+//!   count the origin lies on the boundary between the two centre cells, which
+//!   are reflections of each other across it (`round_half_up` puts the origin
+//!   itself in the upper one, the reflected one).
 //!
 //! An axis with spacing 0 is not repeated. So `mirror = false` agrees with
 //! `RepeatInfinite` only on axes with spacing `> 0`: there spacing 0 is not a
@@ -191,10 +193,11 @@ pub fn validate_repeat_cells(
 
 /// The largest cell count per axis (`2^16`)
 ///
-/// With `n` cells the cell index reaches `(n − 1)/2` and the cell boundaries
-/// `±(k + 1/2)·s`; up to `2^16` cells every boundary and index is exact in `f32`
-/// (24-bit significand with room for the half), so the fold stays continuous
-/// and the field keeps its Lipschitz bound.
+/// Up to `2^16` cells every cell index, `(n − 1)/2` and `n − 1` are exact in
+/// `f32`, so the clamp and the centring hold exactly. The cell is chosen from the
+/// rounded `p·(1/s) + (n − 1)/2`, so a point within rounding of a boundary may go
+/// to either neighbouring cell; mirrored, the fold is continuous there and the two
+/// choices give values that differ only by that rounding.
 pub const MAX_CELL_COUNT: u32 = 1 << 16;
 
 /// The cell law on one axis (generic over [`Real`]): `(cell index, local
@@ -222,9 +225,8 @@ fn parity_sign_r<R: Real>(c: R) -> R {
     R::one() - odd * R::splat(2.0)
 }
 
-/// The cell index whose parity decides the mirror: `⌊(n − 1)/2⌋` cells before
-/// the cell holding the origin (none when infinite), so that cell is never
-/// reflected
+/// The cell index whose parity decides the mirror: `⌊(n − 1)/2⌋` (0 when
+/// infinite), so with an odd count the centre cell is not reflected
 #[inline(always)]
 pub const fn mirror_base(count: u32) -> f32 {
     if count == 0 {
