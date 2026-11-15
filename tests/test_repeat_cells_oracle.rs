@@ -167,24 +167,34 @@ fn without_mirror_it_is_repeat_infinite_to_the_bit() {
 
 #[test]
 fn mirrored_field_is_one_lipschitz_across_cell_boundaries() {
-    for child in [contained_child(), wide_child()] {
-        let node = child.repeat_cells(SPACING, None, true).unwrap();
-        let mut pairs = 0;
-        let mut worst = 0.0f32;
-        for &p in &points() {
-            for d in [
-                Vec3::X * 0.013,
-                Vec3::Y * 0.011,
-                Vec3::new(0.007, -0.009, 0.004),
-            ] {
-                let q = p + d;
-                worst = worst.max((eval(&node, p) - eval(&node, q)).abs() / d.length());
-                pairs += 1;
-            }
+    // infinite, an odd and an even count (the points reach past the end cells,
+    // where the end cell's copy continues)
+    for count in [None, Some([3, 3, 1]), Some([4, 2, 1])] {
+        for child in [contained_child(), wide_child()] {
+            lipschitz_one(&child.repeat_cells(SPACING, count, true).unwrap(), count);
         }
-        assert!(pairs > 8000);
-        assert!(worst <= 1.0 + 1e-3, "difference quotient {worst}");
     }
+}
+
+fn lipschitz_one(node: &SdfNode, count: Option<[u32; 3]>) {
+    let mut pairs = 0;
+    let mut worst = 0.0f32;
+    for &p in &points() {
+        for d in [
+            Vec3::X * 0.013,
+            Vec3::Y * 0.011,
+            Vec3::new(0.007, -0.009, 0.004),
+        ] {
+            let q = p + d;
+            worst = worst.max((eval(node, p) - eval(node, q)).abs() / d.length());
+            pairs += 1;
+        }
+    }
+    assert!(pairs > 8000);
+    assert!(
+        worst <= 1.0 + 1e-3,
+        "{count:?}: difference quotient {worst}"
+    );
 }
 
 #[test]
@@ -402,6 +412,72 @@ fn the_asdf_reader_refuses_a_stored_neighbours() {
         let err = alice_sdf::io::load_asdf(&path).unwrap_err().to_string();
         let _ = std::fs::remove_file(&path);
         assert!(err.contains("neighbours"), "{place}: {err}");
+    }
+}
+
+/// The offset of the `variation` byte (`None` = 0) from the start of `tail_pattern`
+const VARIATION_AT: usize = 12 + 3;
+
+/// `bytes` with the `variation` at `at` turned from `None` into `Some(seed 7, scale 0.1)`
+/// (bincode: tag 1, then the `u32` and the `f32`)
+fn with_variation(bytes: &[u8], at: usize) -> Vec<u8> {
+    assert_eq!(bytes[at], 0);
+    let mut out = bytes[..at].to_vec();
+    out.push(1);
+    out.extend_from_slice(&7u32.to_le_bytes());
+    out.extend_from_slice(&0.1f32.to_le_bytes());
+    out.extend_from_slice(&bytes[at + 1..]);
+    out
+}
+
+/// The `.asdf` reader refuses a stored variation (8 bytes inserted, the checksum
+/// recomputed), naming the field, wherever the node sits
+#[test]
+fn the_asdf_reader_refuses_a_stored_variation() {
+    for (place, tree) in placements() {
+        let (path, bytes) = asdf_file(&tree, &format!("{place}_variation"));
+        let header = alice_sdf::io::AsdfHeader::from_bytes(&bytes).unwrap();
+        let start = header.byte_len();
+        let at = tail_positions(&bytes[start..]);
+        assert_eq!(at.len(), 1, "{place}");
+        let body = with_variation(&bytes[start..], at[0] + VARIATION_AT);
+        let mut patched = bytes[..start].to_vec();
+        patched[12..16].copy_from_slice(&crc32fast::hash(&body).to_le_bytes());
+        patched.extend_from_slice(&body);
+        std::fs::write(&path, &patched).unwrap();
+        let err = alice_sdf::io::load_asdf(&path).unwrap_err().to_string();
+        let _ = std::fs::remove_file(&path);
+        assert!(err.contains("variation"), "{place}: {err}");
+    }
+}
+
+/// The I-packet reader refuses a stored variation (8 bytes inserted into the
+/// coefficients, `asdf_len` raised to match), naming the field, wherever the node
+/// sits
+#[cfg(feature = "asp")]
+#[test]
+fn the_i_packet_reader_refuses_a_stored_variation() {
+    use alice_sdf::asp_bridge::{create_sdf_i_packet, decode_sdf_i_packet};
+    for (place, tree) in placements() {
+        let packet = create_sdf_i_packet(&tree, 1).unwrap();
+        let mut payload = packet.as_i_packet().unwrap().clone();
+        let region = &mut payload.regions[0];
+        let coeffs = region.dct_coefficients.as_mut().unwrap();
+        let bytes: Vec<u8> = coeffs.iter().map(|c| c.2 as u8).collect();
+        let at = tail_positions(&bytes);
+        assert_eq!(at.len(), 1, "{place}");
+        let patched = with_variation(&bytes, at[0] + VARIATION_AT);
+        *coeffs = patched
+            .iter()
+            .enumerate()
+            .map(|(i, &b)| (i as u32, 0, f32::from(b)))
+            .collect();
+        let params = region.params.as_mut().unwrap();
+        let len = params.iter_mut().find(|(k, _)| k == "asdf_len").unwrap();
+        len.1 += 8.0;
+        let packet = libasp::AspPacket::create_i_packet(1, payload).unwrap();
+        let err = decode_sdf_i_packet(&packet).unwrap_err();
+        assert!(err.contains("variation"), "{place}: {err}");
     }
 }
 
