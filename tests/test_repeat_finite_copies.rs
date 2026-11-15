@@ -346,8 +346,8 @@ const SITES: &[(&str, usize, &str)] = &[
     ),
     (
         "src/compiled/transpiler_common.rs",
-        1,
-        "GLSL / HLSL / WGSL / MSL emit (checked: every_shader_emit_…)",
+        2,
+        "GLSL / HLSL / WGSL / MSL emit (checked: every_shader_emit_…) and the scale-kind variant list",
     ),
     (
         "src/interval.rs",
@@ -369,9 +369,10 @@ const SITES: &[(&str, usize, &str)] = &[
     ("src/compiled/wgsl/transpiler.rs", 1, "traversal only"),
     (
         "src/eval/mod.rs",
-        4,
-        "descend / traversal (applies modifier_repeat_finite)",
+        6,
+        "descend and eval_material (apply modifier_repeat_finite), variant lists",
     ),
+    ("src/eval/scaled.rs", 1, "variant list"),
     ("src/diff.rs", 2, "tree diff"),
     ("src/llm_schema.rs", 2, "schema text and traversal"),
     ("src/optimize.rs", 2, "rebuilds the node"),
