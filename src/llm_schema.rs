@@ -171,7 +171,8 @@ pub fn schema_summary() -> String {
         SdfCategory::Modifier.count()
     ));
     s.push_str("Bend(strength), Elongate(vec3), RepeatInfinite(spacing), ");
-    s.push_str("RepeatFinite(spacing,count), Mirror(axis), Revolution(offset), ");
+    s.push_str("RepeatFinite(spacing,count), RepeatCells(spacing,count,mirror), ");
+    s.push_str("Mirror(axis), Revolution(offset), ");
     s.push_str("Extrude(height), ...\n");
 
     s

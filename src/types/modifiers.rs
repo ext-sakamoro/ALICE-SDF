@@ -39,20 +39,21 @@ impl SdfNode {
     ///
     /// [`RepeatCellsError::Spacing`](crate::modifiers::RepeatCellsError::Spacing) for a
     /// negative or non-finite spacing component or an all-zero spacing,
-    /// [`RepeatCellsError::Count`](crate::modifiers::RepeatCellsError::Count) for a zero cell count.
+    /// [`RepeatCellsError::Count`](crate::modifiers::RepeatCellsError::Count) for a zero cell count or
+    /// one above [`MAX_CELL_COUNT`](crate::modifiers::MAX_CELL_COUNT).
     pub fn repeat_cells(
         self,
         spacing: Vec3,
         count: Option<[u32; 3]>,
         mirror: bool,
     ) -> Result<Self, crate::modifiers::RepeatCellsError> {
-        crate::modifiers::validate_repeat_cells(spacing, count, false, None)?;
+        crate::modifiers::validate_repeat_cells(spacing, count)?;
         Ok(Self::RepeatCells {
             child: Arc::new(self),
             spacing,
             count,
             mirror,
-            neighbours: false,
+            neighbours: crate::modifiers::CellNeighbours::OFF,
             variation: None,
         })
     }
@@ -61,18 +62,12 @@ impl SdfNode {
     ///
     /// # Errors
     ///
-    /// As [`Self::repeat_cells`], and
-    /// [`RepeatCellsError::NotYetSupported`](crate::modifiers::RepeatCellsError::NotYetSupported)
-    /// for `neighbours` or `variation` (a literal node can carry them).
+    /// As [`Self::repeat_cells`] (a literal node can carry any spacing and count).
     pub fn validate_repeat_cells(&self) -> Result<(), crate::modifiers::RepeatCellsError> {
         match self {
-            Self::RepeatCells {
-                spacing,
-                count,
-                neighbours,
-                variation,
-                ..
-            } => crate::modifiers::validate_repeat_cells(*spacing, *count, *neighbours, *variation),
+            Self::RepeatCells { spacing, count, .. } => {
+                crate::modifiers::validate_repeat_cells(*spacing, *count)
+            }
             _ => Ok(()),
         }
     }

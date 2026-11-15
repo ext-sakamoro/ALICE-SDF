@@ -1420,7 +1420,8 @@ pub enum SdfNode {
     },
     /// Cell repetition with optional mirroring (odd cells reflected, so copies meet
     /// seamlessly); law in [`crate::modifiers::modifier_repeat_cells`]. `neighbours` and
-    /// `variation` are present for the stored form and refused until their law lands.
+    /// `variation` are present for the stored form; their types hold only the off state until
+    /// their law lands.
     /// Appended last (stored indices of earlier variants are fixed).
     RepeatCells {
         /// Child node
@@ -1432,7 +1433,7 @@ pub enum SdfNode {
         /// Reflect odd cells
         mirror: bool,
         /// Minimum over the neighbouring cells (not yet supported)
-        neighbours: bool,
+        neighbours: crate::modifiers::CellNeighbours,
         /// Per-cell variation (not yet supported)
         variation: Option<crate::modifiers::CellVariation>,
     },

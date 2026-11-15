@@ -9,10 +9,18 @@
 //! * `n` cells centred on the origin: `c = clamp(round_half_up(p·(1/s) + h),
 //!   0, n − 1)` with `h = (n − 1)/2`, local `q = p − (c − h)·s` (points past the
 //!   ends use the end cell);
-//! * `mirror`: in odd cells the local coordinate is negated, so neighbouring
-//!   copies are reflections of each other across the cell boundary.
+//! * `mirror`: the local coordinate is negated in every other cell, so
+//!   neighbouring copies are reflections of each other across the cell
+//!   boundary. The parity is that of `c − ⌊(n − 1)/2⌋` (of `c` when infinite),
+//!   so the cell holding the origin is never reflected: with an odd count the
+//!   centre cell keeps the child as it is, as the origin cell of the infinite
+//!   repetition does.
 //!
-//! An axis with spacing 0 is not repeated.
+//! An axis with spacing 0 is not repeated. So `mirror = false` agrees with
+//! `RepeatInfinite` only on axes with spacing `> 0`: there spacing 0 is not a
+//! valid repetition (it divides by 0), here it leaves the axis as it is. A
+//! finite count is not `RepeatFinite`'s law either (`n` cells centred on the
+//! origin here, a clamped cell index there).
 //!
 //! **Exactness.** Mirrored repetition of a child that lies inside its cell is
 //! exact: the point and the child are on the same side of every mirror plane
@@ -27,7 +35,10 @@
 //! **Not yet supported** (fields present so that the stored form does not
 //! change when they arrive): `neighbours` (minimum over the neighbouring cells)
 //! and `variation` (per-cell variation from an integer hash of the cell index).
-//! Every entry refuses them with [`RepeatCellsError::NotYetSupported`].
+//! Their types hold only the off state: [`CellNeighbours`] has the one value
+//! [`CellNeighbours::OFF`] and [`CellVariation`] has no value, so a node with
+//! either field set cannot be built; every reader (JSON, `.asdf`, the I-packet)
+//! refuses a stored one when it decodes it, wherever the node sits in the tree.
 //!
 //! The same domain-repetition methods are also known from Inigo Quilez's
 //! articles (iquilezles.org/articles/sdfrepetition).
@@ -38,14 +49,66 @@ use crate::compiled::real::{Real, Vec3R};
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
+/// Whether a [`SdfNode::RepeatCells`](crate::SdfNode::RepeatCells) takes the
+/// minimum over the neighbouring cells (not yet supported).
+///
+/// Only [`CellNeighbours::OFF`] can be built; stored, it is the `bool` `false`
+/// (the field keeps its stored form for when the law lands), and decoding a
+/// stored `true` fails.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize)]
+#[serde(transparent)]
+pub struct CellNeighbours(bool);
+
+impl CellNeighbours {
+    /// The one value: no neighbour minimum
+    pub const OFF: Self = Self(false);
+
+    /// Whether the neighbour minimum is on (always `false` until its law lands)
+    #[must_use]
+    pub const fn is_on(self) -> bool {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for CellNeighbours {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        if bool::deserialize(d)? {
+            Err(serde::de::Error::custom(RepeatCellsError::NotYetSupported(
+                "neighbours",
+            )))
+        } else {
+            Ok(Self::OFF)
+        }
+    }
+}
+
 /// Per-cell variation of a [`SdfNode::RepeatCells`](crate::SdfNode::RepeatCells)
-/// (not yet supported: refused by every entry until the neighbour minimum lands).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// (not yet supported).
+///
+/// It has no value yet, so the node's `variation` is always `None`; decoding a
+/// stored one fails. Its stored form (seed `u32`, scale `f32`) is fixed so that
+/// the field does not change when the law lands.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct CellVariation {
     /// Seed of the integer hash of the cell index
-    pub seed: u32,
+    seed: u32,
     /// Amplitude of the per-cell scale (`1 ± scale`)
-    pub scale: f32,
+    scale: f32,
+}
+
+impl<'de> Deserialize<'de> for CellVariation {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[allow(dead_code, reason = "read only to consume the stored form")]
+        struct Stored {
+            seed: u32,
+            scale: f32,
+        }
+        let _ = Stored::deserialize(d)?;
+        Err(serde::de::Error::custom(RepeatCellsError::NotYetSupported(
+            "variation",
+        )))
+    }
 }
 
 /// Why a [`SdfNode::RepeatCells`](crate::SdfNode::RepeatCells) was refused.
@@ -55,7 +118,8 @@ pub enum RepeatCellsError {
     Spacing(String),
     /// A cell count is 0
     Count(String),
-    /// A field whose law has not landed yet (`neighbours`, `variation`)
+    /// A stored field whose law has not landed yet (`neighbours`, `variation`),
+    /// refused when a reader decodes it
     NotYetSupported(&'static str),
 }
 
@@ -78,13 +142,11 @@ impl std::error::Error for RepeatCellsError {}
 /// # Errors
 ///
 /// [`RepeatCellsError::Spacing`] for a negative or non-finite spacing component
-/// or an all-zero spacing; [`RepeatCellsError::Count`] for a zero cell count;
-/// [`RepeatCellsError::NotYetSupported`] for `neighbours` or `variation`.
+/// or an all-zero spacing; [`RepeatCellsError::Count`] for a zero cell count or
+/// one above [`MAX_CELL_COUNT`].
 pub fn validate_repeat_cells(
     spacing: Vec3,
     count: Option<[u32; 3]>,
-    neighbours: bool,
-    variation: Option<CellVariation>,
 ) -> Result<(), RepeatCellsError> {
     for (axis, s) in ["x", "y", "z"].iter().zip(spacing.to_array()) {
         if !s.is_finite() || s < 0.0 {
@@ -100,15 +162,20 @@ pub fn validate_repeat_cells(
         if c.contains(&0) {
             return Err(RepeatCellsError::Count(format!("{c:?} has a 0")));
         }
-    }
-    if neighbours {
-        return Err(RepeatCellsError::NotYetSupported("neighbours"));
-    }
-    if variation.is_some() {
-        return Err(RepeatCellsError::NotYetSupported("variation"));
+        if c.iter().any(|&n| n > MAX_CELL_COUNT) {
+            return Err(RepeatCellsError::Count(format!(
+                "{c:?} has a count above {MAX_CELL_COUNT}"
+            )));
+        }
     }
     Ok(())
 }
+
+/// The largest cell count per axis: with `n` cells the cell index reaches
+/// `(n − 1)/2` and the cell boundaries `±(k + 1/2)·s`; up to `2^16` cells every
+/// boundary and index is exact in `f32` (24-bit significand with room for the
+/// half), so the fold stays continuous and the field keeps its Lipschitz bound
+pub const MAX_CELL_COUNT: u32 = 1 << 16;
 
 /// The cell law on one axis (generic over [`Real`]): `(cell index, local
 /// coordinate before mirroring)`. `count == 0` is the infinite axis.
@@ -138,13 +205,25 @@ fn parity_sign_r<R: Real>(c: R) -> R {
 /// The cell and mirror law on one axis (generic over [`Real`]): the local
 /// coordinate; `s <= 0` leaves the coordinate unchanged.
 #[inline(always)]
+/// The cell index whose parity decides the mirror: `⌊(n − 1)/2⌋` cells before
+/// the cell holding the origin (none when infinite), so that cell is never
+/// reflected
+#[inline(always)]
+pub(crate) const fn mirror_base(count: u32) -> f32 {
+    if count == 0 {
+        0.0
+    } else {
+        ((count - 1) / 2) as f32
+    }
+}
+
 fn axis_r<R: Real>(p: R, s: f32, count: u32, mirror: bool) -> R {
     if s.is_nan() || s <= 0.0 {
         return p;
     }
     let (c, q) = axis_cell_r(p, s, count);
     if mirror {
-        q * parity_sign_r(c)
+        q * parity_sign_r(c - R::splat(mirror_base(count)))
     } else {
         q
     }
@@ -194,7 +273,7 @@ pub fn repeat_cells_mirror_sign(
     let c = count.unwrap_or([0; 3]);
     let sign = |p: f32, s: f32, n: u32| -> f32 {
         if s > 0.0 {
-            parity_sign_r::<f32>(axis_cell_r::<f32>(p, s, n).0)
+            parity_sign_r::<f32>(axis_cell_r::<f32>(p, s, n).0 - mirror_base(n))
         } else {
             1.0
         }
@@ -212,15 +291,8 @@ pub fn repeat_cells_mirror_sign(
 pub fn check_repeat_cells_tree(root: &crate::SdfNode) -> Result<(), RepeatCellsError> {
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
-        if let crate::SdfNode::RepeatCells {
-            spacing,
-            count,
-            neighbours,
-            variation,
-            ..
-        } = node
-        {
-            validate_repeat_cells(*spacing, *count, *neighbours, *variation)?;
+        if let crate::SdfNode::RepeatCells { spacing, count, .. } = node {
+            validate_repeat_cells(*spacing, *count)?;
         }
         stack.extend(crate::diff::node_children(node));
     }

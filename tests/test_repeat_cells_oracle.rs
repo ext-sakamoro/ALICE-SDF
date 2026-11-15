@@ -20,22 +20,21 @@
 //! * the field is continuous across cell boundaries and 1-Lipschitz for a
 //!   1-Lipschitz child (sampled difference quotients);
 //! * tree and compiled bytecode agree to the bit;
-//! * `neighbours` / `variation` (batch 2) are refused with a typed error at
-//!   construction, in the readers and by the compiler; the evaluators that
-//!   cannot return an error give no value (NaN distance and gradient, an
-//!   unbounded interval, a NaN in each shader); an invalid spacing or count is
-//!   refused.
-//!
-//! The three `SdfNode::RepeatCells { .. }` literals below are deliberate: they
-//! bypass the checked constructor to show that every other entry (validation,
-//! readers, compiler, evaluators) still refuses the batch-2 fields.
+//! * with an odd count the centre cell (the one holding the origin) is not
+//!   flipped, as the origin cell of the infinite repetition is not;
+//! * `neighbours` / `variation` (batch 2) cannot be set: their types hold only
+//!   the off state, which is stored as a plain `false` / `None`, and every
+//!   reader (JSON, the `.asdf` body, the I-packet) refuses a stored one with
+//!   the field's name, wherever the node sits (under a union, under a metric
+//!   blend); an invalid spacing or count is refused at construction, in the
+//!   readers and by the compiler.
 #![allow(
     clippy::disallowed_methods,
     reason = "test code: the reference is built with the platform libm"
 )]
 #![allow(clippy::float_cmp)]
 
-use alice_sdf::modifiers::{CellVariation, RepeatCellsError};
+use alice_sdf::modifiers::{CellNeighbours, RepeatCellsError, MAX_CELL_COUNT};
 use alice_sdf::prelude::*;
 
 /// A child off-centre in its cell (so that mirroring changes the shape) and
@@ -53,12 +52,14 @@ fn wide_child() -> SdfNode {
 
 const SPACING: Vec3 = Vec3::new(2.0, 1.5, 0.0);
 
-/// (cell index c, centre in units of spacing) for every copy of one axis.
+/// (mirror parity index, centre in units of spacing) for every copy of one
+/// axis. The parity index counts cells from the one holding the origin
+/// (`c − ⌊(n − 1)/2⌋`, or `c` when infinite), so that cell is never flipped.
 fn copies(n: Option<u32>) -> Vec<(i32, f32)> {
     match n {
         None => (-8..=8).map(|c| (c, c as f32)).collect(),
         Some(n) => (0..n as i32)
-            .map(|c| (c, c as f32 - (n as f32 - 1.0) * 0.5))
+            .map(|c| (c - (n as i32 - 1) / 2, c as f32 - (n as f32 - 1.0) * 0.5))
             .collect(),
     }
 }
@@ -228,146 +229,201 @@ fn invalid_parameters_are_refused() {
     ));
 }
 
-fn literal(neighbours: bool, variation: Option<CellVariation>) -> SdfNode {
-    SdfNode::RepeatCells {
-        child: std::sync::Arc::new(contained_child()),
-        spacing: SPACING,
-        count: None,
-        mirror: true,
+fn supported() -> SdfNode {
+    contained_child().repeat_cells(SPACING, None, true).unwrap()
+}
+
+/// A count above `MAX_CELL_COUNT` is refused (past it the cell boundaries are no
+/// longer exact in `f32`), the bound itself is accepted.
+#[test]
+fn the_cell_count_is_bounded() {
+    let c = contained_child;
+    assert!(c()
+        .repeat_cells(SPACING, Some([MAX_CELL_COUNT, 1, 1]), true)
+        .is_ok());
+    assert!(matches!(
+        c().repeat_cells(SPACING, Some([MAX_CELL_COUNT + 1, 1, 1]), true),
+        Err(RepeatCellsError::Count(_))
+    ));
+}
+
+/// With an odd count the centre cell holds the child unflipped: there the node
+/// equals the child itself (and the infinite repetition's origin cell does too).
+#[test]
+fn the_centre_cell_is_not_flipped() {
+    for count in [Some([3, 3, 1]), Some([5, 1, 1]), Some([7, 3, 1]), None] {
+        let node = contained_child()
+            .repeat_cells(SPACING, count, true)
+            .unwrap();
+        for p in [
+            Vec3::new(0.45, 0.2, 0.0),
+            Vec3::new(0.7, 0.3, 0.1),
+            Vec3::new(-0.6, -0.5, 0.2),
+        ] {
+            assert_eq!(eval(&node, p), eval(&contained_child(), p), "{count:?} {p}");
+        }
+    }
+}
+
+/// `neighbours` and `variation` hold only the off state, and the off state is
+/// stored as a plain `false` and `None` (the stored form does not change when
+/// the law lands)
+#[test]
+fn the_off_state_is_stored_as_false_and_none() {
+    let node = supported();
+    let SdfNode::RepeatCells {
         neighbours,
         variation,
-    }
-}
-
-/// Batch 2 fields: present in the node (the stored form does not change when
-/// they arrive), refused until then — by validation, the readers and the compiler.
-#[test]
-fn neighbours_and_variation_are_refused_until_they_are_implemented() {
-    let node = literal(true, None);
-    let varied = literal(
-        false,
-        Some(CellVariation {
-            seed: 7,
-            scale: 0.1,
-        }),
+        ..
+    } = &node
+    else {
+        unreachable!()
+    };
+    assert_eq!(*neighbours, CellNeighbours::OFF);
+    assert!(!neighbours.is_on());
+    assert!(variation.is_none());
+    let json = alice_sdf::io::to_json_string(&SdfTree::new(node.clone())).unwrap();
+    assert!(
+        json.contains("\"neighbours\": false") || json.contains("\"neighbours\":false"),
+        "{json}"
     );
-    for n in [&node, &varied] {
-        assert!(matches!(
-            n.validate_repeat_cells(),
-            Err(RepeatCellsError::NotYetSupported(_))
-        ));
+    assert!(
+        json.contains("\"variation\": null") || json.contains("\"variation\":null"),
+        "{json}"
+    );
+    // the binary body: ... spacing, count None (0), mirror (1), neighbours (0), variation None (0)
+    let body = asdf_body(&SdfTree::new(node));
+    assert_eq!(tail_positions(&body).len(), 1);
+}
+
+/// The bytes after the root `RepeatCells`'s spacing: count `None`, mirror,
+/// neighbours, variation `None`
+fn tail_pattern() -> Vec<u8> {
+    let mut v = Vec::new();
+    for x in SPACING.to_array() {
+        v.extend_from_slice(&x.to_le_bytes());
     }
+    v.extend_from_slice(&[0, 1, 0, 0]);
+    v
+}
+
+/// Where `tail_pattern` starts in `bytes`
+fn tail_positions(bytes: &[u8]) -> Vec<usize> {
+    let pat = tail_pattern();
+    bytes
+        .windows(pat.len())
+        .enumerate()
+        .filter(|(_, w)| *w == pat.as_slice())
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// The offset of the `neighbours` byte from the start of `tail_pattern`
+const NEIGHBOURS_AT: usize = 12 + 2;
+
+fn asdf_file(tree: &SdfTree, name: &str) -> (std::path::PathBuf, Vec<u8>) {
+    let path = std::env::temp_dir().join(format!(
+        "alice_sdf_repeat_cells_{}_{name}.asdf",
+        std::process::id()
+    ));
+    alice_sdf::io::save_asdf(tree, &path).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    (path, bytes)
+}
+
+fn asdf_body(tree: &SdfTree) -> Vec<u8> {
+    let (path, bytes) = asdf_file(tree, "body");
+    let _ = std::fs::remove_file(&path);
+    let header = alice_sdf::io::AsdfHeader::from_bytes(&bytes).unwrap();
+    bytes[header.byte_len()..].to_vec()
+}
+
+/// The trees the readers are given: the node alone, under a union, and under a
+/// metric blend (whose children an earlier tree walk skipped)
+fn placements() -> Vec<(&'static str, SdfTree)> {
+    vec![
+        ("alone", SdfTree::new(supported())),
+        (
+            "union",
+            SdfTree::new(SdfNode::sphere(0.5).union(supported())),
+        ),
+        (
+            "metric_blend",
+            SdfTree::new(SdfNode::metric_blend(
+                SdfNode::sphere(0.5),
+                supported(),
+                Vec3::ZERO,
+                1.0,
+                0.25,
+            )),
+        ),
+    ]
+}
+
+/// The JSON reader refuses a stored `neighbours: true` and a stored variation,
+/// naming the field, wherever the node sits; the same text with the off state
+/// loads
+#[test]
+fn the_json_reader_refuses_a_stored_neighbours_or_variation() {
     use alice_sdf::io::{from_json_string, to_json_string};
-    for n in [&node, &varied] {
-        let json = to_json_string(&SdfTree::new(n.clone())).unwrap();
-        assert!(
-            from_json_string(&json).is_err(),
-            "reader accepted a batch-2 field"
+    for (place, tree) in placements() {
+        let json = to_json_string(&tree).unwrap();
+        assert!(from_json_string(&json).is_ok(), "{place}");
+        let on = json.replacen("\"neighbours\": false", "\"neighbours\": true", 1);
+        assert_ne!(on, json, "{place}: no neighbours field in {json}");
+        let err = from_json_string(&on).unwrap_err().to_string();
+        assert!(err.contains("neighbours"), "{place}: {err}");
+        let varied = json.replacen(
+            "\"variation\": null",
+            "\"variation\": {\"seed\": 7, \"scale\": 0.1}",
+            1,
         );
-    }
-    for (i, n) in [&node, &varied].into_iter().enumerate() {
-        let path = std::env::temp_dir().join(format!(
-            "alice_sdf_repeat_cells_{}_{i}.asdf",
-            std::process::id()
-        ));
-        alice_sdf::io::save_asdf(&SdfTree::new(n.clone()), &path).unwrap();
-        let loaded = alice_sdf::io::load_asdf(&path);
-        let _ = std::fs::remove_file(&path);
-        assert!(loaded.is_err(), "binary reader accepted a batch-2 field");
-    }
-    for n in [&node, &varied] {
-        assert!(CompiledSdf::try_compile(n).is_err());
+        assert_ne!(varied, json, "{place}");
+        let err = from_json_string(&varied).unwrap_err().to_string();
+        assert!(err.contains("variation"), "{place}: {err}");
     }
 }
 
-/// The I-packet reader refuses the batch-2 fields too.
+/// The `.asdf` reader refuses a stored `neighbours: true` (the byte flipped, the
+/// checksum recomputed so only the field differs), naming the field, wherever
+/// the node sits
+#[test]
+fn the_asdf_reader_refuses_a_stored_neighbours() {
+    for (place, tree) in placements() {
+        let (path, mut bytes) = asdf_file(&tree, place);
+        assert!(alice_sdf::io::load_asdf(&path).is_ok(), "{place}");
+        let header = alice_sdf::io::AsdfHeader::from_bytes(&bytes).unwrap();
+        let start = header.byte_len();
+        let at = tail_positions(&bytes[start..]);
+        assert_eq!(at.len(), 1, "{place}");
+        bytes[start + at[0] + NEIGHBOURS_AT] = 1;
+        let crc = crc32fast::hash(&bytes[start..]);
+        bytes[12..16].copy_from_slice(&crc.to_le_bytes());
+        std::fs::write(&path, &bytes).unwrap();
+        let err = alice_sdf::io::load_asdf(&path).unwrap_err().to_string();
+        let _ = std::fs::remove_file(&path);
+        assert!(err.contains("neighbours"), "{place}: {err}");
+    }
+}
+
+/// The I-packet reader refuses a stored `neighbours: true` (one coefficient
+/// flipped in an otherwise valid packet), naming the field, wherever the node
+/// sits
 #[cfg(feature = "asp")]
 #[test]
-fn i_packet_reader_refuses_neighbours_and_variation() {
+fn the_i_packet_reader_refuses_a_stored_neighbours() {
     use alice_sdf::asp_bridge::{create_sdf_i_packet, decode_sdf_i_packet};
-    for n in [
-        literal(true, None),
-        literal(
-            false,
-            Some(CellVariation {
-                seed: 7,
-                scale: 0.1,
-            }),
-        ),
-    ] {
-        let packet = create_sdf_i_packet(&SdfTree::new(n), 1).unwrap();
-        assert!(decode_sdf_i_packet(&packet).is_err());
-    }
-    // the same packet path accepts a supported node
-    let ok = contained_child().repeat_cells(SPACING, None, true).unwrap();
-    let packet = create_sdf_i_packet(&SdfTree::new(ok), 1).unwrap();
-    assert!(decode_sdf_i_packet(&packet).is_ok());
-}
-
-/// The evaluators that cannot return an error (a direct enum literal is not
-/// stopped at construction) give "no value" for the batch-2 fields instead of
-/// the single-cell value with the field ignored: the tree distance and gradient
-/// are NaN (and the NaN reaches a caller through a transform), the interval is
-/// unbounded, and each shader returns a quiet NaN for the node. The checked
-/// entries (construction, readers, compile) refuse with an error, above.
-#[test]
-fn the_evaluators_give_no_value_for_neighbours_and_variation() {
-    use alice_sdf::interval::{eval_interval, Vec3Interval};
-    let supported = contained_child().repeat_cells(SPACING, None, true).unwrap();
-    let p = Vec3::new(0.3, -0.2, 0.1);
-    assert!(eval(&supported, p).is_finite());
-    for n in [
-        literal(true, None),
-        literal(
-            false,
-            Some(CellVariation {
-                seed: 7,
-                scale: 0.1,
-            }),
-        ),
-    ] {
-        assert!(eval(&n, p).is_nan());
-        assert!(
-            eval(&n.clone().translate(1.0, 0.0, 0.0), p).is_nan(),
-            "NaN lost through a transform"
-        );
-        assert!(eval_gradient(&n, p).is_nan());
-        let iv = eval_interval(
-            &n,
-            Vec3Interval::from_bounds(Vec3::splat(-1.0), Vec3::splat(1.0)),
-        );
-        assert!(
-            iv.lo == f32::NEG_INFINITY && iv.hi == f32::INFINITY,
-            "{iv:?}"
-        );
-        #[cfg(any(feature = "glsl", feature = "hlsl", feature = "gpu"))]
-        shader_nan(&n, &supported);
-    }
-}
-
-/// Each shader returns a quiet NaN for a node with the batch-2 fields, and the
-/// supported form has none (compiled with a shader feature; the feature arms run in CI)
-#[cfg(any(feature = "glsl", feature = "hlsl", feature = "gpu"))]
-fn shader_nan(n: &SdfNode, supported: &SdfNode) {
-    #[cfg(feature = "glsl")]
-    {
-        use alice_sdf::compiled::{GlslShader, GlslTranspileMode};
-        let t = |x: &SdfNode| GlslShader::transpile(x, GlslTranspileMode::Hardcoded).source;
-        assert!(t(n).contains("uintBitsToFloat(0x7fc00000u)"), "GLSL");
-        assert!(!t(supported).contains("0x7fc00000u"));
-    }
-    #[cfg(feature = "hlsl")]
-    {
-        use alice_sdf::compiled::{HlslShader, HlslTranspileMode};
-        let t = |x: &SdfNode| HlslShader::transpile(x, HlslTranspileMode::Hardcoded).source;
-        assert!(t(n).contains("asfloat(0x7fc00000u)"), "HLSL");
-        assert!(!t(supported).contains("0x7fc00000u"));
-    }
-    #[cfg(feature = "gpu")]
-    {
-        use alice_sdf::compiled::{TranspileMode, WgslShader};
-        let t = |x: &SdfNode| WgslShader::transpile(x, TranspileMode::Hardcoded).source;
-        assert!(t(n).contains("bitcast<f32>(0x7fc00000u)"), "WGSL");
-        assert!(!t(supported).contains("0x7fc00000u"));
+    for (place, tree) in placements() {
+        let packet = create_sdf_i_packet(&tree, 1).unwrap();
+        assert!(decode_sdf_i_packet(&packet).is_ok(), "{place}");
+        let mut payload = packet.as_i_packet().unwrap().clone();
+        let coeffs = payload.regions[0].dct_coefficients.as_mut().unwrap();
+        let bytes: Vec<u8> = coeffs.iter().map(|c| c.2 as u8).collect();
+        let at = tail_positions(&bytes);
+        assert_eq!(at.len(), 1, "{place}");
+        coeffs[at[0] + NEIGHBOURS_AT].2 = 1.0;
+        let patched = libasp::AspPacket::create_i_packet(1, payload).unwrap();
+        let err = decode_sdf_i_packet(&patched).unwrap_err();
+        assert!(err.contains("neighbours"), "{place}: {err}");
     }
 }

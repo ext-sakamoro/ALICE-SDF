@@ -1228,13 +1228,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
             spacing,
             count,
             mirror,
-            neighbours,
-            variation,
+            ..
         } => {
-            // the fields whose law has not landed: nothing is known about the value
-            if *neighbours || variation.is_some() {
-                return Interval::entire();
-            }
             let n = count.unwrap_or([0; 3]);
             let axis = |iv: Interval, s: f32, cnt: u32| {
                 if s.is_nan() || s <= 0.0 {
@@ -1254,7 +1249,8 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 let (c0, c1) = (cell(iv.lo), cell(iv.hi));
                 if c0 == c1 {
                     let q = Interval::new(iv.lo - (c0 - h) * s, iv.hi - (c0 - h) * s);
-                    let odd = c0 - (c0 * 0.5).floor() * 2.0 != 0.0;
+                    let k = c0 - crate::modifiers::mirror_base(cnt);
+                    let odd = k - (k * 0.5).floor() * 2.0 != 0.0;
                     if *mirror && odd {
                         Interval::new(-q.hi, -q.lo)
                     } else {

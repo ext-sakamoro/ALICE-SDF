@@ -1043,7 +1043,7 @@ impl Compiler {
                 mirror,
                 ..
             } => {
-                // neighbours / variation are refused by validate_for_compile
+                // spacing and count were checked by validate_for_compile
                 let inst_idx = self.instructions.len();
                 self.instructions
                     .push(Instruction::repeat_cells(*spacing, *count, *mirror));
@@ -1759,7 +1759,8 @@ enum Children<'a> {
 /// Check one node; say which children are checked next
 fn validate_node(node: &SdfNode) -> Children<'_> {
     match node {
-        // neighbours / variation have no bytecode law yet: refused, not ignored
+        // a literal node can carry an invalid spacing or count (the batch-2 fields
+        // cannot be set): refused with the RepeatCellsError's text
         SdfNode::RepeatCells { child, .. } => {
             if let Err(e) = node.validate_repeat_cells() {
                 return Children::Refused(CompileError::UnsupportedPrimitive(e.to_string()));

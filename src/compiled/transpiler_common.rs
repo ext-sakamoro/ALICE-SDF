@@ -55,15 +55,8 @@ const fn unsupported_name(node: &SdfNode) -> Option<&'static str> {
     // the release after 5.0.0 while this returned `None`;
     // `tests/test_node_backend_matrix.rs` now fails when an arm forwards the
     // child of a node that changes the distance and this list is silent.
-    match node {
-        // neighbours / variation have no shader law yet (refused, not ignored)
-        SdfNode::RepeatCells {
-            neighbours,
-            variation,
-            ..
-        } if *neighbours || variation.is_some() => Some("RepeatCells (neighbours / variation)"),
-        _ => None,
-    }
+    let _ = node;
+    None
 }
 
 /// Names of the nodes in `node`'s tree that the transpilers pass through
@@ -196,8 +189,6 @@ pub trait ShaderLang: private::Sealed + 'static {
     }
     /// "f32(x)" / "float(x)"
     fn cast_float(expr: &str) -> String;
-    /// A quiet NaN (bits 0x7fc00000): the value of a node the shader has no law for
-    fn nan_expr() -> &'static str;
     /// Scalar select: `cond ? a : b`, used where the CPU law is a branch-free
     /// `select` so the tie / sign convention matches. Default is the C-style
     /// ternary (GLSL / HLSL); WGSL overrides with `select(b, a, cond)`.
@@ -3818,19 +3809,12 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 spacing,
                 count,
                 mirror,
-                neighbours,
-                variation,
+                ..
             } => {
-                if *neighbours || variation.is_some() {
-                    // no shader law yet (shader_unsupported_nodes names it): NaN, not the
-                    // single-cell value with the field ignored
-                    let v = self.next_var();
-                    code.push_str(&L::decl_float(&v, L::nan_expr()));
-                    return v;
-                }
                 // the law of modifiers::repeat_cells, operation for operation: per repeated axis
                 // c = floor(p·(1/s) [+ h] + 0.5) (clamped to [0, n−1] when finite),
-                // q = p − c·s (or p − (c − h)·s), and q·(1 − 2·(c − 2·floor(c/2))) when mirrored
+                // q = p − c·s (or p − (c − h)·s), and, when mirrored, with k = c − ⌊(n−1)/2⌋
+                // (k = c when infinite), q·(1 − 2·(k − 2·floor(k/2)))
                 let c = count.unwrap_or([0; 3]);
                 let comps = ["x", "y", "z"];
                 let mut axes = Vec::with_capacity(3);
@@ -3858,10 +3842,19 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                         code.push_str(&L::decl_float(&q, &format!("{pc} - ({cell} - {h}) * {sv}")));
                     }
                     if *mirror {
+                        let base = crate::modifiers::mirror_base(c[i]);
+                        let k = if base == 0.0 {
+                            cell.clone()
+                        } else {
+                            let k = self.next_var();
+                            let b = self.param(base);
+                            code.push_str(&L::decl_float(&k, &format!("{cell} - {b}")));
+                            k
+                        };
                         let m = self.next_var();
                         code.push_str(&L::decl_float(
                             &m,
-                            &format!("{q} * (1.0 - ({cell} - floor({cell} * 0.5) * 2.0) * 2.0)"),
+                            &format!("{q} * (1.0 - ({k} - floor({k} * 0.5) * 2.0) * 2.0)"),
                         ));
                         axes.push(m);
                     } else {

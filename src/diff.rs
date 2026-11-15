@@ -223,6 +223,8 @@ fn get_children(node: &SdfNode) -> Vec<&SdfNode> {
         | SdfNode::ExpSmoothIntersection { a, b, .. }
         | SdfNode::ExpSmoothSubtraction { a, b, .. }
         | SdfNode::SmoothBlend { a, b, .. } => vec![a.as_ref(), b.as_ref()],
+        // `inner` first, as the evaluators read them
+        SdfNode::MetricBlend { inner, outer, .. } => vec![inner.as_ref(), outer.as_ref()],
 
         // Single-child transforms and modifiers
         SdfNode::Translate { child, .. }
@@ -261,8 +263,86 @@ fn get_children(node: &SdfNode) -> Vec<&SdfNode> {
         | SdfNode::WithMaterial { child, .. }
         | SdfNode::Pose { child } => vec![child.as_ref()],
 
-        // Leaf nodes: no children
-        _ => vec![],
+        // Leaf nodes: no children (listed one by one: a new node with children must be
+        // added above, or the match fails to compile)
+        SdfNode::Sphere { .. }
+        | SdfNode::Box3d { .. }
+        | SdfNode::Cylinder { .. }
+        | SdfNode::Torus { .. }
+        | SdfNode::Plane { .. }
+        | SdfNode::Capsule { .. }
+        | SdfNode::Cone { .. }
+        | SdfNode::Ellipsoid { .. }
+        | SdfNode::RoundedCone { .. }
+        | SdfNode::Pyramid { .. }
+        | SdfNode::Octahedron { .. }
+        | SdfNode::HexPrism { .. }
+        | SdfNode::Link { .. }
+        | SdfNode::Triangle { .. }
+        | SdfNode::Bezier { .. }
+        | SdfNode::RoundedBox { .. }
+        | SdfNode::CappedCone { .. }
+        | SdfNode::CappedTorus { .. }
+        | SdfNode::RoundedCylinder { .. }
+        | SdfNode::TriangularPrism { .. }
+        | SdfNode::CutSphere { .. }
+        | SdfNode::CutHollowSphere { .. }
+        | SdfNode::DeathStar { .. }
+        | SdfNode::SolidAngle { .. }
+        | SdfNode::Rhombus { .. }
+        | SdfNode::Horseshoe { .. }
+        | SdfNode::Vesica { .. }
+        | SdfNode::InfiniteCylinder { .. }
+        | SdfNode::InfiniteCone { .. }
+        | SdfNode::Gyroid { .. }
+        | SdfNode::MetricBall { .. }
+        | SdfNode::Heart { .. }
+        | SdfNode::Tube { .. }
+        | SdfNode::Barrel { .. }
+        | SdfNode::Diamond { .. }
+        | SdfNode::ChamferedCube { .. }
+        | SdfNode::SchwarzP { .. }
+        | SdfNode::Superellipsoid { .. }
+        | SdfNode::RoundedX { .. }
+        | SdfNode::Pie { .. }
+        | SdfNode::Trapezoid { .. }
+        | SdfNode::Parallelogram { .. }
+        | SdfNode::Tunnel { .. }
+        | SdfNode::UnevenCapsule { .. }
+        | SdfNode::Egg { .. }
+        | SdfNode::ArcShape { .. }
+        | SdfNode::Moon { .. }
+        | SdfNode::CrossShape { .. }
+        | SdfNode::BlobbyCross { .. }
+        | SdfNode::ParabolaSegment { .. }
+        | SdfNode::RegularPolygon { .. }
+        | SdfNode::StarPolygon { .. }
+        | SdfNode::Stairs { .. }
+        | SdfNode::Helix { .. }
+        | SdfNode::Tetrahedron { .. }
+        | SdfNode::Dodecahedron { .. }
+        | SdfNode::Icosahedron { .. }
+        | SdfNode::TruncatedOctahedron { .. }
+        | SdfNode::TruncatedIcosahedron { .. }
+        | SdfNode::BoxFrame { .. }
+        | SdfNode::DiamondSurface { .. }
+        | SdfNode::Neovius { .. }
+        | SdfNode::Lidinoid { .. }
+        | SdfNode::IWP { .. }
+        | SdfNode::FRD { .. }
+        | SdfNode::FischerKochS { .. }
+        | SdfNode::PMY { .. }
+        | SdfNode::Circle2D { .. }
+        | SdfNode::Rect2D { .. }
+        | SdfNode::Segment2D { .. }
+        | SdfNode::Polygon2D { .. }
+        | SdfNode::RoundedRect2D { .. }
+        | SdfNode::Annular2D { .. }
+        | SdfNode::Terrain { .. }
+        | SdfNode::Loft { .. }
+        | SdfNode::LoftCurves { .. }
+        | SdfNode::SectionStack(..)
+        | SdfNode::SmoothSectionStack(..) => vec![],
     }
 }
 
