@@ -371,8 +371,9 @@ const SITES: &[(&str, usize, &str)] = &[
     ("src/compiled/wgsl/transpiler.rs", 1, "traversal only"),
     (
         "src/eval/mod.rs",
-        6,
-        "descend and eval_material (apply modifier_repeat_finite), variant lists",
+        8,
+        "descend and eval_material (apply modifier_repeat_finite), variant lists, a node of the \
+         eval_rec arm test",
     ),
     ("src/eval/scaled.rs", 1, "variant list"),
     ("src/diff.rs", 2, "tree diff"),
