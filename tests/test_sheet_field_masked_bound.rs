@@ -120,38 +120,75 @@ fn every_ray_hits_the_upper_sheet_at_its_depth_on_cpu_and_gpu() {
     }
 }
 
+/// The tilted plane's unit normal: a slight tilt puts the stored node values between quantisation steps (a flat
+/// sheet's nodes land on the steps exactly, so the storage term would never be needed there).
+fn nrm() -> Vec3 {
+    Vec3::new(0.03, 0.02, 1.0).normalize()
+}
+
+/// A tilted square sheet `n . p = d` (half side 0.7 in x and y) in the same box shape as [`flat`], with `s` its
+/// exact signed distance.
+fn tilted(d: f32) -> Sheet {
+    let n = nrm();
+    let lo = Vec3::new(-1.0 + 0.013, -1.0 + 0.021, d - H);
+    let lv = level_from_fn(
+        lo,
+        H,
+        [4, 4, 1],
+        |_c, _e| true,
+        |p| {
+            let (dx, dy) = (p.x.abs() - 0.7, p.y.abs() - 0.7);
+            vec![
+                n.dot(p) - d,
+                Vec3::new(dx.max(0.0), dy.max(0.0), 0.0).length() + dx.max(dy).min(0.0),
+            ]
+        },
+    )
+    .unwrap();
+    sheet(vec![lv]).unwrap()
+}
+
+/// Soundness without a tolerance for storage error: in a masked cell the bound must be at most the true distance
+/// exactly (up to f32 rounding, 1e-5, against a storage step of about 0.002), because the bound already subtracts
+/// the storage step (`- scale`). Each point lies a short way along the normal from a grid node at least 2.5 cells
+/// from the sheet, so that node's per-corner term equals the true distance up to the node's storage error: a bound
+/// without `- scale` exceeds the distance wherever that node's stored value was rounded away from the sheet.
 #[test]
 fn the_masked_bound_never_exceeds_the_true_distance() {
-    let f = field();
-    let (mut checked, mut masked) = (0usize, 0usize);
-    for i in 0..40 {
-        for j in 0..40 {
-            for k in 0..12 {
-                let p = Vec3::new(
-                    -0.6 + 0.03 * i as f32 + 0.001,
-                    -0.6 + 0.03 * j as f32 + 0.002,
-                    ZB + 0.01 + 0.033 * k as f32 + 0.0,
-                );
-                // inside the upper box and at least two cells above both sheets (masked cells)
-                if p.z > ZB - H + 8.0 * H || p.z - ZB < 2.0 * H {
+    let n = nrm();
+    let (db, dc) = (ZB, ZB - 0.03);
+    let f = SheetField::new(vec![tilted(db), tilted(dc)], ValidRule::CellV1);
+    let lo = Vec3::new(-1.0 + 0.013, -1.0 + 0.021, db - H);
+    let (mut checked, mut tight) = (0usize, 0usize);
+    for i in 6..26 {
+        for j in 6..26 {
+            for k in 0..9 {
+                let c = lo + H * Vec3::new(i as f32, j as f32, k as f32);
+                if n.dot(c) - db < 2.5 * H {
                     continue;
                 }
-                let (fv, _, ks) = f.eval(p);
-                let truth = (p.z - ZB).abs().min((p.z - ZC).abs());
-                assert!(
-                    fv <= truth + STEP,
-                    "{p}: bound {fv} over the distance {truth} (sheet {ks:?})"
-                );
-                checked += 1;
-                if fv > 0.05 && (truth - fv) < 0.5 * truth {
-                    masked += 1;
+                for e in [0.003f32, 0.011, 0.023] {
+                    let p = c + n * e;
+                    if p.z > lo.z + 8.0 * H - 0.001 {
+                        continue;
+                    }
+                    let (fv, _, ks) = f.eval(p);
+                    let truth = (n.dot(p) - db).abs().min((n.dot(p) - dc).abs());
+                    assert!(
+                        fv <= truth + 1e-5,
+                        "{p}: bound {fv} over the distance {truth} (sheet {ks:?})"
+                    );
+                    checked += 1;
+                    if truth - fv < 0.01 {
+                        tight += 1;
+                    }
                 }
             }
         }
     }
-    assert!(checked > 1000, "only {checked} points checked");
+    assert!(checked > 2000, "only {checked} points checked");
     assert!(
-        masked > 100,
-        "the bound was tight at only {masked} points: the masked cells were not reached"
+        tight > checked / 2,
+        "the bound was tight at only {tight} of {checked} points: not the per-corner term"
     );
 }
