@@ -298,8 +298,102 @@ fn optimize_children(node: &SdfNode) -> SdfNode {
             material_id: *material_id,
         },
 
-        // Primitives: leaf nodes, nothing to optimize
-        _ => node.clone(),
+        // leaves: nothing to optimize
+        SdfNode::Sphere { .. }
+        | SdfNode::Box3d { .. }
+        | SdfNode::Cylinder { .. }
+        | SdfNode::Torus { .. }
+        | SdfNode::Plane { .. }
+        | SdfNode::Capsule { .. }
+        | SdfNode::Cone { .. }
+        | SdfNode::Ellipsoid { .. }
+        | SdfNode::RoundedCone { .. }
+        | SdfNode::Pyramid { .. }
+        | SdfNode::Octahedron { .. }
+        | SdfNode::HexPrism { .. }
+        | SdfNode::Link { .. }
+        | SdfNode::Triangle { .. }
+        | SdfNode::Bezier { .. }
+        | SdfNode::RoundedBox { .. }
+        | SdfNode::CappedCone { .. }
+        | SdfNode::CappedTorus { .. }
+        | SdfNode::RoundedCylinder { .. }
+        | SdfNode::TriangularPrism { .. }
+        | SdfNode::CutSphere { .. }
+        | SdfNode::CutHollowSphere { .. }
+        | SdfNode::DeathStar { .. }
+        | SdfNode::SolidAngle { .. }
+        | SdfNode::Rhombus { .. }
+        | SdfNode::Horseshoe { .. }
+        | SdfNode::Vesica { .. }
+        | SdfNode::InfiniteCylinder { .. }
+        | SdfNode::InfiniteCone { .. }
+        | SdfNode::Gyroid { .. }
+        | SdfNode::MetricBall { .. }
+        | SdfNode::Heart { .. }
+        | SdfNode::Tube { .. }
+        | SdfNode::Barrel { .. }
+        | SdfNode::Diamond { .. }
+        | SdfNode::ChamferedCube { .. }
+        | SdfNode::SchwarzP { .. }
+        | SdfNode::Superellipsoid { .. }
+        | SdfNode::RoundedX { .. }
+        | SdfNode::Pie { .. }
+        | SdfNode::Trapezoid { .. }
+        | SdfNode::Parallelogram { .. }
+        | SdfNode::Tunnel { .. }
+        | SdfNode::UnevenCapsule { .. }
+        | SdfNode::Egg { .. }
+        | SdfNode::ArcShape { .. }
+        | SdfNode::Moon { .. }
+        | SdfNode::CrossShape { .. }
+        | SdfNode::BlobbyCross { .. }
+        | SdfNode::ParabolaSegment { .. }
+        | SdfNode::RegularPolygon { .. }
+        | SdfNode::StarPolygon { .. }
+        | SdfNode::Stairs { .. }
+        | SdfNode::Helix { .. }
+        | SdfNode::Tetrahedron { .. }
+        | SdfNode::Dodecahedron { .. }
+        | SdfNode::Icosahedron { .. }
+        | SdfNode::TruncatedOctahedron { .. }
+        | SdfNode::TruncatedIcosahedron { .. }
+        | SdfNode::BoxFrame { .. }
+        | SdfNode::DiamondSurface { .. }
+        | SdfNode::Neovius { .. }
+        | SdfNode::Lidinoid { .. }
+        | SdfNode::IWP { .. }
+        | SdfNode::FRD { .. }
+        | SdfNode::FischerKochS { .. }
+        | SdfNode::PMY { .. }
+        | SdfNode::Circle2D { .. }
+        | SdfNode::Rect2D { .. }
+        | SdfNode::Segment2D { .. }
+        | SdfNode::Polygon2D { .. }
+        | SdfNode::RoundedRect2D { .. }
+        | SdfNode::Annular2D { .. }
+        | SdfNode::Terrain { .. }
+        | SdfNode::Loft { .. }
+        | SdfNode::LoftCurves { .. }
+        | SdfNode::SectionStack { .. }
+        | SdfNode::SmoothSectionStack { .. } => node.clone(),
+        // these have children, but their subtrees are returned as they are
+        SdfNode::MetricBlend { .. }
+        | SdfNode::ExpSmoothUnion { .. }
+        | SdfNode::ExpSmoothIntersection { .. }
+        | SdfNode::ExpSmoothSubtraction { .. }
+        | SdfNode::ProjectiveTransform { .. }
+        | SdfNode::LatticeDeform { .. }
+        | SdfNode::SdfSkinning { .. }
+        | SdfNode::GridWarp { .. }
+        | SdfNode::Shear { .. }
+        | SdfNode::Animated { .. }
+        | SdfNode::IcosahedralSymmetry { .. }
+        | SdfNode::IFS { .. }
+        | SdfNode::HeightmapDisplacement { .. }
+        | SdfNode::SurfaceRoughness { .. }
+        | SdfNode::SmoothBlend { .. }
+        | SdfNode::BellPull { .. } => node.clone(),
     }
 }
 

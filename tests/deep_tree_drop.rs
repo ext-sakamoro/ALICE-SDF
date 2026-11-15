@@ -133,3 +133,16 @@ fn take_children_covers_every_family() {
         drop(node);
     });
 }
+
+#[test]
+fn deep_metric_blend_chain_drops_in_small_stack() {
+    // `MetricBlend` は子を 2 つ持つ (`inner` / `outer`) ので、深く nest しても
+    // `take_children_into` で平坦に drop されなければならない
+    run_in_small_stack(|| {
+        let mut node = SdfNode::sphere(1.0);
+        for _ in 0..DEPTH {
+            node = SdfNode::metric_blend(node, SdfNode::sphere(0.5), glam::Vec3::ZERO, 1.0, 0.1);
+        }
+        drop(node);
+    });
+}
