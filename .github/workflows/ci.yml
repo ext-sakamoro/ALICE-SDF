@@ -99,6 +99,8 @@ jobs:
             code:
               - 'src/**'
               - 'tests/**'
+              - 'scripts/gen_eval_rec.py'
+              - 'scripts/test_gen_eval_rec.py'
               - 'benches/**'
               - 'examples/**'
               - 'Cargo.toml'
@@ -1322,6 +1324,14 @@ jobs:
 
       - name: Check formatting (core)
         run: cargo fmt --check
+
+      # eval's recursive driver is generated from combine / descend (one law, written once):
+      # the block in src/eval/mod.rs is what the generator writes, and every variant of
+      # SdfNode is a two-operand, one-child or leaf kind exactly once (0 compared fails)
+      - name: Generated eval driver (test, then check)
+        run: |
+          python3 scripts/test_gen_eval_rec.py
+          python3 scripts/gen_eval_rec.py --check
 
       - name: Check formatting (mobile/uniffi-wrapper)
         working-directory: mobile/uniffi-wrapper
