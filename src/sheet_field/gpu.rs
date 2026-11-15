@@ -262,6 +262,10 @@ pub fn spread_stride(n: usize) -> usize {
     s
 }
 
+/// The bits every output word holds before a dispatch writes it: a signalling NaN with a payload, which no
+/// arithmetic of the kernels produces (arithmetic NaNs are quiet)
+const NOT_WRITTEN: u32 = 0x7FA5_A5A5;
+
 fn storage_init(device: &wgpu::Device, label: &str, bytes: &[u8]) -> wgpu::Buffer {
     let data: Vec<u8> = if bytes.is_empty() {
         vec![0u8; 4]
@@ -501,7 +505,10 @@ impl GpuSheetField {
             bp_base: b.bp,
             bn_len: b.bn_len,
             band_base: b.band,
-            work_budget: self.control.lock().map_or(MARCH_WORK_BUDGET, |c| c.work_budget),
+            work_budget: self
+                .control
+                .lock()
+                .map_or(MARCH_WORK_BUDGET, |c| c.work_budget),
         }
     }
 
@@ -554,11 +561,12 @@ impl GpuSheetField {
         });
         let b_in = storage_init(device, "sheet field input", bytemuck::cast_slice(input));
         let out_bytes = (n * out_vec4s * 16) as u64;
-        let b_out = device.create_buffer(&wgpu::BufferDescriptor {
+        // every output word starts as NOT_WRITTEN (a NaN no arithmetic produces): a zeroed slot would decode as a
+        // miss at t 0, so a result the dispatch did not write could pass as an answer; it is refused below instead
+        let b_out = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("sheet field output"),
-            size: out_bytes,
+            contents: bytemuck::cast_slice(&vec![NOT_WRITTEN; n * out_vec4s * 4]),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
         });
         // the staging buffer ends with a marker the same submit writes after the dispatch: a submit the device drops
         // (a validation error is reported only to the uncaptured-error handler) leaves it zero, and the read is refused
@@ -644,13 +652,31 @@ impl GpuSheetField {
                 "the sheet field dispatch did not run (marker {found}, expected {nonce}): its output is not read"
             )));
         }
+        // the first vec4 of each result is written by every path of both kernels (eval and march, overflow included)
+        let unwritten: Vec<usize> = (0..input.len())
+            .filter(|&k| {
+                out[k * out_vec4s]
+                    .iter()
+                    .any(|w| w.to_bits() == NOT_WRITTEN)
+            })
+            .collect();
+        if let Some(&first) = unwritten.first() {
+            return Err(GpuError::BufferMapping(format!(
+                "the sheet field dispatch left {} of {} results unwritten (first {first}): its output is not read",
+                unwritten.len(),
+                input.len()
+            )));
+        }
         Ok(out)
     }
 
     /// The dispatch sizes, their times and the per-ray work of the last march call.
     #[must_use]
     pub fn last_march_stats(&self) -> MarchStats {
-        self.control.lock().map(|c| c.stats.clone()).unwrap_or_default()
+        self.control
+            .lock()
+            .map(|c| c.stats.clone())
+            .unwrap_or_default()
     }
 
     /// Another target duration for one march dispatch (sizes adapt toward it).
@@ -742,7 +768,12 @@ impl GpuSheetField {
         let mut res = vec![MarchResult::Miss; n];
         let mut at = 0;
         while at < n {
-            let most = self.context().device().limits().max_compute_workgroups_per_dimension as usize * WG as usize;
+            let most = self
+                .context()
+                .device()
+                .limits()
+                .max_compute_workgroups_per_dimension as usize
+                * WG as usize;
             let size = self
                 .control
                 .lock()
@@ -1229,9 +1260,18 @@ mod tests {
         };
         let input = vec![[0.0f32, 0.0, 0.5, 0.0]; 64];
         // the same input through the checked path is fine
-        let ok = g.run(&g.eval_pipeline, &input, 1, g.uniforms(64, 0, Vec3::ZERO, 0.0));
+        let ok = g.run(
+            &g.eval_pipeline,
+            &input,
+            1,
+            g.uniforms(64, 0, Vec3::ZERO, 0.0),
+        );
         assert!(ok.is_ok(), "{ok:?}");
-        let limit = g.context().device().limits().max_compute_workgroups_per_dimension;
+        let limit = g
+            .context()
+            .device()
+            .limits()
+            .max_compute_workgroups_per_dimension;
         let bad = g.run_groups(
             &g.eval_pipeline,
             &input,
@@ -1239,7 +1279,57 @@ mod tests {
             g.uniforms(64, 0, Vec3::ZERO, 0.0),
             Some(limit + 1),
         );
-        assert!(bad.is_err(), "a refused dispatch was read as values ({} of them)", bad.map(|v| v.len()).unwrap_or(0));
+        assert!(
+            bad.is_err(),
+            "a refused dispatch was read as values ({} of them)",
+            bad.map(|v| v.len()).unwrap_or(0)
+        );
         let _ = WG;
+    }
+
+    /// A dispatch that runs but covers only part of the rays (one workgroup for 3 workgroups of input) leaves the
+    /// rest unwritten: the read is an error naming them, never a miss decoded from an untouched slot.
+    #[test]
+    #[allow(clippy::unwrap_used, clippy::expect_used)]
+    fn results_a_dispatch_did_not_write_are_an_error_not_misses() {
+        let lv = level_from_fn(
+            Vec3::new(-2.0, -2.0, -1.0),
+            0.25,
+            [2, 2, 1],
+            |_c, _e| true,
+            |p| vec![p.z, (p.x.abs().max(p.y.abs())) - 1.0],
+        )
+        .unwrap();
+        let f = SheetField::new(vec![sheet(vec![lv]).unwrap()], ValidRule::CellV1);
+        let g = match GpuSheetField::new(&f) {
+            Ok(g) => g,
+            Err(e) => {
+                assert!(
+                    std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+                    "ALICE_SDF_REQUIRE_GPU set but no GPU: {e}"
+                );
+                eprintln!("gpu-test: skipped (no GPU: {e})");
+                return;
+            }
+        };
+        let n = 3 * WG as usize;
+        let input = vec![[0.3f32, 0.2, 0.5, 0.0]; n];
+        let u = g.uniforms(n as u32, 64, -Vec3::Z, 2.0);
+        let full = g.run_groups(&g.march_pipeline, &input, 4, u, None).unwrap();
+        assert_eq!(full.len(), 4 * n);
+        let part = g.run_groups(&g.march_pipeline, &input, 4, u, Some(1));
+        match part {
+            Err(e) => assert!(
+                e.to_string().contains(&format!(
+                    "{} of {n} results unwritten (first {WG})",
+                    n - WG as usize
+                )),
+                "{e}"
+            ),
+            Ok(v) => panic!(
+                "{} results read from a dispatch that wrote {WG}",
+                v.len() / 4
+            ),
+        }
     }
 }
