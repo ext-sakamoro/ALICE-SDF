@@ -225,11 +225,113 @@ pub fn march_fragment_shader(max_live: u32) -> String {
         .replace("__TEX_WIDTH__", &TEX_WIDTH.to_string())
 }
 
+/// The fragment march reading s and d_b from the 3D atlas of [`pack_atlas`] (layout 2: hardware trilinear), attributes as
+/// layout 1.
+#[must_use]
+pub fn march_fragment_shader_atlas(max_live: u32) -> String {
+    march_fragment_shader(max_live).replacen("precision highp float;", "#define SHEET_ATLAS_LAYOUT\nprecision highp float;", 1)
+}
+
+/// Layout 2's tables: per active brick a slot of 9^3 nodes in an RG8 3D atlas (s in R, d_b in G, 0 for a dropped d_b row),
+/// per slot (scale, offset) of both, and per cell the minimum |s| of its 8 nodes (the cell rule's input, R32F, 8^3 per
+/// slot). The level records' word 10 is set to the level's first slot.
+#[derive(Debug, Clone)]
+pub struct WebglAtlas {
+    /// Slots per atlas axis.
+    pub grid: [u32; 3],
+    /// RG8 texels, x fastest, `grid * 9` per axis.
+    pub atlas: Vec<u8>,
+    /// R32F texels, `grid * 8` per axis.
+    pub umin: Vec<f32>,
+    /// RGBA32F per slot: (scale_s, offset_s, scale_db, offset_db), [`TEX_WIDTH`] slots per row.
+    pub slotsc: Vec<f32>,
+}
+
+/// Lay out layout 2 for `field` and set the slot bases in `pack`'s level records.
+pub fn pack_atlas(field: &SheetField, pack: &mut WebglPack) -> Result<WebglAtlas, SheetFieldError> {
+    let mut slots: Vec<([u8; 729], [u8; 729], [f32; 4], Vec<f32>)> = Vec::new();
+    let mut li = 0usize;
+    for sh in &field.sheets {
+        for lv in &sh.levels {
+            pack.levels[li * LEVEL_WORDS as usize + 10] = slots.len() as u32;
+            let active = lv.channels[0].rows.len();
+            for k in 0..active {
+                let (mut sb, mut db) = ([0u8; 729], [0u8; 729]);
+                let mut sc4 = [0.0f32; 4];
+                let s_ch = &lv.channels[0];
+                let rs = s_ch.rows[k];
+                if rs >= 0 && s_ch.nodes == super::NODES as u32 {
+                    sb.copy_from_slice(&s_ch.q[rs as usize * 729..rs as usize * 729 + 729]);
+                    sc4[0] = s_ch.scale[rs as usize];
+                    sc4[1] = s_ch.offset[rs as usize];
+                }
+                let d_ch = &lv.channels[1];
+                let rd = d_ch.rows[k];
+                if rd >= 0 && d_ch.nodes == super::NODES as u32 {
+                    db.copy_from_slice(&d_ch.q[rd as usize * 729..rd as usize * 729 + 729]);
+                    sc4[2] = d_ch.scale[rd as usize];
+                    sc4[3] = d_ch.offset[rd as usize];
+                }
+                // per cell the minimum |q * scale + offset| of its 8 nodes, the same f32 expression as layout 1
+                let mut um = vec![0.0f32; 512];
+                for cx in 0..8 {
+                    for cy in 0..8 {
+                        for cz in 0..8 {
+                            let mut m = 1e30f32;
+                            for (dx, dy, dz) in [(0, 0, 0), (0, 0, 1), (0, 1, 0), (0, 1, 1), (1, 0, 0), (1, 0, 1), (1, 1, 0), (1, 1, 1)] {
+                                let node = ((cx + dx) * 9 + (cy + dy)) * 9 + (cz + dz);
+                                m = m.min((f32::from(sb[node]) * sc4[0] + sc4[1]).abs());
+                            }
+                            um[(cz * 8 + cy) * 8 + cx] = m;
+                        }
+                    }
+                }
+                slots.push((sb, db, sc4, um));
+            }
+            li += 1;
+        }
+    }
+    let n = slots.len().max(1) as u32;
+    let gx = (f64::from(n).cbrt().ceil() as u32).max(1);
+    let gy = gx;
+    let gz = n.div_ceil(gx * gy).max(1);
+    let (ax, ay, az) = ((gx * 9) as usize, (gy * 9) as usize, (gz * 9) as usize);
+    let (ux, uy, uz) = ((gx * 8) as usize, (gy * 8) as usize, (gz * 8) as usize);
+    let mut atlas = vec![0u8; ax * ay * az * 2];
+    let mut umin = vec![1e30f32; ux * uy * uz];
+    let mut slotsc = vec![0.0f32; n.div_ceil(TEX_WIDTH).max(1) as usize * TEX_WIDTH as usize * 4];
+    for (i, (sb, db, sc4, um)) in slots.iter().enumerate() {
+        let i = i as u32;
+        let (ox, oy, oz) = ((i % gx) as usize, ((i / gx) % gy) as usize, (i / (gx * gy)) as usize);
+        // the stored node order is x * 81 + y * 9 + z; the texture is x fastest
+        for x in 0..9 {
+            for y in 0..9 {
+                for z in 0..9 {
+                    let node = (x * 9 + y) * 9 + z;
+                    let t = ((oz * 9 + z) * ay + (oy * 9 + y)) * ax + (ox * 9 + x);
+                    atlas[2 * t] = sb[node];
+                    atlas[2 * t + 1] = db[node];
+                }
+            }
+        }
+        for cz in 0..8 {
+            for cy in 0..8 {
+                for cx in 0..8 {
+                    umin[((oz * 8 + cz) * uy + (oy * 8 + cy)) * ux + (ox * 8 + cx)] = um[(cz * 8 + cy) * 8 + cx];
+                }
+            }
+        }
+        slotsc[i as usize * 4..i as usize * 4 + 4].copy_from_slice(sc4);
+    }
+    Ok(WebglAtlas { grid: [gx, gy, gz], atlas, umin, slotsc })
+}
+
 const FRAGMENT: &str = r"#version 300 es
 precision highp float;
 precision highp int;
 precision highp usampler2D;
 precision highp sampler2D;
+precision highp sampler3D;
 uniform usampler2D SHEETS;
 uniform usampler2D LEVELS;
 uniform usampler2D IX;
@@ -242,6 +344,9 @@ uniform uint bn_len; uniform uint band_base; uniform uint work_budget; uniform u
 // loop bounds the page sets to 8, 30 and 6: uniforms, so the compiler keeps each loop (and the sample_sheet it calls) once
 // instead of unrolling it (unrolled, the program took 55.9 s to link on a Tegra Orin)
 uniform uint n_corners; uniform int n_bisect; uniform uint n_taps;
+#ifdef SHEET_ATLAS_LAYOUT
+uniform highp sampler3D ATLAS; uniform highp sampler3D UMIN; uniform highp sampler2D SLOTSC; uniform uvec3 agrid;
+#endif
 layout(location = 0) out vec4 out0;
 layout(location = 1) out vec4 out1;
 layout(location = 2) out vec4 out2;
@@ -306,6 +411,20 @@ Sample sample_sheet(uint k, vec3 p, uint nmax) {
             float acc = 0.0;
             uint nn = lvw(L, 36u + ci);
             uint qo = lvw(L, 20u + ci); uint so = lvw(L, 28u + ci);
+#ifdef SHEET_ATLAS_LAYOUT
+            if (ci < 2u && nn == NODES) {
+                // layout 2: the brick's 9^3 s / d_b bytes in a 3D RG8 atlas, hardware trilinear between node centres; the
+                // cell rule's minimum |s| over the cell's 8 nodes is precomputed per cell (R32F, the same f32 as layout 1)
+                uint slot = lvw(L, 10u) + uint(k_);
+                vec3 o3 = vec3(float(slot % agrid.x), float((slot / agrid.x) % agrid.y), float(slot / (agrid.x * agrid.y)));
+                vec2 v2 = texture(ATLAS, (o3 * 9.0 + vec3(c) + t + 0.5) / vec3(agrid * 9u)).rg * 255.0;
+                vec4 sc4 = texelFetch(SLOTSC, ivec2(int(slot % TW), int(slot / TW)), 0);
+                if (ci == 0u) { acc = v2.r * sc4.x + sc4.y; q0 = sc4.x; umin = texelFetch(UMIN, ivec3(o3 * 8.0) + ivec3(c), 0).r; }
+                else { acc = v2.g * sc4.z + sc4.w; q1 = sc4.z; }
+                vals[ci] = acc;
+                continue;
+            }
+#endif
             if (row >= 0) {
                 // one corner loop for the three layouts (band, coarse grid, full grid), corners in the order dx, dy, dz
                 float sc = scf(2u * (so + uint(row))); float off = scf(2u * (so + uint(row)) + 1u);
