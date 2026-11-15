@@ -229,6 +229,7 @@ struct DispatchControl {
     target: std::time::Duration,
     wait: std::time::Duration,
     work_budget: u32,
+    spread_block: usize,
     stats: MarchStats,
     /// test only: the next `cut.1` march dispatches use `cut.0` workgroups whatever their size (a dispatch the
     /// device cut short, made on purpose)
@@ -253,6 +254,33 @@ pub fn next_dispatch(rays: usize, secs: f64, target: std::time::Duration) -> usi
         next = next.min(rays / 2);
     }
     next.max(MIN_DISPATCH)
+}
+
+/// Rays in one contiguous block of the march order. A block keeps neighbouring rays (neighbouring pixels) together,
+/// so the rays of one workgroup touch the same sheets and take similar steps; the blocks are visited in the spread
+/// order so that each dispatch still samples the whole batch. Measured on one device and one view (10.24 M rays, a
+/// 15-sheet-list body field): single rays in the spread order 144.2 s, contiguous 47.5 s, blocks of 1024 / 4096 /
+/// 16384 rays 48.9 / 47.7 / 47.9 s, results byte-identical in all five; 4096 is the smallest block measured within
+/// 1 % of contiguous (1024 was 3 % over in one run). The blocks did not make the cost per ray of consecutive
+/// dispatches flatter than the contiguous order (mean |ln ratio| 0.36 vs 0.35; single rays 0.11).
+pub const SPREAD_BLOCK: usize = 4_096;
+
+/// The march order over `n` rays: contiguous blocks of `block` rays (the last one shorter), the blocks visited in the
+/// spread order ([`spread_stride`] over the block count). `block` 0 or at least `n` is the contiguous order. A
+/// permutation of `0..n` for every `n` and `block`.
+#[must_use]
+pub fn spread_blocks(n: usize, block: usize) -> Vec<usize> {
+    if block == 0 || block >= n {
+        return (0..n).collect();
+    }
+    let nb = n.div_ceil(block);
+    let sb = spread_stride(nb);
+    let mut out = Vec::with_capacity(n);
+    for k in 0..nb {
+        let b = ((k as u128 * sb as u128) % nb as u128) as usize;
+        out.extend(b * block..((b + 1) * block).min(n));
+    }
+    out
 }
 
 /// The stride of the spread order over `n` rays: ray `j` of the order is `(j * stride) % n`, a permutation
@@ -498,6 +526,7 @@ impl GpuSheetField {
                 target: DISPATCH_TARGET,
                 wait: DISPATCH_WAIT,
                 work_budget: MARCH_WORK_BUDGET,
+                spread_block: SPREAD_BLOCK,
                 stats: MarchStats::default(),
                 #[cfg(test)]
                 cut: (0, 0),
@@ -728,6 +757,13 @@ impl GpuSheetField {
         self.context().set_wait_limit(wait);
     }
 
+    /// Another block size of the march order (see [`SPREAD_BLOCK`]; 0 = contiguous).
+    pub fn set_spread_block(&self, block: usize) {
+        if let Ok(mut c) = self.control.lock() {
+            c.spread_block = block;
+        }
+    }
+
     /// Another per-ray work budget (see [`MARCH_WORK_BUDGET`]).
     pub fn set_work_budget(&self, budget: u32) {
         if let Ok(mut c) = self.control.lock() {
@@ -796,8 +832,8 @@ impl GpuSheetField {
             .map_err(|_| GpuError::InvalidFormat("sheet field dispatch control poisoned".into()))?;
         let mut stats = MarchStats::default();
         let n = origins.len();
-        let stride = spread_stride(n);
-        let order = |j: usize| ((j as u128 * stride as u128) % n as u128) as usize;
+        let block = self.control.lock().map_or(SPREAD_BLOCK, |c| c.spread_block);
+        let order = spread_blocks(n, block);
         let mut res = vec![MarchResult::Miss; n];
         let mut at = 0;
         while at < n {
@@ -815,7 +851,7 @@ impl GpuSheetField {
                 .max(MIN_DISPATCH)
                 .min(most)
                 .min(n - at);
-            let mut pending: Vec<usize> = (at..at + size).map(order).collect();
+            let mut pending: Vec<usize> = order[at..at + size].to_vec();
             let mut piece_size = size;
             let mut round = 0u32;
             loop {

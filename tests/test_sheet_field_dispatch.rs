@@ -16,7 +16,7 @@
 
 use alice_sdf::compiled::GpuError;
 use alice_sdf::sheet_field::build::{level_from_fn, sheet};
-use alice_sdf::sheet_field::gpu::{spread_stride, GpuSheetField, MIN_DISPATCH};
+use alice_sdf::sheet_field::gpu::{spread_blocks, spread_stride, GpuSheetField, MIN_DISPATCH};
 use alice_sdf::sheet_field::{MarchResult, Sheet, SheetField, ValidRule};
 use glam::Vec3;
 use std::time::Duration;
@@ -99,6 +99,50 @@ fn the_spread_order_is_a_permutation() {
     }
 }
 
+/// The block order is a permutation of the batch for many sizes and blocks, keeps each block contiguous, and is
+/// the contiguous order for block 0 or a block at least the batch.
+#[test]
+fn the_block_order_is_a_permutation_of_contiguous_blocks() {
+    for n in [1usize, 2, 3, 63, 64, 65, 1000, 4096, 4097, 65_536, 100_003] {
+        for block in [0usize, 1, 7, 64, 1024, 4096, 16_384, 1 << 20] {
+            let o = spread_blocks(n, block);
+            assert_eq!(o.len(), n, "n {n} block {block}");
+            let mut seen = vec![false; n];
+            for &i in &o {
+                assert!(!seen[i], "n {n} block {block}: ray {i} twice");
+                seen[i] = true;
+            }
+            if block == 0 || block >= n {
+                assert!(
+                    o.iter().enumerate().all(|(j, &i)| i == j),
+                    "n {n} block {block}: not contiguous"
+                );
+            } else {
+                // the order is whole blocks one after another: each starts at a multiple of `block`, runs `block`
+                // rays (the last block of the batch, n % block, runs fewer), and blocks are not interleaved
+                let mut at = 0;
+                let mut short = 0;
+                while at < n {
+                    let start = o[at];
+                    assert_eq!(
+                        start % block,
+                        0,
+                        "n {n} block {block}: a block starts at {start}"
+                    );
+                    let len = block.min(n - start);
+                    assert!(
+                        (0..len).all(|r| o[at + r] == start + r),
+                        "n {n} block {block}: the block at {start} is not contiguous"
+                    );
+                    short += usize::from(len < block);
+                    at += len;
+                }
+                assert!(short <= 1, "n {n} block {block}: {short} short blocks");
+            }
+        }
+    }
+}
+
 #[test]
 fn the_results_do_not_depend_on_the_dispatch_sizes_and_the_sizes_follow_the_rule() {
     let f = deep();
@@ -130,9 +174,14 @@ fn the_results_do_not_depend_on_the_dispatch_sizes_and_the_sizes_follow_the_rule
     );
     for (g, name) in [(&a, "adaptive"), (&b, "smallest")] {
         let st = g.last_march_stats();
+        // a dispatch the device cut short is issued again (smaller): those rays are counted twice in the sizes
+        eprintln!(
+            "{name}: cut dispatches {}, re-issued rays {}",
+            st.cut_dispatches, st.reissued_rays
+        );
         assert_eq!(
             st.dispatches.iter().map(|d| d.0).sum::<usize>(),
-            os.len(),
+            os.len() + st.reissued_rays as usize,
             "{name}"
         );
         for w in st.dispatches.windows(2) {
