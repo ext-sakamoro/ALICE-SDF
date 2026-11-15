@@ -106,12 +106,16 @@ struct LevelInfo {
     nb: [u32; 3],
     index_off: u32,
     nch: u32,
-    _pad: [u32; 3],
+    /// Where this level's band masks start (relative to the band table), when a channel is a band.
+    band_off: u32,
+    _pad: [u32; 2],
     rows_off: [u32; 8],
     q_off: [u32; 8],
     sc_off: [u32; 8],
-    /// Nodes per brick axis of each channel (9, or a coarse attribute grid).
+    /// Nodes per brick axis of each channel (9, a coarse attribute grid, or 0 = band).
     nodes: [u32; 8],
+    /// For a band channel: where its row starts are in the band table.
+    st_off: [u32; 8],
 }
 
 #[repr(C)]
@@ -129,12 +133,15 @@ struct Uniforms {
     bl_base: u32,
     bp_base: u32,
     bn_len: u32,
-    _pad: [u32; 2],
+    /// Where the band table (masks and row starts) starts in the merged `u32` buffer.
+    band_base: u32,
+    _pad: u32,
 }
 
 /// Where each table starts in the merged `u32` buffer.
 #[derive(Clone, Copy)]
 struct Bases {
+    band: u32,
     index: u32,
     rows: u32,
     bn: u32,
@@ -217,6 +224,7 @@ impl GpuSheetField {
             Vec::<u8>::new(),
             Vec::<f32>::new(),
         );
+        let mut bands = Vec::<u32>::new();
         for sh in &field.sheets {
             sheets.push(SheetInfo {
                 lo: sh.lo.to_array(),
@@ -239,19 +247,27 @@ impl GpuSheetField {
                     nb: lv.nb,
                     index_off: index.len() as u32,
                     nch: lv.channels.len() as u32,
-                    _pad: [0; 3],
+                    band_off: bands.len() as u32,
+                    _pad: [0; 2],
                     rows_off: [0; 8],
                     q_off: [0; 8],
                     sc_off: [0; 8],
                     nodes: [0; 8],
+                    st_off: [0; 8],
                 };
+                bands.extend_from_slice(&lv.band);
                 index.extend_from_slice(&lv.index);
                 for (c, ch) in lv.channels.iter().enumerate() {
                     li.rows_off[c] = rows.len() as u32;
                     rows.extend_from_slice(&ch.rows);
                     li.q_off[c] = qbytes.len() as u32;
                     li.nodes[c] = ch.nodes;
-                    debug_assert_eq!(ch.q.len(), ch.scale.len() * (ch.nodes as usize).pow(3));
+                    li.st_off[c] = bands.len() as u32;
+                    bands.extend_from_slice(&ch.starts);
+                    debug_assert!(
+                        ch.nodes == super::BAND
+                            || ch.q.len() == ch.scale.len() * (ch.nodes as usize).pow(3)
+                    );
                     qbytes.extend_from_slice(&ch.q);
                     li.sc_off[c] = (scoff.len() / 2) as u32;
                     for (s, o) in ch.scale.iter().zip(&ch.offset) {
@@ -281,7 +297,10 @@ impl GpuSheetField {
         ix.extend_from_slice(&bvh.leaf_entries);
         let b_bp = base(&ix);
         ix.extend_from_slice(&bvh.parents);
+        let b_band = base(&ix);
+        ix.extend_from_slice(&bands);
         let bases = Bases {
+            band: b_band,
             index: b_index,
             rows: b_rows,
             bn: b_bn,
@@ -380,7 +399,8 @@ impl GpuSheetField {
             bl_base: b.bl,
             bp_base: b.bp,
             bn_len: b.bn_len,
-            _pad: [0; 2],
+            band_base: b.band,
+            _pad: 0,
         }
     }
 
@@ -517,8 +537,14 @@ impl GpuSheetField {
         let mut res = Vec::with_capacity(origins.len());
         let (rows, rest) = out.as_chunks::<4>();
         debug_assert!(rest.is_empty(), "4 output words a ray");
-        for r in rows {
+        for (i, r) in rows.iter().enumerate() {
             let kind = r[0][1] as i32;
+            if kind == 1 && r[0][3] != 0.0 {
+                return Err(GpuError::InvalidFormat(format!(
+                    "sheet field march: ray {i} hit sheet {} where an attribute node lies outside its band",
+                    r[0][2] as usize
+                )));
+            }
             res.push(match kind {
                 1 => MarchResult::Hit(Hit {
                     t: r[0][0],
@@ -543,11 +569,11 @@ impl GpuSheetField {
 
 const SHADER: &str = r"
 struct SheetInfo { lo: vec3<f32>, hc: f32, hi: vec3<f32>, level_start: u32, level_count: u32, p0: u32, p1: u32, p2: u32 };
-struct LevelInfo { lo: vec3<f32>, h: f32, nb: vec3<u32>, index_off: u32, nch: u32, p0: u32, p1: u32, p2: u32,
+struct LevelInfo { lo: vec3<f32>, h: f32, nb: vec3<u32>, index_off: u32, nch: u32, band_off: u32, p1: u32, p2: u32,
                    rows_off: array<vec4<u32>, 2>, q_off: array<vec4<u32>, 2>, sc_off: array<vec4<u32>, 2>,
-                   nodes: array<vec4<u32>, 2> };
+                   nodes: array<vec4<u32>, 2>, st_off: array<vec4<u32>, 2> };
 struct Uniforms { n_sheets: u32, rule: u32, count: u32, steps: u32, dir: vec3<f32>, tmax: f32,
-                  index_base: u32, rows_base: u32, bn_base: u32, bl_base: u32, bp_base: u32, bn_len: u32, p0: u32, p1: u32 };
+                  index_base: u32, rows_base: u32, bn_base: u32, bl_base: u32, bp_base: u32, bn_len: u32, band_base: u32, p1: u32 };
 @group(0) @binding(0) var<uniform> U: Uniforms;
 @group(0) @binding(1) var<storage, read> SHEETS: array<SheetInfo>;
 @group(0) @binding(2) var<storage, read> LEVELS: array<LevelInfo>;
@@ -562,11 +588,12 @@ const NONE: u32 = 0xffffffffu;
 const BRICK: u32 = 8u;
 const NODES: u32 = 9u;
 const BRICK_NODES: u32 = 729u;
+const BAND_WORDS: u32 = 23u;
 const HALF_DIAG: f32 = 0.8660254;
 const JUMP_S: f32 = 0.02;
 const MAX_LIVE: u32 = __MAX_LIVE__u;
 
-struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool, s: f32, db: f32, db_step: f32, an: vec3<f32>, has_an: bool };
+struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool, s: f32, db: f32, db_step: f32, an: vec3<f32>, has_an: bool, band_miss: bool };
 
 fn qbyte(byte_index: u32) -> f32 {
     let w = QW[byte_index >> 2u];
@@ -599,6 +626,7 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
         let t = w - vec3<f32>(c);
         var vals = array<f32, 8>(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         var umin = 1e30;
+        var band_miss = false;
         var q0 = 0.0;
         var q1 = 0.0;
         let nch = min(lv.nch, nmax);
@@ -606,7 +634,29 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
             let row = bitcast<i32>(IX[U.rows_base + lv.rows_off[ci / 4u][ci % 4u] + u32(k_)]);
             var acc = 0.0;
             let nn = lv.nodes[ci / 4u][ci % 4u];
-            if (row >= 0 && nn != NODES) {
+            if (row >= 0 && nn == 0u) {
+                // a band: only the nodes in the brick's mask are stored, packed; a node outside it is a miss
+                let sc = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row))];
+                let off = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row)) + 1u];
+                let mw = U.band_base + lv.band_off + u32(k_) * BAND_WORDS;
+                let start = IX[U.band_base + lv.st_off[ci / 4u][ci % 4u] + u32(row)];
+                for (var dx = 0u; dx < 2u; dx = dx + 1u) {
+                    for (var dy = 0u; dy < 2u; dy = dy + 1u) {
+                        for (var dz = 0u; dz < 2u; dz = dz + 1u) {
+                            let wx = select(1.0 - t.x, t.x, dx == 1u);
+                            let wy = select(1.0 - t.y, t.y, dy == 1u);
+                            let wz = select(1.0 - t.z, t.z, dz == 1u);
+                            let node = ((c.x + dx) * NODES + (c.y + dy)) * NODES + (c.z + dz);
+                            let word = IX[mw + node / 32u];
+                            let bit = node % 32u;
+                            if (((word >> bit) & 1u) == 0u) { band_miss = true; continue; }
+                            var rank = countOneBits(word & ((1u << bit) - 1u));
+                            for (var j = 0u; j < node / 32u; j = j + 1u) { rank = rank + countOneBits(IX[mw + j]); }
+                            acc = acc + (wx * wy * wz) * (qbyte(lv.q_off[ci / 4u][ci % 4u] + start + rank) * sc + off);
+                        }
+                    }
+                }
+            } else if (row >= 0 && nn != NODES) {
                 // an attribute on a coarse grid: trilinear on its own nodes (every BRICK / (nn - 1)-th corner)
                 let sc = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row))];
                 let off = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row)) + 1u];
@@ -659,6 +709,7 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
         out.f = f; out.g = g; out.inside = true;
         out.s = s; out.db = vals[1]; out.db_step = q1;
         out.has_uv = nch >= 4u;
+        out.band_miss = band_miss;
         out.has_an = nch >= 7u;
         out.an = vec3<f32>(vals[4], vals[5], vals[6]);
         out.uv = vec2<f32>(vals[2], vals[3]);
@@ -666,6 +717,7 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
     }
     let v = outside_bound(p, sh);
     out.f = v; out.g = v; out.inside = false; out.masked = false; out.has_uv = false; out.has_an = false; out.an = vec3<f32>(0.0);
+    out.band_miss = false;
     out.s = 0.0; out.db = 0.0; out.db_step = 0.0;
     return out;
 }
@@ -848,6 +900,7 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var nrm = vec3<f32>(0.0, 0.0, 1.0);
     var uv = vec3<f32>(0.0);
     var an = vec4<f32>(0.0);
+    var miss = 0.0;
     if (kind == 1) {
         let p = o + d * t;
         let e = 0.05;
@@ -858,10 +911,11 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             sample_sheet(own, p + vec3<f32>(0.0, 0.0, e), 2u).s - sample_sheet(own, p - vec3<f32>(0.0, 0.0, e), 2u).s);
         if (length(n) > 1e-12) { nrm = normalize(n); }
         let s = sample_sheet(own, p, 8u);
+        if (s.band_miss) { miss = 1.0; }
         if (s.has_uv && s.inside) { uv = vec3<f32>(s.uv, 1.0); }
         if (s.has_an && s.inside && length(s.an) > 1e-12) { an = vec4<f32>(normalize(s.an), 1.0); }
     }
-    OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), 0.0);
+    OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), miss);
     OUT[4u * i + 1u] = vec4<f32>(nrm, 0.0);
     OUT[4u * i + 2u] = vec4<f32>(uv, 0.0);
     OUT[4u * i + 3u] = an;
