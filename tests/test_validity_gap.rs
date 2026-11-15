@@ -169,3 +169,27 @@ fn local_gap_from_a_point_on_or_a_hair_off_the_face_crosses_the_slab() {
         assert!((g - 1.5).abs() < 1e-3, "from x = {x}: {g}");
     }
 }
+
+#[test]
+fn exact_slots_and_holes_report_within_the_stated_tolerance() {
+    use alice_sdf::validity::GAP_TOLERANCE;
+    // slots of exactly g, centred on and off the grid points, and a through hole of diameter g
+    for g in [0.8_f32, 1.0, 2.0, 2.5] {
+        for x0 in [0.0_f32, 0.37, 0.125] {
+            let r = measure_gaps(&slot(g, x0), Vec3::new(-12.0, -1.0, -6.0), Vec3::new(12.0, 7.0, 6.0), 0.25)
+                .expect("samples");
+            let w = r.min_gap.unwrap_or_else(|| panic!("slot {g} at {x0}: not found"));
+            assert!((w - g).abs() <= GAP_TOLERANCE, "slot {g} at {x0}: {w} (±{GAP_TOLERANCE})");
+        }
+        let plate = SdfNode::box3d(20.0, 4.0, 20.0).subtract(SdfNode::cylinder(g * 0.5, 10.0));
+        let r = measure_gaps(&plate, Vec3::new(-11.0, -3.0, -11.0), Vec3::new(11.0, 3.0, 11.0), 0.2)
+            .expect("samples");
+        let w = r.min_gap.unwrap_or_else(|| panic!("hole {g}: not found"));
+        assert!((w - g).abs() <= GAP_TOLERANCE, "hole {g}: {w} (±{GAP_TOLERANCE})");
+    }
+    // and local_gap from on the face reads the slab within the same bound
+    let a = SdfNode::box3d(10.0, 10.0, 10.0).translate(-5.0, 0.0, 0.0);
+    let b = SdfNode::box3d(10.0, 10.0, 10.0).translate(7.0, 0.0, 0.0);
+    let w = local_gap(&a.union(b), Vec3::new(0.0, 1.0, 1.0), Vec3::X, 20.0).expect("gap");
+    assert!((w - 2.0).abs() <= GAP_TOLERANCE, "slab 2.0: {w}");
+}
