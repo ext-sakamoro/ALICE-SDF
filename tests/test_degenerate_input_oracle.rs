@@ -1358,9 +1358,12 @@ fn file_importers_never_panic_on_truncated_or_corrupted_files() {
     let path = dir.join("a.json");
     save_asdf_json(&tree, &path).expect("json");
     cases.push(("asdf json", path, Box::new(|f| drop(load_asdf_json(f)))));
-    let path = dir.join("a.asdf");
-    save_asdf(&tree, &path).expect("asdf");
-    cases.push(("asdf", path, Box::new(|f| drop(load_asdf(f)))));
+    #[cfg(feature = "asdf")]
+    {
+        let path = dir.join("a.asdf");
+        save_asdf(&tree, &path).expect("asdf");
+        cases.push(("asdf", path, Box::new(|f| drop(load_asdf(f)))));
+    }
 
     let mut state: u32 = 0x1357_9BDF;
     let mut next = || {

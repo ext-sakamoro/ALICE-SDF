@@ -290,11 +290,18 @@ fn the_off_state_is_stored_as_false_and_none() {
         json.contains("\"variation\": null") || json.contains("\"variation\":null"),
         "{json}"
     );
-    // the binary body: ... spacing, count None (0), mirror (1), neighbours (0), variation None (0)
-    let body = asdf_body(&SdfTree::new(node));
+}
+
+/// The off state in the binary `.asdf` body (the `asdf` feature): ... spacing, count `None` (0),
+/// mirror (1), neighbours (0), variation `None` (0)
+#[cfg(feature = "asdf")]
+#[test]
+fn the_off_state_is_stored_as_false_and_none_in_asdf() {
+    let body = asdf_body(&SdfTree::new(supported()));
     assert_eq!(tail_positions(&body).len(), 1);
 }
 
+#[cfg(feature = "asdf")]
 /// The bytes after the root `RepeatCells`'s spacing: count `None`, mirror,
 /// neighbours, variation `None`
 fn tail_pattern() -> Vec<u8> {
@@ -307,6 +314,7 @@ fn tail_pattern() -> Vec<u8> {
 }
 
 /// Where `tail_pattern` starts in `bytes`
+#[cfg(feature = "asdf")]
 fn tail_positions(bytes: &[u8]) -> Vec<usize> {
     let pat = tail_pattern();
     bytes
@@ -318,8 +326,10 @@ fn tail_positions(bytes: &[u8]) -> Vec<usize> {
 }
 
 /// The offset of the `neighbours` byte from the start of `tail_pattern`
+#[cfg(feature = "asdf")]
 const NEIGHBOURS_AT: usize = 12 + 2;
 
+#[cfg(feature = "asdf")]
 fn asdf_file(tree: &SdfTree, name: &str) -> (std::path::PathBuf, Vec<u8>) {
     let path = std::env::temp_dir().join(format!(
         "alice_sdf_repeat_cells_{}_{name}.asdf",
@@ -330,6 +340,7 @@ fn asdf_file(tree: &SdfTree, name: &str) -> (std::path::PathBuf, Vec<u8>) {
     (path, bytes)
 }
 
+#[cfg(feature = "asdf")]
 fn asdf_body(tree: &SdfTree) -> Vec<u8> {
     let (path, bytes) = asdf_file(tree, "body");
     let _ = std::fs::remove_file(&path);
@@ -386,6 +397,7 @@ fn the_json_reader_refuses_a_stored_neighbours_or_variation() {
 /// The `.asdf` reader refuses a stored `neighbours: true` (the byte flipped, the
 /// checksum recomputed so only the field differs), naming the field, wherever
 /// the node sits
+#[cfg(feature = "asdf")]
 #[test]
 fn the_asdf_reader_refuses_a_stored_neighbours() {
     for (place, tree) in placements() {

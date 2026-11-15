@@ -54,11 +54,15 @@ name = "alice-sdf"
 path = "src/bin/main.rs"
 
 [features]
-default = ["cli"]
-cli = ["dep:clap"]
+default = ["cli", "asdf"]
+cli = ["dep:clap", "asdf"]
+# binary .asdf bodies (save_asdf / load_asdf, io::save / io::load on a `.asdf` path, the ASP
+# bridge): the only users of bincode. Off, bincode is not resolved and a `.asdf` path is
+# refused by name; the header type and `.asdf.json` stay available
+asdf = ["dep:bincode"]
 texture-fit = ["image", "cli"]
 image = ["dep:image", "dep:png"]  # PNG / JPEG decoding (heightmap import, texture-fit), PNG heightmap writing
-python = ["dep:pyo3", "dep:numpy"]
+python = ["dep:pyo3", "dep:numpy", "asdf"]
 godot = ["dep:godot"]  # Godot 4.x GDExtension integration
 jit = ["dep:cranelift-codegen", "dep:cranelift-frontend", "dep:cranelift-jit", "dep:cranelift-module", "dep:cranelift-native"]
 gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck", "dep:ash"]
@@ -83,10 +87,10 @@ blinkscript = ["hlsl"]  # BlinkScript transpiler for Foundry Nuke (delegates to 
 # undeclared crate, or `--all-features` breaks for every crates.io user).
 physics = ["dep:alice-physics"]  # SdfField impl + sim_modifier chain (alice-physics)
 codec = ["dep:alice-codec"]  # wavelet + rANS SDF volume codec (alice-codec)
-asp = ["dep:libasp"]  # ALICE Streaming Protocol packets (libasp)
+asp = ["dep:libasp", "asdf"]  # ALICE Streaming Protocol packets (libasp)
 sdf-cache = ["dep:alice-cache"]  # evaluation cache (alice-cache)
 font = []  # Font bridge gate — inert on crates.io, see above
-ffi = []  # C/C++/C# FFI bindings (registries use std::sync::LazyLock)
+ffi = ["asdf"]  # C/C++/C# FFI bindings (registries use std::sync::LazyLock)
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]  # WebAssembly bindings (browser)
 openvdb = ["dep:vdb-rs"]  # OpenVDB float grid I/O (.vdb)
 all-shaders = ["gpu", "hlsl", "glsl", "blinkscript", "msl"]  # All shader transpilers
@@ -122,7 +126,7 @@ serde_json = "1.0"
 # bincode 2.x: `serde` feature で既存 serde derive 活用、`config::legacy()` で
 # bincode 1 wire format 互換維持 (既存 .asdf file 読み込み可能)
 # RUSTSEC-2025-0141 (bincode 1 unmaintained) 解消のため 2 系へ移行
-bincode = { version = "2.0", features = ["serde"] }
+bincode = { version = "2.0", features = ["serde"], optional = true }
 
 # Error handling
 thiserror = "2.0"
@@ -265,9 +269,27 @@ required-features = ["font"]
 
 # Generates the UE5 plugin's corpus oracle (Shaders/Generated + manifest
 # header, committed) and the .asdf / golden files its automation tests load.
+# binary .asdf round trips and the stored identifier in the .asdf header: the `asdf` feature
+[[test]]
+name = "test_io_round_trip"
+required-features = ["asdf"]
+
+[[test]]
+name = "test_provenance"
+required-features = ["asdf"]
+
+[[example]]
+name = "provenance_check"
+required-features = ["asdf"]
+
+[[example]]
+name = "bake_assets"
+path = "examples/bake_assets/main.rs"
+required-features = ["asdf"]
+
 [[example]]
 name = "unreal_corpus_oracle"
-required-features = ["hlsl"]
+required-features = ["hlsl", "asdf"]
 
 # Emits a scene as dependency-free Rust (`fn sdf` / `fn normal`), the
 # build.rs use case of the `rust` feature.
