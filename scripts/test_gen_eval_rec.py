@@ -62,7 +62,7 @@ class GenEvalRec(unittest.TestCase):
         self.assertEqual(problems, [])
 
     def test_a_hand_edit_of_the_block_fails(self) -> None:
-        self.edit(self.src, "sdf_union(rec(a, at), rec(b, at))", "sdf_intersection(rec(a, at), rec(b, at))")
+        self.edit(self.src, "SdfNode::Union { a, b } => sdf_union(", "SdfNode::Union { a, b } => sdf_intersection(")
         self.assertEqual(self.check(), 1)
 
     def test_a_law_arm_the_block_lacks_fails(self) -> None:
