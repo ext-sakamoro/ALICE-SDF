@@ -127,6 +127,7 @@ pub(crate) fn eval_rec(node: &SdfNode, point: Vec3, depth: u32, native_levels: u
         | SdfNode::Bend { .. }
         | SdfNode::RepeatInfinite { .. }
         | SdfNode::RepeatFinite { .. }
+        | SdfNode::RepeatCells { .. }
         | SdfNode::Elongate { .. }
         | SdfNode::Mirror { .. }
         | SdfNode::OctantMirror { .. }
