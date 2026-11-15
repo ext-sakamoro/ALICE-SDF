@@ -221,6 +221,20 @@ def generate(text: str) -> str:
         "    }",
         "}",
         "",
+        "/// Every per-kind function of [`eval_rec`] by name, for the test that gives each nodes of",
+        "/// other kinds (`tests::each_arm_function_evaluates_any_node_as_the_general_walk`)",
+        "#[cfg(test)]",
+        "type RecArm = fn(&SdfNode, Vec3, u32, u32) -> f32;",
+        "",
+        "/// See [`RecArm`]",
+        "#[cfg(test)]",
+        "const REC_ARMS: &[(&str, RecArm)] = &[",
+    ]
+    names = [f"rec_{snake(k)}" for k, _, _, _ in two] + ["rec_metric_blend", "rec_translate", "rec_one"]
+    out += [f'    ("{n}", {n}),' for n in names]
+    out += [
+        "];",
+        "",
         END,
     ]
     return "\n".join(out)
