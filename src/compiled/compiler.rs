@@ -1047,9 +1047,7 @@ impl Compiler {
                 let inst_idx = self.instructions.len();
                 self.instructions
                     .push(Instruction::repeat_cells(*spacing, *count, *mirror));
-                self.compile_node(child);
-                self.instructions.push(Instruction::pop_transform());
-                self.instructions[inst_idx].skip_offset = self.instructions.len() as u32;
+                step = Step::Wrap { child, inst_idx };
             }
 
             SdfNode::RepeatFinite {
@@ -1763,9 +1761,10 @@ fn validate_node(node: &SdfNode) -> Children<'_> {
     match node {
         // neighbours / variation have no bytecode law yet: refused, not ignored
         SdfNode::RepeatCells { child, .. } => {
-            node.validate_repeat_cells()
-                .map_err(|e| CompileError::UnsupportedPrimitive(e.to_string()))?;
-            validate_for_compile(child)?;
+            if let Err(e) = node.validate_repeat_cells() {
+                return Children::Refused(CompileError::UnsupportedPrimitive(e.to_string()));
+            }
+            return Children::One(child);
         }
         // Metric nodes: four and five params respectively, both within the
         // instruction's seven slots, and both have a VM law.
