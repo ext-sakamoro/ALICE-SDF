@@ -800,8 +800,11 @@ impl WgslShader {
             | SdfNode::LoftCurves { .. }
             | SdfNode::SectionStack { .. }
             | SdfNode::SmoothSectionStack { .. } => {}
-            // 子を持つが材質を辿らない (`eval_material` と同じ扱い)
-            SdfNode::MetricBlend { .. } => {}
+            // 二つの被演算子を補間する: 両方の子を再帰探索
+            SdfNode::MetricBlend { inner, outer, .. } => {
+                Self::collect_materials(inner, out);
+                Self::collect_materials(outer, out);
+            }
         }
     }
 
