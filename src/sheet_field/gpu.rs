@@ -363,6 +363,12 @@ pub fn storage_binding_limit() -> Result<u64, GpuError> {
 impl GpuSheetField {
     /// Upload `field` and build the pipelines.
     pub fn new(field: &SheetField) -> Result<Self, GpuError> {
+        Self::build(field, &|src| src)
+    }
+
+    /// [`Self::new`] with the march shader's text passed through `edit` first (the module's tests use it to break
+    /// one property of the shader on purpose).
+    fn build(field: &SheetField, edit: &dyn Fn(String) -> String) -> Result<Self, GpuError> {
         let mut sheets = Vec::new();
         let mut levels = Vec::new();
         let (mut index, mut rows, mut qbytes, mut scoff) = (
@@ -495,7 +501,7 @@ impl GpuSheetField {
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sheet field"),
-            source: wgpu::ShaderSource::Wgsl(march_shader(max_live).into()),
+            source: wgpu::ShaderSource::Wgsl(edit(march_shader(max_live)).into()),
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("sheet field"),
@@ -958,7 +964,8 @@ impl GpuSheetField {
             // any of its first vec4's words, or of the others' unless it overflowed, still NOT_WRITTEN was not
             // (fully) written by this dispatch and is issued again
             let poisoned = |v: &[f32; 4]| v.iter().any(|w| w.to_bits() == NOT_WRITTEN);
-            if poisoned(&r[0]) || (r[0][1] as i32 != 3 && r[1..].iter().any(poisoned)) {
+            let early = matches!(r[0][1] as i32, 3 | 5); // overflow and unsorted write only the first vec4
+            if poisoned(&r[0]) || (!early && r[1..].iter().any(poisoned)) {
                 unwritten.push(i);
                 continue;
             }
@@ -985,6 +992,12 @@ impl GpuSheetField {
                 }),
                 0 => MarchResult::Miss,
                 2 => MarchResult::Undecided,
+                5 => {
+                    return Err(GpuError::InvalidFormat(format!(
+                        "sheet field march: ray {i} met a live-sheet list that is not ascending (the crossing check pairs \
+                         the two lists by a merge and would pair the wrong sheets)"
+                    )))
+                }
                 4 => {
                     stats.over_budget += 1;
                     MarchResult::Undecided
@@ -1283,11 +1296,15 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var prev_g: array<f32, __MAX_LIVE__>;
     var n_prev = 0u;
     var overflow = false;
+    var unsorted = false;
     var lv: array<u32, __MAX_LIVE__>;
     let n0 = live_sheets(o, &lv);
     if (n0 > MAX_LIVE) { overflow = true; }
     else {
-        for (var j = 0u; j < n0; j = j + 1u) { prev_k[j] = lv[j]; prev_g[j] = sample_sheet(lv[j], o, 2u).g; }
+        for (var j = 0u; j < n0; j = j + 1u) {
+            if (j > 0u && lv[j] <= lv[j - 1u]) { unsorted = true; }
+            prev_k[j] = lv[j]; prev_g[j] = sample_sheet(lv[j], o, 2u).g;
+        }
         n_prev = n0;
     }
     var t = 0.0;
@@ -1307,17 +1324,23 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         var n_cur = 0u;
         let nl = live_sheets(p, &lv);
         if (nl > MAX_LIVE) { overflow = true; break; }
-        let w = nl * (n_prev + 1u);
+        // the step's work: the live sheets it samples plus the previous list it walks once (the two lists are merged)
+        let w = nl + n_prev;
         if (work > U.work_budget - min(w, U.work_budget)) { work = U.work_budget; kind = 4; break; }
         work = work + w;
+        // both lists are ascending by sheet (live_sheets sorts): one pointer walks the previous list once while the
+        // current list is read, so a sheet's previous value is found in O(n_live + n_prev) per step; a list that is
+        // not strictly ascending would pair the wrong sheets, so it is refused (kind 5), never marched
+        var jp = 0u;
         for (var li = 0u; li < nl; li = li + 1u) {
             let k = lv[li];
+            if (li > 0u && k <= lv[li - 1u]) { unsorted = true; }
             let gc = sample_sheet(k, p, 2u).g;
             cur_k[n_cur] = k; cur_g[n_cur] = gc; n_cur = n_cur + 1u;
             if (t <= 0.0) { continue; }
-            var found = false; var gp = 0.0;
-            for (var j = 0u; j < n_prev; j = j + 1u) { if (prev_k[j] == k) { found = true; gp = prev_g[j]; } }
-            if (!found) { continue; }
+            while (jp < n_prev && prev_k[jp] < k) { jp = jp + 1u; }
+            if (jp >= n_prev || prev_k[jp] != k) { continue; }
+            let gp = prev_g[jp];
             if ((gc < 0.0) == (gp < 0.0)) { continue; }
             var a = tprev; var b = t; var ga = gp;
             for (var it = 0; it < 30; it = it + 1) {
@@ -1337,6 +1360,7 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (t >= U.tmax) { kind = 0; break; }
     }
     if (overflow) { OUT[4u * i] = vec4<f32>(0.0, 3.0, 0.0, 0.0); return; }
+    if (unsorted) { OUT[4u * i] = vec4<f32>(0.0, 5.0, 0.0, 0.0); return; }
     var nrm = vec3<f32>(0.0, 0.0, 1.0);
     var uv = vec3<f32>(0.0);
     var an = vec4<f32>(0.0);
@@ -1564,6 +1588,34 @@ mod tests {
             "{st:?}"
         );
         assert!(st.smallest_reissue > 0, "{st:?}");
+    }
+
+    /// The crossing check pairs the current and previous live lists by a merge, which needs both ascending: a shader
+    /// whose list sort is turned around (descending) must make the march an error, never pair the wrong sheets.
+    /// Oracle: the same rays on the unedited shader hit (the scene is deep enough that every ray has several sheets).
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn a_live_list_out_of_order_is_an_error_not_a_wrong_pairing() {
+        let (f, os) = stack_and_rays(2_000);
+        let Some(ok) = gpu_or_skip(&f) else { return };
+        let good = ok.march_batch_decided(&os, -Vec3::Z, 10.0).unwrap();
+        assert!(
+            good.iter().any(|m| matches!(m, MarchResult::Hit(_))),
+            "no hits: the scene is wrong"
+        );
+        let sort = "if (j == 0u || (*L)[j - 1u] <= x) { break; }";
+        let bad = GpuSheetField::build(&f, &|src: String| {
+            assert_eq!(src.matches(sort).count(), 1, "the sort line moved");
+            src.replace(sort, "if (j == 0u || (*L)[j - 1u] >= x) { break; }")
+        })
+        .unwrap();
+        match bad.march_batch_decided(&os, -Vec3::Z, 10.0) {
+            Err(e) => assert!(
+                e.to_string().contains("not ascending"),
+                "another error: {e}"
+            ),
+            Ok(_) => panic!("a march with descending live lists returned results"),
+        }
     }
 
     /// A dispatch that runs but covers only part of the rays (one workgroup for 3 workgroups of input) leaves the
