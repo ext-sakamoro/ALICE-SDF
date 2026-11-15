@@ -41,18 +41,24 @@ pub const ASDF_VERSION: u16 = 2;
 /// The header length of [`ASDF_VERSION`] (16 bytes plus the 32-byte semantics identifier)
 pub const ASDF_HEADER_LEN: usize = 48;
 
-/// bincode deserialize allocation upper bound (256 MB)
+/// The most bytes the body is read from or written to (256 MiB)
 ///
-/// malformed .asdf ファイルで length prefix が過大値の場合、bincode 2 の
-/// decode_from_slice は Vec::with_capacity(huge) で `capacity overflow` panic を
-/// 起こす (実 fuzz 検出、fuzz_asdf_decode で発覚)
-///
-/// `bincode::config::legacy().with_limit::<N>()` の N でこれを上限 cap し、
-/// 越える input は Err で reject する (panic → Err に変換、DoS 予防)
-///
-/// 現行 tree の実サイズは 大規模 scene でも 100 MB 未満、256 MB あれば実用範囲内
+/// alice-serial's bincode1 checks every length prefix against the bytes that remain and this
+/// limit before it allocates, so a forged length is an `Err`, never a large allocation (the
+/// `capacity overflow` panic fuzz_asdf_decode found in an unbounded decoder). The largest scenes
+/// written are under 100 MB.
 #[cfg(feature = "asdf")]
-const ASDF_BINCODE_LIMIT: usize = 256 * 1024 * 1024;
+pub const ASDF_BINCODE_LIMIT: usize = 256 * 1024 * 1024;
+
+/// The deepest nesting the body is read with: each node's enum tag counts one level, and a
+/// two-child operation one more, so a left-deep chain of `n` unions needs about `2n`
+///
+/// The deepest trees measured: text-to-print presets 44, LOL documents 27, LOL panels 35, the
+/// Figure humanoid 32. 1024 keeps every one of them and a chain of 500 unions; a deeper body is an
+/// `Err` (`TooDeep`) before the recursion can exhaust the stack. A build reading deeper trees
+/// needs a stack of about 160 KiB per 1024 levels (wasm32) or more in a debug build.
+#[cfg(feature = "asdf")]
+pub const ASDF_MAX_DEPTH: usize = 1024;
 
 /// ASDF file header
 #[derive(Debug, Clone, Copy)]
@@ -263,16 +269,11 @@ pub fn save_asdf_with_provenance(
     };
     writer.write_all(&placeholder.to_bytes())?;
 
-    // 2. Stream write body and calculate CRC on-the-fly
-    // bincode 2 API: encode_into_std_write returns Result<usize, _> — usize は捨てる
-    // config::legacy().with_limit() で bincode 1 wire format 互換 + DoS 予防 size cap
+    // 2. Write the body (the bincode 1 layout, at most ASDF_BINCODE_LIMIT bytes) and its CRC
+    let body = alice_serial::bincode1::to_vec(tree, ASDF_BINCODE_LIMIT)
+        .map_err(|e| IoError::Serialization(e.to_string()))?;
     let mut crc_writer = CrcWriter::new(&mut writer);
-    bincode::serde::encode_into_std_write(
-        tree,
-        &mut crc_writer,
-        bincode::config::legacy().with_limit::<ASDF_BINCODE_LIMIT>(),
-    )
-    .map_err(|e| IoError::Serialization(e.to_string()))?;
+    crc_writer.write_all(&body)?;
 
     let crc = crc_writer.finalize();
 
@@ -290,7 +291,7 @@ pub fn save_asdf_with_provenance(
 /// Load an SDF tree from binary ASDF format (CRC-First Validation)
 ///
 /// Reads body into buffer, validates CRC before deserialization.
-/// This protects against corrupted data causing bincode to hang.
+/// A corrupted body is refused by its CRC before it is decoded.
 ///
 /// The header's semantics identifier must be this crate's or one it still reproduces
 /// ([`crate::check_sdf_semantics`]).
@@ -345,19 +346,16 @@ fn load_asdf_checked(
         });
     }
 
-    // 4. Deserialize (safe because CRC verified + size cap で DoS 予防)
-    // bincode 2 API: decode_from_slice returns (T, bytes_consumed) — bytes_consumed は捨てる
-    // with_limit::<ASDF_BINCODE_LIMIT>: 256 MB を超える length prefix は Err で reject
-    // (fuzz_asdf_decode で発覚した capacity overflow panic の予防)
+    // 4. Deserialize the whole body: every length is checked against the bytes that remain and
+    // ASDF_BINCODE_LIMIT before anything is allocated, nesting stops at ASDF_MAX_DEPTH, and bytes
+    // after the tree are refused (the writer never leaves any)
     #[allow(
         clippy::disallowed_methods,
         reason = "stored form checked: the header identifier went through sdf_load_verdict before this decode"
     )]
-    let (tree, _consumed): (SdfTree, usize) = bincode::serde::decode_from_slice(
-        &body,
-        bincode::config::legacy().with_limit::<ASDF_BINCODE_LIMIT>(),
-    )
-    .map_err(|e| IoError::Serialization(e.to_string()))?;
+    let tree: SdfTree =
+        alice_serial::bincode1::from_slice_with_depth(&body, ASDF_BINCODE_LIMIT, ASDF_MAX_DEPTH)
+            .map_err(|e| IoError::Serialization(e.to_string()))?;
     crate::modifiers::check_repeat_cells_tree(&tree.root)
         .map_err(|e| IoError::InvalidFormat(format!("ASDF: {e}")))?;
     Ok(Checked::new(tree, semantics))
@@ -458,9 +456,9 @@ mod tests {
     #[test]
     fn test_malformed_body_no_panic() {
         // Regression test for fuzz_asdf_decode 発見 bug (2026-09-03)
-        // valid ASDF magic + malformed body で bincode 2 decode が
-        // Vec `capacity overflow` panic を起こす (potential DoS)
-        // with_limit::<ASDF_BINCODE_LIMIT> で Err 返却に矯正
+        // valid ASDF magic + malformed body で上限の無い decoder が
+        // Vec `capacity overflow` panic を起こした (potential DoS)
+        // bincode1 は長さを残りの bytes と ASDF_BINCODE_LIMIT で照合してから確保する
         let path = temp_path("malformed_body.asdf");
         // fuzz artifact をベースにした 28-byte payload
         // (base64: QVNERgAAAAAQKN8oN+TnLSgAABAo3yjSKCgyKA==)

@@ -124,7 +124,7 @@ Header (16 bytes):
   - CRC32: u32 (4 bytes)
 
 Body:
-  - Bincode-serialized SdfTree
+  - SdfTree in the bincode 1 layout (alice-serial's bincode1)
 ```
 
 ### .asdf.json (ALICE SDF JSON)

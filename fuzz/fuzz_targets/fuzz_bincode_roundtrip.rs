@@ -1,9 +1,8 @@
-//! Fuzz target: SDF tree の bincode roundtrip が形状を保つことを検証
-//!
-//! 任意の primitive tree を構築、bincode 2.x で encode → decode → eval が同じ距離を返すか
+//! Fuzz target: SDF tree の bincode 1 layout (alice-serial の bincode1、.asdf body と ASP の
+//! 形) の roundtrip が形状を保ち、bytes が往復で変わらないことを検証
 //!
 //! 起こり得る危険:
-//! - bincode 1 → 2 移行で config::legacy() の serialize / deserialize 非対称
+//! - serialize / deserialize の非対称 (再 encode した bytes が違う)
 //! - SdfNode variant の一部 skip / mis-align
 
 #![no_main]
@@ -41,15 +40,17 @@ fuzz_target!(|input: FuzzInput| {
     };
     let tree = SdfTree::new(node.clone());
 
-    // bincode 2.x + config::legacy() で roundtrip
-    let Ok(bytes) = bincode::serde::encode_to_vec(&tree, bincode::config::legacy()) else {
+    // the bincode 1 layout, as the .asdf body writes it
+    let Ok(bytes) = alice_serial::bincode1::to_vec(&tree, 1 << 20) else {
         return;
     };
-    let Ok((decoded, _)) =
-        bincode::serde::decode_from_slice::<SdfTree, _>(&bytes, bincode::config::legacy())
-    else {
-        return;
-    };
+    let decoded: SdfTree = alice_serial::bincode1::from_slice(&bytes, bytes.len())
+        .expect("bytes this encoder wrote decode");
+    assert_eq!(
+        alice_serial::bincode1::to_vec(&decoded, 1 << 20).ok().as_deref(),
+        Some(&bytes[..]),
+        "re-encoding gives the same bytes"
+    );
 
     let point = Vec3::new(input.px, input.py, input.pz);
     let d1 = eval(&node, point);
@@ -57,7 +58,7 @@ fuzz_target!(|input: FuzzInput| {
 
     // NaN 同士は != なので、両者 finite の時のみ厳格比較
     if d1.is_finite() && d2.is_finite() {
-        // f32 精度の許容 (bincode roundtrip は bit-exact であるべき)
+        // f32 精度の許容 (roundtrip は bit-exact であるべき)
         let diff = (d1 - d2).abs();
         assert!(
             diff < 1e-5,

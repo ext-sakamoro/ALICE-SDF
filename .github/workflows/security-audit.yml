@@ -79,13 +79,11 @@ jobs:
       # advisory-db は audit 実行時に自動取得
       # yanked crate は deny (--deny yanked)、unmaintained warning は個別 ignore で管理
       # 現在の ignore 対象:
-      # - RUSTSEC-2025-0141: bincode 2.x unmaintained (代替 postcard は wire format 別、移行コスト高)
       # - RUSTSEC-2024-0436: paste 1.0.15 unmaintained (pyo3-macros 経由 transitive、除去不能)
       - name: Run cargo audit
         run: |
           cargo audit \
             --deny yanked \
-            --ignore RUSTSEC-2025-0141 \
             --ignore RUSTSEC-2024-0436
 
   deny:

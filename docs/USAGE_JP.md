@@ -124,7 +124,7 @@ CRC32整合性チェック付きコンパクトバイナリフォーマット。
   - CRC32: u32（4バイト）
 
 ボディ:
-  - Bincodeシリアライズ済みSdfTree
+  - bincode 1 の layout (alice-serial の bincode1) の SdfTree
 ```
 
 ### .asdf.json（ALICE SDF JSON）

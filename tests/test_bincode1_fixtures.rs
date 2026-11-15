@@ -215,3 +215,60 @@ fn the_asp_i_packet_carries_the_body_bincode_wrote() {
         );
     }
 }
+
+/// A body nested deeper than the reader's limit (1024 levels; a left-deep chain of `n` unions
+/// needs about `2n`) is refused before the recursion can exhaust the stack: 500 loads, 520 does
+/// not. The writer has no limit, so the refused file is written by this crate.
+#[test]
+fn a_body_nested_past_the_limit_is_refused() {
+    let (ok500, err520) = deep(|| {
+        let ok = loaded(&written(&tree(chain(500))));
+        let path = temp::TempPath::new("alice_sdf_bincode1", "deep.asdf");
+        save_asdf(&tree(chain(520)), &path).expect("the writer has no depth limit");
+        (
+            ok.root.node_count(),
+            load_asdf(&path).err().map(|e| e.to_string()),
+        )
+    });
+    assert_eq!(ok500, 1498, "500 spheres, 499 translations and 499 unions");
+    let e = err520.expect("a 520-chain is refused");
+    assert!(e.contains("deep") || e.contains("depth"), "{e}");
+}
+
+/// The ASP I-packet reads with the same nesting limit
+#[cfg(feature = "asp")]
+#[test]
+fn an_asp_packet_nested_past_the_limit_is_refused() {
+    use alice_sdf::asp_bridge::{create_sdf_i_packet, decode_sdf_i_packet};
+    let (ok500, err520) = deep(|| {
+        let ok = create_sdf_i_packet(&tree(chain(500)), 1).expect("packs");
+        let deep = create_sdf_i_packet(&tree(chain(520)), 2).expect("packs");
+        (
+            decode_sdf_i_packet(&ok).is_ok(),
+            decode_sdf_i_packet(&deep).err(),
+        )
+    });
+    assert!(ok500);
+    let e = err520.expect("a 520-chain packet is refused");
+    assert!(e.contains("deep") || e.contains("depth"), "{e}");
+}
+
+/// Bytes after the tree in the body are refused (the writer never leaves any; the bincode 2 reader
+/// ignored them); the CRC is recomputed so the refusal is the decoder's
+#[test]
+fn a_body_with_bytes_after_the_tree_is_refused() {
+    let (_, file) = corpus_files().swap_remove(0);
+    let mut body = file[alice_sdf::io::ASDF_HEADER_LEN..].to_vec();
+    body.push(0);
+    let mut longer = file[..alice_sdf::io::ASDF_HEADER_LEN].to_vec();
+    longer[12..16].copy_from_slice(&crc32fast::hash(&body).to_le_bytes());
+    longer.extend_from_slice(&body);
+    let path = temp::TempPath::new("alice_sdf_bincode1", "longer.asdf");
+    std::fs::write(&path, &longer).expect("writes");
+    let e = load_asdf(&path).expect_err("refused").to_string();
+    assert!(e.contains("used 24 of the 25 input bytes"), "{e}");
+    assert!(
+        loaded(&file).root.node_count() > 0,
+        "the file as written loads"
+    );
+}

@@ -4,7 +4,7 @@
 # The library code (`cargo clippy --lib`, CLIPPY_CONF_DIR=.github/clippy-lib)
 # also may not call f32 / f64 / f32x8 max and min; tests, examples and benches use the
 # root configuration; nor name or iterate HashMap / HashSet (ALICE-Law G13); nor read a
-# stored form with serde_json / bincode outside a reviewed site (ALICE-Law G8); nor call
+# stored form with serde_json / bincode / alice-serial bincode1 outside a reviewed site (ALICE-Law G8); nor call
 # wide's fused multiply-add methods, transcendentals and reciprocal approximations,
 # glam's vector mul_add, or the JIT's fma instruction (ALICE-Law G3)
 
@@ -205,6 +205,10 @@ disallowed-methods = [
     { path = "bincode::decode_from_reader", reason = "a bare read of a stored form skips the semantics identifier (ALICE-Law G8); read through a checked loader, or mark a reviewed site with #[allow(clippy::disallowed_methods)] with a reason starting stored form checked: / other-type: / pending: (scripts/bare_serde_reads.py)" },
     { path = "bincode::decode_from_std_read", reason = "a bare read of a stored form skips the semantics identifier (ALICE-Law G8); read through a checked loader, or mark a reviewed site with #[allow(clippy::disallowed_methods)] with a reason starting stored form checked: / other-type: / pending: (scripts/bare_serde_reads.py)" },
     { path = "bincode::borrow_decode_from_slice", reason = "a bare read of a stored form skips the semantics identifier (ALICE-Law G8); read through a checked loader, or mark a reviewed site with #[allow(clippy::disallowed_methods)] with a reason starting stored form checked: / other-type: / pending: (scripts/bare_serde_reads.py)" },
+    { path = "alice_serial::bincode1::from_slice", reason = "a bare read of a stored form skips the semantics identifier (ALICE-Law G8); read through a checked loader, or mark a reviewed site with #[allow(clippy::disallowed_methods)] with a reason starting stored form checked: / other-type: / pending: (scripts/bare_serde_reads.py)" },
+    { path = "alice_serial::bincode1::from_slice_with_depth", reason = "a bare read of a stored form skips the semantics identifier (ALICE-Law G8); read through a checked loader, or mark a reviewed site with #[allow(clippy::disallowed_methods)] with a reason starting stored form checked: / other-type: / pending: (scripts/bare_serde_reads.py)" },
+    { path = "alice_serial::bincode1::from_slice_prefix", reason = "a bare read of a stored form skips the semantics identifier (ALICE-Law G8); read through a checked loader, or mark a reviewed site with #[allow(clippy::disallowed_methods)] with a reason starting stored form checked: / other-type: / pending: (scripts/bare_serde_reads.py)" },
+    { path = "alice_serial::bincode1::from_slice_prefix_with_depth", reason = "a bare read of a stored form skips the semantics identifier (ALICE-Law G8); read through a checked loader, or mark a reviewed site with #[allow(clippy::disallowed_methods)] with a reason starting stored form checked: / other-type: / pending: (scripts/bare_serde_reads.py)" },
     { path = "wgpu::Device::poll", reason = "a read waits with GpuContext::wait_for_mapping: Maintain::Wait stops at 60 s and then treats running work as finished" },
     { path = "wgpu::Instance::new", reason = "one instance per process: use alice_sdf::gpu_context::GpuContext", allow-invalid = true },
     { path = "wgpu::Adapter::request_device", reason = "devices are created under one lock: use alice_sdf::gpu_context::GpuContext", allow-invalid = true },

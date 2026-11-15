@@ -723,7 +723,7 @@ python3 scripts/build_flags_check.py -- cargo check --release --lib --features "
 
 step "audit: cargo audit (RustSec)"
 if command -v cargo-audit >/dev/null 2>&1; then
-  cargo audit --deny yanked --ignore RUSTSEC-2025-0141 --ignore RUSTSEC-2024-0436
+  cargo audit --deny yanked --ignore RUSTSEC-2024-0436
 else
   echo "skip: cargo-audit not installed" >&2
 fi

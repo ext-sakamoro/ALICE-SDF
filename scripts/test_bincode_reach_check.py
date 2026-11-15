@@ -28,12 +28,13 @@ def meta(edges: dict[str, list[tuple[str, list]]], root: str | None = "alice-sdf
 
 
 WITHOUT = meta({"alice-sdf": [("glam", [None]), ("serde", [None])]})
-WITH = meta({"alice-sdf": [("glam", [None]), ("bincode", [None])], "bincode": [("serde", [None])]})
+WITH = meta({"alice-sdf": [("glam", [None]), ("alice-serial", [None])], "alice-serial": [("serde", [None])]})
+OLD = meta({"alice-sdf": [("alice-serial", [None]), ("bincode", [None])], "bincode": [("serde", [None])]})
 
 
 class Reached(unittest.TestCase):
     def test_normal_edge_is_followed(self):
-        self.assertIn("bincode", brc.reached(WITH))
+        self.assertIn("alice-serial", brc.reached(WITH))
 
     def test_transitive_edge_is_followed(self):
         m = meta({"alice-sdf": [("lib", [None])], "lib": [("bincode", [None])]})
@@ -52,37 +53,50 @@ class Reached(unittest.TestCase):
         self.assertEqual(brc.reached(meta({"alice-sdf": [("bincode", [None])]}, root=None)), set())
 
 
+USERS = set(brc.USERS)
+
+
 class Check(unittest.TestCase):
-    good = {"lol": WITHOUT, "none": WITHOUT, "default": WITH}
+    good = {"lol": WITHOUT, "none": WITHOUT, "default": WITH, "all": WITH}
 
     def test_expected_state_passes(self):
-        self.assertEqual(brc.check(self.good, set(brc.USERS), 10), [])
+        self.assertEqual(brc.check(self.good, set(), USERS, 10), [])
 
-    def test_lol_set_reaching_bincode_fails(self):
-        p = brc.check({**self.good, "lol": WITH}, set(brc.USERS), 10)
+    def test_bincode_reached_in_any_set_fails(self):
+        for name in self.good:
+            p = brc.check({**self.good, name: OLD if self.good[name] is WITH else
+                           meta({"alice-sdf": [("bincode", [None])]})}, set(), USERS, 10)
+            self.assertTrue(any(name in x and "bincode is reached" in x for x in p), (name, p))
+
+    def test_lol_set_reaching_the_codec_fails(self):
+        p = brc.check({**self.good, "lol": WITH}, set(), USERS, 10)
         self.assertEqual(len(p), 1)
         self.assertIn("lol", p[0])
 
-    def test_default_not_reaching_bincode_fails(self):
-        # the positive control: a check that never sees bincode would pass the first two vacuously
-        p = brc.check({**self.good, "default": WITHOUT}, set(brc.USERS), 10)
+    def test_default_not_reaching_the_codec_fails(self):
+        # the positive control: a check that never sees alice-serial would pass the first two vacuously
+        p = brc.check({**self.good, "default": WITHOUT}, set(), USERS, 10)
         self.assertEqual(len(p), 1)
         self.assertIn("expected reached", p[0])
 
     def test_empty_walk_fails(self):
-        p = brc.check({**self.good, "none": meta({"alice-sdf": []}, root=None)}, set(brc.USERS), 10)
+        p = brc.check({**self.good, "none": meta({"alice-sdf": []}, root=None)}, set(), USERS, 10)
         self.assertTrue(any("compared nothing" in x for x in p))
 
-    def test_a_third_user_fails(self):
-        p = brc.check(self.good, set(brc.USERS) | {"src/other.rs"}, 10)
+    def test_a_bincode_user_fails(self):
+        p = brc.check(self.good, {"src/io/asdf.rs"}, USERS, 10)
+        self.assertTrue(any("`bincode::` is used" in x for x in p))
+
+    def test_a_third_codec_user_fails(self):
+        p = brc.check(self.good, set(), USERS | {"src/other.rs"}, 10)
         self.assertTrue(any("src/other.rs" in x for x in p))
 
-    def test_a_lost_user_fails(self):
-        p = brc.check(self.good, {"src/io/asdf.rs"}, 10)
+    def test_a_lost_codec_user_fails(self):
+        p = brc.check(self.good, set(), {"src/io/asdf.rs"}, 10)
         self.assertTrue(any("expected exactly" in x for x in p))
 
     def test_no_files_read_fails(self):
-        p = brc.check(self.good, set(), 0)
+        p = brc.check(self.good, set(), set(), 0)
         self.assertTrue(any("compared nothing" in x for x in p))
 
 
@@ -91,12 +105,16 @@ class Users(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             src = Path(d, "src")
             (src / "io").mkdir(parents=True)
-            (src / "io" / "asdf.rs").write_text("let x = bincode::serde::decode(1);\n", encoding="utf-8")
-            (src / "doc.rs").write_text("// bincode::config is described here\n", encoding="utf-8")
+            (src / "io" / "asdf.rs").write_text("let x = alice_serial::bincode1::from_slice(b, 1);\n",
+                                               encoding="utf-8")
+            (src / "old.rs").write_text("let y = bincode::serde::decode(1);\n", encoding="utf-8")
+            (src / "doc.rs").write_text("// bincode::config and bincode1:: are described here\n",
+                                        encoding="utf-8")
             (src / "lib.rs").write_text("fn f() {}\n", encoding="utf-8")
-            found, n = brc.users(Path(d))
-        self.assertEqual(found, {"src/io/asdf.rs"})
-        self.assertEqual(n, 3)
+            old, codec, n = brc.users(Path(d))
+        self.assertEqual(old, {"src/old.rs"})
+        self.assertEqual(codec, {"src/io/asdf.rs"})
+        self.assertEqual(n, 4)
 
 
 if __name__ == "__main__":

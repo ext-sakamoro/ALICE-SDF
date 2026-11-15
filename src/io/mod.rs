@@ -45,6 +45,9 @@ pub use alembic::{export_alembic, export_alembic_with_provenance, AlembicConfig}
 #[cfg(feature = "asdf")]
 pub use asdf::{load_asdf, load_asdf_unverified, save_asdf, save_asdf_with_provenance};
 pub use asdf::{AsdfHeader, ASDF_HEADER_LEN, ASDF_MAGIC, ASDF_VERSION};
+// the ASP bridge reads the .asdf body with the same limits
+#[cfg(feature = "asp")]
+pub(crate) use asdf::{ASDF_BINCODE_LIMIT, ASDF_MAX_DEPTH};
 pub use fbx::{
     export_fbx, export_fbx_with_provenance, export_fbx_with_stamp, fbx_animation_to_timeline,
     import_fbx, import_fbx_full, import_fbx_full_pinned, import_fbx_pinned, FbxAnimClip,
@@ -299,7 +302,7 @@ mod tests {
     }
 
     /// Without the `asdf` feature a binary path is refused by name, on both sides, and the JSON
-    /// form still round-trips (the build that leaves bincode out keeps every other path)
+    /// form still round-trips (the build that leaves the `asdf` feature out keeps every other path)
     #[test]
     #[cfg(not(feature = "asdf"))]
     fn test_binary_needs_asdf_feature() {

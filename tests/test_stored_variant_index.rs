@@ -1,4 +1,4 @@
-//! The stored forms (`.asdf`, the ASP bridge: bincode with the legacy config) name a node's variant by
+//! The stored forms (`.asdf`, the ASP bridge: the bincode 1 layout) name a node's variant by
 //! its position in `SdfNode`, as a little-endian u32 at the start of the node, at every depth. A
 //! variant inserted in the middle of the enum moves every later variant's number, and a file written
 //! before reads as a different node (or not at all). New variants go last.
@@ -98,15 +98,14 @@ fn every_variant_keeps_its_stored_number() {
 }
 
 /// The order read from the source is the encoder's: each corpus scene's root encodes to the number of
-/// its variant name (the encoder is bincode: the `asdf` feature)
+/// its variant name (the encoder is alice-serial's bincode1, the bincode 1 layout: the `asdf` feature)
 #[cfg(feature = "asdf")]
 #[test]
 fn the_declared_order_is_the_encoders() {
     let names = declared();
     let mut compared = 0;
     for (scene, node) in corpus() {
-        let bytes =
-            bincode::serde::encode_to_vec(&node, bincode::config::legacy()).expect("encodes");
+        let bytes = alice_serial::bincode1::to_vec(&node, usize::MAX).expect("encodes");
         let got = u32::from_le_bytes(bytes[..4].try_into().expect("a variant number"));
         let json = serde_json::to_value(&node).expect("json");
         let name = json

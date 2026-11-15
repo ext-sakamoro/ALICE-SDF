@@ -23,7 +23,6 @@ version = 2
 yanked = "deny"
 ignore = [
     # unmaintained warnings (informational only、CVE ではない)
-    "RUSTSEC-2025-0141",  # bincode 2.x unmaintained: 代替 postcard は wire format 別、asdf/.asdf 互換維持のため据置
     "RUSTSEC-2024-0436",  # paste 1.0.15 unmaintained: pyo3-macros 経由 transitive dep、除去不能
 ]
 
@@ -72,6 +71,11 @@ allow = ["LicenseRef-Proprietary"]
 # the stored forms' meaning identifiers use alice-zip's law-id v2 (default build)
 [[licenses.exceptions]]
 name = "alice-zip"
+allow = ["LicenseRef-Proprietary"]
+
+# the binary .asdf body and the ASP bridge: the bincode 1 layout (feature asdf, default build)
+[[licenses.exceptions]]
+name = "alice-serial"
 allow = ["LicenseRef-Proprietary"]
 
 [[licenses.exceptions]]
@@ -136,6 +140,7 @@ allow-git = [
     "https://github.com/ext-sakamoro/ALICE-Cache",
     "https://github.com/ext-sakamoro/ALICE-Crypto",
     "https://github.com/ext-sakamoro/ALICE-Streaming-Protocol",
+    "https://github.com/ext-sakamoro/ALICE-Serial",
 ]
 
 [sources.allow-org]

@@ -366,12 +366,14 @@ jobs:
           python3 scripts/test_glam_feature_check.py
           python3 scripts/glam_feature_check.py
 
-      # RUSTSEC-2025-0141 (bincode, unmaintained, no fixed release): only the `asdf` feature resolves it,
-      # so a consumer on `default-features = false` (ALICE-LOL: glsl) holds no advisory for it. cargo
-      # metadata --locked for the glsl-only / no-default / default sets (default must reach it: the
-      # positive control); src/ users of `bincode::` are exactly asp_bridge.rs and io/asdf.rs. Linux only:
-      # the resolved graph does not depend on the host
-      - name: bincode only behind the asdf feature (oracle, then the resolved graph)
+      # RUSTSEC-2025-0141 (bincode, unmaintained, no fixed release): no feature set resolves bincode;
+      # the stored forms use alice-serial's bincode1, which only the `asdf` feature resolves, so a
+      # consumer on `default-features = false` (ALICE-LOL: glsl) builds neither. cargo metadata --locked
+      # for the glsl-only / no-default / default / all-features sets (default and all must reach
+      # alice-serial: the positive control); no src file names `bincode::`, and the users of
+      # `bincode1::` are exactly asp_bridge.rs and io/asdf.rs. Linux only: the resolved graph does not
+      # depend on the host
+      - name: bincode in no feature set, alice-serial only behind asdf (oracle, then the resolved graph)
         if: runner.os == 'Linux'
         run: |
           python3 scripts/test_bincode_reach_check.py
@@ -755,7 +757,7 @@ jobs:
           python scripts/test_provenance_writers.py
           python scripts/provenance_writers.py
       # G8: the tree types keep Deserialize; the library clippy configuration forbids the
-      # serde_json / bincode read entry points, so each read in src is a site marked with a
+      # serde_json / bincode / alice-serial bincode1 read entry points, so each read in src is a site marked with a
       # stored form checked / other-type / pending reason. This lists the sites and checks the
       # reasons (0 sites fails); the hidden check below shows none hides under another allow
       - name: bare deserialization reads (test, then check)

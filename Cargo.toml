@@ -57,9 +57,9 @@ path = "src/bin/main.rs"
 default = ["cli", "asdf"]
 cli = ["dep:clap", "asdf"]
 # binary .asdf bodies (save_asdf / load_asdf, io::save / io::load on a `.asdf` path, the ASP
-# bridge): the only users of bincode. Off, bincode is not resolved and a `.asdf` path is
-# refused by name; the header type and `.asdf.json` stay available
-asdf = ["dep:bincode"]
+# bridge): the only users of alice-serial's bincode1. Off, alice-serial is not resolved and a
+# `.asdf` path is refused by name; the header type and `.asdf.json` stay available
+asdf = ["dep:alice-serial"]
 texture-fit = ["image", "cli"]
 image = ["dep:image", "dep:png"]  # PNG / JPEG decoding (heightmap import, texture-fit), PNG heightmap writing
 python = ["dep:pyo3", "dep:numpy", "asdf"]
@@ -123,10 +123,10 @@ rayon = "1.10"
 # Serialization
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
-# bincode 2.x: `serde` feature で既存 serde derive 活用、`config::legacy()` で
-# bincode 1 wire format 互換維持 (既存 .asdf file 読み込み可能)
-# RUSTSEC-2025-0141 (bincode 1 unmaintained) 解消のため 2 系へ移行
-bincode = { version = "2.0", features = ["serde"], optional = true }
+# the binary .asdf body and the ASP bridge: the bincode 1 layout through alice-serial's bincode1
+# (serde, every length checked against the input and a limit, nesting bounded); the same bytes
+# bincode 2's legacy config wrote, without bincode (RUSTSEC-2025-0141)
+alice-serial = { git = "https://github.com/ext-sakamoro/ALICE-Serial", branch = "main", version = "0.2", default-features = false, features = ["serde"], optional = true }
 
 # Error handling
 thiserror = "2.0"

@@ -198,7 +198,7 @@ volume and inertia) and keeps them as a workflow artifact.
 | Feature | Default | Description |
 |---------|:-------:|-------------|
 | `cli` | yes | The `alice-sdf` command-line tool (clap). |
-| `asdf` | yes | Binary `.asdf` files through bincode (`save_asdf` / `load_asdf`, `io::save` / `io::load` on a `.asdf` path). Turned on by `cli`, `asp`, `ffi` and `python`; without it bincode is not built and a `.asdf` path is refused (`.asdf.json` still works). |
+| `asdf` | yes | Binary `.asdf` files in the bincode 1 layout through alice-serial's bincode1 (`save_asdf` / `load_asdf`, `io::save` / `io::load` on a `.asdf` path). Turned on by `cli`, `asp`, `ffi` and `python`; without it alice-serial is not built and a `.asdf` path is refused (`.asdf.json` still works). |
 | `image` | | PNG / JPEG decoding for heightmaps and texture fitting. |
 | `texture-fit` | | Fit a bitmap texture with procedural noise formulas. Implies `image` and `cli`. |
 | `jit` | | Native evaluation through Cranelift (scalar and 8-wide). |

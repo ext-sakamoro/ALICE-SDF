@@ -496,6 +496,22 @@ pub fn bincode_native_borrow(bb2: &[u8]) -> Option<usize> {
     bincode::borrow_decode_from_slice::<&str, _>(bb2, bincode::config::standard()).ok().map(|r| r.1)
 }
 
+pub fn bincode1_slice(b1: &[u8]) -> Option<u32> {
+    alice_serial::bincode1::from_slice(b1, 64).ok()
+}
+
+pub fn bincode1_slice_depth(b1d: &[u8]) -> Option<u32> {
+    alice_serial::bincode1::from_slice_with_depth(b1d, 64, 8).ok()
+}
+
+pub fn bincode1_prefix(b1p: &[u8]) -> Option<u32> {
+    alice_serial::bincode1::from_slice_prefix(b1p, 64).ok().map(|r| r.0)
+}
+
+pub fn bincode1_prefix_depth(b1q: &[u8]) -> Option<u32> {
+    alice_serial::bincode1::from_slice_prefix_with_depth(b1q, 64, 8).ok().map(|r| r.0)
+}
+
 pub fn jit_fma<'f, B: cranelift_codegen::ir::InstBuilder<'f>>(
     ins: B,
     a_fma: cranelift_codegen::ir::Value,

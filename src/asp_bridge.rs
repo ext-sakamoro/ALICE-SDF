@@ -51,9 +51,8 @@ use crate::types::SdfTree;
 ///
 /// The SDF tree is serialized to ASDF binary format and embedded
 /// in the I-packet's region descriptors as a `Complex` pattern.
-/// bincode allocation upper bound (256 MB) fuzz 検出の capacity overflow panic 予防
-/// src/io/asdf.rs::ASDF_BINCODE_LIMIT と同期
-const ASP_BINCODE_LIMIT: usize = 256 * 1024 * 1024;
+/// The most bytes the tree is read from or written to: the `.asdf` body's limit
+const ASP_BINCODE_LIMIT: usize = crate::io::ASDF_BINCODE_LIMIT;
 
 /// The parameter marking a packet that carries the semantics identifier, and its value
 const SEMANTICS_PARAM: &str = "alice_semantics_v";
@@ -61,13 +60,13 @@ const SEMANTICS_LAYOUT: f32 = 2.0;
 /// The coefficient index where the tree's bytes start in such a packet
 const TREE_OFFSET: usize = 32;
 
-/// Serialise `tree` (ASDF bincode wire format) into an ASP I-packet with the
+/// Serialise `tree` (the `.asdf` body, the bincode 1 layout) into an ASP I-packet with the
 /// given `sequence` number.
 ///
 /// # Errors
 ///
 /// Returns the `libasp` error when the tree does not fit the packet or the
-/// serialisation exceeds the 256 MiB bincode limit.
+/// serialisation exceeds the 256 MiB limit.
 pub fn create_sdf_i_packet(tree: &SdfTree, sequence: u32) -> AspResult<AspPacket> {
     create_sdf_i_packet_with_provenance(tree, sequence, &Provenance::sdf())
 }
@@ -82,14 +81,9 @@ pub fn create_sdf_i_packet_with_provenance(
     sequence: u32,
     provenance: &Provenance,
 ) -> AspResult<AspPacket> {
-    // Serialize SDF tree to binary via bincode (same format as ASDF files)
-    // bincode 2 API: serde compat + legacy config で bincode 1 wire format 互換
-    // with_limit で DoS 予防 (fuzz_asdf_decode で発覚した panic の同 root cause)
-    let asdf_bytes = bincode::serde::encode_to_vec(
-        tree,
-        bincode::config::legacy().with_limit::<ASP_BINCODE_LIMIT>(),
-    )
-    .map_err(|e| libasp::AspError::SerializationError(e.to_string()))?;
+    // The tree in the bincode 1 layout, the same bytes as an .asdf body
+    let asdf_bytes = alice_serial::bincode1::to_vec(tree, ASP_BINCODE_LIMIT)
+        .map_err(|e| libasp::AspError::SerializationError(e.to_string()))?;
 
     // Build I-packet with ASDF payload embedded as DCT coefficients
     // (reusing the sparse coefficient field for binary data)
@@ -238,11 +232,12 @@ fn decode_checked(packet: &AspPacket, allow_unpinned: bool) -> Result<Checked<Sd
         clippy::disallowed_methods,
         reason = "stored form checked: the identifier in the first 32 coefficient entries went through sdf_load_verdict above"
     )]
-    let decoded = bincode::serde::decode_from_slice(
+    let decoded = alice_serial::bincode1::from_slice_with_depth(
         &bytes[offset..],
-        bincode::config::legacy().with_limit::<ASP_BINCODE_LIMIT>(),
+        ASP_BINCODE_LIMIT,
+        crate::io::ASDF_MAX_DEPTH,
     );
-    let (tree, _): (SdfTree, usize) = decoded.map_err(|e| format!("ASDF decode failed: {}", e))?;
+    let tree: SdfTree = decoded.map_err(|e| format!("ASDF decode failed: {}", e))?;
     crate::modifiers::check_repeat_cells_tree(&tree.root)
         .map_err(|e| format!("ASP I-packet: {e}"))?;
     Ok(Checked::new(tree, semantics))
@@ -252,11 +247,7 @@ fn decode_checked(packet: &AspPacket, allow_unpinned: bool) -> Result<Checked<Sd
 ///
 /// Returns `(asdf_bytes, total_packet_bytes)`.
 pub fn estimate_packet_size(tree: &SdfTree) -> (usize, usize) {
-    let asdf_bytes = bincode::serde::encode_to_vec(
-        tree,
-        bincode::config::legacy().with_limit::<ASP_BINCODE_LIMIT>(),
-    )
-    .unwrap_or_default();
+    let asdf_bytes = alice_serial::bincode1::to_vec(tree, ASP_BINCODE_LIMIT).unwrap_or_default();
     let asdf_len = asdf_bytes.len();
     // ASP overhead: 16-byte header + FlatBuffers framing + CRC32
     // Each byte stored as (u32, u32, f32) = 12 bytes in DCT field

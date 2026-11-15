@@ -188,7 +188,7 @@ feature 付きで実行する CI ステップが無いと CI を失敗させる 
 | Feature | 既定 | 説明 |
 |---------|:-------:|-------------|
 | `cli` | yes | `alice-sdf` コマンドラインツール (clap) |
-| `asdf` | yes | bincode によるバイナリ `.asdf` ファイル (`save_asdf` / `load_asdf`、`.asdf` の path への `io::save` / `io::load`) `cli` / `asp` / `ffi` / `python` が有効にする 無効の時は bincode を build せず `.asdf` の path を拒否する (`.asdf.json` は使える) |
+| `asdf` | yes | alice-serial の bincode1 (bincode 1 の layout) によるバイナリ `.asdf` ファイル (`save_asdf` / `load_asdf`、`.asdf` の path への `io::save` / `io::load`) `cli` / `asp` / `ffi` / `python` が有効にする 無効の時は alice-serial を build せず `.asdf` の path を拒否する (`.asdf.json` は使える) |
 | `image` | | ハイトマップとテクスチャフィット用の PNG / JPEG デコード |
 | `texture-fit` | | ビットマップテクスチャを手続き的なノイズ式で近似する `image` と `cli` を含む |
 | `jit` | | Cranelift によるネイティブ評価 (スカラーと 8 幅) |

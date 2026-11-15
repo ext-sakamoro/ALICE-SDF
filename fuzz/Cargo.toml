@@ -11,9 +11,9 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
-# fuzz target で使う: primitive coord = glam::Vec3、serialize = bincode 2 with serde feature
+# fuzz target で使う: primitive coord = glam::Vec3、serialize = alice-serial の bincode1 (bincode 1 layout)
 glam = "0.29"
-bincode = { version = "2.0", features = ["serde"] }
+alice-serial = { git = "https://github.com/ext-sakamoro/ALICE-Serial", branch = "main", version = "0.2", default-features = false, features = ["serde"] }
 
 [dependencies.alice-sdf]
 path = ".."

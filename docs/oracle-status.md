@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1312 |
+| 🟢 Not ignored | 1315 |
 | 🔴 Red by design | 6 |
 | ⏱ Gated (runtime / diagnostic / manual) | 10 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1328** |
+| **Total** | **1331** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -54,7 +54,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `write_bincode1_fixtures` (test_bincode1_fixtures.rs) — writes tests/fixtures/bincode1; run only to capture
 
-## 🟢 Not ignored (1312)
+## 🟢 Not ignored (1315)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -101,6 +101,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_metric_field_oracle.rs` | 10 |
 | `test_rest_point.rs` | 10 |
 | `test_svo_api_oracle.rs` | 10 |
+| `test_bincode1_fixtures.rs` | 9 |
 | `test_mc_shared_vertex_oracle.rs` | 9 |
 | `test_mesh_fidelity.rs` | 9 |
 | `test_mesh_query_oracle.rs` | 9 |
@@ -141,7 +142,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_terrain_api_oracle.rs` | 7 |
 | `deep_tree_drop.rs` | 6 |
 | `test_autodiff_oracle.rs` | 6 |
-| `test_bincode1_fixtures.rs` | 6 |
 | `test_diff_oracle.rs` | 6 |
 | `test_gpu_workgroup_size.rs` | 6 |
 | `test_hlsl_export_oracle.rs` | 6 |
