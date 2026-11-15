@@ -46,10 +46,9 @@ fn main() {
     }
 
     // a stored identifier, as a reader would find it next to the data
-    let stored_ids = [SDF_SEMANTICS_ID]
-        .into_iter()
+    let stored_ids = std::iter::once(SDF_SEMANTICS_ID)
         .chain(PREVIOUS_SDF_SEMANTICS_IDS.iter().copied())
-        .chain([[0u8; 32]]);
+        .chain(std::iter::once([0u8; 32]));
     for stored in stored_ids {
         let check = check_sdf_semantics(&stored);
         println!(
