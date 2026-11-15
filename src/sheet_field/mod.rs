@@ -41,6 +41,7 @@ pub mod build;
 pub mod gpu;
 pub mod nearest;
 pub mod stream;
+pub mod webgl;
 
 use glam::Vec3;
 
