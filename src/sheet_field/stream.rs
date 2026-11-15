@@ -4,7 +4,10 @@
 //! On disk a field is the ASHF v1 layout (little-endian): `b"ASHF"`, `u32` version 1, `u32` rule (1 = cell-v1,
 //! 0 = none), `u32` sheet count; per sheet: `u32` level count; per level: `f32` h, `f32` lo[3], `u32` nb[3], `u32`
 //! n_index, `i32` index[n_index], `u32` channel count; per channel: `u32` n_rows, `i32` rows[n_rows], `u32` n_kept,
-//! `f32` scale[n_kept], `f32` offset[n_kept], `u8` q[n_kept * [`BRICK_NODES`]]. [`write_ashf`] writes it,
+//! `f32` scale[n_kept], `f32` offset[n_kept], `u8` q[n_kept * [`super::BRICK_NODES`]]. ASHF v2 is the same with one
+//! `u32` nodes-per-axis after `n_kept` in every channel, and `q[n_kept * nodes^3]` (an attribute channel on a
+//! coarse grid, [`super::COARSE_NODES`]). [`write_ashf`] writes v1 when every channel is on 9 nodes (the bytes
+//! of a field without coarse channels do not change) and v2 otherwise,
 //! [`AshfIndex::scan`] finds where each sheet lies (it reads the counts and seeks past the arrays), and
 //! [`AshfIndex::read_sheets`] reads a contiguous range of sheets.
 //!
@@ -24,7 +27,7 @@
 //! renumbered to the field's sheet numbers.
 
 use super::{
-    build, Channel, Level, MarchResult, Sheet, SheetField, SheetFieldError, ValidRule, BRICK_NODES,
+    build, Channel, Level, MarchResult, Sheet, SheetField, SheetFieldError, ValidRule, NODES,
 };
 use glam::Vec3;
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -32,8 +35,11 @@ use std::ops::Range;
 
 /// The 4 bytes an ASHF file starts with.
 pub const ASHF_MAGIC: [u8; 4] = *b"ASHF";
-/// The ASHF version this module reads and writes.
+/// The ASHF version written for a field whose channels are all on 9 nodes per axis.
 pub const ASHF_VERSION: u32 = 1;
+
+/// The ASHF version written when a channel is on a coarse grid (a `u32` nodes count per channel).
+pub const ASHF_VERSION_COARSE: u32 = 2;
 
 /// Errors from reading, splitting or marching a streamed field.
 #[derive(Debug)]
@@ -95,15 +101,29 @@ fn len_u32(n: usize, what: &str) -> Result<u32, StreamError> {
     u32::try_from(n).map_err(|_| StreamError::Format(format!("{what} count {n} does not fit u32")))
 }
 
-/// Write `field` in the ASHF v1 layout; returns the bytes written.
+/// Write `field` in the ASHF layout (v1, or v2 when a channel is on a coarse grid); returns the bytes written.
 pub fn write_ashf<W: Write>(w: &mut W, field: &SheetField) -> Result<u64, StreamError> {
     let mut n = 0u64;
     let mut put = |w: &mut W, b: &[u8]| -> io::Result<()> {
         n += b.len() as u64;
         w.write_all(b)
     };
+    let coarse = field
+        .sheets
+        .iter()
+        .flat_map(|s| &s.levels)
+        .flat_map(|l| &l.channels)
+        .any(|c| c.nodes != NODES as u32);
     put(w, &ASHF_MAGIC)?;
-    put(w, &ASHF_VERSION.to_le_bytes())?;
+    put(
+        w,
+        &(if coarse {
+            ASHF_VERSION_COARSE
+        } else {
+            ASHF_VERSION
+        })
+        .to_le_bytes(),
+    )?;
     put(w, &rule_code(field.rule).to_le_bytes())?;
     put(w, &len_u32(field.sheets.len(), "sheet")?.to_le_bytes())?;
     for sh in &field.sheets {
@@ -123,6 +143,9 @@ pub fn write_ashf<W: Write>(w: &mut W, field: &SheetField) -> Result<u64, Stream
                 put(w, &len_u32(c.rows.len(), "row")?.to_le_bytes())?;
                 put(w, &i32s_le(&c.rows))?;
                 put(w, &len_u32(c.scale.len(), "kept row")?.to_le_bytes())?;
+                if coarse {
+                    put(w, &c.nodes.to_le_bytes())?;
+                }
                 put(w, &f32s_le(&c.scale))?;
                 put(w, &f32s_le(&c.offset))?;
                 put(w, &c.q)?;
@@ -209,6 +232,17 @@ pub struct AshfIndex {
     pub rule: ValidRule,
     /// One span per sheet, in file order.
     pub spans: Vec<SheetSpan>,
+    /// Whether the file is ASHF v2 (a nodes count per channel).
+    pub v2: bool,
+}
+
+/// A nodes-per-axis count read from a v2 file: [`NODES`] or one of [`super::COARSE_NODES`].
+fn nodes_of(n: u32) -> Result<u32, StreamError> {
+    if n == NODES as u32 || super::COARSE_NODES.contains(&n) {
+        Ok(n)
+    } else {
+        Err(StreamError::Format(format!("{n} nodes per brick axis")))
+    }
 }
 
 impl AshfIndex {
@@ -223,9 +257,10 @@ impl AshfIndex {
             return Err(StreamError::Format(format!("magic {magic:?}")));
         }
         let version = read_u32(r)?;
-        if version != ASHF_VERSION {
+        if version != ASHF_VERSION && version != ASHF_VERSION_COARSE {
             return Err(StreamError::Format(format!("version {version}")));
         }
+        let v2 = version == ASHF_VERSION_COARSE;
         let rule = rule_of(read_u32(r)?)?;
         let ns = read_u32(r)? as usize;
         let mut spans = Vec::with_capacity(ns);
@@ -275,7 +310,13 @@ impl AshfIndex {
                     skip(r, &mut pos, 4 * u64::from(nr))?;
                     let nk = read_u32(r)?;
                     pos += 4;
-                    let q = u64::from(nk) * BRICK_NODES as u64;
+                    let nodes = if v2 {
+                        pos += 4;
+                        nodes_of(read_u32(r)?)?
+                    } else {
+                        NODES as u32
+                    };
+                    let q = u64::from(nk) * u64::from(nodes).pow(3);
                     skip(r, &mut pos, 8 * u64::from(nk) + q)?;
                     channel_bytes += q;
                     host_bytes += 4 * (u64::from(nr) + 2 * u64::from(nk)) + q;
@@ -291,7 +332,7 @@ impl AshfIndex {
         if pos != end {
             return Err(StreamError::Format(format!("{} trailing bytes", end - pos)));
         }
-        Ok(Self { rule, spans })
+        Ok(Self { rule, spans, v2 })
     }
 
     /// Read sheets `range` (file order) into memory.
@@ -327,13 +368,19 @@ impl AshfIndex {
                     let nr = read_u32(&mut rd)? as usize;
                     let rows = read_i32s(&mut rd, nr)?;
                     let nk = read_u32(&mut rd)? as usize;
+                    let nodes = if self.v2 {
+                        nodes_of(read_u32(&mut rd)?)?
+                    } else {
+                        NODES as u32
+                    };
                     let scale = read_f32s(&mut rd, nk)?;
                     let offset = read_f32s(&mut rd, nk)?;
-                    let mut q = vec![0u8; nk * BRICK_NODES];
+                    let mut q = vec![0u8; nk * (nodes as usize).pow(3)];
                     rd.read_exact(&mut q)?;
                     channels.push(Channel {
                         rows,
                         q,
+                        nodes,
                         scale,
                         offset,
                     });
