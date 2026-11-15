@@ -51,7 +51,10 @@ fn deep() -> SheetField {
 fn origins(n: usize) -> Vec<Vec3> {
     (0..n)
         .map(|i| {
-            let (a, b) = ((i % 211) as f32 / 211.0, (i / 211) as f32 / (n / 211 + 1) as f32);
+            let (a, b) = (
+                (i % 211) as f32 / 211.0,
+                (i / 211) as f32 / (n / 211 + 1) as f32,
+            );
             Vec3::new(-6.0 + 12.0 * a, -6.0 + 12.0 * b, 5.0)
         })
         .collect()
@@ -73,7 +76,9 @@ fn gpu(f: &SheetField) -> Option<GpuSheetField> {
 
 #[test]
 fn the_spread_order_is_a_permutation() {
-    for n in [1usize, 2, 3, 10, 64, 97, 1000, 1024, 65_536, 262_144, 10_240_000] {
+    for n in [
+        1usize, 2, 3, 10, 64, 97, 1000, 1024, 65_536, 262_144, 10_240_000,
+    ] {
         let s = spread_stride(n);
         if n <= 2_000_000 {
             let mut seen = vec![false; n];
@@ -104,23 +109,44 @@ fn the_results_do_not_depend_on_the_dispatch_sizes_and_the_sizes_follow_the_rule
     let ra = a.march_batch_decided(&os, -Vec3::Z, 10.0).unwrap();
     b.set_dispatch_target(Duration::from_nanos(1));
     let rb = b.march_batch_decided(&os, -Vec3::Z, 10.0).unwrap();
-    assert!(ra.iter().any(|m| matches!(m, MarchResult::Hit(_))), "no hits: the scene is wrong");
+    assert!(
+        ra.iter().any(|m| matches!(m, MarchResult::Hit(_))),
+        "no hits: the scene is wrong"
+    );
     let diff: Vec<usize> = (0..ra.len()).filter(|&i| ra[i] != rb[i]).collect();
     if !diff.is_empty() {
         for &i in diff.iter().take(4) {
-            eprintln!("DIFF ray {i} at {}: adaptive {:?} smallest {:?}", os[i], ra[i], rb[i]);
+            eprintln!(
+                "DIFF ray {i} at {}: adaptive {:?} smallest {:?}",
+                os[i], ra[i], rb[i]
+            );
         }
     }
-    assert!(diff.is_empty(), "the results depend on the dispatch sizes: {} of {} rays differ", diff.len(), ra.len());
+    assert!(
+        diff.is_empty(),
+        "the results depend on the dispatch sizes: {} of {} rays differ",
+        diff.len(),
+        ra.len()
+    );
     for (g, name) in [(&a, "adaptive"), (&b, "smallest")] {
         let st = g.last_march_stats();
-        assert_eq!(st.dispatches.iter().map(|d| d.0).sum::<usize>(), os.len(), "{name}");
+        assert_eq!(
+            st.dispatches.iter().map(|d| d.0).sum::<usize>(),
+            os.len(),
+            "{name}"
+        );
         for w in st.dispatches.windows(2) {
             let ((r0, t0), (r1, _)) = (w[0], w[1]);
             let last = w[1] == *st.dispatches.last().unwrap();
-            assert!(r1 <= (2 * r0).max(MIN_DISPATCH) || last, "{name}: size {r0} -> {r1}");
+            assert!(
+                r1 <= (2 * r0).max(MIN_DISPATCH) || last,
+                "{name}: size {r0} -> {r1}"
+            );
             if name == "smallest" && !last {
-                assert!(t0 <= 0.0 || r1 <= (r0 / 2).max(MIN_DISPATCH), "{name}: over target, {r0} -> {r1}");
+                assert!(
+                    t0 <= 0.0 || r1 <= (r0 / 2).max(MIN_DISPATCH),
+                    "{name}: over target, {r0} -> {r1}"
+                );
             }
         }
     }
@@ -143,7 +169,10 @@ fn a_wait_bound_of_zero_is_a_typed_error_and_the_field_refuses_more() {
         }
         other => panic!("not the typed error: {other:?}"),
     }
-    assert!(g.march_batch_decided(&os[..10], -Vec3::Z, 10.0).is_err(), "the field took more work");
+    assert!(
+        g.march_batch_decided(&os[..10], -Vec3::Z, 10.0).is_err(),
+        "the field took more work"
+    );
 }
 
 #[test]
@@ -165,7 +194,10 @@ fn a_ray_over_the_work_budget_ends_undecided_and_is_counted() {
     let Some(g) = gpu(&f) else { return };
     let os = origins(4_096);
     let hits = g.march_batch_decided(&os, -Vec3::Z, 10.0).unwrap();
-    let n_hit = hits.iter().filter(|m| matches!(m, MarchResult::Hit(_))).count();
+    let n_hit = hits
+        .iter()
+        .filter(|m| matches!(m, MarchResult::Hit(_)))
+        .count();
     assert!(n_hit > 0, "the default budget refused the scene");
     let worst = g.last_march_stats().max_work;
     assert!(worst > 1_000, "the deep stack did little work: {worst}");
@@ -183,5 +215,8 @@ fn a_ray_over_the_work_budget_ends_undecided_and_is_counted() {
         );
     }
     let undecided = cut.iter().filter(|m| **m == MarchResult::Undecided).count() as u64;
-    assert_eq!(undecided, st.over_budget, "undecided rays and the counted ones differ");
+    assert_eq!(
+        undecided, st.over_budget,
+        "undecided rays and the counted ones differ"
+    );
 }
