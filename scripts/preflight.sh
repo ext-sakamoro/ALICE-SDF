@@ -222,6 +222,10 @@ CARGO_TERM_COLOR=always python3 scripts/cargo_output_parser_check.py
 step "fmt: cargo fmt --check (core)"
 cargo fmt --check
 
+step "generated eval driver: block == generator output, every SdfNode kind covered once"
+python3 scripts/test_gen_eval_rec.py
+python3 scripts/gen_eval_rec.py --check
+
 step "fmt: cargo fmt --check (mobile/uniffi-wrapper)"
 (cd mobile/uniffi-wrapper && cargo fmt --check)
 
