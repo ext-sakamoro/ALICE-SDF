@@ -41,6 +41,12 @@ pub const ASHF_VERSION: u32 = 1;
 /// The ASHF version written when a channel is on a coarse grid (a `u32` nodes count per channel).
 pub const ASHF_VERSION_COARSE: u32 = 2;
 
+/// The ASHF version written when a level holds a band ([`super::BAND`] channels).
+///
+/// It is v2 plus, per level before its channels, `u32` n_band and `u32` band[n_band] (the mask), and for a band channel a `u32` byte count of
+/// `q` after its nodes count (its rows hold different node counts; their starts are rebuilt on reading).
+pub const ASHF_VERSION_BAND: u32 = 3;
+
 /// Errors from reading, splitting or marching a streamed field.
 #[derive(Debug)]
 pub enum StreamError {
@@ -108,22 +114,21 @@ pub fn write_ashf<W: Write>(w: &mut W, field: &SheetField) -> Result<u64, Stream
         n += b.len() as u64;
         w.write_all(b)
     };
-    let coarse = field
-        .sheets
-        .iter()
-        .flat_map(|s| &s.levels)
-        .flat_map(|l| &l.channels)
-        .any(|c| c.nodes != NODES as u32);
+    let levels = || field.sheets.iter().flat_map(|s| &s.levels);
+    let banded = levels().any(|l| !l.band.is_empty());
+    let coarse = banded
+        || levels()
+            .flat_map(|l| &l.channels)
+            .any(|c| c.nodes != NODES as u32);
+    let version = if banded {
+        ASHF_VERSION_BAND
+    } else if coarse {
+        ASHF_VERSION_COARSE
+    } else {
+        ASHF_VERSION
+    };
     put(w, &ASHF_MAGIC)?;
-    put(
-        w,
-        &(if coarse {
-            ASHF_VERSION_COARSE
-        } else {
-            ASHF_VERSION
-        })
-        .to_le_bytes(),
-    )?;
+    put(w, &version.to_le_bytes())?;
     put(w, &rule_code(field.rule).to_le_bytes())?;
     put(w, &len_u32(field.sheets.len(), "sheet")?.to_le_bytes())?;
     for sh in &field.sheets {
@@ -138,6 +143,16 @@ pub fn write_ashf<W: Write>(w: &mut W, field: &SheetField) -> Result<u64, Stream
             }
             put(w, &len_u32(lv.index.len(), "index")?.to_le_bytes())?;
             put(w, &i32s_le(&lv.index))?;
+            if banded {
+                put(w, &len_u32(lv.band.len(), "band word")?.to_le_bytes())?;
+                put(
+                    w,
+                    &lv.band
+                        .iter()
+                        .flat_map(|x| x.to_le_bytes())
+                        .collect::<Vec<u8>>(),
+                )?;
+            }
             put(w, &len_u32(lv.channels.len(), "channel")?.to_le_bytes())?;
             for c in &lv.channels {
                 put(w, &len_u32(c.rows.len(), "row")?.to_le_bytes())?;
@@ -145,6 +160,9 @@ pub fn write_ashf<W: Write>(w: &mut W, field: &SheetField) -> Result<u64, Stream
                 put(w, &len_u32(c.scale.len(), "kept row")?.to_le_bytes())?;
                 if coarse {
                     put(w, &c.nodes.to_le_bytes())?;
+                }
+                if banded && c.nodes == super::BAND {
+                    put(w, &len_u32(c.q.len(), "band byte")?.to_le_bytes())?;
                 }
                 put(w, &f32s_le(&c.scale))?;
                 put(w, &f32s_le(&c.offset))?;
@@ -213,16 +231,44 @@ pub fn sheet_payload_bytes(sh: &Sheet) -> u64 {
     sh.levels
         .iter()
         .map(|lv| {
-            4 * lv.index.len() as u64
+            4 * (lv.index.len() + lv.band.len()) as u64
                 + lv.channels
                     .iter()
                     .map(|c| {
-                        4 * (c.rows.len() + c.scale.len() + c.offset.len()) as u64
+                        4 * (c.rows.len() + c.scale.len() + c.offset.len() + c.starts.len()) as u64
                             + c.q.len() as u64
                     })
                     .sum::<u64>()
         })
         .sum()
+}
+
+/// The byte where each kept row of a band channel starts: rows are packed in row order, each holding the nodes
+/// of its brick's band mask.
+fn band_starts(rows: &[i32], nk: usize, band: &[u32]) -> Result<Vec<u32>, StreamError> {
+    let mut count = vec![u32::MAX; nk];
+    for (k, &row) in rows.iter().enumerate() {
+        if row >= 0 {
+            let m = band
+                .get(k * super::BAND_WORDS..(k + 1) * super::BAND_WORDS)
+                .ok_or_else(|| StreamError::Format(format!("band mask too short for brick {k}")))?;
+            let r = row as usize;
+            if r >= nk {
+                return Err(StreamError::Format(format!("row {r} of {nk}")));
+            }
+            count[r] = m.iter().map(|x| x.count_ones()).sum();
+        }
+    }
+    let mut starts = Vec::with_capacity(nk);
+    let mut at = 0u32;
+    for (r, c) in count.into_iter().enumerate() {
+        if c == u32::MAX {
+            return Err(StreamError::Format(format!("band row {r} has no brick")));
+        }
+        starts.push(at);
+        at += c;
+    }
+    Ok(starts)
 }
 
 /// The sheets of an ASHF file, located without reading their arrays.
@@ -232,13 +278,17 @@ pub struct AshfIndex {
     pub rule: ValidRule,
     /// One span per sheet, in file order.
     pub spans: Vec<SheetSpan>,
-    /// Whether the file is ASHF v2 (a nodes count per channel).
-    pub v2: bool,
+    /// The file's ASHF version (1, 2 or 3).
+    pub version: u32,
 }
 
-/// A nodes-per-axis count read from a v2 file: [`NODES`] or one of [`super::COARSE_NODES`].
-fn nodes_of(n: u32) -> Result<u32, StreamError> {
-    if n == NODES as u32 || super::COARSE_NODES.contains(&n) {
+/// A nodes-per-axis count read from a v2 / v3 file: [`NODES`], one of [`super::COARSE_NODES`], or (v3 only)
+/// [`super::BAND`].
+fn nodes_of(n: u32, version: u32) -> Result<u32, StreamError> {
+    if n == NODES as u32
+        || super::COARSE_NODES.contains(&n)
+        || (n == super::BAND && version == ASHF_VERSION_BAND)
+    {
         Ok(n)
     } else {
         Err(StreamError::Format(format!("{n} nodes per brick axis")))
@@ -257,10 +307,9 @@ impl AshfIndex {
             return Err(StreamError::Format(format!("magic {magic:?}")));
         }
         let version = read_u32(r)?;
-        if version != ASHF_VERSION && version != ASHF_VERSION_COARSE {
+        if ![ASHF_VERSION, ASHF_VERSION_COARSE, ASHF_VERSION_BAND].contains(&version) {
             return Err(StreamError::Format(format!("version {version}")));
         }
-        let v2 = version == ASHF_VERSION_COARSE;
         let rule = rule_of(read_u32(r)?)?;
         let ns = read_u32(r)? as usize;
         let mut spans = Vec::with_capacity(ns);
@@ -297,6 +346,12 @@ impl AshfIndex {
                 }
                 skip(r, &mut pos, 4 * u64::from(ni))?;
                 host_bytes += 4 * u64::from(ni);
+                if version == ASHF_VERSION_BAND {
+                    let nw = read_u32(r)?;
+                    pos += 4;
+                    skip(r, &mut pos, 4 * u64::from(nw))?;
+                    host_bytes += 4 * u64::from(nw);
+                }
                 let nch = read_u32(r)?;
                 pos += 4;
                 if nch == 0 {
@@ -310,16 +365,21 @@ impl AshfIndex {
                     skip(r, &mut pos, 4 * u64::from(nr))?;
                     let nk = read_u32(r)?;
                     pos += 4;
-                    let nodes = if v2 {
+                    let nodes = if version >= ASHF_VERSION_COARSE {
                         pos += 4;
-                        nodes_of(read_u32(r)?)?
+                        nodes_of(read_u32(r)?, version)?
                     } else {
                         NODES as u32
                     };
-                    let q = u64::from(nk) * u64::from(nodes).pow(3);
+                    let (q, starts) = if nodes == super::BAND {
+                        pos += 4;
+                        (u64::from(read_u32(r)?), 4 * u64::from(nk))
+                    } else {
+                        (u64::from(nk) * u64::from(nodes).pow(3), 0)
+                    };
                     skip(r, &mut pos, 8 * u64::from(nk) + q)?;
                     channel_bytes += q;
-                    host_bytes += 4 * (u64::from(nr) + 2 * u64::from(nk)) + q;
+                    host_bytes += 4 * (u64::from(nr) + 2 * u64::from(nk)) + q + starts;
                 }
             }
             spans.push(SheetSpan {
@@ -332,7 +392,11 @@ impl AshfIndex {
         if pos != end {
             return Err(StreamError::Format(format!("{} trailing bytes", end - pos)));
         }
-        Ok(Self { rule, spans, v2 })
+        Ok(Self {
+            rule,
+            spans,
+            version,
+        })
     }
 
     /// Read sheets `range` (file order) into memory.
@@ -362,25 +426,48 @@ impl AshfIndex {
                 let nb = [read_u32(&mut rd)?, read_u32(&mut rd)?, read_u32(&mut rd)?];
                 let ni = read_u32(&mut rd)? as usize;
                 let index = read_i32s(&mut rd, ni)?;
+                let band = if self.version == ASHF_VERSION_BAND {
+                    let nw = read_u32(&mut rd)? as usize;
+                    let mut b = vec![0u8; 4 * nw];
+                    rd.read_exact(&mut b)?;
+                    b.as_chunks::<4>()
+                        .0
+                        .iter()
+                        .map(|c| u32::from_le_bytes(*c))
+                        .collect()
+                } else {
+                    Vec::new()
+                };
                 let nch = read_u32(&mut rd)? as usize;
                 let mut channels = Vec::with_capacity(nch);
                 for _ in 0..nch {
                     let nr = read_u32(&mut rd)? as usize;
                     let rows = read_i32s(&mut rd, nr)?;
                     let nk = read_u32(&mut rd)? as usize;
-                    let nodes = if self.v2 {
-                        nodes_of(read_u32(&mut rd)?)?
+                    let nodes = if self.version >= ASHF_VERSION_COARSE {
+                        nodes_of(read_u32(&mut rd)?, self.version)?
                     } else {
                         NODES as u32
                     };
+                    let qlen = if nodes == super::BAND {
+                        read_u32(&mut rd)? as usize
+                    } else {
+                        nk * (nodes as usize).pow(3)
+                    };
                     let scale = read_f32s(&mut rd, nk)?;
                     let offset = read_f32s(&mut rd, nk)?;
-                    let mut q = vec![0u8; nk * (nodes as usize).pow(3)];
+                    let mut q = vec![0u8; qlen];
                     rd.read_exact(&mut q)?;
+                    let starts = if nodes == super::BAND {
+                        band_starts(&rows, nk, &band)?
+                    } else {
+                        Vec::new()
+                    };
                     channels.push(Channel {
                         rows,
                         q,
                         nodes,
+                        starts,
                         scale,
                         offset,
                     });
@@ -391,6 +478,7 @@ impl AshfIndex {
                     nb,
                     index,
                     channels,
+                    band,
                 });
             }
             let sh = build::sheet(levels)?;

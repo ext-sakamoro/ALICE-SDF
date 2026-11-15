@@ -261,6 +261,7 @@ fn s_or_d_b_on_a_coarse_grid_and_a_v2_file_with_a_non_grid_node_count_are_refuse
             scale: ch.scale.clone(),
             offset: ch.offset.clone(),
             nodes: 5,
+            starts: Vec::new(),
         };
         assert!(
             sheet(vec![bad]).is_err(),
