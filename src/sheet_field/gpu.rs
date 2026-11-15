@@ -24,7 +24,7 @@ use wgpu::util::DeviceExt;
 
 use super::{Hit, MarchResult, SheetField, ValidRule, BRICK_NODES};
 use crate::compiled::GpuError;
-use crate::gpu_context::GpuContext;
+use crate::gpu_context::{GpuContext, Held};
 
 /// The smallest per-ray list of live sheets the march compiles (fields whose [`live_bound`] is at most this).
 pub const MAX_LIVE_SHEETS: u32 = 64;
@@ -141,9 +141,12 @@ struct Bases {
     bn_len: u32,
 }
 
-/// A [`SheetField`] uploaded to the GPU.
-pub struct GpuSheetField {
-    context: GpuContext,
+/// A [`SheetField`] uploaded to the GPU: its buffers and pipelines, held with the context that made them
+/// ([`Held`] drops them before the context).
+pub type GpuSheetField = Held<SheetFieldResources>;
+
+/// The buffers and pipelines of a [`GpuSheetField`] (no context of their own).
+pub struct SheetFieldResources {
     sheets: wgpu::Buffer,
     levels: wgpu::Buffer,
     ix: wgpu::Buffer,
@@ -306,19 +309,18 @@ impl GpuSheetField {
             "sheet field scale-offset",
             bytemuck::cast_slice(&scoff),
         );
-        use wgpu::BufferBindingType as T;
-        let ro = T::Storage { read_only: true };
+        let ro = wgpu::BufferBindingType::Storage { read_only: true };
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("sheet field layout"),
             entries: &[
-                entry(0, T::Uniform),
+                entry(0, wgpu::BufferBindingType::Uniform),
                 entry(1, ro),
                 entry(2, ro),
                 entry(3, ro),
                 entry(4, ro),
                 entry(5, ro),
                 entry(6, ro),
-                entry(7, T::Storage { read_only: false }),
+                entry(7, wgpu::BufferBindingType::Storage { read_only: false }),
             ],
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -342,7 +344,7 @@ impl GpuSheetField {
         };
         let eval_pipeline = pipe("eval_main");
         let march_pipeline = pipe("march_main");
-        Ok(Self {
+        let resources = SheetFieldResources {
             n_sheets: sheets.len() as u32,
             rule: u32::from(field.rule == ValidRule::CellV1),
             sheets: b_sheets,
@@ -354,12 +356,12 @@ impl GpuSheetField {
             eval_pipeline,
             march_pipeline,
             layout,
-            context,
             max_live,
-        })
+        };
+        Ok(context.hold(resources))
     }
 
-    const fn uniforms(&self, count: u32, steps: u32, dir: Vec3, tmax: f32) -> Uniforms {
+    fn uniforms(&self, count: u32, steps: u32, dir: Vec3, tmax: f32) -> Uniforms {
         let b = self.bases;
         Uniforms {
             n_sheets: self.n_sheets,
@@ -385,8 +387,8 @@ impl GpuSheetField {
         out_vec4s: usize,
         u: Uniforms,
     ) -> Result<Vec<[f32; 4]>, GpuError> {
-        let device = self.context.device();
-        let queue = self.context.queue();
+        let device = self.context().device();
+        let queue = self.context().queue();
         let n = input.len().max(1);
         let b_u = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("sheet field uniforms"),
@@ -435,14 +437,14 @@ impl GpuSheetField {
         }
         enc.copy_buffer_to_buffer(&b_out, 0, &staging, 0, out_bytes);
         // the GPU's writes -> the CPU's read of the mapped staging buffer (see GpuContext::before_host_read)
-        self.context.before_host_read(&mut enc);
+        self.context().before_host_read(&mut enc);
         queue.submit(std::iter::once(enc.finish()));
         let slice = staging.slice(..);
         let (sender, receiver) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |r| {
             let _ = sender.send(r);
         });
-        self.context.wait_for_mapping(&receiver)?;
+        self.context().wait_for_mapping(&receiver)?;
         let out = {
             let mapped = slice.get_mapped_range();
             let data: &[[f32; 4]] = bytemuck::cast_slice(&mapped);
@@ -454,7 +456,7 @@ impl GpuSheetField {
 
     /// The per-ray list size this field's march was compiled with ([`max_live_for`] of [`live_bound`]).
     #[must_use]
-    pub const fn max_live(&self) -> u32 {
+    pub fn max_live(&self) -> u32 {
         self.max_live
     }
 
