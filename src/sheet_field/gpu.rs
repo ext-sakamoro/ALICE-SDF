@@ -223,6 +223,8 @@ pub struct MarchStats {
     pub smallest_reissue: usize,
     /// The largest work of one ray (see [`MARCH_WORK_BUDGET`]).
     pub max_work: u32,
+    /// The batch index of a ray with that work (for profiling it; `None` before any ray was read).
+    pub max_work_ray: Option<usize>,
     /// Rays whose work was at least half the budget.
     pub over_half_budget: u64,
     /// Rays that ran out of the budget (returned as undecided).
@@ -972,7 +974,10 @@ impl GpuSheetField {
             let kind = r[0][1] as i32;
             let work = r[1][3] as u32;
             *stats.dispatch_work.last_mut().expect("a dispatch slot") += u64::from(work);
-            stats.max_work = stats.max_work.max(work);
+            if work > stats.max_work || stats.max_work_ray.is_none() {
+                stats.max_work = work;
+                stats.max_work_ray = Some(i);
+            }
             if u64::from(work) * 2 >= u64::from(budget) {
                 stats.over_half_budget += 1;
             }

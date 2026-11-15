@@ -80,6 +80,19 @@ pub fn decided_steps(tmax: f32) -> u32 {
 /// A bisected sign change with `|s|` above this is a sign jump of `s`, not a crossing of the sheet.
 const JUMP_S: f32 = 0.02;
 
+/// One step of a profiled march ([`SheetField::march_profile`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StepRecord {
+    /// Where the step started.
+    pub t: f32,
+    /// The step taken (`dd` floored at [`MIN_STEP`]).
+    pub step: f32,
+    /// The union value the step came from.
+    pub dd: f32,
+    /// The live sheets sampled at `t`.
+    pub n_live: u32,
+}
+
 /// Which cells' sign is trusted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidRule {
@@ -614,7 +627,21 @@ impl SheetField {
     /// March one ray (`dir` unit length) up to `tmax` with at most `steps` steps (BVH-backed; equals
     /// [`Self::march_linear`]).
     pub fn march(&self, origin: Vec3, dir: Vec3, tmax: f32, steps: u32) -> MarchResult {
-        self.march_with(origin, dir, tmax, steps, true)
+        self.march_with(origin, dir, tmax, steps, true, None)
+    }
+
+    /// [`Self::march_decided`] recording each step: the march itself (same code path), plus per step the position
+    /// `t`, the step taken and the live sheets sampled. For profiling heavy rays.
+    #[must_use]
+    pub fn march_profile(
+        &self,
+        origin: Vec3,
+        dir: Vec3,
+        tmax: f32,
+    ) -> (MarchResult, Vec<StepRecord>) {
+        let mut rec = Vec::new();
+        let m = self.march_with(origin, dir, tmax, decided_steps(tmax), true, Some(&mut rec));
+        (m, rec)
     }
 
     /// [`Self::march`] with the budget from [`decided_steps`]: the result is a hit or a miss, never undecided.
@@ -652,10 +679,18 @@ impl SheetField {
 
     /// [`Self::march`] with linear scans over all sheets (the reference the BVH-backed march equals).
     pub fn march_linear(&self, origin: Vec3, dir: Vec3, tmax: f32, steps: u32) -> MarchResult {
-        self.march_with(origin, dir, tmax, steps, false)
+        self.march_with(origin, dir, tmax, steps, false, None)
     }
 
-    fn march_with(&self, origin: Vec3, dir: Vec3, tmax: f32, steps: u32, bvh: bool) -> MarchResult {
+    fn march_with(
+        &self,
+        origin: Vec3,
+        dir: Vec3,
+        tmax: f32,
+        steps: u32,
+        bvh: bool,
+        mut rec: Option<&mut Vec<StepRecord>>,
+    ) -> MarchResult {
         let k_n = self.sheets.len();
         let mut gprev: Vec<Option<f32>> = (0..k_n)
             .map(|k| {
@@ -682,6 +717,7 @@ impl SheetField {
             } else {
                 (0..k_n).filter(|&k| self.sheet_in_box(k, p)).collect()
             };
+            let n_live = live.len();
             for k in live {
                 let sh = &self.sheets[k];
                 let gc = sh.sample_geom(p, self.rule).g;
@@ -715,6 +751,14 @@ impl SheetField {
             }
             tprev = t;
             gprev = gcur;
+            if let Some(r) = rec.as_deref_mut() {
+                r.push(StepRecord {
+                    t,
+                    step: dd.max(MIN_STEP),
+                    dd,
+                    n_live: n_live as u32,
+                });
+            }
             t += dd.max(MIN_STEP);
             if t >= tmax {
                 return MarchResult::Miss;
