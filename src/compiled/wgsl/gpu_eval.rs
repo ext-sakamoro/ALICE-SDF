@@ -89,6 +89,15 @@ pub enum GpuError {
         /// `max_buffer_length`)
         limit: u64,
     },
+    /// A dispatch of a sheet field march did not return within the wait bound: its output is not read,
+    /// the device is not used again, and the caller sees which dispatch size it was
+    #[error("a dispatch of {rays} rays did not finish within {limit_ms} ms: its output is not read and the device should not be used again")]
+    DispatchDidNotFinish {
+        /// Rays in the dispatch that did not return
+        rays: usize,
+        /// The wait bound
+        limit_ms: u64,
+    },
     /// Failed to create GPU adapter
     #[error("Failed to create GPU adapter")]
     NoAdapter,
