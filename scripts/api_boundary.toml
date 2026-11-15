@@ -1,5 +1,5 @@
 # scripts/api_boundary.py (ALICE-Law G7): every boundary item with its decision
-features = "aaa,all-shaders,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume"
+features = "aaa,all-shaders,asdf,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume"
 bindings = ["pyo3"]
 targets = [{ target = "wasm32-unknown-unknown", features = "wasm" }]
 # compiled only on one OS (rustdoc documents the host it runs on): checked there, skipped elsewhere

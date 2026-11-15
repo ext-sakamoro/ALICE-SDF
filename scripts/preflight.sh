@@ -61,7 +61,7 @@ quick=0
 # Feature sets, verbatim from the workflows.
 LINUX_ALL='glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust'
 # the clippy job's LINT_FEATURES: every feature but wasm (linted on wasm32 below)
-LINT_FEATURES='aaa,all-shaders,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume'
+LINT_FEATURES='aaa,all-shaders,asdf,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume'
 DOCSRS='glsl,hlsl,jit,svo,terrain,destruction,gi,ffi,rust'
 BRIDGES='physics,codec,asp,sdf-cache'
 MSRV=1.88
@@ -162,6 +162,8 @@ python3 scripts/test_shader_fma_guard.py
 python3 scripts/shader_fma_guard.py
 python3 scripts/test_glam_feature_check.py
 python3 scripts/glam_feature_check.py
+python3 scripts/test_bincode_reach_check.py
+python3 scripts/bincode_reach_check.py
 
 step "status generators: oracle + 走査件数 0 で fail (docs/wiring-status.md / docs/oracle-status.md)"
 python3 scripts/test_gen_status.py

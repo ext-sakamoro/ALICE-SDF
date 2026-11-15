@@ -8,7 +8,8 @@
 //!   - CRC32: u32 (4 bytes)
 //!
 //! Body:
-//!   - Bincode-serialized SdfTree
+//!   - Bincode-serialized SdfTree (the `asdf` feature: `save_asdf` / `load_asdf`; the header,
+//!     [`AsdfHeader`] and `read_header`, is always available)
 //!
 //! # Deep Fried Optimizations
 //! - **Streaming Write**: Uses `BufWriter` with on-the-fly CRC and seek patching.
@@ -18,10 +19,14 @@
 //! Author: Moroya Sakamoto
 
 use crate::io::IoError;
-use crate::provenance::{Checked, Provenance};
+#[cfg(feature = "asdf")]
+use crate::provenance::Checked;
+use crate::provenance::Provenance;
 use crate::types::SdfTree;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::Read;
+#[cfg(feature = "asdf")]
+use std::io::{BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::path::Path;
 
 /// Magic bytes for ASDF format
@@ -46,6 +51,7 @@ pub const ASDF_HEADER_LEN: usize = 48;
 /// 越える input は Err で reject する (panic → Err に変換、DoS 予防)
 ///
 /// 現行 tree の実サイズは 大規模 scene でも 100 MB 未満、256 MB あれば実用範囲内
+#[cfg(feature = "asdf")]
 const ASDF_BINCODE_LIMIT: usize = 256 * 1024 * 1024;
 
 /// ASDF file header
@@ -154,12 +160,14 @@ impl AsdfHeader {
     }
 }
 
+#[cfg(feature = "asdf")]
 /// Writer wrapper that calculates CRC32 on the fly (Deep Fried)
 struct CrcWriter<W: Write> {
     inner: W,
     hasher: crc32fast::Hasher,
 }
 
+#[cfg(feature = "asdf")]
 impl<W: Write> CrcWriter<W> {
     #[inline(always)]
     fn new(inner: W) -> Self {
@@ -175,6 +183,7 @@ impl<W: Write> CrcWriter<W> {
     }
 }
 
+#[cfg(feature = "asdf")]
 impl<W: Write> Write for CrcWriter<W> {
     #[inline(always)]
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
@@ -189,6 +198,7 @@ impl<W: Write> Write for CrcWriter<W> {
     }
 }
 
+#[cfg(feature = "asdf")]
 /// Reader wrapper that calculates CRC32 on the fly (Deep Fried)
 #[allow(dead_code)]
 struct CrcReader<R: Read> {
@@ -196,6 +206,7 @@ struct CrcReader<R: Read> {
     hasher: crc32fast::Hasher,
 }
 
+#[cfg(feature = "asdf")]
 #[allow(dead_code)]
 impl<R: Read> CrcReader<R> {
     #[inline(always)]
@@ -212,6 +223,7 @@ impl<R: Read> CrcReader<R> {
     }
 }
 
+#[cfg(feature = "asdf")]
 impl<R: Read> Read for CrcReader<R> {
     #[inline(always)]
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
@@ -221,6 +233,7 @@ impl<R: Read> Read for CrcReader<R> {
     }
 }
 
+#[cfg(feature = "asdf")]
 /// Save an SDF tree to binary ASDF format (Streaming Optimized)
 ///
 /// Uses seek patching: writes placeholder header, streams body with CRC,
@@ -229,6 +242,7 @@ pub fn save_asdf(tree: &SdfTree, path: impl AsRef<Path>) -> Result<(), IoError> 
     save_asdf_with_provenance(tree, path, &Provenance::sdf())
 }
 
+#[cfg(feature = "asdf")]
 /// [`save_asdf`] with the given semantics identifier in the header
 pub fn save_asdf_with_provenance(
     tree: &SdfTree,
@@ -272,6 +286,7 @@ pub fn save_asdf_with_provenance(
     Ok(())
 }
 
+#[cfg(feature = "asdf")]
 /// Load an SDF tree from binary ASDF format (CRC-First Validation)
 ///
 /// Reads body into buffer, validates CRC before deserialization.
@@ -288,6 +303,7 @@ pub fn load_asdf(path: impl AsRef<Path>) -> Result<SdfTree, IoError> {
     load_asdf_checked(path, false).map(|c| c.into_parts().0)
 }
 
+#[cfg(feature = "asdf")]
 /// [`load_asdf`] that also reads a version 1 file (written before the semantics identifier),
 /// marking it [`crate::provenance::StoredSemantics::Unpinned`]
 ///
@@ -298,6 +314,7 @@ pub fn load_asdf_unverified(path: impl AsRef<Path>) -> Result<Checked<SdfTree>, 
     load_asdf_checked(path, true)
 }
 
+#[cfg(feature = "asdf")]
 fn load_asdf_checked(
     path: impl AsRef<Path>,
     allow_unpinned: bool,
@@ -354,7 +371,7 @@ pub fn read_header(path: impl AsRef<Path>) -> Result<AsdfHeader, IoError> {
     AsdfHeader::from_bytes(&header_bytes)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "asdf"))]
 mod tests {
     use super::*;
     use crate::types::SdfNode;
