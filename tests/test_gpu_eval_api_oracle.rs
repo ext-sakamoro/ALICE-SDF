@@ -479,3 +479,75 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     }
     assert!(seen[0] > 0 && seen[1] > 0, "both ids observed: {seen:?}");
 }
+
+#[test]
+fn material_function_reads_both_operands_of_a_metric_blend() {
+    // The material function picks the nearest `WithMaterial` subtree; a `MetricBlend`
+    // must hand both operands' subtrees to it, as the unions do.
+    let left = Ball {
+        r: 0.5,
+        c: [-1.0, 0.0, 0.0],
+    };
+    let right = Ball {
+        r: 0.75,
+        c: [1.0, 0.25, 0.0],
+    };
+    let node = SdfNode::metric_blend(
+        left.node().with_material(3),
+        right.node().with_material(7),
+        Vec3::new(0.25, 0.0, 0.0),
+        1.0,
+        0.5,
+    );
+    let main = WgslShader::transpile(&node, TranspileMode::Hardcoded);
+    let material = WgslShader::transpile_material(&node, TranspileMode::Hardcoded);
+    assert!(
+        material.contains("fn sdf_eval_material(p: vec3<f32>) -> f32"),
+        "no material function for a MetricBlend of two material subtrees"
+    );
+    let src = format!(
+        r"struct InputPoint {{ x: f32, y: f32, z: f32, _pad: f32, }}
+struct OutputDistance {{ distance: f32, _pad1: f32, _pad2: f32, _pad3: f32, }}
+@group(0) @binding(0) var<storage, read> input_points: array<InputPoint>;
+@group(0) @binding(1) var<storage, read_write> output_distances: array<OutputDistance>;
+@group(0) @binding(2) var<uniform> point_count: u32;
+{}
+{}
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let idx = gid.x;
+    if (idx >= point_count) {{ return; }}
+    let q = input_points[idx];
+    output_distances[idx].distance = sdf_eval_material(vec3<f32>(q.x, q.y, q.z));
+}}
+",
+        main.source, material
+    );
+    let Some(gpu) = require(
+        "material metric blend",
+        GpuEvaluator::from_wgsl(&src).map(|c| c.into_parts().0),
+    ) else {
+        return;
+    };
+    let pts: Vec<Vec3> = points(4000)
+        .into_iter()
+        .filter(|&p| (left.dist(p) - right.dist(p)).abs() > 1e-3)
+        .collect();
+    let ids = gpu_batches::eval_in_batches(&gpu, &pts).unwrap();
+    let mut seen = [0usize; 2];
+    for (&p, &id) in pts.iter().zip(&ids) {
+        let want = if left.dist(p) < right.dist(p) {
+            3u32
+        } else {
+            7
+        };
+        assert_eq!(id, want as f32, "GPU material at {p:?}");
+        assert_eq!(
+            alice_sdf::prelude::eval_material(&node, p),
+            want,
+            "CPU material at {p:?}"
+        );
+        seen[usize::from(want == 7)] += 1;
+    }
+    assert!(seen[0] > 0 && seen[1] > 0, "both ids observed: {seen:?}");
+}
