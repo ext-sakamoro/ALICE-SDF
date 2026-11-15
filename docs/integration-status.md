@@ -9,8 +9,8 @@ References are resolved to one definition each, so items that share a name are t
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
 | L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1401 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1236 |
-| | **total** | **2646** |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1252 |
+| | **total** | **2662** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -110,7 +110,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/destruction/debris.rs`: `DebrisConfig`, `DebrisPiece`, `generate_debris`
 - `src/destruction/mod.rs`: `ChunkMesh`, `MutableVoxelGrid::chunk_size`, `MutableVoxelGrid::chunks_per_axis`, `MutableVoxelGrid::clear_dirty`, `MutableVoxelGrid::get_material`, `MutableVoxelGrid::is_chunk_dirty`, `MutableVoxelGrid::remesh_all_dirty`, `MutableVoxelGrid::remesh_chunk`, `MutableVoxelGrid::set_distance`
 - `src/destruction/operations.rs`: `carve_batch`, `explode`
-- `src/diff.rs`: `DiffError`, `DiffOp`, `TreePatch`, `TreePatch::is_empty`, `TreePatch::op_count`, `TreePath`, `apply_patch`, `invert_patch`, `merge_patches`, `node_children`, `tree_diff`, `tree_hash`
+- `src/diff.rs`: `DiffError`, `DiffOp`, `TreePatch`, `TreePatch::is_empty`, `TreePatch::op_count`, `TreePath`, `apply_patch`, `invert_patch`, `merge_patches`, `tree_diff`, `tree_hash`
 - `src/eval/mod.rs`: `eval_rest_point`, `gradient`
 - `src/eval/parallel.rs`: `eval_batch`, `eval_grid`, `eval_grid_with_normals`, `grid_coords`, `grid_index`
 - `src/eval/scaled.rs`: `eval_scaled`
@@ -239,7 +239,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/types/constructors.rs`: `SdfNode::box3d_half_extents`, `SdfNode::loft`, `SdfNode::loft_capped`, `SdfNode::loft_curves`, `SdfNode::loft_curves_capped`, `SdfNode::loft_curves_knots`, `SdfNode::loft_curves_knots_capped`, `SdfNode::metric_ball`, `SdfNode::metric_blend`, `SdfNode::polygon_2d_closed_spline`, `SdfNode::section_stack`, `SdfNode::smooth_section_stack`
 - `src/types/containers.rs`: `Aabb::center`, `Aabb::contains`, `Aabb::empty`, `Aabb::expand_aabb`, `Aabb::expand_point`, `Aabb::from_center_extents`, `Aabb::half_extents`, `Aabb::longest_axis`, `Aabb::signed_distance`, `Aabb::size`, `Aabb::surface_area`, `Aabb::union`, `Hit`, `Ray`, `Ray::at`, `Ray::new`, `SdfTree::with_metadata`
 - `src/types/mod.rs`: `SdfNode::category`
-- `src/types/modifiers.rs`: `SdfNode::sine_displacement`, `SdfNode::sine_displacement_aniso`
+- `src/types/modifiers.rs`: `SdfNode::repeat_cells`, `SdfNode::sine_displacement`, `SdfNode::sine_displacement_aniso`
 - `src/types/operations.rs`: `SdfNode::smooth_blend`
 - `src/types/transforms.rs`: `SdfNode::bell_pull`, `SdfNode::grid_warp`, `SdfNode::pose`, `SdfNode::rigid_pose`, `SdfNode::translate_vec`
 - `src/unordered.rs`: `UnorderedMap::count_values_where`, `UnorderedMap::get_mut`, `UnorderedMap::is_empty`, `UnorderedMap::max_value`, `UnorderedMap::min_key_by`, `UnorderedMap::sorted_entries_mut`, `UnorderedMap::sorted_keys`, `UnorderedMap::update_each_value`, `UnorderedSet::clear`, `UnorderedSet::extend`, `UnorderedSet::is_empty`, `UnorderedSet::len`, `UnorderedSet::with_capacity`

@@ -242,6 +242,9 @@ pub enum OpCode {
     RepeatInfinite = 50,
     /// RepeatFinite: `params[0..3]` = count, `params[3..6]` = spacing
     RepeatFinite = 51,
+    /// RepeatCells: `params[0..3]` = spacing, `params[3..6]` = cell count (0 = infinite),
+    /// `params[6]` = mirror (0 / 1)
+    RepeatCells = 142,
     /// Round: `params[0]` = radius (post-process: d - radius)
     Round = 52,
     /// Onion: `params[0]` = thickness (post-process: |d| - thickness)
@@ -333,6 +336,7 @@ impl OpCode {
                     | Self::Bend
                     | Self::RepeatInfinite
                     | Self::RepeatFinite
+                    | Self::RepeatCells
                     | Self::Elongate
                     | Self::Mirror
                     | Self::Revolution
@@ -508,6 +512,7 @@ impl OpCode {
             | Self::Bend
             | Self::RepeatInfinite
             | Self::RepeatFinite
+            | Self::RepeatCells
             | Self::Round
             | Self::Onion
             | Self::Elongate

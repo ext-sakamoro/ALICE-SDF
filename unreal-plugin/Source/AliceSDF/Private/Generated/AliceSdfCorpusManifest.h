@@ -8,8 +8,8 @@
 
 #include "CoreMinimal.h"
 
-#define ALICE_SDF_CORPUS_COUNT 170
-#define ALICE_SDF_CORPUS_SHADER_COUNT 170
+#define ALICE_SDF_CORPUS_COUNT 173
+#define ALICE_SDF_CORPUS_SHADER_COUNT 173
 #define ALICE_SDF_CORPUS_GRID_POINTS 577
 #define ALICE_SDF_CORPUS_RANDOM_POINTS 512
 
@@ -142,6 +142,9 @@ static const TCHAR* const GAliceSdfCorpusNames[ALICE_SDF_CORPUS_COUNT] = {
 	TEXT("twist"),
 	TEXT("bend"),
 	TEXT("repeat_infinite"),
+	TEXT("repeat_cells_mirror"),
+	TEXT("repeat_cells_finite_mirror"),
+	TEXT("repeat_cells_finite_plain"),
 	TEXT("repeat_finite"),
 	TEXT("scale_exp_smooth_union"),
 	TEXT("scale_smooth_union"),
@@ -316,6 +319,9 @@ static const bool GAliceSdfCorpusCompilable[ALICE_SDF_CORPUS_COUNT] = {
 	true, // twist
 	true, // bend
 	true, // repeat_infinite
+	true, // repeat_cells_mirror
+	true, // repeat_cells_finite_mirror
+	true, // repeat_cells_finite_plain
 	true, // repeat_finite
 	true, // scale_exp_smooth_union
 	true, // scale_smooth_union
@@ -489,6 +495,9 @@ static const TCHAR* const GAliceSdfCorpusShaderNames[ALICE_SDF_CORPUS_SHADER_COU
 	TEXT("twist"),
 	TEXT("bend"),
 	TEXT("repeat_infinite"),
+	TEXT("repeat_cells_mirror"),
+	TEXT("repeat_cells_finite_mirror"),
+	TEXT("repeat_cells_finite_plain"),
 	TEXT("repeat_finite"),
 	TEXT("scale_exp_smooth_union"),
 	TEXT("scale_smooth_union"),

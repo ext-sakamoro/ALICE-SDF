@@ -1028,6 +1028,23 @@ impl Instruction {
         inst
     }
 
+    /// Create a cell repetition instruction (`count` 0 on an axis = infinite;
+    /// counts are small integers, exact as f32)
+    #[inline]
+    pub fn repeat_cells(spacing: glam::Vec3, count: Option<[u32; 3]>, mirror: bool) -> Self {
+        let mut inst = Self::new(OpCode::RepeatCells);
+        let c = count.unwrap_or([0; 3]);
+        inst.params[0] = spacing.x;
+        inst.params[1] = spacing.y;
+        inst.params[2] = spacing.z;
+        inst.params[3] = c[0] as f32;
+        inst.params[4] = c[1] as f32;
+        inst.params[5] = c[2] as f32;
+        inst.params[6] = if mirror { 1.0 } else { 0.0 };
+        inst.child_count = 1;
+        inst
+    }
+
     /// Create a finite repeat instruction
     #[inline]
     pub const fn repeat_finite(cx: f32, cy: f32, cz: f32, sx: f32, sy: f32, sz: f32) -> Self {

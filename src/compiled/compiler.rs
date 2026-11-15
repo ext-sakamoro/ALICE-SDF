@@ -1224,6 +1224,20 @@ impl Compiler {
                 step = Step::Wrap { child, inst_idx };
             }
 
+            SdfNode::RepeatCells {
+                child,
+                spacing,
+                count,
+                mirror,
+                ..
+            } => {
+                // spacing and count were checked by validate_for_compile
+                let inst_idx = self.instructions.len();
+                self.instructions
+                    .push(Instruction::repeat_cells(*spacing, *count, *mirror));
+                step = Step::Wrap { child, inst_idx };
+            }
+
             SdfNode::RepeatFinite {
                 child,
                 count,
@@ -1886,6 +1900,7 @@ fn depth_step(node: &SdfNode) -> DepthStep<'_> {
         | SdfNode::Bend { child, .. }
         | SdfNode::RepeatInfinite { child, .. }
         | SdfNode::RepeatFinite { child, .. }
+        | SdfNode::RepeatCells { child, .. }
         | SdfNode::Noise { child, .. }
         | SdfNode::Elongate { child, .. }
         | SdfNode::Mirror { child, .. }
@@ -1955,6 +1970,14 @@ enum Children<'a> {
 /// Check one node; say which children are checked next
 fn validate_node(node: &SdfNode) -> Children<'_> {
     match node {
+        // a literal node can carry an invalid spacing or count (the batch-2 fields
+        // cannot be set): refused with the RepeatCellsError's text
+        SdfNode::RepeatCells { child, .. } => {
+            if let Err(e) = node.validate_repeat_cells() {
+                return Children::Refused(CompileError::UnsupportedPrimitive(e.to_string()));
+            }
+            return Children::One(child);
+        }
         // Metric nodes: four and five params respectively, both within the
         // instruction's seven slots, and both have a VM law.
         SdfNode::MetricBall { .. } => {}

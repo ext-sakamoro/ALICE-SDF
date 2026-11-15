@@ -40,7 +40,7 @@ impl SdfCategory {
             Self::Primitive => 78,
             Self::Operation => 26,
             Self::Transform => 9,
-            Self::Modifier => 25,
+            Self::Modifier => 26,
         }
     }
 
@@ -1418,6 +1418,29 @@ pub enum SdfNode {
         #[serde(deserialize_with = "crate::transforms::bell_pull::deserialize_pull")]
         pull: crate::transforms::BellPull,
     },
+    /// Cell repetition with optional mirroring (odd cells reflected, so copies meet
+    /// seamlessly); law in [`crate::modifiers::modifier_repeat_cells`]. `neighbours` and
+    /// `variation` are present for the stored form; their types hold only the off state until
+    /// their law lands.
+    /// Appended last (stored indices of earlier variants are fixed).
+    RepeatCells {
+        /// Child node
+        child: Arc<Self>,
+        /// Spacing per axis (0 = the axis is not repeated)
+        spacing: Vec3,
+        /// Cells per axis centred on the origin, or `None` for infinite repetition
+        count: Option<[u32; 3]>,
+        /// Reflect odd cells
+        mirror: bool,
+        /// Minimum over the neighbouring cells (not yet supported; read through
+        /// `modifiers::repeat_cells::deserialize_neighbours`, which refuses a stored `true`)
+        #[serde(deserialize_with = "crate::modifiers::repeat_cells::deserialize_neighbours")]
+        neighbours: crate::modifiers::CellNeighbours,
+        /// Per-cell variation (not yet supported; read through
+        /// `modifiers::repeat_cells::deserialize_variation`, which refuses a stored value)
+        #[serde(deserialize_with = "crate::modifiers::repeat_cells::deserialize_variation")]
+        variation: Option<crate::modifiers::CellVariation>,
+    },
 }
 
 impl SdfNode {
@@ -1548,6 +1571,7 @@ impl SdfNode {
             | Self::Bend { .. }
             | Self::RepeatInfinite { .. }
             | Self::RepeatFinite { .. }
+            | Self::RepeatCells { .. }
             | Self::Noise { .. }
             | Self::Round { .. }
             | Self::Onion { .. }
@@ -1685,6 +1709,7 @@ impl SdfNode {
             | Self::Bend { child, .. }
             | Self::RepeatInfinite { child, .. }
             | Self::RepeatFinite { child, .. }
+            | Self::RepeatCells { child, .. }
             | Self::Noise { child, .. }
             | Self::Round { child, .. }
             | Self::Onion { child, .. }
@@ -1784,7 +1809,7 @@ mod tests {
 
     #[test]
     fn test_category_total() {
-        assert_eq!(SdfCategory::total(), 138);
+        assert_eq!(SdfCategory::total(), 139);
     }
 
     #[test]

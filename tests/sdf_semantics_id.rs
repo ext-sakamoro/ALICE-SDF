@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 const GOLDEN_SOURCE: &str = include_str!("test_det_golden.rs");
 // each alice-det-math function the crate calls folded as its own entry; no earlier identifier is
 // reproduced (the heightmap face blend moved a golden row, see `ROWS_MOVED_AFTER_D2D2F0DF`)
-const RECORDED_HEX: &str = "db7ff4a4b7daf3f242f353fc7af2c448832e8625c19f2522561d3b83a496f775";
+const RECORDED_HEX: &str = "d7389231c17a0dade9a46c5610ed9911ab97b725dfdbc0d8b9d33c3e2113974c";
 
 /// The alice-det-math entry of the generations that folded it whole: its 0.5.2 at 2d01c63f
 /// identifier
@@ -67,6 +67,14 @@ const ROWS_MOVED_AFTER_D2D2F0DF: &[(&str, &str)] = &[(
 /// The golden rows added after `dca9b092…` (and so after every earlier identifier): the bell pull,
 /// a new node; no row moved, so `dca9b092…` is still reproduced
 const ROWS_ADDED_AFTER_DCA9B092: &[&str] = &["bell_pull"];
+
+/// The golden rows added after `db7ff4a4…` (and so after every earlier identifier): the cell
+/// repetition, a new node; no row moved, so `db7ff4a4…` is still reproduced
+const ROWS_ADDED_AFTER_DB7FF4A4: &[&str] = &[
+    "repeat_cells_mirror",
+    "repeat_cells_finite_mirror",
+    "repeat_cells_finite_plain",
+];
 
 /// The golden table digest of an earlier build: without the rows named in `added` (each must be a
 /// row of the table) and with each row in `moved` back at the hash it had then (each must be a row
@@ -223,6 +231,7 @@ fn the_identifier_is_the_fold_and_every_earlier_row_is_its_whole_det_math_fold()
     for (det_math, id) in SDF_SEMANTICS_BY_DET_MATH {
         let golden = golden_before(
             &[
+                ROWS_ADDED_AFTER_DB7FF4A4,
                 ROWS_ADDED_AFTER_DCA9B092,
                 ROWS_ADDED_AFTER_D2D2F0DF,
                 ROWS_ADDED_AFTER_0F6FFC20,
@@ -268,9 +277,17 @@ fn check_reads_this_identifier_and_refuses_the_earlier_ones() {
         check_sdf_semantics(&SDF_SEMANTICS_ID),
         SemanticsCheck::Verified
     );
-    // `dca9b092…` (before the bell pull) is still this build's bits (only a row was added); the
-    // heightmap face blend moved a golden row, so no identifier before it names them
-    assert_eq!(PREVIOUS_SDF_SEMANTICS_IDS, &[unhex(ID_DCA9B092)]);
+    // `db7ff4a4…` (before the cell repetition) and `dca9b092…` (before the bell pull) are still
+    // this build's bits (only rows were added); the heightmap face blend moved a golden row, so no
+    // identifier before them names them
+    assert_eq!(
+        PREVIOUS_SDF_SEMANTICS_IDS,
+        &[unhex(ID_DB7FF4A4), unhex(ID_DCA9B092)]
+    );
+    assert_eq!(
+        check_sdf_semantics(&unhex(ID_DB7FF4A4)),
+        SemanticsCheck::VerifiedPrevious(unhex(ID_DB7FF4A4))
+    );
     assert_eq!(
         check_sdf_semantics(&unhex(ID_DCA9B092)),
         SemanticsCheck::VerifiedPrevious(unhex(ID_DCA9B092))
@@ -368,6 +385,7 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
                 && !ROWS_ADDED_AFTER_72277BD6.contains(&n.as_str())
                 && !ROWS_ADDED_AFTER_D2D2F0DF.contains(&n.as_str())
                 && !ROWS_ADDED_AFTER_DCA9B092.contains(&n.as_str())
+                && !ROWS_ADDED_AFTER_DB7FF4A4.contains(&n.as_str())
         })
         .cloned()
         .map(
@@ -384,7 +402,8 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
             + ROWS_ADDED_AFTER_0F6FFC20.len()
             + ROWS_ADDED_AFTER_72277BD6.len()
             + ROWS_ADDED_AFTER_D2D2F0DF.len()
-            + ROWS_ADDED_AFTER_DCA9B092.len(),
+            + ROWS_ADDED_AFTER_DCA9B092.len()
+            + ROWS_ADDED_AFTER_DB7FF4A4.len(),
         rows.len(),
         "every window is a row"
     );
@@ -418,11 +437,48 @@ fn the_6e98f0be_identifier_is_rejected_because_exactly_these_windows_moved() {
 
 /// The oracle that shows this build reproduces what an earlier identifier stamped:
 /// `(identifier, test file, test function)`; every identifier in `PREVIOUS_SDF_SEMANTICS_IDS` has one
-const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[(
-    ID_DCA9B092,
-    "tests/sdf_semantics_id.rs",
-    "the_dca9b092_rows_are_unchanged",
-)];
+const PREVIOUS_ORACLES: &[(&str, &str, &str)] = &[
+    (
+        ID_DB7FF4A4,
+        "tests/sdf_semantics_id.rs",
+        "the_db7ff4a4_rows_are_unchanged",
+    ),
+    (
+        ID_DCA9B092,
+        "tests/sdf_semantics_id.rs",
+        "the_dca9b092_rows_are_unchanged",
+    ),
+];
+
+const ID_DB7FF4A4: &str = "db7ff4a4b7daf3f242f353fc7af2c448832e8625c19f2522561d3b83a496f775";
+
+/// `db7ff4a4…` (after the bell pull, before the cell repetition) is still this build: the golden
+/// table without `ROWS_ADDED_AFTER_DB7FF4A4` hashes to its golden pin, and that pin folds with
+/// this build's rule and det-math entries to it. A row of that build that moved, or a row added
+/// without being listed, fails here
+#[test]
+fn the_db7ff4a4_rows_are_unchanged() {
+    let golden = golden_before(&[ROWS_ADDED_AFTER_DB7FF4A4], &[]);
+    assert_eq!(
+        hex(&golden),
+        "08621647ba1fa80888533c53e4b012c40a52180962e9d2d98cf08801c1106344"
+    );
+    let entries: Vec<(String, [u8; 32])> = all_entries()
+        .into_iter()
+        .map(|(n, d)| {
+            if n.starts_with("golden ") {
+                (n, golden)
+            } else {
+                (n, d)
+            }
+        })
+        .collect();
+    assert_eq!(hex(&fold_owned(&entries)), ID_DB7FF4A4);
+    assert_eq!(
+        check_sdf_semantics(&unhex(ID_DB7FF4A4)),
+        SemanticsCheck::VerifiedPrevious(unhex(ID_DB7FF4A4))
+    );
+}
 
 const ID_DCA9B092: &str = "dca9b09275b952e2e45ab7cd9426cd99f86e3cc65a16ffc2ffd76b188b01780f";
 
@@ -432,7 +488,7 @@ const ID_DCA9B092: &str = "dca9b09275b952e2e45ab7cd9426cd99f86e3cc65a16ffc2ffd76
 /// added without being listed, fails here
 #[test]
 fn the_dca9b092_rows_are_unchanged() {
-    let golden = golden_before(&[ROWS_ADDED_AFTER_DCA9B092], &[]);
+    let golden = golden_before(&[ROWS_ADDED_AFTER_DB7FF4A4, ROWS_ADDED_AFTER_DCA9B092], &[]);
     assert_eq!(
         hex(&golden),
         "971e07cc5904ec6c28de7295bf5bef53bb4ea1c45d1553481d31b911fe05099b"
@@ -464,6 +520,7 @@ const ID_72277BD6: &str = "72277bd65112b8f7faa5884d6f12dfd507d6f891d4cdc4c12ff06
 fn the_72277bd6_identifier_was_these_rows_and_is_refused() {
     let golden = golden_before(
         &[
+            ROWS_ADDED_AFTER_DB7FF4A4,
             ROWS_ADDED_AFTER_DCA9B092,
             ROWS_ADDED_AFTER_D2D2F0DF,
             ROWS_ADDED_AFTER_72277BD6,
@@ -501,6 +558,7 @@ const ID_0F6FFC20: &str = "0f6ffc20efe7737c4cfbb95d35e74c62edd16c1c0d562faf35a2a
 fn the_0f6ffc20_identifier_was_these_rows_and_is_refused() {
     let golden = golden_before(
         &[
+            ROWS_ADDED_AFTER_DB7FF4A4,
             ROWS_ADDED_AFTER_DCA9B092,
             ROWS_ADDED_AFTER_D2D2F0DF,
             ROWS_ADDED_AFTER_0F6FFC20,
@@ -539,6 +597,7 @@ const ID_0F6C58D0: &str = "0f6c58d0244a39c92712977c7cdbd2282e5c13d3cbd435f57189f
 fn the_0f6c58d0_identifier_was_this_golden_and_is_refused() {
     let golden = golden_before(
         &[
+            ROWS_ADDED_AFTER_DB7FF4A4,
             ROWS_ADDED_AFTER_DCA9B092,
             ROWS_ADDED_AFTER_D2D2F0DF,
             ROWS_ADDED_AFTER_0F6FFC20,
@@ -567,6 +626,7 @@ const AD04549C: &str = "ad04549c331ec33377ef1d4419c0c6756cef6a852520e470a53f6422
 fn the_ad04549c_identifier_was_these_rows_and_is_refused() {
     let golden = golden_before(
         &[
+            ROWS_ADDED_AFTER_DB7FF4A4,
             ROWS_ADDED_AFTER_DCA9B092,
             ROWS_ADDED_AFTER_D2D2F0DF,
             ROWS_ADDED_AFTER_AD04549C,
@@ -596,7 +656,11 @@ const ID_D2D2F0DF: &str = "d2d2f0df6d15b8a1ecc092d47c5c86813767e0c44be2f447fff1e
 #[test]
 fn the_d2d2f0df_identifier_is_refused_because_exactly_the_heightmap_row_moved() {
     let golden = golden_before(
-        &[ROWS_ADDED_AFTER_DCA9B092, ROWS_ADDED_AFTER_D2D2F0DF],
+        &[
+            ROWS_ADDED_AFTER_DB7FF4A4,
+            ROWS_ADDED_AFTER_DCA9B092,
+            ROWS_ADDED_AFTER_D2D2F0DF,
+        ],
         ROWS_MOVED_AFTER_D2D2F0DF,
     );
     assert_eq!(

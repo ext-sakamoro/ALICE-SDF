@@ -255,6 +255,17 @@ fn descend(node: &SdfNode, point: Vec3) -> Step<'_> {
             count,
             spacing,
         } => Step::One(child, modifier_repeat_finite(point, *count, *spacing), NONE),
+        SdfNode::RepeatCells {
+            child,
+            spacing,
+            count,
+            mirror,
+            ..
+        } => Step::One(
+            child,
+            modifier_repeat_cells(point, *spacing, *count, *mirror),
+            NONE,
+        ),
         SdfNode::Elongate { child, amount } => {
             let q = point - point.law_clamp(-*amount, *amount);
             Step::One(child, q, NONE)
@@ -935,6 +946,16 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::RepeatInfinite { child, spacing } => {
             eval_material(child, modifier_repeat_infinite(point, *spacing))
         }
+        SdfNode::RepeatCells {
+            child,
+            spacing,
+            count,
+            mirror,
+            ..
+        } => eval_material(
+            child,
+            modifier_repeat_cells(point, *spacing, *count, *mirror),
+        ),
         SdfNode::RepeatFinite {
             child,
             count,

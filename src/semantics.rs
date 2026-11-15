@@ -17,7 +17,7 @@
 //! # Hex form (earlier `alice-det-math` generations in [`SDF_SEMANTICS_BY_DET_MATH`])
 //!
 //! ```text
-//! db7ff4a4b7daf3f242f353fc7af2c448832e8625c19f2522561d3b83a496f775
+//! d7389231c17a0dade9a46c5610ed9911ab97b725dfdbc0d8b9d33c3e2113974c
 //! ```
 //!
 //! # Fold
@@ -67,7 +67,7 @@ pub const MUL_ADD_RULE: &str = "alice-sdf: Real::mul_add is a * b + c with two r
 pub const SDF_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
     (
         "golden tests/test_det_golden.rs GOLDEN",
-        hex32("08621647ba1fa80888533c53e4b012c40a52180962e9d2d98cf08801c1106344"),
+        hex32("0c6ec86e974c8da7715a42788fb710754d1b193758bf921febd7b113a2b165d0"),
     ),
     (
         "tag max / min rule",
@@ -335,17 +335,19 @@ pub const SDF_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
 
 /// The identifier of what alice-sdf computes, in this build
 ///
-/// Hex: `db7ff4a4b7daf3f242f353fc7af2c448832e8625c19f2522561d3b83a496f775`, the fold of
+/// Hex: `d7389231c17a0dade9a46c5610ed9911ab97b725dfdbc0d8b9d33c3e2113974c`, the fold of
 /// [`SDF_SEMANTICS_PINS`] and [`DET_MATH_PINS`]. The same value in every build, whatever cargo
 /// features are enabled.
 pub const SDF_SEMANTICS_ID: [u8; 32] =
-    hex32("db7ff4a4b7daf3f242f353fc7af2c448832e8625c19f2522561d3b83a496f775");
+    hex32("d7389231c17a0dade9a46c5610ed9911ab97b725dfdbc0d8b9d33c3e2113974c");
 
 /// Earlier identifiers whose distances this build still computes to the same bits, newest first
 ///
-/// `dca9b092…` (after the heightmap face blend, before the bell pull): the bell pull only added a
-/// golden row, every row of that build has the same bits here (`tests/sdf_semantics_id.rs`
-/// `the_dca9b092_rows_are_unchanged`). Earlier ones read as a mismatch: the heightmap displacement
+/// `db7ff4a4…` (after the bell pull, before the cell repetition): the cell repetition only added
+/// golden rows, every row of that build has the same bits here (`tests/sdf_semantics_id.rs`
+/// `the_db7ff4a4_rows_are_unchanged`). `dca9b092…` (after the heightmap face blend, before the
+/// bell pull): the bell pull only added a golden row, every row of that build has the same bits
+/// here (`tests/sdf_semantics_id.rs` `the_dca9b092_rows_are_unchanged`). Earlier ones read as a mismatch: the heightmap displacement
 /// blends the faces within 1/16 of the dominant component (continuous at the face ties), so its
 /// distances near a tie have other bits than under `d2d2f0df…` (after the smooth blends),
 /// `72277bd6…`, `0f6ffc20…`, `0f6c58d0…` and `ad04549c…`; `tests/sdf_semantics_id.rs` folds each
@@ -358,9 +360,10 @@ pub const SDF_SEMANTICS_ID: [u8; 32] =
 /// 39507d1b), `151079595…` (0.5.1, 7.0.0) and the det-math identifiers 6.0 / 6.1 exposed
 /// (`85e08846…`, `135c407d…`) read as a mismatch; `tests/sdf_semantics_id.rs` shows which golden
 /// windows moved.
-pub const PREVIOUS_SDF_SEMANTICS_IDS: &[[u8; 32]] = &[hex32(
-    "dca9b09275b952e2e45ab7cd9426cd99f86e3cc65a16ffc2ffd76b188b01780f",
-)];
+pub const PREVIOUS_SDF_SEMANTICS_IDS: &[[u8; 32]] = &[
+    hex32("db7ff4a4b7daf3f242f353fc7af2c448832e8625c19f2522561d3b83a496f775"),
+    hex32("dca9b09275b952e2e45ab7cd9426cd99f86e3cc65a16ffc2ffd76b188b01780f"),
+];
 
 /// Whether a stored identifier names what this build computes
 ///
