@@ -213,7 +213,9 @@ pub const fn is_supported(op: OpCode) -> bool {
         | OpCode::SurfaceRoughness
         // no emitter yet: the sigmoid kernel's branches (Kahan expm1) are not
         // written out as standalone Rust; the transpiler reports it unsupported
-        | OpCode::SmoothBlend => false,
+        | OpCode::SmoothBlend
+        // no emitter yet (the cell / mirror law is not written out as standalone Rust)
+        | OpCode::RepeatCells => false,
     }
 }
 

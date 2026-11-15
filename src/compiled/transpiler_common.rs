@@ -3804,6 +3804,71 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 self.transpile_node_inner(child, &new_p, code)
             }
 
+            SdfNode::RepeatCells {
+                child,
+                spacing,
+                count,
+                mirror,
+                ..
+            } => {
+                // the law of modifiers::repeat_cells, operation for operation: per repeated axis
+                // c = floor(p·(1/s) [+ h] + 0.5) (clamped to [0, n−1] when finite),
+                // q = p − c·s (or p − (c − h)·s), and, when mirrored, with k = c − ⌊(n−1)/2⌋
+                // (k = c when infinite), q·(1 − 2·(k − 2·floor(k/2)))
+                let c = count.unwrap_or([0; 3]);
+                let comps = ["x", "y", "z"];
+                let mut axes = Vec::with_capacity(3);
+                for i in 0..3 {
+                    let s = spacing[i];
+                    let pc = format!("{point_var}.{}", comps[i]);
+                    if s.is_nan() || s <= 0.0 {
+                        axes.push(pc);
+                        continue;
+                    }
+                    let sv = self.param(s);
+                    let inv = self.param(1.0 / s);
+                    let cell = self.next_var();
+                    let q = self.next_var();
+                    if c[i] == 0 {
+                        code.push_str(&L::decl_float(&cell, &format!("floor({pc} * {inv} + 0.5)")));
+                        code.push_str(&L::decl_float(&q, &format!("{pc} - {cell} * {sv}")));
+                    } else {
+                        let h = self.param((c[i] as f32 - 1.0) * 0.5);
+                        let top = self.param(c[i] as f32 - 1.0);
+                        code.push_str(&L::decl_float(
+                            &cell,
+                            &format!("min(max(floor({pc} * {inv} + {h} + 0.5), 0.0), {top})"),
+                        ));
+                        code.push_str(&L::decl_float(&q, &format!("{pc} - ({cell} - {h}) * {sv}")));
+                    }
+                    if *mirror {
+                        let base = crate::modifiers::mirror_base(c[i]);
+                        let k = if base == 0.0 {
+                            cell.clone()
+                        } else {
+                            let k = self.next_var();
+                            let b = self.param(base);
+                            code.push_str(&L::decl_float(&k, &format!("{cell} - {b}")));
+                            k
+                        };
+                        let m = self.next_var();
+                        code.push_str(&L::decl_float(
+                            &m,
+                            &format!("{q} * (1.0 - ({k} - floor({k} * 0.5) * 2.0) * 2.0)"),
+                        ));
+                        axes.push(m);
+                    } else {
+                        axes.push(q);
+                    }
+                }
+                let new_p = self.next_var();
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &L::vec3_ctor(&axes[0], &axes[1], &axes[2]),
+                ));
+                self.transpile_node_inner(child, &new_p, code)
+            }
+
             SdfNode::RepeatFinite {
                 child,
                 spacing,

@@ -22,6 +22,7 @@ mod noise;
 mod octant_mirror;
 mod polar_repeat;
 mod repeat;
+mod repeat_cells;
 mod revolution;
 mod shear;
 mod surface_roughness;
@@ -44,6 +45,13 @@ pub use polar_repeat::{modifier_polar_repeat, modifier_polar_repeat_rk};
 pub use repeat::{
     modifier_repeat_finite, modifier_repeat_infinite, modifier_repeat_infinite_rk,
     modifier_repeat_polar, modifier_repeat_x, modifier_repeat_y, modifier_repeat_z,
+};
+pub(crate) use repeat_cells::check_repeat_cells_tree;
+pub(crate) use repeat_cells::{
+    mirror_base, repeat_cells_mirror_sign, repeat_cells_r, validate_repeat_cells,
+};
+pub use repeat_cells::{
+    modifier_repeat_cells, CellNeighbours, CellVariation, RepeatCellsError, MAX_CELL_COUNT,
 };
 pub use revolution::modifier_revolution;
 pub use shear::modifier_shear;
