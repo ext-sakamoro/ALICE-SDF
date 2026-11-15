@@ -229,7 +229,7 @@ fn hits_are_the_analytic_first_square_and_do_not_depend_on_the_budget() {
     assert!(hits > 200 && misses > 20, "hits {hits}, misses {misses}");
 }
 
-fn hit(t: f32, sheet: usize) -> MarchResult {
+const fn hit(t: f32, sheet: usize) -> MarchResult {
     MarchResult::Hit(Hit {
         t,
         sheet,
@@ -347,7 +347,7 @@ fn bad_input_and_over_budget_are_refused() {
         &ix,
         &mut Cursor::new(&b),
         &chunks,
-        &[0..1],
+        std::slice::from_ref(&(0..1)), // one batch holding chunk 0
         origins.len(),
         |_f| Ok(vec![MarchResult::Miss]),
     );
