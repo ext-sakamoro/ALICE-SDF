@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1307 |
+| 🟢 Not ignored | 1308 |
 | 🔴 Red by design | 6 |
 | ⏱ Gated (runtime / diagnostic / manual) | 9 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1322** |
+| **Total** | **1323** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -53,7 +53,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu` (test_wgsl_chunk_ulp.rs) — runs on the macOS lane: llvmpipe cannot run the form before (a copy of the array per read)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 
-## 🟢 Not ignored (1307)
+## 🟢 Not ignored (1308)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -122,6 +122,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_shader_data_bounds.rs` | 8 |
 | `test_tight_aabb_elongate_oracle.rs` | 8 |
 | `test_volume_api_oracle.rs` | 8 |
+| `deep_tree_drop.rs` | 7 |
 | `test_animation_oracle.rs` | 7 |
 | `test_field_fidelity_oracle.rs` | 7 |
 | `test_g8_meaning_id.rs` | 7 |
@@ -138,7 +139,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_sim_bridge_oracle.rs` | 7 |
 | `test_smooth_stack_load.rs` | 7 |
 | `test_terrain_api_oracle.rs` | 7 |
-| `deep_tree_drop.rs` | 6 |
 | `test_autodiff_oracle.rs` | 6 |
 | `test_diff_oracle.rs` | 6 |
 | `test_gpu_workgroup_size.rs` | 6 |
