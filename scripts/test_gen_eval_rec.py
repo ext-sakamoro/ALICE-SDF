@@ -18,7 +18,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import gen_eval_rec as g
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import gen_eval_rec as g  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 

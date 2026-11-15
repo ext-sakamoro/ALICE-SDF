@@ -53,10 +53,14 @@ def combine_kinds(text: str) -> list[str]:
 
 
 def one_child_kinds(text: str) -> list[str]:
-    """the kinds `descend` gives one child, in order (every arm after the first one-child arm)"""
+    """the kinds `descend` gives one child, in order (every arm after the first one-child arm, without
+    its arm for the leaves, which it hands to `eval_leaf`)"""
     body = body_of(text, "fn descend(node: &SdfNode, point: Vec3) -> Step<'_> {")
     at = body.index("SdfNode::Translate {")
     tail = body[body.rindex("\n", 0, at) + 1 :]
+    tail = re.sub(
+        r"(?:\s*\|?\s*SdfNode::[A-Za-z0-9]+ \{ \.\. \})+\s*=> Step::Leaf\(eval_leaf\(", "", tail
+    )
     seen: list[str] = []
     for name in re.findall(r"^\s+(?:\| )?SdfNode::([A-Za-z0-9]+)", tail, re.M):
         if name not in seen:
@@ -73,8 +77,10 @@ def declared_kinds() -> list[str]:
 
 
 def leaf_kinds(text: str) -> list[str]:
-    """the kinds `eval_leaf` has an arm for"""
+    """the kinds `eval_leaf` has an arm for, without its arm for the kinds with children (that arm
+    returns `f32::MAX` and is never reached: `descend` handles those kinds)"""
     body = body_of(text, "fn eval_leaf(node: &SdfNode, point: Vec3) -> f32 {")
+    body = re.sub(r"(?:\s*\|?\s*SdfNode::[A-Za-z0-9]+ \{ \.\. \})+\s*=> f32::MAX", "", body)
     seen: list[str] = []
     for name in re.findall(r"SdfNode::([A-Za-z0-9]+)", body):
         if name not in seen:
