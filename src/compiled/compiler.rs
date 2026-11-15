@@ -1928,9 +1928,15 @@ fn depth_step(node: &SdfNode) -> DepthStep<'_> {
         | SdfNode::WithMaterial { child, .. }
         | SdfNode::Pose { child } => DepthStep::Pass(child),
 
-        // Catch-all for future variants
-        #[allow(unreachable_patterns)]
-        _ => DepthStep::Leaf,
+        // leaves not listed above push one value
+        SdfNode::RoundedCylinder { .. }
+        | SdfNode::MetricBall { .. }
+        | SdfNode::SectionStack { .. }
+        | SdfNode::SmoothSectionStack { .. } => DepthStep::Leaf,
+        // refused by the compiler (no bytecode)
+        SdfNode::GridWarp { .. } | SdfNode::BellPull { .. } => DepthStep::Leaf,
+        // compiled as a binary operator: inner first, outer second
+        SdfNode::MetricBlend { inner, outer, .. } => DepthStep::Two(inner, outer),
     }
 }
 
@@ -2157,6 +2163,25 @@ fn validate_node(node: &SdfNode) -> Children<'_> {
 
 #[cfg(test)]
 mod tests {
+
+    /// `MetricBlend` is compiled as a binary operator (inner first, outer second), so its
+    /// stack depths are those of a `Union` over the same operands
+    /// (oracle: the binary-operator rule `max(left, 1 + right)`, as for `Union`)
+    #[test]
+    fn metric_blend_stack_depths_match_binary_operator() {
+        let deep = SdfNode::sphere(1.0)
+            .union(SdfNode::sphere(0.5).union(SdfNode::sphere(0.25)))
+            .translate(0.1, 0.0, 0.0);
+        let other = SdfNode::sphere(0.3).union(SdfNode::box3d(0.1, 0.1, 0.1));
+        for (inner, outer) in [(deep.clone(), other.clone()), (other, deep)] {
+            let blend =
+                SdfNode::metric_blend(inner.clone(), outer.clone(), glam::Vec3::ZERO, 1.0, 0.1);
+            assert_eq!(
+                compute_stack_depths(&blend),
+                compute_stack_depths(&inner.union(outer)),
+            );
+        }
+    }
 
     /// A `SmoothBlend` instruction whose kernel / mode code the compiler never writes
     /// (a corrupted program) evaluates to NaN in the scalar and the SIMD tables: no

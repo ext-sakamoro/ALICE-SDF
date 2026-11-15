@@ -771,7 +771,84 @@ fn descend(node: &SdfNode, point: Vec3) -> Step<'_> {
         | SdfNode::HeightmapDisplacement { child, .. }
         | SdfNode::SurfaceRoughness { child, .. } => Step::One(child, point, NONE),
 
-        _ => Step::Leaf(eval_leaf(node, point)),
+        SdfNode::Sphere { .. }
+        | SdfNode::Box3d { .. }
+        | SdfNode::Cylinder { .. }
+        | SdfNode::Torus { .. }
+        | SdfNode::Plane { .. }
+        | SdfNode::Capsule { .. }
+        | SdfNode::Cone { .. }
+        | SdfNode::Ellipsoid { .. }
+        | SdfNode::RoundedCone { .. }
+        | SdfNode::Pyramid { .. }
+        | SdfNode::Octahedron { .. }
+        | SdfNode::HexPrism { .. }
+        | SdfNode::Link { .. }
+        | SdfNode::Triangle { .. }
+        | SdfNode::Bezier { .. }
+        | SdfNode::RoundedBox { .. }
+        | SdfNode::CappedCone { .. }
+        | SdfNode::CappedTorus { .. }
+        | SdfNode::RoundedCylinder { .. }
+        | SdfNode::TriangularPrism { .. }
+        | SdfNode::CutSphere { .. }
+        | SdfNode::CutHollowSphere { .. }
+        | SdfNode::DeathStar { .. }
+        | SdfNode::SolidAngle { .. }
+        | SdfNode::Rhombus { .. }
+        | SdfNode::Horseshoe { .. }
+        | SdfNode::Vesica { .. }
+        | SdfNode::InfiniteCylinder { .. }
+        | SdfNode::InfiniteCone { .. }
+        | SdfNode::Gyroid { .. }
+        | SdfNode::MetricBall { .. }
+        | SdfNode::Heart { .. }
+        | SdfNode::Tube { .. }
+        | SdfNode::Barrel { .. }
+        | SdfNode::Diamond { .. }
+        | SdfNode::ChamferedCube { .. }
+        | SdfNode::SchwarzP { .. }
+        | SdfNode::Superellipsoid { .. }
+        | SdfNode::RoundedX { .. }
+        | SdfNode::Pie { .. }
+        | SdfNode::Trapezoid { .. }
+        | SdfNode::Parallelogram { .. }
+        | SdfNode::Tunnel { .. }
+        | SdfNode::UnevenCapsule { .. }
+        | SdfNode::Egg { .. }
+        | SdfNode::ArcShape { .. }
+        | SdfNode::Moon { .. }
+        | SdfNode::CrossShape { .. }
+        | SdfNode::BlobbyCross { .. }
+        | SdfNode::ParabolaSegment { .. }
+        | SdfNode::RegularPolygon { .. }
+        | SdfNode::StarPolygon { .. }
+        | SdfNode::Stairs { .. }
+        | SdfNode::Helix { .. }
+        | SdfNode::Tetrahedron { .. }
+        | SdfNode::Dodecahedron { .. }
+        | SdfNode::Icosahedron { .. }
+        | SdfNode::TruncatedOctahedron { .. }
+        | SdfNode::TruncatedIcosahedron { .. }
+        | SdfNode::BoxFrame { .. }
+        | SdfNode::DiamondSurface { .. }
+        | SdfNode::Neovius { .. }
+        | SdfNode::Lidinoid { .. }
+        | SdfNode::IWP { .. }
+        | SdfNode::FRD { .. }
+        | SdfNode::FischerKochS { .. }
+        | SdfNode::PMY { .. }
+        | SdfNode::Circle2D { .. }
+        | SdfNode::Rect2D { .. }
+        | SdfNode::Segment2D { .. }
+        | SdfNode::Polygon2D { .. }
+        | SdfNode::RoundedRect2D { .. }
+        | SdfNode::Annular2D { .. }
+        | SdfNode::Terrain { .. }
+        | SdfNode::Loft { .. }
+        | SdfNode::LoftCurves { .. }
+        | SdfNode::SectionStack { .. }
+        | SdfNode::SmoothSectionStack { .. } => Step::Leaf(eval_leaf(node, point)),
     }
 }
 
@@ -875,7 +952,129 @@ fn finish(node: &SdfNode, d: f32, point: Vec3, extra: [f32; 3]) -> f32 {
             ..
         } => crate::modifiers::surface_roughness(point, d, *frequency, *amplitude, *octaves),
         // the child's value as it is (a rigid move, a fold, a repetition, or a transparent node)
-        _ => d,
+        SdfNode::Sphere { .. }
+        | SdfNode::Box3d { .. }
+        | SdfNode::Cylinder { .. }
+        | SdfNode::Torus { .. }
+        | SdfNode::Plane { .. }
+        | SdfNode::Capsule { .. }
+        | SdfNode::Cone { .. }
+        | SdfNode::Ellipsoid { .. }
+        | SdfNode::RoundedCone { .. }
+        | SdfNode::Pyramid { .. }
+        | SdfNode::Octahedron { .. }
+        | SdfNode::HexPrism { .. }
+        | SdfNode::Link { .. }
+        | SdfNode::Triangle { .. }
+        | SdfNode::Bezier { .. }
+        | SdfNode::RoundedBox { .. }
+        | SdfNode::CappedCone { .. }
+        | SdfNode::CappedTorus { .. }
+        | SdfNode::RoundedCylinder { .. }
+        | SdfNode::TriangularPrism { .. }
+        | SdfNode::CutSphere { .. }
+        | SdfNode::CutHollowSphere { .. }
+        | SdfNode::DeathStar { .. }
+        | SdfNode::SolidAngle { .. }
+        | SdfNode::Rhombus { .. }
+        | SdfNode::Horseshoe { .. }
+        | SdfNode::Vesica { .. }
+        | SdfNode::InfiniteCylinder { .. }
+        | SdfNode::InfiniteCone { .. }
+        | SdfNode::Gyroid { .. }
+        | SdfNode::MetricBall { .. }
+        | SdfNode::MetricBlend { .. }
+        | SdfNode::Heart { .. }
+        | SdfNode::Tube { .. }
+        | SdfNode::Barrel { .. }
+        | SdfNode::Diamond { .. }
+        | SdfNode::ChamferedCube { .. }
+        | SdfNode::SchwarzP { .. }
+        | SdfNode::Superellipsoid { .. }
+        | SdfNode::RoundedX { .. }
+        | SdfNode::Pie { .. }
+        | SdfNode::Trapezoid { .. }
+        | SdfNode::Parallelogram { .. }
+        | SdfNode::Tunnel { .. }
+        | SdfNode::UnevenCapsule { .. }
+        | SdfNode::Egg { .. }
+        | SdfNode::ArcShape { .. }
+        | SdfNode::Moon { .. }
+        | SdfNode::CrossShape { .. }
+        | SdfNode::BlobbyCross { .. }
+        | SdfNode::ParabolaSegment { .. }
+        | SdfNode::RegularPolygon { .. }
+        | SdfNode::StarPolygon { .. }
+        | SdfNode::Stairs { .. }
+        | SdfNode::Helix { .. }
+        | SdfNode::Tetrahedron { .. }
+        | SdfNode::Dodecahedron { .. }
+        | SdfNode::Icosahedron { .. }
+        | SdfNode::TruncatedOctahedron { .. }
+        | SdfNode::TruncatedIcosahedron { .. }
+        | SdfNode::BoxFrame { .. }
+        | SdfNode::DiamondSurface { .. }
+        | SdfNode::Neovius { .. }
+        | SdfNode::Lidinoid { .. }
+        | SdfNode::IWP { .. }
+        | SdfNode::FRD { .. }
+        | SdfNode::FischerKochS { .. }
+        | SdfNode::PMY { .. }
+        | SdfNode::Circle2D { .. }
+        | SdfNode::Rect2D { .. }
+        | SdfNode::Segment2D { .. }
+        | SdfNode::Polygon2D { .. }
+        | SdfNode::RoundedRect2D { .. }
+        | SdfNode::Annular2D { .. }
+        | SdfNode::Union { .. }
+        | SdfNode::Intersection { .. }
+        | SdfNode::Subtraction { .. }
+        | SdfNode::SmoothUnion { .. }
+        | SdfNode::SmoothIntersection { .. }
+        | SdfNode::SmoothSubtraction { .. }
+        | SdfNode::ChamferUnion { .. }
+        | SdfNode::ChamferIntersection { .. }
+        | SdfNode::ChamferSubtraction { .. }
+        | SdfNode::StairsUnion { .. }
+        | SdfNode::StairsIntersection { .. }
+        | SdfNode::StairsSubtraction { .. }
+        | SdfNode::XOR { .. }
+        | SdfNode::Morph { .. }
+        | SdfNode::ColumnsUnion { .. }
+        | SdfNode::ColumnsIntersection { .. }
+        | SdfNode::ColumnsSubtraction { .. }
+        | SdfNode::Pipe { .. }
+        | SdfNode::Engrave { .. }
+        | SdfNode::Groove { .. }
+        | SdfNode::Tongue { .. }
+        | SdfNode::ExpSmoothUnion { .. }
+        | SdfNode::ExpSmoothIntersection { .. }
+        | SdfNode::ExpSmoothSubtraction { .. }
+        | SdfNode::Translate { .. }
+        | SdfNode::Rotate { .. }
+        | SdfNode::SdfSkinning { .. }
+        | SdfNode::Twist { .. }
+        | SdfNode::Bend { .. }
+        | SdfNode::RepeatInfinite { .. }
+        | SdfNode::RepeatFinite { .. }
+        | SdfNode::Elongate { .. }
+        | SdfNode::Mirror { .. }
+        | SdfNode::Revolution { .. }
+        | SdfNode::SweepBezier { .. }
+        | SdfNode::PolarRepeat { .. }
+        | SdfNode::OctantMirror { .. }
+        | SdfNode::Shear { .. }
+        | SdfNode::Animated { .. }
+        | SdfNode::Pose { .. }
+        | SdfNode::WithMaterial { .. }
+        | SdfNode::IcosahedralSymmetry { .. }
+        | SdfNode::Terrain { .. }
+        | SdfNode::Loft { .. }
+        | SdfNode::LoftCurves { .. }
+        | SdfNode::SectionStack { .. }
+        | SdfNode::SmoothSectionStack { .. }
+        | SdfNode::SmoothBlend { .. }
+        | SdfNode::RepeatCells { .. } => d,
     }
 }
 
@@ -1201,7 +1400,67 @@ fn eval_leaf(node: &SdfNode, point: Vec3) -> f32 {
         }
 
         #[allow(unreachable_patterns)]
-        _ => f32::MAX, // Unknown variant: treat as infinitely far (outside any surface)
+        SdfNode::MetricBlend { .. }
+        | SdfNode::Union { .. }
+        | SdfNode::Intersection { .. }
+        | SdfNode::Subtraction { .. }
+        | SdfNode::SmoothUnion { .. }
+        | SdfNode::SmoothIntersection { .. }
+        | SdfNode::SmoothSubtraction { .. }
+        | SdfNode::ChamferUnion { .. }
+        | SdfNode::ChamferIntersection { .. }
+        | SdfNode::ChamferSubtraction { .. }
+        | SdfNode::StairsUnion { .. }
+        | SdfNode::StairsIntersection { .. }
+        | SdfNode::StairsSubtraction { .. }
+        | SdfNode::XOR { .. }
+        | SdfNode::Morph { .. }
+        | SdfNode::ColumnsUnion { .. }
+        | SdfNode::ColumnsIntersection { .. }
+        | SdfNode::ColumnsSubtraction { .. }
+        | SdfNode::Pipe { .. }
+        | SdfNode::Engrave { .. }
+        | SdfNode::Groove { .. }
+        | SdfNode::Tongue { .. }
+        | SdfNode::ExpSmoothUnion { .. }
+        | SdfNode::ExpSmoothIntersection { .. }
+        | SdfNode::ExpSmoothSubtraction { .. }
+        | SdfNode::Translate { .. }
+        | SdfNode::Rotate { .. }
+        | SdfNode::Scale { .. }
+        | SdfNode::ScaleNonUniform { .. }
+        | SdfNode::ProjectiveTransform { .. }
+        | SdfNode::LatticeDeform { .. }
+        | SdfNode::SdfSkinning { .. }
+        | SdfNode::GridWarp { .. }
+        | SdfNode::Twist { .. }
+        | SdfNode::Bend { .. }
+        | SdfNode::RepeatInfinite { .. }
+        | SdfNode::RepeatFinite { .. }
+        | SdfNode::Noise { .. }
+        | SdfNode::Round { .. }
+        | SdfNode::Onion { .. }
+        | SdfNode::Elongate { .. }
+        | SdfNode::Mirror { .. }
+        | SdfNode::Revolution { .. }
+        | SdfNode::Extrude { .. }
+        | SdfNode::SweepBezier { .. }
+        | SdfNode::Taper { .. }
+        | SdfNode::Displacement { .. }
+        | SdfNode::SineDisplacement { .. }
+        | SdfNode::PolarRepeat { .. }
+        | SdfNode::OctantMirror { .. }
+        | SdfNode::Shear { .. }
+        | SdfNode::Animated { .. }
+        | SdfNode::Pose { .. }
+        | SdfNode::WithMaterial { .. }
+        | SdfNode::IcosahedralSymmetry { .. }
+        | SdfNode::IFS { .. }
+        | SdfNode::HeightmapDisplacement { .. }
+        | SdfNode::SurfaceRoughness { .. }
+        | SdfNode::SmoothBlend { .. }
+        | SdfNode::BellPull { .. }
+        | SdfNode::RepeatCells { .. } => f32::MAX, // `descend` handles nodes with children; never reached
     }
 }
 
@@ -1469,7 +1728,89 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         SdfNode::BellPull { child, pull } => eval_material(child, pull.back(point)),
 
         // Primitives: no material assigned
-        _ => 0,
+        SdfNode::Sphere { .. }
+        | SdfNode::Box3d { .. }
+        | SdfNode::Cylinder { .. }
+        | SdfNode::Torus { .. }
+        | SdfNode::Plane { .. }
+        | SdfNode::Capsule { .. }
+        | SdfNode::Cone { .. }
+        | SdfNode::Ellipsoid { .. }
+        | SdfNode::RoundedCone { .. }
+        | SdfNode::Pyramid { .. }
+        | SdfNode::Octahedron { .. }
+        | SdfNode::HexPrism { .. }
+        | SdfNode::Link { .. }
+        | SdfNode::Triangle { .. }
+        | SdfNode::Bezier { .. }
+        | SdfNode::RoundedBox { .. }
+        | SdfNode::CappedCone { .. }
+        | SdfNode::CappedTorus { .. }
+        | SdfNode::RoundedCylinder { .. }
+        | SdfNode::TriangularPrism { .. }
+        | SdfNode::CutSphere { .. }
+        | SdfNode::CutHollowSphere { .. }
+        | SdfNode::DeathStar { .. }
+        | SdfNode::SolidAngle { .. }
+        | SdfNode::Rhombus { .. }
+        | SdfNode::Horseshoe { .. }
+        | SdfNode::Vesica { .. }
+        | SdfNode::InfiniteCylinder { .. }
+        | SdfNode::InfiniteCone { .. }
+        | SdfNode::Gyroid { .. }
+        | SdfNode::MetricBall { .. }
+        | SdfNode::Heart { .. }
+        | SdfNode::Tube { .. }
+        | SdfNode::Barrel { .. }
+        | SdfNode::Diamond { .. }
+        | SdfNode::ChamferedCube { .. }
+        | SdfNode::SchwarzP { .. }
+        | SdfNode::Superellipsoid { .. }
+        | SdfNode::RoundedX { .. }
+        | SdfNode::Pie { .. }
+        | SdfNode::Trapezoid { .. }
+        | SdfNode::Parallelogram { .. }
+        | SdfNode::Tunnel { .. }
+        | SdfNode::UnevenCapsule { .. }
+        | SdfNode::Egg { .. }
+        | SdfNode::ArcShape { .. }
+        | SdfNode::Moon { .. }
+        | SdfNode::CrossShape { .. }
+        | SdfNode::BlobbyCross { .. }
+        | SdfNode::ParabolaSegment { .. }
+        | SdfNode::RegularPolygon { .. }
+        | SdfNode::StarPolygon { .. }
+        | SdfNode::Stairs { .. }
+        | SdfNode::Helix { .. }
+        | SdfNode::Tetrahedron { .. }
+        | SdfNode::Dodecahedron { .. }
+        | SdfNode::Icosahedron { .. }
+        | SdfNode::TruncatedOctahedron { .. }
+        | SdfNode::TruncatedIcosahedron { .. }
+        | SdfNode::BoxFrame { .. }
+        | SdfNode::DiamondSurface { .. }
+        | SdfNode::Neovius { .. }
+        | SdfNode::Lidinoid { .. }
+        | SdfNode::IWP { .. }
+        | SdfNode::FRD { .. }
+        | SdfNode::FischerKochS { .. }
+        | SdfNode::PMY { .. }
+        | SdfNode::Circle2D { .. }
+        | SdfNode::Rect2D { .. }
+        | SdfNode::Segment2D { .. }
+        | SdfNode::Polygon2D { .. }
+        | SdfNode::RoundedRect2D { .. }
+        | SdfNode::Annular2D { .. }
+        | SdfNode::Terrain { .. }
+        | SdfNode::Loft { .. }
+        | SdfNode::LoftCurves { .. }
+        | SdfNode::SectionStack { .. }
+        | SdfNode::SmoothSectionStack { .. } => 0,
+        // these have children, but no material is read through them
+        SdfNode::MetricBlend { .. }
+        | SdfNode::ProjectiveTransform { .. }
+        | SdfNode::LatticeDeform { .. }
+        | SdfNode::SdfSkinning { .. } => 0,
     }
 }
 
