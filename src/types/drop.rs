@@ -60,6 +60,10 @@ impl SdfNode {
                 out.push(std::mem::replace(a, leaf_sentinel()));
                 out.push(std::mem::replace(b, leaf_sentinel()));
             }
+            Self::MetricBlend { inner, outer, .. } => {
+                out.push(std::mem::replace(inner, leaf_sentinel()));
+                out.push(std::mem::replace(outer, leaf_sentinel()));
+            }
 
             // 単項 transform (7) + modifier (23) + Animated
             Self::Translate { child, .. }
@@ -100,8 +104,85 @@ impl SdfNode {
                 out.push(std::mem::replace(child, leaf_sentinel()));
             }
 
-            // 葉 (primitive 72 種) は子を持たない
-            _ => {}
+            // 葉は子を持たない
+            Self::Sphere { .. }
+            | Self::Box3d { .. }
+            | Self::Cylinder { .. }
+            | Self::Torus { .. }
+            | Self::Plane { .. }
+            | Self::Capsule { .. }
+            | Self::Cone { .. }
+            | Self::Ellipsoid { .. }
+            | Self::RoundedCone { .. }
+            | Self::Pyramid { .. }
+            | Self::Octahedron { .. }
+            | Self::HexPrism { .. }
+            | Self::Link { .. }
+            | Self::Triangle { .. }
+            | Self::Bezier { .. }
+            | Self::RoundedBox { .. }
+            | Self::CappedCone { .. }
+            | Self::CappedTorus { .. }
+            | Self::RoundedCylinder { .. }
+            | Self::TriangularPrism { .. }
+            | Self::CutSphere { .. }
+            | Self::CutHollowSphere { .. }
+            | Self::DeathStar { .. }
+            | Self::SolidAngle { .. }
+            | Self::Rhombus { .. }
+            | Self::Horseshoe { .. }
+            | Self::Vesica { .. }
+            | Self::InfiniteCylinder { .. }
+            | Self::InfiniteCone { .. }
+            | Self::Gyroid { .. }
+            | Self::MetricBall { .. }
+            | Self::Heart { .. }
+            | Self::Tube { .. }
+            | Self::Barrel { .. }
+            | Self::Diamond { .. }
+            | Self::ChamferedCube { .. }
+            | Self::SchwarzP { .. }
+            | Self::Superellipsoid { .. }
+            | Self::RoundedX { .. }
+            | Self::Pie { .. }
+            | Self::Trapezoid { .. }
+            | Self::Parallelogram { .. }
+            | Self::Tunnel { .. }
+            | Self::UnevenCapsule { .. }
+            | Self::Egg { .. }
+            | Self::ArcShape { .. }
+            | Self::Moon { .. }
+            | Self::CrossShape { .. }
+            | Self::BlobbyCross { .. }
+            | Self::ParabolaSegment { .. }
+            | Self::RegularPolygon { .. }
+            | Self::StarPolygon { .. }
+            | Self::Stairs { .. }
+            | Self::Helix { .. }
+            | Self::Tetrahedron { .. }
+            | Self::Dodecahedron { .. }
+            | Self::Icosahedron { .. }
+            | Self::TruncatedOctahedron { .. }
+            | Self::TruncatedIcosahedron { .. }
+            | Self::BoxFrame { .. }
+            | Self::DiamondSurface { .. }
+            | Self::Neovius { .. }
+            | Self::Lidinoid { .. }
+            | Self::IWP { .. }
+            | Self::FRD { .. }
+            | Self::FischerKochS { .. }
+            | Self::PMY { .. }
+            | Self::Circle2D { .. }
+            | Self::Rect2D { .. }
+            | Self::Segment2D { .. }
+            | Self::Polygon2D { .. }
+            | Self::RoundedRect2D { .. }
+            | Self::Annular2D { .. }
+            | Self::Terrain { .. }
+            | Self::Loft { .. }
+            | Self::LoftCurves { .. }
+            | Self::SectionStack { .. }
+            | Self::SmoothSectionStack { .. } => {}
         }
     }
 }
