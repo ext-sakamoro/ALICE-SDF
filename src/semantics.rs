@@ -17,7 +17,7 @@
 //! # Hex form (earlier `alice-det-math` generations in [`SDF_SEMANTICS_BY_DET_MATH`])
 //!
 //! ```text
-//! c402f8f7a86d0711f1337b1fab2debd59993dab0686ebed3d12d7588798351be
+//! d7389231c17a0dade9a46c5610ed9911ab97b725dfdbc0d8b9d33c3e2113974c
 //! ```
 //!
 //! # Fold
@@ -67,7 +67,7 @@ pub const MUL_ADD_RULE: &str = "alice-sdf: Real::mul_add is a * b + c with two r
 pub const SDF_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
     (
         "golden tests/test_det_golden.rs GOLDEN",
-        hex32("adbaa03cc64edbc06053d1e7aada8e0805fc9daee77ab6fdb8b358dfe37880ab"),
+        hex32("0c6ec86e974c8da7715a42788fb710754d1b193758bf921febd7b113a2b165d0"),
     ),
     (
         "tag max / min rule",
@@ -335,11 +335,11 @@ pub const SDF_SEMANTICS_BY_DET_MATH: &[([u8; 32], [u8; 32])] = &[
 
 /// The identifier of what alice-sdf computes, in this build
 ///
-/// Hex: `c402f8f7a86d0711f1337b1fab2debd59993dab0686ebed3d12d7588798351be`, the fold of
+/// Hex: `d7389231c17a0dade9a46c5610ed9911ab97b725dfdbc0d8b9d33c3e2113974c`, the fold of
 /// [`SDF_SEMANTICS_PINS`] and [`DET_MATH_PINS`]. The same value in every build, whatever cargo
 /// features are enabled.
 pub const SDF_SEMANTICS_ID: [u8; 32] =
-    hex32("c402f8f7a86d0711f1337b1fab2debd59993dab0686ebed3d12d7588798351be");
+    hex32("d7389231c17a0dade9a46c5610ed9911ab97b725dfdbc0d8b9d33c3e2113974c");
 
 /// Earlier identifiers whose distances this build still computes to the same bits, newest first
 ///

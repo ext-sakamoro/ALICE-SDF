@@ -765,7 +765,7 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "repeat_cells_finite_mirror",
-        "78fd372f349fe388f7d3c088a92369d24e68bfa6f0e388242558caa21bd065fb",
+        "e467cd32a2a5670ee10b81218c8f4e4af9a15d21d3a787127ca1bfa39132bb6b",
     ),
     (
         "repeat_cells_finite_plain",

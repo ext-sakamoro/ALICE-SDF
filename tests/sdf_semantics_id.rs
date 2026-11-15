@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 const GOLDEN_SOURCE: &str = include_str!("test_det_golden.rs");
 // each alice-det-math function the crate calls folded as its own entry; no earlier identifier is
 // reproduced (the heightmap face blend moved a golden row, see `ROWS_MOVED_AFTER_D2D2F0DF`)
-const RECORDED_HEX: &str = "c402f8f7a86d0711f1337b1fab2debd59993dab0686ebed3d12d7588798351be";
+const RECORDED_HEX: &str = "d7389231c17a0dade9a46c5610ed9911ab97b725dfdbc0d8b9d33c3e2113974c";
 
 /// The alice-det-math entry of the generations that folded it whole: its 0.5.2 at 2d01c63f
 /// identifier

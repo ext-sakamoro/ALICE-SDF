@@ -171,10 +171,12 @@ pub fn validate_repeat_cells(
     Ok(())
 }
 
-/// The largest cell count per axis: with `n` cells the cell index reaches
-/// `(n − 1)/2` and the cell boundaries `±(k + 1/2)·s`; up to `2^16` cells every
-/// boundary and index is exact in `f32` (24-bit significand with room for the
-/// half), so the fold stays continuous and the field keeps its Lipschitz bound
+/// The largest cell count per axis (`2^16`)
+///
+/// With `n` cells the cell index reaches `(n − 1)/2` and the cell boundaries
+/// `±(k + 1/2)·s`; up to `2^16` cells every boundary and index is exact in `f32`
+/// (24-bit significand with room for the half), so the fold stays continuous
+/// and the field keeps its Lipschitz bound.
 pub const MAX_CELL_COUNT: u32 = 1 << 16;
 
 /// The cell law on one axis (generic over [`Real`]): `(cell index, local
@@ -202,14 +204,11 @@ fn parity_sign_r<R: Real>(c: R) -> R {
     R::one() - odd * R::splat(2.0)
 }
 
-/// The cell and mirror law on one axis (generic over [`Real`]): the local
-/// coordinate; `s <= 0` leaves the coordinate unchanged.
-#[inline(always)]
 /// The cell index whose parity decides the mirror: `⌊(n − 1)/2⌋` cells before
 /// the cell holding the origin (none when infinite), so that cell is never
 /// reflected
 #[inline(always)]
-pub(crate) const fn mirror_base(count: u32) -> f32 {
+pub const fn mirror_base(count: u32) -> f32 {
     if count == 0 {
         0.0
     } else {
@@ -217,6 +216,9 @@ pub(crate) const fn mirror_base(count: u32) -> f32 {
     }
 }
 
+/// The cell and mirror law on one axis (generic over [`Real`]): the local
+/// coordinate; `s <= 0` leaves the coordinate unchanged.
+#[inline(always)]
 fn axis_r<R: Real>(p: R, s: f32, count: u32, mirror: bool) -> R {
     if s.is_nan() || s <= 0.0 {
         return p;
