@@ -7,7 +7,9 @@
 //! names each file. The tests pin that the files written now are those bytes, that they load to
 //! the same tree, that the ASP I-packet carries the same body bytes, and that writing again gives
 //! the same bytes. Each tree's version string is fixed ("fixture") so the bytes do not follow the
-//! crate version.
+//! crate version. The header's semantics identifier (bytes 16..48) is the one thing that follows the
+//! build: it is re-stamped when `SDF_SEMANTICS_ID` moves (the body bytes stay the ones bincode
+//! wrote; the repeat_finite fix re-stamped d7389231… to 443238e4…).
 //!
 //! Author: Moroya Sakamoto
 
