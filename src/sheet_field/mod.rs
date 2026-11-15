@@ -13,9 +13,17 @@
 //! Validity rule `CellV1`: a cell whose 8 corners all have `|s| > sqrt(3)/2 * h + scale` cannot contain the
 //! surface (`|s|` never exceeds the true distance, and a surface point in the cell lies within half a cell
 //! diagonal of its nearest corner). Such a cell is answered with the lower bound
-//! `max(min|s| - scale - sqrt(3)/2 * h, 0.05)`, positive, so a sign jump of `s` there (two parts of one open
+//! `max(min|s| - scale - sqrt(3)/2 * h, 0.05)`, tightened per corner (below), positive, so a sign jump of `s` there (two parts of one open
 //! sheet seen from opposite sides) never reads as a crossing. A masked cell never holds a true hit. A sign
 //! jump in an unmasked cell can still cross, at most `(sqrt(3) + sqrt(3)/2) * h + scale` from the sheet.
+//!
+//! The masked cell's bound, per corner: for a corner `c` with stored `s_c`, every surface point `x` has
+//! `|x - c| >= |s_c| - scale` (the same fact: `|s|` never exceeds the true distance, up to the storage step), so
+//! `|x - p| >= |x - c| - |p - c| >= |s_c| - scale - |p - c|` for the point `p` in the cell. Every corner gives a
+//! bound, so the distance from `p` to the sheet is at least `max_c (|s_c| - |p - c|) - scale`. The cell's value
+//! is the larger of that and the bound above (which pairs the smallest `|s_c|` with the largest corner distance),
+//! floored at 0.05 as before. Measured: on the heaviest ray of a 15-part body view, 259 of 272 steps of at most
+//! 0.05 were set by a masked cell while the sheet's own `|s|` there had a median of 0.67.
 //!
 //! Union: `f = min` over sheets of (`f_k` inside sheet k's box, else `max(distance to the box, 3 h_k)`), a lower
 //! bound on the distance to sheet k. A ray hit ([`SheetField::march`]) is a sign change of one sheet's own
@@ -335,6 +343,8 @@ struct CellLookup {
     values: [f32; 8],
     nch: usize,
     umin: f32,
+    /// `max` over the cell's corners of `|s_c| - |p - c|` (the per-corner part of the masked cell's bound).
+    ucorner: f32,
     q0: f32,
     q1: f32,
     h: f32,
@@ -380,6 +390,7 @@ impl Sheet {
                 values: [0.0; 8],
                 nch: lv.channels.len().min(8).min(nmax),
                 umin: f32::INFINITY,
+                ucorner: f32::NEG_INFINITY,
                 q0: 0.0,
                 q1: 0.0,
                 h: lv.h,
@@ -413,6 +424,10 @@ impl Sheet {
                                 acc += ww * v;
                                 if ci == 0 {
                                     out.umin = out.umin.min(v.abs());
+                                    let (ex, ey, ez) =
+                                        (t[0] - dx as f32, t[1] - dy as f32, t[2] - dz as f32);
+                                    let dist = lv.h * (ex * ex + ey * ey + ez * ez).sqrt();
+                                    out.ucorner = out.ucorner.max(v.abs() - dist);
                                 }
                             }
                         }
@@ -457,7 +472,9 @@ impl Sheet {
         };
         let (s, db) = (c.values[0], c.values[1]);
         let (f, g, masked) = if rule == ValidRule::CellV1 && c.umin > HALF_DIAG * c.h + c.q0 {
-            let v = (c.umin - c.q0 - HALF_DIAG * c.h).max(0.05);
+            let v = (c.umin - c.q0 - HALF_DIAG * c.h)
+                .max(c.ucorner - c.q0)
+                .max(0.05);
             (v, v, true)
         } else {
             let f = (s * s + db.max(0.0) * db.max(0.0)).sqrt();

@@ -1078,6 +1078,7 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
         let t = w - vec3<f32>(c);
         var vals = array<f32, 8>(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         var umin = 1e30;
+        var ucorner = -1e30;
         var band_miss = false;
         var q0 = 0.0;
         var q1 = 0.0;
@@ -1139,7 +1140,12 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
                             let node = ((c.x + dx) * NODES + (c.y + dy)) * NODES + (c.z + dz);
                             let v = qbyte(lv.q_off[ci / 4u][ci % 4u] + u32(row) * BRICK_NODES + node) * sc + off;
                             acc = acc + (wx * wy * wz) * v;
-                            if (ci == 0u) { umin = min(umin, abs(v)); }
+                            if (ci == 0u) {
+                                umin = min(umin, abs(v));
+                                let e = t - vec3<f32>(f32(dx), f32(dy), f32(dz));
+                                let dist = lv.h * sqrt(e.x * e.x + e.y * e.y + e.z * e.z);
+                                ucorner = max(ucorner, abs(v) - dist);
+                            }
                         }
                     }
                 }
@@ -1154,7 +1160,8 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
         var g = select(f, -f, s < 0.0);
         out.masked = false;
         if (U.rule == 1u && umin > HALF_DIAG * lv.h + q0) {
-            f = max(umin - q0 - HALF_DIAG * lv.h, 0.05);
+            // the per-corner bound (module docs of the CPU sheet field): max over corners of |s_c| - |p - c|
+            f = max(max(umin - q0 - HALF_DIAG * lv.h, ucorner - q0), 0.05);
             g = f;
             out.masked = true;
         }
