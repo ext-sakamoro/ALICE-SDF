@@ -358,8 +358,9 @@ bool in_box(uint k, vec3 p) { return all(greaterThanEqual(p, sh_lo(k))) && all(l
 vec3 nlo(uint i) { return vec3(uintBitsToFloat(ixw(bn_base + 8u * i)), uintBitsToFloat(ixw(bn_base + 8u * i + 1u)), uintBitsToFloat(ixw(bn_base + 8u * i + 2u))); }
 vec3 nhi(uint i) { return vec3(uintBitsToFloat(ixw(bn_base + 8u * i + 4u)), uintBitsToFloat(ixw(bn_base + 8u * i + 5u)), uintBitsToFloat(ixw(bn_base + 8u * i + 6u))); }
 
-// min over sheets, lowest index on ties (the union's f)
-float eval_union_f(vec3 p) {
+// min over the sheets whose box does not hold p (their outside bound); the march takes the min of this and the live
+// sheets' f, which is the union's f of the compute march
+float eval_outside_f(vec3 p) {
     float rf = 1e30; uint rk = NONE;
     if (bn_len < 8u || n_sheets == 0u) { return rf; }
     uint at = 0u; uint prev = NONE;
@@ -371,7 +372,9 @@ float eval_union_f(vec3 p) {
             for (uint j = first; j < first + b; j++) {
                 uint k = ixw(bl_base + j);
                 float v;
-                if (box_distance(p, sh_lo(k), sh_hi(k)) == 0.0) { v = sample_sheet(k, p, 2u).f; } else { v = outside_bound(p, k); }
+                // a sheet whose box holds p is a live sheet: its f comes from the march's own sample at p (the min of
+                // the same values in another order is the same number), so here it is skipped
+                if (box_distance(p, sh_lo(k), sh_hi(k)) == 0.0) { continue; } else { v = outside_bound(p, k); }
                 if (v < rf || (v == rf && k < rk)) { rf = v; rk = k; }
             }
         } else {
@@ -433,7 +436,7 @@ void main() {
     float t = 0.0; float tprev = 0.0; int kind = 2; uint own = 0u; uint work = 0u;
     for (uint step = 0u; step < steps && !overflow; step++) {
         vec3 p = o + d * t;
-        float dd = eval_union_f(p);
+        float dd = eval_outside_f(p);
         float thit = 1e30; uint khit = 0u;
         uint cur_k[MAX_LIVE]; float cur_g[MAX_LIVE]; uint n_cur = 0u;
         uint nl = live_sheets(p);
@@ -451,7 +454,7 @@ void main() {
                 float mid = it < 0 ? t : 0.5 * (a + b);
                 Sample sm = sample_sheet(k, o + d * mid, 2u);
                 if (it < 0) {
-                    gc = sm.g;
+                    gc = sm.g; dd = min(dd, sm.f);
                     cur_k[n_cur] = k; cur_g[n_cur] = gc; n_cur++;
                     if (t <= 0.0) { break; }
                     for (uint j = 0u; j < n_prev; j++) { if (prev_k[j] == k) { found = true; gp = prev_g[j]; } }
