@@ -324,6 +324,8 @@ python3 scripts/test_alice_siblings_check.py
 python3 scripts/test_id_move_check.py
 python3 scripts/test_lock_sources_check.py
 python3 scripts/lock_sources_check.py
+python3 scripts/test_upstream_previous_ids_check.py
+python3 scripts/upstream_previous_ids_check.py
 
 step "stub-guard: todo! / unimplemented! / panic!(STUB) / dbg!() in src/"
 hits=$(grep -rnE 'todo!\(|unimplemented!\(|panic!\([^)]*STUB' src/ --include="*.rs" --exclude-dir=bin || true)
