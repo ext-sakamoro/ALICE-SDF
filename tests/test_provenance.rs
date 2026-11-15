@@ -3412,9 +3412,13 @@ fn alembic_without_identifier_is_missing_and_a_malformed_archive_unreadable() {
 // paint tool would write it (no identifier), and the heightmap writer's output for it:
 //   heightmap_plain.png    34151b0d0efbd9f7fa65ccc76299d474e00ad48ddfe2b40ecfed7916f0db8098
 //   heightmap_plain.jpg    3b8303187e7a141798d8c3a8c72b26da9795da077b87fcc00856a717afc7dbcd
-//   heightmap_stamped.png  7f72a9e7074d5459b330ec2596253757b4dade3125fdbc22520f753e42093e22
+//   heightmap_stamped.png  f93c3f09d5f5d906ba53125dcbb8b941dd47bd12e73673c85200cadfec56dbff
 //                          Heightmap::from_image_bytes(plain.png, &HeightmapImageConfig::new(
 //                          40.0, 16.0, 12.0)).to_png(..) (16-bit grey, the identifier in tEXt)
+//   heightmap_stamped_db7ff4a4.png
+//                          7f72a9e7074d5459b330ec2596253757b4dade3125fdbc22520f753e42093e22
+//                          the same written by the build whose identifier was db7ff4a4… (before
+//                          the cell repetition), read as VerifiedPrevious: only golden rows were added
 //   heightmap_stamped_dca9b092.png
 //                          064ffa1e0e5fbb0968e73a76d765d203225d59beb02fc96a22d647244366f138
 //                          the same written by the build whose identifier was dca9b092… (before
@@ -3571,8 +3575,16 @@ fn heightmap_images_carry_and_check_the_identifier() {
     std::fs::remove_file(&path).ok();
     assert_eq!(pinned.heights, back.heights);
 
-    // the same image written under dca9b092… (before the bell pull, which only added a golden row)
-    // reads as VerifiedPrevious, to the same heights
+    // the same image written under db7ff4a4… (before the cell repetition, which only added golden
+    // rows) and dca9b092… (before the bell pull, which only added a golden row) reads as
+    // VerifiedPrevious, to the same heights
+    let db7ff4a4: [u8; 32] = core::array::from_fn(|i| {
+        u8::from_str_radix(
+            &"db7ff4a4b7daf3f242f353fc7af2c448832e8625c19f2522561d3b83a496f775"[2 * i..2 * i + 2],
+            16,
+        )
+        .unwrap()
+    });
     let dca9b092: [u8; 32] = core::array::from_fn(|i| {
         u8::from_str_radix(
             &"dca9b09275b952e2e45ab7cd9426cd99f86e3cc65a16ffc2ffd76b188b01780f"[2 * i..2 * i + 2],
@@ -3580,7 +3592,19 @@ fn heightmap_images_carry_and_check_the_identifier() {
         )
         .unwrap()
     });
-    assert_eq!(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS, &[dca9b092]);
+    assert_eq!(alice_sdf::PREVIOUS_SDF_SEMANTICS_IDS, &[db7ff4a4, dca9b092]);
+    let kept_db7 = std::fs::read(fixture("heightmap_stamped_db7ff4a4.png")).unwrap();
+    assert!(provenance::from_bytes(&kept_db7)
+        .unwrap()
+        .is_written_under(&Provenance::new(db7ff4a4)));
+    let (kept_db7_hm, kept_db7_status) = Heightmap::from_image_bytes(&kept_db7, &cfg)
+        .unwrap()
+        .into_parts();
+    assert_eq!(
+        kept_db7_status,
+        StoredSemantics::VerifiedPrevious(Provenance::new(db7ff4a4))
+    );
+    assert_eq!(kept_db7_hm.heights, back.heights);
     let kept = std::fs::read(fixture("heightmap_stamped_dca9b092.png")).unwrap();
     assert!(provenance::from_bytes(&kept)
         .unwrap()
