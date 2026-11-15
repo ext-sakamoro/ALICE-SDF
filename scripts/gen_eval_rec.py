@@ -76,6 +76,18 @@ def declared_kinds() -> list[str]:
     return re.findall(r"^    ([A-Z][A-Za-z0-9_]*)(?: \{|\(|,)", body, re.M)
 
 
+def field_types(kind: str) -> dict[str, str]:
+    """the fields of `SdfNode::<kind>` and their types, read from the enum (`Self` as `SdfNode`)"""
+    src = TYPES.read_text(encoding="utf-8")
+    start = src.index("pub enum SdfNode {")
+    enum = src[start : src.index("\n}\n", start)]
+    m = re.search(rf"^    {kind} \{{\n(.*?)^    \}},", enum, re.M | re.S)
+    if not m:
+        raise SystemExit(f"gen_eval_rec: no struct variant {kind} in {TYPES}")
+    fields = re.findall(r"^        ([a-z_][a-z0-9_]*): (.+),$", m.group(1), re.M)
+    return {name: ty.replace("Self", "SdfNode") for name, ty in fields}
+
+
 def leaf_kinds(text: str) -> list[str]:
     """the kinds `eval_leaf` has an arm for, without its arm for the kinds with children (that arm
     returns `f32::MAX` and is never reached: `descend` handles those kinds)"""
@@ -118,6 +130,11 @@ def snake(name: str) -> str:
 INLINE = "#[cfg_attr(not(debug_assertions), inline(always))]"
 
 
+def extras(fields: str) -> list[str]:
+    """the fields a law arm of `combine` binds besides its operands"""
+    return [f.strip() for f in fields.split(",") if f.strip() not in ("", "..")]
+
+
 def generate(text: str) -> str:
     two = two_operand_arms(text)
     kinds = combine_kinds(text)
@@ -144,71 +161,91 @@ def generate(text: str) -> str:
     out.append("    if depth >= native_levels {")
     out.append("        return eval_iter(node, point);")
     out.append("    }")
-    out.append("    let next = depth + 1;")
+    out.append("    let at = Below {")
+    out.append("        point,")
+    out.append("        next: depth + 1,")
+    out.append("        native_levels,")
+    out.append("    };")
     out.append("    match node {")
-    for kind, _, _, _ in two:
-        out.append(f"        SdfNode::{kind} {{ .. }} => rec_{snake(kind)}(node, point, next, native_levels),")
-    out.append("        SdfNode::MetricBlend { .. } => rec_metric_blend(node, point, next, native_levels),")
-    out.append("        SdfNode::Translate { .. } => rec_translate(node, point, next, native_levels),")
+    for kind, fields, _, _ in two:
+        extra = extras(fields)
+        args = "".join(f"*{f}, " for f in extra)
+        pat = ", ".join(["a", "b", *extra, ".."])
+        out.append(
+            f"        SdfNode::{kind} {{ {pat} }} => rec_{snake(kind)}(a, b, {args}at),"
+        )
+    out.append(
+        "        SdfNode::MetricBlend { inner, outer, .. } => "
+        "rec_metric_blend(node, inner, outer, at),"
+    )
+    out.append(
+        "        SdfNode::Translate { child, offset } => rec_translate(child, *offset, at),"
+    )
     pattern = "\n        | ".join(f"SdfNode::{k} {{ .. }}" for k in ones[1:])
-    out.append(f"        {pattern} => rec_one(node, point, next, native_levels),")
+    out.append(f"        {pattern} => rec_one(node, at),")
     out.append("        _ => eval_leaf(node, point),")
     out.append("    }")
     out.append("}")
+    out += [
+        "",
+        "/// Where [`eval_rec`] is in the walk: the point, the depth of the children and the native limit",
+        "#[derive(Clone, Copy)]",
+        "struct Below {",
+        "    point: Vec3,",
+        "    next: u32,",
+        "    native_levels: u32,",
+        "}",
+        "",
+        "/// [`eval_rec`] of `node` at `at` (one level below the node that holds it)",
+        INLINE,
+        "fn rec(node: &SdfNode, at: Below) -> f32 {",
+        "    eval_rec(node, at.point, at.next, at.native_levels)",
+        "}",
+    ]
     for kind, fields, fn, rest in two:
+        extra = extras(fields)
+        types = field_types(kind) if extra else {}
+        params = "".join(f"{f}: {types[f]}, " for f in extra)
         out.append("")
-        out.append(f"/// [`eval_rec`] at a `{kind}`: both operands, then `{fn}`")
+        out.append(f"/// [`eval_rec`] at a `{kind}` (its operands and fields): both operands, then `{fn}`")
         out.append(INLINE)
-        pat = "a, b" if fields == ".." else f"a, b, {fields}"
-        out.append(
-            f"fn rec_{snake(kind)}(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {{"
-        )
-        out.append(f"    let SdfNode::{kind} {{ {pat} }} = node else {{")
-        out.append(f'        unreachable!("rec_{snake(kind)}: called for its kind only")')
-        out.append("    };")
-        out.append(f"    {fn}(")
-        out.append("        eval_rec(a, point, next, native_levels),")
-        out.append(f"        eval_rec(b, point, next, native_levels){rest},")
-        out.append("    )")
+        out.append(f"fn rec_{snake(kind)}(a: &SdfNode, b: &SdfNode, {params}at: Below) -> f32 {{")
+        out.append(f"    {fn}(rec(a, at), rec(b, at){rest.replace('*', '')})")
         out.append("}")
     out += [
         "",
-        "/// [`eval_rec`] at a `MetricBlend`: `inner`, `outer`, then its law in [`combine`]",
+        "/// [`eval_rec`] at a `MetricBlend` (`node`, its `inner` and `outer`): both, then its law in",
+        "/// [`combine`]",
         INLINE,
-        "fn rec_metric_blend(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {",
-        "    let SdfNode::MetricBlend { inner, outer, .. } = node else {",
-        '        unreachable!("rec_metric_blend: called for its kind only")',
-        "    };",
-        "    combine(",
-        "        node,",
-        "        eval_rec(inner, point, next, native_levels),",
-        "        eval_rec(outer, point, next, native_levels),",
-        "        point,",
-        "    )",
+        "fn rec_metric_blend(node: &SdfNode, inner: &SdfNode, outer: &SdfNode, at: Below) -> f32 {",
+        "    combine(node, rec(inner, at), rec(outer, at), at.point)",
         "}",
         "",
-        "/// [`eval_rec`] at a `Translate`: the child at the moved point (the move of [`descend`])",
+        "/// [`eval_rec`] at a `Translate` (its `child` and `offset`): the child at the moved point (the",
+        "/// move of [`descend`])",
         INLINE,
-        "fn rec_translate(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {",
-        "    let SdfNode::Translate { child, offset } = node else {",
-        '        unreachable!("rec_translate: called for its kind only")',
-        "    };",
-        "    eval_rec(child, transform_translate(point, *offset), next, native_levels)",
+        "fn rec_translate(child: &SdfNode, offset: Vec3, at: Below) -> f32 {",
+        "    rec(",
+        "        child,",
+        "        Below {",
+        "            point: transform_translate(at.point, offset),",
+        "            ..at",
+        "        },",
+        "    )",
         "}",
         "",
         "/// [`eval_rec`] at another one-child node: [`descend`] moves the point, [`finish`] applies the law (or",
         "/// [`descend`] gives the node's value without its child)",
         INLINE,
-        "fn rec_one(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {",
-        "    match descend(node, point) {",
+        "fn rec_one(node: &SdfNode, at: Below) -> f32 {",
+        "    match descend(node, at.point) {",
         "        Step::One(child, q, extra) => {",
-        "            finish(node, eval_rec(child, q, next, native_levels), point, extra)",
+        "            finish(node, rec(child, Below { point: q, ..at }), at.point, extra)",
         "        }",
         "        // a one-child kind may give its value without reading the child",
         "        Step::Leaf(d) => d,",
-        "        Step::Two(..) => {",
-        '            unreachable!("rec_one: descend gives no two operands for the kinds eval_rec sends here")',
-        "        }",
+        "        // `eval_rec` sends no two-operand kind here; the arm keeps the walk total",
+        "        Step::Two(a, b) => combine(node, rec(a, at), rec(b, at), at.point),",
         "    }",
         "}",
         "",
@@ -238,6 +275,10 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 2
     text = SRC.read_text(encoding="utf-8")
+    compared, problems = coverage(text)
+    if compared == 0:
+        print(f"gen_eval_rec: no variant of SdfNode read from {TYPES}")
+        return 1
     block = generate(text)
     if BEGIN in text:
         a = text.index(BEGIN)
@@ -245,10 +286,6 @@ def main(argv: list[str]) -> int:
         new = rustfmt(text[:a] + block + text[b:])
     else:
         raise SystemExit(f"gen_eval_rec: no `{BEGIN}` marker in {SRC}")
-    compared, problems = coverage(text)
-    if compared == 0:
-        print(f"gen_eval_rec: no variant of SdfNode read from {TYPES}")
-        return 1
     if problems:
         print("gen_eval_rec: " + "\n  ".join([f"{len(problems)} kind(s) not covered:"] + problems))
         return 1

@@ -70,7 +70,7 @@ fn check(path: &str, count: u32, axis: usize, runs: &[(f32, f32)]) -> Result<usi
     }
     for &(a, b) in runs {
         let width = b - a + STEP;
-        let centre = (a + b) / 2.0;
+        let centre = f32::midpoint(a, b);
         let lattice = (centre / SPACING).round() * SPACING;
         if (width - 2.0 * RADIUS).abs() > 2.0 * STEP || (centre - lattice).abs() > STEP {
             return Err(format!(
@@ -79,7 +79,7 @@ fn check(path: &str, count: u32, axis: usize, runs: &[(f32, f32)]) -> Result<usi
             ));
         }
     }
-    let centres: Vec<f32> = runs.iter().map(|&(a, b)| (a + b) / 2.0).collect();
+    let centres: Vec<f32> = runs.iter().map(|&(a, b)| f32::midpoint(a, b)).collect();
     let mirrored: Vec<f32> = centres.iter().rev().map(|c| -c).collect();
     if centres
         .iter()
@@ -174,6 +174,7 @@ fn odd_and_even_counts_place_whole_copies_on_the_lattice_in_the_jit() {
 
 /// the clamp limit `floor(count / 2)` per axis for `repeated(count)` with `count` on x, `count + 1`
 /// on y and `count + 2` on z (so one scene holds an odd and an even axis)
+#[cfg(any(feature = "glsl", feature = "hlsl", feature = "gpu", feature = "rust"))]
 fn mixed(count: u32) -> (SdfNode, [f32; 3]) {
     let c = [count, count + 1, count + 2];
     (
@@ -182,6 +183,7 @@ fn mixed(count: u32) -> (SdfNode, [f32; 3]) {
     )
 }
 
+#[cfg(any(feature = "glsl", feature = "hlsl", feature = "gpu", feature = "rust"))]
 const MIXED: [u32; 4] = [1, 2, 3, 4];
 
 /// The interval evaluator over a box of one point holds the tree's distance at that point, on the

@@ -66,55 +66,48 @@ pub(crate) fn eval_rec(node: &SdfNode, point: Vec3, depth: u32, native_levels: u
     if depth >= native_levels {
         return eval_iter(node, point);
     }
-    let next = depth + 1;
+    let at = Below {
+        point,
+        next: depth + 1,
+        native_levels,
+    };
     match node {
-        SdfNode::Union { .. } => rec_union(node, point, next, native_levels),
-        SdfNode::Intersection { .. } => rec_intersection(node, point, next, native_levels),
-        SdfNode::Subtraction { .. } => rec_subtraction(node, point, next, native_levels),
-        SdfNode::SmoothUnion { .. } => rec_smooth_union(node, point, next, native_levels),
-        SdfNode::SmoothIntersection { .. } => {
-            rec_smooth_intersection(node, point, next, native_levels)
+        SdfNode::Union { a, b, .. } => rec_union(a, b, at),
+        SdfNode::Intersection { a, b, .. } => rec_intersection(a, b, at),
+        SdfNode::Subtraction { a, b, .. } => rec_subtraction(a, b, at),
+        SdfNode::SmoothUnion { a, b, k, .. } => rec_smooth_union(a, b, *k, at),
+        SdfNode::SmoothIntersection { a, b, k, .. } => rec_smooth_intersection(a, b, *k, at),
+        SdfNode::SmoothSubtraction { a, b, k, .. } => rec_smooth_subtraction(a, b, *k, at),
+        SdfNode::ChamferUnion { a, b, r, .. } => rec_chamfer_union(a, b, *r, at),
+        SdfNode::ChamferIntersection { a, b, r, .. } => rec_chamfer_intersection(a, b, *r, at),
+        SdfNode::ChamferSubtraction { a, b, r, .. } => rec_chamfer_subtraction(a, b, *r, at),
+        SdfNode::StairsUnion { a, b, r, n, .. } => rec_stairs_union(a, b, *r, *n, at),
+        SdfNode::StairsIntersection { a, b, r, n, .. } => rec_stairs_intersection(a, b, *r, *n, at),
+        SdfNode::StairsSubtraction { a, b, r, n, .. } => rec_stairs_subtraction(a, b, *r, *n, at),
+        SdfNode::XOR { a, b, .. } => rec_xor(a, b, at),
+        SdfNode::Morph { a, b, t, .. } => rec_morph(a, b, *t, at),
+        SdfNode::ColumnsUnion { a, b, r, n, .. } => rec_columns_union(a, b, *r, *n, at),
+        SdfNode::ColumnsIntersection { a, b, r, n, .. } => {
+            rec_columns_intersection(a, b, *r, *n, at)
         }
-        SdfNode::SmoothSubtraction { .. } => {
-            rec_smooth_subtraction(node, point, next, native_levels)
-        }
-        SdfNode::ChamferUnion { .. } => rec_chamfer_union(node, point, next, native_levels),
-        SdfNode::ChamferIntersection { .. } => {
-            rec_chamfer_intersection(node, point, next, native_levels)
-        }
-        SdfNode::ChamferSubtraction { .. } => {
-            rec_chamfer_subtraction(node, point, next, native_levels)
-        }
-        SdfNode::StairsUnion { .. } => rec_stairs_union(node, point, next, native_levels),
-        SdfNode::StairsIntersection { .. } => {
-            rec_stairs_intersection(node, point, next, native_levels)
-        }
-        SdfNode::StairsSubtraction { .. } => {
-            rec_stairs_subtraction(node, point, next, native_levels)
-        }
-        SdfNode::XOR { .. } => rec_xor(node, point, next, native_levels),
-        SdfNode::Morph { .. } => rec_morph(node, point, next, native_levels),
-        SdfNode::ColumnsUnion { .. } => rec_columns_union(node, point, next, native_levels),
-        SdfNode::ColumnsIntersection { .. } => {
-            rec_columns_intersection(node, point, next, native_levels)
-        }
-        SdfNode::ColumnsSubtraction { .. } => {
-            rec_columns_subtraction(node, point, next, native_levels)
-        }
-        SdfNode::Pipe { .. } => rec_pipe(node, point, next, native_levels),
-        SdfNode::Engrave { .. } => rec_engrave(node, point, next, native_levels),
-        SdfNode::Groove { .. } => rec_groove(node, point, next, native_levels),
-        SdfNode::Tongue { .. } => rec_tongue(node, point, next, native_levels),
-        SdfNode::ExpSmoothUnion { .. } => rec_exp_smooth_union(node, point, next, native_levels),
-        SdfNode::ExpSmoothIntersection { .. } => {
-            rec_exp_smooth_intersection(node, point, next, native_levels)
-        }
-        SdfNode::ExpSmoothSubtraction { .. } => {
-            rec_exp_smooth_subtraction(node, point, next, native_levels)
-        }
-        SdfNode::SmoothBlend { .. } => rec_smooth_blend(node, point, next, native_levels),
-        SdfNode::MetricBlend { .. } => rec_metric_blend(node, point, next, native_levels),
-        SdfNode::Translate { .. } => rec_translate(node, point, next, native_levels),
+        SdfNode::ColumnsSubtraction { a, b, r, n, .. } => rec_columns_subtraction(a, b, *r, *n, at),
+        SdfNode::Pipe { a, b, r, .. } => rec_pipe(a, b, *r, at),
+        SdfNode::Engrave { a, b, r, .. } => rec_engrave(a, b, *r, at),
+        SdfNode::Groove { a, b, ra, rb, .. } => rec_groove(a, b, *ra, *rb, at),
+        SdfNode::Tongue { a, b, ra, rb, .. } => rec_tongue(a, b, *ra, *rb, at),
+        SdfNode::ExpSmoothUnion { a, b, k, .. } => rec_exp_smooth_union(a, b, *k, at),
+        SdfNode::ExpSmoothIntersection { a, b, k, .. } => rec_exp_smooth_intersection(a, b, *k, at),
+        SdfNode::ExpSmoothSubtraction { a, b, k, .. } => rec_exp_smooth_subtraction(a, b, *k, at),
+        SdfNode::SmoothBlend {
+            a,
+            b,
+            k,
+            kernel,
+            mode,
+            ..
+        } => rec_smooth_blend(a, b, *k, *kernel, *mode, at),
+        SdfNode::MetricBlend { inner, outer, .. } => rec_metric_blend(node, inner, outer, at),
+        SdfNode::Translate { child, offset } => rec_translate(child, *offset, at),
         SdfNode::Rotate { .. }
         | SdfNode::Scale { .. }
         | SdfNode::ScaleNonUniform { .. }
@@ -148,391 +141,214 @@ pub(crate) fn eval_rec(node: &SdfNode, point: Vec3, depth: u32, native_levels: u
         | SdfNode::WithMaterial { .. }
         | SdfNode::Pose { .. }
         | SdfNode::HeightmapDisplacement { .. }
-        | SdfNode::SurfaceRoughness { .. } => rec_one(node, point, next, native_levels),
+        | SdfNode::SurfaceRoughness { .. } => rec_one(node, at),
         _ => eval_leaf(node, point),
     }
 }
 
-/// [`eval_rec`] at a `Union`: both operands, then `sdf_union`
-#[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_union(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::Union { a, b } = node else {
-        unreachable!("rec_union: called for its kind only")
-    };
-    sdf_union(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-    )
+/// Where [`eval_rec`] is in the walk: the point, the depth of the children and the native limit
+#[derive(Clone, Copy)]
+struct Below {
+    point: Vec3,
+    next: u32,
+    native_levels: u32,
 }
 
-/// [`eval_rec`] at a `Intersection`: both operands, then `sdf_intersection`
+/// [`eval_rec`] of `node` at `at` (one level below the node that holds it)
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_intersection(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::Intersection { a, b } = node else {
-        unreachable!("rec_intersection: called for its kind only")
-    };
-    sdf_intersection(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-    )
+fn rec(node: &SdfNode, at: Below) -> f32 {
+    eval_rec(node, at.point, at.next, at.native_levels)
 }
 
-/// [`eval_rec`] at a `Subtraction`: both operands, then `sdf_subtraction`
+/// [`eval_rec`] at a `Union` (its operands and fields): both operands, then `sdf_union`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_subtraction(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::Subtraction { a, b } = node else {
-        unreachable!("rec_subtraction: called for its kind only")
-    };
-    sdf_subtraction(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-    )
+fn rec_union(a: &SdfNode, b: &SdfNode, at: Below) -> f32 {
+    sdf_union(rec(a, at), rec(b, at))
 }
 
-/// [`eval_rec`] at a `SmoothUnion`: both operands, then `sdf_smooth_union`
+/// [`eval_rec`] at a `Intersection` (its operands and fields): both operands, then `sdf_intersection`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_smooth_union(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::SmoothUnion { a, b, k, .. } = node else {
-        unreachable!("rec_smooth_union: called for its kind only")
-    };
-    sdf_smooth_union(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *k,
-    )
+fn rec_intersection(a: &SdfNode, b: &SdfNode, at: Below) -> f32 {
+    sdf_intersection(rec(a, at), rec(b, at))
 }
 
-/// [`eval_rec`] at a `SmoothIntersection`: both operands, then `sdf_smooth_intersection`
+/// [`eval_rec`] at a `Subtraction` (its operands and fields): both operands, then `sdf_subtraction`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_smooth_intersection(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::SmoothIntersection { a, b, k, .. } = node else {
-        unreachable!("rec_smooth_intersection: called for its kind only")
-    };
-    sdf_smooth_intersection(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *k,
-    )
+fn rec_subtraction(a: &SdfNode, b: &SdfNode, at: Below) -> f32 {
+    sdf_subtraction(rec(a, at), rec(b, at))
 }
 
-/// [`eval_rec`] at a `SmoothSubtraction`: both operands, then `sdf_smooth_subtraction`
+/// [`eval_rec`] at a `SmoothUnion` (its operands and fields): both operands, then `sdf_smooth_union`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_smooth_subtraction(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::SmoothSubtraction { a, b, k, .. } = node else {
-        unreachable!("rec_smooth_subtraction: called for its kind only")
-    };
-    sdf_smooth_subtraction(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *k,
-    )
+fn rec_smooth_union(a: &SdfNode, b: &SdfNode, k: f32, at: Below) -> f32 {
+    sdf_smooth_union(rec(a, at), rec(b, at), k)
 }
 
-/// [`eval_rec`] at a `ChamferUnion`: both operands, then `sdf_chamfer_union`
+/// [`eval_rec`] at a `SmoothIntersection` (its operands and fields): both operands, then `sdf_smooth_intersection`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_chamfer_union(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::ChamferUnion { a, b, r, .. } = node else {
-        unreachable!("rec_chamfer_union: called for its kind only")
-    };
-    sdf_chamfer_union(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *r,
-    )
+fn rec_smooth_intersection(a: &SdfNode, b: &SdfNode, k: f32, at: Below) -> f32 {
+    sdf_smooth_intersection(rec(a, at), rec(b, at), k)
 }
 
-/// [`eval_rec`] at a `ChamferIntersection`: both operands, then `sdf_chamfer_intersection`
+/// [`eval_rec`] at a `SmoothSubtraction` (its operands and fields): both operands, then `sdf_smooth_subtraction`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_chamfer_intersection(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::ChamferIntersection { a, b, r, .. } = node else {
-        unreachable!("rec_chamfer_intersection: called for its kind only")
-    };
-    sdf_chamfer_intersection(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *r,
-    )
+fn rec_smooth_subtraction(a: &SdfNode, b: &SdfNode, k: f32, at: Below) -> f32 {
+    sdf_smooth_subtraction(rec(a, at), rec(b, at), k)
 }
 
-/// [`eval_rec`] at a `ChamferSubtraction`: both operands, then `sdf_chamfer_subtraction`
+/// [`eval_rec`] at a `ChamferUnion` (its operands and fields): both operands, then `sdf_chamfer_union`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_chamfer_subtraction(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::ChamferSubtraction { a, b, r, .. } = node else {
-        unreachable!("rec_chamfer_subtraction: called for its kind only")
-    };
-    sdf_chamfer_subtraction(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *r,
-    )
+fn rec_chamfer_union(a: &SdfNode, b: &SdfNode, r: f32, at: Below) -> f32 {
+    sdf_chamfer_union(rec(a, at), rec(b, at), r)
 }
 
-/// [`eval_rec`] at a `StairsUnion`: both operands, then `sdf_stairs_union`
+/// [`eval_rec`] at a `ChamferIntersection` (its operands and fields): both operands, then `sdf_chamfer_intersection`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_stairs_union(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::StairsUnion { a, b, r, n, .. } = node else {
-        unreachable!("rec_stairs_union: called for its kind only")
-    };
-    sdf_stairs_union(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *r,
-        *n,
-    )
+fn rec_chamfer_intersection(a: &SdfNode, b: &SdfNode, r: f32, at: Below) -> f32 {
+    sdf_chamfer_intersection(rec(a, at), rec(b, at), r)
 }
 
-/// [`eval_rec`] at a `StairsIntersection`: both operands, then `sdf_stairs_intersection`
+/// [`eval_rec`] at a `ChamferSubtraction` (its operands and fields): both operands, then `sdf_chamfer_subtraction`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_stairs_intersection(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::StairsIntersection { a, b, r, n, .. } = node else {
-        unreachable!("rec_stairs_intersection: called for its kind only")
-    };
-    sdf_stairs_intersection(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *r,
-        *n,
-    )
+fn rec_chamfer_subtraction(a: &SdfNode, b: &SdfNode, r: f32, at: Below) -> f32 {
+    sdf_chamfer_subtraction(rec(a, at), rec(b, at), r)
 }
 
-/// [`eval_rec`] at a `StairsSubtraction`: both operands, then `sdf_stairs_subtraction`
+/// [`eval_rec`] at a `StairsUnion` (its operands and fields): both operands, then `sdf_stairs_union`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_stairs_subtraction(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::StairsSubtraction { a, b, r, n, .. } = node else {
-        unreachable!("rec_stairs_subtraction: called for its kind only")
-    };
-    sdf_stairs_subtraction(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *r,
-        *n,
-    )
+fn rec_stairs_union(a: &SdfNode, b: &SdfNode, r: f32, n: f32, at: Below) -> f32 {
+    sdf_stairs_union(rec(a, at), rec(b, at), r, n)
 }
 
-/// [`eval_rec`] at a `XOR`: both operands, then `sdf_xor`
+/// [`eval_rec`] at a `StairsIntersection` (its operands and fields): both operands, then `sdf_stairs_intersection`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_xor(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::XOR { a, b } = node else {
-        unreachable!("rec_xor: called for its kind only")
-    };
-    sdf_xor(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-    )
+fn rec_stairs_intersection(a: &SdfNode, b: &SdfNode, r: f32, n: f32, at: Below) -> f32 {
+    sdf_stairs_intersection(rec(a, at), rec(b, at), r, n)
 }
 
-/// [`eval_rec`] at a `Morph`: both operands, then `sdf_morph`
+/// [`eval_rec`] at a `StairsSubtraction` (its operands and fields): both operands, then `sdf_stairs_subtraction`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_morph(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::Morph { a, b, t, .. } = node else {
-        unreachable!("rec_morph: called for its kind only")
-    };
-    sdf_morph(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *t,
-    )
+fn rec_stairs_subtraction(a: &SdfNode, b: &SdfNode, r: f32, n: f32, at: Below) -> f32 {
+    sdf_stairs_subtraction(rec(a, at), rec(b, at), r, n)
 }
 
-/// [`eval_rec`] at a `ColumnsUnion`: both operands, then `sdf_columns_union`
+/// [`eval_rec`] at a `XOR` (its operands and fields): both operands, then `sdf_xor`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_columns_union(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::ColumnsUnion { a, b, r, n, .. } = node else {
-        unreachable!("rec_columns_union: called for its kind only")
-    };
-    sdf_columns_union(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *r,
-        *n,
-    )
+fn rec_xor(a: &SdfNode, b: &SdfNode, at: Below) -> f32 {
+    sdf_xor(rec(a, at), rec(b, at))
 }
 
-/// [`eval_rec`] at a `ColumnsIntersection`: both operands, then `sdf_columns_intersection`
+/// [`eval_rec`] at a `Morph` (its operands and fields): both operands, then `sdf_morph`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_columns_intersection(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::ColumnsIntersection { a, b, r, n, .. } = node else {
-        unreachable!("rec_columns_intersection: called for its kind only")
-    };
-    sdf_columns_intersection(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *r,
-        *n,
-    )
+fn rec_morph(a: &SdfNode, b: &SdfNode, t: f32, at: Below) -> f32 {
+    sdf_morph(rec(a, at), rec(b, at), t)
 }
 
-/// [`eval_rec`] at a `ColumnsSubtraction`: both operands, then `sdf_columns_subtraction`
+/// [`eval_rec`] at a `ColumnsUnion` (its operands and fields): both operands, then `sdf_columns_union`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_columns_subtraction(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::ColumnsSubtraction { a, b, r, n, .. } = node else {
-        unreachable!("rec_columns_subtraction: called for its kind only")
-    };
-    sdf_columns_subtraction(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *r,
-        *n,
-    )
+fn rec_columns_union(a: &SdfNode, b: &SdfNode, r: f32, n: f32, at: Below) -> f32 {
+    sdf_columns_union(rec(a, at), rec(b, at), r, n)
 }
 
-/// [`eval_rec`] at a `Pipe`: both operands, then `sdf_pipe`
+/// [`eval_rec`] at a `ColumnsIntersection` (its operands and fields): both operands, then `sdf_columns_intersection`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_pipe(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::Pipe { a, b, r, .. } = node else {
-        unreachable!("rec_pipe: called for its kind only")
-    };
-    sdf_pipe(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *r,
-    )
+fn rec_columns_intersection(a: &SdfNode, b: &SdfNode, r: f32, n: f32, at: Below) -> f32 {
+    sdf_columns_intersection(rec(a, at), rec(b, at), r, n)
 }
 
-/// [`eval_rec`] at a `Engrave`: both operands, then `sdf_engrave`
+/// [`eval_rec`] at a `ColumnsSubtraction` (its operands and fields): both operands, then `sdf_columns_subtraction`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_engrave(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::Engrave { a, b, r, .. } = node else {
-        unreachable!("rec_engrave: called for its kind only")
-    };
-    sdf_engrave(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *r,
-    )
+fn rec_columns_subtraction(a: &SdfNode, b: &SdfNode, r: f32, n: f32, at: Below) -> f32 {
+    sdf_columns_subtraction(rec(a, at), rec(b, at), r, n)
 }
 
-/// [`eval_rec`] at a `Groove`: both operands, then `sdf_groove`
+/// [`eval_rec`] at a `Pipe` (its operands and fields): both operands, then `sdf_pipe`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_groove(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::Groove { a, b, ra, rb, .. } = node else {
-        unreachable!("rec_groove: called for its kind only")
-    };
-    sdf_groove(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *ra,
-        *rb,
-    )
+fn rec_pipe(a: &SdfNode, b: &SdfNode, r: f32, at: Below) -> f32 {
+    sdf_pipe(rec(a, at), rec(b, at), r)
 }
 
-/// [`eval_rec`] at a `Tongue`: both operands, then `sdf_tongue`
+/// [`eval_rec`] at a `Engrave` (its operands and fields): both operands, then `sdf_engrave`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_tongue(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::Tongue { a, b, ra, rb, .. } = node else {
-        unreachable!("rec_tongue: called for its kind only")
-    };
-    sdf_tongue(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *ra,
-        *rb,
-    )
+fn rec_engrave(a: &SdfNode, b: &SdfNode, r: f32, at: Below) -> f32 {
+    sdf_engrave(rec(a, at), rec(b, at), r)
 }
 
-/// [`eval_rec`] at a `ExpSmoothUnion`: both operands, then `sdf_exp_smooth_union`
+/// [`eval_rec`] at a `Groove` (its operands and fields): both operands, then `sdf_groove`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_exp_smooth_union(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::ExpSmoothUnion { a, b, k, .. } = node else {
-        unreachable!("rec_exp_smooth_union: called for its kind only")
-    };
-    sdf_exp_smooth_union(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *k,
-    )
+fn rec_groove(a: &SdfNode, b: &SdfNode, ra: f32, rb: f32, at: Below) -> f32 {
+    sdf_groove(rec(a, at), rec(b, at), ra, rb)
 }
 
-/// [`eval_rec`] at a `ExpSmoothIntersection`: both operands, then `sdf_exp_smooth_intersection`
+/// [`eval_rec`] at a `Tongue` (its operands and fields): both operands, then `sdf_tongue`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_exp_smooth_intersection(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::ExpSmoothIntersection { a, b, k, .. } = node else {
-        unreachable!("rec_exp_smooth_intersection: called for its kind only")
-    };
-    sdf_exp_smooth_intersection(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *k,
-    )
+fn rec_tongue(a: &SdfNode, b: &SdfNode, ra: f32, rb: f32, at: Below) -> f32 {
+    sdf_tongue(rec(a, at), rec(b, at), ra, rb)
 }
 
-/// [`eval_rec`] at a `ExpSmoothSubtraction`: both operands, then `sdf_exp_smooth_subtraction`
+/// [`eval_rec`] at a `ExpSmoothUnion` (its operands and fields): both operands, then `sdf_exp_smooth_union`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_exp_smooth_subtraction(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::ExpSmoothSubtraction { a, b, k, .. } = node else {
-        unreachable!("rec_exp_smooth_subtraction: called for its kind only")
-    };
-    sdf_exp_smooth_subtraction(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *k,
-    )
+fn rec_exp_smooth_union(a: &SdfNode, b: &SdfNode, k: f32, at: Below) -> f32 {
+    sdf_exp_smooth_union(rec(a, at), rec(b, at), k)
 }
 
-/// [`eval_rec`] at a `SmoothBlend`: both operands, then `smooth_blend`
+/// [`eval_rec`] at a `ExpSmoothIntersection` (its operands and fields): both operands, then `sdf_exp_smooth_intersection`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_smooth_blend(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::SmoothBlend {
-        a,
-        b,
-        k,
-        kernel,
-        mode,
-        ..
-    } = node
-    else {
-        unreachable!("rec_smooth_blend: called for its kind only")
-    };
-    smooth_blend(
-        eval_rec(a, point, next, native_levels),
-        eval_rec(b, point, next, native_levels),
-        *k,
-        *kernel,
-        *mode,
-    )
+fn rec_exp_smooth_intersection(a: &SdfNode, b: &SdfNode, k: f32, at: Below) -> f32 {
+    sdf_exp_smooth_intersection(rec(a, at), rec(b, at), k)
 }
 
-/// [`eval_rec`] at a `MetricBlend`: `inner`, `outer`, then its law in [`combine`]
+/// [`eval_rec`] at a `ExpSmoothSubtraction` (its operands and fields): both operands, then `sdf_exp_smooth_subtraction`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_metric_blend(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::MetricBlend { inner, outer, .. } = node else {
-        unreachable!("rec_metric_blend: called for its kind only")
-    };
-    combine(
-        node,
-        eval_rec(inner, point, next, native_levels),
-        eval_rec(outer, point, next, native_levels),
-        point,
-    )
+fn rec_exp_smooth_subtraction(a: &SdfNode, b: &SdfNode, k: f32, at: Below) -> f32 {
+    sdf_exp_smooth_subtraction(rec(a, at), rec(b, at), k)
 }
 
-/// [`eval_rec`] at a `Translate`: the child at the moved point (the move of [`descend`])
+/// [`eval_rec`] at a `SmoothBlend` (its operands and fields): both operands, then `smooth_blend`
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_translate(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    let SdfNode::Translate { child, offset } = node else {
-        unreachable!("rec_translate: called for its kind only")
-    };
-    eval_rec(
+fn rec_smooth_blend(
+    a: &SdfNode,
+    b: &SdfNode,
+    k: f32,
+    kernel: crate::operations::SmoothKernel,
+    mode: crate::operations::BlendMode,
+    at: Below,
+) -> f32 {
+    smooth_blend(rec(a, at), rec(b, at), k, kernel, mode)
+}
+
+/// [`eval_rec`] at a `MetricBlend` (`node`, its `inner` and `outer`): both, then its law in
+/// [`combine`]
+#[cfg_attr(not(debug_assertions), inline(always))]
+fn rec_metric_blend(node: &SdfNode, inner: &SdfNode, outer: &SdfNode, at: Below) -> f32 {
+    combine(node, rec(inner, at), rec(outer, at), at.point)
+}
+
+/// [`eval_rec`] at a `Translate` (its `child` and `offset`): the child at the moved point (the
+/// move of [`descend`])
+#[cfg_attr(not(debug_assertions), inline(always))]
+fn rec_translate(child: &SdfNode, offset: Vec3, at: Below) -> f32 {
+    rec(
         child,
-        transform_translate(point, *offset),
-        next,
-        native_levels,
+        Below {
+            point: transform_translate(at.point, offset),
+            ..at
+        },
     )
 }
 
 /// [`eval_rec`] at another one-child node: [`descend`] moves the point, [`finish`] applies the law (or
 /// [`descend`] gives the node's value without its child)
 #[cfg_attr(not(debug_assertions), inline(always))]
-fn rec_one(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
-    match descend(node, point) {
+fn rec_one(node: &SdfNode, at: Below) -> f32 {
+    match descend(node, at.point) {
         Step::One(child, q, extra) => {
-            finish(node, eval_rec(child, q, next, native_levels), point, extra)
+            finish(node, rec(child, Below { point: q, ..at }), at.point, extra)
         }
         // a one-child kind may give its value without reading the child
         Step::Leaf(d) => d,
-        Step::Two(..) => {
-            unreachable!("rec_one: descend gives no two operands for the kinds eval_rec sends here")
-        }
+        // `eval_rec` sends no two-operand kind here; the arm keeps the walk total
+        Step::Two(a, b) => combine(node, rec(a, at), rec(b, at), at.point),
     }
 }
 
