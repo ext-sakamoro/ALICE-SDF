@@ -2,7 +2,7 @@
 
 use glam::Vec3;
 
-use super::{Channel, Level, Sheet, SheetFieldError, BRICK, BRICK_NODES, NODES};
+use super::{Channel, Level, Sheet, SheetFieldError, BRICK, BRICK_NODES, COARSE_NODES, NODES};
 
 /// Quantize one channel's node values for the active bricks (`values[brick][node]`) to bytes.
 ///
@@ -14,6 +14,7 @@ pub fn quantize(values: &[Vec<f32>], drop_nonpositive: bool) -> Channel {
         q: Vec::new(),
         scale: Vec::new(),
         offset: Vec::new(),
+        nodes: NODES as u32,
     };
     for v in values {
         assert_eq!(v.len(), BRICK_NODES, "a brick has (BRICK+1)^3 nodes");
@@ -33,6 +34,37 @@ pub fn quantize(values: &[Vec<f32>], drop_nonpositive: bool) -> Channel {
         );
     }
     ch
+}
+
+/// The same channel on a coarser grid of `nodes` per brick axis (one of [`COARSE_NODES`]): every
+/// `BRICK / (nodes - 1)`-th node of each kept row, with that row's scale and offset (no re-quantization).
+pub fn coarsen(ch: &Channel, nodes: u32) -> Result<Channel, SheetFieldError> {
+    if ch.nodes != NODES as u32 || !COARSE_NODES.contains(&nodes) {
+        return Err(SheetFieldError::Shape(format!(
+            "coarsen a {}-node channel to {nodes} nodes",
+            ch.nodes
+        )));
+    }
+    let n = nodes as usize;
+    let stride = BRICK / (n - 1);
+    let mut q = Vec::with_capacity(ch.scale.len() * n * n * n);
+    for r in 0..ch.scale.len() {
+        let fine = &ch.q[r * BRICK_NODES..(r + 1) * BRICK_NODES];
+        for x in 0..n {
+            for y in 0..n {
+                for z in 0..n {
+                    q.push(fine[((x * stride) * NODES + y * stride) * NODES + z * stride]);
+                }
+            }
+        }
+    }
+    Ok(Channel {
+        rows: ch.rows.clone(),
+        q,
+        scale: ch.scale.clone(),
+        offset: ch.offset.clone(),
+        nodes,
+    })
 }
 
 /// One level from a channel function: bricks of `BRICK^3` cells of size `h` from `lo`, `nb` per axis.
@@ -126,6 +158,23 @@ pub fn sheet(levels: Vec<Level>) -> Result<Sheet, SheetFieldError> {
     let mut hi = Vec3::splat(f32::NEG_INFINITY);
     let mut hc = 0.0f32;
     for lv in &levels {
+        for (c, ch) in lv.channels.iter().enumerate() {
+            let fine = ch.nodes == NODES as u32;
+            if !(fine || (c >= 2 && COARSE_NODES.contains(&ch.nodes))) {
+                return Err(SheetFieldError::Shape(format!(
+                    "channel {c} on {} nodes per axis (s and d_b need {NODES}; attributes {NODES} or {COARSE_NODES:?})",
+                    ch.nodes
+                )));
+            }
+            let per = (ch.nodes as usize).pow(3);
+            if ch.q.len() != ch.scale.len() * per || ch.offset.len() != ch.scale.len() {
+                return Err(SheetFieldError::Shape(format!(
+                    "channel {c}: {} bytes for {} rows of {per} nodes",
+                    ch.q.len(),
+                    ch.scale.len()
+                )));
+            }
+        }
         let n = Vec3::new(lv.nb[0] as f32, lv.nb[1] as f32, lv.nb[2] as f32);
         lo = lo.min(lv.lo);
         hi = hi.max(lv.lo + n * (BRICK as f32 * lv.h));

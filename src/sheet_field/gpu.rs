@@ -22,7 +22,7 @@
 use glam::Vec3;
 use wgpu::util::DeviceExt;
 
-use super::{Hit, MarchResult, SheetField, ValidRule, BRICK_NODES};
+use super::{Hit, MarchResult, SheetField, ValidRule};
 use crate::compiled::GpuError;
 use crate::gpu_context::{GpuContext, Held};
 
@@ -110,6 +110,8 @@ struct LevelInfo {
     rows_off: [u32; 8],
     q_off: [u32; 8],
     sc_off: [u32; 8],
+    /// Nodes per brick axis of each channel (9, or a coarse attribute grid).
+    nodes: [u32; 8],
 }
 
 #[repr(C)]
@@ -241,13 +243,15 @@ impl GpuSheetField {
                     rows_off: [0; 8],
                     q_off: [0; 8],
                     sc_off: [0; 8],
+                    nodes: [0; 8],
                 };
                 index.extend_from_slice(&lv.index);
                 for (c, ch) in lv.channels.iter().enumerate() {
                     li.rows_off[c] = rows.len() as u32;
                     rows.extend_from_slice(&ch.rows);
                     li.q_off[c] = qbytes.len() as u32;
-                    debug_assert_eq!(ch.q.len(), ch.scale.len() * BRICK_NODES);
+                    li.nodes[c] = ch.nodes;
+                    debug_assert_eq!(ch.q.len(), ch.scale.len() * (ch.nodes as usize).pow(3));
                     qbytes.extend_from_slice(&ch.q);
                     li.sc_off[c] = (scoff.len() / 2) as u32;
                     for (s, o) in ch.scale.iter().zip(&ch.offset) {
@@ -540,7 +544,8 @@ impl GpuSheetField {
 const SHADER: &str = r"
 struct SheetInfo { lo: vec3<f32>, hc: f32, hi: vec3<f32>, level_start: u32, level_count: u32, p0: u32, p1: u32, p2: u32 };
 struct LevelInfo { lo: vec3<f32>, h: f32, nb: vec3<u32>, index_off: u32, nch: u32, p0: u32, p1: u32, p2: u32,
-                   rows_off: array<vec4<u32>, 2>, q_off: array<vec4<u32>, 2>, sc_off: array<vec4<u32>, 2> };
+                   rows_off: array<vec4<u32>, 2>, q_off: array<vec4<u32>, 2>, sc_off: array<vec4<u32>, 2>,
+                   nodes: array<vec4<u32>, 2> };
 struct Uniforms { n_sheets: u32, rule: u32, count: u32, steps: u32, dir: vec3<f32>, tmax: f32,
                   index_base: u32, rows_base: u32, bn_base: u32, bl_base: u32, bp_base: u32, bn_len: u32, p0: u32, p1: u32 };
 @group(0) @binding(0) var<uniform> U: Uniforms;
@@ -600,7 +605,27 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
         for (var ci = 0u; ci < nch; ci = ci + 1u) {
             let row = bitcast<i32>(IX[U.rows_base + lv.rows_off[ci / 4u][ci % 4u] + u32(k_)]);
             var acc = 0.0;
-            if (row >= 0) {
+            let nn = lv.nodes[ci / 4u][ci % 4u];
+            if (row >= 0 && nn != NODES) {
+                // an attribute on a coarse grid: trilinear on its own nodes (every BRICK / (nn - 1)-th corner)
+                let sc = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row))];
+                let off = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row)) + 1u];
+                let wc = w / f32(BRICK / (nn - 1u));
+                let cc = min(vec3<u32>(max(floor(wc), vec3<f32>(0.0))), vec3<u32>(nn - 2u));
+                let tc = wc - vec3<f32>(cc);
+                let base = lv.q_off[ci / 4u][ci % 4u] + u32(row) * nn * nn * nn;
+                for (var dx = 0u; dx < 2u; dx = dx + 1u) {
+                    for (var dy = 0u; dy < 2u; dy = dy + 1u) {
+                        for (var dz = 0u; dz < 2u; dz = dz + 1u) {
+                            let wx = select(1.0 - tc.x, tc.x, dx == 1u);
+                            let wy = select(1.0 - tc.y, tc.y, dy == 1u);
+                            let wz = select(1.0 - tc.z, tc.z, dz == 1u);
+                            let node = ((cc.x + dx) * nn + (cc.y + dy)) * nn + (cc.z + dz);
+                            acc = acc + (wx * wy * wz) * (qbyte(base + node) * sc + off);
+                        }
+                    }
+                }
+            } else if (row >= 0) {
                 let sc = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row))];
                 let off = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row)) + 1u];
                 for (var dx = 0u; dx < 2u; dx = dx + 1u) {
