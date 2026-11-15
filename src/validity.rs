@@ -390,6 +390,184 @@ pub fn validate_for_printing(
     }
 }
 
+/// Gaps (holes / slots / pockets) found by [`measure_gaps`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct GapReport {
+    /// Narrowest gap width measured \[same unit as the SDF\], `None` when no sample re-entered
+    /// material (only open air around the shape).
+    pub min_gap: Option<f32>,
+    /// Surface point where `min_gap` was measured.
+    pub location: Option<Vec3>,
+    /// Surface samples marched: grid points in empty space within `resolution` of a surface.
+    pub samples: usize,
+    /// Samples whose march re-entered material (gap samples); the rest reached open air.
+    pub gaps: usize,
+    /// `√3 · cell`: every empty slab wider than this holds a grid point within this distance of a
+    /// surface in any orientation, so it is found; narrower gaps may be missed (unverified, not
+    /// passed). A caller comparing against a limit at or below this value has not checked it.
+    pub resolution: f32,
+}
+
+/// Why [`measure_gaps`] measured nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GapError {
+    /// `cell` is not a finite positive number, or the bound is not finite and ordered.
+    BadCell,
+    /// The grid would exceed [`MAX_GAP_GRID_POINTS`] points.
+    TooManyPoints,
+    /// No grid point lay in empty space near a surface: nothing was compared.
+    NoSamples,
+}
+
+/// Largest grid [`measure_gaps`] evaluates (2²⁶ points).
+pub const MAX_GAP_GRID_POINTS: usize = 1 << 26;
+
+/// Steps after which a march through empty space is treated as open air (a ray grazing a
+/// surface advances by the tiny distance to it).
+const GAP_MAX_STEPS: usize = 10_000;
+
+/// Gap width at `origin` when marching through empty space along `outward`.
+///
+/// The dual of [`local_thickness`]: `origin` is expected on (or just inside) the surface with
+/// `outward` pointing into empty space. The march first leaves material (if `origin` is inside),
+/// then advances by `d(p)`, the exact distance to the nearest surface, until it re-enters
+/// material. Returns the distance from where it left material to where it re-entered, or `None`
+/// when it does not re-enter within `max_march` (open air) or grazes a surface for longer than
+/// the step budget.
+#[must_use]
+pub fn local_gap(node: &SdfNode, origin: Vec3, outward: Vec3, max_march: f32) -> Option<f32> {
+    let dir = outward.normalize_or_zero();
+    if dir == Vec3::ZERO {
+        return None;
+    }
+    // 1. 材料の中なら抜けるまで進む (内側では −d が最近表面までの距離)
+    let mut t = 0.0_f32;
+    loop {
+        let d = eval(node, origin + dir * t);
+        if d > 0.0 {
+            break;
+        }
+        t += (-d).law_max(MARCH_EPS);
+        if t > max_march {
+            return None;
+        }
+    }
+    let exit = t;
+    march_empty(node, origin, dir, exit, max_march).map(|enter| enter - exit)
+}
+
+/// From `origin + dir * t0` (in empty space) march along `dir` until material: the parameter `t`
+/// where `d` first falls below [`MARCH_EPS`], or `None` (open air / step budget)
+fn march_empty(node: &SdfNode, origin: Vec3, dir: Vec3, t0: f32, max_march: f32) -> Option<f32> {
+    let mut t = t0;
+    for _ in 0..GAP_MAX_STEPS {
+        let d = eval(node, origin + dir * t);
+        if d < MARCH_EPS {
+            return Some(t + d.law_max(0.0));
+        }
+        t += d;
+        if t > max_march {
+            return None;
+        }
+    }
+    None
+}
+
+/// Narrowest gap (hole / slot / pocket width) of `node` inside `bmin`..`bmax`.
+///
+/// Samples every point of a grid of pitch `cell` that lies in empty space within `√3 · cell` of a
+/// surface (`0 < d ≤ √3 · cell`). Such a point lies on the ray from its nearest surface point
+/// along `+∇d`, so the gap there is `d` plus the march from the point to where the ray re-enters
+/// material ([`local_gap`]'s march). A ray that leaves the bound diagonal without re-entering is
+/// open air. Any empty slab wider than [`GapReport::resolution`] (`√3 · cell`) holds such a grid
+/// point in any orientation and is found; narrower gaps may be missed, and the report states
+/// that resolution so a caller does not read "not found" as "not there".
+///
+/// # Errors
+///
+/// [`GapError::BadCell`] (`cell` not finite positive, or a bad bound),
+/// [`GapError::TooManyPoints`] (the grid exceeds [`MAX_GAP_GRID_POINTS`]),
+/// [`GapError::NoSamples`] (no surface inside the bound: nothing compared).
+pub fn measure_gaps(
+    node: &SdfNode,
+    bmin: Vec3,
+    bmax: Vec3,
+    cell: f32,
+) -> Result<GapReport, GapError> {
+    let valid = cell.is_finite()
+        && cell > 0.0
+        && bmin.is_finite()
+        && bmax.is_finite()
+        && !bmax.cmplt(bmin).any();
+    if !valid {
+        return Err(GapError::BadCell);
+    }
+    let span = bmax - bmin;
+    let count = |s: f32| -> Option<usize> {
+        let n = (s / cell).ceil();
+        // ceil of a finite non-negative ratio; the cast is exact below 2^24 and guarded above
+        if n.is_finite() && n < 16_777_216.0 {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            Some(n as usize + 1)
+        } else {
+            None
+        }
+    };
+    let (nx, ny, nz) = match (count(span.x), count(span.y), count(span.z)) {
+        (Some(x), Some(y), Some(z)) => (x, y, z),
+        _ => return Err(GapError::TooManyPoints),
+    };
+    if nx
+        .checked_mul(ny)
+        .and_then(|v| v.checked_mul(nz))
+        .is_none_or(|v| v > MAX_GAP_GRID_POINTS)
+    {
+        return Err(GapError::TooManyPoints);
+    }
+    let resolution = 3.0_f32.sqrt() * cell;
+    let reach = span.length();
+    let mut samples = 0_usize;
+    let mut gaps = 0_usize;
+    let mut best: Option<(f32, Vec3)> = None;
+    for k in 0..nz {
+        for j in 0..ny {
+            for i in 0..nx {
+                #[allow(clippy::cast_precision_loss)] // grid indices are below 2^24
+                let p = bmin + Vec3::new(i as f32, j as f32, k as f32) * cell;
+                let d = eval(node, p);
+                // 空間側で表面から resolution 以内 (NaN は比較が偽なので標本にしない)
+                let near = d > 0.0 && d <= resolution;
+                if !near {
+                    continue;
+                }
+                let n = eval_normal(node, p).normalize_or_zero();
+                if n == Vec3::ZERO {
+                    continue;
+                }
+                samples += 1;
+                let Some(enter) = march_empty(node, p, n, 0.0, reach) else {
+                    continue;
+                };
+                gaps += 1;
+                let width = d + enter;
+                if best.is_none_or(|(b, _)| width < b) {
+                    best = Some((width, p - n * d));
+                }
+            }
+        }
+    }
+    if samples == 0 {
+        return Err(GapError::NoSamples);
+    }
+    Ok(GapReport {
+        min_gap: best.map(|(w, _)| w),
+        location: best.map(|(_, at)| at),
+        samples,
+        gaps,
+        resolution,
+    })
+}
+
 /// Failure from [`export_step_validated`].
 #[derive(Debug)]
 pub enum ValidatedExportError {
