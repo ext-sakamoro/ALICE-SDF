@@ -519,15 +519,18 @@ fn rec_translate(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> 
     )
 }
 
-/// [`eval_rec`] at another one-child node: [`descend`] moves the point, [`finish`] applies the law
+/// [`eval_rec`] at another one-child node: [`descend`] moves the point, [`finish`] applies the law (or
+/// [`descend`] gives the node's value without its child)
 #[cfg_attr(not(debug_assertions), inline(always))]
 fn rec_one(node: &SdfNode, point: Vec3, next: u32, native_levels: u32) -> f32 {
     match descend(node, point) {
         Step::One(child, q, extra) => {
             finish(node, eval_rec(child, q, next, native_levels), point, extra)
         }
-        Step::Two(..) | Step::Leaf(_) => {
-            unreachable!("rec_one: descend gives one child for every kind eval_rec sends here")
+        // a one-child kind may give its value without reading the child
+        Step::Leaf(d) => d,
+        Step::Two(..) => {
+            unreachable!("rec_one: descend gives no two operands for the kinds eval_rec sends here")
         }
     }
 }
