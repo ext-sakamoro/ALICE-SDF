@@ -14,6 +14,7 @@
 
 mod common;
 
+#[cfg(feature = "asdf")]
 use common::corpus::corpus;
 
 const TABLE: &str = "tests/fixtures/sdf_node_variants.tsv";
@@ -97,7 +98,8 @@ fn every_variant_keeps_its_stored_number() {
 }
 
 /// The order read from the source is the encoder's: each corpus scene's root encodes to the number of
-/// its variant name
+/// its variant name (the encoder is bincode: the `asdf` feature)
+#[cfg(feature = "asdf")]
 #[test]
 fn the_declared_order_is_the_encoders() {
     let names = declared();

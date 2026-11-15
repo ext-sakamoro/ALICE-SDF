@@ -42,10 +42,9 @@ pub use abm::{
     ABM_FLAG_HAS_UVS, ABM_HEADER_LEN, ABM_MAGIC, ABM_VERSION,
 };
 pub use alembic::{export_alembic, export_alembic_with_provenance, AlembicConfig};
-pub use asdf::{
-    load_asdf, load_asdf_unverified, save_asdf, save_asdf_with_provenance, AsdfHeader,
-    ASDF_HEADER_LEN, ASDF_MAGIC, ASDF_VERSION,
-};
+#[cfg(feature = "asdf")]
+pub use asdf::{load_asdf, load_asdf_unverified, save_asdf, save_asdf_with_provenance};
+pub use asdf::{AsdfHeader, ASDF_HEADER_LEN, ASDF_MAGIC, ASDF_VERSION};
 pub use fbx::{
     export_fbx, export_fbx_with_provenance, export_fbx_with_stamp, fbx_animation_to_timeline,
     import_fbx, import_fbx_full, import_fbx_full_pinned, import_fbx_pinned, FbxAnimClip,
@@ -160,6 +159,11 @@ pub enum IoError {
     },
 }
 
+/// The error a build without the `asdf` feature returns for a binary `.asdf` path
+#[cfg(not(feature = "asdf"))]
+const NO_ASDF: &str =
+    "binary .asdf needs the `asdf` feature of alice-sdf (.asdf.json works without it)";
+
 /// Save an SDF tree to file (auto-detect format from extension)
 ///
 /// # Arguments
@@ -175,7 +179,11 @@ pub fn save(tree: &SdfTree, path: impl AsRef<Path>) -> Result<(), IoError> {
     if path_str.ends_with(".asdf.json") {
         save_asdf_json(tree, path)
     } else if path_str.ends_with(".asdf") {
-        save_asdf(tree, path)
+        #[cfg(feature = "asdf")]
+        let saved = save_asdf(tree, path);
+        #[cfg(not(feature = "asdf"))]
+        let saved = Err(IoError::InvalidFormat(NO_ASDF.to_string()));
+        saved
     } else {
         Err(IoError::InvalidFormat(
             "Unknown file extension. Use .asdf or .asdf.json".to_string(),
@@ -197,7 +205,11 @@ pub fn load(path: impl AsRef<Path>) -> Result<SdfTree, IoError> {
     if path_str.ends_with(".asdf.json") {
         load_asdf_json(path)
     } else if path_str.ends_with(".asdf") {
-        load_asdf(path)
+        #[cfg(feature = "asdf")]
+        let loaded = load_asdf(path);
+        #[cfg(not(feature = "asdf"))]
+        let loaded = Err(IoError::InvalidFormat(NO_ASDF.to_string()));
+        loaded
     } else {
         Err(IoError::InvalidFormat(
             "Unknown file extension. Use .asdf or .asdf.json".to_string(),
@@ -248,6 +260,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "asdf")]
     fn test_save_load_binary() {
         let tree = SdfTree::new(SdfNode::sphere(1.0));
         let path = temp_path("test.asdf");
@@ -272,6 +285,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "asdf")]
     fn test_get_info() {
         let tree = SdfTree::new(SdfNode::sphere(1.0));
         let path = temp_path("info_test.asdf");
@@ -282,6 +296,32 @@ mod tests {
         assert!(info.contains("ASDF Binary"));
         assert!(info.contains("Node count: 1"));
         fs::remove_file(&path).ok();
+    }
+
+    /// Without the `asdf` feature a binary path is refused by name, on both sides, and the JSON
+    /// form still round-trips (the build that leaves bincode out keeps every other path)
+    #[test]
+    #[cfg(not(feature = "asdf"))]
+    fn test_binary_needs_asdf_feature() {
+        let tree = SdfTree::new(SdfNode::sphere(1.0));
+        let path = temp_path("no_feature.asdf");
+        fs::remove_file(&path).ok();
+        match save(&tree, &path) {
+            Err(IoError::InvalidFormat(m)) => assert!(m.contains("`asdf` feature"), "{m}"),
+            other => panic!("save of .asdf without the feature: {other:?}"),
+        }
+        assert!(
+            !path.exists(),
+            "nothing is written for a refused binary save"
+        );
+        match load(&path) {
+            Err(IoError::InvalidFormat(m)) => assert!(m.contains("`asdf` feature"), "{m}"),
+            other => panic!("load of .asdf without the feature: {other:?}"),
+        }
+        let json = temp_path("no_feature.asdf.json");
+        save(&tree, &json).unwrap();
+        assert_eq!(load(&json).unwrap().node_count(), tree.node_count());
+        fs::remove_file(&json).ok();
     }
 
     #[test]
