@@ -197,11 +197,24 @@ pub const MIN_DISPATCH: usize = 1_024;
 /// field's statistics, [`GpuSheetField::last_march_stats`]).
 pub const MARCH_WORK_BUDGET: u32 = u32::MAX; // MEASUREMENT BUILD: replaced by the value derived from the measured worst ray before commit
 
+/// Rounds of re-issue after a march dispatch leaves results unwritten (each round halves the dispatch size); a ray
+/// still unwritten after these is a [`GpuError::DispatchLeftUnwritten`].
+///
+/// Measured: on one device a dispatch that ran about 2 s (or longer, or while another process used the GPU) wrote
+/// only part of its rays while the copies after it in the same submit ran; why the device cuts it is not measured.
+pub const MAX_REISSUE_ROUNDS: u32 = 8;
+
 /// The dispatch sizes, their times and the per-ray work of the last march call.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MarchStats {
-    /// `(rays, seconds)` of each dispatch, in order.
+    /// `(rays, seconds)` of each dispatch, in order, re-issues included.
     pub dispatches: Vec<(usize, f64)>,
+    /// Dispatches that left some of their rays unwritten (each such ray was issued again in a smaller dispatch).
+    pub cut_dispatches: u64,
+    /// Rays issued again because a dispatch left them unwritten (a ray counts once per re-issue).
+    pub reissued_rays: u64,
+    /// The size of the smallest re-issue dispatch (0 when nothing was re-issued).
+    pub smallest_reissue: usize,
     /// The largest work of one ray (see [`MARCH_WORK_BUDGET`]).
     pub max_work: u32,
     /// Rays whose work was at least half the budget.
@@ -217,6 +230,10 @@ struct DispatchControl {
     wait: std::time::Duration,
     work_budget: u32,
     stats: MarchStats,
+    /// test only: the next `cut.1` march dispatches use `cut.0` workgroups whatever their size (a dispatch the
+    /// device cut short, made on purpose)
+    #[cfg(test)]
+    cut: (u32, u32),
 }
 
 /// The next dispatch size after one of `rays` took `secs`: the rays whose predicted time (at the measured
@@ -482,6 +499,8 @@ impl GpuSheetField {
                 wait: DISPATCH_WAIT,
                 work_budget: MARCH_WORK_BUDGET,
                 stats: MarchStats::default(),
+                #[cfg(test)]
+                cut: (0, 0),
             }),
             marker: std::sync::atomic::AtomicU32::new(0),
         };
@@ -532,6 +551,27 @@ impl GpuSheetField {
         u: Uniforms,
         groups: Option<u32>,
     ) -> Result<Vec<[f32; 4]>, GpuError> {
+        let (out, unwritten) = self.run_groups_raw(pipeline, input, out_vec4s, u, groups)?;
+        if let Some(&first) = unwritten.first() {
+            return Err(GpuError::BufferMapping(format!(
+                "the sheet field dispatch left {} of {} results unwritten (first {first}): its output is not read",
+                unwritten.len(),
+                input.len()
+            )));
+        }
+        Ok(out)
+    }
+
+    /// [`Self::run_groups`] returning, with the output, the results the dispatch did not write at all (their first
+    /// vec4 still holds [`NOT_WRITTEN`]); the caller decides what to do with them.
+    fn run_groups_raw(
+        &self,
+        pipeline: &wgpu::ComputePipeline,
+        input: &[[f32; 4]],
+        out_vec4s: usize,
+        u: Uniforms,
+        groups: Option<u32>,
+    ) -> Result<(Vec<[f32; 4]>, Vec<usize>), GpuError> {
         // a dispatch of this field that did not return may still be running: no more work goes to this device
         if self.context().is_abandoned() {
             return Err(GpuError::BufferMapping(
@@ -660,14 +700,7 @@ impl GpuSheetField {
                     .any(|w| w.to_bits() == NOT_WRITTEN)
             })
             .collect();
-        if let Some(&first) = unwritten.first() {
-            return Err(GpuError::BufferMapping(format!(
-                "the sheet field dispatch left {} of {} results unwritten (first {first}): its output is not read",
-                unwritten.len(),
-                input.len()
-            )));
-        }
-        Ok(out)
+        Ok((out, unwritten))
     }
 
     /// The dispatch sizes, their times and the per-ray work of the last march call.
@@ -782,18 +815,58 @@ impl GpuSheetField {
                 .max(MIN_DISPATCH)
                 .min(most)
                 .min(n - at);
-            let idx: Vec<usize> = (at..at + size).map(order).collect();
-            let part: Vec<Vec3> = idx.iter().map(|&i| origins[i]).collect();
-            let t0 = std::time::Instant::now();
-            let mut got = Vec::with_capacity(size);
-            self.march_dispatch(&part, &idx, dir, tmax, steps, budget, &mut got, &mut stats)?;
-            for (&i, r) in idx.iter().zip(got) {
-                res[i] = r;
-            }
-            let secs = t0.elapsed().as_secs_f64();
-            stats.dispatches.push((size, secs));
-            if let Ok(mut c) = self.control.lock() {
-                c.next = next_dispatch(size, secs, target).min(most);
+            let mut pending: Vec<usize> = (at..at + size).map(order).collect();
+            let mut piece_size = size;
+            let mut round = 0u32;
+            loop {
+                let mut left = Vec::new();
+                for piece in pending.chunks(piece_size) {
+                    let part: Vec<Vec3> = piece.iter().map(|&i| origins[i]).collect();
+                    let t0 = std::time::Instant::now();
+                    let unwritten = self.march_dispatch(
+                        &part, piece, dir, tmax, steps, budget, &mut res, &mut stats,
+                    )?;
+                    let secs = t0.elapsed().as_secs_f64();
+                    stats.dispatches.push((piece.len(), secs));
+                    if round > 0 {
+                        stats.smallest_reissue = if stats.smallest_reissue == 0 {
+                            piece.len()
+                        } else {
+                            stats.smallest_reissue.min(piece.len())
+                        };
+                    }
+                    if let Ok(mut c) = self.control.lock() {
+                        c.next = if unwritten.is_empty() {
+                            next_dispatch(piece.len(), secs, target).min(most)
+                        } else {
+                            // a dispatch the device cut short: the next ones are at most half of it
+                            (piece.len() / 2).max(MIN_DISPATCH).min(c.next)
+                        };
+                    }
+                    if !unwritten.is_empty() {
+                        stats.cut_dispatches += 1;
+                        stats.reissued_rays += unwritten.len() as u64;
+                        left.extend(unwritten);
+                    }
+                }
+                if left.is_empty() {
+                    break;
+                }
+                round += 1;
+                if round > MAX_REISSUE_ROUNDS {
+                    if let Ok(mut c) = self.control.lock() {
+                        c.stats = stats;
+                    }
+                    return Err(GpuError::DispatchLeftUnwritten {
+                        unwritten: left.len(),
+                        rays: size,
+                        rounds: MAX_REISSUE_ROUNDS,
+                    });
+                }
+                // the rays left unwritten go again, in dispatches half the size of the cut ones (never below one
+                // workgroup)
+                piece_size = (piece_size / 2).max(WG as usize);
+                pending = left;
             }
             at += size;
         }
@@ -812,20 +885,39 @@ impl GpuSheetField {
         tmax: f32,
         steps: u32,
         budget: u32,
-        res: &mut Vec<MarchResult>,
+        res: &mut [MarchResult],
         stats: &mut MarchStats,
-    ) -> Result<(), GpuError> {
+    ) -> Result<Vec<usize>, GpuError> {
         let input: Vec<[f32; 4]> = origins.iter().map(|p| [p.x, p.y, p.z, 0.0]).collect();
-        let out = self.run(
+        #[cfg(test)]
+        let groups = self.control.lock().ok().and_then(|mut c| {
+            (c.cut.1 > 0).then(|| {
+                c.cut.1 -= 1;
+                c.cut.0
+            })
+        });
+        #[cfg(not(test))]
+        let groups = None;
+        let (out, _) = self.run_groups_raw(
             &self.march_pipeline,
             &input,
             4,
             self.uniforms(origins.len() as u32, steps, dir, tmax),
+            groups,
         )?;
         let (rows, rest) = out.as_chunks::<4>();
         debug_assert!(rest.is_empty(), "4 output words a ray");
+        let mut unwritten = Vec::new();
         for (j, r) in rows.iter().enumerate() {
             let i = index[j];
+            // a ray's result is 4 stores (the overflow path only the first, and it is refused below): a ray with
+            // any of its first vec4's words, or of the others' unless it overflowed, still NOT_WRITTEN was not
+            // (fully) written by this dispatch and is issued again
+            let poisoned = |v: &[f32; 4]| v.iter().any(|w| w.to_bits() == NOT_WRITTEN);
+            if poisoned(&r[0]) || (r[0][1] as i32 != 3 && r[1..].iter().any(poisoned)) {
+                unwritten.push(i);
+                continue;
+            }
             let kind = r[0][1] as i32;
             let work = r[1][3] as u32;
             stats.max_work = stats.max_work.max(work);
@@ -838,7 +930,7 @@ impl GpuSheetField {
                     r[0][2] as usize
                 )));
             }
-            res.push(match kind {
+            res[i] = match kind {
                 1 => MarchResult::Hit(Hit {
                     t: r[0][0],
                     sheet: r[0][2] as usize,
@@ -858,9 +950,9 @@ impl GpuSheetField {
                         self.max_live
                     )))
                 }
-            });
+            };
         }
-        Ok(())
+        Ok(unwritten)
     }
 }
 
@@ -1228,7 +1320,9 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 #[cfg(test)]
 mod tests {
     use super::{GpuSheetField, WG};
+    use crate::compiled::GpuError;
     use crate::sheet_field::build::{level_from_fn, sheet};
+    use crate::sheet_field::MarchResult;
     use crate::sheet_field::{SheetField, ValidRule};
     use glam::Vec3;
 
@@ -1285,6 +1379,146 @@ mod tests {
             bad.map(|v| v.len()).unwrap_or(0)
         );
         let _ = WG;
+    }
+
+    /// 100 overlapping flat squares (a deep live list, so a march does real work) and rays over them.
+    fn stack_and_rays(n: usize) -> (SheetField, Vec<Vec3>) {
+        let square = |z: f32| {
+            let lv = level_from_fn(
+                Vec3::new(-8.0 + 0.013, -8.0 + 0.021, z - 1.0 + 0.007),
+                0.25,
+                [8, 8, 1],
+                |_c, _e| true,
+                |p| {
+                    let (dx, dy) = (p.x.abs() - 5.0, p.y.abs() - 5.0);
+                    vec![
+                        p.z - z,
+                        Vec3::new(dx.max(0.0), dy.max(0.0), 0.0).length() + dx.max(dy).min(0.0),
+                    ]
+                },
+            )
+            .unwrap();
+            sheet(vec![lv]).unwrap()
+        };
+        let f = SheetField::new(
+            (0..100).map(|k| square(0.01 * k as f32)).collect(),
+            ValidRule::CellV1,
+        );
+        let os = (0..n)
+            .map(|i| {
+                let (a, b) = (
+                    (i % 97) as f32 / 97.0,
+                    (i / 97) as f32 / (n / 97 + 1) as f32,
+                );
+                Vec3::new(-6.0 + 12.0 * a, -6.0 + 12.0 * b, 5.0)
+            })
+            .collect();
+        (f, os)
+    }
+
+    fn gpu_or_skip(f: &SheetField) -> Option<GpuSheetField> {
+        match GpuSheetField::new(f) {
+            Ok(g) => Some(g),
+            Err(e) => {
+                assert!(
+                    std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+                    "ALICE_SDF_REQUIRE_GPU set but no GPU: {e}"
+                );
+                eprintln!("gpu-test: skipped (no GPU: {e})");
+                None
+            }
+        }
+    }
+
+    /// A march whose first dispatch the device cuts short (made here: one workgroup for a dispatch of thousands of
+    /// rays) re-issues the unwritten rays and ends with the results, bit for bit, of a march made only of the
+    /// smallest dispatches; the cut and the re-issued rays are counted.
+    /// Oracle: the march of each ray does not depend on its neighbours or its dispatch (the smallest-dispatch run).
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn a_cut_dispatch_is_reissued_and_the_result_is_the_uncut_one() {
+        let (f, os) = stack_and_rays(5_000);
+        let (Some(a), Some(b)) = (gpu_or_skip(&f), gpu_or_skip(&f)) else {
+            return;
+        };
+        a.set_dispatch_target(std::time::Duration::from_nanos(1));
+        let small = a.march_batch_decided(&os, -Vec3::Z, 10.0).unwrap();
+        let sa = a.last_march_stats();
+        assert_eq!(
+            (sa.cut_dispatches, sa.reissued_rays, sa.smallest_reissue),
+            (0, 0, 0),
+            "{sa:?}"
+        );
+        assert!(
+            small.iter().any(|m| matches!(m, MarchResult::Hit(_))),
+            "no hits: the scene is wrong"
+        );
+        b.control.lock().unwrap().cut = (1, 1);
+        let cut = b.march_batch_decided(&os, -Vec3::Z, 10.0).unwrap();
+        let sb = b.last_march_stats();
+        let first = sb.dispatches[0].0;
+        assert!(
+            first > WG as usize,
+            "the first dispatch was not larger than one workgroup: {first}"
+        );
+        assert_eq!(sb.cut_dispatches, 1, "{sb:?}");
+        assert_eq!(sb.reissued_rays, (first - WG as usize) as u64, "{sb:?}");
+        let reissues = &sb.dispatches[1..];
+        assert!(
+            reissues.iter().all(|d| d.0 <= first / 2),
+            "a re-issue over half the cut size: {sb:?}"
+        );
+        assert_eq!(
+            reissues.iter().map(|d| d.0).sum::<usize>(),
+            os.len() - WG as usize,
+            "the re-issues are not exactly the unwritten rays: {sb:?}"
+        );
+        assert_eq!(
+            sb.smallest_reissue,
+            reissues.iter().map(|d| d.0).min().unwrap(),
+            "{sb:?}"
+        );
+        let differ = (0..os.len()).filter(|&i| small[i] != cut[i]).count();
+        assert_eq!(
+            differ,
+            0,
+            "{differ} of {} rays differ after the re-issue",
+            os.len()
+        );
+    }
+
+    /// A device that cuts every dispatch: after MAX_REISSUE_ROUNDS the march is the typed error naming the rays
+    /// left, and every cut is counted (never a result with unwritten slots read as misses).
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn a_device_that_always_cuts_is_a_typed_error_after_the_rounds() {
+        let (f, os) = stack_and_rays(3_000);
+        let Some(g) = gpu_or_skip(&f) else { return };
+        // zero workgroups: the dispatch writes nothing, every round
+        g.control.lock().unwrap().cut = (0, u32::MAX);
+        match g.march_batch_decided(&os, -Vec3::Z, 10.0) {
+            Err(GpuError::DispatchLeftUnwritten {
+                unwritten,
+                rays,
+                rounds,
+            }) => {
+                assert_eq!(rounds, super::MAX_REISSUE_ROUNDS);
+                assert_eq!(unwritten, rays, "unwritten {unwritten} of {rays}");
+            }
+            other => panic!("not the typed error: {other:?}"),
+        }
+        let st = g.last_march_stats();
+        assert!(
+            st.cut_dispatches > u64::from(super::MAX_REISSUE_ROUNDS),
+            "{st:?}"
+        );
+        // every round re-issues all the rays it was given: 3000 x the rounds
+        assert_eq!(
+            st.reissued_rays,
+            os.len() as u64 * u64::from(super::MAX_REISSUE_ROUNDS + 1),
+            "{st:?}"
+        );
+        assert!(st.smallest_reissue > 0, "{st:?}");
     }
 
     /// A dispatch that runs but covers only part of the rays (one workgroup for 3 workgroups of input) leaves the

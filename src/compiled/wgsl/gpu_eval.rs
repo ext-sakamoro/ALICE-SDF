@@ -98,6 +98,17 @@ pub enum GpuError {
         /// The wait bound
         limit_ms: u64,
     },
+    /// A sheet field march dispatch left rays unwritten (the device cut it short) and they were still unwritten
+    /// after [`crate::sheet_field::gpu::MAX_REISSUE_ROUNDS`] rounds of re-issue in smaller dispatches
+    #[error("{unwritten} of {rays} rays were still unwritten after {rounds} rounds of re-issue in smaller dispatches: the device cuts its dispatches short")]
+    DispatchLeftUnwritten {
+        /// Rays never written
+        unwritten: usize,
+        /// Rays of the dispatch they came from
+        rays: usize,
+        /// Rounds of re-issue tried
+        rounds: u32,
+    },
     /// Failed to create GPU adapter
     #[error("Failed to create GPU adapter")]
     NoAdapter,
