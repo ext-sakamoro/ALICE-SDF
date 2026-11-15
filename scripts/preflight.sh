@@ -474,7 +474,7 @@ step "test: Rust source emit oracle (rustc で compile した出力 vs eval_comp
 cargo test --features rust --test test_rust_transpiler_oracle
 
 step "test: SdfNode × backend の対応表 (docs/node-support.md と突合、jit + msl + glsl + hlsl + rust)"
-cargo test --features jit,msl,rust,glsl,hlsl --test test_node_backend_matrix
+cargo test --features jit,msl,rust,glsl,hlsl --test test_node_backend_matrix --test test_repeat_finite_copies
 
 step "test: shader text has no fused multiply-add (msl + glsl + hlsl + blinkscript、ci.yml と対)"
 cargo test --features msl,glsl,hlsl,blinkscript --test test_shader_no_fused_multiply_add
