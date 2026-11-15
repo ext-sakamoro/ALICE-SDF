@@ -62,12 +62,6 @@ pub struct CellNeighbours(bool);
 impl CellNeighbours {
     /// The one value: no neighbour minimum
     pub const OFF: Self = Self(false);
-
-    /// Whether the neighbour minimum is on (always `false` until its law lands)
-    #[must_use]
-    pub const fn is_on(self) -> bool {
-        self.0
-    }
 }
 
 impl<'de> Deserialize<'de> for CellNeighbours {
@@ -98,15 +92,16 @@ pub struct CellVariation {
 
 impl<'de> Deserialize<'de> for CellVariation {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        // the stored form is read whole (bincode is not self-describing) and then refused
         #[derive(Deserialize)]
-        #[allow(dead_code, reason = "read only to consume the stored form")]
         struct Stored {
             seed: u32,
             scale: f32,
         }
-        let _ = Stored::deserialize(d)?;
-        Err(serde::de::Error::custom(RepeatCellsError::NotYetSupported(
-            "variation",
+        let Stored { seed, scale } = Stored::deserialize(d)?;
+        Err(serde::de::Error::custom(format!(
+            "{} (stored seed {seed}, scale {scale})",
+            RepeatCellsError::NotYetSupported("variation")
         )))
     }
 }

@@ -280,7 +280,6 @@ fn the_off_state_is_stored_as_false_and_none() {
         unreachable!()
     };
     assert_eq!(*neighbours, CellNeighbours::OFF);
-    assert!(!neighbours.is_on());
     assert!(variation.is_none());
     let json = alice_sdf::io::to_json_string(&SdfTree::new(node.clone())).unwrap();
     assert!(
