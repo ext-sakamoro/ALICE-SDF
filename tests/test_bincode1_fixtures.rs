@@ -8,8 +8,9 @@
 //! the same tree, that the ASP I-packet carries the same body bytes, and that writing again gives
 //! the same bytes. Each tree's version string is fixed ("fixture") so the bytes do not follow the
 //! crate version. The header's semantics identifier (bytes 16..48) is the one thing that follows the
-//! build: it is re-stamped when `SDF_SEMANTICS_ID` moves (the body bytes stay the ones bincode
-//! wrote; the repeat_finite fix re-stamped d7389231… to 443238e4…).
+//! build: `scripts/restamp_asdf_fixtures.py` re-stamps it when `SDF_SEMANTICS_ID` moves (refusing a
+//! header that holds anything but the previous identifier) and `--verify-against` checks that the
+//! body bytes stayed the ones bincode wrote (the repeat_finite fix re-stamped d7389231… to 443238e4…).
 //!
 //! Author: Moroya Sakamoto
 
@@ -79,7 +80,12 @@ fn written(t: &SdfTree) -> Vec<u8> {
 fn loaded(bytes: &[u8]) -> SdfTree {
     let path = temp::TempPath::new("alice_sdf_bincode1", "t.asdf");
     std::fs::write(&path, bytes).expect("writes");
-    load_asdf(&path).expect("load_asdf")
+    load_asdf(&path).unwrap_or_else(|e| {
+        panic!(
+            "load_asdf: {e} (if SDF_SEMANTICS_ID moved, re-stamp the fixture headers with \
+             scripts/restamp_asdf_fixtures.py --old <previous id> --new <this id>)"
+        )
+    })
 }
 
 fn json(t: &SdfTree) -> serde_json::Value {
@@ -155,7 +161,11 @@ fn the_files_written_now_are_the_files_bincode_wrote() {
     for ((name, want), (scene, node)) in files.iter().zip(scenes) {
         assert_eq!(name, scene, "corpus order");
         let got = written(&tree(node));
-        assert!(got == *want, "{name}: the written file differs");
+        assert!(
+            got == *want,
+            "{name}: the written file differs (if only the header's identifier moved, re-stamp with \
+             scripts/restamp_asdf_fixtures.py)"
+        );
         assert!(written(&loaded(want)) == *want, "{name}: re-written");
     }
 }
