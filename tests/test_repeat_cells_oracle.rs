@@ -340,13 +340,14 @@ fn the_evaluators_give_no_value_for_neighbours_and_variation() {
             iv.lo == f32::NEG_INFINITY && iv.hi == f32::INFINITY,
             "{iv:?}"
         );
+        #[cfg(any(feature = "glsl", feature = "hlsl", feature = "gpu"))]
         shader_nan(&n, &supported);
     }
 }
 
 /// Each shader returns a quiet NaN for a node with the batch-2 fields, and the
-/// supported form has none.
-#[allow(unused_variables)]
+/// supported form has none (compiled with a shader feature; the feature arms run in CI)
+#[cfg(any(feature = "glsl", feature = "hlsl", feature = "gpu"))]
 fn shader_nan(n: &SdfNode, supported: &SdfNode) {
     #[cfg(feature = "glsl")]
     {

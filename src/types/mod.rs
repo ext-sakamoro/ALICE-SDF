@@ -1804,7 +1804,7 @@ mod tests {
 
     #[test]
     fn test_category_total() {
-        assert_eq!(SdfCategory::total(), 138);
+        assert_eq!(SdfCategory::total(), 139);
     }
 
     #[test]
