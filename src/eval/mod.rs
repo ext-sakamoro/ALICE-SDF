@@ -62,19 +62,202 @@ pub(crate) fn eval_rec(node: &SdfNode, point: Vec3, depth: u32, native_levels: u
     if depth >= native_levels {
         return eval_iter(node, point);
     }
-    match descend(node, point) {
-        Step::Leaf(d) => d,
-        Step::Two(a, b) => {
-            let d1 = eval_rec(a, point, depth + 1, native_levels);
-            let d2 = eval_rec(b, point, depth + 1, native_levels);
-            combine(node, d1, d2, point)
-        }
-        Step::One(child, q, extra) => finish(
-            node,
-            eval_rec(child, q, depth + 1, native_levels),
-            point,
-            extra,
+    let next = depth + 1;
+    // one match per node on this path: a two-operand node evaluates its operands (in order) and
+    // applies the same law function `combine` applies, a translation moves the point, the other
+    // one-child nodes move it and finish through `descend` / `finish`, the rest are leaves
+    match node {
+        SdfNode::Union { a, b } => sdf_union(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
         ),
+        SdfNode::Intersection { a, b } => sdf_intersection(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+        ),
+        SdfNode::Subtraction { a, b } => sdf_subtraction(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+        ),
+        SdfNode::SmoothUnion { a, b, k, .. } => sdf_smooth_union(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *k,
+        ),
+        SdfNode::SmoothIntersection { a, b, k, .. } => sdf_smooth_intersection(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *k,
+        ),
+        SdfNode::SmoothSubtraction { a, b, k, .. } => sdf_smooth_subtraction(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *k,
+        ),
+        SdfNode::ChamferUnion { a, b, r, .. } => sdf_chamfer_union(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *r,
+        ),
+        SdfNode::ChamferIntersection { a, b, r, .. } => sdf_chamfer_intersection(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *r,
+        ),
+        SdfNode::ChamferSubtraction { a, b, r, .. } => sdf_chamfer_subtraction(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *r,
+        ),
+        SdfNode::StairsUnion { a, b, r, n, .. } => sdf_stairs_union(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *r,
+            *n,
+        ),
+        SdfNode::StairsIntersection { a, b, r, n, .. } => sdf_stairs_intersection(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *r,
+            *n,
+        ),
+        SdfNode::StairsSubtraction { a, b, r, n, .. } => sdf_stairs_subtraction(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *r,
+            *n,
+        ),
+        SdfNode::XOR { a, b } => sdf_xor(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+        ),
+        SdfNode::Morph { a, b, t, .. } => sdf_morph(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *t,
+        ),
+        SdfNode::ColumnsUnion { a, b, r, n, .. } => sdf_columns_union(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *r,
+            *n,
+        ),
+        SdfNode::ColumnsIntersection { a, b, r, n, .. } => sdf_columns_intersection(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *r,
+            *n,
+        ),
+        SdfNode::ColumnsSubtraction { a, b, r, n, .. } => sdf_columns_subtraction(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *r,
+            *n,
+        ),
+        SdfNode::Pipe { a, b, r, .. } => sdf_pipe(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *r,
+        ),
+        SdfNode::Engrave { a, b, r, .. } => sdf_engrave(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *r,
+        ),
+        SdfNode::Groove { a, b, ra, rb, .. } => sdf_groove(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *ra,
+            *rb,
+        ),
+        SdfNode::Tongue { a, b, ra, rb, .. } => sdf_tongue(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *ra,
+            *rb,
+        ),
+        SdfNode::ExpSmoothUnion { a, b, k, .. } => sdf_exp_smooth_union(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *k,
+        ),
+        SdfNode::ExpSmoothIntersection { a, b, k, .. } => sdf_exp_smooth_intersection(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *k,
+        ),
+        SdfNode::ExpSmoothSubtraction { a, b, k, .. } => sdf_exp_smooth_subtraction(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *k,
+        ),
+        SdfNode::SmoothBlend {
+            a,
+            b,
+            k,
+            kernel,
+            mode,
+            ..
+        } => smooth_blend(
+            eval_rec(a, point, next, native_levels),
+            eval_rec(b, point, next, native_levels),
+            *k,
+            *kernel,
+            *mode,
+        ),
+        SdfNode::MetricBlend { inner, outer, .. } => combine(
+            node,
+            eval_rec(inner, point, next, native_levels),
+            eval_rec(outer, point, next, native_levels),
+            point,
+        ),
+        SdfNode::Translate { child, offset } => eval_rec(
+            child,
+            transform_translate(point, *offset),
+            next,
+            native_levels,
+        ),
+        SdfNode::Rotate { .. }
+        | SdfNode::Scale { .. }
+        | SdfNode::ScaleNonUniform { .. }
+        | SdfNode::ProjectiveTransform { .. }
+        | SdfNode::LatticeDeform { .. }
+        | SdfNode::SdfSkinning { .. }
+        | SdfNode::GridWarp { .. }
+        | SdfNode::BellPull { .. }
+        | SdfNode::Twist { .. }
+        | SdfNode::Bend { .. }
+        | SdfNode::RepeatInfinite { .. }
+        | SdfNode::RepeatFinite { .. }
+        | SdfNode::Elongate { .. }
+        | SdfNode::Mirror { .. }
+        | SdfNode::OctantMirror { .. }
+        | SdfNode::Revolution { .. }
+        | SdfNode::Extrude { .. }
+        | SdfNode::Taper { .. }
+        | SdfNode::PolarRepeat { .. }
+        | SdfNode::SweepBezier { .. }
+        | SdfNode::Shear { .. }
+        | SdfNode::IcosahedralSymmetry { .. }
+        | SdfNode::IFS { .. }
+        | SdfNode::Noise { .. }
+        | SdfNode::Round { .. }
+        | SdfNode::Onion { .. }
+        | SdfNode::Displacement { .. }
+        | SdfNode::SineDisplacement { .. }
+        | SdfNode::Animated { .. }
+        | SdfNode::WithMaterial { .. }
+        | SdfNode::Pose { .. }
+        | SdfNode::HeightmapDisplacement { .. }
+        | SdfNode::SurfaceRoughness { .. } => match descend(node, point) {
+            Step::One(child, q, extra) => {
+                finish(node, eval_rec(child, q, next, native_levels), point, extra)
+            }
+            Step::Two(..) | Step::Leaf(_) => {
+                unreachable!("eval_rec: descend moves the point of every one-child node above")
+            }
+        },
+        _ => eval_leaf(node, point),
     }
 }
 
