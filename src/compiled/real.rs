@@ -860,7 +860,9 @@ pub fn repeat_infinite<R: Real>(p: Vec3R<R>, spacing: Vec3, recip: Vec3) -> Vec3
 /// Finite repetition: `count` cells clamped to `±count/2`.
 #[inline(always)]
 pub fn repeat_finite<R: Real>(p: Vec3R<R>, count: Vec3, spacing: Vec3) -> Vec3R<R> {
-    let limit = Vec3R::splat(count * 0.5);
+    // count copies per axis = 2·floor(count/2) + 1: the cell index runs over the integers
+    // −floor(count/2)..=floor(count/2), so every copy is whole and centred on the lattice
+    let limit = Vec3R::splat((count * 0.5).floor());
     let inv = Vec3R::splat(Vec3::new(1.0 / spacing.x, 1.0 / spacing.y, 1.0 / spacing.z));
     let cell = p.mul_vec(inv).round_half_up().clamp(-limit, limit);
     p - cell.mul_vec(Vec3R::splat(spacing))

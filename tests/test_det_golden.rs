@@ -773,7 +773,7 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "repeat_finite",
-        "fa7823d2ce3fe10f023d8b7569155d1402ca4f04b5e2386c587f291c63e39301",
+        "ff97282df31b2308f7d0970bd096b9cd48fd2da60131d1abf866c06c49e99a72",
     ),
     (
         "scale_exp_smooth_union",
@@ -817,7 +817,7 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "repeat_finite_tie_translate",
-        "edf9aa7adee9e4629a5fd5a7d1b9046a22ace79e04cf617609b9635378c399b1",
+        "2bd655bd5cbcaaeda24ee3883e1978d8c3a25ff04257031b5d4d70a596ee92dc",
     ),
     (
         "rotate_pyramid",
@@ -837,7 +837,7 @@ const GOLDEN: &[(&str, &str)] = &[
     ),
     (
         "repeat_finite_offset",
-        "acd98d6c0894cd2f19831a1d9f17b577b189850d682115915f4597847698a162",
+        "8dec2cadb63a270aa445dcedf4a7aef901a65b6a172e65aef3dbe083cab1f5a1",
     ),
     (
         "noise",

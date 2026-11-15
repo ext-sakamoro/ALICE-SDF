@@ -3981,11 +3981,11 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let sx = self.param(spacing.x);
                 let sy = self.param(spacing.y);
                 let sz = self.param(spacing.z);
-                // clamp to ±count/2 like `real::repeat_finite` (the shader used to
+                // clamp to ±floor(count/2) like `real::repeat_finite` (the shader used to
                 // clamp to ±count, twice the CPU extent)
-                let cx = self.param(count[0] as f32 * 0.5);
-                let cy = self.param(count[1] as f32 * 0.5);
-                let cz = self.param(count[2] as f32 * 0.5);
+                let cx = self.param((count[0] / 2) as f32);
+                let cy = self.param((count[1] / 2) as f32);
+                let cz = self.param((count[2] / 2) as f32);
                 let isx = self.param(1.0 / spacing.x);
                 let isy = self.param(1.0 / spacing.y);
                 let isz = self.param(1.0 / spacing.z);
