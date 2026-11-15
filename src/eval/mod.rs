@@ -1806,11 +1806,46 @@ pub fn eval_material(node: &SdfNode, point: Vec3) -> u32 {
         | SdfNode::LoftCurves { .. }
         | SdfNode::SectionStack { .. }
         | SdfNode::SmoothSectionStack { .. } => 0,
-        // these have children, but no material is read through them
-        SdfNode::MetricBlend { .. }
-        | SdfNode::ProjectiveTransform { .. }
-        | SdfNode::LatticeDeform { .. }
-        | SdfNode::SdfSkinning { .. } => 0,
+        // interpolates its operands: the nearer operand, as `Morph` and the unions
+        SdfNode::MetricBlend { inner, outer, .. } => {
+            if eval(inner, point) <= eval(outer, point) {
+                eval_material(inner, point)
+            } else {
+                eval_material(outer, point)
+            }
+        }
+        // point maps: the child's material at the point `descend` gives the child
+        SdfNode::ProjectiveTransform {
+            child, inv_matrix, ..
+        } => eval_material(
+            child,
+            crate::transforms::projective::projective_transform(point, inv_matrix).0,
+        ),
+        SdfNode::LatticeDeform {
+            child,
+            control_points,
+            nx,
+            ny,
+            nz,
+            bbox_min,
+            bbox_max,
+        } => eval_material(
+            child,
+            crate::transforms::lattice::lattice_deform(
+                point,
+                control_points,
+                *nx,
+                *ny,
+                *nz,
+                *bbox_min,
+                *bbox_max,
+            )
+            .0,
+        ),
+        SdfNode::SdfSkinning { child, bones } => eval_material(
+            child,
+            crate::transforms::skinning::sdf_skinning(point, bones).0,
+        ),
     }
 }
 
