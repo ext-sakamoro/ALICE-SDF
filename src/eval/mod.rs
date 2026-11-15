@@ -84,8 +84,6 @@ pub(crate) fn eval_rec(node: &SdfNode, point: Vec3, depth: u32, native_levels: u
 #[inline(never)]
 fn eval_iter(node: &SdfNode, point: Vec3) -> f32 {
     let mut pending: WorkStack<Pending<'_>, 128> = WorkStack::new();
-    // the first operand's value of each two-operand node whose second operand is being evaluated
-    let mut firsts: WorkStack<f32, 128> = WorkStack::new();
     let (mut node, mut point) = (node, point);
     loop {
         // down the first children to a leaf
@@ -110,18 +108,13 @@ fn eval_iter(node: &SdfNode, point: Vec3) -> f32 {
             match pending.pop() {
                 None => return d,
                 Some(Pending::Second(n, b, q)) => {
-                    firsts.push(d);
-                    pending.push(Pending::Combine(n, q));
+                    // the first operand's value rides with the combine it is owed to
+                    pending.push(Pending::Combine(n, q, d));
                     node = b;
                     point = q;
                     break;
                 }
-                Some(Pending::Combine(n, q)) => {
-                    let d1 = firsts.pop().expect(
-                        "a two-operand node's first value is set aside before its second operand",
-                    );
-                    d = combine(n, d1, d, q);
-                }
+                Some(Pending::Combine(n, q, d1)) => d = combine(n, d1, d, q),
                 Some(Pending::Finish(n, q, extra)) => d = finish(n, d, q, extra),
             }
         }
@@ -130,11 +123,11 @@ fn eval_iter(node: &SdfNode, point: Vec3) -> f32 {
 
 /// What [`eval`] still owes a node while one of its children is evaluated
 enum Pending<'a> {
-    /// evaluate this two-operand node's second operand at the node's point, then combine (the
-    /// first operand's value goes on `firsts`)
+    /// evaluate this two-operand node's second operand at the node's point, then combine
     Second(&'a SdfNode, &'a SdfNode, Vec3),
-    /// apply this two-operand node's law to its operands' values, at the node's point
-    Combine(&'a SdfNode, Vec3),
+    /// apply this two-operand node's law to the first operand's value (carried here) and the
+    /// second's, at the node's point
+    Combine(&'a SdfNode, Vec3, f32),
     /// apply this one-child node's law to its child's value (the node's point, and what
     /// `descend` computed while moving it)
     Finish(&'a SdfNode, Vec3, [f32; 3]),

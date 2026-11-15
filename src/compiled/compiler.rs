@@ -169,51 +169,141 @@ enum Step<'a> {
     Leaf,
     /// One child that adds no instruction of its own (material, animation, pose)
     Pass(&'a SdfNode),
-    /// Two operands, then the node's operation (`binary_instruction`)
-    Binary { a: &'a SdfNode, b: &'a SdfNode },
+    /// Two operands, then the node's operation
+    Binary {
+        a: &'a SdfNode,
+        b: &'a SdfNode,
+        op: BinOp,
+    },
     /// One child inside the coordinate frame opened by the instruction at `inst_idx`
     Wrap { child: &'a SdfNode, inst_idx: usize },
 }
 
-/// The instruction a binary node emits after its two operands (`compile_node` builds it when it
-/// is emitted, so it is constructed once, in place)
-#[cfg_attr(not(debug_assertions), inline(always))]
-fn binary_instruction(node: &SdfNode) -> Instruction {
-    match node {
-        SdfNode::MetricBlend {
-            center,
-            radius,
-            skin,
-            ..
-        } => Instruction::metric_blend(center.x, center.y, center.z, *radius, *skin),
-        SdfNode::Union { .. } => Instruction::union(),
-        SdfNode::Intersection { .. } => Instruction::intersection(),
-        SdfNode::Subtraction { .. } => Instruction::subtraction(),
-        SdfNode::SmoothUnion { k, .. } => Instruction::smooth_union(*k),
-        SdfNode::SmoothIntersection { k, .. } => Instruction::smooth_intersection(*k),
-        SdfNode::SmoothSubtraction { k, .. } => Instruction::smooth_subtraction(*k),
-        SdfNode::ChamferUnion { r, .. } => Instruction::chamfer_union(*r),
-        SdfNode::ChamferIntersection { r, .. } => Instruction::chamfer_intersection(*r),
-        SdfNode::ChamferSubtraction { r, .. } => Instruction::chamfer_subtraction(*r),
-        SdfNode::StairsUnion { r, n, .. } => Instruction::stairs_union(*r, *n),
-        SdfNode::StairsIntersection { r, n, .. } => Instruction::stairs_intersection(*r, *n),
-        SdfNode::StairsSubtraction { r, n, .. } => Instruction::stairs_subtraction(*r, *n),
-        SdfNode::XOR { .. } => Instruction::xor(),
-        SdfNode::Morph { t, .. } => Instruction::morph(*t),
-        SdfNode::ColumnsUnion { r, n, .. } => Instruction::columns_union(*r, *n),
-        SdfNode::ColumnsIntersection { r, n, .. } => Instruction::columns_intersection(*r, *n),
-        SdfNode::ColumnsSubtraction { r, n, .. } => Instruction::columns_subtraction(*r, *n),
-        SdfNode::Pipe { r, .. } => Instruction::pipe(*r),
-        SdfNode::Engrave { r, .. } => Instruction::engrave(*r),
-        SdfNode::Groove { ra, rb, .. } => Instruction::groove(*ra, *rb),
-        SdfNode::Tongue { ra, rb, .. } => Instruction::tongue(*ra, *rb),
-        SdfNode::ExpSmoothUnion { k, .. } => Instruction::exp_smooth_union(*k),
-        SdfNode::ExpSmoothIntersection { k, .. } => Instruction::exp_smooth_intersection(*k),
-        SdfNode::ExpSmoothSubtraction { k, .. } => Instruction::exp_smooth_subtraction(*k),
-        SdfNode::SmoothBlend {
-            k, kernel, mode, ..
-        } => Instruction::smooth_blend(*k, *kernel, *mode),
-        _ => unreachable!("binary_instruction called with a node `open` does not call binary"),
+/// The operation of a binary node: `open` reads it in the node's own arm, with that arm's fields,
+/// so emitting it after the two operands matches every operation there is and no other node
+#[derive(Clone, Copy)]
+enum BinOp {
+    MetricBlend {
+        center: glam::Vec3,
+        radius: f32,
+        skin: f32,
+    },
+    Union,
+    Intersection,
+    Subtraction,
+    SmoothUnion {
+        k: f32,
+    },
+    SmoothIntersection {
+        k: f32,
+    },
+    SmoothSubtraction {
+        k: f32,
+    },
+    ChamferUnion {
+        r: f32,
+    },
+    ChamferIntersection {
+        r: f32,
+    },
+    ChamferSubtraction {
+        r: f32,
+    },
+    StairsUnion {
+        r: f32,
+        n: f32,
+    },
+    StairsIntersection {
+        r: f32,
+        n: f32,
+    },
+    StairsSubtraction {
+        r: f32,
+        n: f32,
+    },
+    Xor,
+    Morph {
+        t: f32,
+    },
+    ColumnsUnion {
+        r: f32,
+        n: f32,
+    },
+    ColumnsIntersection {
+        r: f32,
+        n: f32,
+    },
+    ColumnsSubtraction {
+        r: f32,
+        n: f32,
+    },
+    Pipe {
+        r: f32,
+    },
+    Engrave {
+        r: f32,
+    },
+    Groove {
+        ra: f32,
+        rb: f32,
+    },
+    Tongue {
+        ra: f32,
+        rb: f32,
+    },
+    ExpSmoothUnion {
+        k: f32,
+    },
+    ExpSmoothIntersection {
+        k: f32,
+    },
+    ExpSmoothSubtraction {
+        k: f32,
+    },
+    SmoothBlend {
+        k: f32,
+        kernel: crate::operations::SmoothKernel,
+        mode: crate::operations::BlendMode,
+    },
+}
+
+impl BinOp {
+    /// The instruction this operation emits after its two operands (built when it is emitted,
+    /// so it is constructed once, in place)
+    #[cfg_attr(not(debug_assertions), inline(always))]
+    fn instruction(self) -> Instruction {
+        match self {
+            Self::MetricBlend {
+                center,
+                radius,
+                skin,
+            } => Instruction::metric_blend(center.x, center.y, center.z, radius, skin),
+            Self::Union => Instruction::union(),
+            Self::Intersection => Instruction::intersection(),
+            Self::Subtraction => Instruction::subtraction(),
+            Self::SmoothUnion { k } => Instruction::smooth_union(k),
+            Self::SmoothIntersection { k } => Instruction::smooth_intersection(k),
+            Self::SmoothSubtraction { k } => Instruction::smooth_subtraction(k),
+            Self::ChamferUnion { r } => Instruction::chamfer_union(r),
+            Self::ChamferIntersection { r } => Instruction::chamfer_intersection(r),
+            Self::ChamferSubtraction { r } => Instruction::chamfer_subtraction(r),
+            Self::StairsUnion { r, n } => Instruction::stairs_union(r, n),
+            Self::StairsIntersection { r, n } => Instruction::stairs_intersection(r, n),
+            Self::StairsSubtraction { r, n } => Instruction::stairs_subtraction(r, n),
+            Self::Xor => Instruction::xor(),
+            Self::Morph { t } => Instruction::morph(t),
+            Self::ColumnsUnion { r, n } => Instruction::columns_union(r, n),
+            Self::ColumnsIntersection { r, n } => Instruction::columns_intersection(r, n),
+            Self::ColumnsSubtraction { r, n } => Instruction::columns_subtraction(r, n),
+            Self::Pipe { r } => Instruction::pipe(r),
+            Self::Engrave { r } => Instruction::engrave(r),
+            Self::Groove { ra, rb } => Instruction::groove(ra, rb),
+            Self::Tongue { ra, rb } => Instruction::tongue(ra, rb),
+            Self::ExpSmoothUnion { k } => Instruction::exp_smooth_union(k),
+            Self::ExpSmoothIntersection { k } => Instruction::exp_smooth_intersection(k),
+            Self::ExpSmoothSubtraction { k } => Instruction::exp_smooth_subtraction(k),
+            Self::SmoothBlend { k, kernel, mode } => Instruction::smooth_blend(k, kernel, mode),
+        }
     }
 }
 
@@ -237,9 +327,9 @@ pub const COMPILE_NATIVE_LEVELS: u32 = 128;
 /// What `Compiler::compile_node` still has to do, innermost last
 enum Owed<'a> {
     /// compile this binary node's second operand and its subtree, then its operation
-    Second(&'a SdfNode, &'a SdfNode),
+    Second(BinOp, &'a SdfNode),
     /// emit this binary node's operation (both operands are compiled)
-    Op(&'a SdfNode),
+    Op(BinOp),
     /// close the transform or modifier opened at this instruction
     Close(usize),
 }
@@ -281,7 +371,7 @@ impl Compiler {
 
     /// Compile `node` at `depth` levels below the root: native recursion for the first
     /// `native_levels` levels, the work-stack loop below that (both through `open`,
-    /// `binary_instruction` and `close_wrap`; `native_levels` is `COMPILE_NATIVE_LEVELS` except
+    /// [`BinOp::instruction`] and `close_wrap`; `native_levels` is `COMPILE_NATIVE_LEVELS` except
     /// in the test that runs both drivers alone)
     pub(crate) fn compile_rec(&mut self, node: &SdfNode, depth: u32, native_levels: u32) {
         if depth >= native_levels {
@@ -291,11 +381,11 @@ impl Compiler {
         match self.open(node) {
             Step::Leaf => {}
             Step::Pass(child) => self.compile_rec(child, depth + 1, native_levels),
-            Step::Binary { a, b } => {
+            Step::Binary { a, b, op } => {
                 // post-order: left, right, op
                 self.compile_rec(a, depth + 1, native_levels);
                 self.compile_rec(b, depth + 1, native_levels);
-                self.instructions.push(binary_instruction(node));
+                self.instructions.push(op.instruction());
             }
             Step::Wrap { child, inst_idx } => {
                 self.compile_rec(child, depth + 1, native_levels);
@@ -317,10 +407,10 @@ impl Compiler {
                 match self.open(node) {
                     Step::Leaf => break,
                     Step::Pass(child) => node = child,
-                    Step::Binary { a, b } => {
+                    Step::Binary { a, b, op } => {
                         // post-order: left, right, op (the op is owed once the right side is
                         // under way, so each level holds one entry)
-                        pending.push(Owed::Second(node, b));
+                        pending.push(Owed::Second(op, b));
                         node = a;
                     }
                     Step::Wrap { child, inst_idx } => {
@@ -333,12 +423,12 @@ impl Compiler {
             loop {
                 match pending.pop() {
                     None => return,
-                    Some(Owed::Second(binary, b)) => {
-                        pending.push(Owed::Op(binary));
+                    Some(Owed::Second(op, b)) => {
+                        pending.push(Owed::Op(op));
                         node = b;
                         break;
                     }
-                    Some(Owed::Op(binary)) => self.instructions.push(binary_instruction(binary)),
+                    Some(Owed::Op(op)) => self.instructions.push(op.instruction()),
                     Some(Owed::Close(inst_idx)) => self.close_wrap(inst_idx),
                 }
             }
@@ -595,9 +685,23 @@ impl Compiler {
                     .push(Instruction::metric_ball(*radius, *w_l1, *w_l2, *w_linf));
             }
 
-            SdfNode::MetricBlend { inner, outer, .. } => {
+            SdfNode::MetricBlend {
+                inner,
+                outer,
+                center,
+                radius,
+                skin,
+            } => {
                 // stack order matches the binary ops: inner first, outer second
-                step = Step::Binary { a: inner, b: outer };
+                step = Step::Binary {
+                    a: inner,
+                    b: outer,
+                    op: BinOp::MetricBlend {
+                        center: *center,
+                        radius: *radius,
+                        skin: *skin,
+                    },
+                };
             }
 
             SdfNode::Heart { size } => {
@@ -901,87 +1005,171 @@ impl Compiler {
             // === Binary Operations ===
             // For binary operations, we use post-order: left, right, op
             SdfNode::Union { a, b, .. } => {
-                step = Step::Binary { a, b };
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::Union,
+                };
             }
 
             SdfNode::Intersection { a, b, .. } => {
-                step = Step::Binary { a, b };
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::Intersection,
+                };
             }
 
             SdfNode::Subtraction { a, b, .. } => {
-                step = Step::Binary { a, b };
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::Subtraction,
+                };
             }
 
-            SdfNode::SmoothUnion { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::SmoothUnion { a, b, k, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::SmoothUnion { k: *k },
+                };
             }
 
-            SdfNode::SmoothIntersection { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::SmoothIntersection { a, b, k, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::SmoothIntersection { k: *k },
+                };
             }
 
-            SdfNode::SmoothSubtraction { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::SmoothSubtraction { a, b, k, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::SmoothSubtraction { k: *k },
+                };
             }
 
-            SdfNode::ChamferUnion { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::ChamferUnion { a, b, r, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::ChamferUnion { r: *r },
+                };
             }
 
-            SdfNode::ChamferIntersection { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::ChamferIntersection { a, b, r, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::ChamferIntersection { r: *r },
+                };
             }
 
-            SdfNode::ChamferSubtraction { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::ChamferSubtraction { a, b, r, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::ChamferSubtraction { r: *r },
+                };
             }
 
-            SdfNode::StairsUnion { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::StairsUnion { a, b, r, n, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::StairsUnion { r: *r, n: *n },
+                };
             }
 
-            SdfNode::StairsIntersection { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::StairsIntersection { a, b, r, n, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::StairsIntersection { r: *r, n: *n },
+                };
             }
 
-            SdfNode::StairsSubtraction { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::StairsSubtraction { a, b, r, n, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::StairsSubtraction { r: *r, n: *n },
+                };
             }
 
             SdfNode::XOR { a, b, .. } => {
-                step = Step::Binary { a, b };
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::Xor,
+                };
             }
 
-            SdfNode::Morph { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::Morph { a, b, t, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::Morph { t: *t },
+                };
             }
 
-            SdfNode::ColumnsUnion { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::ColumnsUnion { a, b, r, n, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::ColumnsUnion { r: *r, n: *n },
+                };
             }
 
-            SdfNode::ColumnsIntersection { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::ColumnsIntersection { a, b, r, n, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::ColumnsIntersection { r: *r, n: *n },
+                };
             }
 
-            SdfNode::ColumnsSubtraction { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::ColumnsSubtraction { a, b, r, n, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::ColumnsSubtraction { r: *r, n: *n },
+                };
             }
 
-            SdfNode::Pipe { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::Pipe { a, b, r, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::Pipe { r: *r },
+                };
             }
 
-            SdfNode::Engrave { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::Engrave { a, b, r, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::Engrave { r: *r },
+                };
             }
 
-            SdfNode::Groove { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::Groove { a, b, ra, rb, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::Groove { ra: *ra, rb: *rb },
+                };
             }
 
-            SdfNode::Tongue { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::Tongue { a, b, ra, rb, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::Tongue { ra: *ra, rb: *rb },
+                };
             }
 
             // === Transforms ===
@@ -1280,20 +1468,47 @@ impl Compiler {
             SdfNode::Terrain { .. } => self.refuse("Terrain"),
 
             // === ExpSmooth operations ===
-            SdfNode::ExpSmoothUnion { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::ExpSmoothUnion { a, b, k, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::ExpSmoothUnion { k: *k },
+                };
             }
 
-            SdfNode::ExpSmoothIntersection { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::ExpSmoothIntersection { a, b, k, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::ExpSmoothIntersection { k: *k },
+                };
             }
 
-            SdfNode::ExpSmoothSubtraction { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::ExpSmoothSubtraction { a, b, k, .. } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::ExpSmoothSubtraction { k: *k },
+                };
             }
 
-            SdfNode::SmoothBlend { a, b, .. } => {
-                step = Step::Binary { a, b };
+            SdfNode::SmoothBlend {
+                a,
+                b,
+                k,
+                kernel,
+                mode,
+                ..
+            } => {
+                step = Step::Binary {
+                    a,
+                    b,
+                    op: BinOp::SmoothBlend {
+                        k: *k,
+                        kernel: *kernel,
+                        mode: *mode,
+                    },
+                };
             }
 
             // === Shear modifier (point transform) ===
@@ -1493,7 +1708,6 @@ fn depths_iter(node: &SdfNode) -> (usize, usize) {
     // work stack (two operands: max(left, 1 + right) and max of the coordinate depths; a
     // transform: one more coordinate frame; a pass-through owes nothing)
     let mut owed: WorkStack<DepthOwed<'_>, 128> = WorkStack::new();
-    let mut firsts: WorkStack<(usize, usize), 128> = WorkStack::new();
     let mut node = node;
     loop {
         let mut d = loop {
@@ -1514,15 +1728,12 @@ fn depths_iter(node: &SdfNode) -> (usize, usize) {
             match owed.pop() {
                 None => return d,
                 Some(DepthOwed::Second(b)) => {
-                    firsts.push(d);
-                    owed.push(DepthOwed::Two);
+                    // the left operand's depths ride with the combine they are owed to
+                    owed.push(DepthOwed::Two(d));
                     node = b;
                     break;
                 }
-                Some(DepthOwed::Two) => {
-                    let (va, ca) = firsts
-                        .pop()
-                        .expect("the left operand's depths are set aside first");
+                Some(DepthOwed::Two((va, ca))) => {
                     let (vb, cb) = d;
                     // left is evaluated first, leaving 1 value; then right is evaluated on top
                     d = (va.max(1 + vb), ca.max(cb));
@@ -1547,10 +1758,10 @@ enum DepthStep<'a> {
 
 /// What `compute_stack_depths` still owes, innermost last
 enum DepthOwed<'a> {
-    /// the depths of this second operand (the first's are on `firsts`)
+    /// the depths of this second operand
     Second(&'a SdfNode),
-    /// combine two operands' depths
-    Two,
+    /// combine the left operand's depths (carried here) with the right's
+    Two((usize, usize)),
     /// one more coordinate frame
     Wrap,
 }

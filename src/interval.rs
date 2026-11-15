@@ -1667,7 +1667,6 @@ pub(crate) fn lipschitz_rec(node: &SdfNode, depth: u32, native_levels: u32) -> f
 #[inline(never)]
 fn lipschitz_iter(node: &SdfNode) -> f32 {
     let mut owed: WorkStack<LOwed<'_>, 128> = WorkStack::new();
-    let mut firsts: WorkStack<f32, 128> = WorkStack::new();
     let mut node = node;
     loop {
         let mut l = loop {
@@ -1687,17 +1686,12 @@ fn lipschitz_iter(node: &SdfNode) -> f32 {
             match owed.pop() {
                 None => return l,
                 Some(LOwed::Second(b, law)) => {
-                    firsts.push(l);
-                    owed.push(LOwed::Bin(law));
+                    // the first operand's bound rides with the law it is owed to
+                    owed.push(LOwed::Bin(law, l));
                     node = b;
                     break;
                 }
-                Some(LOwed::Bin(law)) => {
-                    let la = firsts
-                        .pop()
-                        .expect("the first operand's bound is set aside first");
-                    l = bin_law(law, la, l);
-                }
+                Some(LOwed::Bin(law, la)) => l = bin_law(law, la, l),
                 Some(LOwed::Un(law)) => l = un_law(law, l),
             }
         }
@@ -1706,10 +1700,10 @@ fn lipschitz_iter(node: &SdfNode) -> f32 {
 
 /// What `eval_lipschitz` still owes, innermost last
 enum LOwed<'a> {
-    /// bound this second operand, then apply the law (the first's bound goes on `firsts`)
+    /// bound this second operand, then apply the law
     Second(&'a SdfNode, BinLaw),
-    /// apply a two-operand law
-    Bin(BinLaw),
+    /// apply a two-operand law to the first operand's bound (carried here) and the second's
+    Bin(BinLaw, f32),
     /// apply a one-child law
     Un(UnLaw),
 }
