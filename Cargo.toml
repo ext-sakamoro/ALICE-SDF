@@ -278,6 +278,10 @@ required-features = ["asdf"]
 name = "test_provenance"
 required-features = ["asdf"]
 
+[[test]]
+name = "test_bincode1_fixtures"
+required-features = ["asdf"]
+
 [[example]]
 name = "provenance_check"
 required-features = ["asdf"]

@@ -15,3 +15,9 @@
 # byte for byte with ALICE-Law's table (a CRLF checkout on Windows would differ)
 *.sh text eol=lf
 *.bat -text
+# bytes captured from the bincode 2 legacy encoder and pinned by sha256: no line-ending conversion
+tests/fixtures/bincode1/*.asdf binary
+tests/fixtures/bincode1/corpus.bin binary
+# the name and sum lists are text, kept with LF
+tests/fixtures/bincode1/corpus.names text eol=lf
+tests/fixtures/bincode1/SHA256SUMS text eol=lf
