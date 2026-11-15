@@ -91,6 +91,12 @@ pub struct StepRecord {
     pub dd: f32,
     /// The live sheets sampled at `t`.
     pub n_live: u32,
+    /// The sheet whose value set `dd` (`None` outside every box).
+    pub dd_sheet: Option<usize>,
+    /// Whether that sheet's cell at the point was masked (its value was the cell lower bound, not `|s|`).
+    pub dd_masked: bool,
+    /// That sheet's interpolated `|s|` at the point (the offset to its layer; NaN outside its levels).
+    pub dd_s: f32,
 }
 
 /// Which cells' sign is trusted.
@@ -704,7 +710,7 @@ impl SheetField {
         let (mut t, mut tprev) = (0.0f32, 0.0f32);
         for _ in 0..steps {
             let p = origin + dir * t;
-            let (dd, _, _) = if bvh {
+            let (dd, _, dd_k) = if bvh {
                 self.eval(p)
             } else {
                 self.eval_linear(p)
@@ -752,11 +758,18 @@ impl SheetField {
             tprev = t;
             gprev = gcur;
             if let Some(r) = rec.as_deref_mut() {
+                let (dd_masked, dd_s) = dd_k.map_or((false, f32::NAN), |k| {
+                    let c = self.sheets[k].sample_geom(p, self.rule);
+                    (c.masked, if c.inside { c.s.abs() } else { f32::NAN })
+                });
                 r.push(StepRecord {
                     t,
                     step: dd.max(MIN_STEP),
                     dd,
                     n_live: n_live as u32,
+                    dd_sheet: dd_k,
+                    dd_masked,
+                    dd_s,
                 });
             }
             t += dd.max(MIN_STEP);
