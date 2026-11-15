@@ -449,7 +449,8 @@ cargo test --features jit \
   --test test_raycast_oracle \
   --test test_round_tie_parity \
   --test test_jit_dynamic_oracle \
-  --test test_law_nan_operands
+  --test test_law_nan_operands \
+  --test test_repeat_finite_copies
 
 # file 先頭が `#![cfg(feature = …)]` の oracle (default の --tests では 0 本、ci.yml と対)
 step "test: physics bridge determinism oracle"

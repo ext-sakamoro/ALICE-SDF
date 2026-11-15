@@ -46,7 +46,11 @@ fn main() {
     }
 
     // a stored identifier, as a reader would find it next to the data
-    for stored in [SDF_SEMANTICS_ID, PREVIOUS_SDF_SEMANTICS_IDS[0], [0u8; 32]] {
+    let stored_ids = [SDF_SEMANTICS_ID]
+        .into_iter()
+        .chain(PREVIOUS_SDF_SEMANTICS_IDS.iter().copied())
+        .chain([[0u8; 32]]);
+    for stored in stored_ids {
         let check = check_sdf_semantics(&stored);
         println!(
             "{} -> {check:?} (reproducible: {})",

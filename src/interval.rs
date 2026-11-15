@@ -1276,8 +1276,9 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 },
             )
         }
-        // q = p - clamp(round(p / s), -limit, limit) · s: the cell index over the box
-        // is an integer interval, so the image is [p.lo - cmax·s, p.hi - cmin·s]
+        // q = p - clamp(round(p / s), -limit, limit) · s with limit = floor(count / 2): the
+        // cell index over the box is an integer interval, so the image is
+        // [p.lo - cmax·s, p.hi - cmin·s]
         // (this also covers boxes outside the finite repetition range).
         SdfNode::RepeatFinite {
             child,
@@ -1288,7 +1289,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 if s <= 0.0 {
                     return iv;
                 }
-                let limit = cnt as f32 * 0.5;
+                let limit = (cnt / 2) as f32;
                 // `* (1 / s)` like every point evaluator (tie parity)
                 let inv = 1.0 / s;
                 let cmin = round_half_up(iv.lo * inv).clamp(-limit, limit);

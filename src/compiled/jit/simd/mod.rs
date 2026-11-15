@@ -2077,9 +2077,9 @@ impl JitSimdSdf {
                         let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
                         let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
                         let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
-                        let lx = cx * 0.5;
-                        let ly = cy * 0.5;
-                        let lz = cz * 0.5;
+                        let lx = (cx * 0.5).floor();
+                        let ly = (cy * 0.5).floor();
+                        let lz = (cz * 0.5).floor();
 
                         let _ts20 = builder.ins().f32const(sx);
                         let sx_v = builder.ins().splat(vec_type, _ts20);
@@ -4111,9 +4111,9 @@ fn build_dynamic_simd_body(
                 let isx = if sx.abs() < 1e-7 { 0.0 } else { 1.0 / sx };
                 let isy = if sy.abs() < 1e-7 { 0.0 } else { 1.0 / sy };
                 let isz = if sz.abs() < 1e-7 { 0.0 } else { 1.0 / sz };
-                let lx = cx * 0.5;
-                let ly = cy * 0.5;
-                let lz = cz * 0.5;
+                let lx = (cx * 0.5).floor();
+                let ly = (cy * 0.5).floor();
+                let lz = (cz * 0.5).floor();
 
                 let sx_v = emitter.emit_splat(&mut builder, sx);
                 let sy_v = emitter.emit_splat(&mut builder, sy);
