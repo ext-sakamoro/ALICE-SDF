@@ -957,10 +957,10 @@ fn compile_node(
             let px = emitter.emit(builder, spacing.x);
             let py = emitter.emit(builder, spacing.y);
             let pz = emitter.emit(builder, spacing.z);
-            // modifier_repeat_finite law: limit = count * 0.5
-            let cx = emitter.emit(builder, count[0] as f32 * 0.5);
-            let cy = emitter.emit(builder, count[1] as f32 * 0.5);
-            let cz = emitter.emit(builder, count[2] as f32 * 0.5);
+            // modifier_repeat_finite law: limit = floor(count / 2)
+            let cx = emitter.emit(builder, (count[0] / 2) as f32);
+            let cy = emitter.emit(builder, (count[1] / 2) as f32);
+            let cz = emitter.emit(builder, (count[2] / 2) as f32);
             let ncx = builder.ins().fneg(cx);
             let ncy = builder.ins().fneg(cy);
             let ncz = builder.ins().fneg(cz);

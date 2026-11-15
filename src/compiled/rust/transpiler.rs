@@ -511,9 +511,9 @@ impl<'a> Emitter<'a> {
                 self.point(&ex, &ey, &ez)
             }
             OpCode::RepeatFinite => {
-                // real::repeat_finite: limit = count * 0.5, inv = 1 / spacing
+                // real::repeat_finite: limit = floor(count / 2), inv = 1 / spacing
                 let axis = |v: &str, count: f32, sp: f32| {
-                    let limit = count * 0.5;
+                    let limit = (count * 0.5).floor();
                     let inv = 1.0 / sp;
                     format!(
                         "{v} - ({v} * {} + 0.5_f32).floor().max({}).min({}) * {}",

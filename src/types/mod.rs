@@ -1111,7 +1111,9 @@ pub enum SdfNode {
     RepeatFinite {
         /// Child node
         child: Arc<Self>,
-        /// Repeat count per axis
+        /// Repeat count per axis: the copies sit at the cell indices
+        /// −floor(count/2)..=floor(count/2), so an axis has 2·floor(count/2) + 1 whole copies
+        /// (count 0 or 1 gives the child once, 2 or 3 gives 3, 4 or 5 gives 5)
         count: [u32; 3],
         /// Spacing between repetitions
         spacing: Vec3,
