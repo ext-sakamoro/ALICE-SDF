@@ -1042,10 +1042,11 @@ const NODES: u32 = 9u;
 const BRICK_NODES: u32 = 729u;
 const BAND_WORDS: u32 = 23u;
 const HALF_DIAG: f32 = 0.8660254;
+const SQRT3: f32 = 1.7320508;
 const JUMP_S: f32 = 0.02;
 const MAX_LIVE: u32 = __MAX_LIVE__u;
 
-struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool, s: f32, db: f32, db_step: f32, an: vec3<f32>, has_an: bool, band_miss: bool };
+struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool, s: f32, db: f32, db_step: f32, an: vec3<f32>, has_an: bool, band_miss: bool, lip: f32 };
 
 fn qbyte(byte_index: u32) -> f32 {
     let w = QW[byte_index >> 2u];
@@ -1167,6 +1168,7 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
         }
         out.f = f; out.g = g; out.inside = true;
         out.s = s; out.db = vals[1]; out.db_step = q1;
+        out.lip = SQRT3 * (1.0 + 2.0 * max(q0, q1) / lv.h);
         out.has_uv = nch >= 4u;
         out.band_miss = band_miss;
         out.has_an = nch >= 7u;
@@ -1177,12 +1179,48 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
     let v = outside_bound(p, sh);
     out.f = v; out.g = v; out.inside = false; out.masked = false; out.has_uv = false; out.has_an = false; out.an = vec3<f32>(0.0);
     out.band_miss = false;
-    out.s = 0.0; out.db = 0.0; out.db_step = 0.0;
+    out.s = 0.0; out.db = 0.0; out.db_step = 0.0; out.lip = 0.0;
     return out;
 }
 
 // a bisected sign change of sheet k's g at p is a crossing of the sheet: answered, unmasked, |s| <= JUMP_S,
 // d_b <= step/2 (inside the boundary up to the rounding of the stored d_b), as SheetField::march
+// the earliest sign change of sheet k's g inside a march step whose ends (t, g, |s|) have the same sign, as
+// (1, a, b, g at a), or (0, ...) when there can be none: an interval can hold a zero only if
+// |s_a| + |s_b| <= lip (t_b - t_a); passing intervals are halved, earliest half first, down to the step over 2^30
+// (line for line with the CPU Sheet::dip)
+// how far a sample is from an accepted crossing (CPU Sample::reach)
+fn reach(c: Sample) -> f32 {
+    if (c.inside) { return max(abs(c.s), c.db - 0.5 * c.db_step); }
+    return c.f;
+}
+
+fn dip(k: u32, o: vec3<f32>, d: vec3<f32>, a: vec3<f32>, b: vec3<f32>, lip: f32) -> vec4<f32> {
+    if (lip <= 0.0) { return vec4<f32>(0.0); }
+    let side = a.y < 0.0;
+    let floor_w = (b.x - a.x) * (1.0 / 1073741824.0);
+    var stl: array<vec3<f32>, 32>;
+    var str: array<vec3<f32>, 32>;
+    var n = 1u;
+    stl[0] = a; str[0] = b;
+    loop {
+        if (n == 0u) { break; }
+        n = n - 1u;
+        let l = stl[n];
+        let r = str[n];
+        if (l.z + r.z > lip * (r.x - l.x) || r.x - l.x <= floor_w) { continue; }
+        let tm = 0.5 * (l.x + r.x);
+        let c = sample_sheet(k, o + d * tm, 2u);
+        let m = vec3<f32>(tm, c.g, reach(c));
+        if ((c.g < 0.0) != side) { return vec4<f32>(1.0, l.x, tm, l.y); }
+        if (n + 2u > 32u) { continue; }
+        stl[n] = m; str[n] = r;
+        stl[n + 1u] = l; str[n + 1u] = m;
+        n = n + 2u;
+    }
+    return vec4<f32>(0.0);
+}
+
 fn crossing_inside(k: u32, p: vec3<f32>) -> bool {
     let c = sample_sheet(k, p, 2u);
     return c.inside && !c.masked && abs(c.s) <= JUMP_S && c.db <= 0.5 * c.db_step;
@@ -1306,6 +1344,8 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let d = U.dir;
     var prev_k: array<u32, __MAX_LIVE__>;
     var prev_g: array<f32, __MAX_LIVE__>;
+    var prev_s: array<f32, __MAX_LIVE__>;
+    var prev_l: array<f32, __MAX_LIVE__>;
     var n_prev = 0u;
     var overflow = false;
     var unsorted = false;
@@ -1315,7 +1355,8 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     else {
         for (var j = 0u; j < n0; j = j + 1u) {
             if (j > 0u && lv[j] <= lv[j - 1u]) { unsorted = true; }
-            prev_k[j] = lv[j]; prev_g[j] = sample_sheet(lv[j], o, 2u).g;
+            let c0 = sample_sheet(lv[j], o, 2u);
+            prev_k[j] = lv[j]; prev_g[j] = c0.g; prev_s[j] = reach(c0); prev_l[j] = c0.lip;
         }
         n_prev = n0;
     }
@@ -1333,6 +1374,8 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         var khit = 0u;
         var cur_k: array<u32, __MAX_LIVE__>;
         var cur_g: array<f32, __MAX_LIVE__>;
+        var cur_s: array<f32, __MAX_LIVE__>;
+        var cur_l: array<f32, __MAX_LIVE__>;
         var n_cur = 0u;
         let nl = live_sheets(p, &lv);
         if (nl > MAX_LIVE) { overflow = true; break; }
@@ -1347,14 +1390,22 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         for (var li = 0u; li < nl; li = li + 1u) {
             let k = lv[li];
             if (li > 0u && k <= lv[li - 1u]) { unsorted = true; }
-            let gc = sample_sheet(k, p, 2u).g;
-            cur_k[n_cur] = k; cur_g[n_cur] = gc; n_cur = n_cur + 1u;
+            let cs = sample_sheet(k, p, 2u);
+            let gc = cs.g;
+            cur_k[n_cur] = k; cur_g[n_cur] = gc; cur_s[n_cur] = reach(cs); cur_l[n_cur] = cs.lip; n_cur = n_cur + 1u;
             if (t <= 0.0) { continue; }
             while (jp < n_prev && prev_k[jp] < k) { jp = jp + 1u; }
             if (jp >= n_prev || prev_k[jp] != k) { continue; }
             let gp = prev_g[jp];
-            if ((gc < 0.0) == (gp < 0.0)) { continue; }
             var a = tprev; var b = t; var ga = gp;
+            if ((gc < 0.0) == (gp < 0.0)) {
+                // the same side at both ends: a crossing inside the step needs |s| to go to 0 and back (CPU dip)
+                var lip = 0.0;
+                if (prev_l[jp] > 0.0 && cs.lip > 0.0) { lip = max(prev_l[jp], cs.lip); }
+                let dr = dip(k, o, d, vec3<f32>(tprev, gp, prev_s[jp]), vec3<f32>(t, gc, reach(cs)), lip);
+                if (dr.x == 0.0) { continue; }
+                a = dr.y; b = dr.z; ga = dr.w;
+            }
             for (var it = 0; it < 30; it = it + 1) {
                 let mid = 0.5 * (a + b);
                 let gm = sample_sheet(k, o + d * mid, 2u).g;
@@ -1366,7 +1417,7 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (overflow) { break; }
         if (thit < 1e29) { t = thit; own = khit; kind = 1; break; }
         tprev = t;
-        for (var j = 0u; j < n_cur; j = j + 1u) { prev_k[j] = cur_k[j]; prev_g[j] = cur_g[j]; }
+        for (var j = 0u; j < n_cur; j = j + 1u) { prev_k[j] = cur_k[j]; prev_g[j] = cur_g[j]; prev_s[j] = cur_s[j]; prev_l[j] = cur_l[j]; }
         n_prev = n_cur;
         t = t + max(dd, __MIN_STEP__);
         if (t >= U.tmax) { kind = 0; break; }
