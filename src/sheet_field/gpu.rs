@@ -73,6 +73,7 @@ pub fn march_shader(max_live: u32) -> String {
     SHADER
         .replace("__MAX_LIVE__", &max_live.to_string())
         .replace("__MIN_STEP__", &format!("{:?}", super::MIN_STEP))
+        .replace("__DIP_NODE_CAP__", &format!("{}u", super::DIP_NODE_CAP))
 }
 const WG: u32 = 64;
 
@@ -1195,7 +1196,11 @@ fn reach(c: Sample) -> f32 {
     return c.f;
 }
 
+// the midpoints the last dip sampled (added to the ray's work); the result's x: 0 clear, 1 crossing, 2 exhausted (the
+// cap or the 32-interval stack stopped it with an interval open: the ray is undecided, never a miss)
+var<private> dip_nodes: u32;
 fn dip(k: u32, o: vec3<f32>, d: vec3<f32>, a: vec3<f32>, b: vec3<f32>, lip: f32) -> vec4<f32> {
+    dip_nodes = 0u;
     if (lip <= 0.0) { return vec4<f32>(0.0); }
     let side = a.y < 0.0;
     let floor_w = (b.x - a.x) * (1.0 / 1073741824.0);
@@ -1209,11 +1214,13 @@ fn dip(k: u32, o: vec3<f32>, d: vec3<f32>, a: vec3<f32>, b: vec3<f32>, lip: f32)
         let l = stl[n];
         let r = str[n];
         if (l.z + r.z > lip * (r.x - l.x) || r.x - l.x <= floor_w) { continue; }
+        if (dip_nodes >= __DIP_NODE_CAP__) { return vec4<f32>(2.0, 0.0, 0.0, 0.0); }
         let tm = 0.5 * (l.x + r.x);
         let c = sample_sheet(k, o + d * tm, 2u);
+        dip_nodes = dip_nodes + 1u;
         let m = vec3<f32>(tm, c.g, reach(c));
         if ((c.g < 0.0) != side) { return vec4<f32>(1.0, l.x, tm, l.y); }
-        if (n + 2u > 32u) { continue; }
+        if (n + 2u > 32u) { return vec4<f32>(2.0, 0.0, 0.0, 0.0); }
         stl[n] = m; str[n] = r;
         stl[n + 1u] = l; str[n + 1u] = m;
         n = n + 2u;
@@ -1367,6 +1374,7 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // the ray's work: live sheets x (previous live sheets + 1) summed over its steps; over the budget the ray is
     // refused (kind 4, reported as undecided), so no ray's work is unbounded by more than one step
     var work = 0u;
+    var dip_out = false;
     for (var step = 0u; step < U.steps && !overflow; step = step + 1u) {
         let p = o + d * t;
         let dd = eval_union(p).f;
@@ -1403,6 +1411,10 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 var lip = 0.0;
                 if (prev_l[jp] > 0.0 && cs.lip > 0.0) { lip = max(prev_l[jp], cs.lip); }
                 let dr = dip(k, o, d, vec3<f32>(tprev, gp, prev_s[jp]), vec3<f32>(t, gc, reach(cs)), lip);
+                // the dip's midpoints are part of the ray's work: over the budget the ray is refused (kind 4)
+                if (work > U.work_budget - min(dip_nodes, U.work_budget)) { work = U.work_budget; kind = 4; dip_out = true; break; }
+                work = work + dip_nodes;
+                if (dr.x == 2.0) { kind = 4; dip_out = true; break; }
                 if (dr.x == 0.0) { continue; }
                 a = dr.y; b = dr.z; ga = dr.w;
             }
@@ -1414,7 +1426,7 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let tm = 0.5 * (a + b);
             if (tm < thit && crossing_inside(k, o + d * tm)) { thit = tm; khit = k; }
         }
-        if (overflow) { break; }
+        if (overflow || dip_out) { break; }
         if (thit < 1e29) { t = thit; own = khit; kind = 1; break; }
         tprev = t;
         for (var j = 0u; j < n_cur; j = j + 1u) { prev_k[j] = cur_k[j]; prev_g[j] = cur_g[j]; prev_s[j] = cur_s[j]; prev_l[j] = cur_l[j]; }

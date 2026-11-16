@@ -45,6 +45,7 @@
 //! `tmax` at the floor step, so [`SheetField::march_decided`] always ends in a hit or a miss.
 
 pub mod build;
+pub mod cellroot;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 pub mod nearest;
@@ -62,7 +63,7 @@ pub const BRICK: usize = 8;
 pub const NODES: usize = BRICK + 1;
 /// Nodes per brick.
 pub const BRICK_NODES: usize = NODES * NODES * NODES;
-const HALF_DIAG: f32 = 0.866_025_4;
+pub(crate) const HALF_DIAG: f32 = 0.866_025_4;
 const SQRT3: f32 = 1.732_050_8;
 /// The smallest step of the march (mm): a fold of one sheet thinner than this along the ray can be skipped.
 pub const MIN_STEP: f32 = 0.01;
@@ -88,6 +89,21 @@ pub fn decided_steps(tmax: f32) -> u32 {
 }
 /// A bisected sign change with `|s|` above this is a sign jump of `s`, not a crossing of the sheet.
 const JUMP_S: f32 = 0.02;
+
+/// The most midpoints one dip search samples (see [`Sheet::dip`]); past it the ray is undecided. MEASUREMENT BUILD:
+/// set from the deepest dip measured on the real fields before commit.
+pub const DIP_NODE_CAP: u32 = 64;
+
+/// The answer of one dip search.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Dip {
+    /// A sign change inside `[t_a, t_b]`, with `g` at `t_a`.
+    Crossing(f32, f32, f32),
+    /// No zero can lie inside the step (every open interval was closed by the bound).
+    Clear,
+    /// The search stopped at its cap with an interval still open: nothing is known about the step.
+    Exhausted,
+}
 
 /// One step of a profiled march ([`SheetField::march_profile`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -251,6 +267,18 @@ pub struct SheetField {
     pub rule: ValidRule,
     /// A BVH over the sheet boxes (leaf entries are sheet indices), flattened ([`crate::mesh::gpu_bvh`]).
     index: FlatNodes,
+    /// How a floor step looks for zeros its two ends cannot show (CPU march; see [`RootMode`]).
+    root_mode: RootMode,
+}
+
+/// How the CPU march finds a zero inside a floor step whose ends have the same sign.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum RootMode {
+    /// M1: the bounded dip search ([`Sheet::dip`]).
+    #[default]
+    Dip,
+    /// M2: the cell walk ([`cellroot`]): every floor step is walked cell by cell for the first root of each live sheet.
+    CellWalk,
 }
 
 /// A ray hit.
@@ -372,11 +400,14 @@ impl Sheet {
     /// Whether a bisected sign change of this sheet's `g` at `p` is a crossing of the sheet: a level answers,
     /// unmasked, `|s| <= JUMP_S`, and `d_b <= step/2` (inside the boundary up to the rounding of the stored
     /// `d_b`; a brick that stores no `d_b` has every node `<= 0`, so its points are inside).
-    /// The earliest sign change of this sheet's `g` inside a march step whose two ends have the same sign, or
-    /// `None` when there can be none (module docs, the dip search). `a` and `b` are `(t, g, |s|)` at the ends and
-    /// `lip` the slope bound. An interval `[a, b]` can hold a zero only if `|s_a| + |s_b| <= lip (t_b - t_a)`;
-    /// intervals that pass are halved, earliest half first, down to the march's bisection resolution (the step over
-    /// 2^30). Returns an interval with a sign change and the `g` at its start.
+    /// The earliest sign change of this sheet's `g` inside a march step whose two ends have the same sign (module
+    /// docs, the dip search). `a` and `b` are `(t, g, |s|)` at the ends and `lip` the slope bound. An interval
+    /// `[a, b]` can hold a zero only if `|s_a| + |s_b| <= lip (t_b - t_a)`; intervals that pass are halved, earliest
+    /// half first, down to the march's bisection resolution (the step over 2^30). The search is bounded: it samples
+    /// at most [`DIP_NODE_CAP`] midpoints and keeps at most 32 pending intervals; when either bound stops it with an
+    /// interval still open it answers [`Dip::Exhausted`] (the ray is then undecided, never a miss), so no step's
+    /// search is unbounded and no open interval is dropped silently. The second value is the number of midpoints
+    /// sampled (counted in the ray's work).
     pub(crate) fn dip(
         &self,
         origin: Vec3,
@@ -385,15 +416,16 @@ impl Sheet {
         b: (f32, f32, f32),
         lip: f32,
         rule: ValidRule,
-    ) -> Option<(f32, f32, f32)> {
+    ) -> (Dip, u32) {
         if lip <= 0.0 {
-            return None;
+            return (Dip::Clear, 0);
         }
         let side = a.1 < 0.0;
         let floor = (b.0 - a.0) * (1.0 / 1_073_741_824.0);
         // depth-first, earliest first: at most one pending right half per level
         let mut stack: [((f32, f32, f32), (f32, f32, f32)); 32] = [(a, b); 32];
         let mut n = 1usize;
+        let mut nodes = 0u32;
         stack[0] = (a, b);
         while n > 0 {
             n -= 1;
@@ -401,21 +433,30 @@ impl Sheet {
             if l.2 + r.2 > lip * (r.0 - l.0) || r.0 - l.0 <= floor {
                 continue;
             }
+            if nodes >= DIP_NODE_CAP {
+                return (Dip::Exhausted, nodes);
+            }
             let tm = f32::midpoint(l.0, r.0);
             let c = self.sample_geom(origin + dir * tm, rule);
+            nodes += 1;
             // where no level answers, the outside lower bound stands in for |s| (no crossing lies nearer than it)
             let m = (tm, c.g, c.reach());
             if (c.g < 0.0) != side {
-                return Some((l.0, tm, l.1));
+                return (Dip::Crossing(l.0, tm, l.1), nodes);
             }
             if n + 2 > stack.len() {
-                continue;
+                return (Dip::Exhausted, nodes);
             }
             stack[n] = (m, r);
             stack[n + 1] = (l, m);
             n += 2;
         }
-        None
+        (Dip::Clear, nodes)
+    }
+
+    /// [`Self::crossing_inside`] for the cell walk (M2).
+    pub(crate) fn crossing_accepted(&self, p: Vec3, rule: ValidRule) -> bool {
+        self.crossing_inside(p, rule)
     }
 
     fn crossing_inside(&self, p: Vec3, rule: ValidRule) -> bool {
@@ -575,7 +616,13 @@ impl SheetField {
             sheets,
             rule,
             index: flatten_nodes(tree.as_ref()),
+            root_mode: RootMode::Dip,
         }
+    }
+
+    /// Choose how floor steps are searched (CPU march).
+    pub fn set_root_mode(&mut self, mode: RootMode) {
+        self.root_mode = mode;
     }
 
     /// The flattened BVH over the sheet boxes.
@@ -793,6 +840,8 @@ impl SheetField {
             })
             .collect();
         let (mut t, mut tprev) = (0.0f32, 0.0f32);
+        // whether the step that ended at `t` was a floor step (its start's bound was below MIN_STEP)
+        let mut floor_step = false;
         for _ in 0..steps {
             let p = origin + dir * t;
             let (dd, _, dd_k) = if bvh {
@@ -820,7 +869,26 @@ impl SheetField {
                 let Some((gp, sp, lp)) = gprev[k] else {
                     continue;
                 };
+                if self.root_mode == RootMode::CellWalk && floor_step {
+                    // M2: a floor step may hold zeros its ends cannot show; walk it cell by cell
+                    match sh.walk_first_root(origin, dir, tprev, t, self.rule) {
+                        cellroot::Walk::Root(tr) => {
+                            if tr < thit {
+                                thit = tr;
+                                khit = k;
+                            }
+                        }
+                        cellroot::Walk::Clear(_) => {}
+                        cellroot::Walk::Exhausted => return MarchResult::Undecided,
+                    }
+                    continue;
+                }
+                let _ = (sp, lp);
                 let (mut a, mut b, mut ga) = (tprev, t, gp);
+                if (gc < 0.0) == (gp < 0.0) && self.root_mode == RootMode::CellWalk {
+                    // not a floor step: the step stayed inside the free ball, so ends of one sign hold no zero
+                    continue;
+                }
                 if (gc < 0.0) == (gp < 0.0) {
                     // the same side at both ends: a crossing inside the step needs |s| to go to 0 and back
                     // (both ends must be answered by a level: only there is |s| a measure of the way to a crossing)
@@ -837,8 +905,9 @@ impl SheetField {
                         lip,
                         self.rule,
                     ) {
-                        Some((da, db, dga)) => (a, b, ga) = (da, db, dga),
-                        None => continue,
+                        (Dip::Crossing(da, db, dga), _) => (a, b, ga) = (da, db, dga),
+                        (Dip::Clear, _) => continue,
+                        (Dip::Exhausted, _) => return MarchResult::Undecided,
                     }
                 }
                 for _ in 0..30 {
@@ -877,6 +946,7 @@ impl SheetField {
                     dd_s,
                 });
             }
+            floor_step = dd < MIN_STEP;
             t += dd.max(MIN_STEP);
             if t >= tmax {
                 return MarchResult::Miss;
@@ -920,7 +990,7 @@ impl SheetField {
 #[cfg(test)]
 mod dip_tests {
     use super::build::{level_from_fn, sheet};
-    use super::{Sheet, ValidRule};
+    use super::{Dip, Sheet, ValidRule, DIP_NODE_CAP};
     use glam::Vec3;
 
     /// A slab |z| < 0.002 (s = |z| - 0.002, slope 1 along z) on cells of 0.0005 (the stored kink is sharp), tall
@@ -972,14 +1042,15 @@ mod dip_tests {
         assert!((a.1 < 0.0) == (b.1 < 0.0), "the ends are on opposite sides");
         let found = sh.dip(o, d, (a.0, a.1, a.2), (b.0, b.1, b.2), lip, rule);
         assert!(
-            found.is_some(),
+            matches!(found.0, Dip::Crossing(..)),
             "a slab {} wide inside a step of {} was not found",
             0.004,
             b.0 - a.0
         );
         assert!(
             sh.dip(o, d, (a.0, a.1, a.2), (b.0, b.1, b.2), 0.5 * lip, rule)
-                .is_none(),
+                .0
+                == Dip::Clear,
             "half the bound still found it: this case does not test the threshold"
         );
         // no zero can be inside: ends farther than the slab allows, yet within L dt, so the search runs and must
@@ -989,7 +1060,8 @@ mod dip_tests {
             let (a, b) = (at(-za), at(-zb));
             assert!(
                 sh.dip(o, d, (a.0, a.1, a.2), (b.0, b.1, b.2), a.3.max(b.3), rule)
-                    .is_none(),
+                    .0
+                    == Dip::Clear,
                 "{za} {zb}"
             );
         }
@@ -1000,7 +1072,32 @@ mod dip_tests {
             a.2 + b.2 > lip * (b.0 - a.0)
                 || sh
                     .dip(o, d, (a.0, a.1, a.2), (b.0, b.1, b.2), lip, rule)
-                    .is_none()
+                    .0
+                    == Dip::Clear
         );
+    }
+    /// The bound on the search (M1): a step the bound cannot close (a slope bound far above the true slope keeps
+    /// every half open) ends in `Exhausted` after exactly `DIP_NODE_CAP` midpoints, never in `Clear` (a cap that
+    /// answered "no zero" would turn an unfinished search into a miss), and a step it can close in fewer nodes
+    /// still answers as before. Oracle: the slab's geometry (no zero between two points both above it).
+    #[test]
+    fn the_dip_search_is_bounded_and_never_reports_an_unfinished_search_as_clear() {
+        let sh = slab();
+        let rule = ValidRule::CellV1;
+        let o = Vec3::new(0.0003, 0.0002, 0.0);
+        let d = -Vec3::Z;
+        let at = |t: f32| {
+            let c = sh.sample_geom(o + d * t, rule);
+            (t, c.g, c.s.abs())
+        };
+        // both ends above the slab (no zero inside), with a slope bound 1e6 times the true one: nothing closes
+        let (a, b) = (at(-0.03), at(-0.0035));
+        let (r, nodes) = sh.dip(o, d, a, b, 1e6, rule);
+        assert_eq!(r, Dip::Exhausted, "an unfinished search must not answer {r:?}");
+        assert_eq!(nodes, DIP_NODE_CAP, "the cap was not the bound that stopped it");
+        // the same ends with the true slope bound: closed (Clear) within the cap
+        let (r, nodes) = sh.dip(o, d, a, b, 1.84, rule);
+        assert_eq!(r, Dip::Clear);
+        assert!(nodes < DIP_NODE_CAP, "{nodes}");
     }
 }
