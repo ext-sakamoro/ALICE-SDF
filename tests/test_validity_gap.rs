@@ -11,6 +11,7 @@
 //! with a slot between them, placed off a 1 mm grid; open air only; and a bound with no surface.
 //! Every case asserts it measured at least one sample.
 
+use alice_sdf::eval::eval;
 use alice_sdf::validity::{local_gap, measure_gaps, GapError};
 use alice_sdf::SdfNode;
 use glam::Vec3;
@@ -153,7 +154,9 @@ fn grid_points_a_hair_outside_a_flat_face_are_not_a_gap() {
         0.25,
     )
     .expect("samples");
-    let min = s.min_gap.unwrap_or_else(|| panic!("slot not found ({s:?})"));
+    let min = s
+        .min_gap
+        .unwrap_or_else(|| panic!("slot not found ({s:?})"));
     assert!((min - 1.0).abs() <= 0.03, "measured {min}");
 }
 
@@ -176,20 +179,218 @@ fn exact_slots_and_holes_report_within_the_stated_tolerance() {
     // slots of exactly g, centred on and off the grid points, and a through hole of diameter g
     for g in [0.8_f32, 1.0, 2.0, 2.5] {
         for x0 in [0.0_f32, 0.37, 0.125] {
-            let r = measure_gaps(&slot(g, x0), Vec3::new(-12.0, -1.0, -6.0), Vec3::new(12.0, 7.0, 6.0), 0.25)
-                .expect("samples");
-            let w = r.min_gap.unwrap_or_else(|| panic!("slot {g} at {x0}: not found"));
-            assert!((w - g).abs() <= GAP_TOLERANCE, "slot {g} at {x0}: {w} (±{GAP_TOLERANCE})");
+            let r = measure_gaps(
+                &slot(g, x0),
+                Vec3::new(-12.0, -1.0, -6.0),
+                Vec3::new(12.0, 7.0, 6.0),
+                0.25,
+            )
+            .expect("samples");
+            let w = r
+                .min_gap
+                .unwrap_or_else(|| panic!("slot {g} at {x0}: not found"));
+            assert!(
+                (w - g).abs() <= GAP_TOLERANCE,
+                "slot {g} at {x0}: {w} (±{GAP_TOLERANCE})"
+            );
         }
         let plate = SdfNode::box3d(20.0, 4.0, 20.0).subtract(SdfNode::cylinder(g * 0.5, 10.0));
-        let r = measure_gaps(&plate, Vec3::new(-11.0, -3.0, -11.0), Vec3::new(11.0, 3.0, 11.0), 0.2)
-            .expect("samples");
+        let r = measure_gaps(
+            &plate,
+            Vec3::new(-11.0, -3.0, -11.0),
+            Vec3::new(11.0, 3.0, 11.0),
+            0.2,
+        )
+        .expect("samples");
         let w = r.min_gap.unwrap_or_else(|| panic!("hole {g}: not found"));
-        assert!((w - g).abs() <= GAP_TOLERANCE, "hole {g}: {w} (±{GAP_TOLERANCE})");
+        assert!(
+            (w - g).abs() <= GAP_TOLERANCE,
+            "hole {g}: {w} (±{GAP_TOLERANCE})"
+        );
     }
     // and local_gap from on the face reads the slab within the same bound
     let a = SdfNode::box3d(10.0, 10.0, 10.0).translate(-5.0, 0.0, 0.0);
     let b = SdfNode::box3d(10.0, 10.0, 10.0).translate(7.0, 0.0, 0.0);
     let w = local_gap(&a.union(b), Vec3::new(0.0, 1.0, 1.0), Vec3::X, 20.0).expect("gap");
     assert!((w - 2.0).abs() <= GAP_TOLERANCE, "slab 2.0: {w}");
+}
+
+// ── wedges (walls that meet) vs widths (walls that stay apart) ──
+//
+// A gap whose two walls converge and meet (an acute joint: a tilted plate on a floor, a cylinder lying on
+// a plate) has no width: it closes to a line, and every grid sample near the line would report a
+// grid-dependent small value. Those samples are reported as crevices (angle + location), never as a
+// width. Walls that approach but stay apart (a sphere over a plate) or that would meet only beyond a
+// real floor face (a tapered slot) are widths.
+
+/// Floor (top at y = 0) and a plate hinged on the line x = y = 0, leaving an air wedge of `alpha` degrees
+/// on the +x side between the floor's top and the plate's underside
+fn hinged(alpha: f32) -> SdfNode {
+    let floor = SdfNode::box3d(40.0, 4.0, 20.0).translate(0.0, -2.0, 0.0);
+    let plate = SdfNode::box3d(40.0, 4.0, 20.0)
+        .translate(20.0, 2.0, 0.0)
+        .rotate_euler(0.0, 0.0, alpha.to_radians());
+    floor.union(plate)
+}
+
+#[test]
+fn acute_wedges_are_crevices_with_their_angle_not_widths() {
+    for alpha in [20.0_f32, 45.0, 60.0, 80.0] {
+        // only x >= 0.5 is sampled: the plate's end face meets the floor on the -x side at 180 - 90 -
+        // alpha degrees, a second (real) crevice this test does not look at
+        let r = measure_gaps(
+            &hinged(alpha),
+            Vec3::new(0.5, -1.0, -8.0),
+            Vec3::new(25.0, 25.0, 8.0),
+            0.25,
+        )
+        .expect("samples");
+        assert_eq!(
+            r.min_gap, None,
+            "alpha {alpha}: a wedge reported as a width ({r:?})"
+        );
+        assert!(!r.crevices.is_empty(), "alpha {alpha}: no crevice ({r:?})");
+        for c in &r.crevices {
+            assert!(
+                (c.angle_deg - alpha).abs() <= 2.0,
+                "alpha {alpha}: crevice angle {}",
+                c.angle_deg
+            );
+        }
+    }
+}
+
+#[test]
+fn a_right_or_obtuse_corner_is_neither_a_width_nor_a_crevice() {
+    for alpha in [90.0_f32, 120.0] {
+        // only the +x side (the 120 degree side) is sampled: no acute air there
+        let r = measure_gaps(
+            &hinged(alpha),
+            Vec3::new(1.0, -1.0, -8.0),
+            Vec3::new(25.0, 25.0, 8.0),
+            0.25,
+        )
+        .expect("samples");
+        assert_eq!(r.min_gap, None, "alpha {alpha}: {r:?}");
+        assert!(r.crevices.is_empty(), "alpha {alpha}: {:?}", r.crevices);
+    }
+}
+
+#[test]
+fn a_wedge_whose_walls_meet_outside_the_sampled_region_is_still_a_crevice() {
+    // the apex line is at x = 0; only x in [3, 25] is sampled, the walls still meet (inside the part)
+    let r = measure_gaps(
+        &hinged(30.0),
+        Vec3::new(3.0, -1.0, -8.0),
+        Vec3::new(25.0, 25.0, 8.0),
+        0.25,
+    )
+    .expect("samples");
+    assert_eq!(r.min_gap, None, "{r:?}");
+    assert!(!r.crevices.is_empty(), "{r:?}");
+}
+
+#[test]
+fn a_cylinder_lying_on_a_plate_is_a_crevice_and_a_standing_one_is_no_hole() {
+    let plate = SdfNode::box3d(40.0, 4.0, 20.0).translate(0.0, -2.0, 0.0);
+    // lying along z, radius 5, touching the plate along the line x = 0, y = 0
+    let lying = plate.clone().union(
+        SdfNode::cylinder(5.0, 8.0)
+            .rotate_euler(std::f32::consts::FRAC_PI_2, 0.0, 0.0)
+            .translate(0.0, 5.0, 0.0),
+    );
+    let r = measure_gaps(
+        &lying,
+        Vec3::new(-12.0, -1.0, -8.0),
+        Vec3::new(12.0, 11.0, 8.0),
+        0.25,
+    )
+    .expect("samples");
+    assert_eq!(r.min_gap, None, "{r:?}");
+    assert!(!r.crevices.is_empty(), "{r:?}");
+    // standing on its end: the walls meet at 90 degrees
+    let standing = plate.union(SdfNode::cylinder(5.0, 8.0).translate(0.0, 4.0, 0.0));
+    let r = measure_gaps(
+        &standing,
+        Vec3::new(-12.0, -1.0, -10.0),
+        Vec3::new(12.0, 9.0, 10.0),
+        0.25,
+    )
+    .expect("samples");
+    assert_eq!(r.min_gap, None, "{r:?}");
+}
+
+#[test]
+fn a_sphere_held_over_a_plate_is_a_width_not_a_crevice() {
+    let plate = SdfNode::box3d(40.0, 4.0, 20.0).translate(0.0, -2.0, 0.0);
+    let s = plate.union(SdfNode::sphere(5.0).translate(0.0, 6.0, 0.0)); // 1.0 above the plate
+    let r = measure_gaps(
+        &s,
+        Vec3::new(-12.0, -1.0, -8.0),
+        Vec3::new(12.0, 12.0, 8.0),
+        0.25,
+    )
+    .expect("samples");
+    let w = r.min_gap.unwrap_or_else(|| panic!("no width ({r:?})"));
+    assert!((w - 1.0).abs() <= 0.02, "sphere 1.0 above the plate: {w}");
+    assert!(r.crevices.is_empty(), "{:?}", r.crevices);
+}
+
+#[test]
+fn a_tapered_slot_with_a_floor_is_a_width_not_a_crevice() {
+    // a groove 6 mm deep cut into a block (top at y = 0): flanks leaning out 20 degrees from vertical, a
+    // flat 0.3 mm floor at y = -6; the flanks would meet only below the floor, inside the material
+    let t = 20.0_f32.to_radians();
+    // half-spaces as large boxes whose inner face passes through the floor corner (±0.15, -6)
+    let right_of_left_flank = SdfNode::box3d(40.0, 40.0, 12.0)
+        .translate(20.0, 0.0, 0.0)
+        .rotate_euler(0.0, 0.0, t)
+        .translate(-0.15, -6.0, 0.0);
+    let left_of_right_flank = SdfNode::box3d(40.0, 40.0, 12.0)
+        .translate(-20.0, 0.0, 0.0)
+        .rotate_euler(0.0, 0.0, -t)
+        .translate(0.15, -6.0, 0.0);
+    let above_floor = SdfNode::box3d(40.0, 40.0, 12.0).translate(0.0, 14.0, 0.0);
+    let air = right_of_left_flank
+        .intersection(left_of_right_flank)
+        .intersection(above_floor);
+    let block = SdfNode::box3d(30.0, 10.0, 10.0).translate(0.0, -5.0, 0.0);
+    let s = block.subtract(air);
+    // the scene is what it says: empty in the groove and on its floor centre, solid beside the floor
+    // corner and below the floor
+    assert!(
+        eval(&s, Vec3::new(0.0, -5.9, 0.0)) > 0.0,
+        "groove floor centre is empty"
+    );
+    assert!(
+        eval(&s, Vec3::new(0.0, -1.0, 0.0)) > 0.0,
+        "groove is open near the top"
+    );
+    assert!(
+        eval(&s, Vec3::new(-0.6, -5.9, 0.0)) < 0.0,
+        "beside the floor is material"
+    );
+    assert!(
+        eval(&s, Vec3::new(0.0, -6.2, 0.0)) < 0.0,
+        "below the floor is material"
+    );
+    let r = measure_gaps(
+        &s,
+        Vec3::new(-8.0, -9.0, -6.0),
+        Vec3::new(8.0, 1.0, 6.0),
+        0.1,
+    )
+    .expect("samples");
+    let w = r
+        .min_gap
+        .unwrap_or_else(|| panic!("the groove has a width ({r:?})"));
+    assert!(
+        w >= 0.25,
+        "narrowest width {w} (floor 0.3, flanks widen upward)"
+    );
+    assert!(
+        r.crevices.is_empty(),
+        "a tapered slot with a floor classified as a crevice: {:?}",
+        r.crevices
+    );
 }
