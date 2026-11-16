@@ -18,6 +18,9 @@
 //!
 //! Author: Moroya Sakamoto
 
+mod common;
+
+use alice_sdf::eval::material::{material_rule, MaterialRule};
 use alice_sdf::prelude::*;
 use alice_sdf::transforms::{lattice, projective, skinning};
 use glam::Mat4;
@@ -234,4 +237,97 @@ fn union_intersection_and_subtraction_pick_their_operand_as_documented() {
         }
         assert!(seen[0] > 50 && seen[1] > 50, "{name}: ids seen {seen:?}");
     }
+}
+
+/// The operands of a two-operand node and the node rebuilt with other operands, through the
+/// stored form (`a` / `b`, or `inner` / `outer`)
+fn operands(node: &SdfNode) -> Option<(SdfNode, SdfNode, impl Fn(&SdfNode, &SdfNode) -> SdfNode)> {
+    let v = serde_json::to_value(node).ok()?;
+    let (tag, body) = v.as_object()?.iter().next()?;
+    let body = body.as_object()?;
+    let keys = if body.contains_key("a") {
+        ("a", "b")
+    } else {
+        ("inner", "outer")
+    };
+    let a = serde_json::from_value(body.get(keys.0)?.clone()).ok()?;
+    let b = serde_json::from_value(body.get(keys.1)?.clone()).ok()?;
+    let (tag, body) = (tag.clone(), body.clone());
+    let rebuild = move |a: &SdfNode, b: &SdfNode| {
+        let mut body = body.clone();
+        body.insert(keys.0.into(), serde_json::to_value(a).expect("serialise"));
+        body.insert(keys.1.into(), serde_json::to_value(b).expect("serialise"));
+        let mut outer = serde_json::Map::new();
+        outer.insert(tag.clone(), serde_json::Value::Object(body));
+        serde_json::from_value(serde_json::Value::Object(outer)).expect("deserialise")
+    };
+    Some((a, b, rebuild))
+}
+
+/// Where a two-operand node's value is one operand's value (and clearly not the other's), its
+/// material is that operand's: the rule table read against the distance law of every two-operand
+/// node of the corpus, so a family given the wrong pick fails here although the GPU and the CPU
+/// still agree. Nodes whose value follows neither operand (an interpolation, `XOR`, `Pipe`) take
+/// the nearer operand by convention and are left out.
+#[test]
+fn the_material_comes_from_the_operand_the_distance_follows() {
+    const CONVENTION: [&str; 4] = ["Morph", "MetricBlend", "XOR", "Pipe"];
+    const SEAM: f32 = 0.3;
+    const NEAR: f32 = 0.05;
+    const FAR: f32 = 0.2;
+    let (mut points, mut nodes) = (0, 0);
+    for (name, tree) in common::corpus::corpus() {
+        if !matches!(material_rule(&tree), MaterialRule::Pick(_)) {
+            continue;
+        }
+        let kind = format!("{tree:?}");
+        if CONVENTION.iter().any(|c| kind.starts_with(c)) {
+            continue;
+        }
+        let Some((a, b, rebuild)) = operands(&tree) else {
+            panic!("{name}: no operands read from the stored form")
+        };
+        let node = rebuild(&a.clone().with_material(3), &b.clone().with_material(7));
+        let mut here = 0;
+        // 21³ points over [-2, 2]³ (step 0.2)
+        let dense = (0..21 * 21 * 21).map(|i| {
+            let f = |n: usize| -2.0 + 0.2 * n as f32;
+            Vec3::new(f(i % 21), f(i / 21 % 21), f(i / 441))
+        });
+        for p in dense {
+            let (da, db, d) = (eval(&a, p), eval(&b, p), eval(&node, p));
+            // away from every seam (union / intersection at da = db, subtraction at da = -db) by
+            // more than the corpus's blend widths, the value is one operand's (b's negated
+            // under a subtraction)
+            if (da - db).abs() <= SEAM || (da + db).abs() <= SEAM {
+                continue;
+            }
+            // near one operand's value and clearly off the other's (the exponential blends
+            // approach an operand without reaching it)
+            let to_b = (d - db).abs().min((d + db).abs());
+            let to_a = (d - da).abs();
+            let want = if to_a <= NEAR && to_b > FAR {
+                3
+            } else if to_b <= NEAR && to_a > FAR {
+                7
+            } else {
+                // a chamfer or a stair plane, which follows neither
+                continue;
+            };
+            assert_eq!(
+                eval_material(&node, p),
+                want,
+                "{name} at {p:?}: d {d} a {da} b {db}"
+            );
+            here += 1;
+        }
+        assert!(
+            here >= 20,
+            "{name}: only {here} points where the value follows one operand"
+        );
+        points += here;
+        nodes += 1;
+    }
+    assert!(nodes >= 20, "{nodes} two-operand trees checked");
+    eprintln!("{nodes} two-operand trees, {points} points");
 }

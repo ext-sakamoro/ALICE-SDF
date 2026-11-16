@@ -3,7 +3,8 @@
 //!
 //! The corpus has almost no `WithMaterial`, so every tree with children is given
 //! materials here: each leaf is wrapped in `WithMaterial` with its own id (1, 2, …
-//! in serialisation order). The wrapping goes through the stored form (`serde_json`):
+//! in serialisation order) and the whole tree in one more (999, which an inner tag must win
+//! over everywhere). The wrapping goes through the stored form (`serde_json`):
 //! a leaf is an object whose fields hold no node, so no list of variants is kept here
 //! and a new variant is tagged without touching this file.
 //!
@@ -78,10 +79,21 @@ fn wrap(v: &mut Value, next: &mut u32) -> usize {
     1
 }
 
+/// The id of the tag around the whole tree: every leaf is tagged, so it shows only if an inner
+/// tag stops winning over an outer one
+const OUTER: u32 = 999;
+
 fn tagged(node: &SdfNode) -> (SdfNode, usize) {
     let mut v = serde_json::to_value(node).expect("serialise");
     let mut next = 1;
     let leaves = tag_leaves(&mut v, &mut next);
+    let mut outer = next;
+    let _ = wrap(&mut v, &mut outer);
+    if let Value::Object(m) = &mut v {
+        if let Some(Value::Object(body)) = m.get_mut("WithMaterial") {
+            body.insert("material_id".into(), Value::from(OUTER));
+        }
+    }
     (
         serde_json::from_value(v).expect("deserialise the tagged tree"),
         leaves,
