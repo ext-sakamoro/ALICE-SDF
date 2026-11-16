@@ -1338,12 +1338,14 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
     var t = ta;
     var amb = 0.0;
     walk_cells = 0u;
+    // the previous cell's exit (t, s, valid), for a sign change across a face (the CPU rule: both |s| <= JUMP_S)
+    var prev = vec3<f32>(0.0, 0.0, 0.0);
     for (var i = 0u; i < __CELL_WALK_CAP__; i = i + 1u) {
         if (t >= tb) { return vec3<f32>(0.0, 0.0, amb); }
         walk_cells = walk_cells + 1u;
         let p = o + d * t;
         let cl = s_cell(k, p);
-        if (!cl.found) { t = t + outside_bound(p, SHEETS[k]); continue; }
+        if (!cl.found) { t = t + outside_bound(p, SHEETS[k]); prev.z = 0.0; continue; }
         let q0 = (p - cl.lo) / cl.h;
         var ux = 1e30;
         if (d.x > 0.0) { ux = min(ux, (1.0 - q0.x) / d.x); } else if (d.x < 0.0) { ux = min(ux, -q0.x / d.x); }
@@ -1351,15 +1353,27 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
         if (d.z > 0.0) { ux = min(ux, (1.0 - q0.z) / d.z); } else if (d.z < 0.0) { ux = min(ux, -q0.z / d.z); }
         ux = max(ux, 0.0);
         let ue = min(ux, (tb - t) / cl.h);
-        if (!cl.masked) {
-            var cu = vec4<f32>(0.0);
-            for (var c8 = 0u; c8 < 8u; c8 = c8 + 1u) {
-                var poly = vec4<f32>(1.0, 0.0, 0.0, 0.0);
-                poly = mulc(poly, select(vec2<f32>(1.0 - q0.x, -d.x), vec2<f32>(q0.x, d.x), ((c8 >> 2u) & 1u) == 1u));
-                poly = mulc(poly, select(vec2<f32>(1.0 - q0.y, -d.y), vec2<f32>(q0.y, d.y), ((c8 >> 1u) & 1u) == 1u));
-                poly = mulc(poly, select(vec2<f32>(1.0 - q0.z, -d.z), vec2<f32>(q0.z, d.z), (c8 & 1u) == 1u));
-                cu = cu + cl.c[c8] * poly;
+        var cu = vec4<f32>(0.0);
+        for (var c8 = 0u; c8 < 8u; c8 = c8 + 1u) {
+            var poly = vec4<f32>(1.0, 0.0, 0.0, 0.0);
+            poly = mulc(poly, select(vec2<f32>(1.0 - q0.x, -d.x), vec2<f32>(q0.x, d.x), ((c8 >> 2u) & 1u) == 1u));
+            poly = mulc(poly, select(vec2<f32>(1.0 - q0.y, -d.y), vec2<f32>(q0.y, d.y), ((c8 >> 1u) & 1u) == 1u));
+            poly = mulc(poly, select(vec2<f32>(1.0 - q0.z, -d.z), vec2<f32>(q0.z, d.z), (c8 & 1u) == 1u));
+            cu = cu + cl.c[c8] * poly;
+        }
+        let s_in = cu.x;
+        if (prev.z == 1.0 && ((prev.y < 0.0) != (s_in < 0.0)) && abs(prev.y) <= JUMP_S && abs(s_in) <= JUMP_S) {
+            var fa = prev.x; var fb = t;
+            let gfa = sample_sheet(k, o + d * fa, 2u).g;
+            for (var it = 0; it < 30; it = it + 1) {
+                let m = 0.5 * (fa + fb);
+                if ((sample_sheet(k, o + d * m, 2u).g < 0.0) == (gfa < 0.0)) { fa = m; } else { fb = m; }
             }
+            let tm = 0.5 * (fa + fb);
+            if (crossing_inside(k, o + d * tm)) { return vec3<f32>(1.0, tm, amb); }
+        }
+        prev = vec3<f32>(t + ux * cl.h, cub(cu, ux), 1.0);
+        if (!cl.masked) {
             let r = first_root(cu, ue);
             if (r.x == 1.0) {
                 let tr = t + r.y * cl.h;

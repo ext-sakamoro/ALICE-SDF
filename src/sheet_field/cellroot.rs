@@ -15,13 +15,15 @@
 //!   (`AMBIG_EPS` times the sum of `|coefficients|`) the root is ambiguous: it is not a hit and is counted.
 //! - Masked cell (the validity rule refuses the surface there): no root is taken inside.
 //! - Level / brick switch: each cell is looked up again at its entry, so a change of the answering level restarts
-//!   the walk in the new level's grid; a sign change across a level boundary is not a root of either cubic and is
-//!   never a hit (as the march's sign-jump rule).
+//!   the walk in the new level's grid. Neighbouring bricks are quantised apart (and levels differ), so `s` may jump
+//!   at a cell face; a sign change across a face counts as the march counts it: when both sides have
+//!   `|s| <= JUMP_S`, the face is bisected on the sheet's own `g` and accepted by the crossing test (a jump larger
+//!   than that is a sign jump, not a crossing).
 //! - Bound: at most [`CELL_WALK_CAP`] cells per call; past it the answer is [`Walk::Exhausted`] (undecided).
 
 use glam::Vec3;
 
-use super::{outside_lower_bound, Level, Sheet, ValidRule, BRICK, HALF_DIAG};
+use super::{outside_lower_bound, Level, Sheet, ValidRule, BRICK, HALF_DIAG, JUMP_S};
 
 /// Bisection steps on one monotone piece.
 pub const BISECT_STEPS: u32 = 24;
@@ -143,6 +145,8 @@ impl Sheet {
         let mut t = f64::from(ta);
         let tend = f64::from(tb);
         let mut ambiguous = 0u32;
+        // the previous cell's exit: (t, s) there, for a sign change across the face
+        let mut prev: Option<(f64, f64)> = None;
         for _ in 0..CELL_WALK_CAP {
             if t >= tend {
                 return Walk::Clear(ambiguous);
@@ -151,6 +155,7 @@ impl Sheet {
             let Some(cell) = self.cell_at(p, rule) else {
                 // no level answers: no surface nearer than the outside bound
                 t += f64::from(outside_lower_bound(p, self.lo, self.hi, self.hc));
+                prev = None;
                 continue;
             };
             let pw = o64 + d64 * t;
@@ -167,8 +172,19 @@ impl Sheet {
             }
             let u_exit = u_exit.max(0.0);
             let u_end = u_exit.min((tend - t) / cell.h);
+            let cu = cubic(&cell.corners, q0, e);
+            let s_in = eval(&cu, 0.0);
+            if let Some((tp, sp)) = prev {
+                if (sp < 0.0) != (s_in < 0.0) && sp.abs() <= f64::from(JUMP_S) && s_in.abs() <= f64::from(JUMP_S) {
+                    let tm = self.face_crossing(o, d, tp as f32, t as f32, rule);
+                    if self.crossing_accepted(o + d * tm, rule) {
+                        return Walk::Root(tm);
+                    }
+                }
+            }
+            prev = Some((t + u_exit * cell.h, eval(&cu, u_exit)));
             if !cell.masked {
-                match first_root(&cubic(&cell.corners, q0, e), u_end) {
+                match first_root(&cu, u_end) {
                     Some(Ok(u)) => {
                         let tr = t + u * cell.h;
                         if self.crossing_accepted(o + d * tr as f32, rule) {
@@ -187,6 +203,23 @@ impl Sheet {
         } else {
             Walk::Exhausted
         }
+    }
+}
+
+impl Sheet {
+    /// The sign change of this sheet's `g` across a cell face between `ta` and `tb` (bisected as the march does).
+    fn face_crossing(&self, o: Vec3, d: Vec3, ta: f32, tb: f32, rule: ValidRule) -> f32 {
+        let (mut a, mut b) = (ta, tb);
+        let ga = self.sample_geom(o + d * a, rule).g;
+        for _ in 0..30 {
+            let m = f32::midpoint(a, b);
+            if (self.sample_geom(o + d * m, rule).g < 0.0) == (ga < 0.0) {
+                a = m;
+            } else {
+                b = m;
+            }
+        }
+        f32::midpoint(a, b)
     }
 }
 

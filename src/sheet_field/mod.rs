@@ -88,7 +88,7 @@ pub fn decided_steps(tmax: f32) -> u32 {
     n as u32
 }
 /// A bisected sign change with `|s|` above this is a sign jump of `s`, not a crossing of the sheet.
-const JUMP_S: f32 = 0.02;
+pub(crate) const JUMP_S: f32 = 0.02;
 
 /// The floor of a masked cell's lower bound (the field's length unit, mm). It is a valid lower bound only where a
 /// masked cell's true distance is at least it: masking needs `min |s_c| > HALF_DIAG h + q0`, so the true distance is
@@ -566,7 +566,7 @@ impl Sheet {
     }
 
     /// The geometric part of [`Sheet::sample`] (`f`, `g`, `s`, `d_b`; no attributes): what marching needs.
-    fn sample_geom(&self, p: Vec3, rule: ValidRule) -> Sample {
+    pub(crate) fn sample_geom(&self, p: Vec3, rule: ValidRule) -> Sample {
         self.sample_n(p, rule, 2)
     }
 
