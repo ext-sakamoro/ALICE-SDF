@@ -861,3 +861,58 @@ fn spaced_copies_of_a_finite_repeat_are_not_reported() {
     let r = coplanar_faces(&row);
     assert!(no_candidate(&r) && r.is_fully_analysed(), "{r:?}");
 }
+
+// ── HexPrism: hexagon in XY whose flat sides lie at distance `hex_radius` from the axis (the field's
+// apothem: `sdf_hex_prism` compares |y| with hex_radius), prism along Z, caps at z = ±half_height ──
+
+#[test]
+fn a_hex_prism_standing_on_a_block_is_a_seam_over_its_whole_cap() {
+    let (a, h) = (5.0_f32, 4.0_f32);
+    // the field's own geometry: the flat side at y = a and the vertex at x = 2a/√3 read 0
+    let hex = SdfNode::hex_prism(a, 2.0 * h); // the constructor takes the full height
+    assert!(alice_sdf::eval::eval(&hex, Vec3::new(0.0, a, 0.0)).abs() < 1e-5);
+    assert!(
+        alice_sdf::eval::eval(&hex, Vec3::new(2.0 * a / 3.0_f32.sqrt(), 0.0, 0.0)).abs() < 1e-4
+    );
+    let part = SdfNode::box3d(30.0, 30.0, 10.0)
+        .translate(0.0, 0.0, -5.0)
+        .union(hex.translate(0.0, 0.0, h));
+    let r = coplanar_faces(&part);
+    let seam = r
+        .pairs
+        .iter()
+        .find(|p| p.kind == CoplanarKind::UnionSeam)
+        .unwrap_or_else(|| panic!("{r:?}"));
+    // the hexagon's area: 2√3 a²
+    let area = 2.0 * 3.0_f32.sqrt() * a * a;
+    assert!(
+        (seam.overlap_area - area).abs() < 1e-3 * area,
+        "{} vs {area}",
+        seam.overlap_area
+    );
+    assert!(r.is_fully_analysed(), "{r:?}");
+}
+
+#[test]
+fn a_block_against_a_hex_prism_side_is_a_seam_over_that_side() {
+    let (a, h) = (5.0_f32, 4.0_f32);
+    // a block on the flat side y = a, wider than the side (2a/√3) and taller than the prism
+    let part = SdfNode::hex_prism(a, 2.0 * h).union(SdfNode::box3d(20.0, 6.0, 20.0).translate(
+        0.0,
+        a + 3.0,
+        0.0,
+    ));
+    let r = coplanar_faces(&part);
+    let seam = r
+        .pairs
+        .iter()
+        .find(|p| p.kind == CoplanarKind::UnionSeam)
+        .unwrap_or_else(|| panic!("{r:?}"));
+    let side = 2.0 * a / 3.0_f32.sqrt() * 2.0 * h;
+    assert!(
+        (seam.overlap_area - side).abs() < 1e-3 * side,
+        "{} vs {side}",
+        seam.overlap_area
+    );
+    assert!(r.is_fully_analysed(), "{r:?}");
+}
