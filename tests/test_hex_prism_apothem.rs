@@ -82,35 +82,37 @@ fn every_cpu_backend_puts_the_flat_side_at_hex_radius() {
 #[test]
 fn every_shader_helper_compares_the_flat_side_with_hex_radius() {
     let node = SdfNode::hex_prism(A, 2.0 * H);
-    #[allow(unused_mut)]
-    let mut sources: Vec<(&str, String)> = Vec::new();
-    #[cfg(feature = "glsl")]
-    sources.push((
-        "glsl",
-        alice_sdf::compiled::GlslShader::transpile(
-            &node,
-            alice_sdf::compiled::GlslTranspileMode::Hardcoded,
-        )
-        .source,
-    ));
-    #[cfg(feature = "hlsl")]
-    sources.push((
-        "hlsl",
-        alice_sdf::compiled::HlslShader::transpile(
-            &node,
-            alice_sdf::compiled::HlslTranspileMode::Hardcoded,
-        )
-        .source,
-    ));
-    #[cfg(feature = "gpu")]
-    sources.push((
-        "wgsl",
-        alice_sdf::compiled::WgslShader::transpile(
-            &node,
-            alice_sdf::compiled::TranspileMode::Hardcoded,
-        )
-        .source,
-    ));
+    // each element exists only with its feature (a list literal with cfg on the elements, so no
+    // build of the list ends empty-then-pushed)
+    let sources: Vec<(&str, String)> = vec![
+        #[cfg(feature = "glsl")]
+        (
+            "glsl",
+            alice_sdf::compiled::GlslShader::transpile(
+                &node,
+                alice_sdf::compiled::GlslTranspileMode::Hardcoded,
+            )
+            .source,
+        ),
+        #[cfg(feature = "hlsl")]
+        (
+            "hlsl",
+            alice_sdf::compiled::HlslShader::transpile(
+                &node,
+                alice_sdf::compiled::HlslTranspileMode::Hardcoded,
+            )
+            .source,
+        ),
+        #[cfg(feature = "gpu")]
+        (
+            "wgsl",
+            alice_sdf::compiled::WgslShader::transpile(
+                &node,
+                alice_sdf::compiled::TranspileMode::Hardcoded,
+            )
+            .source,
+        ),
+    ];
     assert!(!sources.is_empty(), "no shader backend compiled in");
     for (name, src) in &sources {
         assert!(src.contains("sdf_hex_prism"), "{name}: no hex prism helper");
