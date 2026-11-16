@@ -600,3 +600,18 @@ fn a_cutter_mouth_flush_with_the_rim_is_an_air_sheet() {
         vec![SheetSide::Air]
     );
 }
+
+#[test]
+fn a_filled_seam_beside_a_bore_is_not_a_sheet() {
+    // a rib on a base whose seam is filled by a block reaching into both, with a bore (r = 1) through
+    // the rib and the base: the rib's underside and the base's top still coincide (a candidate), but
+    // the field at the plane is negative everywhere except next to the bore's wall, where it is near 0
+    // because the bore's wall crosses the plane, not because of a sheet. A sample there reads 0 within
+    // δ with material on both sides; a sheet is told apart by the field moving away from its value on
+    // the plane by about δ on both sides (a V across the plane), which a wall crossing the plane does not
+    let filled = rib_on_base(None).union(SdfNode::box3d(10.0, 4.0, 20.0).translate(0.0, 2.0, 0.0));
+    let bored = filled.subtract(SdfNode::cylinder(1.0, 30.0));
+    let r = coplanar_faces(&bored);
+    assert!(r.pairs.iter().all(|p| p.kind != CoplanarKind::UnionSeam), "no sheet: {:?}", r.pairs);
+    assert!(r.surfaces.iter().any(|p| p.kind == CoplanarKind::UnionSeam), "the candidate is a surface: {:?}", r.surfaces);
+}
