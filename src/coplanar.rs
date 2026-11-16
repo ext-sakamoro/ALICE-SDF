@@ -54,6 +54,7 @@
 use crate::compiled::real::LawMinMax;
 use crate::types::SdfNode;
 use glam::{Quat, Vec2, Vec3};
+use std::collections::BTreeMap;
 
 /// Relative tolerance for "same plane" and "overlapping" (see the module's MODEL section).
 pub const COPLANAR_REL_TOL: f32 = 1e-6;
@@ -97,6 +98,10 @@ pub struct CoplanarReport {
     pub ops_not_analysed: usize,
     /// Leaves whose planar faces are not known.
     pub leaves_not_analysed: usize,
+    /// The nodes counted in `ops_not_analysed` (those the analysis cannot follow, not the CSG operators
+    /// above them) and `leaves_not_analysed`, by variant name: what to extend first, and what a
+    /// per-kind ratchet freezes.
+    pub not_analysed_kinds: BTreeMap<String, usize>,
 }
 
 impl CoplanarReport {
@@ -246,6 +251,10 @@ fn collect(node: &SdfNode, xf: Xf, report: &mut CoplanarReport) -> Faces {
         other => {
             // not followed: its own faces are unknown; its children are not visited (their faces
             // would be reshaped by it)
+            *report
+                .not_analysed_kinds
+                .entry(variant_name(other))
+                .or_insert(0) += 1;
             if crate::diff::node_children(other).is_empty() {
                 report.leaves_not_analysed += 1;
             } else {
@@ -393,4 +402,25 @@ fn overlap(x: &Face, y: &Face) -> Option<(f32, Vec3)> {
     }
     c /= 6.0 * area;
     Some((area, origin + u * c.x + v * c.y))
+}
+
+/// The variant name of a node (`"SmoothUnion"`, `"RoundedBox"`, ...), read from its `Debug` output
+/// without formatting the subtree: the writer stops at the first character after the name.
+fn variant_name(node: &SdfNode) -> String {
+    struct Name(String);
+    impl core::fmt::Write for Name {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            for c in s.chars() {
+                if c.is_alphanumeric() || c == '_' {
+                    self.0.push(c);
+                } else {
+                    return Err(core::fmt::Error);
+                }
+            }
+            Ok(())
+        }
+    }
+    let mut name = Name(String::new());
+    let _ = core::fmt::write(&mut name, format_args!("{node:?}"));
+    name.0
 }
