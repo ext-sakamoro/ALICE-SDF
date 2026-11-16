@@ -131,6 +131,11 @@ fn the_coplanarity_tolerance_is_pinned_from_both_sides() {
         coplanar_faces(&pair(over)).pairs.is_empty(),
         "an offset of {over} (over the tolerance) is a gap, not a seam"
     );
+    // the same edge in absolute numbers, independent of the constant: at plane offsets near 10,
+    // 2e-6 (0.2 ppm) is float rounding of one coincident face and must stay a seam; 1e-4 (10 ppm)
+    // is a real gap a printer cannot see but the field can, and must not be called a seam
+    assert!(!coplanar_faces(&pair(2e-6)).pairs.is_empty(), "2e-6 is a seam");
+    assert!(coplanar_faces(&pair(1e-4)).pairs.is_empty(), "1e-4 is a gap");
 }
 
 #[test]
