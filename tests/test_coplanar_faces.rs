@@ -722,3 +722,38 @@ fn an_overlap_counts_only_above_its_relative_area_tolerance() {
         "a strip 1e-3 wide (area 1e-2, above 1e-4)"
     );
 }
+
+#[test]
+fn sheets_of_opposite_sides_stay_apart_when_the_step_is_coarser_than_the_surface_between_them() {
+    // a cutter with huge faces (A | B touching at x = 0, y and z in +-2000) makes the overlap's grid step
+    // about 15.6 mm, while the part is about 100 mm across (δ about 0.1): the real surface at y = 0 that
+    // separates the air sheet (the cutter's seam inside a block, y in [0, 40]) from the material sheet
+    // (two boxes touching at x = 0, y in [-40, 0]) is far thinner than a step, so samples of the two sides
+    // are grid neighbours. They are still two regions, one per side
+    let cutter = SdfNode::box3d(5.0, 4000.0, 4000.0)
+        .translate(-2.5, 0.0, 0.0)
+        .union(SdfNode::box3d(5.0, 4000.0, 4000.0).translate(2.5, 0.0, 0.0));
+    let block = SdfNode::box3d(100.0, 40.0, 80.0).translate(0.0, 20.0, 0.0);
+    let below = SdfNode::box3d(50.0, 40.0, 80.0)
+        .translate(-25.0, -20.0, 0.0)
+        .union(SdfNode::box3d(50.0, 40.0, 80.0).translate(25.0, -20.0, 0.0));
+    let r = coplanar_faces(&block.subtract(cutter).union(below));
+    let big = r
+        .pairs
+        .iter()
+        .find(|p| p.normal.x.abs() > 0.99 && p.overlap_area > 1.0e6)
+        .unwrap_or_else(|| panic!("the cutter's seam: {:?}", r.pairs));
+    assert!(
+        big.sample_step > 10.0,
+        "the step must be coarse here: {}",
+        big.sample_step
+    );
+    let mut sides: Vec<SheetSide> = big.sheets.iter().map(|s| s.side).collect();
+    sides.sort_by_key(|s| matches!(s, SheetSide::Air));
+    assert_eq!(
+        sides,
+        vec![SheetSide::Material, SheetSide::Air],
+        "{:?}",
+        big.sheets
+    );
+}
