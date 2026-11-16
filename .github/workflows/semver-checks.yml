@@ -41,7 +41,15 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable (branch, default toolchain stable)
+      # the toolchain by rustup in a run step (a sha-pinned toolchain action stops being reachable when its upstream
+      # rewrites the branch it was taken from): the channel rust-toolchain.toml pins, also the default for the
+      # steps that run cargo outside this tree (scripts/test_semver_gate.py builds two small crates in a temp dir)
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: |
+          ch=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml 2>/dev/null)
+          [ -n "$ch" ] || { echo "rust-toolchain.toml has no channel (or cannot be read): no default toolchain is installed" >&2; exit 1; }
+          rustup toolchain install "$ch" --profile minimal --no-self-update
+          rustup default "$ch"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       # pinned: newer releases raise their own required rustc version, so the pin
