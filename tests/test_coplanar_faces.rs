@@ -260,6 +260,10 @@ fn an_empty_primitive_has_no_faces() {
     let flat_box = SdfNode::box3d(2.0, 0.0, 2.0).translate(1.0, 0.0, 0.0);
     let r = coplanar_faces(&SdfNode::box3d(2.0, 2.0, 2.0).translate(-1.0, 0.0, 0.0).union(flat_box));
     assert!(r.pairs.is_empty(), "{:?}", r.pairs);
+    // a box of zero height lying exactly on another box's top face (y = 1): empty, so no seam with it
+    let on_top = SdfNode::box3d(2.0, 0.0, 2.0).translate(0.0, 1.0, 0.0);
+    let r = coplanar_faces(&SdfNode::box3d(2.0, 2.0, 2.0).union(on_top));
+    assert!(r.pairs.is_empty(), "an empty box on a face: {:?}", r.pairs);
 }
 
 #[test]
@@ -303,6 +307,9 @@ fn a_box_against_a_half_space_is_a_seam_and_a_flush_intersection_is_not() {
     let seam = r.pairs.first().unwrap_or_else(|| panic!("{r:?}"));
     assert_eq!(seam.kind, CoplanarKind::UnionSeam);
     assert!((seam.overlap_area - 4.0).abs() < 1e-3, "area {}", seam.overlap_area);
+    // on the box's +x face, not its -x face: the half-space's face is where its field is zero
+    assert!((seam.point.x - 1.0).abs() < 1e-4, "seam at {}", seam.point);
+    assert_eq!(r.pairs.len(), 1, "{:?}", r.pairs);
     // the half-space x < 1 cut to the box: same plane, same normal, an ordinary flat face
     let within = SdfNode::plane(Vec3::X, 1.0);
     assert!(coplanar_faces(&block.intersection(within)).pairs.is_empty());
