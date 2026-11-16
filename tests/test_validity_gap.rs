@@ -435,3 +435,59 @@ fn a_gap_bounded_by_an_edge_on_one_side_is_still_reported() {
         );
     }
 }
+
+/// Two boxes unioned along a shared face, then subtracted from a block so that the shared face lies on
+/// the block's outer face (the shape a T-slot cutter built from a neck box and an outward punch box
+/// makes): the union's field is 0 on the seam instead of negative, so `block − cutter` is exactly 0 over
+/// the whole opening, a zero-thickness sheet with air on both sides. It is not material: the report
+/// counts it as a sheet and reads no width from it (here the distance from the sheet to the slot floor,
+/// 2.0). A real wall 0.2 thick has material behind its faces and is not a sheet.
+#[test]
+fn a_zero_field_sheet_is_reported_and_no_width_is_read_from_it() {
+    let block = SdfNode::box3d(20.0, 20.0, 20.0); // faces at ±10
+                                                  // neck x in [8, 10] and punch x in [10, 15], both 6 wide in y: the seam x = 10 is the block's face
+    let neck = SdfNode::box3d(2.0, 6.0, 30.0).translate(9.0, 0.0, 0.0);
+    let punch = SdfNode::box3d(5.0, 6.0, 30.0).translate(12.5, 0.0, 0.0);
+    let seamed = block.clone().subtract(neck.union(punch));
+    // field across the mouth: zero on the sheet, positive either side
+    let on = eval(&seamed, Vec3::new(10.0, 0.0, 0.0));
+    assert!(
+        on.abs() < 1e-4 && eval(&seamed, Vec3::new(9.9, 0.0, 0.0)) > 0.05,
+        "sheet {on}"
+    );
+    let (lo, hi) = (Vec3::new(5.0, -5.0, -3.0), Vec3::new(12.0, 5.0, 3.0));
+    let r = measure_gaps(&seamed, lo, hi, 0.25).expect("samples");
+    assert!(r.sheet_samples > 0, "{r:?}");
+    let s = r.sheet_location.expect("a sheet point");
+    assert!(
+        (s.x - 10.0).abs() < 0.01 && s.y.abs() <= 3.01,
+        "sheet at {s}"
+    );
+    if let Some(w) = r.min_gap {
+        assert!(w > 2.5, "a width read off the sheet: {w} ({r:?})");
+    }
+    // the same slot cut by one box (no seam): no sheet
+    let one = block.subtract(SdfNode::box3d(7.0, 6.0, 30.0).translate(11.5, 0.0, 0.0));
+    let r = measure_gaps(&one, lo, hi, 0.25).expect("samples");
+    assert_eq!(r.sheet_samples, 0, "{r:?}");
+    // a real thin wall 0.2 thick between two 1.0 slots: material behind, not a sheet; the slots are widths
+    let base = SdfNode::box3d(20.0, 2.0, 10.0).translate(0.0, -1.0, 0.0);
+    let wall = |x: f32, t: f32| SdfNode::box3d(t, 6.0, 10.0).translate(x, 3.0, 0.0);
+    let thin = base
+        .union(wall(-1.6, 1.0))
+        .union(wall(0.0, 0.2))
+        .union(wall(1.6, 1.0));
+    let r = measure_gaps(
+        &thin,
+        Vec3::new(-3.0, -1.0, -3.0),
+        Vec3::new(3.0, 7.0, 3.0),
+        0.2,
+    )
+    .expect("samples");
+    assert_eq!(r.sheet_samples, 0, "{r:?}");
+    let w = r.min_gap.expect("the slots");
+    assert!(
+        (w - 1.0).abs() <= GAP_TOLERANCE,
+        "slot beside the thin wall: {w}"
+    );
+}
