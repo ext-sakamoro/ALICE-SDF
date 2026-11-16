@@ -56,12 +56,31 @@
 //! **Faces of a result** (what the next operator up compares): a union and an intersection keep both
 //! operands' faces; a subtraction keeps `a`'s faces and `b`'s faces with their normals reversed (the
 //! cutter's surface becomes the result's boundary). This over-approximates (a face hidden inside the
-//! other operand is kept), so a pair can be reported where the sampled field shows no sheet; the
-//! agreement with a field scan is measured by the consumer over its templates.
+//! other operand is kept), so a candidate can be a real surface: the classification below sorts those
+//! out from the final field.
+//!
+//! **Classification**: the tree finds candidates (analytic, exact where faces coincide, and
+//! over-approximating: a face hidden inside the other operand, or removed later, is kept); whether a
+//! candidate is a defect is read from the final field over its overlap. The overlap is sampled on a
+//! square grid of step `max(2δ, √(bbox area / SHEET_MAX_SAMPLES))`, skipping samples closer than `2δ` to
+//! its edges (`δ` = [`SHEET_DELTA_REL`] × the part's extent, a quarter of the overlap's inradius for a
+//! thinner strip, never below [`SHEET_DELTA_FLOOR_ULPS`] ulp at the extent). A sample is a **sheet** when
+//! the field reads 0 within `δ` on the plane and has the same sign `δ` away on both sides (material
+//! when negative, air when positive); a sign change across the plane is a real surface. The pair is a
+//! defect (`pairs`) if **any** connected region of sheet samples exists, reported with each region's
+//! extent ([`CoplanarPair::sheets`]), so a sheet is not hidden by a surface majority over the rest of
+//! the overlap; a pair with none is moved to `surfaces` (counted, not a defect); a pair too thin for
+//! the floor stays in `pairs` unclassified. The final tree is read whatever the analysis followed, so
+//! the classification holds through nodes it does not analyse. Cost: three field evaluations per
+//! sample, at most `3 × SHEET_MAX_SAMPLES` per pair, and one tight bounding box of the part when any
+//! candidate exists (`field_evaluations` counts them). A sheet narrower than about two steps
+//! (`sample_step`) can fall between samples.
 //!
 //! Tests: `tests/test_coplanar_faces.rs` (seam, flush cavity, flush counterbore pocket, the tolerance
 //! from both sides, a rotated pair and a non-parallel one, a pair turned about a general axis, flush
-//! exteriors and disjoint faces, the not-analysed count, a non-uniform scale counted as not analysed).
+//! exteriors and disjoint faces, the not-analysed count, a non-uniform scale counted as not analysed;
+//! the classification: a rib on a base, the base cut away under half and under all of it, a block
+//! filling half a seam through a node the analysis does not follow, a cutter's mouth).
 
 use crate::compiled::real::LawMinMax;
 use crate::types::SdfNode;
@@ -83,6 +102,19 @@ const CAP_SIDES: usize = 64;
 /// Half-size of the square a `Plane`'s face is followed as (the half-space is unbounded; every shape
 /// compared against it is far inside this square).
 pub const PLANE_HALF_EXTENT: f32 = 1.0e4;
+
+/// The classification's margin, relative to the part's extent: a sheet sample must read 0 within `δ`
+/// on the plane and the same sign `δ` away on both sides, and samples closer than `2δ` to the overlap's
+/// edges are not taken (there the part's outer surface pulls the field to 0). For a strip thinner than
+/// that, `δ` is a quarter of the overlap's inradius.
+pub const SHEET_DELTA_REL: f32 = 1e-3;
+
+/// Smallest `δ`, in ulp of the part's extent (0.015 mm at 250 mm): below it a sheet cannot be told from
+/// "0 within rounding", and the pair is kept in `pairs` unclassified.
+pub const SHEET_DELTA_FLOOR_ULPS: f32 = 1000.0;
+
+/// Most samples the classification takes over one overlap (the step grows to keep within it).
+pub const SHEET_MAX_SAMPLES: f32 = 65_536.0;
 
 /// What kind of coincidence a [`CoplanarPair`] is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,13 +141,50 @@ pub struct CoplanarPair {
     /// The overlap itself, a strictly convex polygon in world coordinates without repeated or collinear
     /// vertices (counter-clockwise seen along `normal`): where the zero-thickness sheet or seam is, for a consumer that clips by it.
     pub overlap_polygon: Vec<Vec3>,
+    /// Where the final field shows a zero-thickness sheet over the overlap: one entry per connected
+    /// region of sheet samples (see the module's "Classification" section). Empty for a pair in
+    /// [`CoplanarReport::surfaces`], and for a pair too thin to classify (kept in `pairs`).
+    pub sheets: Vec<SheetRegion>,
+    /// The spacing of the samples the classification took over the overlap (0 when it took none): a
+    /// sheet narrower than about two steps can fall between samples.
+    pub sample_step: f32,
+}
+
+/// Which side of the part a zero-thickness sheet lies in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SheetSide {
+    /// The field is negative on both sides of the plane and 0 on it (a seam inside material).
+    Material,
+    /// The field is positive on both sides of the plane and 0 on it (a membrane in the part's air, such
+    /// as over a cut's mouth).
+    Air,
+}
+
+/// A connected region of samples over an overlap where the final field is a zero-thickness sheet.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SheetRegion {
+    /// The side of the part the sheet lies in.
+    pub side: SheetSide,
+    /// The bounding box of the region's samples, in world coordinates.
+    pub min: Vec3,
+    /// See `min`.
+    pub max: Vec3,
+    /// Samples in the region.
+    pub samples: usize,
 }
 
 /// Result of [`coplanar_faces`].
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CoplanarReport {
-    /// Every coplanar, overlapping pair found.
+    /// Every coplanar, overlapping pair found whose overlap the final field shows as a zero-thickness
+    /// sheet somewhere (or that is too thin to classify): the defects.
     pub pairs: Vec<CoplanarPair>,
+    /// The pairs found by the tree over whose whole overlap the final field changes sign across the
+    /// plane or is clear of 0 (the coincidence became a real surface or lies inside / outside the part,
+    /// as when a later operation removed the material under a seam): counted, not defects.
+    pub surfaces: Vec<CoplanarPair>,
+    /// Field evaluations the classification took (three per sample: on the plane and either side).
+    pub field_evaluations: usize,
     /// CSG operators whose operands were both fully analysed.
     pub ops_analysed: usize,
     /// Inner nodes the analysis could not follow, and CSG operators with an operand that was not
@@ -183,6 +252,7 @@ struct Faces {
 pub fn coplanar_faces(node: &SdfNode) -> CoplanarReport {
     let mut report = CoplanarReport::default();
     let _ = collect(node, Xf::IDENTITY, &mut report);
+    classify_pairs(node, &mut report);
     report
 }
 
@@ -287,7 +357,9 @@ fn collect(node: &SdfNode, xf: Xf, report: &mut CoplanarReport) -> Faces {
             },
             None => not_analysed(node, report),
         },
-        SdfNode::Elongate { child, amount } if amount.is_finite() && !amount.cmplt(Vec3::ZERO).any() => {
+        SdfNode::Elongate { child, amount }
+            if amount.is_finite() && !amount.cmplt(Vec3::ZERO).any() =>
+        {
             match child.as_ref() {
                 SdfNode::Box3d { half_extents } => Faces {
                     faces: flat_faces(*half_extents + *amount, Vec3::ZERO, xf),
@@ -419,6 +491,8 @@ fn binary(
                     point,
                     overlap_area: area,
                     overlap_polygon: polygon,
+                    sheets: Vec::new(),
+                    sample_step: 0.0,
                 });
             }
         }
@@ -569,4 +643,167 @@ fn variant_name(node: &SdfNode) -> String {
     let mut name = Name(String::new());
     let _ = core::fmt::write(&mut name, format_args!("{node:?}"));
     name.0
+}
+
+// ── classification by the final field ──
+
+/// A sample over an overlap: position, distance to the nearest edge, grid index.
+struct Sample {
+    p: Vec3,
+    edge: f32,
+    ij: (i32, i32),
+}
+
+/// The overlap's frame: corner, in-plane axes, extents.
+fn plane_frame(poly: &[Vec3], n: Vec3) -> (Vec3, Vec3, Vec3, f32, f32) {
+    let u = n.any_orthonormal_vector();
+    let v = n.cross(u);
+    let o = poly[0];
+    let (mut u0, mut u1, mut v0, mut v1) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
+    for q in poly {
+        let (a, b) = ((*q - o).dot(u), (*q - o).dot(v));
+        u0 = u0.law_min(a);
+        u1 = u1.law_max(a);
+        v0 = v0.law_min(b);
+        v1 = v1.law_max(b);
+    }
+    (o + u * u0 + v * v0, u, v, u1 - u0, v1 - v0)
+}
+
+/// Samples of the convex polygon on a square grid of the given step (row by row).
+#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)] // small grid indices
+fn samples(poly: &[Vec3], n: Vec3, step: f32) -> Vec<Sample> {
+    let (corner, u, v, du, dv) = plane_frame(poly, n);
+    let (nu, nv) = ((du / step).ceil() as i32, (dv / step).ceil() as i32);
+    let mut out = Vec::new();
+    for i in 0..=nu {
+        for j in 0..=nv {
+            let p = corner + u * (i as f32 * step).law_min(du) + v * (j as f32 * step).law_min(dv);
+            // inside: on the same side of every edge (either orientation), with the nearest edge
+            let (mut nearest, mut sign, mut inside) = (f32::MAX, 0.0_f32, true);
+            for k in 0..poly.len() {
+                let (e0, e1) = (poly[k], poly[(k + 1) % poly.len()]);
+                let e = (e1 - e0).normalize_or_zero();
+                let side = e.cross(p - e0).dot(n);
+                if sign == 0.0 && side.abs() > 1e-9 {
+                    sign = side.signum();
+                }
+                if side * sign < 0.0 {
+                    inside = false;
+                    break;
+                }
+                nearest = nearest.law_min((p - e0 - e * (p - e0).dot(e)).length());
+            }
+            if inside {
+                out.push(Sample {
+                    p,
+                    edge: nearest,
+                    ij: (i, j),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Classify every pair the tree found by the final field over its overlap, moving those with no sheet
+/// to `report.surfaces`.
+fn classify_pairs(node: &SdfNode, report: &mut CoplanarReport) {
+    if report.pairs.is_empty() {
+        return;
+    }
+    let b = crate::tight_aabb::compute_tight_aabb_with_config(
+        node,
+        &crate::tight_aabb::TightAabbConfig::preset_large(),
+    );
+    let extent = (b.max - b.min).max_element();
+    let plain = SHEET_DELTA_REL * extent;
+    let floor = SHEET_DELTA_FLOOR_ULPS * (extent.next_up() - extent);
+    let candidates = std::mem::take(&mut report.pairs);
+    for mut pair in candidates {
+        let n = pair.normal;
+        let (_, _, _, du, dv) = plane_frame(&pair.overlap_polygon, n);
+        let fine = (du.law_min(dv) / 20.0).law_max(du.law_max(dv) / 2000.0);
+        let inradius = samples(&pair.overlap_polygon, n, fine)
+            .iter()
+            .map(|s| s.edge)
+            .fold(0.0_f32, f32::law_max);
+        let delta = plain.law_min(0.25 * inradius);
+        if !delta.is_finite() || delta < floor {
+            // too thin to tell a sheet from rounding: kept as a defect, unclassified
+            report.pairs.push(pair);
+            continue;
+        }
+        let step = (2.0 * delta).law_max((du * dv / SHEET_MAX_SAMPLES).sqrt());
+        let grid = samples(&pair.overlap_polygon, n, step);
+        let class: Vec<Option<SheetSide>> = grid
+            .iter()
+            .map(|g| {
+                if g.edge < 2.0 * delta {
+                    return None;
+                }
+                report.field_evaluations += 3;
+                let d0 = crate::eval::eval(node, g.p);
+                let dp = crate::eval::eval(node, g.p + n * delta);
+                let dm = crate::eval::eval(node, g.p - n * delta);
+                if d0.abs() > delta {
+                    None
+                } else if dp < 0.0 && dm < 0.0 {
+                    Some(SheetSide::Material)
+                } else if dp > 0.0 && dm > 0.0 {
+                    Some(SheetSide::Air)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        pair.sheets = sheet_regions(&grid, &class);
+        pair.sample_step = step;
+        if pair.sheets.is_empty() {
+            report.surfaces.push(pair);
+        } else {
+            report.pairs.push(pair);
+        }
+    }
+}
+
+/// The connected (8-neighbour) regions of sheet samples of one side.
+fn sheet_regions(grid: &[Sample], class: &[Option<SheetSide>]) -> Vec<SheetRegion> {
+    let index: BTreeMap<(i32, i32), usize> =
+        grid.iter().enumerate().map(|(k, g)| (g.ij, k)).collect();
+    let mut seen = vec![false; grid.len()];
+    let mut out = Vec::new();
+    for start in 0..grid.len() {
+        let Some(side) = class[start] else { continue };
+        if seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        let (mut stack, mut min, mut max, mut count) =
+            (vec![start], grid[start].p, grid[start].p, 0);
+        while let Some(k) = stack.pop() {
+            count += 1;
+            let q = grid[k].p;
+            min = Vec3::new(min.x.law_min(q.x), min.y.law_min(q.y), min.z.law_min(q.z));
+            max = Vec3::new(max.x.law_max(q.x), max.y.law_max(q.y), max.z.law_max(q.z));
+            let (i, j) = grid[k].ij;
+            for di in -1..=1 {
+                for dj in -1..=1 {
+                    if let Some(&q) = index.get(&(i + di, j + dj)) {
+                        if !seen[q] && class[q] == Some(side) {
+                            seen[q] = true;
+                            stack.push(q);
+                        }
+                    }
+                }
+            }
+        }
+        out.push(SheetRegion {
+            side,
+            min,
+            max,
+            samples: count,
+        });
+    }
+    out
 }

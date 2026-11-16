@@ -60,10 +60,22 @@ fn a_cutter_built_from_two_boxes_touching_at_the_face_is_a_union_seam() {
     let poly = &seam.overlap_polygon;
     assert!(poly.len() >= 4, "{poly:?}");
     assert!(poly.iter().all(|v| (v.x - 10.0).abs() < 1e-4), "{poly:?}");
-    let ys = poly.iter().map(|v| v.y).fold((f32::MAX, f32::MIN), |(a, b), y| (a.min(y), b.max(y)));
-    let zs = poly.iter().map(|v| v.z).fold((f32::MAX, f32::MIN), |(a, b), z| (a.min(z), b.max(z)));
-    assert!((ys.0 + 3.0).abs() < 1e-4 && (ys.1 - 3.0).abs() < 1e-4, "y span {ys:?}");
-    assert!((zs.0 + 15.0).abs() < 1e-4 && (zs.1 - 15.0).abs() < 1e-4, "z span {zs:?}");
+    let ys = poly
+        .iter()
+        .map(|v| v.y)
+        .fold((f32::MAX, f32::MIN), |(a, b), y| (a.min(y), b.max(y)));
+    let zs = poly
+        .iter()
+        .map(|v| v.z)
+        .fold((f32::MAX, f32::MIN), |(a, b), z| (a.min(z), b.max(z)));
+    assert!(
+        (ys.0 + 3.0).abs() < 1e-4 && (ys.1 - 3.0).abs() < 1e-4,
+        "y span {ys:?}"
+    );
+    assert!(
+        (zs.0 + 15.0).abs() < 1e-4 && (zs.1 - 15.0).abs() < 1e-4,
+        "z span {zs:?}"
+    );
     assert!(r.ops_analysed >= 2, "{r:?}");
     assert_eq!(r.ops_not_analysed, 0, "{r:?}");
 }
@@ -142,8 +154,14 @@ fn the_coplanarity_tolerance_is_pinned_from_both_sides() {
     // the same edge in absolute numbers, independent of the constant: at plane offsets near 10,
     // 2e-6 (0.2 ppm) is float rounding of one coincident face and must stay a seam; 1e-4 (10 ppm)
     // is a real gap a printer cannot see but the field can, and must not be called a seam
-    assert!(!coplanar_faces(&pair(2e-6)).pairs.is_empty(), "2e-6 is a seam");
-    assert!(coplanar_faces(&pair(1e-4)).pairs.is_empty(), "1e-4 is a gap");
+    assert!(
+        !coplanar_faces(&pair(2e-6)).pairs.is_empty(),
+        "2e-6 is a seam"
+    );
+    assert!(
+        coplanar_faces(&pair(1e-4)).pairs.is_empty(),
+        "1e-4 is a gap"
+    );
 }
 
 #[test]
@@ -224,10 +242,18 @@ fn a_pair_turned_about_a_general_axis_is_found_exactly() {
         .iter()
         .find(|p| p.kind == CoplanarKind::UnionSeam)
         .unwrap_or_else(|| panic!("seam lost under a general rotation: {r:?}"));
-    assert!(seam.normal.dot(q * Vec3::X).abs() > 0.9999, "normal {}", seam.normal);
+    assert!(
+        seam.normal.dot(q * Vec3::X).abs() > 0.9999,
+        "normal {}",
+        seam.normal
+    );
     // the seam's centroid is the rotated origin (the shared face is centred on it)
     assert!(seam.point.length() < 1e-4, "point {}", seam.point);
-    assert!((seam.overlap_area - 4.0).abs() < 1e-3, "area {}", seam.overlap_area);
+    assert!(
+        (seam.overlap_area - 4.0).abs() < 1e-3,
+        "area {}",
+        seam.overlap_area
+    );
 }
 
 #[test]
@@ -244,7 +270,11 @@ fn a_non_uniform_scale_is_counted_as_not_analysed() {
     let r = coplanar_faces(&a.union(b).scale(2.5));
     assert!(r.is_fully_analysed(), "{r:?}");
     let seam = r.pairs.first().expect("seam under a uniform scale");
-    assert!((seam.overlap_area - 25.0).abs() < 1e-2, "area {}", seam.overlap_area);
+    assert!(
+        (seam.overlap_area - 25.0).abs() < 1e-2,
+        "area {}",
+        seam.overlap_area
+    );
 }
 
 #[test]
@@ -259,7 +289,11 @@ fn an_empty_primitive_has_no_faces() {
         assert!(r.is_fully_analysed(), "height {h}: {r:?}");
     }
     let flat_box = SdfNode::box3d(2.0, 0.0, 2.0).translate(1.0, 0.0, 0.0);
-    let r = coplanar_faces(&SdfNode::box3d(2.0, 2.0, 2.0).translate(-1.0, 0.0, 0.0).union(flat_box));
+    let r = coplanar_faces(
+        &SdfNode::box3d(2.0, 2.0, 2.0)
+            .translate(-1.0, 0.0, 0.0)
+            .union(flat_box),
+    );
     assert!(r.pairs.is_empty(), "{:?}", r.pairs);
     // a box of zero height lying exactly on another box's top face (y = 1): empty, so no seam with it
     let on_top = SdfNode::box3d(2.0, 0.0, 2.0).translate(0.0, 1.0, 0.0);
@@ -282,7 +316,11 @@ fn a_solid_resting_on_a_cut_floor_is_a_union_seam() {
         .find(|p| p.kind == CoplanarKind::UnionSeam)
         .unwrap_or_else(|| panic!("insert on the pocket floor not found: {r:?}"));
     assert!((seam.point.y - 2.0).abs() < 1e-4, "{}", seam.point);
-    assert!((seam.overlap_area - 16.0).abs() < 1e-3, "area {}", seam.overlap_area);
+    assert!(
+        (seam.overlap_area - 16.0).abs() < 1e-3,
+        "area {}",
+        seam.overlap_area
+    );
 }
 
 #[test]
@@ -295,7 +333,11 @@ fn rounded_boxes_touching_on_their_flat_faces_are_a_seam_of_the_flat_area() {
     let seam = r.pairs.first().unwrap_or_else(|| panic!("{r:?}"));
     assert_eq!(seam.kind, CoplanarKind::UnionSeam);
     assert!(seam.point.x.abs() < 1e-4, "{}", seam.point);
-    assert!((seam.overlap_area - 4.0).abs() < 1e-3, "area {}", seam.overlap_area);
+    assert!(
+        (seam.overlap_area - 4.0).abs() < 1e-3,
+        "area {}",
+        seam.overlap_area
+    );
 }
 
 #[test]
@@ -307,7 +349,11 @@ fn a_box_against_a_half_space_is_a_seam_and_a_flush_intersection_is_not() {
     assert!(r.is_fully_analysed(), "{r:?}");
     let seam = r.pairs.first().unwrap_or_else(|| panic!("{r:?}"));
     assert_eq!(seam.kind, CoplanarKind::UnionSeam);
-    assert!((seam.overlap_area - 4.0).abs() < 1e-3, "area {}", seam.overlap_area);
+    assert!(
+        (seam.overlap_area - 4.0).abs() < 1e-3,
+        "area {}",
+        seam.overlap_area
+    );
     // on the box's +x face, not its -x face: the half-space's face is where its field is zero
     assert!((seam.point.x - 1.0).abs() < 1e-4, "seam at {}", seam.point);
     assert_eq!(r.pairs.len(), 1, "{:?}", r.pairs);
@@ -319,13 +365,19 @@ fn a_box_against_a_half_space_is_a_seam_and_a_flush_intersection_is_not() {
 #[test]
 fn an_elongated_box_is_followed_and_other_elongated_children_are_counted() {
     // box3d(2,2,2) elongated by 1 along x is a box of half extents (2, 1, 1): x in [-4, 0] after the move
-    let long = SdfNode::box3d(2.0, 2.0, 2.0).elongate(1.0, 0.0, 0.0).translate(-2.0, 0.0, 0.0);
+    let long = SdfNode::box3d(2.0, 2.0, 2.0)
+        .elongate(1.0, 0.0, 0.0)
+        .translate(-2.0, 0.0, 0.0);
     let other = SdfNode::box3d(2.0, 2.0, 2.0).translate(1.0, 0.0, 0.0);
     let r = coplanar_faces(&long.union(other));
     assert!(r.is_fully_analysed(), "{r:?}");
     let seam = r.pairs.first().unwrap_or_else(|| panic!("{r:?}"));
     assert!(seam.point.x.abs() < 1e-4, "{}", seam.point);
-    assert!((seam.overlap_area - 4.0).abs() < 1e-3, "area {}", seam.overlap_area);
+    assert!(
+        (seam.overlap_area - 4.0).abs() < 1e-3,
+        "area {}",
+        seam.overlap_area
+    );
     // an elongated sphere has no planar face to follow exactly through the stretch: counted
     let r = coplanar_faces(&SdfNode::sphere(1.0).elongate(1.0, 0.0, 0.0));
     assert_eq!(r.not_analysed_kinds.get("Elongate"), Some(&1), "{r:?}");
@@ -353,7 +405,11 @@ fn a_smooth_operator_opens_a_coincidence_only_above_the_surface_band() {
     let cutter = || SdfNode::box3d(1.0, 1.0, 6.0).translate(1.5, 0.0, 0.0); // +x face on the block's
     let at = SMOOTH_OPENS_K;
     let above = SMOOTH_OPENS_K.next_up();
-    for (name, k, want_pair) in [("at", at, true), ("above", above, false), ("zero", 0.0, true)] {
+    for (name, k, want_pair) in [
+        ("at", at, true),
+        ("above", above, false),
+        ("zero", 0.0, true),
+    ] {
         let u = coplanar_faces(&a().smooth_union(b(), k));
         let s = coplanar_faces(&block().smooth_subtract(cutter(), k));
         let i = coplanar_faces(&a().smooth_intersection(b(), k));
@@ -370,7 +426,11 @@ fn a_smooth_operator_opens_a_coincidence_only_above_the_surface_band() {
     // a smooth union's faces still pass up: a box resting on the blended pair's top is a seam
     let top = SdfNode::box3d(1.0, 1.0, 1.0).translate(-1.0, 1.5, 0.0);
     let r = coplanar_faces(&a().smooth_union(b(), 0.5).union(top));
-    assert!(r.pairs.iter().any(|p| p.kind == CoplanarKind::UnionSeam), "{:?}", r.pairs);
+    assert!(
+        r.pairs.iter().any(|p| p.kind == CoplanarKind::UnionSeam),
+        "{:?}",
+        r.pairs
+    );
 }
 
 #[test]
@@ -384,7 +444,8 @@ fn every_overlap_polygon_is_strictly_convex_without_repeated_or_collinear_vertic
         SdfNode::box3d(2.0, 2.0, 2.0)
             .translate(-1.0, 0.0, 0.0)
             .union(SdfNode::box3d(2.0, 1.0, 2.0).translate(1.0, 0.5, 0.0)),
-        SdfNode::cylinder(10.0, 50.0).subtract(SdfNode::cylinder(8.0, 45.0).translate(0.0, 2.5, 0.0)),
+        SdfNode::cylinder(10.0, 50.0)
+            .subtract(SdfNode::cylinder(8.0, 45.0).translate(0.0, 2.5, 0.0)),
     ];
     let mut checked = 0;
     for (si, node) in scenes.iter().enumerate() {
@@ -393,10 +454,16 @@ fn every_overlap_polygon_is_strictly_convex_without_repeated_or_collinear_vertic
             assert!(v.len() >= 3, "scene {si}: {v:?}");
             for i in 0..v.len() {
                 let (a, b, c) = (v[i], v[(i + 1) % v.len()], v[(i + 2) % v.len()]);
-                assert!(a.distance(b) > 1e-6, "scene {si}: repeated vertex {a} in {v:?}");
+                assert!(
+                    a.distance(b) > 1e-6,
+                    "scene {si}: repeated vertex {a} in {v:?}"
+                );
                 // strictly convex: every consecutive triple turns the same way, never straight
                 let turn = (b - a).cross(c - b).dot(p.normal);
-                assert!(turn > 1e-9, "scene {si}: vertex {b} is not a strict left turn ({turn:e}) in {v:?}");
+                assert!(
+                    turn > 1e-9,
+                    "scene {si}: vertex {b} is not a strict left turn ({turn:e}) in {v:?}"
+                );
             }
             checked += 1;
         }
@@ -414,7 +481,11 @@ use alice_sdf::coplanar::SheetSide;
 fn rib_on_base(cut_from: Option<f32>) -> SdfNode {
     let base = SdfNode::box3d(40.0, 4.0, 20.0);
     let base = match cut_from {
-        Some(x0) => base.subtract(SdfNode::box3d(6.0 - x0, 10.0, 30.0).translate((6.0 + x0) * 0.5, 0.0, 0.0)),
+        Some(x0) => base.subtract(SdfNode::box3d(6.0 - x0, 10.0, 30.0).translate(
+            (6.0 + x0) * 0.5,
+            0.0,
+            0.0,
+        )),
         None => base,
     };
     base.union(SdfNode::box3d(10.0, 6.0, 20.0).translate(0.0, 5.0, 0.0))
@@ -431,10 +502,18 @@ fn a_rib_on_a_base_is_a_material_sheet_over_the_rib_footprint() {
     let s = &p.sheets[0];
     assert_eq!(s.side, SheetSide::Material);
     // the footprint x in [-5, 5], z in [-10, 10], less the edge band (2δ, δ = 1e-3 × 40) and a grid step
-    for (got, want) in [(s.min.x, -5.0), (s.max.x, 5.0), (s.min.z, -10.0), (s.max.z, 10.0)] {
+    for (got, want) in [
+        (s.min.x, -5.0),
+        (s.max.x, 5.0),
+        (s.min.z, -10.0),
+        (s.max.z, 10.0),
+    ] {
         assert!((got - want).abs() < 0.6, "sheet extent {s:?}");
     }
-    assert!((s.min.y - 2.0).abs() < 1e-5 && (s.max.y - 2.0).abs() < 1e-5, "on the plane y = 2: {s:?}");
+    assert!(
+        (s.min.y - 2.0).abs() < 1e-5 && (s.max.y - 2.0).abs() < 1e-5,
+        "on the plane y = 2: {s:?}"
+    );
     assert!(r.field_evaluations > 0, "the classification read the field");
 }
 
@@ -443,44 +522,81 @@ fn a_rib_half_over_a_cut_is_a_sheet_over_the_remaining_half_only() {
     // the base is cut away under x in [0, 6]: over x > 0 the rib's underside is a real surface (air
     // below), over x < 0 the seam is still a sheet; the pair is reported with the sheet's extent only
     let r = coplanar_faces(&rib_on_base(Some(0.0)));
-    let seams: Vec<_> = r.pairs.iter().filter(|p| p.kind == CoplanarKind::UnionSeam).collect();
+    let seams: Vec<_> = r
+        .pairs
+        .iter()
+        .filter(|p| p.kind == CoplanarKind::UnionSeam)
+        .collect();
     assert_eq!(seams.len(), 1, "{:?}", r.pairs);
     let s = &seams[0].sheets;
     assert_eq!(s.len(), 1, "{s:?}");
     assert_eq!(s[0].side, SheetSide::Material);
     assert!((s[0].min.x + 5.0).abs() < 0.6, "{s:?}");
-    assert!(s[0].max.x <= 0.0 && s[0].max.x > -0.6, "the sheet stops where the base does: {s:?}");
+    assert!(
+        s[0].max.x <= 0.0 && s[0].max.x > -0.6,
+        "the sheet stops where the base does: {s:?}"
+    );
 }
 
 #[test]
 fn a_rib_wholly_over_a_cut_is_a_surface_not_a_sheet() {
     // the base is cut away under the whole rib: the coincidence the tree shows is a real surface
     let r = coplanar_faces(&rib_on_base(Some(-6.0)));
-    assert!(r.pairs.iter().all(|p| p.kind != CoplanarKind::UnionSeam), "{:?}", r.pairs);
-    assert_eq!(r.surfaces.iter().filter(|p| p.kind == CoplanarKind::UnionSeam).count(), 1, "{:?}", r.surfaces);
+    assert!(
+        r.pairs.iter().all(|p| p.kind != CoplanarKind::UnionSeam),
+        "{:?}",
+        r.pairs
+    );
+    assert_eq!(
+        r.surfaces
+            .iter()
+            .filter(|p| p.kind == CoplanarKind::UnionSeam)
+            .count(),
+        1,
+        "{:?}",
+        r.surfaces
+    );
     assert!(r.surfaces.iter().all(|p| p.sheets.is_empty()));
 }
 
 #[test]
-fn the_classification_reads_the_final_field_under_a_node_the_analysis_cannot_follow() {
-    // a twist of strength 0 is the identity, but the analysis does not follow a twist: the pair below
-    // it is still found, and its classification (read from the final tree, twist included) still holds
-    let r = coplanar_faces(&rib_on_base(None).twist(0.0));
+fn the_classification_reads_the_final_field_through_a_node_the_analysis_cannot_follow() {
+    // a block filling around half the seam (x in [0, 8], y in [0, 4]) under a twist of strength 0: the
+    // analysis does not follow the twist (and does not visit below it), so the block's faces are unknown
+    // and the seam is still a candidate; the classification reads the final field, twist included, and
+    // finds the sheet only over the half the block does not fill
+    let filler = SdfNode::box3d(8.0, 4.0, 30.0)
+        .translate(4.0, 2.0, 0.0)
+        .twist(0.0);
+    let r = coplanar_faces(&rib_on_base(None).union(filler));
     assert!(!r.is_fully_analysed());
-    assert_eq!(r.pairs.len(), 1, "{:?}", r.pairs);
-    assert_eq!(r.pairs[0].sheets.len(), 1);
-    assert_eq!(r.pairs[0].sheets[0].side, SheetSide::Material);
-    // and where the final field has no sheet the candidate is a surface, through the twist as well
-    let r = coplanar_faces(&rib_on_base(Some(-6.0)).twist(0.0));
-    assert!(r.pairs.iter().all(|p| p.kind != CoplanarKind::UnionSeam), "{:?}", r.pairs);
+    let seams: Vec<_> = r
+        .pairs
+        .iter()
+        .filter(|p| p.kind == CoplanarKind::UnionSeam)
+        .collect();
+    assert_eq!(seams.len(), 1, "{:?}", r.pairs);
+    let s = &seams[0].sheets;
+    assert_eq!(s.len(), 1, "{s:?}");
+    assert_eq!(s[0].side, SheetSide::Material);
+    // samples within δ (1e-3 × 40) of the block's face read 0 within δ and count as sheet: the edge
+    // is at x = 0 to within δ and one step
+    assert!(
+        (s[0].min.x + 5.0).abs() < 0.6 && s[0].max.x < 0.15,
+        "only the uncovered half: {s:?}"
+    );
 }
 
 #[test]
 fn a_cutter_mouth_flush_with_the_rim_is_an_air_sheet() {
     // an open-top cavity whose cutter stops exactly at the rim: a membrane of air over the mouth
-    let cup = SdfNode::box3d(20.0, 20.0, 20.0).subtract(SdfNode::box3d(16.0, 18.0, 16.0).translate(0.0, 1.0, 0.0));
+    let cup = SdfNode::box3d(20.0, 20.0, 20.0)
+        .subtract(SdfNode::box3d(16.0, 18.0, 16.0).translate(0.0, 1.0, 0.0));
     let r = coplanar_faces(&cup);
     assert_eq!(r.pairs.len(), 1, "{:?}", r.pairs);
     assert_eq!(r.pairs[0].kind, CoplanarKind::FlushCut);
-    assert_eq!(r.pairs[0].sheets.iter().map(|s| s.side).collect::<Vec<_>>(), vec![SheetSide::Air]);
+    assert_eq!(
+        r.pairs[0].sheets.iter().map(|s| s.side).collect::<Vec<_>>(),
+        vec![SheetSide::Air]
+    );
 }
