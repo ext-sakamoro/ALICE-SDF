@@ -406,6 +406,121 @@ pub struct GapReport {
     /// surface in any orientation, so it is found; narrower gaps may be missed (unverified, not
     /// passed). A caller comparing against a limit at or below this value has not checked it.
     pub resolution: f32,
+    /// Acute joints where two walls meet (a tilted plate on a floor, a cylinder lying on a plate):
+    /// they close to a line and have no width, so their samples are listed here and never counted in
+    /// `min_gap` / `gaps`. One entry per joint location (samples within `2 · cell` of a listed one are
+    /// merged), at most [`MAX_CREVICES`].
+    pub crevices: Vec<Crevice>,
+    /// Gap samples classified as crevices (before merging into `crevices`).
+    pub crevice_samples: usize,
+    /// Samples whose wall point sits on an edge of its own wall (the wall's direction turns by more
+    /// than [`EDGE_COS`] within a quarter cell): the wall has no single direction there, so neither a
+    /// width nor a crevice is read from them. The faces either side are sampled by their own grid
+    /// points.
+    pub edge_samples: usize,
+}
+
+/// An acute joint where two walls meet, found by [`measure_gaps`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Crevice {
+    /// Surface point of the sample that found it.
+    pub location: Vec3,
+    /// Angle of the air between the two walls at the sample, in degrees (below 90).
+    pub angle_deg: f32,
+}
+
+/// Most crevices listed in a [`GapReport`] (further ones are still counted in `crevice_samples`).
+pub const MAX_CREVICES: usize = 1024;
+
+/// `sin` of the largest angle between facing walls still read as parallel (about 0.06°): below it the
+/// walls have no direction in which they meet. Near the line where curved walls touch (a cylinder lying
+/// on a plate) the normals also turn almost antiparallel, so parallelism is not a stopping rule during
+/// the walk; a width is decided by the width that stops closing.
+const PARALLEL_SIN: f32 = 1e-3;
+
+/// `cos` of the turn of the wall's direction (within a quarter cell) above which a sample's wall point
+/// is on an edge (about 20°).
+const EDGE_COS: f32 = 0.94;
+
+/// Whether the wall point `a` (direction `n`) is on an edge of its wall: a quarter cell away along
+/// either way of two tangents, the field's direction turns by more than [`EDGE_COS`]. The direction is
+/// read at the stepped point itself, not at its foot on the surface: past an edge the stepped point lies
+/// over the other face, while its foot falls back onto the edge line, where the direction is a tie
+/// between the two faces.
+fn on_wall_edge(node: &SdfNode, a: Vec3, n: Vec3, cell: f32) -> bool {
+    let t1 = n.any_orthonormal_vector();
+    let t2 = n.cross(t1);
+    let step = 0.25 * cell;
+    [t1, -t1, t2, -t2]
+        .iter()
+        .any(|&t| eval_normal(node, a + t * step).normalize_or_zero().dot(n) < EDGE_COS)
+}
+
+/// Steps of the walk toward where two converging walls would meet.
+const WEDGE_MAX_STEPS: usize = 48;
+
+/// Whether the gap measured from surface point `a` (normal `n`, width `width`) is a width between
+/// walls that stay apart, or a crevice where the walls meet (`Some(angle in degrees)`).
+///
+/// Facing walls that are parallel (within [`PARALLEL_SIN`]) are a width. Otherwise the walk moves
+/// along the start wall toward the line where the two walls' tangent planes meet, half the remaining
+/// distance per step, re-measuring the width from the wall each time: the walls meet when the width
+/// closes to within a few [`GAP_TOLERANCE`]; they stay apart when the width stops closing (a sphere
+/// over a plate bottoms out) or the march finds open air (the walk ran off the wall, e.g. onto the
+/// floor of a tapered slot). The angle is the air angle between the walls at the first sample.
+fn crevice_angle(node: &SdfNode, a: Vec3, n: Vec3, width: f32, reach: f32) -> Option<f32> {
+    let wall_normal = |at: Vec3| eval_normal(node, at).normalize_or_zero();
+    let mut a = a;
+    let mut n = n;
+    let mut w = width;
+    let mut n_h = wall_normal(a + n * w);
+    let c0 = n.dot(n_h);
+    if n_h == Vec3::ZERO {
+        return None;
+    }
+    let angle =
+        alice_det_math::acos((-c0).law_max(-1.0).law_min(1.0)) * (180.0 / core::f32::consts::PI);
+    for _ in 0..WEDGE_MAX_STEPS {
+        let h = a + n * w;
+        // along the start wall, toward the other wall's tangent plane; facing walls that are parallel
+        // (within PARALLEL_SIN) have no such direction: a width
+        let along = n * n.dot(n_h) - n_h;
+        if along.length() <= PARALLEL_SIN {
+            return None;
+        }
+        let along = along.normalize();
+        let approach = along.dot(n_h);
+        if approach >= 0.0 {
+            return None;
+        }
+        let s = (h - a).dot(n_h) / approach;
+        if !(s.is_finite() && s > 0.0) {
+            return None;
+        }
+        // half way to the meeting line, back onto the wall
+        let q = a + along * (0.5 * s);
+        let nq = wall_normal(q);
+        let a2 = q - nq * eval(node, q);
+        let n2 = wall_normal(a2);
+        if n2 == Vec3::ZERO {
+            return None;
+        }
+        let w2 = local_gap(node, a2, n2, reach)?;
+        if w2 <= 4.0 * GAP_TOLERANCE {
+            return Some(angle);
+        }
+        if w2 >= 0.95 * w {
+            return None;
+        }
+        a = a2;
+        n = n2;
+        w = w2;
+        n_h = wall_normal(a + n * w);
+        if n_h == Vec3::ZERO {
+            return None;
+        }
+    }
+    None
 }
 
 /// Why [`measure_gaps`] measured nothing.
@@ -423,7 +538,9 @@ pub enum GapError {
 pub const MAX_GAP_GRID_POINTS: usize = 1 << 26;
 
 /// Error bound of a reported gap width against the true width between facing walls \[same unit as the
-/// SDF\], for distance-exact fields: the re-entry is taken where the field drops below the march
+/// SDF\].
+///
+/// For distance-exact fields: the re-entry is taken where the field drops below the march
 /// tolerance and the distance field there is added back, so the hit is within one tolerance of the wall,
 /// and the start is the sample's exact distance to its own wall. A comparison against a limit should
 /// fail only when `width + GAP_TOLERANCE < limit` (a gap designed at exactly the limit is not failed by
@@ -459,7 +576,13 @@ pub fn local_gap(node: &SdfNode, origin: Vec3, outward: Vec3, max_march: f32) ->
 /// 再進入の判定 (`d < MARCH_EPS`) は出発点で発火しうる: 面から許容以内の点 (面の上、浮動小数の丸めで
 /// 面のすぐ外) から march すると 1 歩目で「材料に戻った」と読み、幅 ~0 の隙間になる ⇒ 判定の前に面から
 /// 離れる 内側では −d が最近表面までの距離なので、その分ずつ進む
-fn leave_surface(node: &SdfNode, origin: Vec3, dir: Vec3, t0: f32, limit: f32) -> Option<(f32, f32)> {
+fn leave_surface(
+    node: &SdfNode,
+    origin: Vec3,
+    dir: Vec3,
+    t0: f32,
+    limit: f32,
+) -> Option<(f32, f32)> {
     let mut t = t0;
     let mut crossing: Option<f32> = None;
     loop {
@@ -550,6 +673,9 @@ pub fn measure_gaps(
     let mut samples = 0_usize;
     let mut gaps = 0_usize;
     let mut best: Option<(f32, Vec3)> = None;
+    let mut crevices: Vec<Crevice> = Vec::new();
+    let mut crevice_samples = 0_usize;
+    let mut edge_samples = 0_usize;
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
@@ -575,10 +701,30 @@ pub fn measure_gaps(
                 let Some(enter) = march_empty(node, p, n, t0, reach) else {
                     continue;
                 };
-                gaps += 1;
                 let width = d + enter;
+                let at = p - n * d;
+                if on_wall_edge(node, at, n, cell) {
+                    edge_samples += 1;
+                    continue;
+                }
+                if let Some(angle_deg) = crevice_angle(node, at, n, width, reach) {
+                    crevice_samples += 1;
+                    let merge = 2.0 * cell;
+                    if crevices.len() < MAX_CREVICES
+                        && !crevices
+                            .iter()
+                            .any(|c: &Crevice| c.location.distance(at) <= merge)
+                    {
+                        crevices.push(Crevice {
+                            location: at,
+                            angle_deg,
+                        });
+                    }
+                    continue;
+                }
+                gaps += 1;
                 if best.is_none_or(|(b, _)| width < b) {
-                    best = Some((width, p - n * d));
+                    best = Some((width, at));
                 }
             }
         }
@@ -592,6 +738,9 @@ pub fn measure_gaps(
         samples,
         gaps,
         resolution,
+        crevices,
+        crevice_samples,
+        edge_samples,
     })
 }
 
