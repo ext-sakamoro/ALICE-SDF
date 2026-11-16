@@ -195,6 +195,9 @@ fn nodes_the_analysis_cannot_follow_are_counted_not_treated_as_clean() {
     let r = coplanar_faces(&blended.union(SdfNode::box3d(1.0, 1.0, 1.0).translate(5.0, 0.0, 0.0)));
     assert!(r.ops_not_analysed >= 1, "{r:?}");
     assert!(!r.is_fully_analysed());
+    // exactly: the smooth union itself, and the union above it (one operand not followed); nothing is
+    // counted as analysed (an operator with an operand that was not followed is not analysed either)
+    assert_eq!((r.ops_analysed, r.ops_not_analysed), (0, 2), "{r:?}");
     // the node the analysis stopped at is named, once (the union above it is not a kind of its own)
     assert_eq!(
         r.not_analysed_kinds.get("SmoothUnion"),
@@ -318,4 +321,15 @@ fn an_elongated_box_is_followed_and_other_elongated_children_are_counted() {
     // an elongated sphere has no planar face to follow exactly through the stretch: counted
     let r = coplanar_faces(&SdfNode::sphere(1.0).elongate(1.0, 0.0, 0.0));
     assert_eq!(r.not_analysed_kinds.get("Elongate"), Some(&1), "{r:?}");
+}
+
+#[test]
+fn faces_meeting_only_along_an_edge_do_not_overlap() {
+    // box A x in [-1, 0], y in [0, 1]; box B x in [0, 1], y in [1, 2]: their faces on x = 0 face each
+    // other in the same plane but share only the edge y = 1 (no area), so they do not touch along a face
+    let a = SdfNode::box3d(1.0, 1.0, 1.0).translate(-0.5, 0.5, 0.0);
+    let b = SdfNode::box3d(1.0, 1.0, 1.0).translate(0.5, 1.5, 0.0);
+    let r = coplanar_faces(&a.union(b));
+    assert!(r.is_fully_analysed(), "{r:?}");
+    assert!(r.pairs.is_empty(), "{:?}", r.pairs);
 }
