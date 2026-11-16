@@ -18,7 +18,7 @@ use std::ptr;
 // ============================================================================
 
 /// Generate WGSL shader code
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 #[cfg(feature = "gpu")]
 pub extern "C" fn alice_sdf_to_wgsl(node: SdfHandle) -> StringResult {
     ffi_guard(
@@ -63,7 +63,7 @@ pub extern "C" fn alice_sdf_to_wgsl(node: SdfHandle) -> StringResult {
 }
 
 /// Generate HLSL shader code
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 #[cfg(feature = "hlsl")]
 pub extern "C" fn alice_sdf_to_hlsl(node: SdfHandle) -> StringResult {
     ffi_guard(
@@ -108,7 +108,7 @@ pub extern "C" fn alice_sdf_to_hlsl(node: SdfHandle) -> StringResult {
 }
 
 /// Generate GLSL shader code
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 #[cfg(feature = "glsl")]
 pub extern "C" fn alice_sdf_to_glsl(node: SdfHandle) -> StringResult {
     ffi_guard(

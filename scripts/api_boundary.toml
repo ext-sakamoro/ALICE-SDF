@@ -1,5 +1,5 @@
 # scripts/api_boundary.py (ALICE-Law G7): every boundary item with its decision
-features = "aaa,all-shaders,asdf,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume"
+features = "aaa,all-shaders,asdf,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,gpu-slot-guard,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume"
 bindings = ["pyo3"]
 targets = [{ target = "wasm32-unknown-unknown", features = "wasm" }]
 # compiled only on one OS (rustdoc documents the host it runs on): checked there, skipped elsewhere
@@ -25,8 +25,13 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 808 items (0 Linux-only): 89 handshake, 719 local, 0 pending. Groups (count, decision):
+# 830 items (0 Linux-only): 94 handshake, 736 local, 0 pending. Groups (count, decision):
 #      2  local: creates a device on this machine; takes a label and reads no stored form
+#      3  local: the GPU work guard; decides adapters or walks a parsed module, and parses no text
+#      1  handshake: shader_text_over_the_size_maximum_is_refused_before_parsing
+#      2  handshake: an_unbounded_module_is_refused_with_the_stable_prefix
+#      2  handshake: a_base_with_loops_lowers_the_instance_limit_and_the_emitted_bound_with_it
+#      1  local: formats this build's volume bake shader from a tree of this process
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: a_file_written_under_another_det_math_is_refused_naming_both_and_the_form
@@ -128,6 +133,25 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 # 2 local: creates a device on this machine; takes a label and reads no stored form
 "fn::GpuContext::request" = "local: creates a device on this machine; takes a label and reads no stored form"
 "fn::GpuContext::request_async" = "local: creates a device on this machine; takes a label and reads no stored form"
+
+# 3 local: the GPU work guard; decides adapters or walks a parsed module, and parses no text
+"fn::gpu_context::slot_guard::admit" = "local: the GPU work guard; decides adapters or walks a parsed module, and parses no text"
+"fn::gpu_context::slot_guard::decide" = "local: the GPU work guard; decides adapters or walks a parsed module, and parses no text"
+"fn::gpu_loop_bound::check_module" = "local: the GPU work guard; decides adapters or walks a parsed module, and parses no text"
+
+# 1 handshake: shader_text_over_the_size_maximum_is_refused_before_parsing
+"fn::gpu_loop_bound::parse_source" = "handshake: shader_text_over_the_size_maximum_is_refused_before_parsing"
+
+# 2 handshake: an_unbounded_module_is_refused_with_the_stable_prefix
+"fn::GpuContext::shader_module" = "handshake: an_unbounded_module_is_refused_with_the_stable_prefix"
+"fn::gpu_loop_bound::require_bounded" = "handshake: an_unbounded_module_is_refused_with_the_stable_prefix"
+
+# 2 handshake: a_base_with_loops_lowers_the_instance_limit_and_the_emitted_bound_with_it
+"fn::InstancedSdf::to_instanced_wgsl" = "handshake: a_base_with_loops_lowers_the_instance_limit_and_the_emitted_bound_with_it"
+"fn::InstancedSdf::try_to_instanced_wgsl" = "handshake: a_base_with_loops_lowers_the_instance_limit_and_the_emitted_bound_with_it"
+
+# 1 local: formats this build's volume bake shader from a tree of this process
+"fn::volume::gpu_bake::generate_volume_bake_shader_with_normals" = "local: formats this build's volume bake shader from a tree of this process; parses no text and reads no stored form"
 
 # 4 local
 "fn::mesh::lod_persist::save_lod_chain_metadata_with_provenance" = "local: writes this build's own LOD chain; stamping is G8's"
@@ -963,7 +987,6 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 "fn::HlslShader::to_compute_shader" = "local: generates shader or source text from a tree of this process"
 "fn::HlslShader::to_ue5_custom_node" = "local: generates shader or source text from a tree of this process"
 "fn::HlslShader::to_unity_custom_function" = "local: generates shader or source text from a tree of this process"
-"fn::InstancedSdf::to_instanced_wgsl" = "local: generates shader or source text from a tree of this process"
 "fn::RustSource::source" = "local: generates shader or source text from a tree of this process"
 "fn::RustTranspileOptions::with_det_math_path" = "local: generates shader or source text from a tree of this process"
 "fn::SceneShaderBuilder::build" = "local: generates shader or source text from a tree of this process"

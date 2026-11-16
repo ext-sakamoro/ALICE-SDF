@@ -12,7 +12,7 @@ use std::ffi::{c_char, CString};
 // ============================================================================
 
 /// Free an SDF handle
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_free(node: SdfHandle) {
     ffi_guard((), || {
         if !node.is_null() {
@@ -22,7 +22,7 @@ pub extern "C" fn alice_sdf_free(node: SdfHandle) {
 }
 
 /// Free a string returned by shader generation functions
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_free_string(s: *mut c_char) {
     ffi_guard((), || {
         if !s.is_null() {
@@ -37,7 +37,7 @@ pub extern "C" fn alice_sdf_free_string(s: *mut c_char) {
 }
 
 /// Clone an SDF handle (creates a new reference)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_clone(node: SdfHandle) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -53,7 +53,7 @@ pub extern "C" fn alice_sdf_clone(node: SdfHandle) -> SdfHandle {
 // ============================================================================
 
 /// Get the node count in an SDF tree
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_node_count(node: SdfHandle) -> u32 {
     ffi_guard(0, || {
         let sdf_node = match get_node(node) {
@@ -65,13 +65,13 @@ pub extern "C" fn alice_sdf_node_count(node: SdfHandle) -> u32 {
 }
 
 /// Check if a handle is valid
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_is_valid(node: SdfHandle) -> bool {
     ffi_guard(false, || get_node(node).is_some())
 }
 
 /// Check if a compiled handle is valid
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_is_compiled_valid(compiled: CompiledHandle) -> bool {
     ffi_guard(false, || get_compiled(compiled).is_some())
 }

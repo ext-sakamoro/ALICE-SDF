@@ -19,7 +19,7 @@ use crate::compiled::CompiledSdf;
 /// # Returns
 /// A CompiledHandle that can be used with `alice_sdf_eval_compiled*` functions.
 /// Returns NULL on failure.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_compile(node: SdfHandle) -> CompiledHandle {
     ffi_guard(COMPILED_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -33,7 +33,7 @@ pub extern "C" fn alice_sdf_compile(node: SdfHandle) -> CompiledHandle {
 }
 
 /// Free a compiled SDF handle
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_free_compiled(compiled: CompiledHandle) {
     ffi_guard((), || {
         if !compiled.is_null() {
@@ -43,7 +43,7 @@ pub extern "C" fn alice_sdf_free_compiled(compiled: CompiledHandle) {
 }
 
 /// Get instruction count of a compiled SDF (for profiling)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_compiled_instruction_count(compiled: CompiledHandle) -> u32 {
     ffi_guard(0, || {
         get_compiled(compiled).map_or(0, |c| c.instruction_count() as u32)

@@ -8,6 +8,7 @@
 
 pub mod corpus;
 pub mod loft_stack_scenes;
+pub mod npr_shader;
 pub mod spirv;
 
 use alice_sdf::prelude::*;

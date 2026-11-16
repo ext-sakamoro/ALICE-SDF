@@ -7,10 +7,10 @@ References are resolved to one definition each, so items that share a name are t
 
 | Level | Meaning | Count |
 |-------|---------|------:|
-| L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1415 |
-| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1254 |
-| | **total** | **2678** |
+| L0 | not reached by any non-test code, examples included | 13 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1425 |
+| live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1283 |
+| | **total** | **2721** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -19,15 +19,19 @@ It does mean the item is not reached from another module or a binding.
 
 `scripts/wiring-baseline.txt` lists 17 unwired items.
 
-### L0 here but not in the baseline (5)
+### L0 here but not in the baseline (9)
 
 The name-based guard counts these as wired; resolved references find no caller.
 
 - `src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph`
 - `src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function`
+- `src/compiled/instanced.rs::InstancedSdf::add_at`
+- `src/compiled/instanced.rs::InstancedSdf::add_instance`
+- `src/compiled/instanced.rs::InstancedSdf::instance_upload`
 - `src/mesh/point_cloud_sdf.rs::PointCloudSdf::new`
 - `src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf`
 - `src/primitives/cylinder.rs::sdf_cylinder_infinite`
+- `src/types/constructors.rs::SdfNode::stairs`
 
 ### In the baseline but reached here (1)
 
@@ -35,10 +39,13 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 
 - `src/modifiers/surface_roughness.rs::hash3_xyz` (live)
 
-## L0 — unreached (9)
+## L0 — unreached (13)
 
 - `src/compiled/glsl/transpiler.rs::GlslShader::export_unity_shader_graph`
 - `src/compiled/glsl/transpiler.rs::GlslShader::to_unity_custom_function`
+- `src/compiled/instanced.rs::InstancedSdf::add_at`
+- `src/compiled/instanced.rs::InstancedSdf::add_instance`
+- `src/compiled/instanced.rs::InstancedSdf::instance_upload`
 - `src/compiled/transpiler_common.rs::SHADER_UNSUPPORTED`
 - `src/gi/mod.rs::PointLight`
 - `src/live_sdf.rs::wake_bodies_in`
@@ -46,6 +53,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/mesh/point_cloud_sdf.rs::point_cloud_to_sdf`
 - `src/npr/compiled_color.rs::CompiledColorPipeline::fallback_op_count`
 - `src/primitives/cylinder.rs::sdf_cylinder_infinite`
+- `src/types/constructors.rs::SdfNode::stairs`
 
 ## Not indexed (7)
 
@@ -69,7 +77,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1415)
+## L1 — example-only (1425)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -90,7 +98,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/glsl/render_pipeline.rs`: `BIOME_SYSTEM`, `DESTRUCTION_SYSTEM`, `DESTRUCTION_UNIFORMS`, `INTERIOR_MAPPING_LIB`, `MAT_STRUCT`, `MICRO_NORMAL_LIB`, `NOISE_LIB`, `NORMAL_AO_SHADOW`, `PBR_BRDF`, `POST_PROCESS`, `RenderConfig`, `SKY_ATMOSPHERE`, `SPECTRAL_LIB`, `UNIFORMS`, `VFX_LIB`, `VOLUMETRIC_LIGHT`, `build_full_shader`, `build_main_function`
 - `src/compiled/glsl/transpiler.rs`: `GlslShader::extract_params`, `GlslShader::get_eval_function`, `GlslShader::to_compute_shader`, `GlslShader::to_fragment_shader`, `GlslShader::to_fragment_shader_full`, `GlslShader::to_vulkan_compute_shader`, `GlslShader::transpile_with_live_pull`, `GlslShader::transpile_with_scale`, `GlslShader::try_transpile`
 - `src/compiled/hlsl/transpiler.rs`: `HlslShader::export_ue5_material_function`, `HlslShader::export_unity_shader_graph`, `HlslShader::extract_params`, `HlslShader::get_eval_function`, `HlslShader::to_compute_shader`, `HlslShader::to_ue5_custom_node`, `HlslShader::to_unity_custom_function`, `HlslShader::try_transpile_checked`
-- `src/compiled/instanced.rs`: `InstancedSdf`, `InstancedSdf::add_at`, `InstancedSdf::add_instance`, `InstancedSdf::eval_min`, `InstancedSdf::eval_min_batch`, `InstancedSdf::eval_min_batch_simd`, `InstancedSdf::eval_min_simd`, `InstancedSdf::eval_per_instance`, `InstancedSdf::instance_count`, `InstancedSdf::new`, `InstancedSdf::to_instanced_wgsl`, `InstancedSdf::with_capacity`
+- `src/compiled/instanced.rs`: `InstancedGpuRefusal`, `InstancedSdf`, `InstancedSdf::eval_min`, `InstancedSdf::eval_min_batch`, `InstancedSdf::eval_min_batch_simd`, `InstancedSdf::eval_min_simd`, `InstancedSdf::eval_per_instance`, `InstancedSdf::gpu_instance_limit`, `InstancedSdf::instance_count`, `InstancedSdf::instance_upload_for`, `InstancedSdf::new`, `InstancedSdf::to_instanced_wgsl`, `InstancedSdf::try_add_at`, `InstancedSdf::try_add_instance`, `InstancedSdf::try_to_instanced_wgsl`, `InstancedSdf::with_capacity`, `MAX_INSTANCES`, `TooManyInstances`
 - `src/compiled/instruction.rs`: `Instruction::animated`, `Instruction::is_leaf`, `Instruction::next_instruction_index`
 - `src/compiled/jit/codegen.rs`: `JitCompiler`, `JitCompiler::compile_sdf`, `JitCompiler::compile_sdf_dynamic`, `JitCompiler::new`, `extract_jit_params`
 - `src/compiled/jit/runtime.rs`: `JitCompiledSdf`, `JitCompiledSdf::compile`, `JitCompiledSdf::eval`, `JitCompiledSdf::eval_batch`, `JitCompiledSdf::eval_batch_parallel`, `JitCompiledSdf::lipschitz`, `JitCompiledSdfDynamic`, `JitCompiledSdfDynamic::compile`, `JitCompiledSdfDynamic::eval`, `JitCompiledSdfDynamic::eval_batch`, `JitCompiledSdfDynamic::eval_batch_parallel`, `JitCompiledSdfDynamic::lipschitz`, `JitCompiledSdfDynamic::params`, `JitCompiledSdfDynamic::update_params`, `JitError`
@@ -183,7 +191,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/modifiers/twist.rs`: `modifier_twist_x`, `modifier_twist_z`
 - `src/morphology.rs`: `eval_offset`, `eval_offset_batch`, `eval_offset_batch_parallel`, `tolerance_fits`, `tolerance_max_violation`
 - `src/neural.rs`: `NSDF_MAGIC`, `NSDF_VERSION`, `NeuralSdf`, `NeuralSdf::eval`, `NeuralSdf::eval_batch`, `NeuralSdf::eval_with_gradient`, `NeuralSdf::hidden_layer_count`, `NeuralSdf::input_dimension`, `NeuralSdf::load`, `NeuralSdf::load_unverified`, `NeuralSdf::new`, `NeuralSdf::param_count`, `NeuralSdf::save`, `NeuralSdf::save_with_provenance`, `NeuralSdf::train`, `NeuralSdfConfig`
-- `src/npr/compiled_color.rs`: `ADD`, `BLOOM`, `ColorOp`, `ColorOp::stack_effect`, `CompiledColorPipeline`, `CompiledColorPipeline::compile`, `CompiledColorPipeline::eval`, `CompiledColorPipeline::eval_batch8`, `CompiledColorPipeline::native_op_count`, `CompiledColorPipeline::serialize`, `CompiledColorPipeline::validate`, `DeserializeError`, `FRESNEL`, `GpuColorProgram`, `GpuColorProgram::as_words`, `GpuColorProgram::byte_len`, `GpuColorProgram::deserialize`, `HATCH`, `MULTIPLY`, `N_DOT_L`, `N_DOT_V`, `NprBatchContext8`, `NprBatchContext8::from_contexts`, `NprColorBatch8`, `NprColorBatch8::add_vec3x8`, `NprColorBatch8::dot_scalar`, `NprColorBatch8::from_vec3s`, `NprColorBatch8::lerp`, `NprColorBatch8::max_channel`, `NprColorBatch8::mul_componentwise`, `NprColorBatch8::scale`, `NprColorBatch8::scale_scalar`, `NprColorBatch8::splat`, `NprColorBatch8::to_vec3s`, `NprColorNode::compile`, `OUTLINE_OVER`, `PALETTE3`, `PALETTE5`, `POSTERIZE_COLOR`, `PUSH_CONSTANT`, `SATURATE`, `SCALE`, `SDF`, `SOFT_TOON`, `SPEED_LINE`, `SerializeError`, `StackError`, `TIME_CYCLE`, `TONEMAP`, `TOON`, `TWO_TONE`, `UV_Y`, `VIGNETTE`, `emit_wgsl_bytecode_evaluator`, `opcode_word_count`
+- `src/npr/compiled_color.rs`: `ADD`, `BLOOM`, `ColorOp`, `ColorOp::stack_effect`, `CompiledColorPipeline`, `CompiledColorPipeline::compile`, `CompiledColorPipeline::eval`, `CompiledColorPipeline::eval_batch8`, `CompiledColorPipeline::native_op_count`, `CompiledColorPipeline::serialize`, `CompiledColorPipeline::validate`, `DeserializeError`, `FRESNEL`, `GpuColorProgram`, `GpuColorProgram::as_words`, `GpuColorProgram::byte_len`, `GpuColorProgram::checked_len`, `GpuColorProgram::deserialize`, `HATCH`, `MAX_NPR_PROGRAM_WORDS`, `MULTIPLY`, `N_DOT_L`, `N_DOT_V`, `NprBatchContext8`, `NprBatchContext8::from_contexts`, `NprColorBatch8`, `NprColorBatch8::add_vec3x8`, `NprColorBatch8::dot_scalar`, `NprColorBatch8::from_vec3s`, `NprColorBatch8::lerp`, `NprColorBatch8::max_channel`, `NprColorBatch8::mul_componentwise`, `NprColorBatch8::scale`, `NprColorBatch8::scale_scalar`, `NprColorBatch8::splat`, `NprColorBatch8::to_vec3s`, `NprColorNode::compile`, `OUTLINE_OVER`, `PALETTE3`, `PALETTE5`, `POSTERIZE_COLOR`, `PUSH_CONSTANT`, `ProgramTooLong`, `SATURATE`, `SCALE`, `SDF`, `SOFT_TOON`, `SPEED_LINE`, `SerializeError`, `StackError`, `TIME_CYCLE`, `TONEMAP`, `TOON`, `TWO_TONE`, `UV_Y`, `VIGNETTE`, `emit_wgsl_bytecode_evaluator`, `opcode_word_count`
 - `src/npr/composition.rs`: `bloom_toon`, `chromatic_offsets`, `vignette`
 - `src/npr/distortion.rs`: `hand_drawn_jitter`, `line_boil`, `sketch_wobble`
 - `src/npr/dsl.rs`: `NprColorContext`, `NprColorContext::n_dot_l`, `NprColorContext::n_dot_v`, `NprColorNode`, `NprColorNode::bloom`, `NprColorNode::eval`, `NprColorNode::multiply`, `NprColorNode::plus`, `NprColorNode::posterize`, `NprColorNode::saturate`, `NprColorNode::scale`, `NprColorNode::tonemap_reinhard`, `NprColorNode::vignetted`, `NprColorNode::with_fresnel`, `NprColorNode::with_hatch`, `NprColorNode::with_outline`, `NprColorNode::with_speed_lines`, `PaletteSource`, `palette_source_scalar`
@@ -247,6 +255,6 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/validity.rs`: `ErosionVerdict`, `ErosionVerdict::has_thick_region`, `PrintRequirements`, `PrintRequirements::fdm_0_4_nozzle`, `ValidatedExportError`, `ValidityReport`, `ValidityReport::is_printable`, `export_step_validated`, `export_step_validated_with_provenance`, `local_thickness`, `overhang_stats`, `prove_erosion`, `validate_for_printing`
 - `src/volume/bake.rs`: `bake_volume_compiled`, `bake_volume_with_normals`
 - `src/volume/export.rs`: `DdsFormat`, `export_dds_3d`, `export_dds_3d_distgrad`, `export_dds_3d_distgrad_with_provenance`, `export_dds_3d_with_provenance`, `export_raw`, `export_raw_with_mips`, `export_raw_with_mips_with_provenance`, `export_raw_with_provenance`
-- `src/volume/gpu_bake.rs`: `gpu_bake_volume_with_normals`
+- `src/volume/gpu_bake.rs`: `generate_volume_bake_shader_with_normals`, `gpu_bake_volume_with_normals`
 - `src/volume/mipchain.rs`: `generate_mip_chain_distgrad`
 - `src/volume/mod.rs`: `Volume3D::get`, `Volume3D::index`, `Volume3D::mip_count`, `Volume3D::new`, `Volume3D::sample_trilinear`, `Volume3D::set`, `Volume3D::voxel_count`, `Volume3D::voxel_size`, `Volume3D::voxel_to_world`, `Volume3D::world_size`, `VoxelDistGrad`

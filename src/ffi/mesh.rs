@@ -16,7 +16,7 @@ use std::ffi::c_char;
 ///
 /// Generate once, export to multiple formats without re-computing.
 /// Call `alice_sdf_free_mesh` when done.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_generate_mesh(
     node: SdfHandle,
     resolution: u32,
@@ -43,13 +43,13 @@ pub extern "C" fn alice_sdf_generate_mesh(
 }
 
 /// Get vertex count of a mesh
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_mesh_vertex_count(mesh: MeshHandle) -> u32 {
     ffi_guard(0, || get_mesh(mesh).map_or(0, |m| m.vertex_count() as u32))
 }
 
 /// Get triangle count of a mesh
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_mesh_triangle_count(mesh: MeshHandle) -> u32 {
     ffi_guard(0, || {
         get_mesh(mesh).map_or(0, |m| m.triangle_count() as u32)
@@ -57,7 +57,7 @@ pub extern "C" fn alice_sdf_mesh_triangle_count(mesh: MeshHandle) -> u32 {
 }
 
 /// Free a mesh handle
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_free_mesh(mesh: MeshHandle) {
     ffi_guard((), || {
         if !mesh.is_null() {
@@ -126,7 +126,7 @@ pub(super) unsafe fn resolve_mesh(
 ///
 /// - `path` must be a valid, null-terminated C string pointer that remains valid for the call.
 /// - `mesh_handle` and `sdf_handle` must be valid handles (or null for the unused path).
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_export_obj(
     mesh_handle: MeshHandle,
     sdf_handle: SdfHandle,
@@ -156,7 +156,7 @@ pub unsafe extern "C" fn alice_sdf_export_obj(
 ///
 /// - `path` must be a valid, null-terminated C string pointer that remains valid for the call.
 /// - `mesh_handle` and `sdf_handle` must be valid handles (or null for the unused path).
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_export_glb(
     mesh_handle: MeshHandle,
     sdf_handle: SdfHandle,
@@ -186,7 +186,7 @@ pub unsafe extern "C" fn alice_sdf_export_glb(
 ///
 /// - `path` must be a valid, null-terminated C string pointer that remains valid for the call.
 /// - `mesh_handle` and `sdf_handle` must be valid handles (or null for the unused path).
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_export_usda(
     mesh_handle: MeshHandle,
     sdf_handle: SdfHandle,
@@ -216,7 +216,7 @@ pub unsafe extern "C" fn alice_sdf_export_usda(
 ///
 /// - `path` must be a valid, null-terminated C string pointer that remains valid for the call.
 /// - `mesh_handle` and `sdf_handle` must be valid handles (or null for the unused path).
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_export_alembic(
     mesh_handle: MeshHandle,
     sdf_handle: SdfHandle,
@@ -246,7 +246,7 @@ pub unsafe extern "C" fn alice_sdf_export_alembic(
 ///
 /// - `path` must be a valid, null-terminated C string pointer that remains valid for the call.
 /// - `mesh_handle` and `sdf_handle` must be valid handles (or null for the unused path).
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_export_fbx(
     mesh_handle: MeshHandle,
     sdf_handle: SdfHandle,

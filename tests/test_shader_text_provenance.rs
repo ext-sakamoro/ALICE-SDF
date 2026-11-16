@@ -399,6 +399,21 @@ fn whole_instanced_wgsl_carries_the_identifier() {
             &format!("instanced WGSL {name}"),
             &InstancedSdf::to_instanced_wgsl(&node),
         );
+        assert_whole_tagged(
+            &format!("instanced WGSL (typed) {name}"),
+            &InstancedSdf::try_to_instanced_wgsl(&node)
+                .expect("every corpus base has an instance limit"),
+        );
+        #[cfg(feature = "volume")]
+        assert_whole_tagged(
+            &format!("volume bake with normals {name}"),
+            &alice_sdf::volume::gpu_bake::generate_volume_bake_shader_with_normals(
+                &alice_sdf::compiled::WgslShader::transpile(
+                    &node,
+                    alice_sdf::compiled::TranspileMode::Hardcoded,
+                ),
+            ),
+        );
     }
 }
 
@@ -736,6 +751,11 @@ const WHOLE: &[(&str, &str)] = &[
     ("src/compiled/hlsl/transpiler.rs", "to_compute_shader"),
     ("src/compiled/msl/transpiler.rs", "source"),
     ("src/compiled/instanced.rs", "to_instanced_wgsl"),
+    ("src/compiled/instanced.rs", "try_to_instanced_wgsl"),
+    (
+        "src/volume/gpu_bake.rs",
+        "generate_volume_bake_shader_with_normals",
+    ),
     ("src/compiled/blinkscript/transpiler.rs", "to_kernel"),
     ("src/npr/scene_composer.rs", "build"),
     ("src/compiled/msl/transpiler.rs", "wgsl_source"),
@@ -983,8 +1003,10 @@ const PRIVATE_FILES: [&str; 2] = [
 
 /// Whether the features an entry needs are enabled in this build
 fn entry_enabled(file: &str, name: &str) -> bool {
-    if file == "src/compiled/wgsl/transpiler.rs" && name == "to_volume_shader" {
-        cfg!(feature = "volume")
+    if (file == "src/compiled/wgsl/transpiler.rs" && name == "to_volume_shader")
+        || file == "src/volume/gpu_bake.rs"
+    {
+        cfg!(all(feature = "volume", feature = "gpu"))
     } else if file == "src/npr/scene_composer.rs" {
         cfg!(any(feature = "gpu", feature = "glsl", feature = "hlsl"))
     } else if file.starts_with("src/compiled/blinkscript/") {
@@ -1065,7 +1087,19 @@ fn samples() -> Vec<(&'static str, &'static str, String)> {
             "to_instanced_wgsl",
             InstancedSdf::to_instanced_wgsl(node),
         ));
+        out.push((
+            "src/compiled/instanced.rs",
+            "try_to_instanced_wgsl",
+            InstancedSdf::try_to_instanced_wgsl(node)
+                .expect("every corpus base has an instance limit"),
+        ));
         let s = WgslShader::transpile(node, TranspileMode::Hardcoded);
+        #[cfg(feature = "volume")]
+        out.push((
+            "src/volume/gpu_bake.rs",
+            "generate_volume_bake_shader_with_normals",
+            alice_sdf::volume::gpu_bake::generate_volume_bake_shader_with_normals(&s),
+        ));
         const M: &str = "src/mesh/gpu_mc_shaders.rs";
         out.push((
             M,

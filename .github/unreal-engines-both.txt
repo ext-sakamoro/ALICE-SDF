@@ -22,6 +22,7 @@ src/compiled/wgsl/transpiler.rs
 src/ffi/shader.rs
 src/io/nanite.rs
 src/mesh/gpu_mc_shaders.rs
+src/volume/gpu_bake.rs
 src/modifiers/surface_roughness.rs
 src/npr/dsl_shader.rs
 src/npr/scene_composer.rs

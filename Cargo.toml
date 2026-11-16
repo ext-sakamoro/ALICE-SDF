@@ -66,6 +66,10 @@ python = ["dep:pyo3", "dep:numpy", "asdf"]
 godot = ["dep:godot"]  # Godot 4.x GDExtension integration
 jit = ["dep:cranelift-codegen", "dep:cranelift-frontend", "dep:cranelift-jit", "dep:cranelift-module", "dep:cranelift-native"]
 gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck", "dep:ash"]
+# This crate's own tests only (enabled by the dev-dependency on itself below, never by an application): a real
+# GPU adapter only inside a GPU slot of the machine (ALICE_GPU_SLOT), and ALICE_SDF_TEST_FALLBACK_ADAPTER=1 for
+# wgpu's software adapter (src/gpu_context.rs, slot_guard)
+gpu-slot-guard = []
 volume = ["gpu"]  # 3D volume texture baking
 gpu-mesh = ["gpu"]  # GPU Marching Cubes mesh generation
 svo = []  # Sparse Voxel Octree
@@ -200,6 +204,17 @@ js-sys = { version = "0.3", optional = true }
 vdb-rs = { version = "0.6", optional = true }
 
 [dev-dependencies]
+# The crate depends on itself on purpose: this is the switch that gives every test, example and bench build of
+# this crate the GPU slot guard (dev-dependency features are unified only into those builds), and never a
+# `cargo build`, so the shipped cdylib / bin built from this repository (ci.yml's release builds, the Unity /
+# Godot / Python plugins) and every application that depends on the crate have no guard. The alternatives leak:
+# a `.cargo/config.toml` [env] entry applies to every build in the repository, the release cdylib included;
+# `CARGO_PRIMARY_PACKAGE` is set for the cdylib build too; a separate workspace test crate unifies the feature
+# into `cargo build --workspace --release`. The cost is that the unit-test build links the crate twice (the test
+# copy and this one), so the unmangled exports are not in the unit-test build: `#[cfg_attr(not(test), no_mangle)]`
+# and `#[cfg_attr(not(test), gdextension)]` / `#[cfg_attr(not(test), pymodule)]`; tests/test_unmangled_exports.rs
+# fails on a new export without it.
+alice-sdf = { path = ".", default-features = false, features = ["gpu-slot-guard"] }
 naga = { version = "24", default-features = false, features = ["wgsl-in", "glsl-in", "spv-out"] }
 # tests/test_provenance.rs: an independent binary STL parser reads files carrying the identifier
 stl_io = "0.11"
