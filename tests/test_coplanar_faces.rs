@@ -760,3 +760,62 @@ fn sheets_of_opposite_sides_stay_apart_when_the_step_is_coarser_than_the_surface
         big.sheets
     );
 }
+
+// ── following repeated instances ──
+
+#[test]
+fn bolt_holes_repeated_around_an_axis_that_end_on_the_plate_faces_are_flush_cuts() {
+    // a flange disc (r 30, y in [-3, 3]) less 4 bolt holes (r 2, x = 20) repeated around Y, the holes
+    // exactly as long as the plate is thick: each hole's ends lie on the plate's faces, a membrane of
+    // air over both ends of every hole
+    let holes = SdfNode::cylinder(2.0, 6.0)
+        .translate(20.0, 0.0, 0.0)
+        .polar_repeat(4);
+    let r = coplanar_faces(&SdfNode::cylinder(30.0, 6.0).subtract(holes));
+    let flush: Vec<_> = r
+        .pairs
+        .iter()
+        .filter(|p| p.kind == CoplanarKind::FlushCut)
+        .collect();
+    // 4 instances x 2 ends
+    assert_eq!(flush.len(), 8, "{:?}", r.pairs);
+    assert!(flush
+        .iter()
+        .all(|p| p.sheets.iter().all(|s| s.side == SheetSide::Air) && !p.sheets.is_empty()));
+    // the instances sit at 0, 90, 180, 270 degrees around Y: one hole's end centred at x = -20
+    assert!(
+        flush
+            .iter()
+            .any(|p| (p.point - Vec3::new(-20.0, 3.0, 0.0)).length() < 0.1),
+        "{flush:?}"
+    );
+    assert!(r.is_fully_analysed(), "{r:?}");
+}
+
+#[test]
+fn two_instances_meeting_on_their_sector_boundary_are_a_seam() {
+    // count 2: each sector is a half space around +x / -x, the boundary the plane x = 0; a box with its
+    // face on that plane meets its own instance turned half a turn face to face
+    let half = SdfNode::box3d(10.0, 4.0, 4.0)
+        .translate(5.0, 0.0, 0.0)
+        .polar_repeat(2);
+    let r = coplanar_faces(&half);
+    assert!(
+        r.pairs
+            .iter()
+            .any(|p| p.kind == CoplanarKind::UnionSeam && p.normal.x.abs() > 0.99),
+        "{:?} / surfaces {:?}",
+        r.pairs,
+        r.surfaces
+    );
+}
+
+#[test]
+fn bolt_holes_reaching_past_the_plate_are_not_reported() {
+    let holes = SdfNode::cylinder(2.0, 16.0)
+        .translate(20.0, 0.0, 0.0)
+        .polar_repeat(4);
+    let r = coplanar_faces(&SdfNode::cylinder(30.0, 6.0).subtract(holes));
+    assert!(no_candidate(&r), "{:?} / {:?}", r.pairs, r.surfaces);
+    assert!(r.is_fully_analysed(), "{r:?}");
+}
