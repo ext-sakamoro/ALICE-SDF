@@ -94,12 +94,13 @@ dependencies = [
 
 [[package]]
 name = "alice-sdf"
-version = "7.0.0"
+version = "7.1.0"
 dependencies = [
  "alice-cache",
  "alice-codec",
  "alice-det-math",
  "alice-physics",
+ "alice-sdf",
  "alice-serial",
  "alice-zip",
  "arrayvec",

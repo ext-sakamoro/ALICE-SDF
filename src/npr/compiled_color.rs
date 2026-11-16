@@ -1379,6 +1379,34 @@ pub mod gpu_palette_source_tag {
     pub const TIME_CYCLE: u32 = 4;
 }
 
+/// The most `u32` words a [`GpuColorProgram`] may hold for the GPU evaluator
+/// ([`emit_wgsl_bytecode_evaluator`]).
+///
+/// The evaluator's loop takes at least one word per step, so it is bounded by this literal (and stops at its
+/// `program_len`); [`GpuColorProgram::checked_len`] refuses a longer program before it is uploaded. 4096 is a
+/// stated ceiling: the programs of this crate's NPR corpus are far shorter (measured in
+/// `tests/test_npr_bytecode_gpu_parity.rs`).
+pub const MAX_NPR_PROGRAM_WORDS: usize = 4096;
+
+/// A program longer than [`MAX_NPR_PROGRAM_WORDS`] for the GPU evaluator
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProgramTooLong {
+    /// Its length in `u32` words
+    pub words: usize,
+}
+
+impl core::fmt::Display for ProgramTooLong {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "npr: a GPU program of {} words is over the most the evaluator runs ({MAX_NPR_PROGRAM_WORDS}, npr::MAX_NPR_PROGRAM_WORDS)",
+            self.words
+        )
+    }
+}
+
+impl std::error::Error for ProgramTooLong {}
+
 /// Errors returned by [`CompiledColorPipeline::serialize`]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SerializeError {
@@ -1480,6 +1508,22 @@ impl GpuColorProgram {
     #[must_use]
     pub fn as_words(&self) -> &[u32] {
         &self.words
+    }
+
+    /// The value to pass as the GPU evaluator's `program_len`: the word count, refused past
+    /// [`MAX_NPR_PROGRAM_WORDS`] (the evaluator would stop there) before anything is uploaded
+    ///
+    /// # Errors
+    ///
+    /// [`ProgramTooLong`] for a program longer than [`MAX_NPR_PROGRAM_WORDS`].
+    pub const fn checked_len(&self) -> Result<u32, ProgramTooLong> {
+        if self.words.len() > MAX_NPR_PROGRAM_WORDS {
+            return Err(ProgramTooLong {
+                words: self.words.len(),
+            });
+        }
+        // at most MAX_NPR_PROGRAM_WORDS (4096): fits u32
+        Ok(self.words.len() as u32)
     }
 
     /// Total byte length of the stream (`words.len() * 4`)
@@ -2081,8 +2125,13 @@ fn alice_npr_eval_bytecode(
     var stack: array<vec3<f32>, 32>;
     var sp: u32 = 0u;
     var pc: u32 = 0u;
+    // every step takes at least one word: at most MAX_NPR_PROGRAM_WORDS steps (a literal bound), and no further
+    // than program_len
+    var steps: u32 = 0u;
 
     loop {{
+        if (steps >= {max_words}u) {{ break; }}
+        steps = steps + 1u;
         if (pc >= program_len) {{ break; }}
         let tag = alice_npr_load(pc);
         pc = pc + 1u;
@@ -2279,6 +2328,7 @@ fn alice_npr_eval_bytecode(
     return stack[sp - 1u];
 }}
 ",
+        max_words = MAX_NPR_PROGRAM_WORDS,
         push_constant = t::PUSH_CONSTANT,
         toon = t::TOON,
         soft_toon = t::SOFT_TOON,

@@ -196,6 +196,8 @@ pub trait ShaderLang: private::Sealed + 'static {
         format!("(({cond}) ? ({a}) : ({b}))")
     }
     /// For loop: "for(var i: i32 = 0" / "for(int i = 0"
+    /// No emitter calls this (it emits nothing in the crate's shaders); kept for the 7.x API
+    #[deprecated(since = "7.1.0", note = "no emitter uses it; it is removed in 8.0.0")]
     fn for_loop_int(name: &str, init: i32, cond: &str, incr: &str) -> String;
 
     // ---- Param prefix ----

@@ -328,7 +328,10 @@ pub fn corpus() -> Vec<(&'static str, SdfNode)> {
         ("parabola_segment", SdfNode::parabola_segment(0.5, 0.4, 0.2)),
         ("regular_polygon", SdfNode::regular_polygon(0.6, 6, 0.2)),
         ("star_polygon", SdfNode::star_polygon(0.6, 5, 0.3, 0.2)),
-        ("stairs", SdfNode::stairs(0.3, 0.2, 4, 0.3)),
+        (
+            "stairs",
+            SdfNode::try_stairs(0.3, 0.2, 4, 0.3).expect("4 steps"),
+        ),
         ("helix", SdfNode::helix(0.6, 0.1, 0.5, 0.8)),
         ("tetrahedron", SdfNode::tetrahedron(0.6)),
         ("dodecahedron", SdfNode::dodecahedron(0.6)),

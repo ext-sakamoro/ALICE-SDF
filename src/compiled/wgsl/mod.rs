@@ -77,6 +77,9 @@ mod gpu_metal;
 mod leaf_loops;
 mod transpiler;
 
-pub(crate) use gpu_eval::check_node_data_size;
-pub use gpu_eval::{GpuBufferPool, GpuError, GpuEvalFuture, GpuEvaluator};
+pub use gpu_eval::{
+    check_gpu_tree, GpuBufferPool, GpuError, GpuEvalFuture, GpuEvaluator, GpuTreeRefusal,
+    MAX_GPU_POLYGON_VERTICES,
+};
+pub(crate) use gpu_eval::{check_node_data_size, refuse_out_of_contract};
 pub use transpiler::{TranspileMode, WgslShader};

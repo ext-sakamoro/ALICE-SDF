@@ -157,6 +157,8 @@
 
 mod aabb;
 mod compiler;
+#[cfg(feature = "gpu")]
+pub(crate) use compiler::walk_tree;
 mod eval;
 mod eval_bvh;
 mod eval_core;
@@ -223,7 +225,10 @@ pub mod blinkscript;
 pub mod rust;
 
 #[cfg(feature = "gpu")]
-pub use wgsl::{GpuBufferPool, GpuError, GpuEvalFuture, GpuEvaluator, TranspileMode, WgslShader};
+pub use wgsl::{
+    check_gpu_tree, GpuBufferPool, GpuError, GpuEvalFuture, GpuEvaluator, GpuTreeRefusal,
+    TranspileMode, WgslShader, MAX_GPU_POLYGON_VERTICES,
+};
 
 #[cfg(feature = "hlsl")]
 pub use hlsl::{HlslShader, HlslTranspileMode};
@@ -252,7 +257,9 @@ pub use eval_soa::{
     eval_compiled_batch_soa, eval_compiled_batch_soa_into, eval_compiled_batch_soa_parallel,
     eval_compiled_batch_soa_raw,
 };
-pub use instanced::InstancedSdf;
+#[cfg(feature = "gpu")]
+pub use instanced::InstancedGpuRefusal;
+pub use instanced::{InstancedSdf, TooManyInstances, MAX_INSTANCES};
 pub use instruction::Instruction;
 pub use opcode::{OpCode, OpKind};
 pub use refit::RefitError;

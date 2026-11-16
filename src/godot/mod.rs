@@ -1095,7 +1095,8 @@ fn build_sdf_from_params(shape: &str, params_json: &str) -> Option<SdfNode> {
                 .and_then(|v| v.as_f64())
                 .unwrap_or(5.0) as u32;
             let d = params.get("depth")?.as_f64()? as f32;
-            Some(SdfNode::stairs(step_width, step_height, n_steps, d))
+            // a count over primitives::MAX_STAIR_STEPS is refused (no node), as any other bad parameter here
+            SdfNode::try_stairs(step_width, step_height, n_steps, d).ok()
         }
         "helix" => {
             let major_r = params.get("major_r")?.as_f64()? as f32;

@@ -1,6 +1,6 @@
 [package]
 name = "alice-sdf"
-version = "7.0.0"
+version = "7.1.0"
 edition = "2021"
 # MSRV-aware 依存解決 (cargo 1.84+): `cargo update` が `rust-version` を超える dep を
 # 選ばない = lockfile が宣言 MSRV から silent に乖離しない (1.10.3 で 1.75 宣言のまま
@@ -66,6 +66,10 @@ python = ["dep:pyo3", "dep:numpy", "asdf"]
 godot = ["dep:godot"]  # Godot 4.x GDExtension integration
 jit = ["dep:cranelift-codegen", "dep:cranelift-frontend", "dep:cranelift-jit", "dep:cranelift-module", "dep:cranelift-native"]
 gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck", "dep:ash"]
+# This crate's own tests only (enabled by the dev-dependency on itself below, never by an application): a real
+# GPU adapter only inside a GPU slot of the machine (ALICE_GPU_SLOT), and ALICE_SDF_TEST_FALLBACK_ADAPTER=1 for
+# wgpu's software adapter (src/gpu_context.rs, slot_guard)
+gpu-slot-guard = []
 volume = ["gpu"]  # 3D volume texture baking
 gpu-mesh = ["gpu"]  # GPU Marching Cubes mesh generation
 svo = []  # Sparse Voxel Octree
@@ -200,6 +204,9 @@ js-sys = { version = "0.3", optional = true }
 vdb-rs = { version = "0.6", optional = true }
 
 [dev-dependencies]
+# every test, example and bench build of this crate has the GPU slot guard (feature unification); applications
+# that depend on the crate do not
+alice-sdf = { path = ".", default-features = false, features = ["gpu-slot-guard"] }
 naga = { version = "24", default-features = false, features = ["wgsl-in", "glsl-in", "spv-out"] }
 # tests/test_provenance.rs: an independent binary STL parser reads files carrying the identifier
 stl_io = "0.11"

@@ -1,5 +1,5 @@
 # scripts/api_boundary.py (ALICE-Law G7): every boundary item with its decision
-features = "aaa,all-shaders,asdf,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume"
+features = "aaa,all-shaders,asdf,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,gpu-slot-guard,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume"
 bindings = ["pyo3"]
 targets = [{ target = "wasm32-unknown-unknown", features = "wasm" }]
 # compiled only on one OS (rustdoc documents the host it runs on): checked there, skipped elsewhere
@@ -25,8 +25,9 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 808 items (0 Linux-only): 89 handshake, 719 local, 0 pending. Groups (count, decision):
+# 814 items (0 Linux-only): 89 handshake, 725 local, 0 pending. Groups (count, decision):
 #      2  local: creates a device on this machine; takes a label and reads no stored form
+#      6  local: the GPU work guard; reads shader text this build made or a caller passes for its own device, and no stored form
 #      4  local: writes this build's own LOD chain; stamping is G8's
 #      1  handshake: a_lod_chain_from_6_1_0_is_refused_by_default_and_read_unverified
 #      1  handshake: a_file_written_under_another_det_math_is_refused_naming_both_and_the_form
@@ -128,6 +129,14 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 # 2 local: creates a device on this machine; takes a label and reads no stored form
 "fn::GpuContext::request" = "local: creates a device on this machine; takes a label and reads no stored form"
 "fn::GpuContext::request_async" = "local: creates a device on this machine; takes a label and reads no stored form"
+
+# 6 local: the GPU work guard; reads shader text this build made or a caller passes for its own device, and no stored form
+"fn::GpuContext::shader_module" = "local: the GPU work guard; reads shader text this build made or a caller passes for its own device, and no stored form"
+"fn::gpu_context::slot_guard::admit" = "local: the GPU work guard; reads shader text this build made or a caller passes for its own device, and no stored form"
+"fn::gpu_context::slot_guard::decide" = "local: the GPU work guard; reads shader text this build made or a caller passes for its own device, and no stored form"
+"fn::gpu_loop_bound::check_module" = "local: the GPU work guard; reads shader text this build made or a caller passes for its own device, and no stored form"
+"fn::gpu_loop_bound::parse_source" = "local: the GPU work guard; reads shader text this build made or a caller passes for its own device, and no stored form"
+"fn::gpu_loop_bound::require_bounded" = "local: the GPU work guard; reads shader text this build made or a caller passes for its own device, and no stored form"
 
 # 4 local
 "fn::mesh::lod_persist::save_lod_chain_metadata_with_provenance" = "local: writes this build's own LOD chain; stamping is G8's"

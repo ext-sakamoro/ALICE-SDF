@@ -18,7 +18,8 @@ float sdf_helix(float3 p, float major_r, float minor_r, float pitch, float hh) {
     precise float two_rr = 2.0 * r * major_r;
     precise float k = floor((py - theta * c) / pitch + 0.5);
     precise float best = 1e30;
-    for (precise float dk = -1.0; dk <= 1.0; dk += 1.0) {
+    for (int di = 0; di < 3; di++) {
+        precise float dk = float(di) - 1.0;
         precise float phi = theta + (k + dk) * tau;
         for (int it = 0; it < 6; it++) {
             precise float s = sin(phi - theta);
