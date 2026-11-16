@@ -22,8 +22,8 @@
 //! rotations is compared exactly and is not parallel). A **non-uniform scale** is not followed: it maps a
 //! cylinder's cap to an ellipse and changes which faces stay parallel only through the stretch, so it is
 //! counted as not analysed rather than approximated. `PolarRepeat` (up to 64 instances) is followed in
-//! every instance (the child turned by `k · 2π / count` about Y), and its instances are compared with
-//! each other as a union. Every other node is **not analysed**: it is counted (`ops_not_analysed` for an inner node,
+//! every instance (the child turned by `k · 2π / count` about Y), and so is `RepeatFinite` (up to 64
+//! copies, at `cell · spacing`); the instances are compared with each other as a union. Every other node is **not analysed**: it is counted (`ops_not_analysed` for an inner node,
 //! `leaves_not_analysed` for a leaf), the faces it does have are not known, and a pair through it can
 //! be missed. A report with any not-analysed node is not a clean bill ([`CoplanarReport::is_fully_analysed`]).
 //! Faces already known on the other operand are still compared, so a seam inside a partly analysed tree
@@ -410,6 +410,14 @@ fn collect(node: &SdfNode, xf: Xf, report: &mut CoplanarReport) -> Faces {
         SdfNode::PolarRepeat { child, count } if (1..=MAX_POLAR_INSTANCES).contains(count) => {
             polar(child, *count, xf, report)
         }
+        SdfNode::RepeatFinite {
+            child,
+            count,
+            spacing,
+        } => match repeat_finite(child, *count, *spacing, xf, report) {
+            Some(faces) => faces,
+            None => not_analysed(node, report),
+        },
         SdfNode::Union { a, b } => binary(a, b, Op::Union, true, xf, report),
         SdfNode::Subtraction { a, b } => binary(a, b, Op::Subtraction, true, xf, report),
         SdfNode::Intersection { a, b } => binary(a, b, Op::Intersection, true, xf, report),
@@ -534,24 +542,62 @@ const MAX_POLAR_INSTANCES: u32 = 64;
 /// (over-approximated, as everywhere here: the classification reads the final field).
 fn polar(child: &SdfNode, count: u32, xf: Xf, report: &mut CoplanarReport) -> Faces {
     let sector = std::f32::consts::TAU / count as f32;
-    let mut instances: Vec<Vec<Face>> = Vec::new();
-    let mut complete = true;
-    for k in 0..count {
-        let turn = Quat::from_rotation_y(-(k as f32) * sector);
-        let instance_xf = Xf {
-            rot: xf.rot * turn,
+    let placements: Vec<Xf> = (0..count)
+        .map(|k| Xf {
+            rot: xf.rot * Quat::from_rotation_y(-(k as f32) * sector),
             ..xf
-        };
-        // pairs inside the child are the same in every instance: reported once (instance 0)
+        })
+        .collect();
+    instances(child, &placements, report)
+}
+
+/// `RepeatFinite`: copies at `cell · spacing` for every cell index in `−⌊count/2⌋ ..= ⌊count/2⌋` per axis
+/// (`modifiers::repeat_finite`), followed and compared like the instances of a `PolarRepeat`. `None` when
+/// the copies are more than [`MAX_POLAR_INSTANCES`] or a repeated axis has a non-positive or non-finite
+/// spacing (counted as not analysed).
+fn repeat_finite(
+    child: &SdfNode,
+    count: [u32; 3],
+    spacing: Vec3,
+    xf: Xf,
+    report: &mut CoplanarReport,
+) -> Option<Faces> {
+    let half = count.map(|c| (c / 2) as i64);
+    let copies: i64 = half.iter().map(|h| 2 * h + 1).product();
+    let spaced = (0..3).all(|a| half[a] == 0 || (spacing[a].is_finite() && spacing[a] > 0.0));
+    if copies > i64::from(MAX_POLAR_INSTANCES) || !spaced {
+        return None;
+    }
+    let mut placements = Vec::new();
+    for i in -half[0]..=half[0] {
+        for j in -half[1]..=half[1] {
+            for k in -half[2]..=half[2] {
+                let local = Vec3::new(i as f32, j as f32, k as f32) * spacing;
+                placements.push(Xf {
+                    offset: xf.point(local),
+                    ..xf
+                });
+            }
+        }
+    }
+    Some(instances(child, &placements, report))
+}
+
+/// The child followed once per placement: pairs inside the child are reported once (the first
+/// placement), the placements are compared with each other as a union, and all their faces pass up.
+fn instances(child: &SdfNode, placements: &[Xf], report: &mut CoplanarReport) -> Faces {
+    let mut all: Vec<Vec<Face>> = Vec::new();
+    let mut complete = true;
+    for (k, placement) in placements.iter().enumerate() {
         let mut scratch = CoplanarReport::default();
         let target = if k == 0 { &mut *report } else { &mut scratch };
-        let f = collect(child, instance_xf, target);
+        let f = collect(child, *placement, target);
         complete &= f.complete;
-        instances.push(f.faces);
+        all.push(f.faces);
     }
-    for i in 0..instances.len() {
-        for j in i + 1..instances.len() {
-            compare(&instances[i], &instances[j], Op::Union, report);
+    for i in 0..all.len() {
+        for j in i + 1..all.len() {
+            compare(&all[i], &all[j], Op::Union, report);
         }
     }
     if complete {
@@ -560,7 +606,7 @@ fn polar(child: &SdfNode, count: u32, xf: Xf, report: &mut CoplanarReport) -> Fa
         report.ops_not_analysed += 1;
     }
     Faces {
-        faces: instances.into_iter().flatten().collect(),
+        faces: all.into_iter().flatten().collect(),
         complete,
     }
 }
