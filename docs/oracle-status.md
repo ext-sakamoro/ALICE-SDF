@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1332 |
+| 🟢 Not ignored | 1373 |
 | 🔴 Red by design | 6 |
-| ⏱ Gated (runtime / diagnostic / manual) | 10 |
+| ⏱ Gated (runtime / diagnostic / manual) | 11 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1348** |
+| **Total** | **1390** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -38,7 +38,7 @@ exact assert by itself once the defect is gone (see the test's doc).
 - `a_large_twist_keeps_the_plain_bits_on_the_gpu` (test_union_bound_oracle.rs) — known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within c…
 - `no_checked_read_leaves_its_proven_range_on_the_gpu` (test_shader_data_bounds.rs) — known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within t…
 
-## ⏱ Gated (10)
+## ⏱ Gated (11)
 
 Correct tests that are too slow for every push, or that print a measurement table.
 Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ignored`.
@@ -53,14 +53,16 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `the_smaller_wgsl_chunks_keep_the_gpu_as_close_to_the_cpu` (test_wgsl_chunk_ulp.rs) — runs on the macOS lane: llvmpipe cannot run the form before (a copy of the array per read)
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `write_bincode1_fixtures` (test_bincode1_fixtures.rs) — writes tests/fixtures/bincode1; run only to capture
+- `zz_smooth_seam` (zz_smooth_seam.rs) — probe
 
-## 🟢 Not ignored (1332)
+## 🟢 Not ignored (1373)
 
 Per-file counts (the test names are in `tests/`):
 
 | File | Tests |
 |------|-------|
 | `test_provenance.rs` | 50 |
+| `test_coplanar_faces.rs` | 38 |
 | `test_terrain_destruction_oracle.rs` | 28 |
 | `test_gi_volume_oracle.rs` | 23 |
 | `test_codec_bridge_oracle.rs` | 22 |
@@ -203,6 +205,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_gpu_compile_memory.rs` | 3 |
 | `test_gpu_noise_parity.rs` | 3 |
 | `test_gpu_submit_limit.rs` | 3 |
+| `test_hex_prism_apothem.rs` | 3 |
 | `test_jit_sincos_det.rs` | 3 |
 | `test_law_nan_operands.rs` | 3 |
 | `test_law_scalar_minmax_ties.rs` | 3 |

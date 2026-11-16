@@ -294,6 +294,16 @@ jobs:
       - name: Test (min/max signed-zero Law parity)
         run: cargo test --features "jit,svo" --test test_minmax_signed_zero_probe
 
+      # HexPrism's hex_radius is the apothem on every CPU backend (tree / compiled / JIT) and in the
+      # text of each shader helper (tests/test_hex_prism_apothem.rs); the features compile every arm,
+      # counted so a feature set that drops the file cannot pass with 0 tests
+      - name: Test (HexPrism hex_radius is the apothem on every backend)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features "jit,glsl,hlsl,gpu" --test test_hex_prism_apothem 2>&1 | tee hex-prism-apothem.log
+          python3 scripts/libtest_count.py hex-prism-apothem.log --min 3 --what "hex prism apothem tests"
+
       # the svo-gated unit test of src/unordered.rs (min_key_by: the callback sees the keys in
       # key order); no other lib test step builds svo, so without this it never runs. The count
       # check fails when the filter matches fewer than the module's 2 tests (1 of them svo-gated)

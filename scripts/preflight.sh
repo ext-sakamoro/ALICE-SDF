@@ -425,6 +425,10 @@ python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-g8-example-text.log" --min
 step "test: min/max signed-zero Law parity (tree / SIMD / JIT / SVO)"
 cargo test --features "jit,svo" --test test_minmax_signed_zero_probe
 
+step "test: HexPrism hex_radius is the apothem on every backend (ci.yml と対、3 件未満で fail)"
+cargo test --features "jit,glsl,hlsl,gpu" --test test_hex_prism_apothem 2>&1 | tee "${TMPDIR:-/tmp}/sdf-hex-prism-apothem.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-hex-prism-apothem.log" --min 3 --what "hex prism apothem tests"
+
 step "test: provenance of the Nanite HLSL material (ci.yml の test job と対、1 件未満で fail)"
 cargo test --features hlsl --test test_provenance nanite_hlsl_material 2>&1 | tee "${CARGO_TARGET_DIR:-target}/provenance-hlsl.log"
 python3 scripts/libtest_count.py "${CARGO_TARGET_DIR:-target}/provenance-hlsl.log" --min 1 --what "Nanite HLSL material provenance tests (hlsl)"
