@@ -819,3 +819,45 @@ fn bolt_holes_reaching_past_the_plate_are_not_reported() {
     assert!(no_candidate(&r), "{:?} / {:?}", r.pairs, r.surfaces);
     assert!(r.is_fully_analysed(), "{r:?}");
 }
+
+#[test]
+fn copies_of_a_finite_repeat_that_touch_are_seams() {
+    // three 10 x 10 x 10 boxes 10 apart along X (count 2 or 3 gives copies at -1, 0, 1): each pair of
+    // neighbours touches face to face, two seams
+    let row = SdfNode::box3d(10.0, 10.0, 10.0).repeat_finite([3, 0, 0], Vec3::new(10.0, 1.0, 1.0));
+    let r = coplanar_faces(&row);
+    let seams: Vec<_> = r
+        .pairs
+        .iter()
+        .filter(|p| p.kind == CoplanarKind::UnionSeam)
+        .collect();
+    assert_eq!(seams.len(), 2, "{:?} / surfaces {:?}", r.pairs, r.surfaces);
+    let mut xs: Vec<f32> = seams.iter().map(|p| p.point.x).collect();
+    xs.sort_by(f32::total_cmp);
+    assert!(
+        (xs[0] + 5.0).abs() < 1e-3 && (xs[1] - 5.0).abs() < 1e-3,
+        "{xs:?}"
+    );
+    assert!(r.is_fully_analysed(), "{r:?}");
+}
+
+#[test]
+fn slots_repeated_along_a_plate_that_end_on_its_faces_are_flush_cuts() {
+    // a plate (y in [-2, 2]) less 3 slots 4 deep (exactly the plate's thickness) repeated 20 apart
+    let slots = SdfNode::box3d(4.0, 4.0, 8.0).repeat_finite([3, 0, 0], Vec3::new(20.0, 1.0, 1.0));
+    let r = coplanar_faces(&SdfNode::box3d(80.0, 4.0, 30.0).subtract(slots));
+    let flush = r
+        .pairs
+        .iter()
+        .filter(|p| p.kind == CoplanarKind::FlushCut)
+        .count();
+    assert_eq!(flush, 6, "3 slots x 2 ends: {:?}", r.pairs);
+    assert!(r.is_fully_analysed(), "{r:?}");
+}
+
+#[test]
+fn spaced_copies_of_a_finite_repeat_are_not_reported() {
+    let row = SdfNode::box3d(8.0, 10.0, 10.0).repeat_finite([3, 0, 0], Vec3::new(10.0, 1.0, 1.0));
+    let r = coplanar_faces(&row);
+    assert!(no_candidate(&r) && r.is_fully_analysed(), "{r:?}");
+}
