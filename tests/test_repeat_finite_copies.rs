@@ -260,8 +260,10 @@ fn a_count_past_two_to_the_25_clamps_as_the_law_in_the_interval_evaluator() {
                 z: Interval::new(p.z, p.z),
             },
         );
-        let mut x = bx.lo;
-        while x <= bx.hi {
+        // every f32 in the box, in order: for positive floats the bit patterns are consecutive
+        assert!(bx.lo > 0.0, "the box lies on the positive x axis");
+        for bits in bx.lo.to_bits()..=bx.hi.to_bits() {
+            let x = f32::from_bits(bits);
             let d = eval(&node, Vec3::new(x, p.y, p.z));
             assert!(
                 iv.lo <= d && d <= iv.hi,
@@ -272,7 +274,6 @@ fn a_count_past_two_to_the_25_clamps_as_the_law_in_the_interval_evaluator() {
                 iv.hi
             );
             compared += 1;
-            x = f32::from_bits(x.to_bits() + 1); // the next f32 (x > 0 here)
         }
     }
     // each box spans at least the point and one f32 on each side
