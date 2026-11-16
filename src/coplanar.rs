@@ -23,7 +23,8 @@
 //! cylinder's cap to an ellipse and changes which faces stay parallel only through the stretch, so it is
 //! counted as not analysed rather than approximated. `PolarRepeat` (up to 64 instances) is followed in
 //! every instance (the child turned by `k · 2π / count` about Y), and so is `RepeatFinite` (up to 64
-//! copies, at `cell · spacing`); the instances are compared with each other as a union. Every other node is **not analysed**: it is counted (`ops_not_analysed` for an inner node,
+//! copies, at `cell · spacing`); the instances are compared with each other as a union. `HexPrism`'s
+//! eight faces are followed (its flat sides at `hex_radius` from the axis, as its field puts them). Every other node is **not analysed**: it is counted (`ops_not_analysed` for an inner node,
 //! `leaves_not_analysed` for a leaf), the faces it does have are not known, and a pair through it can
 //! be missed. A report with any not-analysed node is not a clean bill ([`CoplanarReport::is_fully_analysed`]).
 //! Faces already known on the other operand are still compared, so a seam inside a partly analysed tree
@@ -300,6 +301,51 @@ fn flat_faces(h: Vec3, r: Vec3, xf: Xf) -> Vec<Face> {
     out
 }
 
+/// The faces of a `HexPrism`: the field (`primitives::hex_prism`) puts the hexagon's flat sides at
+/// distance `hex_radius` from the Z axis (the sides at y = ±hex_radius and their turns by ±60°, so the
+/// vertices sit at `2·hex_radius/√3` from the axis) and the caps at z = ±`half_height`. A non-positive or
+/// non-finite size is an empty shape (no faces).
+fn hex_prism_faces(hex_radius: f32, half_height: f32, xf: Xf) -> Vec<Face> {
+    if !(hex_radius > 0.0 && half_height > 0.0 && hex_radius.is_finite() && half_height.is_finite())
+    {
+        return Vec::new();
+    }
+    let (a, b) = (
+        hex_radius / 3.0_f32.sqrt(),
+        2.0 * hex_radius / 3.0_f32.sqrt(),
+    );
+    // counter-clockwise seen from +Z
+    let ring = [
+        Vec2::new(b, 0.0),
+        Vec2::new(a, hex_radius),
+        Vec2::new(-a, hex_radius),
+        Vec2::new(-b, 0.0),
+        Vec2::new(-a, -hex_radius),
+        Vec2::new(a, -hex_radius),
+    ];
+    let at = |q: Vec2, z: f32| Vec3::new(q.x, q.y, z);
+    let mut out = Vec::with_capacity(8);
+    out.push(xf.face(Vec3::Z, &ring.map(|q| at(q, half_height))));
+    let mut bottom = ring.map(|q| at(q, -half_height));
+    bottom.reverse();
+    out.push(xf.face(-Vec3::Z, &bottom));
+    for i in 0..6 {
+        let (p, q) = (ring[i], ring[(i + 1) % 6]);
+        let e = q - p;
+        let n = Vec3::new(e.y, -e.x, 0.0).normalize();
+        out.push(xf.face(
+            n,
+            &[
+                at(p, -half_height),
+                at(q, -half_height),
+                at(q, half_height),
+                at(p, half_height),
+            ],
+        ));
+    }
+    out
+}
+
 fn cylinder_caps(radius: f32, half_height: f32, xf: Xf) -> Vec<Face> {
     if !(radius > 0.0 && half_height > 0.0 && radius.is_finite() && half_height.is_finite()) {
         return Vec::new();
@@ -379,6 +425,13 @@ fn collect(node: &SdfNode, xf: Xf, report: &mut CoplanarReport) -> Faces {
                 _ => not_analysed(node, report),
             }
         }
+        SdfNode::HexPrism {
+            hex_radius,
+            half_height,
+        } => Faces {
+            faces: hex_prism_faces(*hex_radius, *half_height, xf),
+            complete: true,
+        },
         SdfNode::Sphere { .. } | SdfNode::Torus { .. } | SdfNode::Capsule { .. } => Faces {
             faces: Vec::new(),
             complete: true,
