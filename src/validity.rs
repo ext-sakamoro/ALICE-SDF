@@ -431,7 +431,8 @@ pub struct GapReport {
 /// An acute joint where two walls meet, found by [`measure_gaps`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Crevice {
-    /// Surface point of the sample that found it.
+    /// Point on the joint line (within `4 · GAP_TOLERANCE` of where the two walls meet) that the
+    /// sample's walk along its wall reached.
     pub location: Vec3,
     /// Angle of the air between the two walls at the sample, in degrees (below 90).
     pub angle_deg: f32,
@@ -492,7 +493,7 @@ const WEDGE_MAX_STEPS: usize = 48;
 /// closes to within a few [`GAP_TOLERANCE`]; they stay apart when the width stops closing (a sphere
 /// over a plate bottoms out) or the march finds open air (the walk ran off the wall, e.g. onto the
 /// floor of a tapered slot). The angle is the air angle between the walls at the first sample.
-fn crevice_angle(node: &SdfNode, a: Vec3, n: Vec3, width: f32, reach: f32) -> Option<f32> {
+fn crevice_angle(node: &SdfNode, a: Vec3, n: Vec3, width: f32, reach: f32) -> Option<(f32, Vec3)> {
     let wall_normal = |at: Vec3| eval_normal(node, at).normalize_or_zero();
     let mut a = a;
     let mut n = n;
@@ -531,7 +532,7 @@ fn crevice_angle(node: &SdfNode, a: Vec3, n: Vec3, width: f32, reach: f32) -> Op
         }
         let w2 = local_gap(node, a2, n2, reach)?;
         if w2 <= 4.0 * GAP_TOLERANCE {
-            return Some(angle);
+            return Some((angle, a2));
         }
         if w2 >= 0.95 * w {
             return None;
@@ -747,16 +748,16 @@ pub fn measure_gaps(
                     edge_samples += 1;
                     continue;
                 }
-                if let Some(angle_deg) = crevice_angle(node, at, n, width, reach) {
+                if let Some((angle_deg, joint)) = crevice_angle(node, at, n, width, reach) {
                     crevice_samples += 1;
                     let merge = 2.0 * cell;
                     if crevices.len() < MAX_CREVICES
                         && !crevices
                             .iter()
-                            .any(|c: &Crevice| c.location.distance(at) <= merge)
+                            .any(|c: &Crevice| c.location.distance(joint) <= merge)
                     {
                         crevices.push(Crevice {
-                            location: at,
+                            location: joint,
                             angle_deg,
                         });
                     }
