@@ -26,6 +26,12 @@ use alice_sdf::coplanar::{coplanar_faces, CoplanarKind, COPLANAR_REL_TOL, SMOOTH
 use alice_sdf::SdfNode;
 use glam::{Quat, Vec3};
 
+/// No coincidence at all: neither a defect nor a candidate the field showed to be a surface (the
+/// analysis-level claims: the tolerance, parallelism, overlap, empty shapes)
+fn no_candidate(r: &alice_sdf::coplanar::CoplanarReport) -> bool {
+    r.pairs.is_empty() && r.surfaces.is_empty()
+}
+
 /// A block with a T-slot cutter built from a neck box (x in [8, 10]) and an outward punch box
 /// (x in [10, 15]) unioned along x = 10, the block's +x face
 fn t_slot(seamed: bool) -> SdfNode {
@@ -83,7 +89,7 @@ fn a_cutter_built_from_two_boxes_touching_at_the_face_is_a_union_seam() {
 #[test]
 fn one_cutter_reaching_past_the_face_reports_nothing() {
     let r = coplanar_faces(&t_slot(false));
-    assert!(r.pairs.is_empty(), "{:?}", r.pairs);
+    assert!(r.pairs.is_empty() && r.surfaces.is_empty(), "{:?}", r.pairs);
     assert!(r.ops_analysed >= 1);
 }
 
@@ -108,7 +114,7 @@ fn an_open_top_cavity_flush_with_the_rim_is_a_flush_cut() {
     );
     // the cavity reaching 5 past the rim: nothing
     let deep = SdfNode::cylinder(8.0, 50.0).translate(0.0, 5.0, 0.0);
-    assert!(coplanar_faces(&outer.subtract(deep)).pairs.is_empty());
+    assert!(no_candidate(&coplanar_faces(&outer.subtract(deep))));
 }
 
 #[test]
@@ -144,24 +150,21 @@ fn the_coplanarity_tolerance_is_pinned_from_both_sides() {
     let under = 0.5 * COPLANAR_REL_TOL * scale;
     let over = 4.0 * COPLANAR_REL_TOL * scale;
     assert!(
-        !coplanar_faces(&pair(under)).pairs.is_empty(),
+        !no_candidate(&coplanar_faces(&pair(under))),
         "an offset of {under} (under the tolerance) is a seam"
     );
     assert!(
-        coplanar_faces(&pair(over)).pairs.is_empty(),
+        no_candidate(&coplanar_faces(&pair(over))),
         "an offset of {over} (over the tolerance) is a gap, not a seam"
     );
     // the same edge in absolute numbers, independent of the constant: at plane offsets near 10,
     // 2e-6 (0.2 ppm) is float rounding of one coincident face and must stay a seam; 1e-4 (10 ppm)
     // is a real gap a printer cannot see but the field can, and must not be called a seam
     assert!(
-        !coplanar_faces(&pair(2e-6)).pairs.is_empty(),
+        !no_candidate(&coplanar_faces(&pair(2e-6))),
         "2e-6 is a seam"
     );
-    assert!(
-        coplanar_faces(&pair(1e-4)).pairs.is_empty(),
-        "1e-4 is a gap"
-    );
+    assert!(no_candidate(&coplanar_faces(&pair(1e-4))), "1e-4 is a gap");
 }
 
 #[test]
@@ -187,7 +190,7 @@ fn a_rotated_touching_pair_is_found_and_a_non_parallel_pair_is_not() {
     let tilted = SdfNode::box3d(2.0, 2.0, 2.0)
         .rotate(Quat::from_rotation_z(5.0_f32.to_radians()))
         .translate(1.0, 0.0, 0.0);
-    assert!(coplanar_faces(&a.union(tilted)).pairs.is_empty());
+    assert!(no_candidate(&coplanar_faces(&a.union(tilted))));
 }
 
 #[test]
@@ -204,7 +207,7 @@ fn flush_exteriors_and_disjoint_coplanar_faces_are_not_reported() {
     let apart = SdfNode::box3d(1.0, 1.0, 1.0)
         .translate(9.5, 0.0, 0.0)
         .union(SdfNode::box3d(1.0, 1.0, 1.0).translate(10.5, 5.0, 0.0));
-    assert!(coplanar_faces(&apart).pairs.is_empty());
+    assert!(no_candidate(&coplanar_faces(&apart)));
 }
 
 #[test]
@@ -285,7 +288,12 @@ fn an_empty_primitive_has_no_faces() {
     for h in [0.0_f32, -5.0] {
         let empty = SdfNode::cylinder(8.0, h).translate(0.0, 25.0, 0.0);
         let r = coplanar_faces(&outer.clone().subtract(empty));
-        assert!(r.pairs.is_empty(), "height {h}: {:?}", r.pairs);
+        assert!(
+            r.pairs.is_empty() && r.surfaces.is_empty(),
+            "height {h}: no candidate either: {:?} {:?}",
+            r.pairs,
+            r.surfaces
+        );
         assert!(r.is_fully_analysed(), "height {h}: {r:?}");
     }
     let flat_box = SdfNode::box3d(2.0, 0.0, 2.0).translate(1.0, 0.0, 0.0);
@@ -294,11 +302,20 @@ fn an_empty_primitive_has_no_faces() {
             .translate(-1.0, 0.0, 0.0)
             .union(flat_box),
     );
-    assert!(r.pairs.is_empty(), "{:?}", r.pairs);
+    assert!(
+        r.pairs.is_empty() && r.surfaces.is_empty(),
+        "no candidate either: {:?} {:?}",
+        r.pairs,
+        r.surfaces
+    );
     // a box of zero height lying exactly on another box's top face (y = 1): empty, so no seam with it
     let on_top = SdfNode::box3d(2.0, 0.0, 2.0).translate(0.0, 1.0, 0.0);
     let r = coplanar_faces(&SdfNode::box3d(2.0, 2.0, 2.0).union(on_top));
-    assert!(r.pairs.is_empty(), "an empty box on a face: {:?}", r.pairs);
+    assert!(
+        r.pairs.is_empty() && r.surfaces.is_empty(),
+        "an empty box on a face: {:?}",
+        r.pairs
+    );
 }
 
 #[test]
@@ -359,7 +376,7 @@ fn a_box_against_a_half_space_is_a_seam_and_a_flush_intersection_is_not() {
     assert_eq!(r.pairs.len(), 1, "{:?}", r.pairs);
     // the half-space x < 1 cut to the box: same plane, same normal, an ordinary flat face
     let within = SdfNode::plane(Vec3::X, 1.0);
-    assert!(coplanar_faces(&block.intersection(within)).pairs.is_empty());
+    assert!(no_candidate(&coplanar_faces(&block.intersection(within))));
 }
 
 #[test]
@@ -391,7 +408,12 @@ fn faces_meeting_only_along_an_edge_do_not_overlap() {
     let b = SdfNode::box3d(1.0, 1.0, 1.0).translate(0.5, 1.5, 0.0);
     let r = coplanar_faces(&a.union(b));
     assert!(r.is_fully_analysed(), "{r:?}");
-    assert!(r.pairs.is_empty(), "{:?}", r.pairs);
+    assert!(
+        r.pairs.is_empty() && r.surfaces.is_empty(),
+        "no candidate either: {:?} {:?}",
+        r.pairs,
+        r.surfaces
+    );
 }
 
 #[test]
