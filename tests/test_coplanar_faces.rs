@@ -185,3 +185,39 @@ fn nodes_the_analysis_cannot_follow_are_counted_not_treated_as_clean() {
     // a shape of primitives and rigid transforms only is fully analysed
     assert!(coplanar_faces(&t_slot(true)).is_fully_analysed());
 }
+
+#[test]
+fn a_pair_turned_about_a_general_axis_is_found_exactly() {
+    // the touching pair of the rotated test, turned about the axis (1, 2, 3) by 71 degrees
+    let q = Quat::from_axis_angle(Vec3::new(1.0, 2.0, 3.0).normalize(), 71.0_f32.to_radians());
+    let a = SdfNode::box3d(2.0, 2.0, 2.0).translate(-1.0, 0.0, 0.0);
+    let b = SdfNode::box3d(2.0, 2.0, 2.0).translate(1.0, 0.0, 0.0);
+    let r = coplanar_faces(&a.union(b).rotate(q));
+    assert!(r.is_fully_analysed(), "{r:?}");
+    let seam = r
+        .pairs
+        .iter()
+        .find(|p| p.kind == CoplanarKind::UnionSeam)
+        .unwrap_or_else(|| panic!("seam lost under a general rotation: {r:?}"));
+    assert!(seam.normal.dot(q * Vec3::X).abs() > 0.9999, "normal {}", seam.normal);
+    // the seam's centroid is the rotated origin (the shared face is centred on it)
+    assert!(seam.point.length() < 1e-4, "point {}", seam.point);
+    assert!((seam.overlap_area - 4.0).abs() < 1e-3, "area {}", seam.overlap_area);
+}
+
+#[test]
+fn a_non_uniform_scale_is_counted_as_not_analysed() {
+    let a = SdfNode::box3d(2.0, 2.0, 2.0).translate(-1.0, 0.0, 0.0);
+    let b = SdfNode::box3d(2.0, 2.0, 2.0).translate(1.0, 0.0, 0.0);
+    let stretched = a.union(b).scale_xyz(1.0, 2.0, 3.0);
+    let r = coplanar_faces(&stretched);
+    assert!(r.ops_not_analysed >= 1, "{r:?}");
+    assert!(!r.is_fully_analysed());
+    // and the same pair under a uniform scale is followed and found
+    let a = SdfNode::box3d(2.0, 2.0, 2.0).translate(-1.0, 0.0, 0.0);
+    let b = SdfNode::box3d(2.0, 2.0, 2.0).translate(1.0, 0.0, 0.0);
+    let r = coplanar_faces(&a.union(b).scale(2.5));
+    assert!(r.is_fully_analysed(), "{r:?}");
+    let seam = r.pairs.first().expect("seam under a uniform scale");
+    assert!((seam.overlap_area - 25.0).abs() < 1e-2, "area {}", seam.overlap_area);
+}

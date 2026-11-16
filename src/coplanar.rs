@@ -13,7 +13,11 @@
 //! **Faces followed**: the six faces of `Box3d` and the two caps of `Cylinder` (as an inscribed 64-gon,
 //! area within 0.16 % of the disk), through `Translate`, `Rotate` (any quaternion) and `Scale` (positive
 //! uniform). `Sphere`, `Torus` and `Capsule` have no planar face and are analysed (they contribute
-//! none). Every other node is **not analysed**: it is counted (`ops_not_analysed` for an inner node,
+//! none). A rotation is followed exactly whatever its axis (the face normals and vertices are turned by
+//! the quaternion, so a pair that touches after any rotation is found; a pair turned by different
+//! rotations is compared exactly and is not parallel). A **non-uniform scale** is not followed: it maps a
+//! cylinder's cap to an ellipse and changes which faces stay parallel only through the stretch, so it is
+//! counted as not analysed rather than approximated. Every other node is **not analysed**: it is counted (`ops_not_analysed` for an inner node,
 //! `leaves_not_analysed` for a leaf), the faces it does have are not known, and a pair through it can
 //! be missed. A report with any not-analysed node is not a clean bill ([`CoplanarReport::is_fully_analysed`]).
 //! Faces already known on the other operand are still compared, so a seam inside a partly analysed tree
@@ -44,8 +48,8 @@
 //! agreement with a field scan is measured by the consumer over its templates.
 //!
 //! Tests: `tests/test_coplanar_faces.rs` (seam, flush cavity, flush counterbore pocket, the tolerance
-//! from both sides, a rotated pair and a non-parallel one, flush exteriors and disjoint faces, the
-//! not-analysed count).
+//! from both sides, a rotated pair and a non-parallel one, a pair turned about a general axis, flush
+//! exteriors and disjoint faces, the not-analysed count, a non-uniform scale counted as not analysed).
 
 use crate::compiled::real::LawMinMax;
 use crate::types::SdfNode;
