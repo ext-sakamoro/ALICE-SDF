@@ -701,3 +701,24 @@ fn a_pair_too_thin_to_classify_stays_a_defect_unclassified() {
     );
     assert!(seam.overlap_area < 1e-2, "{seam:?}");
 }
+
+#[test]
+fn an_overlap_counts_only_above_its_relative_area_tolerance() {
+    // two 10 x 10 x 10 boxes touching at x = 0, the second shifted along y so their faces overlap in a
+    // strip of width w (area 10 w against the faces' 100): the overlap counts when its area is above
+    // COPLANAR_REL_TOL times the smaller face's area, i.e. w > 1e-5 (a strip at a tenth of that is not
+    // an overlap, one at ten times it is)
+    let pair = |w: f32| {
+        SdfNode::box3d(10.0, 10.0, 10.0)
+            .translate(-5.0, 0.0, 0.0)
+            .union(SdfNode::box3d(10.0, 10.0, 10.0).translate(5.0, 10.0 - w, 0.0))
+    };
+    assert!(
+        no_candidate(&coplanar_faces(&pair(5e-6))),
+        "a strip 5e-6 wide (area 5e-5, below 1e-4)"
+    );
+    assert!(
+        !no_candidate(&coplanar_faces(&pair(1e-3))),
+        "a strip 1e-3 wide (area 1e-2, above 1e-4)"
+    );
+}
