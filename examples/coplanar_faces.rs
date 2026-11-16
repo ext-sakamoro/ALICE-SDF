@@ -3,7 +3,9 @@
 //!
 //! Run: `cargo run --example coplanar_faces`
 
-use alice_sdf::coplanar::{coplanar_faces, SHEET_DELTA_FLOOR_ULPS, SHEET_DELTA_REL, SHEET_MAX_SAMPLES};
+use alice_sdf::coplanar::{
+    coplanar_faces, SHEET_DELTA_FLOOR_ULPS, SHEET_DELTA_REL, SHEET_MAX_SAMPLES,
+};
 use alice_sdf::SdfNode;
 
 fn main() {
@@ -19,10 +21,21 @@ fn main() {
     );
     println!("fully analysed: {}", report.is_fully_analysed());
     for p in &report.pairs {
-        println!("{:?} at {:?}, {} sheet region(s)", p.kind, p.point, p.sheets.len());
+        println!(
+            "{:?} at {:?}, {} sheet region(s)",
+            p.kind,
+            p.point,
+            p.sheets.len()
+        );
         for s in &p.sheets {
-            println!("  {:?} sheet from {:?} to {:?} ({} samples)", s.side, s.min, s.max, s.samples);
+            println!(
+                "  {:?} sheet from {:?} to {:?} ({} samples)",
+                s.side, s.min, s.max, s.samples
+            );
         }
     }
-    println!("{} candidate(s) are real surfaces, not sheets", report.surfaces.len());
+    println!(
+        "{} candidate(s) are real surfaces, not sheets",
+        report.surfaces.len()
+    );
 }
