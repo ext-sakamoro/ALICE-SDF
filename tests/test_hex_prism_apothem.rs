@@ -17,7 +17,7 @@ use alice_sdf::SdfNode;
 use glam::Vec3;
 
 /// A named evaluator of the field
-type Backend = Box<dyn Fn(Vec3) -> f32>;
+type Backend<'a> = Box<dyn Fn(Vec3) -> f32 + 'a>;
 
 const A: f32 = 2.0;
 const H: f32 = 1.5;
@@ -41,7 +41,7 @@ fn every_cpu_backend_puts_the_flat_side_at_hex_radius() {
     let compiled = CompiledSdf::compile(&node);
     let bvh = CompiledSdfBvh::try_compile(&node).expect("bvh");
     #[allow(unused_mut)]
-    let mut backends: Vec<(&str, Backend)> = vec![
+    let mut backends: Vec<(&str, Backend<'_>)> = vec![
         ("tree", Box::new(|p| eval(&node, p))),
         ("compiled scalar", Box::new(|p| eval_compiled(&compiled, p))),
         (
