@@ -21,7 +21,9 @@
 //! the quaternion, so a pair that touches after any rotation is found; a pair turned by different
 //! rotations is compared exactly and is not parallel). A **non-uniform scale** is not followed: it maps a
 //! cylinder's cap to an ellipse and changes which faces stay parallel only through the stretch, so it is
-//! counted as not analysed rather than approximated. Every other node is **not analysed**: it is counted (`ops_not_analysed` for an inner node,
+//! counted as not analysed rather than approximated. `PolarRepeat` (up to 64 instances) is followed in
+//! every instance (the child turned by `k · 2π / count` about Y), and its instances are compared with
+//! each other as a union. Every other node is **not analysed**: it is counted (`ops_not_analysed` for an inner node,
 //! `leaves_not_analysed` for a leaf), the faces it does have are not known, and a pair through it can
 //! be missed. A report with any not-analysed node is not a clean bill ([`CoplanarReport::is_fully_analysed`]).
 //! Faces already known on the other operand are still compared, so a seam inside a partly analysed tree
@@ -405,6 +407,9 @@ fn collect(node: &SdfNode, xf: Xf, report: &mut CoplanarReport) -> Faces {
             },
             report,
         ),
+        SdfNode::PolarRepeat { child, count } if (1..=MAX_POLAR_INSTANCES).contains(count) => {
+            polar(child, *count, xf, report)
+        }
         SdfNode::Union { a, b } => binary(a, b, Op::Union, true, xf, report),
         SdfNode::Subtraction { a, b } => binary(a, b, Op::Subtraction, true, xf, report),
         SdfNode::Intersection { a, b } => binary(a, b, Op::Intersection, true, xf, report),
@@ -464,8 +469,25 @@ fn binary(
     } else {
         report.ops_not_analysed += 1;
     }
-    for x in fa.faces.iter().filter(|_| report_pairs) {
-        for y in &fb.faces {
+    if report_pairs {
+        compare(&fa.faces, &fb.faces, op, report);
+    }
+    let mut faces = fa.faces;
+    match op {
+        Op::Union | Op::Intersection => faces.extend(fb.faces),
+        Op::Subtraction => faces.extend(fb.faces.into_iter().map(|f| Face {
+            n: -f.n,
+            d: -f.d,
+            verts: f.verts,
+        })),
+    }
+    Faces { faces, complete }
+}
+
+/// Every coplanar, overlapping pair between a face of `xs` and a face of `ys` across `op`.
+fn compare(xs: &[Face], ys: &[Face], op: Op, report: &mut CoplanarReport) {
+    for x in xs {
+        for y in ys {
             let dot = x.n.dot(y.n);
             let (kind, same_sign) = match op {
                 Op::Union => (CoplanarKind::UnionSeam, false),
@@ -499,16 +521,48 @@ fn binary(
             }
         }
     }
-    let mut faces = fa.faces;
-    match op {
-        Op::Union | Op::Intersection => faces.extend(fb.faces),
-        Op::Subtraction => faces.extend(fb.faces.into_iter().map(|f| Face {
-            n: -f.n,
-            d: -f.d,
-            verts: f.verts,
-        })),
+}
+
+/// Most instances of a `PolarRepeat` the analysis follows (more are counted as not analysed).
+const MAX_POLAR_INSTANCES: u32 = 64;
+
+/// `PolarRepeat`: the space is folded around Y into `count` sectors of `2π / count` centred on +X
+/// (`modifiers::polar_repeat`), so instance `k` is the child turned by `k · 2π / count` about the node's
+/// Y axis. The child's faces are followed in every instance, instances are compared with each other as a
+/// union (two instances meeting face to face, as on a sector boundary, are a seam), and all instances'
+/// faces pass up. A child reaching out of its sector is clipped by the fold; its faces are kept whole
+/// (over-approximated, as everywhere here: the classification reads the final field).
+fn polar(child: &SdfNode, count: u32, xf: Xf, report: &mut CoplanarReport) -> Faces {
+    let sector = std::f32::consts::TAU / count as f32;
+    let mut instances: Vec<Vec<Face>> = Vec::new();
+    let mut complete = true;
+    for k in 0..count {
+        let turn = Quat::from_rotation_y(-(k as f32) * sector);
+        let instance_xf = Xf {
+            rot: xf.rot * turn,
+            ..xf
+        };
+        // pairs inside the child are the same in every instance: reported once (instance 0)
+        let mut scratch = CoplanarReport::default();
+        let target = if k == 0 { &mut *report } else { &mut scratch };
+        let f = collect(child, instance_xf, target);
+        complete &= f.complete;
+        instances.push(f.faces);
     }
-    Faces { faces, complete }
+    for i in 0..instances.len() {
+        for j in i + 1..instances.len() {
+            compare(&instances[i], &instances[j], Op::Union, report);
+        }
+    }
+    if complete {
+        report.ops_analysed += 1;
+    } else {
+        report.ops_not_analysed += 1;
+    }
+    Faces {
+        faces: instances.into_iter().flatten().collect(),
+        complete,
+    }
 }
 
 /// Signed area of a 2D polygon (positive when counter-clockwise).
