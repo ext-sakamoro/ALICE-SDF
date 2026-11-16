@@ -12,7 +12,7 @@
 //! Every case asserts it measured at least one sample.
 
 use alice_sdf::eval::eval;
-use alice_sdf::validity::{local_gap, measure_gaps, GapError};
+use alice_sdf::validity::{local_gap, measure_gaps, GapError, GAP_TOLERANCE};
 use alice_sdf::SdfNode;
 use glam::Vec3;
 
@@ -393,4 +393,45 @@ fn a_tapered_slot_with_a_floor_is_a_width_not_a_crevice() {
         "a tapered slot with a floor classified as a crevice: {:?}",
         r.crevices
     );
+}
+
+/// Samples on an edge of their own wall are skipped (`edge_samples`); a real gap bounded by an edge on
+/// one side must still be reported through the samples on the other side. Closed form: a wall whose face
+/// is x = 0, and (a) a square block turned 45 degrees with its edge on the line x = -1, (b) a 0.4 thick fin
+/// whose flat tip is the plane x = -1. Both gaps are 1.0 wide. From the wall, a sample at height `δ` off
+/// the block's edge meets the block's face at `1 + |δ|` (the faces lean 45 degrees), and `|δ| ≤ cell / 2`;
+/// the fin's tip faces the wall, so its gap is exact.
+#[test]
+fn a_gap_bounded_by_an_edge_on_one_side_is_still_reported() {
+    let wall = SdfNode::box3d(4.0, 20.0, 20.0).translate(2.0, 0.0, 0.0);
+    let half_diagonal = 2.0 * 2.0_f32.sqrt();
+    let block = SdfNode::box3d(4.0, 4.0, 10.0)
+        .rotate_euler(0.0, 0.0, std::f32::consts::FRAC_PI_4)
+        .translate(-1.0 - half_diagonal, 0.0, 0.0);
+    let fin = SdfNode::box3d(6.0, 0.4, 10.0).translate(-4.0, 0.0, 0.0);
+    // bounds off the edge line, so no grid row lies exactly on it
+    let (lo, hi) = (Vec3::new(-8.0, -5.07, -3.0), Vec3::new(0.5, 5.0, 3.0));
+    for cell in [0.25_f32, 0.33, 0.4] {
+        let r = measure_gaps(&wall.clone().union(block.clone()), lo, hi, cell).expect("samples");
+        let w = r
+            .min_gap
+            .unwrap_or_else(|| panic!("cell {cell}: edge gap lost ({r:?})"));
+        assert!(
+            w >= 1.0 - GAP_TOLERANCE && w <= 1.0 + 0.5 * cell + GAP_TOLERANCE,
+            "cell {cell}: edge to face measured {w}"
+        );
+        assert!(
+            r.edge_samples > 0,
+            "cell {cell}: the block's edge is counted ({r:?})"
+        );
+        assert!(r.crevices.is_empty(), "cell {cell}: {:?}", r.crevices);
+        let r = measure_gaps(&wall.clone().union(fin.clone()), lo, hi, cell).expect("samples");
+        let w = r
+            .min_gap
+            .unwrap_or_else(|| panic!("cell {cell}: fin gap lost ({r:?})"));
+        assert!(
+            (w - 1.0).abs() <= GAP_TOLERANCE,
+            "cell {cell}: fin tip to wall measured {w}"
+        );
+    }
 }
