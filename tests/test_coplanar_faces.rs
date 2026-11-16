@@ -916,3 +916,45 @@ fn a_block_against_a_hex_prism_side_is_a_seam_over_that_side() {
     );
     assert!(r.is_fully_analysed(), "{r:?}");
 }
+
+// ── Cone: base disk of `radius` at y = −half_height (normal −Y), apex at +half_height ──
+
+#[test]
+fn a_cone_standing_on_a_block_is_a_seam_over_its_base() {
+    let (r0, h) = (4.0_f32, 6.0_f32);
+    let cone = SdfNode::cone(r0, 2.0 * h); // the constructor takes the full height
+                                           // the field's own geometry: the base's rim at (r0, -h, 0) reads 0
+    assert!(alice_sdf::eval::eval(&cone, Vec3::new(r0, -h, 0.0)).abs() < 1e-5);
+    let part = SdfNode::box3d(20.0, 4.0, 20.0)
+        .translate(0.0, -2.0, 0.0)
+        .union(cone.translate(0.0, h, 0.0));
+    let r = coplanar_faces(&part);
+    let seam = r
+        .pairs
+        .iter()
+        .find(|p| p.kind == CoplanarKind::UnionSeam)
+        .unwrap_or_else(|| panic!("{r:?}"));
+    let disk = std::f32::consts::PI * r0 * r0;
+    assert!(
+        (seam.overlap_area - disk).abs() < 3e-3 * disk,
+        "{} vs {disk}",
+        seam.overlap_area
+    );
+    assert!(r.is_fully_analysed(), "{r:?}");
+}
+
+#[test]
+fn a_countersink_cone_whose_base_lies_on_the_plate_face_is_a_flush_cut() {
+    // a cone cutter turned apex-down with its base exactly on the plate's top face (y = 3): a membrane
+    // of air over the countersink's mouth
+    let (r0, h) = (4.0_f32, 3.0_f32);
+    let sink = SdfNode::cone(r0, 2.0 * h)
+        .rotate(Quat::from_rotation_x(std::f32::consts::PI))
+        .translate(0.0, 3.0 - h, 0.0);
+    let r = coplanar_faces(&SdfNode::box3d(20.0, 6.0, 20.0).subtract(sink));
+    assert!(
+        r.pairs.iter().any(|p| p.kind == CoplanarKind::FlushCut),
+        "{r:?}"
+    );
+    assert!(r.is_fully_analysed(), "{r:?}");
+}
