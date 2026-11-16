@@ -1433,6 +1433,7 @@ jobs:
           --test test_union_bound_oracle
           --test test_gpu_lifecycle_oracle
           --test test_one_call_site
+          --test test_gpu_material_parity
           -- --nocapture
 
       # Every value the CPU reads back from a mapped buffer is the one the GPU just wrote, over
