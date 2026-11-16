@@ -15,8 +15,9 @@
 //!
 //! Author: Moroya Sakamoto
 
-/// The widest surface band a consumer of this crate reads as "on the surface" by default: the shadow
-/// rays below stop when the field is under it (1e-3). The other consumers use narrower bands —
+/// The widest surface band a consumer of this crate reads as "on the surface" by default (1e-3).
+///
+/// The shadow rays below stop when the field is under it. The other consumers use narrower bands —
 /// [`RaymarchConfig`]'s default `epsilon` and the validity marcher's step are 1e-4, meshing uses
 /// the zero level set itself — so a field value whose magnitude is above this band is off the surface
 /// for every default consumer. A caller that configures a wider `epsilon` reads more as surface than

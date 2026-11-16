@@ -28,7 +28,7 @@ use glam::{Quat, Vec3};
 
 /// No coincidence at all: neither a defect nor a candidate the field showed to be a surface (the
 /// analysis-level claims: the tolerance, parallelism, overlap, empty shapes)
-fn no_candidate(r: &alice_sdf::coplanar::CoplanarReport) -> bool {
+const fn no_candidate(r: &alice_sdf::coplanar::CoplanarReport) -> bool {
     r.pairs.is_empty() && r.surfaces.is_empty()
 }
 
@@ -504,7 +504,7 @@ fn rib_on_base(cut_from: Option<f32>) -> SdfNode {
     let base = SdfNode::box3d(40.0, 4.0, 20.0);
     let base = match cut_from {
         Some(x0) => base.subtract(SdfNode::box3d(6.0 - x0, 10.0, 30.0).translate(
-            (6.0 + x0) * 0.5,
+            f32::midpoint(6.0, x0),
             0.0,
             0.0,
         )),

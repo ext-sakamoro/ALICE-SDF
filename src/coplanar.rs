@@ -96,8 +96,9 @@ use std::collections::BTreeMap;
 /// Relative tolerance for "same plane" and "overlapping" (see the module's MODEL section).
 pub const COPLANAR_REL_TOL: f32 = 1e-6;
 
-/// Smallest blend radius a smooth operator needs before it counts as opening a seam or flush cut:
-/// the polynomial blend moves the field at the coincident face by exactly `k / 4` (measured for union,
+/// Smallest blend radius a smooth operator needs before it counts as opening a seam or flush cut.
+///
+/// The polynomial blend moves the field at the coincident face by exactly `k / 4` (measured for union,
 /// subtraction and intersection from `k = 1` down to `1e-7`), and that has to clear the widest default
 /// surface band, [`crate::raycast::SURFACE_HIT_EPS`], or a consumer still reads the face as surface.
 pub const SMOOTH_OPENS_K: f32 = 4.0 * crate::raycast::SURFACE_HIT_EPS;
@@ -109,8 +110,10 @@ const CAP_SIDES: usize = 64;
 /// compared against it is far inside this square).
 pub const PLANE_HALF_EXTENT: f32 = 1.0e4;
 
-/// The classification's margin, relative to the part's extent: a sheet sample must read 0 within `δ`
-/// on the plane and the same sign `δ` away on both sides, and samples closer than `2δ` to the overlap's
+/// The classification's margin `δ`, relative to the part's extent.
+///
+/// A sheet sample must read 0 within `δ` on the plane and, `δ` away on both sides, have moved from that
+/// value by at least `δ/4` the same way (a V across the plane); samples closer than `2δ` to the overlap's
 /// edges are not taken (there the part's outer surface pulls the field to 0). For a strip thinner than
 /// that, `δ` is a quarter of the overlap's inradius.
 pub const SHEET_DELTA_REL: f32 = 1e-3;
@@ -687,7 +690,7 @@ fn signed_area(p: &[Vec2]) -> f32 {
     let mut s = 0.0;
     for i in 0..p.len() {
         let (a, b) = (p[i], p[(i + 1) % p.len()]);
-        s += a.x.mul_add(b.y, -(b.x * a.y));
+        s += a.x * b.y - b.x * a.y;
     }
     0.5 * s
 }
@@ -782,7 +785,8 @@ fn overlap(x: &Face, y: &Face) -> Option<(f32, Vec3, Vec<Vec3>)> {
         return None;
     }
     let area = signed_area(&inter);
-    if !(area > COPLANAR_REL_TOL * ax.law_min(ay)) {
+    // a non-finite area (NaN from a degenerate clip) is not an overlap either
+    if !area.is_finite() || area <= COPLANAR_REL_TOL * ax.law_min(ay) {
         return None;
     }
     // area centroid of the overlap polygon
