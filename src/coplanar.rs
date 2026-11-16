@@ -1,0 +1,392 @@
+//! Coplanar, overlapping faces between the operands of a CSG node — `coplanar_faces`.
+//!
+//! # MODEL
+//!
+//! Two exact SDF solids that touch along a shared face give `min(a, b) = 0` on that face instead of a
+//! negative value (a **union seam**); a cutter whose face lies exactly on the material's face gives
+//! `max(a, −b) = 0` over the cut's mouth (a **flush cut**); two solids that only touch give
+//! `max(a, b) = 0` on the contact (an **intersection contact**). In each case the field touches zero
+//! with no material on one or both sides: a zero-thickness sheet that a mesher can turn into a membrane
+//! and a gap measurement reads as a wall. Sampling finds such sheets only where a sample lands near them;
+//! this analysis finds them from the tree, exactly where the operands' planar faces coincide.
+//!
+//! **Faces followed**: the six faces of `Box3d` and the two caps of `Cylinder` (as an inscribed 64-gon,
+//! area within 0.16 % of the disk), through `Translate`, `Rotate` (any quaternion) and `Scale` (positive
+//! uniform). `Sphere`, `Torus` and `Capsule` have no planar face and are analysed (they contribute
+//! none). Every other node is **not analysed**: it is counted (`ops_not_analysed` for an inner node,
+//! `leaves_not_analysed` for a leaf), the faces it does have are not known, and a pair through it can
+//! be missed. A report with any not-analysed node is not a clean bill ([`CoplanarReport::is_fully_analysed`]).
+//! Faces already known on the other operand are still compared, so a seam inside a partly analysed tree
+//! is still found.
+//!
+//! **Pairs reported**, at each `Union` / `Subtraction` / `Intersection`, between a face of one operand
+//! and a face of the other:
+//!
+//! * `Union`: opposite normals, same plane, overlapping extent ⇒ [`CoplanarKind::UnionSeam`]
+//! * `Subtraction a − b`: a face of `b` with the same normal as a face of `a`, same plane, overlapping
+//!   ⇒ [`CoplanarKind::FlushCut`]
+//! * `Intersection`: opposite normals, same plane, overlapping ⇒ [`CoplanarKind::IntersectionContact`]
+//!
+//! Same-normal faces in a union (blocks flush side by side) are an ordinary flat exterior and are not
+//! reported; opposite-normal faces in a subtraction (a cutter touching the material from outside) remove
+//! nothing and are not reported.
+//!
+//! **Same plane**: unit normals within `1 − |n_a · n_b| ≤ COPLANAR_REL_TOL` and plane offsets within
+//! `COPLANAR_REL_TOL · max(1, |d_a|, |d_b|)` (relative to the distance of the plane from the origin, so
+//! the float rounding of a transformed face does not split a real coincidence). **Overlapping**: the two
+//! convex faces, projected into the common plane, intersect in an area above `COPLANAR_REL_TOL` times
+//! the smaller face's area (faces meeting only along an edge do not overlap).
+//!
+//! **Faces of a result** (what the next operator up compares): a union and an intersection keep both
+//! operands' faces; a subtraction keeps `a`'s faces and `b`'s faces with their normals reversed (the
+//! cutter's surface becomes the result's boundary). This over-approximates (a face hidden inside the
+//! other operand is kept), so a pair can be reported where the sampled field shows no sheet; the
+//! agreement with a field scan is measured by the consumer over its templates.
+//!
+//! Tests: `tests/test_coplanar_faces.rs` (seam, flush cavity, flush counterbore pocket, the tolerance
+//! from both sides, a rotated pair and a non-parallel one, flush exteriors and disjoint faces, the
+//! not-analysed count).
+
+use crate::compiled::real::LawMinMax;
+use crate::types::SdfNode;
+use glam::{Quat, Vec2, Vec3};
+
+/// Relative tolerance for "same plane" and "overlapping" (see the module's MODEL section).
+pub const COPLANAR_REL_TOL: f32 = 1e-6;
+
+/// Sides of the polygon a cylinder's cap is followed as.
+const CAP_SIDES: usize = 64;
+
+/// What kind of coincidence a [`CoplanarPair`] is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoplanarKind {
+    /// Two solids of a union touching back to back along a face.
+    UnionSeam,
+    /// A cutter's face lying exactly on the material's face.
+    FlushCut,
+    /// Two solids of an intersection touching only along a face.
+    IntersectionContact,
+}
+
+/// One coplanar, overlapping pair of faces across a CSG operator.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CoplanarPair {
+    /// What the coincidence is.
+    pub kind: CoplanarKind,
+    /// Unit normal of the first operand's face, in world coordinates.
+    pub normal: Vec3,
+    /// Centroid of the overlap, in world coordinates.
+    pub point: Vec3,
+    /// Area of the overlap.
+    pub overlap_area: f32,
+}
+
+/// Result of [`coplanar_faces`].
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CoplanarReport {
+    /// Every coplanar, overlapping pair found.
+    pub pairs: Vec<CoplanarPair>,
+    /// CSG operators whose operands were both fully analysed.
+    pub ops_analysed: usize,
+    /// Inner nodes the analysis could not follow, and CSG operators with an operand that was not
+    /// fully analysed.
+    pub ops_not_analysed: usize,
+    /// Leaves whose planar faces are not known.
+    pub leaves_not_analysed: usize,
+}
+
+impl CoplanarReport {
+    /// Whether every node was analysed (no pair can have been missed through an unknown node).
+    #[must_use]
+    pub const fn is_fully_analysed(&self) -> bool {
+        self.ops_not_analysed == 0 && self.leaves_not_analysed == 0
+    }
+}
+
+/// A planar convex face: unit outward normal `n`, plane `n · x = d`, vertices in order.
+#[derive(Clone)]
+struct Face {
+    n: Vec3,
+    d: f32,
+    verts: Vec<Vec3>,
+}
+
+/// World transform of a subtree: `x ↦ rot · (scale · x) + offset`.
+#[derive(Clone, Copy)]
+struct Xf {
+    rot: Quat,
+    scale: f32,
+    offset: Vec3,
+}
+
+impl Xf {
+    const IDENTITY: Self = Self {
+        rot: Quat::IDENTITY,
+        scale: 1.0,
+        offset: Vec3::ZERO,
+    };
+
+    fn point(self, p: Vec3) -> Vec3 {
+        self.rot * (p * self.scale) + self.offset
+    }
+
+    fn face(self, n_local: Vec3, verts_local: &[Vec3]) -> Face {
+        let n = (self.rot * n_local).normalize();
+        let verts: Vec<Vec3> = verts_local.iter().map(|&v| self.point(v)).collect();
+        let d = n.dot(verts[0]);
+        Face { n, d, verts }
+    }
+}
+
+/// Faces found under a node, and whether every node below it was analysed.
+struct Faces {
+    faces: Vec<Face>,
+    complete: bool,
+}
+
+/// Every coplanar, overlapping pair of faces across the CSG operators of `node`.
+#[must_use]
+pub fn coplanar_faces(node: &SdfNode) -> CoplanarReport {
+    let mut report = CoplanarReport::default();
+    let _ = collect(node, Xf::IDENTITY, &mut report);
+    report
+}
+
+fn box_faces(h: Vec3, xf: Xf) -> Vec<Face> {
+    let mut out = Vec::with_capacity(6);
+    for axis in 0..3 {
+        for sign in [-1.0_f32, 1.0] {
+            let (u, v) = ((axis + 1) % 3, (axis + 2) % 3);
+            let mut n = Vec3::ZERO;
+            n[axis] = sign;
+            let corner = |su: f32, sv: f32| {
+                let mut p = Vec3::ZERO;
+                p[axis] = sign * h[axis];
+                p[u] = su * h[u];
+                p[v] = sv * h[v];
+                p
+            };
+            let verts = [
+                corner(-1.0, -1.0),
+                corner(1.0, -1.0),
+                corner(1.0, 1.0),
+                corner(-1.0, 1.0),
+            ];
+            out.push(xf.face(n, &verts));
+        }
+    }
+    out
+}
+
+fn cylinder_caps(radius: f32, half_height: f32, xf: Xf) -> Vec<Face> {
+    [-1.0_f32, 1.0]
+        .iter()
+        .map(|&sign| {
+            let verts: Vec<Vec3> = (0..CAP_SIDES)
+                .map(|k| {
+                    #[allow(clippy::cast_precision_loss)] // k < 64
+                    let a = core::f32::consts::TAU * k as f32 / CAP_SIDES as f32;
+                    let (s, c) = alice_det_math::sin_cos(a);
+                    Vec3::new(radius * c, sign * half_height, radius * s)
+                })
+                .collect();
+            xf.face(Vec3::Y * sign, &verts)
+        })
+        .collect()
+}
+
+fn collect(node: &SdfNode, xf: Xf, report: &mut CoplanarReport) -> Faces {
+    match node {
+        SdfNode::Box3d { half_extents } => Faces {
+            faces: box_faces(*half_extents, xf),
+            complete: true,
+        },
+        SdfNode::Cylinder {
+            radius,
+            half_height,
+        } => Faces {
+            faces: cylinder_caps(*radius, *half_height, xf),
+            complete: true,
+        },
+        SdfNode::Sphere { .. } | SdfNode::Torus { .. } | SdfNode::Capsule { .. } => Faces {
+            faces: Vec::new(),
+            complete: true,
+        },
+        SdfNode::Translate { child, offset } => collect(
+            child,
+            Xf {
+                offset: xf.point(*offset),
+                ..xf
+            },
+            report,
+        ),
+        SdfNode::Rotate { child, rotation } => collect(
+            child,
+            Xf {
+                rot: xf.rot * *rotation,
+                ..xf
+            },
+            report,
+        ),
+        SdfNode::Scale { child, factor } if factor.is_finite() && *factor > 0.0 => collect(
+            child,
+            Xf {
+                scale: xf.scale * *factor,
+                ..xf
+            },
+            report,
+        ),
+        SdfNode::Union { a, b } => binary(a, b, Op::Union, xf, report),
+        SdfNode::Subtraction { a, b } => binary(a, b, Op::Subtraction, xf, report),
+        SdfNode::Intersection { a, b } => binary(a, b, Op::Intersection, xf, report),
+        other => {
+            // not followed: its own faces are unknown; its children are not visited (their faces
+            // would be reshaped by it)
+            if crate::diff::node_children(other).is_empty() {
+                report.leaves_not_analysed += 1;
+            } else {
+                report.ops_not_analysed += 1;
+            }
+            Faces {
+                faces: Vec::new(),
+                complete: false,
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Op {
+    Union,
+    Subtraction,
+    Intersection,
+}
+
+fn binary(a: &SdfNode, b: &SdfNode, op: Op, xf: Xf, report: &mut CoplanarReport) -> Faces {
+    let fa = collect(a, xf, report);
+    let fb = collect(b, xf, report);
+    let complete = fa.complete && fb.complete;
+    if complete {
+        report.ops_analysed += 1;
+    } else {
+        report.ops_not_analysed += 1;
+    }
+    for x in &fa.faces {
+        for y in &fb.faces {
+            let dot = x.n.dot(y.n);
+            let (kind, same_sign) = match op {
+                Op::Union => (CoplanarKind::UnionSeam, false),
+                Op::Subtraction => (CoplanarKind::FlushCut, true),
+                Op::Intersection => (CoplanarKind::IntersectionContact, false),
+            };
+            let parallel = if same_sign {
+                1.0 - dot <= COPLANAR_REL_TOL
+            } else {
+                1.0 + dot <= COPLANAR_REL_TOL
+            };
+            if !parallel {
+                continue;
+            }
+            // y's plane as an offset along x's normal
+            let dy = if same_sign { y.d } else { -y.d };
+            let scale = 1.0_f32.law_max(x.d.abs()).law_max(y.d.abs());
+            if (x.d - dy).abs() > COPLANAR_REL_TOL * scale {
+                continue;
+            }
+            if let Some((area, point)) = overlap(x, y) {
+                report.pairs.push(CoplanarPair {
+                    kind,
+                    normal: x.n,
+                    point,
+                    overlap_area: area,
+                });
+            }
+        }
+    }
+    let mut faces = fa.faces;
+    match op {
+        Op::Union | Op::Intersection => faces.extend(fb.faces),
+        Op::Subtraction => faces.extend(fb.faces.into_iter().map(|f| Face {
+            n: -f.n,
+            d: -f.d,
+            verts: f.verts,
+        })),
+    }
+    Faces { faces, complete }
+}
+
+/// Signed area of a 2D polygon (positive when counter-clockwise).
+fn signed_area(p: &[Vec2]) -> f32 {
+    let mut s = 0.0;
+    for i in 0..p.len() {
+        let (a, b) = (p[i], p[(i + 1) % p.len()]);
+        s += a.x.mul_add(b.y, -(b.x * a.y));
+    }
+    0.5 * s
+}
+
+/// The polygon `subject` clipped to the convex counter-clockwise polygon `clip` (Sutherland–Hodgman).
+fn clip_convex(subject: &[Vec2], clip: &[Vec2]) -> Vec<Vec2> {
+    let mut out = subject.to_vec();
+    for i in 0..clip.len() {
+        if out.is_empty() {
+            break;
+        }
+        let (c0, c1) = (clip[i], clip[(i + 1) % clip.len()]);
+        let edge = c1 - c0;
+        let inside = |p: Vec2| edge.perp_dot(p - c0) >= 0.0;
+        let input = std::mem::take(&mut out);
+        for j in 0..input.len() {
+            let (p, q) = (input[j], input[(j + 1) % input.len()]);
+            let (pi, qi) = (inside(p), inside(q));
+            if pi {
+                out.push(p);
+            }
+            if pi != qi {
+                let denom = edge.perp_dot(q - p);
+                if denom != 0.0 {
+                    let t = edge.perp_dot(c0 - p) / denom;
+                    out.push(p + (q - p) * t);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Area and world centroid of the overlap of two coplanar faces, `None` when it is not above the
+/// tolerance (disjoint, or meeting along an edge).
+fn overlap(x: &Face, y: &Face) -> Option<(f32, Vec3)> {
+    let n = x.n;
+    let u = n.any_orthonormal_vector();
+    let v = n.cross(u);
+    let origin = n * x.d;
+    let to2 = |p: Vec3| Vec2::new((p - origin).dot(u), (p - origin).dot(v));
+    let ccw = |verts: &[Vec3]| {
+        let mut p: Vec<Vec2> = verts.iter().map(|&q| to2(q)).collect();
+        if signed_area(&p) < 0.0 {
+            p.reverse();
+        }
+        p
+    };
+    let (px, py) = (ccw(&x.verts), ccw(&y.verts));
+    let ax = signed_area(&px);
+    let ay = signed_area(&py);
+    let inter = clip_convex(&px, &py);
+    if inter.len() < 3 {
+        return None;
+    }
+    let area = signed_area(&inter);
+    if !(area > COPLANAR_REL_TOL * ax.law_min(ay)) {
+        return None;
+    }
+    // area centroid of the overlap polygon
+    let mut c = Vec2::ZERO;
+    for i in 0..inter.len() {
+        let (a, b) = (inter[i], inter[(i + 1) % inter.len()]);
+        let w = a.perp_dot(b);
+        c += (a + b) * w;
+    }
+    c /= 6.0 * area;
+    Some((area, origin + u * c.x + v * c.y))
+}

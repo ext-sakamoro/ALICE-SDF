@@ -165,6 +165,7 @@ pub mod types;
 // New modules: analysis, 2D, and bridges
 pub mod autodiff;
 pub mod constraint;
+pub mod coplanar;
 pub mod diff;
 pub mod heatmap;
 pub mod incremental;
