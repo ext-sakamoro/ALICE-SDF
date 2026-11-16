@@ -106,8 +106,8 @@ pub struct CoplanarPair {
     pub point: Vec3,
     /// Area of the overlap.
     pub overlap_area: f32,
-    /// The overlap itself, a convex polygon in world coordinates (counter-clockwise seen along
-    /// `normal`): where the zero-thickness sheet or seam is, for a consumer that clips by it.
+    /// The overlap itself, a strictly convex polygon in world coordinates without repeated or collinear
+    /// vertices (counter-clockwise seen along `normal`): where the zero-thickness sheet or seam is, for a consumer that clips by it.
     pub overlap_polygon: Vec<Vec3>,
 }
 
@@ -474,6 +474,34 @@ fn clip_convex(subject: &[Vec2], clip: &[Vec2]) -> Vec<Vec2> {
     out
 }
 
+/// Counter-clockwise convex hull of 2D points (monotone chain), without repeated or collinear points
+fn convex_hull(mut pts: Vec<Vec2>) -> Vec<Vec2> {
+    pts.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)));
+    pts.dedup();
+    if pts.len() < 3 {
+        return pts;
+    }
+    let cross = |o: Vec2, a: Vec2, b: Vec2| (a - o).perp_dot(b - o);
+    let mut lower: Vec<Vec2> = Vec::new();
+    for &p in &pts {
+        while lower.len() >= 2 && cross(lower[lower.len() - 2], lower[lower.len() - 1], p) <= 0.0 {
+            lower.pop();
+        }
+        lower.push(p);
+    }
+    let mut upper: Vec<Vec2> = Vec::new();
+    for &p in pts.iter().rev() {
+        while upper.len() >= 2 && cross(upper[upper.len() - 2], upper[upper.len() - 1], p) <= 0.0 {
+            upper.pop();
+        }
+        upper.push(p);
+    }
+    lower.pop();
+    upper.pop();
+    lower.extend(upper);
+    lower
+}
+
 /// Area, world centroid and world polygon of the overlap of two coplanar faces, `None` when it is not
 /// above the tolerance (disjoint, or meeting along an edge).
 fn overlap(x: &Face, y: &Face) -> Option<(f32, Vec3, Vec<Vec3>)> {
@@ -494,11 +522,15 @@ fn overlap(x: &Face, y: &Face) -> Option<(f32, Vec3, Vec<Vec3>)> {
     let ay = signed_area(&py);
     // clip the smaller face against the larger: the result's vertices then come from the small face's
     // edges, not from far-away edges of a large one (a plane's square), which keeps the f32 precision
-    let inter = if ax <= ay {
+    let clipped = if ax <= ay {
         clip_convex(&px, &py)
     } else {
         clip_convex(&py, &px)
     };
+    // clipping can leave repeated vertices and collinear points (a vertex on the clip line is emitted
+    // once as an inside point and once as an intersection); the overlap of two convex faces is convex,
+    // so its convex hull is the overlap itself, without those
+    let inter = convex_hull(clipped);
     if inter.len() < 3 {
         return None;
     }
