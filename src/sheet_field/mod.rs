@@ -285,6 +285,10 @@ pub enum RootMode {
     Dip,
     /// M2: the cell walk ([`cellroot`]): every floor step is walked cell by cell for the first root of each live sheet.
     CellWalk,
+    /// The oracle's reference (not for rendering): every floor step is re-walked in 20 equal sub-steps (0.0005), each
+    /// compared by sign and bisected. Elsewhere the march's own steps stand (they stay inside the free ball, so they
+    /// cannot skip a zero when the bound is sound); so this is the fixed-step truth wherever the bound is sound.
+    FixedFloor,
 }
 
 /// A ray hit.
@@ -935,6 +939,39 @@ impl SheetField {
                 let Some((gp, sp, lp)) = gprev[k] else {
                     continue;
                 };
+                if self.root_mode == RootMode::FixedFloor && floor_step {
+                    let n = 20u32;
+                    let mut gq = gp;
+                    let mut tq = tprev;
+                    for j in 1..=n {
+                        let tj = if j == n { t } else { tprev + (t - tprev) * j as f32 / n as f32 };
+                        let gj = sh.sample_geom(origin + dir * tj, self.rule).g;
+                        if (gj < 0.0) != (gq < 0.0) {
+                            let (mut a, mut b, mut ga) = (tq, tj, gq);
+                            for _ in 0..30 {
+                                let mid = f32::midpoint(a, b);
+                                let gm = sh.sample_geom(origin + dir * mid, self.rule).g;
+                                if (gm < 0.0) == (ga < 0.0) {
+                                    a = mid;
+                                    ga = gm;
+                                } else {
+                                    b = mid;
+                                }
+                            }
+                            let tm = f32::midpoint(a, b);
+                            if sh.crossing_inside(origin + dir * tm, self.rule) {
+                                if tm < thit {
+                                    thit = tm;
+                                    khit = k;
+                                }
+                                break;
+                            }
+                        }
+                        gq = gj;
+                        tq = tj;
+                    }
+                    continue;
+                }
                 if self.root_mode == RootMode::CellWalk && floor_step {
                     // M2: a floor step may hold zeros its ends cannot show; walk it cell by cell
                     match sh.walk_first_root(origin, dir, tprev, t, self.rule) {
@@ -951,7 +988,7 @@ impl SheetField {
                 }
                 let _ = (sp, lp);
                 let (mut a, mut b, mut ga) = (tprev, t, gp);
-                if (gc < 0.0) == (gp < 0.0) && self.root_mode == RootMode::CellWalk {
+                if (gc < 0.0) == (gp < 0.0) && self.root_mode != RootMode::Dip {
                     // not a floor step: the step stayed inside the free ball, so ends of one sign hold no zero
                     continue;
                 }
