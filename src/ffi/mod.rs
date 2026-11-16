@@ -102,6 +102,9 @@
 //!
 //! Author: Moroya Sakamoto
 
+// ALLOW-DEAD: in this crate's unit-test build the exports are mangled (Cargo.toml, the dev-dependency on itself), so the host applications that call them are not linked there
+#![cfg_attr(test, allow(dead_code))]
+
 mod compilation;
 mod eval;
 mod guard;

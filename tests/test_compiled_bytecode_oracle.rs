@@ -621,9 +621,10 @@ fn instanced_min_is_the_union_of_the_instance_trees() {
     let params = instances();
     let mut inst = InstancedSdf::with_capacity(CompiledSdf::compile(&base), params.len());
     for a in &params {
-        inst.add_instance(*a);
+        inst.try_add_instance(*a).expect("under MAX_INSTANCES");
     }
-    inst.add_at(-3.0, 0.5, 0.25);
+    inst.try_add_at(-3.0, 0.5, 0.25)
+        .expect("under MAX_INSTANCES");
     let mut all = params;
     all.push(AnimationParams {
         translate_x: -3.0,
@@ -687,7 +688,7 @@ fn instanced_translation_only_is_bit_identical_and_empty_is_max() {
         .map(|i| Vec3::new(i as f32 * 1.25 - 6.0, (i % 3) as f32, -(i as f32) * 0.5))
         .collect();
     for o in &offsets {
-        inst.add_at(o.x, o.y, o.z);
+        inst.try_add_at(o.x, o.y, o.z).expect("under MAX_INSTANCES");
     }
     let mut compared = 0;
     for p in common::test_grid_points(9).into_iter().map(|p| p * 4.0) {

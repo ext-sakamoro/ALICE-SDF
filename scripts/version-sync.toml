@@ -30,6 +30,10 @@ file = "scripts/clippy-lib-canary/Cargo.toml"
 reason = "fixture of scripts/clippy_lib_gate.py, not published (version 0.0.0)"
 
 [[independent]]
+file = "ci/gpu-slot-guard-consumer/Cargo.toml"
+reason = "an application built only by CI to check that the GPU slot guard is not in an application build, not published (version 0.0.0)"
+
+[[independent]]
 file = "vrchat-package/package.json"
 reason = "VRChat VPM package com.alice.sdf, released on its own line"
 

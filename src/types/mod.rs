@@ -591,7 +591,9 @@ pub enum SdfNode {
         step_width: f32,
         /// Height of each step
         step_height: f32,
-        /// Number of steps (as f32)
+        /// Number of steps (as f32), at most [`crate::primitives::MAX_STAIR_STEPS`] (read through
+        /// `primitives::deserialize_stair_steps`, which refuses a stored count over it)
+        #[serde(deserialize_with = "crate::primitives::stairs::deserialize_stair_steps")]
         n_steps: f32,
         /// Half the extrusion depth along Z
         half_depth: f32,

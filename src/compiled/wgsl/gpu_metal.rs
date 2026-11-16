@@ -63,6 +63,7 @@ fn compile_options() -> Result<metal::CompileOptions, GpuError> {
 }
 
 /// No Metal device is the same error a caller gets from wgpu without an adapter.
+#[cfg(test)]
 fn require_device(device: Option<Device>) -> Result<Device, GpuError> {
     device.ok_or(GpuError::NoAdapter)
 }
@@ -78,6 +79,12 @@ struct Kernel {
 
 impl Kernel {
     fn compile(device: &Device, wgsl: &str) -> Result<Self, GpuError> {
+        // the loops of the WGSL are checked before the MSL is made from it: a Metal dispatch cannot be stopped either
+        crate::gpu_loop_bound::require_bounded(
+            "ALICE-SDF Metal kernel",
+            &wgpu::ShaderSource::Wgsl(wgsl.into()),
+            &crate::gpu_loop_bound::HostMaxima::new(),
+        )?;
         // the text was judged by the GpuEvaluator constructor (or is this crate's own), so a
         // mismatch never reaches here; the second read of its leading block only marks it
         let shader = MslShader::from_wgsl(wgsl)
@@ -165,7 +172,7 @@ impl MetalEngine {
     }
 
     fn device() -> Result<Device, GpuError> {
-        require_device(Device::system_default())
+        crate::gpu_context::metal_system_device()
     }
 
     pub(super) fn from_wgsl(wgsl: &str) -> Result<Self, GpuError> {
@@ -179,6 +186,12 @@ impl MetalEngine {
         node_data: &[f32],
         checked: bool,
     ) -> Result<Self, GpuError> {
+        // the loop check before the device (Kernel::compile checks again)
+        crate::gpu_loop_bound::require_bounded(
+            "ALICE-SDF Metal kernel",
+            &wgpu::ShaderSource::Wgsl(wgsl.into()),
+            &crate::gpu_loop_bound::HostMaxima::new(),
+        )?;
         let device = Self::device()?;
         super::gpu_eval::check_node_data_size(node_data.len(), device.max_buffer_length())?;
         let distance = Kernel::compile(&device, wgsl)?;
@@ -223,6 +236,17 @@ impl MetalEngine {
     pub(super) fn new_dynamic(node: &SdfNode) -> Result<Self, GpuError> {
         // the data arrays in the node data buffer (see `WgslShader::transpile_dynamic`)
         let shader = WgslShader::transpile_dynamic(node);
+        // the loop check before the device (Kernel::compile checks again)
+        for text in [
+            shader.to_compute_shader(),
+            shader.to_compute_shader_with_normals(),
+        ] {
+            crate::gpu_loop_bound::require_bounded(
+                "ALICE-SDF Metal kernel",
+                &wgpu::ShaderSource::Wgsl(text.as_str().into()),
+                &crate::gpu_loop_bound::HostMaxima::new(),
+            )?;
+        }
         let device = Self::device()?;
         let distance = Kernel::compile(&device, &shader.to_compute_shader())?;
         let full = Kernel::compile(&device, &shader.to_compute_shader_with_normals())?;

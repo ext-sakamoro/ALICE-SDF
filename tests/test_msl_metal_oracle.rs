@@ -57,9 +57,12 @@ fn points(n: usize) -> Vec<Vec3> {
 /// A Metal device, or `None` when the host has none (skip unless the caller
 /// demanded Metal).
 fn device_or_skip() -> Option<Device> {
-    match Device::system_default() {
-        Some(d) => Some(d),
-        None => {
+    match alice_sdf::gpu_context::metal_system_device() {
+        Ok(d) => Some(d),
+        Err(e) if !matches!(e, alice_sdf::compiled::GpuError::NoAdapter) => {
+            panic!("Metal device: {e}")
+        }
+        Err(_) => {
             assert!(
                 std::env::var_os("ALICE_SDF_REQUIRE_METAL").is_none(),
                 "ALICE_SDF_REQUIRE_METAL is set but no Metal device was found"

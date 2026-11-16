@@ -50,6 +50,7 @@
 //! | `jit` | | Native evaluation through Cranelift (scalar and 8-wide). |
 //! | `gpu` | | GPU evaluation and WGSL output through wgpu. |
 //! | `gpu-mesh` | | Marching cubes on the GPU. Implies `gpu`. |
+//! | `gpu-slot-guard` | | For this crate's own tests only (its dev-dependency on itself turns it on): a real GPU adapter only when `ALICE_GPU_SLOT` is set, and `ALICE_SDF_TEST_FALLBACK_ADAPTER=1` requires a software adapter. Not for applications. |
 //! | `volume` | | Bake a field into a 3D texture. Implies `gpu`. |
 //! | `glsl` | | GLSL output (Unity, OpenGL, Vulkan, Shadertoy). |
 //! | `hlsl` | | HLSL output (Unreal Engine, DirectX). |
@@ -142,6 +143,8 @@ mod gpu_test_support {
 }
 #[cfg(feature = "gpu")]
 pub mod gpu_context;
+#[cfg(feature = "gpu")]
+pub mod gpu_loop_bound;
 pub mod interval;
 pub mod io;
 pub mod llm_schema;

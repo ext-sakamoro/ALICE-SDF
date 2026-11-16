@@ -12,7 +12,7 @@ use std::slice;
 // ============================================================================
 
 /// Apply rounding to an SDF
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_round(node: SdfHandle, radius: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -25,7 +25,7 @@ pub extern "C" fn alice_sdf_round(node: SdfHandle, radius: f32) -> SdfHandle {
 }
 
 /// Apply onion (shell) modifier to an SDF
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_onion(node: SdfHandle, thickness: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -38,7 +38,7 @@ pub extern "C" fn alice_sdf_onion(node: SdfHandle, thickness: f32) -> SdfHandle 
 }
 
 /// Apply twist modifier
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_twist(node: SdfHandle, strength: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -51,7 +51,7 @@ pub extern "C" fn alice_sdf_twist(node: SdfHandle, strength: f32) -> SdfHandle {
 }
 
 /// Apply bend modifier
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_bend(node: SdfHandle, curvature: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -64,7 +64,7 @@ pub extern "C" fn alice_sdf_bend(node: SdfHandle, curvature: f32) -> SdfHandle {
 }
 
 /// Apply infinite repetition
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_repeat(node: SdfHandle, sx: f32, sy: f32, sz: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -77,7 +77,7 @@ pub extern "C" fn alice_sdf_repeat(node: SdfHandle, sx: f32, sy: f32, sz: f32) -
 }
 
 /// Apply mirror modifier (reflects along specified axes)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_mirror(node: SdfHandle, mx: u8, my: u8, mz: u8) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -90,7 +90,7 @@ pub extern "C" fn alice_sdf_mirror(node: SdfHandle, mx: u8, my: u8, mz: u8) -> S
 }
 
 /// Apply elongation modifier
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_elongate(node: SdfHandle, x: f32, y: f32, z: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -103,7 +103,7 @@ pub extern "C" fn alice_sdf_elongate(node: SdfHandle, x: f32, y: f32, z: f32) ->
 }
 
 /// Apply revolution modifier (rotational symmetry around Y-axis)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_revolution(node: SdfHandle, offset: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -116,7 +116,7 @@ pub extern "C" fn alice_sdf_revolution(node: SdfHandle, offset: f32) -> SdfHandl
 }
 
 /// Apply extrude modifier (creates 3D from XY cross-section along Z)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_extrude(node: SdfHandle, half_height: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -131,7 +131,7 @@ pub extern "C" fn alice_sdf_extrude(node: SdfHandle, half_height: f32) -> SdfHan
 }
 
 /// Apply Perlin noise displacement
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_noise(
     node: SdfHandle,
     amplitude: f32,
@@ -149,7 +149,7 @@ pub extern "C" fn alice_sdf_noise(
 }
 
 /// Apply finite repetition
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_repeat_finite(
     node: SdfHandle,
     cx: u32,
@@ -172,7 +172,7 @@ pub extern "C" fn alice_sdf_repeat_finite(
 }
 
 /// Apply taper modifier (scale XZ by Y position)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_taper(node: SdfHandle, factor: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -185,7 +185,7 @@ pub extern "C" fn alice_sdf_taper(node: SdfHandle, factor: f32) -> SdfHandle {
 }
 
 /// Apply sin-based displacement modifier
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_displacement(node: SdfHandle, strength: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -198,7 +198,7 @@ pub extern "C" fn alice_sdf_displacement(node: SdfHandle, strength: f32) -> SdfH
 }
 
 /// Apply polar repetition around Y-axis
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_polar_repeat(node: SdfHandle, count: u32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -211,7 +211,7 @@ pub extern "C" fn alice_sdf_polar_repeat(node: SdfHandle, count: u32) -> SdfHand
 }
 
 /// Apply octant mirror (48-fold symmetry)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_octant_mirror(node: SdfHandle) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -224,7 +224,7 @@ pub extern "C" fn alice_sdf_octant_mirror(node: SdfHandle) -> SdfHandle {
 }
 
 /// Shear deformation
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_shear(node: SdfHandle, xy: f32, xz: f32, yz: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -237,7 +237,7 @@ pub extern "C" fn alice_sdf_shear(node: SdfHandle, xy: f32, xz: f32, yz: f32) ->
 }
 
 /// Apply time-based animation
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_animated(node: SdfHandle, speed: f32, amplitude: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -250,7 +250,7 @@ pub extern "C" fn alice_sdf_animated(node: SdfHandle, speed: f32, amplitude: f32
 }
 
 /// Assign a material ID to a subtree
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_with_material(node: SdfHandle, material_id: u32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -263,7 +263,7 @@ pub extern "C" fn alice_sdf_with_material(node: SdfHandle, material_id: u32) -> 
 }
 
 /// Apply sweep along a quadratic Bezier curve in XZ plane
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_sweep_bezier(
     node: SdfHandle,
     p0x: f32,
@@ -288,7 +288,7 @@ pub extern "C" fn alice_sdf_sweep_bezier(
 }
 
 /// Apply non-uniform scale modifier
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_scale_non_uniform(
     node: SdfHandle,
     x: f32,
@@ -310,7 +310,7 @@ pub extern "C" fn alice_sdf_scale_non_uniform(
 // ============================================================================
 
 /// Apply icosahedral symmetry (60-fold rotational symmetry)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_icosahedral_symmetry(node: SdfHandle) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -332,7 +332,7 @@ pub extern "C" fn alice_sdf_icosahedral_symmetry(node: SdfHandle) -> SdfHandle {
 ///
 /// # Safety
 /// `transforms` must point to valid array of transform_count * 16 floats
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_ifs(
     node: SdfHandle,
     transforms: *const f32,
@@ -372,7 +372,7 @@ pub extern "C" fn alice_sdf_ifs(
 ///
 /// # Safety
 /// `heightmap` must point to valid array of width * height floats
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_heightmap_displacement(
     node: SdfHandle,
     heightmap: *const f32,
@@ -405,7 +405,7 @@ pub extern "C" fn alice_sdf_heightmap_displacement(
 }
 
 /// Apply surface roughness using Perlin noise
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_surface_roughness(
     node: SdfHandle,
     frequency: f32,

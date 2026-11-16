@@ -50,7 +50,7 @@ fn instances() -> Vec<AnimationParams> {
 }
 
 fn shader() -> String {
-    InstancedSdf::to_instanced_wgsl(&base())
+    InstancedSdf::try_to_instanced_wgsl(&base()).expect("the base has an instance limit")
 }
 
 #[test]
@@ -88,10 +88,14 @@ fn gpu_or_skip() -> Option<Gpu> {
         Err(e) => panic!("request device: {e}"),
     };
     let device = context.device();
-    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("instanced sdf"),
-        source: wgpu::ShaderSource::Wgsl(shader().into()),
-    });
+    let module = context
+        .shader_module(
+            "instanced sdf",
+            wgpu::ShaderSource::Wgsl(shader().into()),
+            // the loop over instances is bounded in the shader itself by the base's InstancedSdf::gpu_instance_limit
+            &alice_sdf::gpu_loop_bound::HostMaxima::new(),
+        )
+        .expect("the instanced shader's loops are bounded");
     let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some("instanced sdf"),
         layout: None,
@@ -106,22 +110,16 @@ fn gpu_or_skip() -> Option<Gpu> {
 impl Gpu {
     fn run(&self, inst: &[AnimationParams], pts: &[Vec3]) -> Vec<f32> {
         let dev = &self.0.context().device();
-        let flat: Vec<f32> = inst
-            .iter()
-            .flat_map(|a| {
-                [
-                    a.translate_x,
-                    a.translate_y,
-                    a.translate_z,
-                    a.rotate_x,
-                    a.rotate_y,
-                    a.rotate_z,
-                    a.scale,
-                    a.twist,
-                    a.bend,
-                ]
-            })
-            .collect();
+        // the production upload point: the shader's InstanceParams array and the count, refused past the base's
+        // gpu_instance_limit
+        let mut held = InstancedSdf::new(alice_sdf::compiled::CompiledSdf::compile(&base()));
+        for a in inst {
+            held.try_add_instance(*a).expect("under MAX_INSTANCES");
+        }
+        let (flat, count) = held
+            .instance_upload_for(&base())
+            .expect("under the base's limit");
+        assert_eq!(count as usize, inst.len());
         let storage = |label: &str, data: &[f32]| {
             dev.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(label),
@@ -147,7 +145,7 @@ impl Gpu {
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let counts = [pts.len() as u32, inst.len() as u32];
+        let counts = [pts.len() as u32, count];
         let counts = dev.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("counts"),
             contents: bytemuck::cast_slice(&counts),
@@ -199,7 +197,7 @@ fn instanced_wgsl_on_the_gpu_matches_eval_min() {
     let params = instances();
     let mut inst = InstancedSdf::new(CompiledSdf::compile(&base()));
     for a in &params {
-        inst.add_instance(*a);
+        inst.try_add_instance(*a).expect("under MAX_INSTANCES");
     }
     let pts: Vec<Vec3> = common::test_grid_points(17)
         .into_iter()

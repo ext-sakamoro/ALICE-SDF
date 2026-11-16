@@ -48,12 +48,213 @@ fn locked<R>(f: impl FnOnce(&mut Lifecycle) -> R) -> R {
     f(&mut LIFECYCLE.lock().unwrap_or_else(PoisonError::into_inner))
 }
 
+#[cfg(target_arch = "wasm32")]
 const ADAPTER_OPTIONS: wgpu::RequestAdapterOptions<'static, 'static> =
     wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
         compatible_surface: None,
         force_fallback_adapter: false,
     };
+
+/// The adapter a native request asks for: the high performance one, or wgpu's software fallback when this crate's
+/// own tests ask for it ([`slot_guard`])
+#[cfg(not(target_arch = "wasm32"))]
+fn adapter_options() -> wgpu::RequestAdapterOptions<'static, 'static> {
+    wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        compatible_surface: None,
+        force_fallback_adapter: slot_guard::fallback_requested(),
+    }
+}
+
+/// Set when a device of this process was lost (not destroyed by this crate): the driver's state is unknown, so no
+/// device is created again in this process ([`refusal::DEVICE_ABANDONED`]).
+static PROCESS_DEVICE_LOST: AtomicBool = AtomicBool::new(false);
+
+/// The contexts whose wait went over its limit. Their work may still be running on the GPU, and a new device on the
+/// same GPU would queue more work behind it (2026-11-16: each test of one binary made its own device and stacked
+/// another dispatch that did not end on the stalled GPU). While any of them has work in flight, no device is
+/// created ([`refusal::DEVICE_ABANDONED`]); one whose queue has drained leaves the list. (Native only: in a browser
+/// the page owns the GPU and no wait is abandoned here.)
+#[cfg(not(target_arch = "wasm32"))]
+static OUTSTANDING: Mutex<Vec<GpuContext>> = Mutex::new(Vec::new());
+
+/// Drop from `list` the entries that have `drained`, and return how many are left
+#[cfg(any(not(target_arch = "wasm32"), test))]
+fn still_running<T>(list: &Mutex<Vec<T>>, drained: impl Fn(&T) -> bool) -> usize {
+    let mut list = list.lock().unwrap_or_else(PoisonError::into_inner);
+    list.retain(|entry| !drained(entry));
+    list.len()
+}
+
+/// The abandoned contexts of this process that still have work in flight
+#[cfg(not(target_arch = "wasm32"))]
+fn outstanding_work() -> usize {
+    still_running(&OUTSTANDING, GpuContext::queue_drained)
+}
+
+/// In a browser no wait is abandoned (the page owns the GPU)
+#[cfg(target_arch = "wasm32")]
+const fn outstanding_work() -> usize {
+    0
+}
+
+/// The stable start of the messages of the guard's errors.
+///
+/// They are carried in existing [`GpuError`] variants (a new variant would be a breaking change of the enum), so a
+/// caller tells them apart by these prefixes; a test pins each one.
+pub mod refusal {
+    /// [`GpuError::DeviceCreation`](crate::compiled::GpuError::DeviceCreation): a wait of this process went over
+    /// its limit, or a device was lost
+    pub const DEVICE_ABANDONED: &str = "gpu device abandoned: ";
+    /// [`GpuError::ShaderCompilation`](crate::compiled::GpuError::ShaderCompilation): a shader module has a loop
+    /// without a stated bound
+    pub const UNBOUNDED_SHADER_LOOP: &str = "unbounded shader loop: ";
+    /// [`GpuError::DeviceCreation`](crate::compiled::GpuError::DeviceCreation): the GPU slot guard refused the
+    /// adapter (this crate's own tests only)
+    pub const ADAPTER_REFUSED: &str = "gpu adapter refused: ";
+}
+
+/// The abandoned-device error ([`refusal::DEVICE_ABANDONED`]) when `lost` is set or `running` abandoned
+/// dispatches are still in flight
+fn refuse_if_abandoned(lost: &AtomicBool, running: usize) -> Result<(), GpuError> {
+    if lost.load(Ordering::Acquire) {
+        return Err(GpuError::DeviceCreation(format!(
+            "{}a device of this process was lost: no new GPU work is started in this process",
+            refusal::DEVICE_ABANDONED
+        )));
+    }
+    if running > 0 {
+        return Err(GpuError::DeviceCreation(format!(
+            "{}{running} earlier GPU dispatch(es) of this process did not finish and are still running: no new GPU work is started until they end",
+            refusal::DEVICE_ABANDONED
+        )));
+    }
+    Ok(())
+}
+
+/// The device-lost callback: a loss the driver reports (not this crate's own destroy) sets `flag`
+fn on_device_lost(
+    flag: &'static AtomicBool,
+) -> impl Fn(wgpu::DeviceLostReason, String) + Send + 'static {
+    move |reason, _message| {
+        if reason != wgpu::DeviceLostReason::Destroyed {
+            flag.store(true, Ordering::Release);
+        }
+    }
+}
+
+/// The system's Metal device, under the same rules as a wgpu device.
+///
+/// None while an abandoned dispatch runs or after a device loss in this process, and (`gpu-slot-guard`) only inside
+/// a GPU slot, since Metal has no software device. The only place the crate and its tests take a Metal device
+/// (`tests/test_gpu_lifecycle_oracle.rs`).
+///
+/// # Errors
+///
+/// [`GpuError::DeviceCreation`] ([`refusal::DEVICE_ABANDONED`] / [`refusal::ADAPTER_REFUSED`]), or
+/// [`GpuError::NoAdapter`] when there is none.
+#[cfg(all(target_os = "macos", feature = "msl"))]
+pub fn metal_system_device() -> Result<metal::Device, GpuError> {
+    refuse_if_abandoned(&PROCESS_DEVICE_LOST, outstanding_work())?;
+    // the slot is decided before the system's Metal device is touched (Metal has no software device)
+    slot_guard::admit("Metal system default device", false)?;
+    metal::Device::system_default().ok_or(GpuError::NoAdapter)
+}
+
+/// Which adapters this crate's own tests may use (`gpu-slot-guard` feature, on only through this crate's
+/// dev-dependency on itself: an application that depends on the crate never has it).
+///
+/// - `ALICE_SDF_TEST_FALLBACK_ADAPTER=1` asks wgpu for its software fallback adapter; the adapter found must be a
+///   software one (device type `Cpu`), else the request is refused (a system without a fallback adapter, such as
+///   macOS, then has no GPU tests rather than tests on the real GPU read as software runs).
+/// - Otherwise a software adapter (lavapipe, SwiftShader: type `Cpu`) is admitted, and a real one only inside a
+///   GPU slot of the machine: `ALICE_GPU_SLOT` set and not empty (the machine's GPU queue sets it, or
+///   `ci-hosted` on a hosted CI runner, which is its own machine).
+///
+/// The adapter is printed to stderr on every admitted request, so a test log says which adapter ran.
+pub mod slot_guard {
+    use crate::compiled::GpuError;
+
+    /// Whether this build has the guard (only this crate's own tests, examples and benches)
+    pub const ENABLED: bool = cfg!(feature = "gpu-slot-guard");
+
+    /// The variable that asks for wgpu's software fallback adapter
+    #[cfg(feature = "gpu-slot-guard")]
+    pub const FALLBACK_VAR: &str = "ALICE_SDF_TEST_FALLBACK_ADAPTER";
+    /// The variable a GPU slot of the machine sets
+    #[cfg(feature = "gpu-slot-guard")]
+    pub const SLOT_VAR: &str = "ALICE_GPU_SLOT";
+
+    /// Whether the fallback adapter is asked for (always `false` without the feature)
+    #[must_use]
+    pub fn fallback_requested() -> bool {
+        #[cfg(feature = "gpu-slot-guard")]
+        {
+            std::env::var(FALLBACK_VAR).is_ok_and(|v| v == "1")
+        }
+        #[cfg(not(feature = "gpu-slot-guard"))]
+        {
+            false
+        }
+    }
+
+    /// The decision for one adapter, from the two variables' values
+    ///
+    /// # Errors
+    ///
+    /// [`GpuError::DeviceCreation`] ([`super::refusal::ADAPTER_REFUSED`]) as described in the [module docs](self).
+    #[cfg(feature = "gpu-slot-guard")]
+    pub fn decide(
+        name: &str,
+        software: bool,
+        fallback: Option<&str>,
+        slot: Option<&str>,
+    ) -> Result<&'static str, GpuError> {
+        if fallback == Some("1") {
+            return if software {
+                Ok("fallback (software)")
+            } else {
+                Err(GpuError::DeviceCreation(format!(
+                    "{}{FALLBACK_VAR}=1 but the adapter found is {name}, not a software adapter: this system offers no fallback adapter (not run on the real GPU)",
+                    super::refusal::ADAPTER_REFUSED
+                )))
+            };
+        }
+        if software {
+            return Ok("software");
+        }
+        if slot.is_some_and(|v| !v.is_empty()) {
+            Ok("real GPU in a slot")
+        } else {
+            Err(GpuError::DeviceCreation(format!(
+                "{}real GPU adapter needs a GPU slot of this machine (ALICE_GPU_SLOT unset)",
+                super::refusal::ADAPTER_REFUSED
+            )))
+        }
+    }
+
+    /// [`decide`] on the process's variables, printing the adapter when admitted; always `Ok` without the feature
+    ///
+    /// # Errors
+    ///
+    /// [`GpuError::DeviceCreation`] ([`super::refusal::ADAPTER_REFUSED`]).
+    #[cfg_attr(not(feature = "gpu-slot-guard"), allow(clippy::unnecessary_wraps))]
+    pub fn admit(name: &str, software: bool) -> Result<(), GpuError> {
+        if !ENABLED {
+            let _ = (name, software);
+            return Ok(());
+        }
+        #[cfg(feature = "gpu-slot-guard")]
+        {
+            let fallback = std::env::var(FALLBACK_VAR).ok();
+            let slot = std::env::var(SLOT_VAR).ok();
+            let how = decide(name, software, fallback.as_deref(), slot.as_deref())?;
+            eprintln!("[alice-sdf gpu] adapter: {name} ({how})");
+        }
+        Ok(())
+    }
+}
 
 #[allow(
     clippy::disallowed_methods,
@@ -165,6 +366,8 @@ struct Serialized {
     abandoned: AtomicBool,
     /// How long a read waits, in milliseconds
     wait_limit_ms: AtomicU64,
+    /// The adapter the device is on
+    adapter: wgpu::AdapterInfo,
 }
 
 impl Drop for Serialized {
@@ -189,12 +392,40 @@ fn destroy(_held: &mut Lifecycle, device: &mut ManuallyDrop<GpuDevice>) {
     reason = "the device is created here, under the lock"
 )]
 fn create(held: &mut Lifecycle, label: &str) -> Result<GpuContext, GpuError> {
-    let adapter = pollster::block_on(instance(held).request_adapter(&ADAPTER_OPTIONS))
+    create_unless(&PROCESS_DEVICE_LOST, outstanding_work, held, label, make)
+}
+
+/// `make` a context unless `lost` is set or `running` reports abandoned work in flight (then nothing reaches the
+/// driver)
+fn create_unless(
+    lost: &'static AtomicBool,
+    running: impl FnOnce() -> usize,
+    held: &mut Lifecycle,
+    label: &str,
+    make: impl FnOnce(&'static AtomicBool, &mut Lifecycle, &str) -> Result<GpuContext, GpuError>,
+) -> Result<GpuContext, GpuError> {
+    refuse_if_abandoned(lost, running())?;
+    make(lost, held, label)
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the device is created here, under the lock"
+)]
+fn make(
+    abandoned: &'static AtomicBool,
+    held: &mut Lifecycle,
+    label: &str,
+) -> Result<GpuContext, GpuError> {
+    let adapter = pollster::block_on(instance(held).request_adapter(&adapter_options()))
         .ok_or(GpuError::NoAdapter)?;
+    let info = adapter.get_info();
+    slot_guard::admit(&info.name, info.device_type == wgpu::DeviceType::Cpu)?;
     let (device, queue) =
         pollster::block_on(adapter.request_device(&device_descriptor(label), None))
             .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
-    Ok(GpuContext::holding(device, queue))
+    device.set_device_lost_callback(on_device_lost(abandoned));
+    Ok(GpuContext::holding(device, queue, info))
 }
 
 /// A shared handle on a device. See the [module docs](self) for how long it must live.
@@ -299,6 +530,7 @@ impl GpuContext {
         reason = "no thread waits here, and the browser owns the driver"
     )]
     pub async fn request_async(label: &str) -> Result<Self, GpuError> {
+        refuse_if_abandoned(&PROCESS_DEVICE_LOST, outstanding_work())?;
         let instance = locked(|held| instance(held).clone());
         let adapter = instance
             .request_adapter(&ADAPTER_OPTIONS)
@@ -308,7 +540,9 @@ impl GpuContext {
             .request_device(&device_descriptor(label), None)
             .await
             .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
-        Ok(Self::holding(device, queue))
+        let info = adapter.get_info();
+        device.set_device_lost_callback(on_device_lost(&PROCESS_DEVICE_LOST));
+        Ok(Self::holding(device, queue, info))
     }
 
     /// The device
@@ -386,7 +620,8 @@ impl GpuContext {
             Waited::OverLimit => {
                 self.abandon();
                 Err(GpuError::BufferMapping(format!(
-                    "the GPU work did not finish within {limit:?}: its output is not read and the device should not be used again"
+                    "the GPU work did not finish within {limit:?} on {}: its output is not read and the device should not be used again",
+                    self.adapter_info().name
                 )))
             }
         }
@@ -395,6 +630,21 @@ impl GpuContext {
     /// Keep this device for the life of the process: work on it may still be running
     pub(crate) fn abandon(&self) {
         self.0.abandoned.store(true, Ordering::Release);
+        #[cfg(not(target_arch = "wasm32"))]
+        OUTSTANDING
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(self.clone());
+    }
+
+    /// Whether this device has no submission in flight (a poll looks at the fence and does not wait)
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a non-blocking poll: it only reads whether the abandoned work has ended"
+    )]
+    fn queue_drained(&self) -> bool {
+        self.device().poll(wgpu::Maintain::Poll).is_queue_empty()
     }
 
     /// Set how long a read on this device waits for its work
@@ -412,12 +662,46 @@ impl GpuContext {
         }
     }
 
-    fn holding(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+    fn holding(device: wgpu::Device, queue: wgpu::Queue, adapter: wgpu::AdapterInfo) -> Self {
         Self(Arc::new(Serialized {
             device: ManuallyDrop::new(GpuDevice { device, queue }),
             abandoned: AtomicBool::new(false),
             wait_limit_ms: AtomicU64::new(WAIT_LIMIT_MS),
+            adapter,
         }))
+    }
+
+    /// Create a shader module on this device, after checking that every loop of `source` is bounded
+    /// ([`crate::gpu_loop_bound`]): a module with an unbounded loop is never compiled. This is the only place in
+    /// the crate that creates a shader module (`tests/test_gpu_lifecycle_oracle.rs`).
+    ///
+    /// # Errors
+    ///
+    /// [`GpuError::ShaderCompilation`]: [`refusal::UNBOUNDED_SHADER_LOOP`], or the parse error.
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the one place that creates shader modules, after the loop check"
+    )]
+    pub fn shader_module(
+        &self,
+        label: &str,
+        source: wgpu::ShaderSource<'_>,
+        maxima: &crate::gpu_loop_bound::HostMaxima,
+    ) -> Result<wgpu::ShaderModule, GpuError> {
+        crate::gpu_loop_bound::require_bounded(label, &source, maxima)?;
+        Ok(self
+            .device()
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(label),
+                source,
+            }))
+    }
+
+    /// The adapter this context's device is on (its name and device type say whether a test ran on a real GPU
+    /// or a software one)
+    #[must_use]
+    pub fn adapter_info(&self) -> &wgpu::AdapterInfo {
+        &self.0.adapter
     }
 }
 
@@ -591,5 +875,188 @@ mod tests {
             context: Ends("context", &order),
         });
         assert_eq!(*order.lock().unwrap(), ["resources", "context"]);
+    }
+}
+
+#[cfg(test)]
+mod guard_tests {
+    #[cfg(feature = "gpu-slot-guard")]
+    use super::slot_guard::decide;
+    use super::{create_unless, locked, on_device_lost};
+    use crate::compiled::GpuError;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    fn flag(set: bool) -> &'static AtomicBool {
+        Box::leak(Box::new(AtomicBool::new(set)))
+    }
+
+    #[test]
+    fn while_abandoned_work_runs_no_context_is_made() {
+        // oracle: abandoned work in flight stops the request before the driver: the maker runs 0 times
+        let made = AtomicUsize::new(0);
+        let r = locked(|held| {
+            create_unless(
+                flag(false),
+                || 1,
+                held,
+                "poisoned",
+                |_, _, _| {
+                    made.fetch_add(1, Ordering::SeqCst);
+                    Err(GpuError::NoAdapter)
+                },
+            )
+        });
+        assert!(
+            matches!(&r, Err(GpuError::DeviceCreation(m)) if m.starts_with(super::refusal::DEVICE_ABANDONED)),
+            "{:?}",
+            r.err()
+        );
+        assert_eq!(made.load(Ordering::SeqCst), 0);
+        // and once it has ended the maker is reached (the guard is not a blanket refusal)
+        let r = locked(|held| {
+            create_unless(
+                flag(false),
+                || 0,
+                held,
+                "fresh",
+                |_, _, _| {
+                    made.fetch_add(1, Ordering::SeqCst);
+                    Err(GpuError::NoAdapter)
+                },
+            )
+        });
+        assert!(matches!(r, Err(GpuError::NoAdapter)));
+        assert_eq!(made.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_device_the_driver_lost_poisons_and_one_this_crate_destroyed_does_not() {
+        let f = flag(false);
+        on_device_lost(f)(wgpu::DeviceLostReason::Destroyed, String::new());
+        assert!(!f.load(Ordering::SeqCst));
+        on_device_lost(f)(wgpu::DeviceLostReason::Unknown, "driver".into());
+        assert!(f.load(Ordering::SeqCst));
+        let made = AtomicUsize::new(0);
+        let r = locked(|held| {
+            create_unless(
+                f,
+                || 0,
+                held,
+                "after loss",
+                |_, _, _| {
+                    made.fetch_add(1, Ordering::SeqCst);
+                    Err(GpuError::NoAdapter)
+                },
+            )
+        });
+        assert!(
+            matches!(&r, Err(GpuError::DeviceCreation(m)) if m.starts_with(super::refusal::DEVICE_ABANDONED))
+        );
+        assert_eq!(made.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn an_abandoned_dispatch_that_never_drains_refuses_every_later_device() {
+        // oracle: this morning's case, a kernel that never ends: its context never drains, so every later request
+        // for the life of the process is refused before the driver (the maker runs 0 times in all of them)
+        let list = std::sync::Mutex::new(vec!["endless kernel"]);
+        let made = AtomicUsize::new(0);
+        for round in 0..5 {
+            let r = locked(|held| {
+                create_unless(
+                    flag(false),
+                    || super::still_running(&list, |_| false),
+                    held,
+                    "after an endless kernel",
+                    |_, _, _| {
+                        made.fetch_add(1, Ordering::SeqCst);
+                        Err(GpuError::NoAdapter)
+                    },
+                )
+            });
+            assert!(
+                matches!(&r, Err(GpuError::DeviceCreation(m)) if m.starts_with(super::refusal::DEVICE_ABANDONED)),
+                "round {round}: {:?}",
+                r.err()
+            );
+        }
+        assert_eq!(made.load(Ordering::SeqCst), 0);
+        assert_eq!(list.lock().unwrap().len(), 1, "the endless entry stays");
+    }
+
+    #[test]
+    fn drained_entries_leave_the_outstanding_list() {
+        // oracle: entries whose work has ended are dropped, the rest counted (stand-ins for contexts)
+        let list = std::sync::Mutex::new(vec![1, 2, 3, 4]);
+        assert_eq!(super::still_running(&list, |e| e % 2 == 0), 2);
+        assert_eq!(*list.lock().unwrap(), vec![1, 3]);
+        assert_eq!(super::still_running(&list, |_| true), 0);
+        assert_eq!(super::still_running(&list, |_| false), 0);
+    }
+
+    #[test]
+    #[allow(
+        clippy::assertions_on_constants,
+        reason = "the constant is the feature this build has: the assertion is the check that it is on"
+    )]
+    fn this_crates_own_test_builds_have_the_guard() {
+        assert!(
+            super::slot_guard::ENABLED,
+            "built without gpu-slot-guard (the dev-dependency on itself is missing)"
+        );
+    }
+
+    #[cfg(feature = "gpu-slot-guard")]
+    #[test]
+    fn the_slot_decides_real_adapters_and_the_fallback_must_be_software() {
+        // a real adapter: only with a non-empty slot token
+        assert!(matches!(
+            decide("Apple M2 Pro", false, None, None),
+            Err(GpuError::DeviceCreation(m)) if m.starts_with(super::refusal::ADAPTER_REFUSED)
+        ));
+        assert!(matches!(
+            decide("Apple M2 Pro", false, None, Some("")),
+            Err(GpuError::DeviceCreation(m)) if m.starts_with(super::refusal::ADAPTER_REFUSED)
+        ));
+        assert_eq!(
+            decide("Apple M2 Pro", false, None, Some("t")).unwrap(),
+            "real GPU in a slot"
+        );
+        // a software adapter needs no slot
+        assert_eq!(decide("llvmpipe", true, None, None).unwrap(), "software");
+        // the fallback asked for: software is admitted, a real adapter is refused even inside a slot
+        assert_eq!(
+            decide("llvmpipe", true, Some("1"), None).unwrap(),
+            "fallback (software)"
+        );
+        let e = decide("Apple M2 Pro", false, Some("1"), Some("t")).unwrap_err();
+        assert!(e.to_string().contains("not a software adapter"), "{e}");
+        // the refusal text is the agreed one, after the stable prefix
+        let Err(GpuError::DeviceCreation(m)) = decide("x", false, None, None) else {
+            panic!("a real adapter without a slot is refused as DeviceCreation");
+        };
+        assert_eq!(
+            m,
+            format!(
+                "{}real GPU adapter needs a GPU slot of this machine (ALICE_GPU_SLOT unset)",
+                super::refusal::ADAPTER_REFUSED
+            )
+        );
+    }
+
+    #[test]
+    fn the_refusal_prefixes_are_stable_and_distinct() {
+        // callers and log watchers match these strings: changing one is a breaking change of the messages
+        use super::refusal::{ADAPTER_REFUSED, DEVICE_ABANDONED, UNBOUNDED_SHADER_LOOP};
+        assert_eq!(DEVICE_ABANDONED, "gpu device abandoned: ");
+        assert_eq!(UNBOUNDED_SHADER_LOOP, "unbounded shader loop: ");
+        assert_eq!(ADAPTER_REFUSED, "gpu adapter refused: ");
+        for (a, b) in [
+            (DEVICE_ABANDONED, UNBOUNDED_SHADER_LOOP),
+            (DEVICE_ABANDONED, ADAPTER_REFUSED),
+            (UNBOUNDED_SHADER_LOOP, ADAPTER_REFUSED),
+        ] {
+            assert!(!a.starts_with(b) && !b.starts_with(a));
+        }
     }
 }

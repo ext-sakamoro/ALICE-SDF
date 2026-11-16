@@ -1,0 +1,15 @@
+# An application of alice-sdf, built only by CI (scripts/gpu_slot_guard_check.py consumer): without `guard` it is
+# what every application gets, and must have no reference to the GPU slot variable
+[package]
+name = "gpu-slot-guard-consumer"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+alice-sdf = { path = "../..", default-features = false, features = ["gpu"] }
+
+[features]
+guard = ["alice-sdf/gpu-slot-guard"]
