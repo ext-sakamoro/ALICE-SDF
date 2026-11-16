@@ -56,6 +56,14 @@ fn a_cutter_built_from_two_boxes_touching_at_the_face_is_a_union_seam() {
         "area {}",
         seam.overlap_area
     );
+    // the overlap polygon is the 6 x 30 rectangle on x = 10: its own area and plane agree with the pair
+    let poly = &seam.overlap_polygon;
+    assert!(poly.len() >= 4, "{poly:?}");
+    assert!(poly.iter().all(|v| (v.x - 10.0).abs() < 1e-4), "{poly:?}");
+    let ys = poly.iter().map(|v| v.y).fold((f32::MAX, f32::MIN), |(a, b), y| (a.min(y), b.max(y)));
+    let zs = poly.iter().map(|v| v.z).fold((f32::MAX, f32::MIN), |(a, b), z| (a.min(z), b.max(z)));
+    assert!((ys.0 + 3.0).abs() < 1e-4 && (ys.1 - 3.0).abs() < 1e-4, "y span {ys:?}");
+    assert!((zs.0 + 15.0).abs() < 1e-4 && (zs.1 - 15.0).abs() < 1e-4, "z span {zs:?}");
     assert!(r.ops_analysed >= 2, "{r:?}");
     assert_eq!(r.ops_not_analysed, 0, "{r:?}");
 }

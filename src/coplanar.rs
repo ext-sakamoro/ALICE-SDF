@@ -82,7 +82,7 @@ pub enum CoplanarKind {
 }
 
 /// One coplanar, overlapping pair of faces across a CSG operator.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CoplanarPair {
     /// What the coincidence is.
     pub kind: CoplanarKind,
@@ -92,6 +92,9 @@ pub struct CoplanarPair {
     pub point: Vec3,
     /// Area of the overlap.
     pub overlap_area: f32,
+    /// The overlap itself, a convex polygon in world coordinates (counter-clockwise seen along
+    /// `normal`): where the zero-thickness sheet or seam is, for a consumer that clips by it.
+    pub overlap_polygon: Vec<Vec3>,
 }
 
 /// Result of [`coplanar_faces`].
@@ -377,12 +380,13 @@ fn binary(a: &SdfNode, b: &SdfNode, op: Op, xf: Xf, report: &mut CoplanarReport)
             if (x.d - dy).abs() > COPLANAR_REL_TOL * scale {
                 continue;
             }
-            if let Some((area, point)) = overlap(x, y) {
+            if let Some((area, point, polygon)) = overlap(x, y) {
                 report.pairs.push(CoplanarPair {
                     kind,
                     normal: x.n,
                     point,
                     overlap_area: area,
+                    overlap_polygon: polygon,
                 });
             }
         }
@@ -438,9 +442,9 @@ fn clip_convex(subject: &[Vec2], clip: &[Vec2]) -> Vec<Vec2> {
     out
 }
 
-/// Area and world centroid of the overlap of two coplanar faces, `None` when it is not above the
-/// tolerance (disjoint, or meeting along an edge).
-fn overlap(x: &Face, y: &Face) -> Option<(f32, Vec3)> {
+/// Area, world centroid and world polygon of the overlap of two coplanar faces, `None` when it is not
+/// above the tolerance (disjoint, or meeting along an edge).
+fn overlap(x: &Face, y: &Face) -> Option<(f32, Vec3, Vec<Vec3>)> {
     let n = x.n;
     let u = n.any_orthonormal_vector();
     let v = n.cross(u);
@@ -478,7 +482,8 @@ fn overlap(x: &Face, y: &Face) -> Option<(f32, Vec3)> {
         c += (a + b) * w;
     }
     c /= 6.0 * area;
-    Some((area, origin + u * c.x + v * c.y))
+    let to3 = |q: Vec2| origin + u * q.x + v * q.y;
+    Some((area, to3(c), inter.iter().map(|&q| to3(q)).collect()))
 }
 
 /// The variant name of a node (`"SmoothUnion"`, `"RoundedBox"`, ...), read from its `Debug` output
