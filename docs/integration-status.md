@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 9 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1401 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1415 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1254 |
-| | **total** | **2664** |
+| | **total** | **2678** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -69,7 +69,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1401)
+## L1 — example-only (1415)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -106,6 +106,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/compiled/wgsl/gpu_metal.rs`: `MetalEngine::eval_batch`, `MetalEngine::eval_batch_full`, `MetalEngine::new_dynamic`, `MetalEngine::read_hits`, `MetalEngine::update_params`
 - `src/compiled/wgsl/transpiler.rs`: `WgslShader::dynamic_shape`, `WgslShader::extract_params`, `WgslShader::get_eval_function`, `WgslShader::to_compute_shader_with_normals`, `WgslShader::transpile_dynamic`, `WgslShader::transpile_material`, `WgslShader::transpile_union_skip_count`, `WgslShader::transpile_with_node_data`, `WgslShader::transpile_with_rest_point`, `WgslShader::transpile_with_union_bounds`, `WgslShader::try_transpile_with_node_data_checked`, `WgslShader::with_workgroup_size`
 - `src/constraint.rs`: `Constraint`, `ConstraintKind`, `ConstraintSolver`, `ConstraintSolver::add_constraint`, `ConstraintSolver::constraint_count`, `ConstraintSolver::distance`, `ConstraintSolver::fix`, `ConstraintSolver::get`, `ConstraintSolver::new`, `ConstraintSolver::param_count`, `ConstraintSolver::product`, `ConstraintSolver::range`, `ConstraintSolver::ratio`, `ConstraintSolver::set`, `ConstraintSolver::solve`, `ConstraintSolver::sum`, `ParamId`, `ParamId::as_index`, `ParamId::as_u32`, `ParamId::from_raw`, `SolveResult`
+- `src/coplanar.rs`: `COPLANAR_REL_TOL`, `CoplanarKind`, `CoplanarPair`, `CoplanarReport`, `CoplanarReport::is_fully_analysed`, `PLANE_HALF_EXTENT`, `SHEET_DELTA_FLOOR_ULPS`, `SHEET_DELTA_REL`, `SHEET_MAX_SAMPLES`, `SMOOTH_OPENS_K`, `SheetRegion`, `SheetSide`, `coplanar_faces`
 - `src/crispy.rs`: `fnv1a_hash`
 - `src/destruction/debris.rs`: `DebrisConfig`, `DebrisPiece`, `generate_debris`
 - `src/destruction/mod.rs`: `ChunkMesh`, `MutableVoxelGrid::chunk_size`, `MutableVoxelGrid::chunks_per_axis`, `MutableVoxelGrid::clear_dirty`, `MutableVoxelGrid::get_material`, `MutableVoxelGrid::is_chunk_dirty`, `MutableVoxelGrid::remesh_all_dirty`, `MutableVoxelGrid::remesh_chunk`, `MutableVoxelGrid::set_distance`
@@ -213,7 +214,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/provenance.rs`: `CONTENT_SHA256_KEY`, `Checked::semantics`, `PLAIN_SIDECAR_EXTENSIONS`, `Stamp::sdf_with_producer`, `Stored::is_written_under`, `bound_sidecar_id`, `check`, `check_producer`, `check_sdf`, `dds_reserved`, `from_bytes_with_producer`, `read`, `read_with_producer`, `sidecar_path`, `write_bound_sidecar`, `write_sidecar`
 - `src/raw_minmax.rs`: `RawMinMax`, `raw_max_f32`, `raw_max_f32x8`, `raw_min_f32`, `raw_min_f32x8`
 - `src/raycast/march.rs`: `MAX_STEP_BUDGET`, `RaymarchConfig`, `RaymarchConfig::fast`, `RaymarchConfig::high_quality`, `RaymarchConfig::relaxed`, `RaymarchConfig::with_bound`, `RaymarchResult`, `RaymarchResult::ran_out`, `raymarch`, `raymarch_batch`, `raymarch_batch_parallel`, `raymarch_compiled`, `raymarch_compiled_batch_parallel`, `raymarch_compiled_with_config`, `raymarch_detailed`, `raymarch_jit`, `raymarch_jit_batch_parallel`, `raymarch_jit_simd_8`, `raymarch_jit_with_config`, `raymarch_relaxed`, `raymarch_simd_8`, `raymarch_with_config`, `render_depth`, `render_depth_compiled`, `render_depth_compiled_simd`, `render_depth_jit`, `render_depth_jit_simd`, `render_normals`, `render_normals_compiled`
-- `src/raycast/mod.rs`: `SOFT_SHADOW_GLSL`, `ambient_occlusion`, `ambient_occlusion_compiled`, `hard_shadow`, `hard_shadow_compiled`, `raycast`, `raycast_batch`, `soft_shadow`, `soft_shadow_compiled`
+- `src/raycast/mod.rs`: `SOFT_SHADOW_GLSL`, `SURFACE_HIT_EPS`, `ambient_occlusion`, `ambient_occlusion_compiled`, `hard_shadow`, `hard_shadow_compiled`, `raycast`, `raycast_batch`, `soft_shadow`, `soft_shadow_compiled`
 - `src/sdf2d.rs`: `Sdf2dNode`, `Sdf2dNode::circle`, `Sdf2dNode::ellipse`, `Sdf2dNode::intersect`, `Sdf2dNode::line`, `Sdf2dNode::onion`, `Sdf2dNode::rect`, `Sdf2dNode::regular_polygon`, `Sdf2dNode::ring`, `Sdf2dNode::rotate`, `Sdf2dNode::rounded_rect`, `Sdf2dNode::scale`, `Sdf2dNode::smooth_union`, `Sdf2dNode::star`, `Sdf2dNode::subtract`, `Sdf2dNode::translate`, `Sdf2dNode::uneven_capsule`, `Sdf2dNode::union`, `eval_2d`, `eval_2d_batch`, `eval_2d_normal`
 - `src/semantics.rs`: `MAX_MIN_RULE`, `MUL_ADD_RULE`, `SDF_SEMANTICS_BY_DET_MATH`, `SDF_SEMANTICS_PINS`, `check_sdf_semantics`
 - `src/shell.rs`: `ShellConfig`, `ShellConfig::new`, `ShellConfig::uniform`, `ShellConfig::wall_thickness`, `eval_shell`, `eval_shell_batch`, `eval_shell_batch_parallel`, `eval_shell_compiled`, `eval_shell_compiled_batch_parallel`, `eval_shell_gradient`, `shell_node`

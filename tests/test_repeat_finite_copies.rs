@@ -510,6 +510,11 @@ const SITES: &[(&str, usize, &str)] = &[
         4,
         "bytecode encoding (count as f32) and traversal",
     ),
+    (
+        "src/coplanar.rs",
+        3,
+        "coplanar faces: one copy per cell in -floor(count/2)..=floor(count/2), as the law (checked: tests/test_coplanar_faces.rs repeat_finite oracles)",
+    ),
     ("src/compiled/instruction.rs", 2, "instruction constructor"),
     ("src/compiled/opcode.rs", 3, "opcode tables"),
     ("src/compiled/wgsl/transpiler.rs", 1, "traversal only"),
