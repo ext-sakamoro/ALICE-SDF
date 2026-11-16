@@ -372,3 +372,34 @@ fn a_smooth_operator_opens_a_coincidence_only_above_the_surface_band() {
     let r = coplanar_faces(&a().smooth_union(b(), 0.5).union(top));
     assert!(r.pairs.iter().any(|p| p.kind == CoplanarKind::UnionSeam), "{:?}", r.pairs);
 }
+
+#[test]
+fn every_overlap_polygon_is_strictly_convex_without_repeated_or_collinear_vertices() {
+    // scenes whose clipping meets vertices exactly on clip lines (equal widths, shared corners)
+    let scenes = [
+        t_slot(true),
+        SdfNode::box3d(2.0, 2.0, 2.0)
+            .translate(-1.0, 0.0, 0.0)
+            .union(SdfNode::box3d(2.0, 2.0, 2.0).translate(1.0, 0.0, 0.0)),
+        SdfNode::box3d(2.0, 2.0, 2.0)
+            .translate(-1.0, 0.0, 0.0)
+            .union(SdfNode::box3d(2.0, 1.0, 2.0).translate(1.0, 0.5, 0.0)),
+        SdfNode::cylinder(10.0, 50.0).subtract(SdfNode::cylinder(8.0, 45.0).translate(0.0, 2.5, 0.0)),
+    ];
+    let mut checked = 0;
+    for (si, node) in scenes.iter().enumerate() {
+        for p in coplanar_faces(node).pairs {
+            let v = &p.overlap_polygon;
+            assert!(v.len() >= 3, "scene {si}: {v:?}");
+            for i in 0..v.len() {
+                let (a, b, c) = (v[i], v[(i + 1) % v.len()], v[(i + 2) % v.len()]);
+                assert!(a.distance(b) > 1e-6, "scene {si}: repeated vertex {a} in {v:?}");
+                // strictly convex: every consecutive triple turns the same way, never straight
+                let turn = (b - a).cross(c - b).dot(p.normal);
+                assert!(turn > 1e-9, "scene {si}: vertex {b} is not a strict left turn ({turn:e}) in {v:?}");
+            }
+            checked += 1;
+        }
+    }
+    assert!(checked >= 4, "only {checked} polygons checked");
+}
