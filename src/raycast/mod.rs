@@ -15,6 +15,14 @@
 //!
 //! Author: Moroya Sakamoto
 
+/// The widest surface band a consumer of this crate reads as "on the surface" by default: the shadow
+/// rays below stop when the field is under it (1e-3). The other consumers use narrower bands —
+/// [`RaymarchConfig`]'s default `epsilon` and the validity marcher's step are 1e-4, meshing uses
+/// the zero level set itself — so a field value whose magnitude is above this band is off the surface
+/// for every default consumer. A caller that configures a wider `epsilon` reads more as surface than
+/// this constant promises. [`crate::coplanar`] uses it to decide when a smooth blend opens a seam.
+pub const SURFACE_HIT_EPS: f32 = 1e-3;
+
 mod march;
 
 // === Interpreter Backend (original) ===
@@ -175,7 +183,7 @@ pub const SOFT_SHADOW_GLSL: &str = r"float sdf_soft_shadow(vec3 ro, vec3 rd, flo
 /// Fast binary shadow test - just checks if anything blocks the ray.
 #[inline(always)]
 pub fn hard_shadow(node: &SdfNode, origin: Vec3, direction: Vec3, min_t: f32, max_t: f32) -> bool {
-    const EPSILON: f32 = 0.001;
+    const EPSILON: f32 = SURFACE_HIT_EPS;
     const MAX_STEPS: u32 = 64;
 
     let mut t = min_t;
@@ -280,7 +288,7 @@ pub fn hard_shadow_compiled(
     min_t: f32,
     max_t: f32,
 ) -> bool {
-    const EPSILON: f32 = 0.001;
+    const EPSILON: f32 = SURFACE_HIT_EPS;
     const MAX_STEPS: u32 = 64;
 
     let mut t = min_t;

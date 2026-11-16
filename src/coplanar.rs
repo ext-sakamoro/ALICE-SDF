@@ -27,6 +27,14 @@
 //! Faces already known on the other operand are still compared, so a seam inside a partly analysed tree
 //! is still found.
 //!
+//! **Smooth operators**: `SmoothUnion` / `SmoothSubtraction` / `SmoothIntersection` move the field at a
+//! coincident face by exactly `±k/4` (negative for a union: the seam becomes material; positive for a
+//! subtraction or an intersection: the mouth or contact opens to air), measured for `k` from 1 down to
+//! `1e-7`. With `k > SMOOTH_OPENS_K` (`4 × SURFACE_HIT_EPS`) that clears every default surface band, so
+//! no pair is reported and the operands' faces pass up as for the plain operator; with a smaller `k` the
+//! blend is followed exactly like the plain operator and its pairs are reported (a consumer would still
+//! read the face as surface). A non-finite `k` is not analysed.
+//!
 //! **Pairs reported**, at each `Union` / `Subtraction` / `Intersection`, between a face of one operand
 //! and a face of the other:
 //!
@@ -62,6 +70,12 @@ use std::collections::BTreeMap;
 
 /// Relative tolerance for "same plane" and "overlapping" (see the module's MODEL section).
 pub const COPLANAR_REL_TOL: f32 = 1e-6;
+
+/// Smallest blend radius a smooth operator needs before it counts as opening a seam or flush cut:
+/// the polynomial blend moves the field at the coincident face by exactly `k / 4` (measured for union,
+/// subtraction and intersection from `k = 1` down to `1e-7`), and that has to clear the widest default
+/// surface band, [`crate::raycast::SURFACE_HIT_EPS`], or a consumer still reads the face as surface.
+pub const SMOOTH_OPENS_K: f32 = 4.0 * crate::raycast::SURFACE_HIT_EPS;
 
 /// Sides of the polygon a cylinder's cap is followed as.
 const CAP_SIDES: usize = 64;
@@ -317,9 +331,18 @@ fn collect(node: &SdfNode, xf: Xf, report: &mut CoplanarReport) -> Faces {
             },
             report,
         ),
-        SdfNode::Union { a, b } => binary(a, b, Op::Union, xf, report),
-        SdfNode::Subtraction { a, b } => binary(a, b, Op::Subtraction, xf, report),
-        SdfNode::Intersection { a, b } => binary(a, b, Op::Intersection, xf, report),
+        SdfNode::Union { a, b } => binary(a, b, Op::Union, true, xf, report),
+        SdfNode::Subtraction { a, b } => binary(a, b, Op::Subtraction, true, xf, report),
+        SdfNode::Intersection { a, b } => binary(a, b, Op::Intersection, true, xf, report),
+        SdfNode::SmoothUnion { a, b, k } if k.is_finite() => {
+            binary(a, b, Op::Union, *k <= SMOOTH_OPENS_K, xf, report)
+        }
+        SdfNode::SmoothSubtraction { a, b, k } if k.is_finite() => {
+            binary(a, b, Op::Subtraction, *k <= SMOOTH_OPENS_K, xf, report)
+        }
+        SdfNode::SmoothIntersection { a, b, k } if k.is_finite() => {
+            binary(a, b, Op::Intersection, *k <= SMOOTH_OPENS_K, xf, report)
+        }
         other => not_analysed(other, report),
     }
 }
@@ -349,7 +372,16 @@ enum Op {
     Intersection,
 }
 
-fn binary(a: &SdfNode, b: &SdfNode, op: Op, xf: Xf, report: &mut CoplanarReport) -> Faces {
+/// `report_pairs` is false for a smooth operator whose blend opens any coincidence (its faces still pass
+/// up, over-approximated as for the plain operator).
+fn binary(
+    a: &SdfNode,
+    b: &SdfNode,
+    op: Op,
+    report_pairs: bool,
+    xf: Xf,
+    report: &mut CoplanarReport,
+) -> Faces {
     let fa = collect(a, xf, report);
     let fb = collect(b, xf, report);
     let complete = fa.complete && fb.complete;
@@ -358,7 +390,7 @@ fn binary(a: &SdfNode, b: &SdfNode, op: Op, xf: Xf, report: &mut CoplanarReport)
     } else {
         report.ops_not_analysed += 1;
     }
-    for x in &fa.faces {
+    for x in fa.faces.iter().filter(|_| report_pairs) {
         for y in &fb.faces {
             let dot = x.n.dot(y.n);
             let (kind, same_sign) = match op {
