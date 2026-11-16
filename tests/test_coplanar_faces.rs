@@ -182,6 +182,14 @@ fn nodes_the_analysis_cannot_follow_are_counted_not_treated_as_clean() {
     let r = coplanar_faces(&blended.union(SdfNode::box3d(1.0, 1.0, 1.0).translate(5.0, 0.0, 0.0)));
     assert!(r.ops_not_analysed >= 1, "{r:?}");
     assert!(!r.is_fully_analysed());
+    // the node the analysis stopped at is named, once (the union above it is not a kind of its own)
+    assert_eq!(
+        r.not_analysed_kinds.get("SmoothUnion"),
+        Some(&1),
+        "{:?}",
+        r.not_analysed_kinds
+    );
+    assert_eq!(r.not_analysed_kinds.len(), 1, "{:?}", r.not_analysed_kinds);
     // a shape of primitives and rigid transforms only is fully analysed
     assert!(coplanar_faces(&t_slot(true)).is_fully_analysed());
 }
