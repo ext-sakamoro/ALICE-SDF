@@ -10,7 +10,8 @@
 //! ±floor(count/2). `SITES` lists every place in `src/` that names the node, so a new evaluator
 //! fails here until it is classified and checked.
 //!
-//! The cell index is clamped to ±floor(count/2), so an axis has 2·floor(count/2) + 1 whole copies.
+//! The cell index is clamped to ±floor(count/2), so an axis has 2·floor(count/2) + 1 whole copies
+//! (floor of `count as f32 * 0.5`, as the law computes it; above 2^24 that is what holds).
 //! Even counts were already whole; odd counts are the case this guards: a clamp to ±count/2 (not
 //! an integer for an odd count) cut the child in half at ±1.5 spacing (count 3) or ±0.5 spacing
 //! (count 1).
@@ -175,6 +176,107 @@ fn odd_and_even_counts_place_whole_copies_on_the_lattice_in_the_jit() {
     };
     check_all("jit_simd", &EVEN, jit_simd);
     check_all("jit_simd", &ODD, jit_simd);
+}
+
+/// A count of 2^25 + 3 on x with spacing 1: the law's limit `(count as f32 * 0.5).floor()` is
+/// 2^24 + 2, while integer halving `(count / 2) as f32` gives 2^24 + 1, which rounds to 2^24 as f32.
+/// At x = 2^24 + 2 the law puts a copy centred on the point (distance -RADIUS); the integer form
+/// clamps two cells short (distance 2 - RADIUS). Next to it, x = 2^24 is inside under both forms
+/// and x = 2^24 + 4 is past the last copy (2 - RADIUS under the law, 4 - RADIUS under the integer
+/// form). Every point evaluator matches these values, and the interval over a one-point box holds them
+const BIG: u32 = (1 << 25) + 3;
+
+fn big() -> SdfNode {
+    SdfNode::sphere(RADIUS).repeat_finite([BIG, 1, 1], Vec3::ONE)
+}
+
+/// (point, the law's distance there)
+fn big_points() -> [(Vec3, f32); 3] {
+    let edge = (BIG as f32 * 0.5).floor();
+    assert_eq!(edge, 16_777_218.0, "the law's limit for 2^25 + 3");
+    [
+        (Vec3::new(edge, 0.0, 0.0), -RADIUS),
+        (Vec3::new(edge - 2.0, 0.0, 0.0), -RADIUS),
+        (Vec3::new(edge + 2.0, 0.0, 0.0), 2.0 - RADIUS),
+    ]
+}
+
+fn check_big(path: &str, values: &[f32]) {
+    let pts = big_points();
+    assert_eq!(values.len(), pts.len(), "{path}: {} values", values.len());
+    for ((p, want), &got) in pts.iter().zip(values) {
+        assert!(
+            (got - want).abs() <= 1e-4,
+            "{path} count {BIG} at x {}: distance {got}, the law gives {want}",
+            p.x
+        );
+    }
+}
+
+#[test]
+fn a_count_past_two_to_the_25_clamps_as_the_law_in_the_tree_and_bytecode() {
+    let node = big();
+    let pts: Vec<Vec3> = big_points().iter().map(|&(p, _)| p).collect();
+    check_big("tree", &tree(&node, &pts));
+    check_big("compiled", &compiled(&node, &pts));
+    check_big("simd", &simd(&node, &pts));
+}
+
+#[cfg(feature = "jit")]
+#[test]
+fn a_count_past_two_to_the_25_clamps_as_the_law_in_the_jit() {
+    use alice_sdf::compiled::jit::{JitCompiledSdf, JitSimdSdf};
+    let node = big();
+    let pts: Vec<Vec3> = big_points().iter().map(|&(p, _)| p).collect();
+    let jit = JitCompiledSdf::compile(&node)
+        .expect("JIT-supported")
+        .eval_batch(&pts);
+    check_big("jit", &jit);
+    let xs: Vec<f32> = pts.iter().map(|p| p.x).collect();
+    let ys: Vec<f32> = pts.iter().map(|p| p.y).collect();
+    let zs: Vec<f32> = pts.iter().map(|p| p.z).collect();
+    let simd = JitSimdSdf::compile(&CompiledSdf::compile(&node))
+        .expect("SIMD-JIT-supported")
+        .eval_batch(&xs, &ys, &zs);
+    check_big("jit_simd", &simd[..pts.len()]);
+}
+
+/// At x near 2^24 one f32 step is 2, so `Interval::new(x, x)` (rounded outward) is the box
+/// [x - 2, x + 2]: the interval must hold the tree's distance at every f32 in that box, not only
+/// at x. Under integer halving the clamp sits two cells short, so at x = 2^24 + 4 the interval
+/// would start at 2 - RADIUS while the box reaches x = 2^24 + 2, where the tree has a copy (-RADIUS)
+#[test]
+fn a_count_past_two_to_the_25_clamps_as_the_law_in_the_interval_evaluator() {
+    use alice_sdf::interval::{eval_interval, Interval, Vec3Interval};
+    let node = big();
+    let mut compared = 0;
+    for (p, _) in big_points() {
+        let bx = Interval::new(p.x, p.x);
+        let iv = eval_interval(
+            &node,
+            Vec3Interval {
+                x: bx,
+                y: Interval::new(p.y, p.y),
+                z: Interval::new(p.z, p.z),
+            },
+        );
+        let mut x = bx.lo;
+        while x <= bx.hi {
+            let d = eval(&node, Vec3::new(x, p.y, p.z));
+            assert!(
+                iv.lo <= d && d <= iv.hi,
+                "interval count {BIG} over x [{}, {}]: [{}, {}] does not hold the tree's {d} at x {x}",
+                bx.lo,
+                bx.hi,
+                iv.lo,
+                iv.hi
+            );
+            compared += 1;
+            x = f32::from_bits(x.to_bits() + 1); // the next f32 (x > 0 here)
+        }
+    }
+    // each box spans at least the point and one f32 on each side
+    assert!(compared >= 3 * 3, "compared {compared}");
 }
 
 /// the clamp limit `floor(count / 2)` per axis for `repeated(count)` with `count` on x, `count + 1`
