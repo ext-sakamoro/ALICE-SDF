@@ -50,11 +50,23 @@ fn main() {
 
     let mut inst = InstancedSdf::with_capacity(CompiledSdf::compile(&base), params.len() + 1);
     for p in &params {
-        inst.add_instance(*p);
+        inst.try_add_instance(*p).expect("under MAX_INSTANCES");
     }
-    inst.add_at(0.0, 2.0, 0.0); // one more, translation only
+    inst.try_add_at(0.0, 2.0, 0.0).expect("under MAX_INSTANCES"); // one more, translation only
     println!("instances: {}", inst.instance_count());
     assert_eq!(inst.instance_count(), params.len() + 1);
+    // what a GPU dispatch of the instanced WGSL would upload, refused past the base's own instance limit
+    #[cfg(feature = "gpu")]
+    {
+        let limit = InstancedSdf::gpu_instance_limit(&base).expect("the base fits");
+        let (upload, count) = inst
+            .instance_upload_for(&base)
+            .expect("under the base's limit");
+        println!(
+            "GPU upload: {} floats for {count} instances (limit for this base {limit})",
+            upload.len()
+        );
+    }
 
     // The equivalent trees: scale, then XYZ Euler rotation, then translation.
     let mut trees: Vec<SdfNode> = params
@@ -73,7 +85,9 @@ fn main() {
         .collect();
     #[cfg(feature = "gpu")]
     {
-        let wgsl = InstancedSdf::to_instanced_wgsl(&base);
+        // the typed form refuses a base without an instance limit; the text form emits the same shader for this base
+        let wgsl = InstancedSdf::try_to_instanced_wgsl(&base).expect("the base fits");
+        assert_eq!(wgsl, InstancedSdf::to_instanced_wgsl(&base));
         println!(
             "instanced WGSL compute shader: {} lines",
             wgsl.lines().count()

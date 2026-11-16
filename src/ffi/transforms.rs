@@ -12,7 +12,7 @@ use std::slice;
 // ============================================================================
 
 /// Translate an SDF
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_translate(node: SdfHandle, x: f32, y: f32, z: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -25,7 +25,7 @@ pub extern "C" fn alice_sdf_translate(node: SdfHandle, x: f32, y: f32, z: f32) -
 }
 
 /// Rotate an SDF using quaternion
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_rotate(
     node: SdfHandle,
     qx: f32,
@@ -45,7 +45,7 @@ pub extern "C" fn alice_sdf_rotate(
 }
 
 /// Rotate an SDF using Euler angles (radians)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_rotate_euler(node: SdfHandle, x: f32, y: f32, z: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -58,7 +58,7 @@ pub extern "C" fn alice_sdf_rotate_euler(node: SdfHandle, x: f32, y: f32, z: f32
 }
 
 /// Uniform scale an SDF
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_scale(node: SdfHandle, factor: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -71,7 +71,7 @@ pub extern "C" fn alice_sdf_scale(node: SdfHandle, factor: f32) -> SdfHandle {
 }
 
 /// Non-uniform scale an SDF
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_scale_xyz(node: SdfHandle, x: f32, y: f32, z: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let sdf_node = match get_node(node) {
@@ -96,7 +96,7 @@ pub extern "C" fn alice_sdf_scale_xyz(node: SdfHandle, x: f32, y: f32, z: f32) -
 ///
 /// # Safety
 /// `inv_matrix` must point to valid array of 16 floats
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_projective_transform(
     node: SdfHandle,
     inv_matrix: *const f32,
@@ -136,7 +136,7 @@ pub extern "C" fn alice_sdf_projective_transform(
 ///
 /// # Safety
 /// All pointers must be valid and point to correctly sized arrays
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_lattice_deform(
     node: SdfHandle,
     control_points: *const f32,
@@ -198,7 +198,7 @@ pub extern "C" fn alice_sdf_lattice_deform(
 ///
 /// # Safety
 /// `bones` must point to valid array of bone_count * 33 floats
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_skinning(
     node: SdfHandle,
     bones: *const f32,

@@ -1,5 +1,7 @@
 //! A read that reaches its wait limit leaves the device and its buffers alive for the work still
-//! running, refuses further work on that evaluator, and leaves the process able to use a new one.
+//! running, refuses further work on that evaluator, refuses a new device while that work is still in
+//! flight (`refusal::DEVICE_ABANDONED`: a new device would queue its work behind the stalled one), and
+//! leaves the process able to use a new one once the abandoned work has drained.
 //!
 //! The limit is zero: one poll right after the submit, while the first dispatch is at most starting
 //! (a driver that compiles at the first dispatch, as lavapipe does, is seconds away from finishing).
@@ -14,6 +16,7 @@
 )]
 
 use alice_sdf::compiled::{GpuError, GpuEvaluator, TranspileMode, WgslShader};
+use alice_sdf::gpu_context::refusal;
 use alice_sdf::prelude::*;
 use std::time::Duration;
 
@@ -95,13 +98,44 @@ fn a_read_over_its_limit_keeps_the_device_for_the_running_work() {
     drop(slow);
 
     let sphere = SdfNode::sphere(1.0);
-    let fresh =
-        GpuEvaluator::from_shader(&WgslShader::transpile(&sphere, TranspileMode::Hardcoded))
-            .expect("a new evaluator after an abandoned one");
+    let shader = WgslShader::transpile(&sphere, TranspileMode::Hardcoded);
+
+    // while the abandoned work is in flight, no new device is made
+    match GpuEvaluator::from_shader(&shader) {
+        Err(GpuError::DeviceCreation(why)) => {
+            assert!(
+                why.starts_with(refusal::DEVICE_ABANDONED),
+                "another refusal: {why}"
+            );
+        }
+        Err(other) => panic!("another error while the abandoned work runs: {other:?}"),
+        Ok(_) => panic!("a new device was made while the abandoned work runs"),
+    }
+
+    // once it has drained, the process can use a new evaluator again
+    let fresh = after_the_abandoned_work_drains(&shader);
     let pts = [Vec3::ZERO, Vec3::new(3.0, 0.0, 0.0)];
     let got = fresh.eval_batch(&pts).expect("a read on the new evaluator");
     assert_eq!(got, vec![-1.0, 2.0]);
     drop(fresh);
+}
 
+/// The most tries at a new evaluator after the abandoned work: one every 2 s, so about 4 minutes (lavapipe's
+/// first dispatch of the slow shader runs for seconds; CI's step timeout bounds the whole run)
+const DRAIN_TRIES: usize = 120;
+
+/// A new evaluator once the abandoned work has drained. Each refusal before that must be the abandoned-device
+/// one; no new evaluator within [`DRAIN_TRIES`] fails the test. Counted tries, no clock reads.
+fn after_the_abandoned_work_drains(shader: &WgslShader) -> GpuEvaluator {
     until_the_cpu_stops();
+    for _ in 0..DRAIN_TRIES {
+        match GpuEvaluator::from_shader(shader) {
+            Ok(fresh) => return fresh,
+            Err(GpuError::DeviceCreation(why)) if why.starts_with(refusal::DEVICE_ABANDONED) => {
+                std::thread::sleep(Duration::from_secs(2));
+            }
+            Err(other) => panic!("a new evaluator after the work drained: {other:?}"),
+        }
+    }
+    panic!("the abandoned work did not drain within {DRAIN_TRIES} tries");
 }

@@ -84,7 +84,7 @@ pub(crate) mod simple_loop;
 pub(crate) mod smooth_section_stack;
 mod solid_angle;
 mod sphere;
-mod stairs;
+pub(crate) mod stairs;
 mod star_polygon;
 mod superellipsoid;
 mod tetrahedron;
@@ -166,7 +166,9 @@ pub use smooth_section_stack::{
 };
 pub use solid_angle::sdf_solid_angle;
 pub use sphere::{sdf_sphere, sdf_sphere_at, sdf_sphere_r};
-pub use stairs::sdf_stairs;
+pub use stairs::{
+    check_stair_steps, deserialize_stair_steps, sdf_stairs, StairsError, MAX_STAIR_STEPS,
+};
 pub use star_polygon::sdf_star_polygon;
 pub use superellipsoid::sdf_superellipsoid;
 pub use tetrahedron::sdf_tetrahedron;

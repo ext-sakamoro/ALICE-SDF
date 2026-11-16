@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1376 |
+| 🟢 Not ignored | 1389 |
 | 🔴 Red by design | 6 |
 | ⏱ Gated (runtime / diagnostic / manual) | 10 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1392** |
+| **Total** | **1405** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -54,7 +54,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `write_bincode1_fixtures` (test_bincode1_fixtures.rs) — writes tests/fixtures/bincode1; run only to capture
 
-## 🟢 Not ignored (1376)
+## 🟢 Not ignored (1389)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -158,6 +158,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_sign_topology.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
 | `test_section_simplicity.rs` | 6 |
+| `test_stairs_contract.rs` | 6 |
 | `test_trace_hit_scale.rs` | 6 |
 | `test_asp_bridge_oracle.rs` | 5 |
 | `test_collision_oracle.rs` | 5 |
@@ -228,25 +229,29 @@ Per-file counts (the test names are in `tests/`):
 | `test_interval_soundness.rs` | 2 |
 | `test_live_sdf_gpu_parity.rs` | 2 |
 | `test_node_data_gpu_parity.rs` | 2 |
+| `test_npr_bytecode_gpu_parity.rs` | 2 |
 | `test_shader_integer_wraps.rs` | 2 |
 | `test_shader_read_ranges.rs` | 2 |
 | `test_smooth_blend_decode.rs` | 2 |
 | `test_stored_variant_index.rs` | 2 |
 | `test_tight_aabb_cover_oracle.rs` | 2 |
 | `test_transpiler_naga_validate.rs` | 2 |
+| `test_unmangled_exports.rs` | 2 |
 | `test_wgsl_array_constructor_limit.rs` | 2 |
+| `test_wgsl_loop_bounds.rs` | 2 |
 | `mesh_sign_sliver.rs` | 1 |
 | `test_asdf_roundtrip_parity.rs` | 1 |
 | `test_compile_bytecode_golden.rs` | 1 |
 | `test_det_parity.rs` | 1 |
+| `test_gpu_fallback_adapter.rs` | 1 |
 | `test_gpu_fma_contraction.rs` | 1 |
+| `test_gpu_guard_on_device.rs` | 1 |
 | `test_gpu_readback_volume.rs` | 1 |
 | `test_gpu_wait_limit.rs` | 1 |
 | `test_lipschitz_golden.rs` | 1 |
 | `test_loft_lift_bits.rs` | 1 |
 | `test_loft_shader_cpu_agreement.rs` | 1 |
 | `test_metadata_order.rs` | 1 |
-| `test_npr_bytecode_gpu_parity.rs` | 1 |
 | `test_texture_shader_gpu_parity.rs` | 1 |
 
 ---

@@ -11,7 +11,7 @@ use super::types::*;
 // ============================================================================
 
 /// Union of two SDFs (A ∪ B)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_union(a: SdfHandle, b: SdfHandle) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -28,7 +28,7 @@ pub extern "C" fn alice_sdf_union(a: SdfHandle, b: SdfHandle) -> SdfHandle {
 }
 
 /// Intersection of two SDFs (A ∩ B)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_intersection(a: SdfHandle, b: SdfHandle) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -45,7 +45,7 @@ pub extern "C" fn alice_sdf_intersection(a: SdfHandle, b: SdfHandle) -> SdfHandl
 }
 
 /// Subtraction of SDFs (A - B)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_subtract(a: SdfHandle, b: SdfHandle) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -62,7 +62,7 @@ pub extern "C" fn alice_sdf_subtract(a: SdfHandle, b: SdfHandle) -> SdfHandle {
 }
 
 /// Smooth union of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_smooth_union(a: SdfHandle, b: SdfHandle, k: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -79,7 +79,7 @@ pub extern "C" fn alice_sdf_smooth_union(a: SdfHandle, b: SdfHandle, k: f32) -> 
 }
 
 /// Smooth intersection of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_smooth_intersection(a: SdfHandle, b: SdfHandle, k: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -96,7 +96,7 @@ pub extern "C" fn alice_sdf_smooth_intersection(a: SdfHandle, b: SdfHandle, k: f
 }
 
 /// Smooth subtraction of SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_smooth_subtract(a: SdfHandle, b: SdfHandle, k: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -113,7 +113,7 @@ pub extern "C" fn alice_sdf_smooth_subtract(a: SdfHandle, b: SdfHandle, k: f32) 
 }
 
 /// Chamfer union of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_chamfer_union(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -130,7 +130,7 @@ pub extern "C" fn alice_sdf_chamfer_union(a: SdfHandle, b: SdfHandle, r: f32) ->
 }
 
 /// Chamfer intersection of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_chamfer_intersection(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -147,7 +147,7 @@ pub extern "C" fn alice_sdf_chamfer_intersection(a: SdfHandle, b: SdfHandle, r: 
 }
 
 /// Chamfer subtraction of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_chamfer_subtract(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -164,7 +164,7 @@ pub extern "C" fn alice_sdf_chamfer_subtract(a: SdfHandle, b: SdfHandle, r: f32)
 }
 
 /// Stairs union of two SDFs (stepped/terraced blend)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_stairs_union(a: SdfHandle, b: SdfHandle, r: f32, n: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -181,7 +181,7 @@ pub extern "C" fn alice_sdf_stairs_union(a: SdfHandle, b: SdfHandle, r: f32, n: 
 }
 
 /// Stairs intersection of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_stairs_intersection(
     a: SdfHandle,
     b: SdfHandle,
@@ -205,7 +205,7 @@ pub extern "C" fn alice_sdf_stairs_intersection(
 }
 
 /// Stairs subtraction of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_stairs_subtract(
     a: SdfHandle,
     b: SdfHandle,
@@ -227,7 +227,7 @@ pub extern "C" fn alice_sdf_stairs_subtract(
 }
 
 /// XOR (symmetric difference) of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_xor(a: SdfHandle, b: SdfHandle) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -244,7 +244,7 @@ pub extern "C" fn alice_sdf_xor(a: SdfHandle, b: SdfHandle) -> SdfHandle {
 }
 
 /// Morph (linear interpolation) between two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_morph(a: SdfHandle, b: SdfHandle, t: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -261,7 +261,7 @@ pub extern "C" fn alice_sdf_morph(a: SdfHandle, b: SdfHandle, t: f32) -> SdfHand
 }
 
 /// Columns union of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_columns_union(a: SdfHandle, b: SdfHandle, r: f32, n: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -278,7 +278,7 @@ pub extern "C" fn alice_sdf_columns_union(a: SdfHandle, b: SdfHandle, r: f32, n:
 }
 
 /// Columns intersection of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_columns_intersection(
     a: SdfHandle,
     b: SdfHandle,
@@ -302,7 +302,7 @@ pub extern "C" fn alice_sdf_columns_intersection(
 }
 
 /// Columns subtraction of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_columns_subtract(
     a: SdfHandle,
     b: SdfHandle,
@@ -324,7 +324,7 @@ pub extern "C" fn alice_sdf_columns_subtract(
 }
 
 /// Pipe operation: cylindrical surface at intersection of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_pipe(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -341,7 +341,7 @@ pub extern "C" fn alice_sdf_pipe(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHandl
 }
 
 /// Engrave shape b into shape a
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_engrave(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -358,7 +358,7 @@ pub extern "C" fn alice_sdf_engrave(a: SdfHandle, b: SdfHandle, r: f32) -> SdfHa
 }
 
 /// Groove: cut a groove of shape b into shape a
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_groove(a: SdfHandle, b: SdfHandle, ra: f32, rb: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -375,7 +375,7 @@ pub extern "C" fn alice_sdf_groove(a: SdfHandle, b: SdfHandle, ra: f32, rb: f32)
 }
 
 /// Tongue: add a tongue protrusion of shape b to shape a
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_tongue(a: SdfHandle, b: SdfHandle, ra: f32, rb: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -392,7 +392,7 @@ pub extern "C" fn alice_sdf_tongue(a: SdfHandle, b: SdfHandle, ra: f32, rb: f32)
 }
 
 /// Exponential smooth union of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_exp_smooth_union(a: SdfHandle, b: SdfHandle, k: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {
@@ -409,7 +409,7 @@ pub extern "C" fn alice_sdf_exp_smooth_union(a: SdfHandle, b: SdfHandle, k: f32)
 }
 
 /// Exponential smooth intersection of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_exp_smooth_intersection(
     a: SdfHandle,
     b: SdfHandle,
@@ -432,7 +432,7 @@ pub extern "C" fn alice_sdf_exp_smooth_intersection(
 }
 
 /// Exponential smooth subtraction of two SDFs
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_exp_smooth_subtract(a: SdfHandle, b: SdfHandle, k: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         let node_a = match get_node(a) {

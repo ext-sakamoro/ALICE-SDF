@@ -459,12 +459,12 @@ impl PySdfNode {
         }
     }
 
-    /// Create a staircase shape
+    /// Create a staircase shape (at most `MAX_STAIR_STEPS` = 4096 steps; more raises `ValueError`)
     #[staticmethod]
-    fn stairs_shape(step_width: f32, step_height: f32, n_steps: u32, depth: f32) -> Self {
-        Self {
-            inner: SdfNode::stairs(step_width, step_height, n_steps, depth),
-        }
+    fn stairs_shape(step_width: f32, step_height: f32, n_steps: u32, depth: f32) -> PyResult<Self> {
+        SdfNode::try_stairs(step_width, step_height, n_steps, depth)
+            .map(|inner| Self { inner })
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
     }
 
     /// Create a helix (spiral tube)

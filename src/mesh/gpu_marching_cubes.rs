@@ -151,6 +151,32 @@ pub fn gpu_marching_cubes_from_shader(
         }
     }
 
+    // the loop check of every stage's source before the device: a refused shader never reaches one
+    for (label, text) in [
+        (
+            "MC grid",
+            gpu_mc_shaders::generate_sdf_grid_shader(sdf_shader),
+        ),
+        ("MC classify", gpu_mc_shaders::generate_classify_shader()),
+        (
+            "MC vertex",
+            gpu_mc_shaders::generate_vertex_shader(sdf_shader),
+        ),
+        (
+            "Prefix Sum Scan Shader",
+            gpu_mc_shaders::generate_prefix_sum_scan_shader(),
+        ),
+        (
+            "Prefix Sum Propagate Shader",
+            gpu_mc_shaders::generate_prefix_sum_propagate_shader(),
+        ),
+    ] {
+        crate::gpu_loop_bound::require_bounded(
+            label,
+            &wgpu::ShaderSource::Wgsl(text.as_str().into()),
+            &crate::gpu_loop_bound::HostMaxima::new(),
+        )?;
+    }
     let context = GpuContext::request("ALICE-SDF GPU MC Device")?;
     let (device, queue) = (context.device(), context.queue());
     crate::compiled::wgsl::check_node_data_size(
@@ -215,11 +241,12 @@ pub fn gpu_marching_cubes_from_shader(
     let stage = |label: &str,
                  source: String,
                  bindings: &[(wgpu::BufferBindingType, &wgpu::Buffer)]|
-     -> (wgpu::ComputePipeline, wgpu::BindGroup) {
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(label),
-            source: wgpu::ShaderSource::Wgsl(source.into()),
-        });
+     -> Result<(wgpu::ComputePipeline, wgpu::BindGroup), GpuError> {
+        let module = context.shader_module(
+            label,
+            wgpu::ShaderSource::Wgsl(source.into()),
+            &crate::gpu_loop_bound::HostMaxima::new(),
+        )?;
         let entries: Vec<_> = bindings
             .iter()
             .enumerate()
@@ -243,7 +270,7 @@ pub fn gpu_marching_cubes_from_shader(
             layout: &bgl,
             entries: &group_entries,
         });
-        (pipeline, bg)
+        Ok((pipeline, bg))
     };
 
     // ====== PASS 1: SDF grid, PASS 2: cells, PASS 2b: edges per grid point ======
@@ -259,7 +286,7 @@ pub fn gpu_marching_cubes_from_shader(
             ],
             gpu_mc_shaders::SDF_GRID_NODE_DATA_BINDING,
         ),
-    );
+    )?;
     let pass2 = stage(
         "MC Pass 2",
         gpu_mc_shaders::generate_classify_shader(),
@@ -270,7 +297,7 @@ pub fn gpu_marching_cubes_from_shader(
             (rw, &cell_indices_buffer),
             (rw, &total_index_buffer),
         ],
-    );
+    )?;
     let pass2b = stage(
         "MC Pass 2b",
         gpu_mc_shaders::generate_edge_count_shader(),
@@ -280,7 +307,7 @@ pub fn gpu_marching_cubes_from_shader(
             (rw, &point_counts_buffer),
             (rw, &total_vertex_buffer),
         ],
-    );
+    )?;
 
     let wg = 4u32;
     let dispatch_grid = (grid_size as u32).div_ceil(wg);
@@ -345,8 +372,8 @@ pub fn gpu_marching_cubes_from_shader(
     // ====== Prefix sums: cell index offsets and grid point vertex offsets ======
     let (cell_offsets_buffer, point_offsets_buffer) = match &counts_staging {
         None => (
-            dispatch_gpu_prefix_sum(device, queue, &cell_counts_buffer, cell_total)?,
-            dispatch_gpu_prefix_sum(device, queue, &point_counts_buffer, grid_total)?,
+            dispatch_gpu_prefix_sum(&context, queue, &cell_counts_buffer, cell_total)?,
+            dispatch_gpu_prefix_sum(&context, queue, &point_counts_buffer, grid_total)?,
         ),
         Some((c, p)) => {
             let upload = |label: &str, counts: Vec<u32>| {
@@ -397,7 +424,7 @@ pub fn gpu_marching_cubes_from_shader(
             ],
             gpu_mc_shaders::VERTEX_NODE_DATA_BINDING,
         ),
-    );
+    )?;
     let pass4 = stage(
         "MC Pass 4",
         gpu_mc_shaders::generate_cell_index_shader(),
@@ -410,7 +437,7 @@ pub fn gpu_marching_cubes_from_shader(
             (ro, &tri_table_buffer),
             (ro, &point_offsets_buffer),
         ],
-    );
+    )?;
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("MC Pass 3+4 Encoder"),
     });
@@ -451,6 +478,7 @@ pub fn gpu_marching_cubes_from_shader(
 /// The shader marching cubes runs: per-node data goes to the node data buffer, as in
 /// `GpuEvaluator::new`, so no data array is a module constant read at a run-time index
 pub(crate) fn data_shader(node: &SdfNode) -> Result<WgslShader, GpuError> {
+    crate::compiled::wgsl::refuse_out_of_contract(node)?;
     WgslShader::try_transpile_with_node_data(node, TranspileMode::Hardcoded)
         .map_err(|e| GpuError::InvalidFormat(e.to_string()))
 }
@@ -515,7 +543,7 @@ fn create_pipeline(
 /// Computes exclusive prefix sum of `input_buffer` (u32 × `count` elements)
 /// entirely on the GPU. Returns a STORAGE buffer containing the offsets.
 fn dispatch_gpu_prefix_sum(
-    device: &wgpu::Device,
+    context: &GpuContext,
     queue: &wgpu::Queue,
     input_buffer: &wgpu::Buffer,
     count: usize,
@@ -528,14 +556,18 @@ fn dispatch_gpu_prefix_sum(
     let scan_source = gpu_mc_shaders::generate_prefix_sum_scan_shader();
     let propagate_source = gpu_mc_shaders::generate_prefix_sum_propagate_shader();
 
-    let scan_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("Prefix Sum Scan Shader"),
-        source: wgpu::ShaderSource::Wgsl(scan_source.into()),
-    });
-    let propagate_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("Prefix Sum Propagate Shader"),
-        source: wgpu::ShaderSource::Wgsl(propagate_source.into()),
-    });
+    let device = context.device();
+    let none = crate::gpu_loop_bound::HostMaxima::new();
+    let scan_shader = context.shader_module(
+        "Prefix Sum Scan Shader",
+        wgpu::ShaderSource::Wgsl(scan_source.into()),
+        &none,
+    )?;
+    let propagate_shader = context.shader_module(
+        "Prefix Sum Propagate Shader",
+        wgpu::ShaderSource::Wgsl(propagate_source.into()),
+        &none,
+    )?;
 
     // Scan BGL: input(read), output(rw), block_sums(rw), params(uniform)
     let scan_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

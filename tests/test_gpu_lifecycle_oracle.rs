@@ -23,8 +23,15 @@ use std::path::{Path, PathBuf};
 /// The only file of the crate that creates a `wgpu::Instance` or a device
 const LIFECYCLE_MODULE: &str = "src/gpu_context.rs";
 
-/// The calls only [`LIFECYCLE_MODULE`] makes
-const LIFECYCLE_CALLS: &[&str] = &["Instance::new(", ".request_device("];
+/// The calls only [`LIFECYCLE_MODULE`] makes: an instance, an adapter, a device (wgpu or Metal), and a shader
+/// module (which there passes the loop-bound check first, `src/gpu_loop_bound.rs`)
+const LIFECYCLE_CALLS: &[&str] = &[
+    "Instance::new(",
+    ".request_adapter(",
+    ".request_device(",
+    "Device::system_default(",
+    ".create_shader_module(",
+];
 
 /// With the white space gone: a kept clone of these holds the device past its context
 const KEPT_HANDLES: &[&str] = &[".device().clone()", ".queue().clone()"];
@@ -86,7 +93,11 @@ fn drop_order_problems(code: &[&str], decls: &[(String, String)]) -> Vec<String>
         problems.push("an alias of GpuContext".to_string());
     }
     for line in code.iter().map(|l| l.trim()) {
-        if line.starts_with("use wgpu::") && !line.starts_with("use wgpu::util::") {
+        // `wgpu::naga` is the shader IR (no device, no resource): src/gpu_loop_bound.rs reads modules with it
+        if line.starts_with("use wgpu::")
+            && !line.starts_with("use wgpu::util::")
+            && !line.starts_with("use wgpu::naga")
+        {
             problems.push(format!("a wgpu type under another name: {line}"));
         }
     }

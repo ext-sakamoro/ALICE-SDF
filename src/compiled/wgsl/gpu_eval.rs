@@ -66,6 +66,64 @@ pub const fn check_node_data_size(len: usize, limit: u64) -> Result<(), GpuError
     }
 }
 
+/// The most vertices a polygon (`Polygon2D`) may have in a tree evaluated on a GPU.
+///
+/// 4096 is a stated ceiling: this crate's corpus, tests and examples use at most 46 vertices, and no stored tree
+/// here holds a polygon. The shared polygon loop of the GPU shaders is bounded by this literal; a tree with a larger
+/// polygon is refused at every GPU evaluator construction ([`check_gpu_tree`]). The CPU evaluators take any count.
+pub const MAX_GPU_POLYGON_VERTICES: usize = 4096;
+
+/// Why a tree is refused for GPU evaluation ([`check_gpu_tree`])
+#[derive(Debug, Clone, PartialEq)]
+pub enum GpuTreeRefusal {
+    /// A staircase outside its contract ([`crate::primitives::MAX_STAIR_STEPS`])
+    Stairs(crate::primitives::StairsError),
+    /// A polygon with more than [`MAX_GPU_POLYGON_VERTICES`] vertices
+    PolygonVertices {
+        /// Its vertex count
+        vertices: usize,
+    },
+}
+
+impl std::fmt::Display for GpuTreeRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Stairs(e) => e.fmt(f),
+            Self::PolygonVertices { vertices } => write!(
+                f,
+                "polygon: {vertices} vertices is over the most a GPU evaluation takes ({MAX_GPU_POLYGON_VERTICES}, compiled::MAX_GPU_POLYGON_VERTICES)"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for GpuTreeRefusal {}
+
+/// Whether every node of `node`'s tree is inside the contracts of GPU evaluation (stairs, polygon vertices)
+///
+/// # Errors
+///
+/// The first [`GpuTreeRefusal`] found, depth first.
+pub fn check_gpu_tree(node: &SdfNode) -> Result<(), GpuTreeRefusal> {
+    crate::compiled::walk_tree(node, |n| match n {
+        SdfNode::Stairs { n_steps, .. } => {
+            crate::primitives::check_stair_steps(*n_steps).map_err(GpuTreeRefusal::Stairs)
+        }
+        SdfNode::Polygon2D { vertices, .. } if vertices.len() > MAX_GPU_POLYGON_VERTICES => {
+            Err(GpuTreeRefusal::PolygonVertices {
+                vertices: vertices.len(),
+            })
+        }
+        _ => Ok(()),
+    })
+}
+
+/// A tree outside the GPU contracts ([`check_gpu_tree`]) is refused before it is transpiled for a GPU: every GPU
+/// entry that takes a tree calls this
+pub fn refuse_out_of_contract(node: &SdfNode) -> Result<(), GpuError> {
+    check_gpu_tree(node).map_err(|e| GpuError::InvalidFormat(e.to_string()))
+}
+
 /// Error type for GPU evaluation
 #[derive(Error, Debug)]
 pub enum GpuError {
@@ -262,6 +320,12 @@ impl WgpuEngine {
         node_data: &[f32],
         checked: bool,
     ) -> Result<Self, GpuError> {
+        // the loop check before the device: a refused shader never reaches one
+        crate::gpu_loop_bound::require_bounded(
+            "ALICE-SDF Shader",
+            &source,
+            &crate::gpu_loop_bound::HostMaxima::new(),
+        )?;
         let context = GpuContext::request("ALICE-SDF Device")?;
         Self::build(context, source, node_data, checked)
     }
@@ -283,10 +347,11 @@ impl WgpuEngine {
         )?;
 
         // Create shader module
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("ALICE-SDF Shader"),
+        let shader_module = context.shader_module(
+            "ALICE-SDF Shader",
             source,
-        });
+            &crate::gpu_loop_bound::HostMaxima::new(),
+        )?;
 
         // Create bind group layout
         let mut layout_entries = vec![
@@ -828,6 +893,12 @@ impl WgpuEngine {
     ) -> Result<Self, GpuError> {
         // the shader's declared size is read before the device is requested, as before
         declared_workgroup_size(&wgpu::ShaderSource::Wgsl(wgsl_source.into()))?;
+        // the loop check before the device: a refused shader never reaches one
+        crate::gpu_loop_bound::require_bounded(
+            "ALICE-SDF Shader",
+            &wgpu::ShaderSource::Wgsl(wgsl_source.into()),
+            &crate::gpu_loop_bound::HostMaxima::new(),
+        )?;
         let context = GpuContext::request_async("ALICE-SDF Device").await?;
         Self::build(
             context,
@@ -990,6 +1061,17 @@ impl WgpuEngine {
         // Build distance+normals compute shader (4 bindings)
         let full_source = shader.to_compute_shader_with_normals();
 
+        // the loop check before the device: a refused shader never reaches one
+        for (label, text) in [
+            ("ALICE-SDF Dynamic Shader", &compute_source),
+            ("ALICE-SDF Full Shader", &full_source),
+        ] {
+            crate::gpu_loop_bound::require_bounded(
+                label,
+                &wgpu::ShaderSource::Wgsl(text.as_str().into()),
+                &crate::gpu_loop_bound::HostMaxima::new(),
+            )?;
+        }
         let context = GpuContext::request("ALICE-SDF Device (Dynamic)")?;
         let device = context.device();
 
@@ -1062,10 +1144,11 @@ impl WgpuEngine {
         });
 
         // Distance-only pipeline
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("ALICE-SDF Dynamic Shader"),
-            source: wgpu::ShaderSource::Wgsl(compute_source.into()),
-        });
+        let shader_module = context.shader_module(
+            "ALICE-SDF Dynamic Shader",
+            wgpu::ShaderSource::Wgsl(compute_source.into()),
+            &crate::gpu_loop_bound::HostMaxima::new(),
+        )?;
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("ALICE-SDF Dynamic Pipeline"),
             layout: Some(&pipeline_layout),
@@ -1076,10 +1159,11 @@ impl WgpuEngine {
         });
 
         // Distance + Normals pipeline
-        let full_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("ALICE-SDF Full Shader"),
-            source: wgpu::ShaderSource::Wgsl(full_source.into()),
-        });
+        let full_module = context.shader_module(
+            "ALICE-SDF Full Shader",
+            wgpu::ShaderSource::Wgsl(full_source.into()),
+            &crate::gpu_loop_bound::HostMaxima::new(),
+        )?;
         let full_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("ALICE-SDF Full Pipeline"),
             layout: Some(&pipeline_layout),
@@ -1606,6 +1690,7 @@ impl GpuEvaluator {
     /// spheres ([`WgslShader::transpile_with_union_bounds`]); the values are those of the plain
     /// shader.
     pub fn new(node: &SdfNode) -> Result<Self, GpuError> {
+        refuse_out_of_contract(node)?;
         // per-node data (lattice control points, height fields, grid warp maps, lofts, stacks) goes
         // to the node data buffer on both engines
         let shader = WgslShader::try_transpile_with_node_data(
@@ -1625,6 +1710,7 @@ impl GpuEvaluator {
     /// As [`GpuEvaluator::new`], and a tree whose reads the emit cannot prove in range
     /// ([`WgslShader::try_transpile_with_node_data_checked`])
     pub fn new_checked(node: &SdfNode) -> Result<Self, GpuError> {
+        refuse_out_of_contract(node)?;
         let shader = WgslShader::try_transpile_with_node_data_checked(
             node,
             super::transpiler::TranspileMode::Hardcoded,
@@ -1947,6 +2033,7 @@ impl GpuEvaluator {
     ///
     /// As [`GpuEvaluator::new`]
     pub async fn new_async(node: &SdfNode) -> Result<Self, GpuError> {
+        refuse_out_of_contract(node)?;
         let shader = WgslShader::try_transpile_with_node_data(
             node,
             super::transpiler::TranspileMode::Hardcoded,
@@ -2069,6 +2156,7 @@ impl GpuEvaluator {
     /// In Dynamic mode, SDF parameters (radius, size, blend ratio, etc.)
     /// can be updated at 60fps without shader recompilation via `update_params()`.
     pub fn new_dynamic(node: &SdfNode) -> Result<Self, GpuError> {
+        refuse_out_of_contract(node)?;
         #[cfg(all(target_os = "macos", feature = "msl"))]
         {
             super::gpu_metal::MetalEngine::new_dynamic(node).map(|m| Self {

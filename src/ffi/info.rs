@@ -13,13 +13,13 @@ use std::ptr;
 // ============================================================================
 
 /// Get the library version
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub const extern "C" fn alice_sdf_version() -> VersionInfo {
     VersionInfo::current()
 }
 
 /// Get version string (caller must free with alice_sdf_free_string)
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_version_string() -> *mut c_char {
     ffi_guard(std::ptr::null_mut(), || {
         let version = format!(
@@ -41,7 +41,7 @@ pub extern "C" fn alice_sdf_version_string() -> *mut c_char {
 /// internally (returning its sentinel: null handle, `f32::MAX`, `0`, `false`
 /// or `SdfResult_Unknown`) and records the message here; the message is
 /// consumed by this call. Caller must free with `alice_sdf_free_string`.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_last_error() -> *mut c_char {
     ffi_guard(ptr::null_mut(), || {
         take_last_error()
@@ -51,7 +51,7 @@ pub extern "C" fn alice_sdf_last_error() -> *mut c_char {
 }
 
 /// Discard the most recent error message on this thread.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_clear_last_error() {
     // cannot panic in practice; guarded so the "every extern fn is guarded"
     // invariant holds without an allowlist
@@ -63,31 +63,31 @@ pub extern "C" fn alice_sdf_clear_last_error() {
 // ============================================================================
 
 /// Get number of primitive SDF variants
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub const extern "C" fn alice_sdf_primitive_count() -> u32 {
     SdfCategory::Primitive.count()
 }
 
 /// Get number of operation SDF variants
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub const extern "C" fn alice_sdf_operation_count() -> u32 {
     SdfCategory::Operation.count()
 }
 
 /// Get number of transform SDF variants
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub const extern "C" fn alice_sdf_transform_count() -> u32 {
     SdfCategory::Transform.count()
 }
 
 /// Get number of modifier SDF variants
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub const extern "C" fn alice_sdf_modifier_count() -> u32 {
     SdfCategory::Modifier.count()
 }
 
 /// Get total number of all SDF variants
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub const extern "C" fn alice_sdf_total_count() -> u32 {
     SdfCategory::total()
 }
