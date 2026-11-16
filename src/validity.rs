@@ -440,20 +440,28 @@ pub fn local_gap(node: &SdfNode, origin: Vec3, outward: Vec3, max_march: f32) ->
     if dir == Vec3::ZERO {
         return None;
     }
-    // 1. 材料の中なら抜けるまで進む (内側では −d が最近表面までの距離)
-    let mut t = 0.0_f32;
+    let exit = leave_surface(node, origin, dir, 0.0, max_march)?;
+    march_empty(node, origin, dir, exit, max_march).map(|enter| enter - exit)
+}
+
+/// `origin + dir · t0` から `dir` に進み、材料を抜けて面から `MARCH_EPS` 以上離れた所の `t` を返す
+/// (`limit` を越えたら `None`)
+///
+/// 再進入の判定 (`d < MARCH_EPS`) は出発点で発火しうる: 面から許容以内の点 (面の上、浮動小数の丸めで
+/// 面のすぐ外) から march すると 1 歩目で「材料に戻った」と読み、幅 ~0 の隙間になる ⇒ 判定の前に面から
+/// 離れる 内側では −d が最近表面までの距離なので、その分ずつ進む
+fn leave_surface(node: &SdfNode, origin: Vec3, dir: Vec3, t0: f32, limit: f32) -> Option<f32> {
+    let mut t = t0;
     loop {
         let d = eval(node, origin + dir * t);
-        if d > 0.0 {
-            break;
+        if d >= MARCH_EPS {
+            return Some(t);
         }
         t += (-d).law_max(MARCH_EPS);
-        if t > max_march {
+        if t > limit {
             return None;
         }
     }
-    let exit = t;
-    march_empty(node, origin, dir, exit, max_march).map(|enter| enter - exit)
 }
 
 /// From `origin + dir * t0` (in empty space) march along `dir` until material: the parameter `t`
@@ -545,19 +553,12 @@ pub fn measure_gaps(
                     continue;
                 }
                 samples += 1;
-                // 標本が自分の面から march の許容 (MARCH_EPS) 以内にある時は、まず面から離れる: 離れる前に
+                // 標本が自分の面から march の許容以内にある時は、まず面から離れる (leave_surface): 離れる前に
                 // 「材料に戻った」と読むと、面のすぐ外の格子点が幅 2d の隙間になる (格子点が面と
                 // 浮動小数の丸め分だけずれた平らな面で、何も無い所に 1e-5 mm の隙間を報告した)
-                let mut t0 = 0.0_f32;
-                while eval(node, p + n * t0) < MARCH_EPS {
-                    t0 += MARCH_EPS;
-                    if t0 > resolution {
-                        break;
-                    }
-                }
-                if t0 > resolution {
+                let Some(t0) = leave_surface(node, p, n, 0.0, resolution) else {
                     continue;
-                }
+                };
                 let Some(enter) = march_empty(node, p, n, t0, reach) else {
                     continue;
                 };

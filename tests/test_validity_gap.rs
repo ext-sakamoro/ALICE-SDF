@@ -156,3 +156,16 @@ fn grid_points_a_hair_outside_a_flat_face_are_not_a_gap() {
     let min = s.min_gap.unwrap_or_else(|| panic!("slot not found ({s:?})"));
     assert!((min - 1.0).abs() <= 0.03, "measured {min}");
 }
+
+#[test]
+fn local_gap_from_a_point_on_or_a_hair_off_the_face_crosses_the_slab() {
+    // two half-spaces x < 0 and x > 1.5 (as boxes); start on the face, a hair outside it and a hair inside
+    let a = SdfNode::box3d(10.0, 10.0, 10.0).translate(-5.0, 0.0, 0.0);
+    let b = SdfNode::box3d(10.0, 10.0, 10.0).translate(6.5, 0.0, 0.0);
+    let s = a.union(b);
+    for x in [0.0_f32, 1e-5, -1e-5, 5e-5] {
+        let g = local_gap(&s, Vec3::new(x, 1.0, 1.0), Vec3::X, 20.0)
+            .unwrap_or_else(|| panic!("from x = {x}: no gap"));
+        assert!((g - 1.5).abs() < 1e-3, "from x = {x}: {g}");
+    }
+}
