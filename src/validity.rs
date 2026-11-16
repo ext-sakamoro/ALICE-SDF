@@ -545,7 +545,20 @@ pub fn measure_gaps(
                     continue;
                 }
                 samples += 1;
-                let Some(enter) = march_empty(node, p, n, 0.0, reach) else {
+                // 標本が自分の面から march の許容 (MARCH_EPS) 以内にある時は、まず面から離れる: 離れる前に
+                // 「材料に戻った」と読むと、面のすぐ外の格子点が幅 2d の隙間になる (格子点が面と
+                // 浮動小数の丸め分だけずれた平らな面で、何も無い所に 1e-5 mm の隙間を報告した)
+                let mut t0 = 0.0_f32;
+                while eval(node, p + n * t0) < MARCH_EPS {
+                    t0 += MARCH_EPS;
+                    if t0 > resolution {
+                        break;
+                    }
+                }
+                if t0 > resolution {
+                    continue;
+                }
+                let Some(enter) = march_empty(node, p, n, t0, reach) else {
                     continue;
                 };
                 gaps += 1;

@@ -136,3 +136,23 @@ fn local_gap_crosses_a_slab_of_air_exactly() {
         None
     );
 }
+
+#[test]
+fn grid_points_a_hair_outside_a_flat_face_are_not_a_gap() {
+    // the block's faces sit 1e-5 off grid points (cell 0.25 from -8): those points are in empty space
+    // within the march tolerance of the face; marching away from the face must reach open air
+    let block = SdfNode::box3d(10.0, 6.0, 10.0).translate(0.0, 1e-5, 0.0);
+    let r = measure_gaps(&block, Vec3::splat(-8.0), Vec3::splat(8.0), 0.25).expect("samples");
+    assert!(r.samples > 0);
+    assert_eq!(r.min_gap, None, "{r:?}");
+    // and a slot whose walls sit a hair off the grid is still its width
+    let s = measure_gaps(
+        &slot(1.0, 0.5).translate(0.0, 1e-5, 0.0),
+        Vec3::new(-12.0, -1.0, -6.0),
+        Vec3::new(12.0, 7.0, 6.0),
+        0.25,
+    )
+    .expect("samples");
+    let min = s.min_gap.unwrap_or_else(|| panic!("slot not found ({s:?})"));
+    assert!((min - 1.0).abs() <= 0.03, "measured {min}");
+}
