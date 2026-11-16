@@ -256,7 +256,19 @@ fn acute_wedges_are_crevices_with_their_angle_not_widths() {
                 "alpha {alpha}: crevice angle {}",
                 c.angle_deg
             );
+            // listed where the walls meet: the hinge line x = y = 0
+            assert!(
+                c.location.x.abs() <= 0.01 && c.location.y.abs() <= 0.01,
+                "alpha {alpha}: crevice at {} is not on the joint line",
+                c.location
+            );
         }
+        // one joint 16 long, entries merged within 2 · cell = 0.5: about 33, not one per sample
+        assert!(
+            r.crevices.len() <= 40,
+            "alpha {alpha}: {} entries for one joint",
+            r.crevices.len()
+        );
     }
 }
 
