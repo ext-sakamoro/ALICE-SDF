@@ -403,3 +403,84 @@ fn every_overlap_polygon_is_strictly_convex_without_repeated_or_collinear_vertic
     }
     assert!(checked >= 4, "only {checked} polygons checked");
 }
+
+// ── field classification of the candidate pairs (the analysis finds candidates from the tree; whether
+// a candidate is a zero-thickness sheet is read from the final field over its overlap) ──
+
+use alice_sdf::coplanar::SheetSide;
+
+/// A base slab (x in [-20, 20], y in [-2, 2], z in [-10, 10]) and a rib standing on it (x in [-5, 5],
+/// y in [2, 8], full depth), optionally with the base cut away under x in [`cut_from`, 6]
+fn rib_on_base(cut_from: Option<f32>) -> SdfNode {
+    let base = SdfNode::box3d(40.0, 4.0, 20.0);
+    let base = match cut_from {
+        Some(x0) => base.subtract(SdfNode::box3d(6.0 - x0, 10.0, 30.0).translate((6.0 + x0) * 0.5, 0.0, 0.0)),
+        None => base,
+    };
+    base.union(SdfNode::box3d(10.0, 6.0, 20.0).translate(0.0, 5.0, 0.0))
+}
+
+#[test]
+fn a_rib_on_a_base_is_a_material_sheet_over_the_rib_footprint() {
+    let r = coplanar_faces(&rib_on_base(None));
+    assert_eq!(r.pairs.len(), 1, "{:?}", r.pairs);
+    assert!(r.surfaces.is_empty(), "{:?}", r.surfaces);
+    let p = &r.pairs[0];
+    assert_eq!(p.kind, CoplanarKind::UnionSeam);
+    assert_eq!(p.sheets.len(), 1, "{:?}", p.sheets);
+    let s = &p.sheets[0];
+    assert_eq!(s.side, SheetSide::Material);
+    // the footprint x in [-5, 5], z in [-10, 10], less the edge band (2δ, δ = 1e-3 × 40) and a grid step
+    for (got, want) in [(s.min.x, -5.0), (s.max.x, 5.0), (s.min.z, -10.0), (s.max.z, 10.0)] {
+        assert!((got - want).abs() < 0.6, "sheet extent {s:?}");
+    }
+    assert!((s.min.y - 2.0).abs() < 1e-5 && (s.max.y - 2.0).abs() < 1e-5, "on the plane y = 2: {s:?}");
+    assert!(r.field_evaluations > 0, "the classification read the field");
+}
+
+#[test]
+fn a_rib_half_over_a_cut_is_a_sheet_over_the_remaining_half_only() {
+    // the base is cut away under x in [0, 6]: over x > 0 the rib's underside is a real surface (air
+    // below), over x < 0 the seam is still a sheet; the pair is reported with the sheet's extent only
+    let r = coplanar_faces(&rib_on_base(Some(0.0)));
+    let seams: Vec<_> = r.pairs.iter().filter(|p| p.kind == CoplanarKind::UnionSeam).collect();
+    assert_eq!(seams.len(), 1, "{:?}", r.pairs);
+    let s = &seams[0].sheets;
+    assert_eq!(s.len(), 1, "{s:?}");
+    assert_eq!(s[0].side, SheetSide::Material);
+    assert!((s[0].min.x + 5.0).abs() < 0.6, "{s:?}");
+    assert!(s[0].max.x <= 0.0 && s[0].max.x > -0.6, "the sheet stops where the base does: {s:?}");
+}
+
+#[test]
+fn a_rib_wholly_over_a_cut_is_a_surface_not_a_sheet() {
+    // the base is cut away under the whole rib: the coincidence the tree shows is a real surface
+    let r = coplanar_faces(&rib_on_base(Some(-6.0)));
+    assert!(r.pairs.iter().all(|p| p.kind != CoplanarKind::UnionSeam), "{:?}", r.pairs);
+    assert_eq!(r.surfaces.iter().filter(|p| p.kind == CoplanarKind::UnionSeam).count(), 1, "{:?}", r.surfaces);
+    assert!(r.surfaces.iter().all(|p| p.sheets.is_empty()));
+}
+
+#[test]
+fn the_classification_reads_the_final_field_under_a_node_the_analysis_cannot_follow() {
+    // a twist of strength 0 is the identity, but the analysis does not follow a twist: the pair below
+    // it is still found, and its classification (read from the final tree, twist included) still holds
+    let r = coplanar_faces(&rib_on_base(None).twist(0.0));
+    assert!(!r.is_fully_analysed());
+    assert_eq!(r.pairs.len(), 1, "{:?}", r.pairs);
+    assert_eq!(r.pairs[0].sheets.len(), 1);
+    assert_eq!(r.pairs[0].sheets[0].side, SheetSide::Material);
+    // and where the final field has no sheet the candidate is a surface, through the twist as well
+    let r = coplanar_faces(&rib_on_base(Some(-6.0)).twist(0.0));
+    assert!(r.pairs.iter().all(|p| p.kind != CoplanarKind::UnionSeam), "{:?}", r.pairs);
+}
+
+#[test]
+fn a_cutter_mouth_flush_with_the_rim_is_an_air_sheet() {
+    // an open-top cavity whose cutter stops exactly at the rim: a membrane of air over the mouth
+    let cup = SdfNode::box3d(20.0, 20.0, 20.0).subtract(SdfNode::box3d(16.0, 18.0, 16.0).translate(0.0, 1.0, 0.0));
+    let r = coplanar_faces(&cup);
+    assert_eq!(r.pairs.len(), 1, "{:?}", r.pairs);
+    assert_eq!(r.pairs[0].kind, CoplanarKind::FlushCut);
+    assert_eq!(r.pairs[0].sheets.iter().map(|s| s.side).collect::<Vec<_>>(), vec![SheetSide::Air]);
+}
