@@ -106,7 +106,7 @@ fn points(n: usize) -> Vec<Vec3> {
         state = state
             .wrapping_mul(6_364_136_223_846_793_005)
             .wrapping_add(1_442_695_040_888_963_407);
-        (((state >> 40) as f32) / ((1u64 << 24) as f32)).mul_add(4.0, -2.0)
+        (((state >> 40) as f32) / ((1u64 << 24) as f32)) * 4.0 - 2.0
     };
     (0..n).map(|_| Vec3::new(next(), next(), next())).collect()
 }

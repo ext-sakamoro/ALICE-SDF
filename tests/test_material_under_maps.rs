@@ -199,6 +199,8 @@ fn material_of_a_deep_chain_in_a_small_stack() {
 /// parity test cannot see a wrong rule: both sides read the same table)
 #[test]
 fn union_intersection_and_subtraction_pick_their_operand_as_documented() {
+    /// a node of LEFT and CUT, and whether LEFT gives its material at (d_LEFT, d_CUT)
+    type Case = (&'static str, SdfNode, fn(f64, f64) -> bool);
     // a ball overlapping LEFT, so the subtraction has points where it cuts
     const CUT: Ball = Ball {
         r: 0.6,
@@ -206,7 +208,7 @@ fn union_intersection_and_subtraction_pick_their_operand_as_documented() {
         id: 7,
     };
     let (l, r) = (LEFT.node(), CUT.node());
-    let cases: [(&str, SdfNode, fn(f64, f64) -> bool); 3] = [
+    let cases: [Case; 3] = [
         // the nearer operand
         ("union", l.clone().union(r.clone()), |dl, dr| dl <= dr),
         // the farther operand (the one that bounds the intersection there)
