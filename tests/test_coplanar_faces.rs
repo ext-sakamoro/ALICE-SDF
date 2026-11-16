@@ -645,3 +645,59 @@ fn a_filled_seam_beside_a_bore_is_not_a_sheet() {
         r.surfaces
     );
 }
+
+#[test]
+fn one_pair_can_hold_an_air_sheet_and_a_material_sheet_side_by_side() {
+    // a cutter built from two boxes touching at x = 0 (A: x in [-5, 0], B: x in [0, 5], y and z in
+    // +-10) cuts a block (x in +-8, y in [0, 8], z in +-8): inside the cut, its seam is a membrane of air;
+    // below the block, two other boxes touching at the same plane (E, F: y in [-9, 0]) make the same
+    // plane a seam inside material. The cutter's pair covers both: two regions, one per side, adjacent
+    // along y = 0 (they must not be merged into one)
+    let cutter = SdfNode::box3d(5.0, 20.0, 20.0)
+        .translate(-2.5, 0.0, 0.0)
+        .union(SdfNode::box3d(5.0, 20.0, 20.0).translate(2.5, 0.0, 0.0));
+    let block = SdfNode::box3d(16.0, 8.0, 16.0).translate(0.0, 4.0, 0.0);
+    let below = SdfNode::box3d(4.0, 9.0, 16.0)
+        .translate(-2.0, -4.5, 0.0)
+        .union(SdfNode::box3d(4.0, 9.0, 16.0).translate(2.0, -4.5, 0.0));
+    let part = block.subtract(cutter).union(below);
+    let r = coplanar_faces(&part);
+    let big = r
+        .pairs
+        .iter()
+        .find(|p| p.normal.x.abs() > 0.99 && p.overlap_area > 399.0)
+        .unwrap_or_else(|| panic!("the cutter's seam: {:?}", r.pairs));
+    let mut sides: Vec<SheetSide> = big.sheets.iter().map(|s| s.side).collect();
+    sides.sort_by_key(|s| matches!(s, SheetSide::Air));
+    assert_eq!(
+        sides,
+        vec![SheetSide::Material, SheetSide::Air],
+        "{:?}",
+        big.sheets
+    );
+}
+
+#[test]
+fn a_pair_too_thin_to_classify_stays_a_defect_unclassified() {
+    // a rib standing on a base's edge over a strip 1e-4 wide: δ would be a quarter of the strip's half
+    // width, far below the floor (1000 ulp at the part's extent), so the sheet cannot be told from
+    // rounding; the pair stays in `pairs` with no sheet regions and no samples taken
+    let base = SdfNode::box3d(40.0, 4.0, 20.0);
+    let rib = SdfNode::box3d(10.0, 6.0, 20.0).translate(20.0 + 5.0 - 1e-4, 5.0, 0.0);
+    let r = coplanar_faces(&base.union(rib));
+    let seam = r
+        .pairs
+        .iter()
+        .find(|p| p.kind == CoplanarKind::UnionSeam)
+        .unwrap_or_else(|| {
+            panic!(
+                "kept as a defect: {:?} / surfaces {:?}",
+                r.pairs, r.surfaces
+            )
+        });
+    assert!(
+        seam.sheets.is_empty() && seam.sample_step == 0.0,
+        "{seam:?}"
+    );
+    assert!(seam.overlap_area < 1e-2, "{seam:?}");
+}
