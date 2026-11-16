@@ -25,7 +25,10 @@ pub use node::PySdfNode;
 use pyo3::prelude::*;
 
 /// Python module
-#[pymodule]
+// The macro is not applied in this crate's unit-test build: it emits the unmangled module init symbol, and that
+// build also links the crate's own copy through the dev-dependency (Cargo.toml), which carries it. The function
+// stays (as a plain function), so what it registers is still used there.
+#[cfg_attr(not(test), pymodule)]
 pub fn alice_sdf(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Classes
     m.add_class::<node::PySdfNode>()?;

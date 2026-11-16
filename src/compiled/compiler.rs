@@ -1965,6 +1965,32 @@ fn validate_for_compile(node: &SdfNode) -> Result<(), CompileError> {
     }
 }
 
+/// Run `check` on every node of `node`'s tree, depth first, stopping at its first error: the walk of
+/// [`validate_for_compile`], for the entries that do not compile (the GPU evaluators). A node `validate_node`
+/// refuses for another reason is passed over as a leaf (that refusal is the compiler's, not this walk's)
+#[cfg(feature = "gpu")]
+pub fn walk_tree<E>(
+    node: &SdfNode,
+    mut check: impl FnMut(&SdfNode) -> Result<(), E>,
+) -> Result<(), E> {
+    let mut next: WorkStack<&SdfNode, 128> = WorkStack::new();
+    let mut node = node;
+    loop {
+        check(node)?;
+        match validate_node(node) {
+            Children::One(child) => node = child,
+            Children::Two(a, b) => {
+                next.push(b);
+                node = a;
+            }
+            Children::None | Children::Refused(_) => match next.pop() {
+                Some(b) => node = b,
+                None => return Ok(()),
+            },
+        }
+    }
+}
+
 /// What `validate_node` found at a node: the refusal, or the children checked next
 enum Children<'a> {
     Refused(CompileError),
@@ -1976,6 +2002,13 @@ enum Children<'a> {
 /// Check one node; say which children are checked next
 fn validate_node(node: &SdfNode) -> Children<'_> {
     match node {
+        // a literal staircase can carry a count over the contract (primitives::MAX_STAIR_STEPS)
+        SdfNode::Stairs { n_steps, .. } => {
+            if let Err(e) = crate::primitives::check_stair_steps(*n_steps) {
+                return Children::Refused(CompileError::UnsupportedPrimitive(e.to_string()));
+            }
+            return Children::None;
+        }
         // a literal node can carry an invalid spacing or count (the batch-2 fields
         // cannot be set): refused with the RepeatCellsError's text
         SdfNode::RepeatCells { child, .. } => {
@@ -2134,7 +2167,6 @@ fn validate_node(node: &SdfNode) -> Children<'_> {
         | SdfNode::ParabolaSegment { .. }
         | SdfNode::RegularPolygon { .. }
         | SdfNode::StarPolygon { .. }
-        | SdfNode::Stairs { .. }
         | SdfNode::Helix { .. }
         | SdfNode::Tetrahedron { .. }
         | SdfNode::Dodecahedron { .. }

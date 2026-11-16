@@ -2003,7 +2003,9 @@ fn sdf_stairs(p: vec3<f32>, sw: f32, sh: f32, ns: f32, hd: f32) -> f32 {
     let lx = p.x + tw * 0.5;
     let ly = p.y + th * 0.5;
     var d2d = 1e30;
-    for (var si = 0.0; si < n; si = si + 1.0) {
+    for (var i = 0u; i < 4096u; i = i + 1u) {
+        let si = f32(i);
+        if (si >= n) { break; }
         d2d = min(d2d, _stair_box(lx, ly, si, sw, sh));
     }
     let dz = abs(p.z) - hd;
@@ -2230,7 +2232,8 @@ const HELPER_SDF_HELIX: &str = r"fn sdf_helix(p: vec3<f32>, major_r: f32, minor_
     let two_rr = 2.0 * r * major_r;
     let k = floor((py - theta * c) / pitch + 0.5);
     var best = 1e30;
-    for (var dk = -1.0; dk <= 1.0; dk = dk + 1.0) {
+    for (var di = 0; di < 3; di = di + 1) {
+        let dk = f32(di) - 1.0;
         var phi = theta + (k + dk) * tau;
         for (var it = 0; it < 6; it = it + 1) {
             let s = sin(phi - theta);
@@ -2253,6 +2256,17 @@ const HELPER_SDF_HELIX: &str = r"fn sdf_helix(p: vec3<f32>, major_r: f32, minor_
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_stairs_helper_stops_at_the_crate_maximum() {
+        // the loop bound of the wgsl helper is the CPU's MAX_STAIR_STEPS (a drift would split the laws past it)
+        let bound = format!("i < {}u", crate::primitives::MAX_STAIR_STEPS);
+        assert_eq!(
+            super::HELPER_SDF_STAIRS.matches(&bound).count(),
+            1,
+            "{bound}"
+        );
+    }
+
     use super::*;
     use glam::Vec3;
 
@@ -2634,7 +2648,10 @@ mod tests {
                 "chamfered_cube",
                 SdfNode::chamfered_cube(0.5, 0.5, 0.5, 0.1),
             ),
-            ("stairs", SdfNode::stairs(0.3, 0.2, 5, 0.5)),
+            (
+                "stairs",
+                SdfNode::try_stairs(0.3, 0.2, 5, 0.5).expect("5 steps"),
+            ),
             ("helix", SdfNode::helix(1.0, 0.1, 0.5, 2.0)),
             ("tetrahedron", SdfNode::tetrahedron(1.0)),
             ("dodecahedron", SdfNode::dodecahedron(1.0)),

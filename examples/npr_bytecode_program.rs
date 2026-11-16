@@ -64,6 +64,11 @@ fn main() {
     );
     assert_eq!(compiled.native_op_count(), compiled.ops.len());
     assert_eq!(program.byte_len(), 4 * program.as_words().len());
+    // what the GPU evaluator is given as program_len (refused past npr::MAX_NPR_PROGRAM_WORDS)
+    let program_len = program
+        .checked_len()
+        .expect("under the GPU program maximum");
+    println!("GPU program_len: {program_len}");
 
     // Walk the stream with the per-tag payload length.
     let words = program.as_words();

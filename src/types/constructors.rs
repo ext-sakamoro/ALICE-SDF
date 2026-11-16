@@ -722,7 +722,13 @@ impl SdfNode {
     }
 
     /// Create a staircase shape
+    ///
+    /// A count over [`crate::primitives::MAX_STAIR_STEPS`] is outside the staircase contract and is refused where
+    /// the tree is used (compile, GPU evaluators, loading a stored tree); [`Self::try_stairs`] refuses it here.
     #[must_use]
+    #[deprecated(
+        note = "use SdfNode::try_stairs, which refuses a step count over primitives::MAX_STAIR_STEPS"
+    )]
     pub fn stairs(step_width: f32, step_height: f32, n_steps: u32, depth: f32) -> Self {
         Self::Stairs {
             step_width,
@@ -730,6 +736,27 @@ impl SdfNode {
             n_steps: n_steps as f32,
             half_depth: depth * 0.5,
         }
+    }
+
+    /// Create a staircase shape of at most [`crate::primitives::MAX_STAIR_STEPS`] steps
+    ///
+    /// # Errors
+    ///
+    /// [`crate::primitives::StairsError::TooManySteps`] for a count over the maximum.
+    pub fn try_stairs(
+        step_width: f32,
+        step_height: f32,
+        n_steps: u32,
+        depth: f32,
+    ) -> Result<Self, crate::primitives::StairsError> {
+        let n = n_steps as f32;
+        crate::primitives::check_stair_steps(n)?;
+        Ok(Self::Stairs {
+            step_width,
+            step_height,
+            n_steps: n,
+            half_depth: depth * 0.5,
+        })
     }
 
     /// Create a helix (spiral tube)

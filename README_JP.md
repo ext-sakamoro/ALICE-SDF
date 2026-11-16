@@ -194,6 +194,7 @@ feature 付きで実行する CI ステップが無いと CI を失敗させる 
 | `jit` | | Cranelift によるネイティブ評価 (スカラーと 8 幅) |
 | `gpu` | | wgpu による GPU 評価と WGSL 出力 |
 | `gpu-mesh` | | GPU 上の marching cubes `gpu` を含む |
+| `gpu-slot-guard` | | この crate 自身の試験だけ (自分自身への dev-dependency で有効になる): 実 GPU の adapter は `ALICE_GPU_SLOT` がある時だけ、`ALICE_SDF_TEST_FALLBACK_ADAPTER=1` は software の adapter を求める application 向けではない |
 | `volume` | | 場を 3D テクスチャに焼き込む `gpu` を含む |
 | `glsl` | | GLSL 出力 (Unity / OpenGL / Vulkan / Shadertoy) |
 | `hlsl` | | HLSL 出力 (Unreal Engine / DirectX) |
@@ -340,6 +341,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `e95f330762ad` と
 | `godot` | 未申告 |  |
 | `gpu` | 未申告 |  |
 | `gpu-mesh` | 未申告 |  |
+| `gpu-slot-guard` | 未申告 |  |
 | `hlsl` | 未申告 |  |
 | `image` | 未申告 |  |
 | `jit` | 未申告 |  |

@@ -99,6 +99,8 @@ jobs:
             code:
               - 'src/**'
               - 'tests/**'
+              - 'ci/gpu-slot-guard-consumer/**'
+              - 'scripts/gpu_slot_guard_check.py'
               - 'scripts/gen_eval_rec.py'
               - 'scripts/test_gen_eval_rec.py'
               - 'benches/**'
@@ -206,6 +208,10 @@ jobs:
           - os: windows-latest
             name: Windows (x86_64)
     runs-on: ${{ matrix.os }}
+    # a hosted runner is a machine of its own: its real GPU (the macOS Metal tests) is this job's alone, so the
+    # GPU slot guard of this crate's tests admits it (src/gpu_context.rs, slot_guard)
+    env:
+      ALICE_GPU_SLOT: ci-hosted
 
     steps:
       - uses: actions/checkout@v5
@@ -1219,7 +1225,7 @@ jobs:
       # every feature of Cargo.toml except `wasm`, which builds for wasm32 only and is
       # linted by the wasm32 step below; scripts/clippy_feature_coverage.py checks
       # that the two together name every feature
-      LINT_FEATURES: "aaa,all-shaders,asdf,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume"
+      LINT_FEATURES: "aaa,all-shaders,asdf,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,gpu-slot-guard,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume"
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -1445,6 +1451,44 @@ jobs:
         env:
           ALICE_SDF_VOLUME_READBACK: "1"
         run: cargo test --features gpu --test test_gpu_readback_volume -- --nocapture
+
+      # A GPU dispatch cannot be stopped once submitted, so every shader module the crate creates is
+      # checked on its naga IR first: each loop has a counter bounded by a literal, a constant or a host
+      # value with a stated maximum (src/gpu_loop_bound.rs). The unit tests plant unbounded loops (a stack
+      # drained until empty, a while on data, a counter reset or skipped by continue, a host bound with no
+      # maximum) and require each refused; the census checks every module of the creation sites, prints
+      # each one's worst iteration product and fails on 0 modules. After a wait over its limit or a lost
+      # device, no device is made again in the process (guard_tests, 0 maker calls). The fallback adapter
+      # asked for by ALICE_SDF_TEST_FALLBACK_ADAPTER=1 must be a software one (llvmpipe here). Every test
+      # build has the slot guard (cargo's JSON: the alice-sdf library artifacts carry gpu-slot-guard), and
+      # an application build has no reference to ALICE_GPU_SLOT (a consumer binary, with the feature as the
+      # control that the check has teeth)
+      - name: Shader loop bounds + GPU slot guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --features gpu --lib gpu_loop_bound -- --nocapture 2>&1 | tee loop-unit.log
+          python3 scripts/libtest_count.py loop-unit.log --min 11 --what "loop bound unit tests"
+          cargo test --features gpu --lib gpu_context::guard_tests -- --nocapture 2>&1 | tee guard-unit.log
+          python3 scripts/libtest_count.py guard-unit.log --min 7 --what "GPU guard unit tests"
+          cargo test --features gpu,volume,glsl --test test_wgsl_loop_bounds -- --nocapture 2>&1 | tee loop-census.log
+          python3 scripts/libtest_count.py loop-census.log --min 1 --what "shader loop census"
+          grep -E '^\[wgsl-loops\] modules [1-9]' loop-census.log
+          ALICE_SDF_TEST_FALLBACK_ADAPTER=1 cargo test --features gpu --test test_gpu_fallback_adapter -- --nocapture 2>&1 | tee fallback.log
+          python3 scripts/libtest_count.py fallback.log --min 1 --what "fallback adapter test"
+          grep -E '^\[fallback adapter\] name .* type Cpu' fallback.log
+          ALICE_SDF_TEST_FALLBACK_ADAPTER=1 cargo test --features gpu --test test_gpu_guard_on_device -- --nocapture 2>&1 | tee guard-device.log
+          grep -E '^\[gpu-guard-on-device\] ran 5$' guard-device.log
+          cargo test --no-run --features gpu --message-format=json > guard-builds.json
+          python3 scripts/gpu_slot_guard_check.py builds guard-builds.json
+          cargo build --release --manifest-path ci/gpu-slot-guard-consumer/Cargo.toml
+          cp ci/gpu-slot-guard-consumer/target/release/gpu-slot-guard-consumer consumer-without
+          cargo build --release --manifest-path ci/gpu-slot-guard-consumer/Cargo.toml --features guard
+          cp ci/gpu-slot-guard-consumer/target/release/gpu-slot-guard-consumer consumer-with
+          python3 scripts/gpu_slot_guard_check.py consumer consumer-without consumer-with
+          # this crate's own shipped library (as the plugins build it, `cargo build --release`): no guard
+          cargo build --release --lib --features gpu,ffi
+          python3 scripts/gpu_slot_guard_check.py artifact target/release/libalice_sdf.so consumer-with
 
       # The polygon / section-stack shader oracles need gpu + glsl + hlsl together (the
       # files are empty without all three), so they run as their own step, counted so a feature set

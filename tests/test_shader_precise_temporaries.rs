@@ -762,7 +762,29 @@ type Emitter = (
     &'static [&'static str],
     &'static [(&'static str, &'static str)],
 );
-const EMITTERS: [Emitter; 14] = [
+const EMITTERS: [Emitter; 16] = [
+    (
+        "src/volume/gpu_bake.rs",
+        &[],
+        &[
+            (
+                "generate_volume_bake_shader_with_normals",
+                "WGSL: G3 on WGSL is the MSL / Metal path",
+            ),
+            (
+                "gpu_bake_volume_from_shader",
+                "takes a transpiled shader and returns a baked volume, not shader text",
+            ),
+        ],
+    ),
+    (
+        "src/gpu_context.rs",
+        &[],
+        &[(
+            "shader_module",
+            "takes shader text to compile it after the loop-bound check; emits none",
+        )],
+    ),
     (
         "src/operations/smooth_blend.rs",
         &["smooth_blend_helper_glsl", "smooth_blend_helper_hlsl"],

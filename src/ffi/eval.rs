@@ -16,7 +16,7 @@ use std::slice;
 /// Evaluate SDF at a single point
 ///
 /// For bulk evaluation, use `alice_sdf_eval_compiled_batch` instead.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_eval(node: SdfHandle, x: f32, y: f32, z: f32) -> f32 {
     ffi_guard(f32::MAX, || {
         let sdf_node = match get_node(node) {
@@ -28,7 +28,7 @@ pub extern "C" fn alice_sdf_eval(node: SdfHandle, x: f32, y: f32, z: f32) -> f32
 }
 
 /// Evaluate compiled SDF at a single point
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_eval_compiled(compiled: CompiledHandle, x: f32, y: f32, z: f32) -> f32 {
     ffi_guard(f32::MAX, || {
         let comp = match get_compiled(compiled) {
@@ -57,7 +57,7 @@ pub extern "C" fn alice_sdf_eval_compiled(compiled: CompiledHandle, x: f32, y: f
 /// # Deep Fried Optimization
 /// Compiles the SDF internally and uses parallel evaluation.
 /// For maximum performance, use `alice_sdf_compile` + `alice_sdf_eval_compiled_batch`.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_eval_batch(
     node: SdfHandle,
     points: *const f32,
@@ -148,7 +148,7 @@ pub unsafe extern "C" fn alice_sdf_eval_batch(
 ///   [x0, y0, z0, x1, y1, z1, ...]). The pointer must be non-null and properly aligned.
 /// - `distances` must point to a writable array of at least `count` f32 values.
 /// - Both pointers must remain valid and non-aliasing for the entire duration of the call.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_eval_compiled_batch(
     compiled: CompiledHandle,
     points: *const f32,
@@ -244,7 +244,7 @@ pub unsafe extern "C" fn alice_sdf_eval_compiled_batch(
 /// - Physics simulations
 /// - Particle systems
 /// - Real-time SDf tracing
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_eval_soa(
     compiled: CompiledHandle,
     x: *const f32,
@@ -424,7 +424,7 @@ pub unsafe extern "C" fn alice_sdf_eval_soa(
 /// - ~4x slower than distance-only (7 SDF evals vs 1)
 /// - Still achieves 150M+ points/sec on modern CPU
 /// - For 1M points: ~6ms
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
     compiled: CompiledHandle,
     x: *const f32,
@@ -671,7 +671,7 @@ pub unsafe extern "C" fn alice_sdf_eval_gradient_soa(
 ///
 /// # Returns
 /// Signed distance at the query point
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_eval_animated_compiled(
     compiled: CompiledHandle,
     params: *const AnimationParams,
@@ -716,7 +716,7 @@ pub unsafe extern "C" fn alice_sdf_eval_animated_compiled(
 /// - `x`, `y`, and `z` must each point to a valid array of at least `count` f32 values.
 /// - `distances` must point to a writable array of at least `count` f32 values.
 /// - All five pointers must be non-null and remain valid for the entire duration of the call.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_eval_animated_batch_soa(
     compiled: CompiledHandle,
     params: *const AnimationParams,

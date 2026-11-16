@@ -31,7 +31,7 @@
 
 use alice_sdf::compiled::GpuError;
 use alice_sdf::gpu_context::{GpuContext, Held};
-use alice_sdf::npr::compiled_color::{emit_wgsl_bytecode_evaluator, CompiledColorPipeline};
+use alice_sdf::npr::compiled_color::{CompiledColorPipeline, MAX_NPR_PROGRAM_WORDS};
 use alice_sdf::npr::dsl::{NprColorContext, NprColorNode, PaletteSource};
 use glam::{Vec2, Vec3};
 use std::sync::mpsc;
@@ -225,42 +225,8 @@ struct GpuResources {
 
 struct Gpu(Held<GpuResources>);
 
-const WORKGROUP: u32 = 64;
-
-fn shader_source() -> String {
-    format!(
-        r"{evaluator}
-
-@group(0) @binding(0) var<storage, read> program: array<u32>;
-@group(0) @binding(1) var<storage, read> contexts: array<f32>;
-@group(0) @binding(2) var<storage, read_write> colors: array<f32>;
-@group(0) @binding(3) var<uniform> sizes: vec4<u32>;
-
-fn alice_npr_load(index: u32) -> u32 {{
-    return program[index];
-}}
-
-@compute @workgroup_size({WORKGROUP})
-fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
-    let i = id.x;
-    if (i >= sizes.y) {{ return; }}
-    let b = i * 6u;
-    let ctx = AliceNprBytecodeCtx(
-        contexts[b],
-        contexts[b + 1u],
-        contexts[b + 2u],
-        vec2<f32>(contexts[b + 3u], contexts[b + 4u]),
-        contexts[b + 5u],
-    );
-    let color = alice_npr_eval_bytecode(sizes.x, ctx);
-    colors[i * 3u] = color.x;
-    colors[i * 3u + 1u] = color.y;
-    colors[i * 3u + 2u] = color.z;
-}}
-",
-        evaluator = emit_wgsl_bytecode_evaluator()
-    )
-}
+mod common;
+use common::npr_shader::{shader_source, WORKGROUP};
 
 fn gpu_or_skip() -> Option<Gpu> {
     let context = match GpuContext::request("npr bytecode parity") {
@@ -276,10 +242,13 @@ fn gpu_or_skip() -> Option<Gpu> {
         Err(e) => panic!("request device: {e}"),
     };
     let device = context.device();
-    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("npr bytecode evaluator"),
-        source: wgpu::ShaderSource::Wgsl(shader_source().into()),
-    });
+    let module = context
+        .shader_module(
+            "npr bytecode evaluator",
+            wgpu::ShaderSource::Wgsl(shader_source().into()),
+            &alice_sdf::gpu_loop_bound::HostMaxima::new(),
+        )
+        .expect("the NPR bytecode evaluator's loops are bounded");
     let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some("npr bytecode evaluator"),
         layout: None,
@@ -292,7 +261,7 @@ fn gpu_or_skip() -> Option<Gpu> {
 }
 
 impl Gpu {
-    fn run(&self, words: &[u32], ctxs: &[Scalars]) -> Vec<Vec3> {
+    fn run(&self, words: &[u32], program_len: u32, ctxs: &[Scalars]) -> Vec<Vec3> {
         let dev = &self.0.context().device();
         let flat: Vec<f32> = ctxs.iter().flat_map(|s| s.as_array()).collect();
         let program = dev.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -318,7 +287,7 @@ impl Gpu {
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let sizes = [words.len() as u32, ctxs.len() as u32, 0, 0];
+        let sizes = [program_len, ctxs.len() as u32, 0, 0];
         let sizes = dev.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("sizes"),
             contents: bytemuck::cast_slice(&sizes),
@@ -399,11 +368,15 @@ fn bytecode_evaluator_on_the_gpu_matches_the_cpu_tree_walker() {
     };
     let ctxs = contexts(1024);
     let mut total = 0usize;
+    let mut longest = 0usize;
     for (name, node) in corpus() {
         let program = CompiledColorPipeline::compile(&node)
             .serialize()
             .expect("corpus programs have no Fallback");
-        let got = gpu.run(program.as_words(), &ctxs);
+        // the production length check: what the evaluator is given as program_len
+        let len = program.checked_len().expect("under MAX_NPR_PROGRAM_WORDS");
+        longest = longest.max(len as usize);
+        let got = gpu.run(program.as_words(), len, &ctxs);
         assert_eq!(got.len(), ctxs.len());
         let mut compared = 0usize;
         let mut worst = (0.0f32, Vec3::ZERO, Vec3::ZERO, None);
@@ -438,4 +411,31 @@ fn bytecode_evaluator_on_the_gpu_matches_the_cpu_tree_walker() {
         total += compared;
     }
     assert!(total > 10_000, "compared {total} contexts in all");
+    println!("[npr-words] longest corpus program {longest} words (MAX_NPR_PROGRAM_WORDS {MAX_NPR_PROGRAM_WORDS})");
+    assert!(longest > 0 && longest <= MAX_NPR_PROGRAM_WORDS);
+}
+
+/// No GPU: every corpus program fits the evaluator's bound, and an over-long one is refused before upload
+#[test]
+fn corpus_programs_fit_the_gpu_program_maximum() {
+    let mut longest = 0usize;
+    for (_, node) in corpus() {
+        let program = CompiledColorPipeline::compile(&node)
+            .serialize()
+            .expect("corpus programs have no Fallback");
+        longest = longest.max(program.checked_len().expect("under the maximum") as usize);
+    }
+    println!("[npr-words] longest corpus program {longest} words (MAX_NPR_PROGRAM_WORDS {MAX_NPR_PROGRAM_WORDS})");
+    assert!(longest > 0);
+    let long = alice_sdf::npr::compiled_color::GpuColorProgram {
+        words: vec![0; MAX_NPR_PROGRAM_WORDS + 1],
+    };
+    assert_eq!(
+        long.checked_len().unwrap_err().words,
+        MAX_NPR_PROGRAM_WORDS + 1
+    );
+    let at_max = alice_sdf::npr::compiled_color::GpuColorProgram {
+        words: vec![0; MAX_NPR_PROGRAM_WORDS],
+    };
+    assert_eq!(at_max.checked_len(), Ok(MAX_NPR_PROGRAM_WORDS as u32));
 }

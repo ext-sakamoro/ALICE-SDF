@@ -17,6 +17,12 @@
 # step run by hand rather than a part of this script or of any workflow. Run it
 # before `cargo publish`, not before every `git push`.
 #
+# The host linker matters: the macOS linker accepts a symbol defined twice when one copy comes from an rlib
+# archive, where the Linux and Windows linkers refuse it (2026-11-16: the unit-test build links this crate twice
+# through its dev-dependency on itself; unmangled exports collided on Linux and Windows while the macOS run was
+# green). A green run of this script on macOS does not show that the Linux and Windows test builds link: run the
+# Linux rows on a Linux machine as well, and read the Windows-only steps as covered by CI only.
+#
 # usage: scripts/preflight.sh [--quick]
 #   --quick  runs `cargo test --lib` but skips every other test step (the
 #            integration suites, the feature-gated oracles — svo / texture-fit /
@@ -61,7 +67,7 @@ quick=0
 # Feature sets, verbatim from the workflows.
 LINUX_ALL='glsl,hlsl,blinkscript,gpu,jit,svo,terrain,destruction,gi,ffi,volume,gpu-mesh,svo-gpu,openvdb,physics,codec,asp,sdf-cache,texture-fit,rust'
 # the clippy job's LINT_FEATURES: every feature but wasm (linted on wasm32 below)
-LINT_FEATURES='aaa,all-shaders,asdf,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume'
+LINT_FEATURES='aaa,all-shaders,asdf,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,gpu-slot-guard,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume'
 DOCSRS='glsl,hlsl,jit,svo,terrain,destruction,gi,ffi,rust'
 BRIDGES='physics,codec,asp,sdf-cache'
 MSRV=1.88

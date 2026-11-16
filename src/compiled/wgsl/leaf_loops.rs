@@ -90,7 +90,12 @@ fn peel(mut node: &SdfNode) -> (Vec<Wrap>, &SdfNode) {
 
 const fn kind(node: &SdfNode) -> Option<Kind> {
     match node {
-        SdfNode::Polygon2D { vertices, .. } if vertices.len() > POLYGON_2D_UNROLL_MAX => {
+        // a polygon over the GPU maximum keeps the per-node form (its own literal vertex count, judged by the loop
+        // check's ceiling), so the shared loop's literal bound is never short of a polygon it reads
+        SdfNode::Polygon2D { vertices, .. }
+            if vertices.len() > POLYGON_2D_UNROLL_MAX
+                && vertices.len() <= super::gpu_eval::MAX_GPU_POLYGON_VERTICES =>
+        {
             Some(Kind::Polygon)
         }
         _ => None,
@@ -219,9 +224,18 @@ fn emit_group(
     if shape.contains('R') {
         g.ensure_helper("quat_rotate");
     }
-    let func = kind_function(k);
-    if !g.globals.contains(func.0) {
-        g.globals.push_str(func.1);
+    // the group's largest polygon: the bound of the function it calls
+    let poly_max = rows
+        .iter()
+        .map(|(_, _, base, _)| match base {
+            SdfNode::Polygon2D { vertices, .. } => vertices.len(),
+            _ => 0,
+        })
+        .max()
+        .unwrap_or(0);
+    let func = kind_function(k, poly_max);
+    if !g.globals.contains(&func.0) {
+        g.globals.push_str(&func.1);
     }
     // the operand's point, its value and the scale factors, as the per-node form writes them
     let nd = |o: usize| format!("alice_node_data[lr + {o}]");
@@ -266,7 +280,7 @@ fn emit_group(
             let hh = nd(ROW_HEAD + 1);
             write!(
                 body,
-                "            let ld2d: f32 = alice_poly_nd(q.xy, {off});
+                "            let ld2d: f32 = alice_poly_nd_{poly_max}(q.xy, {off});
             let ldz: f32 = abs(q.z) - {hh};
             let lwx: f32 = max(ld2d, 0.0);
             let lwy: f32 = max(ldz, 0.0);
@@ -321,24 +335,57 @@ fn emit_group(
 }
 
 #[cfg(test)]
+mod bound_tests {
+    #[test]
+    fn a_polygon_over_the_gpu_maximum_keeps_the_per_node_form() {
+        let max = super::super::gpu_eval::MAX_GPU_POLYGON_VERTICES;
+        let ring = |n: usize| -> crate::types::SdfNode {
+            let v = (0..n)
+                .map(|i| {
+                    // a convex arc of y = x^2 (no trigonometry: the law's own functions are for evaluation)
+                    let x = -1.0 + 2.0 * i as f32 / n as f32;
+                    glam::Vec2::new(x, x * x)
+                })
+                .collect();
+            crate::types::SdfNode::polygon_2d(v, 0.2)
+        };
+        assert!(super::kind(&ring(max)).is_some());
+        assert!(super::kind(&ring(max + 1)).is_none());
+    }
+
+    #[test]
+    fn the_polygon_loop_bound_is_the_groups_largest_polygon() {
+        // the function for a group of at most 41 vertices loops at most 41 times, and is named by it
+        let (name, text) = super::kind_function(super::Kind::Polygon, 41);
+        assert_eq!(name, "fn alice_poly_nd_41(");
+        assert_eq!(text.matches("i < 41i;").count(), 1, "{text}");
+    }
+}
+
+#[cfg(test)]
 fn lit_i(v: usize) -> String {
     format!("{v}")
 }
 
-/// The kind's one function: (name, definition)
-const fn kind_function(k: Kind) -> (&'static str, &'static str) {
+/// The kind's one function for operands of at most `max` vertices (the largest of its group): (name, definition).
+/// The loop's literal bound is that maximum, so one invocation's work follows the polygons it reads; groups of a
+/// different maximum get their own function (named by it)
+fn kind_function(k: Kind, max: usize) -> (String, String) {
     match k {
         // `ShaderLang::global_polygon_2d_fn` with the vertices read from the buffer at `b` (the
         // count first, then the pairs): the same edge order, clamp and even-odd sign rule
         Kind::Polygon => (
-            "fn alice_poly_nd(",
-            "fn alice_poly_nd(q: vec2<f32>, b: i32) -> f32 {
+            format!("fn alice_poly_nd_{max}("),
+            format!("fn alice_poly_nd_{max}(q: vec2<f32>, b: i32) -> f32 {{
     let n: i32 = i32(alice_node_data[b]);
     let v0 = vec2<f32>(alice_node_data[b + 1], alice_node_data[b + 2]);
     var d = dot(q - v0, q - v0);
     var s = 1.0;
     var j = n - 1;
-    for (var i = 0i; i < n; i = i + 1i) {
+    // n is the vertex count of a polygon of this group, at most {max} (the group's largest): the literal bound is
+    // that maximum, the loop ends at n
+    for (var i = 0i; i < {max}i; i = i + 1i) {{
+        if (i >= n) {{ break; }}
         let vi = vec2<f32>(alice_node_data[b + 1 + 2 * i], alice_node_data[b + 2 + 2 * i]);
         let vj = vec2<f32>(alice_node_data[b + 1 + 2 * j], alice_node_data[b + 2 + 2 * j]);
         let e = vj - vi;
@@ -348,12 +395,13 @@ const fn kind_function(k: Kind) -> (&'static str, &'static str) {
         let c1 = q.y >= vi.y;
         let c2 = q.y < vj.y;
         let c3 = e.x * w.y > e.y * w.x;
-        if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) { s = -s; }
+        if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {{ s = -s; }}
         j = i;
-    }
+    }}
     return s * sqrt(d);
-}
-",
+}}
+"
+            ),
         ),
     }
 }

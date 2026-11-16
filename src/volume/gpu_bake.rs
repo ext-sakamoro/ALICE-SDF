@@ -24,6 +24,7 @@ use crate::types::SdfNode;
 /// bindings 0 and 1), as in `GpuEvaluator::new`, so no data array is a module constant read at a
 /// run-time index
 pub(crate) fn data_shader(node: &SdfNode) -> Result<WgslShader, GpuError> {
+    crate::compiled::wgsl::refuse_out_of_contract(node)?;
     WgslShader::try_transpile_with_node_data(node, TranspileMode::Hardcoded)
         .map_err(|e| GpuError::InvalidFormat(e.to_string()))
 }
@@ -109,16 +110,22 @@ pub fn gpu_bake_volume_from_shader(
     // Generate 3D volume bake shader
     let compute_source = shader.to_volume_shader();
 
+    // the loop check before the device: a refused shader never reaches one
+    crate::gpu_loop_bound::require_bounded(
+        "Volume Bake Shader",
+        &wgpu::ShaderSource::Wgsl(compute_source.as_str().into()),
+        &crate::gpu_loop_bound::HostMaxima::new(),
+    )?;
     let context = GpuContext::request("ALICE-SDF Volume Bake Device")?;
     let (device, queue) = (context.device(), context.queue());
     let data = node_data_binding(device, shader)?;
 
     // Create shader module
-    let shader_module: wgpu::ShaderModule =
-        device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Volume Bake Shader"),
-            source: wgpu::ShaderSource::Wgsl(compute_source.into()),
-        });
+    let shader_module: wgpu::ShaderModule = context.shader_module(
+        "Volume Bake Shader",
+        wgpu::ShaderSource::Wgsl(compute_source.into()),
+        &crate::gpu_loop_bound::HostMaxima::new(),
+    )?;
 
     // Create output buffer
     let output_buffer_size = (total * std::mem::size_of::<f32>()) as u64;
@@ -304,14 +311,21 @@ pub fn gpu_bake_volume_with_normals(
 
     let compute_source = generate_volume_bake_shader_with_normals(&shader);
 
+    // the loop check before the device: a refused shader never reaches one
+    crate::gpu_loop_bound::require_bounded(
+        "Volume Bake Normal Shader",
+        &wgpu::ShaderSource::Wgsl(compute_source.as_str().into()),
+        &crate::gpu_loop_bound::HostMaxima::new(),
+    )?;
     let context = GpuContext::request("ALICE-SDF Volume Bake Device")?;
     let (device, queue) = (context.device(), context.queue());
     let data = node_data_binding(device, &shader)?;
 
-    let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("Volume Bake Normal Shader"),
-        source: wgpu::ShaderSource::Wgsl(compute_source.into()),
-    });
+    let shader_module = context.shader_module(
+        "Volume Bake Normal Shader",
+        wgpu::ShaderSource::Wgsl(compute_source.into()),
+        &crate::gpu_loop_bound::HostMaxima::new(),
+    )?;
 
     // Output: 4 floats per voxel (dist, nx, ny, nz)
     let output_buffer_size = (total * std::mem::size_of::<VoxelDistGrad>()) as u64;
@@ -461,9 +475,12 @@ pub fn gpu_bake_volume_with_normals(
     Ok(volume)
 }
 
-/// Generate WGSL compute shader for 3D volume baking (distance + normals)
-fn generate_volume_bake_shader_with_normals(shader: &WgslShader) -> String {
-    format!(
+/// Generate WGSL compute shader for 3D volume baking (distance + normals): the module
+/// [`gpu_bake_volume_with_normals`] creates (public so the shader loop census builds the same text)
+#[must_use]
+pub fn generate_volume_bake_shader_with_normals(shader: &WgslShader) -> String {
+    // a whole shader: it carries this crate's semantics identifier on its first line (crate::provenance)
+    crate::provenance::tagged_shader(&format!(
         r"// ALICE-SDF Volume Bake Shader - Distance + Normals (3D Dispatch)
 
 struct VolumeUniforms {{
@@ -523,7 +540,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 ",
         data_decl = shader.node_data_decl(),
         sdf_func = shader.source,
-    )
+    ))
 }
 
 #[cfg(test)]

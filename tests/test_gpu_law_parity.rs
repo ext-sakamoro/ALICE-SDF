@@ -322,7 +322,11 @@ fn iq_exact_ports_gpu_match_cpu() {
         ),
         1e-4,
     );
-    assert_gpu_matches_cpu("stairs", &SdfNode::stairs(0.4, 0.3, 5, 0.5), 1e-5);
+    assert_gpu_matches_cpu(
+        "stairs",
+        &SdfNode::try_stairs(0.4, 0.3, 5, 0.5).expect("5 steps"),
+        1e-5,
+    );
     // sin / cos / atan2 on the GPU are not libm: 1e-4 relative
     assert_gpu_matches_cpu("helix", &SdfNode::helix(1.0, 0.2, 0.7, 1.5), 1e-4);
     assert_gpu_matches_cpu("ellipsoid", &SdfNode::ellipsoid(1.2, 0.6, 0.9), 1e-5);

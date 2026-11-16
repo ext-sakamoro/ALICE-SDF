@@ -479,6 +479,9 @@ fn generate_vertex_count_table_wgsl() -> String {
 /// Workgroup size for prefix sum shaders
 pub const PREFIX_SUM_WG: u32 = 256;
 
+// the scan runs log2(PREFIX_SUM_WG) passes of a doubling stride
+const _: () = assert!(PREFIX_SUM_WG.is_power_of_two());
+
 /// Generate Prefix Sum Scan shader (Hillis-Steele, exclusive)
 ///
 /// Each workgroup scans a block of `PREFIX_SUM_WG` elements.
@@ -516,8 +519,10 @@ fn main(
     // Hillis-Steele inclusive scan with ping-pong buffers
     var read_buf = 0u; // 0 = s_a, 1 = s_b
     var stride = 1u;
+    // log2(wg) passes (stride 1, 2, ..., wg / 2): the pass counter is the loop's bound
+    var scan_pass = 0u;
     loop {{
-        if (stride >= {wg}u) {{
+        if (scan_pass >= {passes}u) {{
             break;
         }}
         if (read_buf == 0u) {{
@@ -535,6 +540,7 @@ fn main(
         }}
         read_buf = 1u - read_buf;
         stride = stride * 2u;
+        scan_pass = scan_pass + 1u;
         workgroupBarrier();
     }}
 
@@ -566,6 +572,7 @@ fn main(
 }}
 ",
         wg = PREFIX_SUM_WG,
+        passes = PREFIX_SUM_WG.trailing_zeros(),
     ))
 }
 

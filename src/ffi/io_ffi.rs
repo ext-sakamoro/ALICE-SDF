@@ -15,7 +15,7 @@ use std::slice;
 // ============================================================================
 
 /// Save SDF to .asdf file
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_save(node: SdfHandle, path: *const c_char) -> SdfResult {
     ffi_guard(SdfResult::Unknown, || {
         if path.is_null() {
@@ -45,7 +45,7 @@ pub extern "C" fn alice_sdf_save(node: SdfHandle, path: *const c_char) -> SdfRes
 }
 
 /// Load SDF from .asdf file
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub extern "C" fn alice_sdf_load(path: *const c_char) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {
         if path.is_null() {
@@ -81,7 +81,7 @@ pub extern "C" fn alice_sdf_load(path: *const c_char) -> SdfHandle {
 ///
 /// - `path` must be a valid, null-terminated C string pointer that remains valid for the call.
 /// - `mesh_handle` and `sdf_handle` must be valid handles (or null for the unused path).
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_save_abm(
     mesh_handle: MeshHandle,
     sdf_handle: SdfHandle,
@@ -113,7 +113,7 @@ pub unsafe extern "C" fn alice_sdf_save_abm(
 /// # Safety
 ///
 /// - `path` must be a valid, null-terminated C string pointer that remains valid for the call.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_load_abm(path: *const c_char) -> MeshHandle {
     ffi_guard(MESH_HANDLE_NULL, || {
         let path_str = match path_from_c(path) {
@@ -134,7 +134,7 @@ pub unsafe extern "C" fn alice_sdf_load_abm(path: *const c_char) -> MeshHandle {
 ///
 /// - `path` must be a valid, null-terminated C string pointer that remains valid for the call.
 /// - `mesh_handle` and `sdf_handle` must be valid handles (or null for the unused path).
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_export_unity(
     mesh_handle: MeshHandle,
     sdf_handle: SdfHandle,
@@ -173,7 +173,7 @@ pub unsafe extern "C" fn alice_sdf_export_unity(
 ///
 /// - `path` must be a valid, null-terminated C string pointer that remains valid for the call.
 /// - `mesh_handle` and `sdf_handle` must be valid handles (or null for the unused path).
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_export_unity_binary(
     mesh_handle: MeshHandle,
     sdf_handle: SdfHandle,
@@ -216,7 +216,7 @@ pub unsafe extern "C" fn alice_sdf_export_unity_binary(
 ///
 /// - `path` must be a valid, null-terminated C string pointer that remains valid for the call.
 /// - `mesh_handle` and `sdf_handle` must be valid handles (or null for the unused path).
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_export_ue5(
     mesh_handle: MeshHandle,
     sdf_handle: SdfHandle,
@@ -252,7 +252,7 @@ pub unsafe extern "C" fn alice_sdf_export_ue5(
 ///
 /// - `path` must be a valid, null-terminated C string pointer that remains valid for the call.
 /// - `mesh_handle` and `sdf_handle` must be valid handles (or null for the unused path).
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_export_ue5_binary(
     mesh_handle: MeshHandle,
     sdf_handle: SdfHandle,
@@ -296,7 +296,7 @@ pub unsafe extern "C" fn alice_sdf_export_ue5_binary(
 ///   The pointer must be non-null (checked internally).
 /// - `path` must be a valid, null-terminated C string pointer that remains valid for the call.
 /// - All three pointers must remain valid for the entire duration of the call.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_save_lod_chain(
     mesh_handles: *const MeshHandle,
     transition_distances: *const f32,
@@ -359,7 +359,7 @@ pub unsafe extern "C" fn alice_sdf_save_lod_chain(
 /// - `out_transition_distances` must point to a writable array of at least `max_lod_count` f32
 ///   entries. The pointer must be non-null (checked internally).
 /// - All three pointers must remain valid for the entire duration of the call.
-#[no_mangle]
+#[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn alice_sdf_load_lod_chain(
     path: *const c_char,
     out_mesh_handles: *mut MeshHandle,
