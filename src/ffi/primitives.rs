@@ -137,7 +137,8 @@ pub extern "C" fn alice_sdf_octahedron(size: f32) -> SdfHandle {
     })
 }
 
-/// Create a hexagonal prism SDF
+/// Create a hexagonal prism SDF along Z: `hex_radius` is the distance from the axis to the flat sides
+/// (the apothem; the corners sit at `2·hex_radius/√3`), `half_height` half the height
 #[no_mangle]
 pub extern "C" fn alice_sdf_hex_prism(hex_radius: f32, half_height: f32) -> SdfHandle {
     ffi_guard(SDF_HANDLE_NULL, || {

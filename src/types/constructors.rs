@@ -165,7 +165,8 @@ impl SdfNode {
         Self::Octahedron { size }
     }
 
-    /// Create a hexagonal prism
+    /// Create a hexagonal prism along Z: `hex_radius` is the distance from the axis to the flat sides
+    /// (the apothem; the corners sit at `2·hex_radius/√3`), `height` the full height
     #[must_use]
     #[inline]
     pub fn hex_prism(hex_radius: f32, height: f32) -> Self {
