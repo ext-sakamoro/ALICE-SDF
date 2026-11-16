@@ -191,3 +191,47 @@ fn material_of_a_deep_chain_in_a_small_stack() {
         .join()
         .expect("thread panicked (a stack overflow aborts the whole process instead)");
 }
+
+/// The pick rules against the two balls' closed form, independently of the rule table (the GPU
+/// parity test cannot see a wrong rule: both sides read the same table)
+#[test]
+fn union_intersection_and_subtraction_pick_their_operand_as_documented() {
+    // a ball overlapping LEFT, so the subtraction has points where it cuts
+    const CUT: Ball = Ball {
+        r: 0.6,
+        c: [-0.2, 0.1, 0.0],
+        id: 7,
+    };
+    let (l, r) = (LEFT.node(), CUT.node());
+    let cases: [(&str, SdfNode, fn(f64, f64) -> bool); 3] = [
+        // the nearer operand
+        ("union", l.clone().union(r.clone()), |dl, dr| dl <= dr),
+        // the farther operand (the one that bounds the intersection there)
+        (
+            "intersection",
+            l.clone().intersection(r.clone()),
+            |dl, dr| dl >= dr,
+        ),
+        // `a` unless `b` cuts it: `b` where `dl < -dr`
+        ("subtraction", l.subtract(r), |dl, dr| dl >= -dr),
+    ];
+    for (name, node, takes_left) in cases {
+        let mut seen = [0usize; 2];
+        // 21³ points over the two balls' overlap (step 0.1)
+        let near = (0..21 * 21 * 21).map(|i| {
+            let f = |n: usize| -1.5 + 0.1 * n as f32;
+            Vec3::new(f(i % 21), f(i / 21 % 21) - 0.5, f(i / 441) - 0.5)
+        });
+        for p in near {
+            let (dl, dr) = (LEFT.dist(p), CUT.dist(p));
+            // skip ties of the rule's comparison
+            if (dl - dr).abs() <= 1e-3 || (dl + dr).abs() <= 1e-3 {
+                continue;
+            }
+            let want = if takes_left(dl, dr) { LEFT.id } else { CUT.id };
+            assert_eq!(eval_material(&node, p), want, "{name} at {p:?}");
+            seen[usize::from(want == CUT.id)] += 1;
+        }
+        assert!(seen[0] > 50 && seen[1] > 50, "{name}: ids seen {seen:?}");
+    }
+}

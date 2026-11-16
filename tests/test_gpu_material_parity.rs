@@ -141,8 +141,16 @@ fn gpu_material_matches_cpu_over_the_corpus() {
         Vec3::Z * EPS,
         -Vec3::Z * EPS,
     ];
+    // "no adapter" is decided once, on a plain shader; past this, a shader error is a failure
+    if let Err(e) = GpuEvaluator::new(&SdfNode::sphere(1.0)) {
+        assert!(
+            std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
+            "ALICE_SDF_REQUIRE_GPU is set but no GPU adapter was found: {e}"
+        );
+        eprintln!("skipping GPU material parity: {e}");
+        return;
+    }
     let mut rows = Vec::new();
-    let mut gpu_missing = None;
     for (name, node) in common::corpus::corpus() {
         let (node, leaves) = tagged(&node);
         if leaves < 2 {
@@ -150,13 +158,22 @@ fn gpu_material_matches_cpu_over_the_corpus() {
             continue;
         }
         let src = material_shader(&node);
-        let gpu = match GpuEvaluator::from_wgsl(&src) {
-            Ok(c) => c.into_parts().0,
-            Err(e) => {
-                gpu_missing = Some(e.to_string());
-                break;
-            }
-        };
+        let module = naga::front::wgsl::parse_str(&src).unwrap_or_else(|e| {
+            panic!(
+                "{name}: material WGSL does not parse: {}",
+                e.emit_to_string(&src)
+            )
+        });
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .unwrap_or_else(|e| panic!("{name}: material WGSL does not validate: {e:?}"));
+        let gpu = GpuEvaluator::from_wgsl(&src)
+            .unwrap_or_else(|e| panic!("{name}: the GPU refused the material shader: {e}"))
+            .into_parts()
+            .0;
         let got = gpu_batches::eval_in_batches(&gpu, &pts).expect("gpu eval");
         let mut row = Row {
             name,
@@ -179,15 +196,6 @@ fn gpu_material_matches_cpu_over_the_corpus() {
         }
         rows.push(row);
     }
-    if let Some(e) = gpu_missing {
-        assert!(
-            std::env::var_os("ALICE_SDF_REQUIRE_GPU").is_none(),
-            "ALICE_SDF_REQUIRE_GPU is set but the GPU evaluator failed: {e}"
-        );
-        eprintln!("skipping GPU material parity: {e}");
-        return;
-    }
-
     let mut failures = Vec::new();
     for r in &rows {
         let share = r.skipped as f64 / (r.compared + r.skipped) as f64;

@@ -469,7 +469,21 @@ pub struct GenericTranspiler<L: ShaderLang> {
     /// values its scale needs) for [`GenericTranspiler::transpile_scale`]
     #[cfg(feature = "glsl")]
     scale_trace: Option<ScaleTrace>,
+    /// When `Some`, every node also emits its material id (`material_rule`) after its value
+    /// ([`GenericTranspiler::transpile_material_walk`])
+    material_trace: Option<MaterialTrace>,
     _phantom: std::marker::PhantomData<L>,
+}
+
+/// The material walk of one emit: the open nodes' children (value and material variables), the
+/// root's material variable, and the nodes whose children did not match their rule
+#[derive(Default)]
+struct MaterialTrace {
+    open: Vec<Vec<(String, String)>>,
+    root: Option<String>,
+    errors: Vec<String>,
+    /// a `WithMaterial` was emitted
+    tagged: bool,
 }
 
 #[cfg(feature = "glsl")]
@@ -1064,6 +1078,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             read_errors: Vec::new(),
             #[cfg(feature = "glsl")]
             scale_trace: None,
+            material_trace: None,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -1915,6 +1930,100 @@ impl<L: ShaderLang> GenericTranspiler<L> {
     /// This is the single source of truth for all shader languages.
     /// Language differences are handled via the `ShaderLang` trait methods.
     pub fn transpile_node_inner(
+        &mut self,
+        node: &SdfNode,
+        point_var: &str,
+        code: &mut String,
+    ) -> String {
+        let Some(trace) = self.material_trace.as_mut() else {
+            return self.transpile_node_scaled(node, point_var, code);
+        };
+        trace.open.push(Vec::new());
+        let value = self.transpile_node_scaled(node, point_var, code);
+        let kids = self
+            .material_trace
+            .as_mut()
+            .and_then(|t| t.open.pop())
+            .unwrap_or_default();
+        let material = self.material_of(node, &kids);
+        let var = self.next_var();
+        code.push_str(&L::decl_float(&var, &material));
+        if let Some(trace) = self.material_trace.as_mut() {
+            match trace.open.last_mut() {
+                Some(parent) => parent.push((value.clone(), var)),
+                None => trace.root = Some(var),
+            }
+        }
+        value
+    }
+
+    /// The material expression of `node` from its children's (value, material) variables, by the
+    /// rule table `eval_material` reads ([`crate::eval::material::material_rule`])
+    fn material_of(&mut self, node: &SdfNode, kids: &[(String, String)]) -> String {
+        use crate::eval::material::{material_rule, MaterialPick, MaterialRule};
+        let rule = material_rule(node);
+        let expected = match rule {
+            MaterialRule::Leaf => 0,
+            MaterialRule::Pass | MaterialRule::Tag(_) => 1,
+            MaterialRule::Pick(_) => 2,
+        };
+        if kids.len() != expected {
+            if let Some(trace) = self.material_trace.as_mut() {
+                trace.errors.push(format!(
+                    "{node:?}: {} children emitted, the rule {rule:?} reads {expected}",
+                    kids.len()
+                ));
+            }
+            return lit(0.0);
+        }
+        match rule {
+            MaterialRule::Leaf => lit(0.0),
+            MaterialRule::Pass => kids[0].1.clone(),
+            MaterialRule::Tag(id) => {
+                if let Some(trace) = self.material_trace.as_mut() {
+                    trace.tagged = true;
+                }
+                let m = &kids[0].1;
+                // ids are integers below 2^24, exact in f32
+                L::select_float(&format!("{m} != {}", lit(0.0)), m, &lit(id as f32))
+            }
+            MaterialRule::Pick(pick) => {
+                let ((da, ma), (db, mb)) = (&kids[0], &kids[1]);
+                let cond = match pick {
+                    MaterialPick::Nearer => format!("{da} <= {db}"),
+                    MaterialPick::Farther => format!("{da} >= {db}"),
+                    MaterialPick::Cut => format!("{da} >= -({db})"),
+                };
+                L::select_float(&cond, ma, mb)
+            }
+        }
+    }
+
+    /// The material id of `node` at `point_var` as shader code ending in a `return`, by the same
+    /// walk as the distance; `Ok(None)` when no `WithMaterial` is in the tree, `Err` lists the
+    /// nodes whose emitted children do not match their rule
+    pub(crate) fn transpile_material_walk(
+        &mut self,
+        node: &SdfNode,
+        point_var: &str,
+    ) -> Result<Option<String>, Vec<String>> {
+        self.material_trace = Some(MaterialTrace::default());
+        let mut code = String::new();
+        let _ = self.transpile_node_inner(node, point_var, &mut code);
+        let trace = self.material_trace.take().unwrap_or_default();
+        if !trace.errors.is_empty() {
+            return Err(trace.errors);
+        }
+        if !trace.tagged {
+            return Ok(None);
+        }
+        let root = trace.root.unwrap_or_else(|| lit(0.0));
+        writeln!(code, "    return {root};").map_err(|e| vec![e.to_string()])?;
+        Ok(Some(code))
+    }
+
+    /// [`Self::transpile_node_inner`] without the material walk
+    fn transpile_node_scaled(
         &mut self,
         node: &SdfNode,
         point_var: &str,

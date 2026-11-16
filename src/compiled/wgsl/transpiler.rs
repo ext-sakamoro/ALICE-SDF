@@ -574,238 +574,43 @@ impl WgslShader {
         transpiler.params
     }
 
-    /// マテリアル評価関数を生成する。
+    /// The material id function `sdf_eval_material(p) -> f32`, or an empty string when the tree
+    /// has no `WithMaterial`.
     ///
-    /// `WithMaterial` サブツリーを収集し、ヒットポイントで最も近い
-    /// サブツリーのマテリアル ID を返す `sdf_eval_material(p) -> f32` を生成する。
-    /// マテリアルが存在しない場合は空文字列を返す。
+    /// One walk of the tree, the same as the distance's: each node emits its value and then its
+    /// material by the rule table `eval_material` reads (`eval::material::material_rule`), so a
+    /// material under a transform, a repetition or a subtraction is read where the CPU reads it.
+    /// The cost of a lookup is one evaluation of the tree.
+    ///
+    /// # Panics
+    ///
+    /// When a node's emitted children do not match its material rule (an emitter that evaluates
+    /// a child twice or not at all); `tests/test_gpu_material_parity.rs` emits every corpus tree.
     pub fn transpile_material(node: &SdfNode, mode: TranspileMode) -> String {
-        // WithMaterial サブツリーを収集
-        let mut materials: Vec<(u32, &SdfNode)> = Vec::new();
-        Self::collect_materials(node, &mut materials);
-        if materials.is_empty() {
-            return String::new();
-        }
-
-        // メイン transpile で使われるヘルパーを事前収集（重複排除用）
-        let main_shader = Self::transpile(node, mode);
-        let main_source = &main_shader.source;
-        // module 先頭の配列・関数 (頂点の多い Polygon2D 等) の名前は var_counter
-        // から作るので、サブ関数は main の続きの番号から始めて衝突させない
-        let mut next_var = {
-            let mut t = WgslTranspiler::new(mode);
-            let _ = t.transpile_node(node, "p");
-            t.var_counter
+        // module-scope arrays and helper functions take their names from the variable counter,
+        // so the material function continues the main walk's numbering
+        let mut t = WgslTranspiler::new(mode);
+        t.var_counter = {
+            let mut m = WgslTranspiler::new(mode);
+            let _ = m.transpile_node(node, "p");
+            m.var_counter
         };
-        let mut globals_all = String::new();
-
-        // 各サブツリーを個別にトランスパイル
-        let mut helpers_all = String::new();
-        let mut eval_fns = String::new();
-        let mut body = String::from("fn sdf_eval_material(p: vec3<f32>) -> f32 {\n");
-        body.push_str("    var closest_dist: f32 = 1e10;\n");
-        body.push_str("    var mat_id: f32 = 0.0;\n");
-
-        for (i, (mid, child)) in materials.iter().enumerate() {
-            let mut transpiler = WgslTranspiler::new(mode);
-            transpiler.var_counter = next_var;
-            let fn_name = format!("sdf_mat_sub_{}", i);
-            let inner_body = transpiler.transpile_node(child, "p");
-            next_var = transpiler.var_counter;
-            globals_all.push_str(&transpiler.globals);
-
-            // ヘルパーを収集（メインソースに既に含まれるものはスキップ）
-            for helper in &transpiler.helper_functions {
-                if let Some(src) = WgslLang::helper_source(helper) {
-                    let fn_sig = format!("fn {}(", helper);
-                    if !helpers_all.contains(&fn_sig) && !main_source.contains(&fn_sig) {
-                        helpers_all.push_str(src);
-                        helpers_all.push('\n');
-                    }
-                }
-            }
-
-            // サブ関数
-            write!(
-                eval_fns,
-                "fn {}(p: vec3<f32>) -> f32 {{\n{}}}\n\n",
-                fn_name, inner_body
-            )
-            .unwrap();
-
-            // 比較コード
-            write!(
-                body,
-                "    let d_m{i} = {fn_name}(p);\n    if (d_m{i} < closest_dist) {{ closest_dist = d_m{i}; mat_id = {mid}.0; }}\n",
-                i = i,
-                fn_name = fn_name,
-                mid = mid,
-            )
-            .unwrap();
-        }
-
-        body.push_str("    return mat_id;\n}\n");
-
-        format!("{}{}{}{}", helpers_all, globals_all, eval_fns, body)
-    }
-
-    /// SdfNode ツリーから WithMaterial サブツリーを再帰的に収集
-    fn collect_materials<'a>(node: &'a SdfNode, out: &mut Vec<(u32, &'a SdfNode)>) {
-        match node {
-            SdfNode::WithMaterial { child, material_id } => {
-                out.push((*material_id, child));
-            }
-            // 二項演算: 両方の子を再帰探索
-            SdfNode::Union { a, b }
-            | SdfNode::Intersection { a, b }
-            | SdfNode::Subtraction { a, b }
-            | SdfNode::SmoothUnion { a, b, .. }
-            | SdfNode::SmoothIntersection { a, b, .. }
-            | SdfNode::SmoothSubtraction { a, b, .. }
-            | SdfNode::ChamferUnion { a, b, .. }
-            | SdfNode::ChamferIntersection { a, b, .. }
-            | SdfNode::ChamferSubtraction { a, b, .. }
-            | SdfNode::StairsUnion { a, b, .. }
-            | SdfNode::StairsIntersection { a, b, .. }
-            | SdfNode::StairsSubtraction { a, b, .. }
-            | SdfNode::XOR { a, b }
-            | SdfNode::Morph { a, b, .. }
-            | SdfNode::ColumnsUnion { a, b, .. }
-            | SdfNode::ColumnsIntersection { a, b, .. }
-            | SdfNode::ColumnsSubtraction { a, b, .. }
-            | SdfNode::Pipe { a, b, .. }
-            | SdfNode::Engrave { a, b, .. }
-            | SdfNode::Groove { a, b, .. }
-            | SdfNode::Tongue { a, b, .. }
-            | SdfNode::ExpSmoothUnion { a, b, .. }
-            | SdfNode::ExpSmoothIntersection { a, b, .. }
-            | SdfNode::ExpSmoothSubtraction { a, b, .. }
-            | SdfNode::SmoothBlend { a, b, .. } => {
-                Self::collect_materials(a, out);
-                Self::collect_materials(b, out);
-            }
-            // 単項（子持ち）: 子を再帰探索
-            SdfNode::Translate { child, .. }
-            | SdfNode::Rotate { child, .. }
-            | SdfNode::Scale { child, .. }
-            | SdfNode::ScaleNonUniform { child, .. }
-            | SdfNode::Twist { child, .. }
-            | SdfNode::Bend { child, .. }
-            | SdfNode::RepeatInfinite { child, .. }
-            | SdfNode::RepeatFinite { child, .. }
-            | SdfNode::RepeatCells { child, .. }
-            | SdfNode::Noise { child, .. }
-            | SdfNode::Round { child, .. }
-            | SdfNode::Onion { child, .. }
-            | SdfNode::Elongate { child, .. }
-            | SdfNode::Mirror { child, .. }
-            | SdfNode::Revolution { child, .. }
-            | SdfNode::Extrude { child, .. }
-            | SdfNode::SweepBezier { child, .. }
-            | SdfNode::Taper { child, .. }
-            | SdfNode::Displacement { child, .. }
-            | SdfNode::SineDisplacement { child, .. }
-            | SdfNode::PolarRepeat { child, .. }
-            | SdfNode::OctantMirror { child, .. }
-            | SdfNode::Shear { child, .. }
-            | SdfNode::Animated { child, .. }
-            | SdfNode::IcosahedralSymmetry { child, .. }
-            | SdfNode::IFS { child, .. }
-            | SdfNode::HeightmapDisplacement { child, .. }
-            | SdfNode::SurfaceRoughness { child, .. }
-            | SdfNode::ProjectiveTransform { child, .. }
-            | SdfNode::LatticeDeform { child, .. }
-            | SdfNode::SdfSkinning { child, .. }
-            | SdfNode::GridWarp { child, .. }
-            | SdfNode::BellPull { child, .. }
-            | SdfNode::Pose { child } => {
-                Self::collect_materials(child, out);
-            }
-            // プリミティブ: 子なし
-            SdfNode::Sphere { .. }
-            | SdfNode::Box3d { .. }
-            | SdfNode::Cylinder { .. }
-            | SdfNode::Torus { .. }
-            | SdfNode::Plane { .. }
-            | SdfNode::Capsule { .. }
-            | SdfNode::Cone { .. }
-            | SdfNode::Ellipsoid { .. }
-            | SdfNode::RoundedCone { .. }
-            | SdfNode::Pyramid { .. }
-            | SdfNode::Octahedron { .. }
-            | SdfNode::HexPrism { .. }
-            | SdfNode::Link { .. }
-            | SdfNode::Triangle { .. }
-            | SdfNode::Bezier { .. }
-            | SdfNode::RoundedBox { .. }
-            | SdfNode::CappedCone { .. }
-            | SdfNode::CappedTorus { .. }
-            | SdfNode::RoundedCylinder { .. }
-            | SdfNode::TriangularPrism { .. }
-            | SdfNode::CutSphere { .. }
-            | SdfNode::CutHollowSphere { .. }
-            | SdfNode::DeathStar { .. }
-            | SdfNode::SolidAngle { .. }
-            | SdfNode::Rhombus { .. }
-            | SdfNode::Horseshoe { .. }
-            | SdfNode::Vesica { .. }
-            | SdfNode::InfiniteCylinder { .. }
-            | SdfNode::InfiniteCone { .. }
-            | SdfNode::Gyroid { .. }
-            | SdfNode::MetricBall { .. }
-            | SdfNode::Heart { .. }
-            | SdfNode::Tube { .. }
-            | SdfNode::Barrel { .. }
-            | SdfNode::Diamond { .. }
-            | SdfNode::ChamferedCube { .. }
-            | SdfNode::SchwarzP { .. }
-            | SdfNode::Superellipsoid { .. }
-            | SdfNode::RoundedX { .. }
-            | SdfNode::Pie { .. }
-            | SdfNode::Trapezoid { .. }
-            | SdfNode::Parallelogram { .. }
-            | SdfNode::Tunnel { .. }
-            | SdfNode::UnevenCapsule { .. }
-            | SdfNode::Egg { .. }
-            | SdfNode::ArcShape { .. }
-            | SdfNode::Moon { .. }
-            | SdfNode::CrossShape { .. }
-            | SdfNode::BlobbyCross { .. }
-            | SdfNode::ParabolaSegment { .. }
-            | SdfNode::RegularPolygon { .. }
-            | SdfNode::StarPolygon { .. }
-            | SdfNode::Stairs { .. }
-            | SdfNode::Helix { .. }
-            | SdfNode::Tetrahedron { .. }
-            | SdfNode::Dodecahedron { .. }
-            | SdfNode::Icosahedron { .. }
-            | SdfNode::TruncatedOctahedron { .. }
-            | SdfNode::TruncatedIcosahedron { .. }
-            | SdfNode::BoxFrame { .. }
-            | SdfNode::DiamondSurface { .. }
-            | SdfNode::Neovius { .. }
-            | SdfNode::Lidinoid { .. }
-            | SdfNode::IWP { .. }
-            | SdfNode::FRD { .. }
-            | SdfNode::FischerKochS { .. }
-            | SdfNode::PMY { .. }
-            | SdfNode::Circle2D { .. }
-            | SdfNode::Rect2D { .. }
-            | SdfNode::Segment2D { .. }
-            | SdfNode::Polygon2D { .. }
-            | SdfNode::RoundedRect2D { .. }
-            | SdfNode::Annular2D { .. }
-            | SdfNode::Terrain { .. }
-            | SdfNode::Loft { .. }
-            | SdfNode::LoftCurves { .. }
-            | SdfNode::SectionStack { .. }
-            | SdfNode::SmoothSectionStack { .. } => {}
-            // 二つの被演算子を補間する: 両方の子を再帰探索
-            SdfNode::MetricBlend { inner, outer, .. } => {
-                Self::collect_materials(inner, out);
-                Self::collect_materials(outer, out);
-            }
-        }
+        let body = match t.transpile_material_walk(node, "p") {
+            Ok(Some(body)) => body,
+            Ok(None) => return String::new(),
+            Err(nodes) => panic!(
+                "material walk: {} node(s) emit children their rule does not read: {}",
+                nodes.len(),
+                nodes.join("; ")
+            ),
+        };
+        // the walk emits the same nodes as the distance, so every helper it calls is already in
+        // the main shader's source (a missing one fails naga's validation in the parity test);
+        // only the module-scope data (named from the counter) is new
+        format!(
+            "{}fn sdf_eval_material(p: vec3<f32>) -> f32 {{\n{body}}}\n",
+            t.globals
+        )
     }
 
     /// [Deep Fried v2] Set workgroup size based on device limits.
@@ -1151,6 +956,34 @@ impl WgslTranspiler {
         generic.node_data = self.node_data.take();
         generic.checked_reads = self.checked_reads;
         let body = generic.transpile_node(node, point_var);
+        self.read_errors.append(&mut generic.read_errors);
+        self.globals = generic.globals;
+        self.node_data = generic.node_data;
+        self.var_counter = generic.var_counter;
+        self.params = generic.params;
+        self.helper_functions = generic.helper_functions;
+        body
+    }
+
+    /// [`Self::transpile_node`]'s walk returning the material id (`GenericTranspiler::transpile_material_walk`)
+    fn transpile_material_walk(
+        &mut self,
+        node: &SdfNode,
+        point_var: &str,
+    ) -> Result<Option<String>, Vec<String>> {
+        use super::super::transpiler_common::{GenericTranspiler, TranspileModeLang};
+        let mode = match self.mode {
+            TranspileMode::Hardcoded => TranspileModeLang::Hardcoded,
+            TranspileMode::Dynamic => TranspileModeLang::Dynamic,
+        };
+        let mut generic: GenericTranspiler<WgslLang> = GenericTranspiler::new(mode);
+        generic.var_counter = self.var_counter;
+        generic.params = std::mem::take(&mut self.params);
+        generic.helper_functions = std::mem::take(&mut self.helper_functions);
+        generic.globals = std::mem::take(&mut self.globals);
+        generic.node_data = self.node_data.take();
+        generic.checked_reads = self.checked_reads;
+        let body = generic.transpile_material_walk(node, point_var);
         self.read_errors.append(&mut generic.read_errors);
         self.globals = generic.globals;
         self.node_data = generic.node_data;
