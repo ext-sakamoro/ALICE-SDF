@@ -195,8 +195,10 @@ impl Sheet {
                     None => {}
                 }
             }
-            // into the next cell: past the exit by a hair (2^-20 of a cell), so the next lookup is the next cell
-            t += (u_exit + 1.0 / 1_048_576.0) * cell.h;
+            // into the next cell: past the exit by a hair the f32 lookup point can carry (2^-20 of a cell, but at least
+            // 4 ulp of an f32 t: the cell is looked up at an f32 point, so a smaller hair would leave it in this cell)
+            let tn = t + u_exit * cell.h;
+            t = tn + (cell.h / 1_048_576.0).max(4.0 * f64::from(f32::EPSILON) * tn.abs());
         }
         if t >= tend {
             Walk::Clear(ambiguous)
