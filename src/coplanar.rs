@@ -10,8 +10,12 @@
 //! and a gap measurement reads as a wall. Sampling finds such sheets only where a sample lands near them;
 //! this analysis finds them from the tree, exactly where the operands' planar faces coincide.
 //!
-//! **Faces followed**: the six faces of `Box3d` and the two caps of `Cylinder` (as an inscribed 64-gon,
-//! area within 0.16 % of the disk), through `Translate`, `Rotate` (any quaternion) and `Scale` (positive
+//! **Faces followed**: the six faces of `Box3d`, the two caps of `Cylinder` (as an inscribed 64-gon,
+//! area within 0.16 % of the disk), the six flat faces of `RoundedBox` (its field puts them at
+//! `±(h + r)`, flat over `±h` in the other two axes), the one face of `Plane` (a half-space, followed as a
+//! square of half-size [`PLANE_HALF_EXTENT`]), and `Elongate` over a `Box3d` or `RoundedBox` (exactly the
+//! same primitive with half extents `h + amount`; over any other child it is not analysed). A primitive
+//! with a non-positive size is an empty shape and has no faces (it is analysed, with none), through `Translate`, `Rotate` (any quaternion) and `Scale` (positive
 //! uniform). `Sphere`, `Torus` and `Capsule` have no planar face and are analysed (they contribute
 //! none). A rotation is followed exactly whatever its axis (the face normals and vertices are turned by
 //! the quaternion, so a pair that touches after any rotation is found; a pair turned by different
@@ -61,6 +65,10 @@ pub const COPLANAR_REL_TOL: f32 = 1e-6;
 
 /// Sides of the polygon a cylinder's cap is followed as.
 const CAP_SIDES: usize = 64;
+
+/// Half-size of the square a `Plane`'s face is followed as (the half-space is unbounded; every shape
+/// compared against it is far inside this square).
+pub const PLANE_HALF_EXTENT: f32 = 1.0e4;
 
 /// What kind of coincidence a [`CoplanarPair`] is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,15 +170,29 @@ pub fn coplanar_faces(node: &SdfNode) -> CoplanarReport {
 }
 
 fn box_faces(h: Vec3, xf: Xf) -> Vec<Face> {
+    flat_faces(h, Vec3::ZERO, xf)
+}
+
+/// The flat faces of a box of half extents `h` grown by `r` along each face normal (a rounded box: the
+/// face of axis `i` lies at `±(h_i + r)` and is flat over `±h` in the other axes). A face whose flat
+/// part has no area is left out; an empty shape (a non-positive or non-finite size) has none.
+fn flat_faces(h: Vec3, r: Vec3, xf: Xf) -> Vec<Face> {
     let mut out = Vec::with_capacity(6);
+    let sizes_ok = h.is_finite() && r.is_finite() && !r.cmplt(Vec3::ZERO).any();
+    if !sizes_ok || !(h + r).cmpgt(Vec3::ZERO).all() {
+        return out;
+    }
     for axis in 0..3 {
         for sign in [-1.0_f32, 1.0] {
             let (u, v) = ((axis + 1) % 3, (axis + 2) % 3);
+            if !(h[u] > 0.0 && h[v] > 0.0) {
+                continue;
+            }
             let mut n = Vec3::ZERO;
             n[axis] = sign;
             let corner = |su: f32, sv: f32| {
                 let mut p = Vec3::ZERO;
-                p[axis] = sign * h[axis];
+                p[axis] = sign * (h[axis] + r[axis]);
                 p[u] = su * h[u];
                 p[v] = sv * h[v];
                 p
@@ -188,6 +210,9 @@ fn box_faces(h: Vec3, xf: Xf) -> Vec<Face> {
 }
 
 fn cylinder_caps(radius: f32, half_height: f32, xf: Xf) -> Vec<Face> {
+    if !(radius > 0.0 && half_height > 0.0 && radius.is_finite() && half_height.is_finite()) {
+        return Vec::new();
+    }
     [-1.0_f32, 1.0]
         .iter()
         .map(|&sign| {
@@ -204,6 +229,20 @@ fn cylinder_caps(radius: f32, half_height: f32, xf: Xf) -> Vec<Face> {
         .collect()
 }
 
+/// The one face of the half-space `normal · p < distance`, as a square of half-size
+/// [`PLANE_HALF_EXTENT`]; `None` for a normal of zero or non-finite length.
+fn plane_face(normal: Vec3, distance: f32, xf: Xf) -> Option<Face> {
+    let len = normal.length();
+    if !(len > 0.0 && len.is_finite() && distance.is_finite()) {
+        return None;
+    }
+    let n = normal / len;
+    let c = n * (distance / len);
+    let u = n.any_orthonormal_vector() * PLANE_HALF_EXTENT;
+    let v = n.cross(u.normalize()) * PLANE_HALF_EXTENT;
+    Some(xf.face(n, &[c - u - v, c + u - v, c + u + v, c - u + v]))
+}
+
 fn collect(node: &SdfNode, xf: Xf, report: &mut CoplanarReport) -> Faces {
     match node {
         SdfNode::Box3d { half_extents } => Faces {
@@ -217,6 +256,36 @@ fn collect(node: &SdfNode, xf: Xf, report: &mut CoplanarReport) -> Faces {
             faces: cylinder_caps(*radius, *half_height, xf),
             complete: true,
         },
+        SdfNode::RoundedBox {
+            half_extents,
+            round_radius,
+        } => Faces {
+            faces: flat_faces(*half_extents, Vec3::splat(*round_radius), xf),
+            complete: true,
+        },
+        SdfNode::Plane { normal, distance } => match plane_face(*normal, *distance, xf) {
+            Some(face) => Faces {
+                faces: vec![face],
+                complete: true,
+            },
+            None => not_analysed(node, report),
+        },
+        SdfNode::Elongate { child, amount } if amount.is_finite() && !amount.cmplt(Vec3::ZERO).any() => {
+            match child.as_ref() {
+                SdfNode::Box3d { half_extents } => Faces {
+                    faces: flat_faces(*half_extents + *amount, Vec3::ZERO, xf),
+                    complete: true,
+                },
+                SdfNode::RoundedBox {
+                    half_extents,
+                    round_radius,
+                } => Faces {
+                    faces: flat_faces(*half_extents + *amount, Vec3::splat(*round_radius), xf),
+                    complete: true,
+                },
+                _ => not_analysed(node, report),
+            }
+        }
         SdfNode::Sphere { .. } | SdfNode::Torus { .. } | SdfNode::Capsule { .. } => Faces {
             faces: Vec::new(),
             complete: true,
@@ -248,23 +317,25 @@ fn collect(node: &SdfNode, xf: Xf, report: &mut CoplanarReport) -> Faces {
         SdfNode::Union { a, b } => binary(a, b, Op::Union, xf, report),
         SdfNode::Subtraction { a, b } => binary(a, b, Op::Subtraction, xf, report),
         SdfNode::Intersection { a, b } => binary(a, b, Op::Intersection, xf, report),
-        other => {
-            // not followed: its own faces are unknown; its children are not visited (their faces
-            // would be reshaped by it)
-            *report
-                .not_analysed_kinds
-                .entry(variant_name(other))
-                .or_insert(0) += 1;
-            if crate::diff::node_children(other).is_empty() {
-                report.leaves_not_analysed += 1;
-            } else {
-                report.ops_not_analysed += 1;
-            }
-            Faces {
-                faces: Vec::new(),
-                complete: false,
-            }
-        }
+        other => not_analysed(other, report),
+    }
+}
+
+/// A node the analysis does not follow: its own faces are unknown and its children are not visited
+/// (their faces would be reshaped by it); counted by kind.
+fn not_analysed(node: &SdfNode, report: &mut CoplanarReport) -> Faces {
+    *report
+        .not_analysed_kinds
+        .entry(variant_name(node))
+        .or_insert(0) += 1;
+    if crate::diff::node_children(node).is_empty() {
+        report.leaves_not_analysed += 1;
+    } else {
+        report.ops_not_analysed += 1;
+    }
+    Faces {
+        faces: Vec::new(),
+        complete: false,
     }
 }
 
@@ -385,7 +456,13 @@ fn overlap(x: &Face, y: &Face) -> Option<(f32, Vec3)> {
     let (px, py) = (ccw(&x.verts), ccw(&y.verts));
     let ax = signed_area(&px);
     let ay = signed_area(&py);
-    let inter = clip_convex(&px, &py);
+    // clip the smaller face against the larger: the result's vertices then come from the small face's
+    // edges, not from far-away edges of a large one (a plane's square), which keeps the f32 precision
+    let inter = if ax <= ay {
+        clip_convex(&px, &py)
+    } else {
+        clip_convex(&py, &px)
+    };
     if inter.len() < 3 {
         return None;
     }
