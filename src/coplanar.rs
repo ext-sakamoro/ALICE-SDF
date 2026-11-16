@@ -24,7 +24,8 @@
 //! counted as not analysed rather than approximated. `PolarRepeat` (up to 64 instances) is followed in
 //! every instance (the child turned by `k · 2π / count` about Y), and so is `RepeatFinite` (up to 64
 //! copies, at `cell · spacing`); the instances are compared with each other as a union. `HexPrism`'s
-//! eight faces are followed (its flat sides at `hex_radius` from the axis, as its field puts them). Every other node is **not analysed**: it is counted (`ops_not_analysed` for an inner node,
+//! eight faces are followed (its flat sides at `hex_radius` from the axis, as its field puts them), and
+//! so is `Cone`'s base (a disk at y = −half_height). Every other node is **not analysed**: it is counted (`ops_not_analysed` for an inner node,
 //! `leaves_not_analysed` for a leaf), the faces it does have are not known, and a pair through it can
 //! be missed. A report with any not-analysed node is not a clean bill ([`CoplanarReport::is_fully_analysed`]).
 //! Faces already known on the other operand are still compared, so a seam inside a partly analysed tree
@@ -346,6 +347,16 @@ fn hex_prism_faces(hex_radius: f32, half_height: f32, xf: Xf) -> Vec<Face> {
     out
 }
 
+/// The one planar face of a `Cone`: its base, a disk of `radius` at y = −`half_height` (the field,
+/// `primitives::cone`, puts the base there and the apex at +`half_height`), followed as the same 64-gon
+/// as a cylinder's cap. A non-positive or non-finite size is an empty shape (no faces).
+fn cone_base(radius: f32, half_height: f32, xf: Xf) -> Vec<Face> {
+    cylinder_caps(radius, half_height, xf)
+        .into_iter()
+        .filter(|f| f.n.dot(xf.rot * -Vec3::Y) > 0.5)
+        .collect()
+}
+
 fn cylinder_caps(radius: f32, half_height: f32, xf: Xf) -> Vec<Face> {
     if !(radius > 0.0 && half_height > 0.0 && radius.is_finite() && half_height.is_finite()) {
         return Vec::new();
@@ -425,6 +436,13 @@ fn collect(node: &SdfNode, xf: Xf, report: &mut CoplanarReport) -> Faces {
                 _ => not_analysed(node, report),
             }
         }
+        SdfNode::Cone {
+            radius,
+            half_height,
+        } => Faces {
+            faces: cone_base(*radius, *half_height, xf),
+            complete: true,
+        },
         SdfNode::HexPrism {
             hex_radius,
             half_height,
