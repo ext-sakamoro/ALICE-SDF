@@ -22,7 +22,7 @@
 //! oracle: closed-form face positions of the scenes (box faces at centre ± half extent, cylinder caps
 //! at ± half height) and their overlap areas (rectangle intersection, disk containment).
 
-use alice_sdf::coplanar::{coplanar_faces, CoplanarKind, COPLANAR_REL_TOL};
+use alice_sdf::coplanar::{coplanar_faces, CoplanarKind, COPLANAR_REL_TOL, SMOOTH_OPENS_K};
 use alice_sdf::SdfNode;
 use glam::{Quat, Vec3};
 
@@ -191,16 +191,17 @@ fn flush_exteriors_and_disjoint_coplanar_faces_are_not_reported() {
 
 #[test]
 fn nodes_the_analysis_cannot_follow_are_counted_not_treated_as_clean() {
-    let blended = SdfNode::box3d(1.0, 1.0, 1.0).smooth_union(SdfNode::sphere(1.0), 0.2);
+    // a twist reshapes its child's faces (no plane stays a plane): not followed
+    let blended = SdfNode::box3d(1.0, 1.0, 1.0).twist(0.5);
     let r = coplanar_faces(&blended.union(SdfNode::box3d(1.0, 1.0, 1.0).translate(5.0, 0.0, 0.0)));
     assert!(r.ops_not_analysed >= 1, "{r:?}");
     assert!(!r.is_fully_analysed());
-    // exactly: the smooth union itself, and the union above it (one operand not followed); nothing is
+    // exactly: the twist itself, and the union above it (one operand not followed); nothing is
     // counted as analysed (an operator with an operand that was not followed is not analysed either)
     assert_eq!((r.ops_analysed, r.ops_not_analysed), (0, 2), "{r:?}");
     // the node the analysis stopped at is named, once (the union above it is not a kind of its own)
     assert_eq!(
-        r.not_analysed_kinds.get("SmoothUnion"),
+        r.not_analysed_kinds.get("Twist"),
         Some(&1),
         "{:?}",
         r.not_analysed_kinds
@@ -339,4 +340,35 @@ fn faces_meeting_only_along_an_edge_do_not_overlap() {
     let r = coplanar_faces(&a.union(b));
     assert!(r.is_fully_analysed(), "{r:?}");
     assert!(r.pairs.is_empty(), "{:?}", r.pairs);
+}
+
+#[test]
+fn a_smooth_operator_opens_a_coincidence_only_above_the_surface_band() {
+    // oracle: the polynomial blend moves the field at the coincident face by k / 4 (measured), which
+    // clears the widest default surface band (SURFACE_HIT_EPS = 1e-3) only for k > 4e-3
+    assert!((SMOOTH_OPENS_K - 4e-3).abs() < 1e-9, "{SMOOTH_OPENS_K}");
+    let a = || SdfNode::box3d(2.0, 2.0, 2.0).translate(-1.0, 0.0, 0.0);
+    let b = || SdfNode::box3d(2.0, 2.0, 2.0).translate(1.0, 0.0, 0.0);
+    let block = || SdfNode::box3d(4.0, 4.0, 4.0);
+    let cutter = || SdfNode::box3d(1.0, 1.0, 6.0).translate(1.5, 0.0, 0.0); // +x face on the block's
+    let at = SMOOTH_OPENS_K;
+    let above = SMOOTH_OPENS_K.next_up();
+    for (name, k, want_pair) in [("at", at, true), ("above", above, false), ("zero", 0.0, true)] {
+        let u = coplanar_faces(&a().smooth_union(b(), k));
+        let s = coplanar_faces(&block().smooth_subtract(cutter(), k));
+        let i = coplanar_faces(&a().smooth_intersection(b(), k));
+        for (op, r, kind) in [
+            ("union", &u, CoplanarKind::UnionSeam),
+            ("subtract", &s, CoplanarKind::FlushCut),
+            ("intersect", &i, CoplanarKind::IntersectionContact),
+        ] {
+            assert!(r.is_fully_analysed(), "{op} k {name}: {r:?}");
+            let found = r.pairs.iter().any(|p| p.kind == kind);
+            assert_eq!(found, want_pair, "{op} k {name} ({k:e}): {:?}", r.pairs);
+        }
+    }
+    // a smooth union's faces still pass up: a box resting on the blended pair's top is a seam
+    let top = SdfNode::box3d(1.0, 1.0, 1.0).translate(-1.0, 1.5, 0.0);
+    let r = coplanar_faces(&a().smooth_union(b(), 0.5).union(top));
+    assert!(r.pairs.iter().any(|p| p.kind == CoplanarKind::UnionSeam), "{:?}", r.pairs);
 }
