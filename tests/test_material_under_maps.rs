@@ -163,3 +163,31 @@ fn metric_blend_takes_the_material_of_the_nearer_operand() {
     );
     check("metric_blend", &node, |p| p);
 }
+
+#[test]
+fn material_of_a_deep_chain_in_a_small_stack() {
+    // 100,000 unions deep: the material walk is a loop (no native recursion) and evaluates each
+    // node once (the old lookup evaluated both operands at every level, O(n²))
+    std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(|| {
+            let mut node = SdfNode::sphere(0.5).with_material(3);
+            for i in 0..100_000 {
+                node = node.union(SdfNode::sphere(0.1).translate(10.0 + i as f32, 0.0, 0.0));
+            }
+            node = node.union(
+                SdfNode::sphere(0.2)
+                    .translate(0.0, 5.0, 0.0)
+                    .with_material(7),
+            );
+            // nearest: the material-3 ball at the origin, the material-7 ball at y = 5,
+            // an untagged ball (material 0) at x = 10
+            assert_eq!(eval_material(&node, Vec3::new(0.0, 0.6, 0.0)), 3);
+            assert_eq!(eval_material(&node, Vec3::new(0.0, 4.9, 0.0)), 7);
+            assert_eq!(eval_material(&node, Vec3::new(10.0, 0.0, 0.05)), 0);
+            // the chain is dropped with it, flat (`take_children_into`)
+        })
+        .expect("spawn")
+        .join()
+        .expect("thread panicked (a stack overflow aborts the whole process instead)");
+}
