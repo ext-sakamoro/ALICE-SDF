@@ -741,6 +741,9 @@ fn classify_pairs(node: &SdfNode, report: &mut CoplanarReport) {
         let class: Vec<Option<SheetSide>> = grid
             .iter()
             .map(|g| {
+                // samples within 2δ of the overlap's edges are skipped: there the part's own surface
+                // meets the plane and the V test below already reads no sheet, so skipping only saves
+                // three evaluations per sample (the result does not depend on it)
                 if g.edge < 2.0 * delta {
                     return None;
                 }
