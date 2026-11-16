@@ -278,7 +278,7 @@ pub fn eval_with_material(node: &SdfNode, point: Vec3) -> (f32, u32) {
     }
 }
 
-// ALLOW-DEAD: the shared test corpus file, of which the test below calls only corpus()
+// The shared test corpus file, of which the test below calls only corpus()
 #[cfg(test)]
 #[allow(dead_code, unused_imports, clippy::all, clippy::pedantic)]
 #[path = "../../tests/common/corpus.rs"]
