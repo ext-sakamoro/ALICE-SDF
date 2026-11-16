@@ -88,7 +88,7 @@
 //! the classification: a rib on a base, the base cut away under half and under all of it, a block
 //! filling half a seam through a node the analysis does not follow, a cutter's mouth).
 
-use crate::compiled::real::LawMinMax;
+use crate::compiled::real::{LawMinMax, LawVec};
 use crate::types::SdfNode;
 use glam::{Quat, Vec2, Vec3};
 use std::collections::BTreeMap;
@@ -893,7 +893,7 @@ fn classify_pairs(node: &SdfNode, report: &mut CoplanarReport) {
         node,
         &crate::tight_aabb::TightAabbConfig::preset_large(),
     );
-    let extent = (b.max - b.min).max_element();
+    let extent = (b.max - b.min).law_max_element();
     let plain = SHEET_DELTA_REL * extent;
     let floor = SHEET_DELTA_FLOOR_ULPS * (extent.next_up() - extent);
     let candidates = std::mem::take(&mut report.pairs);
