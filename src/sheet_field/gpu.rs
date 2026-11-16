@@ -1380,7 +1380,9 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
                 if (crossing_inside(k, o + d * tr)) { return vec3<f32>(1.0, tr, amb); }
             } else if (r.x == 2.0) { amb = amb + 1.0; }
         }
-        t = t + (ux + 9.5367431640625e-7) * cl.h;
+        // past the face by a hair that t can carry: 2^-20 h, but at least 4 ulp of t (t is f32 in mm, up to ~1000)
+        let tn = t + ux * cl.h;
+        t = tn + max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn));
     }
     if (t >= tb) { return vec3<f32>(0.0, 0.0, amb); }
     return vec3<f32>(3.0, 0.0, amb);
