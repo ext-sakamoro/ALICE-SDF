@@ -422,6 +422,14 @@ pub enum GapError {
 /// Largest grid [`measure_gaps`] evaluates (2²⁶ points).
 pub const MAX_GAP_GRID_POINTS: usize = 1 << 26;
 
+/// Error bound of a reported gap width against the true width between facing walls \[same unit as the
+/// SDF\], for distance-exact fields: the re-entry is taken where the field drops below the march
+/// tolerance and the distance field there is added back, so the hit is within one tolerance of the wall,
+/// and the start is the sample's exact distance to its own wall. A comparison against a limit should
+/// fail only when `width + GAP_TOLERANCE < limit` (a gap designed at exactly the limit is not failed by
+/// the measurement's own error).
+pub const GAP_TOLERANCE: f32 = 2.0 * MARCH_EPS;
+
 /// Steps after which a march through empty space is treated as open air (a ray grazing a
 /// surface advances by the tiny distance to it).
 const GAP_MAX_STEPS: usize = 10_000;
@@ -440,22 +448,27 @@ pub fn local_gap(node: &SdfNode, origin: Vec3, outward: Vec3, max_march: f32) ->
     if dir == Vec3::ZERO {
         return None;
     }
-    let exit = leave_surface(node, origin, dir, 0.0, max_march)?;
-    march_empty(node, origin, dir, exit, max_march).map(|enter| enter - exit)
+    let (crossing, clear) = leave_surface(node, origin, dir, 0.0, max_march)?;
+    // the gap starts where the ray leaves material (crossing), not where it is clear of the tolerance
+    march_empty(node, origin, dir, clear, max_march).map(|enter| enter - crossing)
 }
 
-/// `origin + dir · t0` から `dir` に進み、材料を抜けて面から `MARCH_EPS` 以上離れた所の `t` を返す
-/// (`limit` を越えたら `None`)
+/// `origin + dir · t0` から `dir` に進み、`(材料を抜けた t, 面から MARCH_EPS 以上離れた t)` を返す
+/// (`limit` を越えたら `None`) 抜けた所は `d > 0` になった最初の `t` (出発点が空間側ならその `t0`)
 ///
 /// 再進入の判定 (`d < MARCH_EPS`) は出発点で発火しうる: 面から許容以内の点 (面の上、浮動小数の丸めで
 /// 面のすぐ外) から march すると 1 歩目で「材料に戻った」と読み、幅 ~0 の隙間になる ⇒ 判定の前に面から
 /// 離れる 内側では −d が最近表面までの距離なので、その分ずつ進む
-fn leave_surface(node: &SdfNode, origin: Vec3, dir: Vec3, t0: f32, limit: f32) -> Option<f32> {
+fn leave_surface(node: &SdfNode, origin: Vec3, dir: Vec3, t0: f32, limit: f32) -> Option<(f32, f32)> {
     let mut t = t0;
+    let mut crossing: Option<f32> = None;
     loop {
         let d = eval(node, origin + dir * t);
+        if d > 0.0 && crossing.is_none() {
+            crossing = Some(t);
+        }
         if d >= MARCH_EPS {
-            return Some(t);
+            return Some((crossing.unwrap_or(t), t));
         }
         t += (-d).law_max(MARCH_EPS);
         if t > limit {
@@ -556,7 +569,7 @@ pub fn measure_gaps(
                 // 標本が自分の面から march の許容以内にある時は、まず面から離れる (leave_surface): 離れる前に
                 // 「材料に戻った」と読むと、面のすぐ外の格子点が幅 2d の隙間になる (格子点が面と
                 // 浮動小数の丸め分だけずれた平らな面で、何も無い所に 1e-5 mm の隙間を報告した)
-                let Some(t0) = leave_surface(node, p, n, 0.0, resolution) else {
+                let Some((_, t0)) = leave_surface(node, p, n, 0.0, resolution) else {
                     continue;
                 };
                 let Some(enter) = march_empty(node, p, n, t0, reach) else {
