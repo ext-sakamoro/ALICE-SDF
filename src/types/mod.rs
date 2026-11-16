@@ -155,7 +155,8 @@ pub enum SdfNode {
 
     /// Hexagonal prism centered at origin
     HexPrism {
-        /// Hexagon circumradius
+        /// Distance from the Z axis to the hexagon's flat sides (the apothem): the sides lie at
+        /// `y = ±hex_radius` and their turns by ±60°, the corners at `2·hex_radius/√3`
         hex_radius: f32,
         /// Half the prism height
         half_height: f32,
