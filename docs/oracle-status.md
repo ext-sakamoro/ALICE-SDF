@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1335 |
+| 🟢 Not ignored | 1376 |
 | 🔴 Red by design | 6 |
 | ⏱ Gated (runtime / diagnostic / manual) | 10 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1351** |
+| **Total** | **1392** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -54,13 +54,14 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `write_bincode1_fixtures` (test_bincode1_fixtures.rs) — writes tests/fixtures/bincode1; run only to capture
 
-## 🟢 Not ignored (1335)
+## 🟢 Not ignored (1376)
 
 Per-file counts (the test names are in `tests/`):
 
 | File | Tests |
 |------|-------|
 | `test_provenance.rs` | 50 |
+| `test_coplanar_faces.rs` | 38 |
 | `test_terrain_destruction_oracle.rs` | 28 |
 | `test_gi_volume_oracle.rs` | 23 |
 | `test_codec_bridge_oracle.rs` | 22 |
@@ -203,6 +204,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_gpu_compile_memory.rs` | 3 |
 | `test_gpu_noise_parity.rs` | 3 |
 | `test_gpu_submit_limit.rs` | 3 |
+| `test_hex_prism_apothem.rs` | 3 |
 | `test_jit_sincos_det.rs` | 3 |
 | `test_law_nan_operands.rs` | 3 |
 | `test_law_scalar_minmax_ties.rs` | 3 |

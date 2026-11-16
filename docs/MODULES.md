@@ -59,6 +59,7 @@ this file or listed twice, or when a linked file does not exist.
 | `unordered` | `UnorderedMap` / `UnorderedSet`: hash collections without iteration (lookup, insertion, removal, size, and aggregates in key order), so no result depends on hash order |  | [`unordered_collections`](../examples/unordered_collections.rs) |
 | `fidelity` | what a field's distance claim is worth: where it is a true distance and where only a bound |  |  |
 | `raycast` | sphere tracing, including relaxed and Lipschitz-adaptive stepping |  |  |
+| `coplanar` | coplanar, overlapping faces across CSG operators (union seams, flush cuts, contacts), each candidate classified by the final field as a zero-thickness sheet or a real surface |  |  |
 | `neural` | small MLP trained to approximate a tree, in pure Rust |  |  |
 
 ## Analysis and validation
