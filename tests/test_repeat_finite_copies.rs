@@ -102,7 +102,12 @@ fn check_all(path: &str, counts: &[u32], eval_line: impl Fn(&SdfNode, &[Vec3]) -
             let points = line(axis, count);
             let values = eval_line(&node, &points);
             match check(path, count, axis, &runs(&points, &values, axis)) {
-                Ok(_) => compared += 1,
+                // 2·floor(count/2) + 1 whole copies on every axis
+                Ok(n) if n == 2 * (count / 2) as usize + 1 => compared += 1,
+                Ok(n) => failures.push(format!(
+                    "{path} count {count} axis {axis}: {n} copies, not 2·floor(count/2) + 1 = {}",
+                    2 * (count / 2) + 1
+                )),
                 Err(e) => failures.push(e),
             }
         }
@@ -179,12 +184,15 @@ fn mixed(count: u32) -> (SdfNode, [f32; 3]) {
     let c = [count, count + 1, count + 2];
     (
         SdfNode::sphere(RADIUS).repeat_finite(c, Vec3::splat(SPACING)),
-        c.map(|n| (n / 2) as f32),
+        // the law's form: the count as f32, halved, floored (the bytecode holds the count as f32)
+        c.map(|n| (n as f32 * 0.5).floor()),
     )
 }
 
 #[cfg(any(feature = "glsl", feature = "hlsl", feature = "gpu", feature = "rust"))]
-const MIXED: [u32; 4] = [1, 2, 3, 4];
+// 2^25 + 3 and up: `(n / 2) as f32` (integer halving) and `(n as f32 * 0.5).floor()` differ, so
+// every emit must use the law's form
+const MIXED: [u32; 5] = [1, 2, 3, 4, (1 << 25) + 3];
 
 /// The interval evaluator over a box of one point holds the tree's distance at that point, on the
 /// sample lines of every odd and even count: a clamp other than ±floor(count/2) puts a copy where
@@ -222,6 +230,9 @@ fn the_interval_evaluator_holds_the_tree_distance_for_odd_and_even_counts() {
 /// the limits of every `clamp(floor(..), -limit, limit)` in shader text, as written
 #[cfg(any(feature = "glsl", feature = "hlsl", feature = "gpu"))]
 fn shader_limits(src: &str) -> Vec<[f32; 3]> {
+    if src.contains("metal::clamp(metal::floor(") {
+        return msl_limits(src);
+    }
     let mut out = Vec::new();
     for line in src.lines().filter(|l| l.contains("clamp(floor(")) {
         let after = &line[line.find("clamp(floor(").unwrap()..];
@@ -231,6 +242,26 @@ fn shader_limits(src: &str) -> Vec<[f32; 3]> {
         let v: Vec<f32> = after[open + 1..close]
             .split(',')
             .map(|s| s.trim().trim_end_matches('f').parse().expect("a number"))
+            .collect();
+        out.push([v[0], v[1], v[2]]);
+    }
+    out
+}
+
+/// the upper limits of every `metal::clamp(metal::floor(..), lower, upper)` in naga's MSL
+#[cfg(any(feature = "glsl", feature = "hlsl", feature = "gpu"))]
+fn msl_limits(src: &str) -> Vec<[f32; 3]> {
+    let mut out = Vec::new();
+    for line in src
+        .lines()
+        .filter(|l| l.contains("metal::clamp(metal::floor("))
+    {
+        let after = &line[line.find("metal::clamp(metal::floor(").unwrap()..];
+        let open = after.rfind("metal::float3(").expect("the upper limit") + "metal::float3(".len();
+        let close = open + after[open..].find(')').expect("the end of the vector");
+        let v: Vec<f32> = after[open..close]
+            .split(',')
+            .map(|s| s.trim().parse().expect("a number"))
             .collect();
         out.push([v[0], v[1], v[2]]);
     }
@@ -263,6 +294,16 @@ fn every_shader_emit_clamps_to_half_the_count_rounded_down() {
                 &node,
                 alice_sdf::compiled::HlslTranspileMode::Hardcoded,
             )
+            .source,
+        ));
+        #[cfg(feature = "msl")]
+        emitted.push((
+            "msl",
+            alice_sdf::compiled::msl::MslShader::transpile(
+                &node,
+                alice_sdf::compiled::TranspileMode::Hardcoded,
+            )
+            .expect("repeat_finite of a sphere emits MSL")
             .source,
         ));
         #[cfg(feature = "gpu")]

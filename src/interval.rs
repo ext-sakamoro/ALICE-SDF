@@ -1289,7 +1289,7 @@ pub fn eval_interval(node: &SdfNode, bounds: Vec3Interval) -> Interval {
                 if s <= 0.0 {
                     return iv;
                 }
-                let limit = (cnt / 2) as f32;
+                let limit = (cnt as f32 * 0.5).floor();
                 // `* (1 / s)` like every point evaluator (tie parity)
                 let inv = 1.0 / s;
                 let cmin = round_half_up(iv.lo * inv).clamp(-limit, limit);
