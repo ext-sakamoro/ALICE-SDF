@@ -418,6 +418,14 @@ pub struct GapReport {
     /// width nor a crevice is read from them. The faces either side are sampled by their own grid
     /// points.
     pub edge_samples: usize,
+    /// Samples whose wall point, or the point where the march came back, has no material behind it:
+    /// the field touches zero there without going negative (a zero-thickness sheet, e.g. two boxes
+    /// unioned along a shared face that is then subtracted from a solid). Such a surface does not
+    /// exist as material, so no width is read from it; the field itself is defective there (a mesher
+    /// or slicer may turn that zero level set into a membrane).
+    pub sheet_samples: usize,
+    /// One of the sheet points (the first found), `None` when `sheet_samples` is 0.
+    pub sheet_location: Option<Vec3>,
 }
 
 /// An acute joint where two walls meet, found by [`measure_gaps`].
@@ -437,6 +445,22 @@ pub const MAX_CREVICES: usize = 1024;
 /// on a plate) the normals also turn almost antiparallel, so parallelism is not a stopping rule during
 /// the walk; a width is decided by the width that stops closing.
 const PARALLEL_SIN: f32 = 1e-3;
+
+/// How far behind a surface point the field is read to tell material from a zero-thickness sheet
+/// \[same unit as the SDF\]: a few times the march tolerance, far below any printable wall.
+const SHEET_PROBE: f32 = 4.0 * GAP_TOLERANCE;
+
+/// Whether the surface point `at`, whose material lies on the side `-out`, has material behind it.
+///
+/// A zero-thickness sheet has air on both sides: a short step behind it the field is positive again
+/// and grows away from the sheet (its direction is `-out`). A step behind a point on a convex edge can
+/// land exactly on the neighbouring face, where the field is 0 but its direction is that face's
+/// normal, not `-out`: that is material, not a sheet.
+fn material_behind(node: &SdfNode, at: Vec3, out: Vec3) -> bool {
+    let behind = at - out * SHEET_PROBE;
+    !(eval(node, behind) >= 0.0
+        && eval_normal(node, behind).normalize_or_zero().dot(out) < -EDGE_COS)
+}
 
 /// `cos` of the turn of the wall's direction (within a quarter cell) above which a sample's wall point
 /// is on an edge (about 20°).
@@ -676,6 +700,8 @@ pub fn measure_gaps(
     let mut crevices: Vec<Crevice> = Vec::new();
     let mut crevice_samples = 0_usize;
     let mut edge_samples = 0_usize;
+    let mut sheet_samples = 0_usize;
+    let mut sheet_location = None;
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
@@ -692,6 +718,14 @@ pub fn measure_gaps(
                     continue;
                 }
                 samples += 1;
+                // the wall point needs material behind it; a zero-thickness sheet has none (the field
+                // only touches zero there), so no width is read from it, whether or not the ray comes back
+                let at = p - n * d;
+                if !material_behind(node, at, n) {
+                    sheet_samples += 1;
+                    sheet_location.get_or_insert(at);
+                    continue;
+                }
                 // 標本が自分の面から march の許容以内にある時は、まず面から離れる (leave_surface): 離れる前に
                 // 「材料に戻った」と読むと、面のすぐ外の格子点が幅 2d の隙間になる (格子点が面と
                 // 浮動小数の丸め分だけずれた平らな面で、何も無い所に 1e-5 mm の隙間を報告した)
@@ -702,7 +736,13 @@ pub fn measure_gaps(
                     continue;
                 };
                 let width = d + enter;
-                let at = p - n * d;
+                // the surface the ray came back to needs material behind it too
+                let hit = p + n * enter;
+                if !material_behind(node, hit, -n) {
+                    sheet_samples += 1;
+                    sheet_location.get_or_insert(hit);
+                    continue;
+                }
                 if on_wall_edge(node, at, n, cell) {
                     edge_samples += 1;
                     continue;
@@ -741,6 +781,8 @@ pub fn measure_gaps(
         crevices,
         crevice_samples,
         edge_samples,
+        sheet_samples,
+        sheet_location,
     })
 }
 
