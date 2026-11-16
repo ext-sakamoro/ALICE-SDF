@@ -3,9 +3,10 @@
 //!
 //! oracle: the closed-form distances of a regular hexagonal prism of apothem `a` and half height `h`
 //! (flat side y = a, corner x = 2a/√3, cap z = h), evaluated on every CPU evaluator (tree, compiled
-//! scalar / SIMD / BVH, and the scalar / SIMD JIT under the `jit` feature) and checked in the text of
-//! each shader helper (GLSL / HLSL / WGSL: `dy = py - hex_r`; their GPU results are compared with the
-//! tree by the shader parity tests). A backend that read `hex_radius` as the corner distance would put
+//! scalar / SIMD / BVH, and the scalar / SIMD JIT under the `jit` feature). The shader helpers (GLSL /
+//! HLSL / WGSL) are checked as text only (`py - hex_r` in the helper) and are NOT run here: this file
+//! executes the CPU backends, not every backend; a GPU-side oracle for this primitive is still needed
+//! to cover the shaders' results. A backend that read `hex_radius` as the corner distance would put
 //! the flat side at `a·√3/2` and read about `−0.13·a` at the oracle's flat-side point.
 
 use alice_sdf::compiled::{
