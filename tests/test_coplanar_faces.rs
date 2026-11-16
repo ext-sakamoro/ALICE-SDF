@@ -612,6 +612,14 @@ fn a_filled_seam_beside_a_bore_is_not_a_sheet() {
     let filled = rib_on_base(None).union(SdfNode::box3d(10.0, 4.0, 20.0).translate(0.0, 2.0, 0.0));
     let bored = filled.subtract(SdfNode::cylinder(1.0, 30.0));
     let r = coplanar_faces(&bored);
-    assert!(r.pairs.iter().all(|p| p.kind != CoplanarKind::UnionSeam), "no sheet: {:?}", r.pairs);
-    assert!(r.surfaces.iter().any(|p| p.kind == CoplanarKind::UnionSeam), "the candidate is a surface: {:?}", r.surfaces);
+    assert!(
+        r.pairs.iter().all(|p| p.kind != CoplanarKind::UnionSeam),
+        "no sheet: {:?}",
+        r.pairs
+    );
+    assert!(
+        r.surfaces.iter().any(|p| p.kind == CoplanarKind::UnionSeam),
+        "the candidate is a surface: {:?}",
+        r.surfaces
+    );
 }

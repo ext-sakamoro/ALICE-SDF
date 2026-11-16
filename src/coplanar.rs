@@ -65,8 +65,10 @@
 //! square grid of step `max(2δ, √(bbox area / SHEET_MAX_SAMPLES))`, skipping samples closer than `2δ` to
 //! its edges (`δ` = [`SHEET_DELTA_REL`] × the part's extent, a quarter of the overlap's inradius for a
 //! thinner strip, never below [`SHEET_DELTA_FLOOR_ULPS`] ulp at the extent). A sample is a **sheet** when
-//! the field reads 0 within `δ` on the plane and has the same sign `δ` away on both sides (material
-//! when negative, air when positive); a sign change across the plane is a real surface. The pair is a
+//! the field reads 0 within `δ` on the plane and, `δ` away on both sides, has moved from that value by
+//! at least `δ/4` in the same direction (a V across the plane: material when down, air when up); a sign
+//! change across the plane is a real surface, and a surface that crosses the plane nearby (a bore's
+//! wall) reads near 0 on the plane without the V and is not a sheet. The pair is a
 //! defect (`pairs`) if **any** connected region of sheet samples exists, reported with each region's
 //! extent ([`CoplanarPair::sheets`]), so a sheet is not hidden by a surface majority over the rest of
 //! the overlap; a pair with none is moved to `surfaces` (counted, not a defect); a pair too thin for
@@ -746,11 +748,16 @@ fn classify_pairs(node: &SdfNode, report: &mut CoplanarReport) {
                 let d0 = crate::eval::eval(node, g.p);
                 let dp = crate::eval::eval(node, g.p + n * delta);
                 let dm = crate::eval::eval(node, g.p - n * delta);
+                // a sheet is a V across the plane: 0 within δ on it, and moving away from that value
+                // by at least δ/4 on both sides (a real seam moves by δ, a smooth blend at its
+                // reporting limit by about δ/2; a surface crossing the plane nearby, such as a bore's
+                // wall, also reads near 0 on the plane but hardly moves)
+                let rise = 0.25 * delta;
                 if d0.abs() > delta {
                     None
-                } else if dp < 0.0 && dm < 0.0 {
+                } else if dp <= d0 - rise && dm <= d0 - rise {
                     Some(SheetSide::Material)
-                } else if dp > 0.0 && dm > 0.0 {
+                } else if dp >= d0 + rise && dm >= d0 + rise {
                     Some(SheetSide::Air)
                 } else {
                     None
