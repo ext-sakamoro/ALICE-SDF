@@ -406,6 +406,13 @@ pub struct GapReport {
     /// surface in any orientation, so it is found; narrower gaps may be missed (unverified, not
     /// passed). A caller comparing against a limit at or below this value has not checked it.
     pub resolution: f32,
+    /// `2·√3 · cell`: a gap of any shape (between pins, fin tips, an edge and a face, not only two
+    /// walls) wider than this is found by the medial pass (see the module's MODEL section); narrower
+    /// gaps between such parts may be missed. [`GapReport::verdict`] certifies nothing below it.
+    pub any_shape_resolution: f32,
+    /// The grid pitch the report was measured at; features (groove depths, fin and pin sizes) below one
+    /// cell are not certified.
+    pub cell: f32,
     /// Acute joints where two walls meet (a tilted plate on a floor, a cylinder lying on a plate):
     /// they close to a line and have no width, so their samples are listed here and never counted in
     /// `min_gap` / `gaps`. One entry per joint location (samples within `2 · cell` of a listed one are
@@ -436,10 +443,121 @@ pub struct Crevice {
     pub location: Vec3,
     /// Angle of the air between the two walls at the sample, in degrees (below 90).
     pub angle_deg: f32,
+    /// Widest perpendicular width of the groove: walking from the sample away from the joint along its
+    /// wall, the width measured perpendicular to that wall grows until the perpendicular passes the
+    /// other wall's rim; the width there (refined by bisection) is the mouth. For a symmetric V of air
+    /// angle `α` and depth `D` it is `2·D·sin(α/2)`. A groove whose walls run out of the bound before
+    /// they end reports the last width measured inside it.
+    pub mouth: f32,
 }
 
 /// Most crevices listed in a [`GapReport`] (further ones are still counted in `crevice_samples`).
 pub const MAX_CREVICES: usize = 1024;
+
+/// What a [`GapVerdict::Pass`] holds at: no gap in `[any_shape_resolution, limit)` was found, and
+/// nothing narrower than `any_shape_resolution` and no feature smaller than `min_certified_feature`
+/// is claimed (those need the interval proof that is not part of this module).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GapCertificate {
+    /// The grid pitch measured at.
+    pub cell: f32,
+    /// Narrowest gap between arbitrary parts that the grid is sure to find (`2·√3 · cell`).
+    pub any_shape_resolution: f32,
+    /// Smallest feature (groove depth, fin or pin size) the pass speaks for: one cell.
+    pub min_certified_feature: f32,
+}
+
+/// Why [`GapReport::verdict`] failed the shape.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GapFailure {
+    /// A measured width below the limit (`width + GAP_TOLERANCE < limit`).
+    Width {
+        /// The narrowest width measured.
+        width: f32,
+        /// Surface point it was measured from.
+        at: Vec3,
+    },
+    /// An acute groove whose mouth is below the limit: it cannot be printed open.
+    CreviceMouth {
+        /// The narrowest mouth among the crevices.
+        mouth: f32,
+        /// Where its walls meet.
+        at: Vec3,
+    },
+    /// The field touches zero without material (a zero-thickness sheet): a defect of the field.
+    Sheet {
+        /// One sheet point.
+        at: Vec3,
+    },
+}
+
+/// Why [`GapReport::verdict`] could not decide.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GapUndetermined {
+    /// The limit is not a finite positive number.
+    BadLimit,
+    /// The any-shape resolution is above the limit: a gap narrower than the limit could lie between
+    /// the grid points.
+    ResolutionAboveLimit {
+        /// The report's `any_shape_resolution`.
+        any_shape_resolution: f32,
+    },
+}
+
+/// One answer for the gaps of a shape against a printer's limit, from [`GapReport::verdict`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GapVerdict {
+    /// Nothing below the limit was found, at the sizes the certificate states.
+    Pass(GapCertificate),
+    /// A gap, crevice mouth or sheet below the limit was found.
+    Fail(GapFailure),
+    /// The grid cannot speak for this limit.
+    Undetermined(GapUndetermined),
+}
+
+impl GapReport {
+    /// The verdict for a printer that cannot keep gaps narrower than `limit` open.
+    ///
+    /// `Fail` (a width with `width + GAP_TOLERANCE < limit`, a crevice mouth below `limit`, or any
+    /// zero-thickness sheet) outranks `Undetermined` (a limit that is not finite positive, or an
+    /// any-shape resolution above it), which outranks `Pass`. There is no bare pass: the certificate
+    /// states the sizes it holds at.
+    #[must_use]
+    pub fn verdict(&self, limit: f32) -> GapVerdict {
+        if !(limit.is_finite() && limit > 0.0) {
+            return GapVerdict::Undetermined(GapUndetermined::BadLimit);
+        }
+        if let Some(at) = self.sheet_location {
+            return GapVerdict::Fail(GapFailure::Sheet { at });
+        }
+        if let (Some(width), Some(at)) = (self.min_gap, self.location) {
+            if width + GAP_TOLERANCE < limit {
+                return GapVerdict::Fail(GapFailure::Width { width, at });
+            }
+        }
+        let narrowest_mouth = self
+            .crevices
+            .iter()
+            .filter(|c| c.mouth < limit)
+            .min_by(|a, b| a.mouth.total_cmp(&b.mouth));
+        if let Some(c) = narrowest_mouth {
+            return GapVerdict::Fail(GapFailure::CreviceMouth {
+                mouth: c.mouth,
+                at: c.location,
+            });
+        }
+        if self.any_shape_resolution > limit {
+            return GapVerdict::Undetermined(GapUndetermined::ResolutionAboveLimit {
+                any_shape_resolution: self.any_shape_resolution,
+            });
+        }
+        GapVerdict::Pass(GapCertificate {
+            cell: self.cell,
+            any_shape_resolution: self.any_shape_resolution,
+            min_certified_feature: self.cell,
+        })
+    }
+}
 
 /// `sin` of the largest angle between facing walls still read as parallel (about 0.06°): below it the
 /// walls have no direction in which they meet. Near the line where curved walls touch (a cylinder lying
@@ -493,8 +611,17 @@ const WEDGE_MAX_STEPS: usize = 48;
 /// closes to within a few [`GAP_TOLERANCE`]; they stay apart when the width stops closing (a sphere
 /// over a plate bottoms out) or the march finds open air (the walk ran off the wall, e.g. onto the
 /// floor of a tapered slot). The angle is the air angle between the walls at the first sample.
-fn crevice_angle(node: &SdfNode, a: Vec3, n: Vec3, width: f32, reach: f32) -> Option<(f32, Vec3)> {
+fn crevice_angle(
+    node: &SdfNode,
+    a: Vec3,
+    n: Vec3,
+    width: f32,
+    reach: f32,
+    cell: f32,
+) -> Option<(f32, Vec3, f32)> {
     let wall_normal = |at: Vec3| eval_normal(node, at).normalize_or_zero();
+    let (a0, n0, w0) = (a, n, width);
+    let mut away: Option<Vec3> = None;
     let mut a = a;
     let mut n = n;
     let mut w = width;
@@ -514,6 +641,7 @@ fn crevice_angle(node: &SdfNode, a: Vec3, n: Vec3, width: f32, reach: f32) -> Op
             return None;
         }
         let along = along.normalize();
+        away.get_or_insert(-along);
         let approach = along.dot(n_h);
         if approach >= 0.0 {
             return None;
@@ -532,7 +660,8 @@ fn crevice_angle(node: &SdfNode, a: Vec3, n: Vec3, width: f32, reach: f32) -> Op
         }
         let w2 = local_gap(node, a2, n2, reach)?;
         if w2 <= 4.0 * GAP_TOLERANCE {
-            return Some((angle, a2));
+            let dir = away?;
+            return Some((angle, a2, crevice_mouth(node, a0, n0, w0, dir, reach, cell)));
         }
         if w2 >= 0.95 * w {
             return None;
@@ -546,6 +675,75 @@ fn crevice_angle(node: &SdfNode, a: Vec3, n: Vec3, width: f32, reach: f32) -> Op
         }
     }
     None
+}
+
+/// Steps of the walk out of a crevice (each one cell along the wall) before the mouth is taken as the
+/// last width measured.
+const MOUTH_MAX_STEPS: usize = 4096;
+
+/// Bisection steps that place the mouth between the last perpendicular that crossed the groove and the
+/// first that left it.
+const MOUTH_BISECT: usize = 24;
+
+/// The mouth of a crevice: from wall point `a0` (normal `n0`, width `w0`), walk along the wall in `dir`
+/// (away from the joint) one `cell` at a time, measuring the width perpendicular to the wall; the width
+/// grows until the perpendicular passes the other wall's rim and finds open air. The step where that
+/// happens is bisected, and the last width that still crossed the groove is the mouth.
+fn crevice_mouth(
+    node: &SdfNode,
+    a0: Vec3,
+    n0: Vec3,
+    w0: f32,
+    dir: Vec3,
+    reach: f32,
+    cell: f32,
+) -> f32 {
+    // a point on the wall `s` along `dir` from a0, with its wall normal (read off the wall along the
+    // previous normal, so an edge does not tie the direction)
+    let on_wall = |s: f32| -> Option<(Vec3, Vec3)> {
+        let q = a0 + dir * s;
+        let off = q + n0 * SHEET_PROBE;
+        let nq = eval_normal(node, off).normalize_or_zero();
+        if nq == Vec3::ZERO || nq.dot(n0) < EDGE_COS {
+            return None;
+        }
+        Some((q - nq * eval(node, q), nq))
+    };
+    let width_at = |s: f32| on_wall(s).and_then(|(a, n)| local_gap(node, a, n, reach));
+    let mut best = w0;
+    let (mut inside, mut outside) = (0.0_f32, None);
+    for k in 1..=MOUTH_MAX_STEPS {
+        #[allow(clippy::cast_precision_loss)] // k is at most 4096
+        let s = cell * k as f32;
+        if s > reach {
+            break;
+        }
+        match width_at(s) {
+            Some(w) if w >= best => {
+                best = w;
+                inside = s;
+            }
+            // the width stopped growing: past the widest point
+            Some(_) => break,
+            None => {
+                outside = Some(s);
+                break;
+            }
+        }
+    }
+    if let Some(mut out) = outside {
+        for _ in 0..MOUTH_BISECT {
+            let mid = 0.5 * (inside + out);
+            match width_at(mid) {
+                Some(w) => {
+                    best = best.law_max(w);
+                    inside = mid;
+                }
+                None => out = mid,
+            }
+        }
+    }
+    best
 }
 
 /// Why [`measure_gaps`] measured nothing.
@@ -748,7 +946,9 @@ pub fn measure_gaps(
                     edge_samples += 1;
                     continue;
                 }
-                if let Some((angle_deg, joint)) = crevice_angle(node, at, n, width, reach) {
+                if let Some((angle_deg, joint, mouth)) =
+                    crevice_angle(node, at, n, width, reach, cell)
+                {
                     crevice_samples += 1;
                     let merge = 2.0 * cell;
                     if crevices.len() < MAX_CREVICES
@@ -759,6 +959,7 @@ pub fn measure_gaps(
                         crevices.push(Crevice {
                             location: joint,
                             angle_deg,
+                            mouth,
                         });
                     }
                     continue;
@@ -779,6 +980,8 @@ pub fn measure_gaps(
         samples,
         gaps,
         resolution,
+        any_shape_resolution: 2.0 * resolution,
+        cell,
         crevices,
         crevice_samples,
         edge_samples,
