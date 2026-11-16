@@ -733,10 +733,13 @@ fn sheets_of_opposite_sides_stay_apart_when_the_step_is_coarser_than_the_surface
     let cutter = SdfNode::box3d(5.0, 4000.0, 4000.0)
         .translate(-2.5, 0.0, 0.0)
         .union(SdfNode::box3d(5.0, 4000.0, 4000.0).translate(2.5, 0.0, 0.0));
-    let block = SdfNode::box3d(100.0, 40.0, 80.0).translate(0.0, 20.0, 0.0);
+    // the boundary between the two sheets at y = 7.3, between two grid rows (the grid starts at the
+    // polygon's corner y = -2000 with a step of 15.625, so it has a row at y = 0 itself)
+    let lift = 7.3;
+    let block = SdfNode::box3d(100.0, 40.0, 80.0).translate(0.0, 20.0 + lift, 0.0);
     let below = SdfNode::box3d(50.0, 40.0, 80.0)
-        .translate(-25.0, -20.0, 0.0)
-        .union(SdfNode::box3d(50.0, 40.0, 80.0).translate(25.0, -20.0, 0.0));
+        .translate(-25.0, -20.0 + lift, 0.0)
+        .union(SdfNode::box3d(50.0, 40.0, 80.0).translate(25.0, -20.0 + lift, 0.0));
     let r = coplanar_faces(&block.subtract(cutter).union(below));
     let big = r
         .pairs
