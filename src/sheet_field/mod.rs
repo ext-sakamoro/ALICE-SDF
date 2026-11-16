@@ -90,6 +90,12 @@ pub fn decided_steps(tmax: f32) -> u32 {
 /// A bisected sign change with `|s|` above this is a sign jump of `s`, not a crossing of the sheet.
 const JUMP_S: f32 = 0.02;
 
+/// The floor of a masked cell's lower bound (the field's length unit, mm). It is a valid lower bound only where a
+/// masked cell's true distance is at least it: masking needs `min |s_c| > HALF_DIAG h + q0`, so the true distance is
+/// over `HALF_DIAG h`, and the floor holds for `h >= MASKED_FLOOR / HALF_DIAG` (about 0.0577). A level with a
+/// smaller cell is refused where fields are read ([`stream::AshfIndex::read_sheets`]).
+pub const MASKED_FLOOR: f32 = 0.05;
+
 /// The most midpoints one dip search samples (see [`Sheet::dip`]); past it the ray is undecided. MEASUREMENT BUILD:
 /// set from the deepest dip measured on the real fields before commit.
 pub const DIP_NODE_CAP: u32 = 64;
@@ -580,7 +586,7 @@ impl Sheet {
         let (f, g, masked) = if rule == ValidRule::CellV1 && c.umin > HALF_DIAG * c.h + c.q0 {
             let v = (c.umin - c.q0 - HALF_DIAG * c.h)
                 .max(c.ucorner - c.q0)
-                .max(0.05);
+                .max(MASKED_FLOOR);
             (v, v, true)
         } else {
             let f = (s * s + db.max(0.0) * db.max(0.0)).sqrt();
@@ -620,7 +626,13 @@ impl SheetField {
         }
     }
 
-    /// Choose how floor steps are searched (CPU march).
+    /// How floor steps are searched (the GPU program is compiled for it).
+    #[must_use]
+    pub const fn root_mode(&self) -> RootMode {
+        self.root_mode
+    }
+
+    /// Choose how floor steps are searched (CPU march, and the GPU program compiled from this field).
     pub fn set_root_mode(&mut self, mode: RootMode) {
         self.root_mode = mode;
     }
@@ -811,6 +823,60 @@ impl SheetField {
     fn sheet_in_box(&self, k: usize, p: Vec3) -> bool {
         let sh = &self.sheets[k];
         p.cmpge(sh.lo).all() && p.cmple(sh.hi).all()
+    }
+
+    /// The reference march for the oracles (not for rendering): a fixed step `h` from `t = 0`, each step's sheets
+    /// compared by the sign of `g` at its two ends and bisected as [`Self::march`]; no bound and no floor. It is the
+    /// truth wherever no sheet has two zeros closer than `h` along the ray. Rays that reach `tmax` are a miss.
+    #[must_use]
+    pub fn march_fixed_step(&self, origin: Vec3, dir: Vec3, tmax: f32, h: f32) -> MarchResult {
+        let k_n = self.sheets.len();
+        let mut gprev: Vec<Option<f32>> = (0..k_n)
+            .map(|k| self.sheet_in_box(k, origin).then(|| self.sheets[k].sample_geom(origin, self.rule).g))
+            .collect();
+        let mut i = 1u64;
+        let mut tprev = 0.0f64;
+        loop {
+            let t = (i as f64 * f64::from(h)).min(f64::from(tmax));
+            let p = origin + dir * t as f32;
+            let mut thit = f32::INFINITY;
+            let mut khit = 0usize;
+            let mut gcur: Vec<Option<f32>> = vec![None; k_n];
+            for k in (0..k_n).filter(|&k| self.sheet_in_box(k, p)) {
+                let sh = &self.sheets[k];
+                let gc = sh.sample_geom(p, self.rule).g;
+                gcur[k] = Some(gc);
+                let Some(gp) = gprev[k] else { continue };
+                if (gc < 0.0) == (gp < 0.0) {
+                    continue;
+                }
+                let (mut a, mut b, mut ga) = (tprev as f32, t as f32, gp);
+                for _ in 0..30 {
+                    let mid = f32::midpoint(a, b);
+                    let gm = sh.sample_geom(origin + dir * mid, self.rule).g;
+                    if (gm < 0.0) == (ga < 0.0) {
+                        a = mid;
+                        ga = gm;
+                    } else {
+                        b = mid;
+                    }
+                }
+                let tm = f32::midpoint(a, b);
+                if sh.crossing_inside(origin + dir * tm, self.rule) && tm < thit {
+                    thit = tm;
+                    khit = k;
+                }
+            }
+            if thit.is_finite() {
+                return MarchResult::Hit(self.hit_on(origin + dir * thit, thit, khit));
+            }
+            if t >= f64::from(tmax) {
+                return MarchResult::Miss;
+            }
+            tprev = t;
+            gprev = gcur;
+            i += 1;
+        }
     }
 
     /// [`Self::march`] with linear scans over all sheets (the reference the BVH-backed march equals).
