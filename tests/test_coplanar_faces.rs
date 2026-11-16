@@ -234,3 +234,80 @@ fn a_non_uniform_scale_is_counted_as_not_analysed() {
     let seam = r.pairs.first().expect("seam under a uniform scale");
     assert!((seam.overlap_area - 25.0).abs() < 1e-2, "area {}", seam.overlap_area);
 }
+
+#[test]
+fn an_empty_primitive_has_no_faces() {
+    // a cavity whose height is not positive is an empty shape (its field is positive everywhere): a cup
+    // "cut" by it is a solid block with no mouth, and the analysis must not report the empty cutter's caps
+    let outer = SdfNode::cylinder(10.0, 50.0);
+    for h in [0.0_f32, -5.0] {
+        let empty = SdfNode::cylinder(8.0, h).translate(0.0, 25.0, 0.0);
+        let r = coplanar_faces(&outer.clone().subtract(empty));
+        assert!(r.pairs.is_empty(), "height {h}: {:?}", r.pairs);
+        assert!(r.is_fully_analysed(), "height {h}: {r:?}");
+    }
+    let flat_box = SdfNode::box3d(2.0, 0.0, 2.0).translate(1.0, 0.0, 0.0);
+    let r = coplanar_faces(&SdfNode::box3d(2.0, 2.0, 2.0).translate(-1.0, 0.0, 0.0).union(flat_box));
+    assert!(r.pairs.is_empty(), "{:?}", r.pairs);
+}
+
+#[test]
+fn a_solid_resting_on_a_cut_floor_is_a_union_seam() {
+    // plate y in [-5, 5]; pocket y in [2, 6] (it reaches past the top, so no flush cut); the pocket's
+    // floor y = 2 is the cutter's bottom face, which faces up only once the cutter's faces are reversed;
+    // an insert y in [2, 4] standing on that floor touches it back to back
+    let plate = SdfNode::box3d(30.0, 10.0, 30.0);
+    let pocket = SdfNode::box3d(10.0, 4.0, 10.0).translate(0.0, 4.0, 0.0);
+    let insert = SdfNode::box3d(4.0, 2.0, 4.0).translate(0.0, 3.0, 0.0);
+    let r = coplanar_faces(&plate.subtract(pocket).union(insert));
+    let seam = r
+        .pairs
+        .iter()
+        .find(|p| p.kind == CoplanarKind::UnionSeam)
+        .unwrap_or_else(|| panic!("insert on the pocket floor not found: {r:?}"));
+    assert!((seam.point.y - 2.0).abs() < 1e-4, "{}", seam.point);
+    assert!((seam.overlap_area - 16.0).abs() < 1e-3, "area {}", seam.overlap_area);
+}
+
+#[test]
+fn rounded_boxes_touching_on_their_flat_faces_are_a_seam_of_the_flat_area() {
+    // rounded_box(h, r) has its flat faces at ±(h + r), flat over ±h in the other two axes
+    let a = SdfNode::rounded_box(1.0, 1.0, 1.0, 0.5).translate(-1.5, 0.0, 0.0);
+    let b = SdfNode::rounded_box(1.0, 1.0, 1.0, 0.5).translate(1.5, 0.0, 0.0);
+    let r = coplanar_faces(&a.union(b));
+    assert!(r.is_fully_analysed(), "{r:?}");
+    let seam = r.pairs.first().unwrap_or_else(|| panic!("{r:?}"));
+    assert_eq!(seam.kind, CoplanarKind::UnionSeam);
+    assert!(seam.point.x.abs() < 1e-4, "{}", seam.point);
+    assert!((seam.overlap_area - 4.0).abs() < 1e-3, "area {}", seam.overlap_area);
+}
+
+#[test]
+fn a_box_against_a_half_space_is_a_seam_and_a_flush_intersection_is_not() {
+    // box x in [-1, 1]; the half-space x > 1 (material where -x + 1 < 0) touches its +x face back to back
+    let block = SdfNode::box3d(2.0, 2.0, 2.0);
+    let beyond = SdfNode::plane(Vec3::new(-1.0, 0.0, 0.0), -1.0);
+    let r = coplanar_faces(&block.clone().union(beyond));
+    assert!(r.is_fully_analysed(), "{r:?}");
+    let seam = r.pairs.first().unwrap_or_else(|| panic!("{r:?}"));
+    assert_eq!(seam.kind, CoplanarKind::UnionSeam);
+    assert!((seam.overlap_area - 4.0).abs() < 1e-3, "area {}", seam.overlap_area);
+    // the half-space x < 1 cut to the box: same plane, same normal, an ordinary flat face
+    let within = SdfNode::plane(Vec3::X, 1.0);
+    assert!(coplanar_faces(&block.intersection(within)).pairs.is_empty());
+}
+
+#[test]
+fn an_elongated_box_is_followed_and_other_elongated_children_are_counted() {
+    // box3d(2,2,2) elongated by 1 along x is a box of half extents (2, 1, 1): x in [-4, 0] after the move
+    let long = SdfNode::box3d(2.0, 2.0, 2.0).elongate(1.0, 0.0, 0.0).translate(-2.0, 0.0, 0.0);
+    let other = SdfNode::box3d(2.0, 2.0, 2.0).translate(1.0, 0.0, 0.0);
+    let r = coplanar_faces(&long.union(other));
+    assert!(r.is_fully_analysed(), "{r:?}");
+    let seam = r.pairs.first().unwrap_or_else(|| panic!("{r:?}"));
+    assert!(seam.point.x.abs() < 1e-4, "{}", seam.point);
+    assert!((seam.overlap_area - 4.0).abs() < 1e-3, "area {}", seam.overlap_area);
+    // an elongated sphere has no planar face to follow exactly through the stretch: counted
+    let r = coplanar_faces(&SdfNode::sphere(1.0).elongate(1.0, 0.0, 0.0));
+    assert_eq!(r.not_analysed_kinds.get("Elongate"), Some(&1), "{r:?}");
+}
