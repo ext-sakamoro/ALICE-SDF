@@ -40,7 +40,7 @@ fn two_pins_one_apart_hold_a_gap_below_two_on_every_offset() {
         let lo = Vec3::new(-3.0 + off, 0.5 + off, -2.0 + off);
         let p = prove_gaps(&s, 2.0, lo, Vec3::new(3.0, 5.0, 2.0), DEPTH).expect("proof");
         assert!(!p.witnesses.is_empty(), "off {off}: no gap proven ({p:?})");
-        for w in &p.witnesses {
+        for w in p.witnesses.iter().map(|w| w.at) {
             assert!(
                 w.x.abs() < 0.5 && w.z.abs() < 0.6,
                 "off {off}: witness {w} outside the gap"

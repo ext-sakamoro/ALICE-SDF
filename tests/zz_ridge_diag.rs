@@ -14,7 +14,8 @@ fn show(name: &str, s: &SdfNode, limit: f32, lo: Vec3, hi: Vec3) {
         p.undecided_at.len(),
         p.witnesses.len()
     );
-    for c in p.undecided_at.iter().take(6) {
+    for c in p.undecided_at.iter().map(|r| r.at).take(6) {
+        let c = &c;
         let h = Vec3::splat(0.006);
         let b = Vec3Interval::from_bounds(*c - h, *c + h);
         let v = eval_interval(s, b);
@@ -58,6 +59,39 @@ fn diag() {
         Vec3::new(-5.0, 0.2, -5.0),
         Vec3::new(5.0, 6.0, 5.0),
     );
+    let half = 30.0_f32.to_radians();
+    let depth = 5.0 * 0.5 / alice_det_math::tan(half);
+    let blk = SdfNode::box3d(30.0, 20.0, 10.0).translate(0.0, -10.0, 0.0);
+    let wall = |sg: f32| {
+        SdfNode::plane(
+            Vec3::new(
+                sg * alice_det_math::cos(half),
+                -alice_det_math::sin(half),
+                0.0,
+            ),
+            0.0,
+        )
+        .translate(0.0, -depth, 0.0)
+    };
+    let v = blk.subtract(wall(1.0).intersection(wall(-1.0)));
+    let (lo, hi) = (Vec3::new(-6.0, -6.0, -3.0), Vec3::new(6.0, 1.0, 3.0));
+    let g = alice_sdf::validity::measure_gaps(&v, lo, hi, 0.2).unwrap();
+    println!(
+        "DIAG V crevices {} first {:?}",
+        g.crevices.len(),
+        g.crevices
+            .iter()
+            .take(3)
+            .map(|c| (c.location, c.angle_deg, c.mouth))
+            .collect::<Vec<_>>()
+    );
+    let p = prove_gaps(&v, 0.8, lo, hi, 9).unwrap();
+    for r in p.undecided_at.iter().take(4) {
+        let w = r
+            .walls
+            .map(|(a, b)| (a, b, alice_det_math::acos(-a.dot(b)).to_degrees()));
+        println!("DIAG V undecided at {} walls {:?}", r.at, w);
+    }
     let blockonly = SdfNode::box3d(2.0, 2.0, 2.0);
     show(
         "lone block",
