@@ -146,6 +146,7 @@ pub mod gpu_context;
 #[cfg(feature = "gpu")]
 pub mod gpu_loop_bound;
 pub mod interval;
+pub mod interval_gradient;
 pub mod io;
 pub mod llm_schema;
 pub mod material;

@@ -54,6 +54,7 @@ this file or listed twice, or when a linked file does not exist.
 | `gpu_context` | The one `wgpu::Instance`; devices are created and destroyed under one lock | `gpu` | |
 | `gpu_loop_bound` | Loop bounds of a shader module, checked on the naga IR before it is compiled | `gpu` | |
 | `interval` | interval arithmetic over a box, with bounds rounded outward |  |  |
+| `interval_gradient` | bounds on the direction of the field over a box, for the covered node kinds |  |  |
 | `bound` | lower bounds of a subtree's value (`Bound::lower`), for the CPU and the shaders; a union skips an operand whose bound is above the nearest value found (`eval::eval_union_bounded`, `WgslShader::transpile_with_union_bounds`) |  | [`union_bounds`](../examples/union_bounds.rs) |
 | `autodiff` | forward-mode automatic differentiation with dual numbers; Hessian and mean curvature |  |  |
 | `tight_aabb` | the smallest box that contains the surface, from interval bounds propagated through the tree |  |  |
