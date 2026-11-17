@@ -35,8 +35,10 @@
 //!   - smooth union lies at or below the minimum, so both children are at least the node's value (band
 //!     `[lo, ∞)`); smooth intersection at or above the maximum (`(−∞, hi]`); smooth subtraction
 //!     `smax(a, −b)` gives `a ≤ hi` and `b ≥ −hi`.
-//! - Every other node kind returns [`GradientInterval::unknown`]: `[-1, 1]` on every axis and
-//!   `known == false`. A caller must not read a narrow direction from it.
+//! - Every other node kind returns [`GradientInterval::unknown`]: `known == false`, components set to
+//!   `[-1, 1]` as a placeholder only. Those kinds (twist, bend, displacement, non-uniform scale, …) are
+//!   not 1-Lipschitz, so their true gradient can leave `[-1, 1]`: an unknown result encloses nothing, not
+//!   even a magnitude. A caller must not read a direction or a bound from it.
 //! - The field's value at each node comes from `eval_interval` (the same enclosure the rest of the crate
 //!   uses), so the choice between two children is as sound as that enclosure.
 //! - Verified by `tests/test_interval_gradient.rs`: at random points of random boxes, for every covered
@@ -56,15 +58,18 @@ pub struct GradientInterval {
     pub y: Interval,
     /// `∂d/∂z` over the box.
     pub z: Interval,
-    /// `false` when the node kind (or one below it) has no gradient enclosure here: the components are
-    /// then `[-1, 1]` and say nothing about the direction.
+    /// `false` when the node kind (or one below it) has no gradient enclosure here. The components are
+    /// then a placeholder `[-1, 1]` and enclose nothing: such a field need not be 1-Lipschitz, so the
+    /// true gradient may lie outside it. Never use them as a direction or as a magnitude bound.
     pub known: bool,
 }
 
 impl GradientInterval {
-    /// Nothing is known about the direction: `[-1, 1]` on every axis.
+    /// Nothing is known: `known == false`, components a placeholder `[-1, 1]` that encloses nothing (the
+    /// field may not be 1-Lipschitz, so its gradient can leave `[-1, 1]`). Not a wide enclosure.
     #[must_use]
     pub const fn unknown() -> Self {
+        // ALLOW-RAW-INTERVAL: [-1, 1] is the exact range of a unit-vector component
         let all = Interval { lo: -1.0, hi: 1.0 };
         Self {
             x: all,
@@ -111,6 +116,7 @@ impl GradientInterval {
 
     /// Each component clamped to `[-1, 1]` (a distance field is 1-Lipschitz).
     fn unit_bounded(self) -> Self {
+        // ALLOW-RAW-INTERVAL: [-1, 1] is the exact range of a unit-vector component
         let all = Interval { lo: -1.0, hi: 1.0 };
         let clip = |i: Interval| {
             let c = i.intersect(all);
@@ -131,6 +137,7 @@ impl GradientInterval {
 
 /// `1 / i` for an interval strictly above zero, rounded outward; `None` otherwise.
 fn recip(i: Interval) -> Option<Interval> {
+    // ALLOW-RAW-INTERVAL: both ends are rounded outward with next_down / next_up
     (i.lo > 0.0 && i.hi.is_finite()).then(|| Interval {
         lo: next_down(1.0 / i.hi),
         hi: next_up(1.0 / i.lo),
@@ -144,6 +151,7 @@ fn sign(i: Interval) -> Interval {
     } else if i.hi < 0.0 {
         Interval::point(-1.0)
     } else {
+        // ALLOW-RAW-INTERVAL: the exact range of a sign
         Interval { lo: -1.0, hi: 1.0 }
     }
 }
@@ -210,6 +218,7 @@ fn box_like(q: &[Interval], u: &[[Interval; 3]], band: Interval) -> Option<Gradi
                 for &k in &positive {
                     let uk = &u[k];
                     for a in 0..3 {
+                        // ALLOW-RAW-INTERVAL: selection only, both ends are existing endpoints or 0
                         c[a] = c[a]
                             + Interval {
                                 lo: law_min_f32(uk[a].lo, 0.0),
@@ -228,11 +237,10 @@ fn box_like(q: &[Interval], u: &[[Interval; 3]], band: Interval) -> Option<Gradi
     }
     if q.iter().all(|q| q.lo <= 0.0) {
         let floor = q.iter().map(|q| q.lo).fold(f32::NEG_INFINITY, law_max_f32);
-        let top = q
-            .iter()
-            .map(|q| q.hi)
-            .fold(f32::NEG_INFINITY, law_max_f32)
-            .min(0.0);
+        let top = law_min_f32(
+            q.iter().map(|q| q.hi).fold(f32::NEG_INFINITY, law_max_f32),
+            0.0,
+        );
         // the inside value is max_k q_k, within [floor, min(top, 0)]
         if band.lo <= top && band.hi >= floor {
             for (qk, uk) in q.iter().zip(u) {
@@ -257,8 +265,9 @@ pub fn eval_interval_gradient(node: &SdfNode, bounds: Vec3Interval) -> GradientI
         .unwrap_or_else(GradientInterval::unknown)
 }
 
-/// Encloses the gradient of `node`'s distance field at the points of `bounds` whose field value lies in
-/// `band` (a proof about the air passes `[0, ∞)`, so the direction inside the material does not count).
+/// Encloses the gradient of `node`'s field at the points of `bounds` whose value lies in `band`.
+///
+/// A proof about the air passes `[0, ∞)`, so the direction inside the material does not count.
 /// `None`: no point of the box can have a value in the band.
 #[must_use]
 pub fn eval_interval_gradient_in_band(
@@ -294,10 +303,7 @@ pub fn eval_interval_gradient_in_band(
         } => box_gradient(
             *half_extents,
             bounds,
-            Interval {
-                lo: band.lo + *round_radius,
-                hi: band.hi + *round_radius,
-            },
+            Interval::outward(band.lo + *round_radius, band.hi + *round_radius),
         ),
         SdfNode::Cylinder {
             radius,
@@ -310,9 +316,11 @@ pub fn eval_interval_gradient_in_band(
                     zero,
                     radial_component(bounds.z, bounds.x, inv),
                 ],
+                // ALLOW-RAW-INTERVAL: the exact range of a unit-vector component (axis inside the box)
                 None => [
                     Interval { lo: -1.0, hi: 1.0 },
                     zero,
+                    // ALLOW-RAW-INTERVAL: the exact range of a unit-vector component
                     Interval { lo: -1.0, hi: 1.0 },
                 ],
             };
@@ -355,10 +363,8 @@ pub fn eval_interval_gradient_in_band(
                 z: bounds.z * inv,
             };
             // d = s · child(p / s): the child's value is the node's divided by s
-            let child_band = Interval {
-                lo: band.lo * inv,
-                hi: band.hi * inv,
-            };
+            // `inv` and the products are each rounded once: widening by one ulp covers both
+            let child_band = Interval::outward(band.lo * inv, band.hi * inv);
             eval_interval_gradient_in_band(child, scaled, child_band)
         }
         SdfNode::Union { a, b } => pick(a, b, bounds, band, false, false),
@@ -367,6 +373,7 @@ pub fn eval_interval_gradient_in_band(
         // a smooth minimum lies at or below the minimum, so both children are at least the node's
         // value; a smooth maximum lies at or above the maximum, so both are at most it
         SdfNode::SmoothUnion { a, b, .. } => {
+            // ALLOW-RAW-INTERVAL: selection only, both ends are existing endpoints
             let child = Interval {
                 lo: band.lo,
                 hi: any.hi,
@@ -377,6 +384,7 @@ pub fn eval_interval_gradient_in_band(
             )
         }
         SdfNode::SmoothIntersection { a, b, .. } => {
+            // ALLOW-RAW-INTERVAL: selection only, both ends are existing endpoints
             let child = Interval {
                 lo: any.lo,
                 hi: band.hi,
@@ -390,6 +398,7 @@ pub fn eval_interval_gradient_in_band(
             eval_interval_gradient_in_band(
                 a,
                 bounds,
+                // ALLOW-RAW-INTERVAL: selection only, both ends are existing endpoints
                 Interval {
                     lo: any.lo,
                     hi: band.hi,
@@ -398,6 +407,7 @@ pub fn eval_interval_gradient_in_band(
             eval_interval_gradient_in_band(
                 b,
                 bounds,
+                // ALLOW-RAW-INTERVAL: an exact negation and an existing endpoint
                 Interval {
                     lo: -band.hi,
                     hi: any.hi,
