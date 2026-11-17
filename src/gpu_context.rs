@@ -237,7 +237,7 @@ pub mod slot_guard {
         }
     }
 
-    /// [`decide`] on the process's variables, printing the adapter when admitted; always `Ok` without the feature
+    /// [`decide`] on the process's variables; always `Ok` without the feature
     ///
     /// # Errors
     ///
@@ -256,8 +256,8 @@ pub mod slot_guard {
         {
             let fallback = std::env::var(FALLBACK_VAR).ok();
             let slot = std::env::var(SLOT_VAR).ok();
-            let how = decide(name, software, fallback.as_deref(), slot.as_deref())?;
-            eprintln!("[alice-sdf gpu] adapter: {name} ({how})");
+            // the decision only: the library prints nothing (a test that wants the adapter prints it itself)
+            decide(name, software, fallback.as_deref(), slot.as_deref())?;
         }
         Ok(())
     }

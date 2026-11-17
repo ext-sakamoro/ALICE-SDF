@@ -195,6 +195,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `npm/index.d.ts`: package に含まれず (`package.json` の `files` は `dist/` と README、型は wasm-pack が生成する `dist/alice_sdf.d.ts`)、宣言した 23 関数のうち 17 はどこにも存在しなかった
 
 ### Fixed
+- `gpu_context::slot_guard::admit`: 受け入れた adapter を `eprintln!` で出さない (library の本番 code の出力として ALICE-Law の structural lint が新しい print の箇所に数え、公開 repository 全体の検査が red だった) 判定だけを返す adapter を出したい試験は自分で出す (`tests/test_gpu_guard_on_device.rs` は既に出している)
 - `.github/semver-gate.toml`: 試験専用の feature `gpu-slot-guard` を `exclude-features` に理由付きで載せる (どの consumer set にも無く、`scripts/semver_gate.py` の coverage 検査が実行前に拒否していた) ALICE-Law `release-train.toml` の `[crate.alice-sdf]` と同じ内容を持つ
 - `gpu_context::slot_guard::fallback_requested` / `admit`: `gpu-slot-guard` が無い build で `clippy::missing_const_for_fn` を許す (`scripts/preflight.sh` の x86_64 の clippy の行 (feature は glsl / hlsl / gpu / jit / ffi) が main で red だった) feature があると本体が環境変数を読むので `const` にできず、公開の signature を試験専用の feature で変えない
 - `HexPrism` の `hex_radius` の説明を「軸から平らな辺までの距離 (apothem)」に直した (場・compile・JIT・各 shader・外接箱はすべて apothem として扱っており、doc の circumradius だけが違っていた) CPU の全 backend で閉形式と比べる試験 `tests/test_hex_prism_apothem.rs` を足し、CI と preflight で `jit,glsl,hlsl,gpu` を付けて走らせる (3 件未満で fail) shader の helper は文字列で確かめるだけで実行しない
