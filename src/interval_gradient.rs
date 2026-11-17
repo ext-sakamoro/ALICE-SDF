@@ -11,7 +11,7 @@
 //! - Leaves, exact enclosures of the closed-form gradient:
 //!   - sphere `|p| − r`: `p / |p|`, the box's coordinates times the reciprocal of its norm interval;
 //!   - plane `n·p − h`: `n`;
-//!   - box and cylinder, the "box-like" form `|max(q, 0)| + min(max_k q_k, 0)` over component
+//!   - box, rounded box (the box field minus a constant) and cylinder, the "box-like" form `|max(q, 0)| + min(max_k q_k, 0)` over component
 //!     distances `q_k` with unit directions `u_k`: outside, the normalised non-negative combination
 //!     `Σ max(q_k, 0) u_k / |max(q, 0)|`; inside, `u_k` of a component that can be the largest; a box
 //!     that can lie on both sides takes the hull of both.
@@ -240,7 +240,8 @@ pub fn eval_interval_gradient(node: &SdfNode, bounds: Vec3Interval) -> GradientI
             },
         },
         SdfNode::Plane { normal, .. } => GradientInterval::point(*normal),
-        SdfNode::Box3d { half_extents } => {
+        // a rounded box is the box field minus a constant: the same gradient
+        SdfNode::Box3d { half_extents } | SdfNode::RoundedBox { half_extents, .. } => {
             let h = *half_extents;
             let q = [
                 bounds.x.abs() - Interval::point(h.x),

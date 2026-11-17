@@ -46,6 +46,7 @@ fn scenes() -> Vec<(&'static str, SdfNode)> {
         ("sphere", SdfNode::sphere(1.0)),
         ("plane", SdfNode::plane(n, 0.3)),
         ("box", SdfNode::box3d(2.0, 1.0, 4.0)),
+        ("rounded box", SdfNode::rounded_box(1.0, 0.5, 2.0, 0.2)),
         ("cylinder", SdfNode::cylinder(0.5, 4.0)),
         ("translate", SdfNode::sphere(0.8).translate(0.5, -0.3, 0.2)),
         ("rotate", SdfNode::box3d(2.0, 1.0, 3.0).rotate(rot)),
@@ -163,5 +164,107 @@ fn a_box_away_from_any_ridge_gets_a_narrow_direction() {
     assert!(
         r.x.lo < -0.9 && r.x.hi > 0.9,
         "the ridge between the pins holds both: {r:?}"
+    );
+}
+
+/// The closed-form gradient of each primitive at a point away from its edges and axes
+fn closed_form(kind: &str, p: Vec3) -> Option<Vec3> {
+    match kind {
+        "sphere" => Some(p / p.length()),
+        "plane" => Some(Vec3::new(1.0, 2.0, 3.0).normalize()),
+        "box" => {
+            let h = Vec3::new(1.0, 0.5, 2.0);
+            let q = p.abs() - h;
+            let s = Vec3::new(p.x.signum(), p.y.signum(), p.z.signum());
+            if q.max_element() > 0.0 {
+                let m = q.max(Vec3::ZERO);
+                Some(m * s / m.length())
+            } else {
+                let mut g = Vec3::ZERO;
+                if q.x >= q.y && q.x >= q.z {
+                    g.x = s.x;
+                } else if q.y >= q.z {
+                    g.y = s.y;
+                } else {
+                    g.z = s.z;
+                }
+                Some(g)
+            }
+        }
+        "cylinder" => {
+            let (r, hh) = (0.5_f32, 2.0_f32);
+            let rho = (p.x * p.x + p.z * p.z).sqrt();
+            let radial = Vec3::new(p.x / rho, 0.0, p.z / rho);
+            let axial = Vec3::new(0.0, p.y.signum(), 0.0);
+            let (qr, qy) = (rho - r, p.y.abs() - hh);
+            if qr > 0.0 || qy > 0.0 {
+                let (a, b) = (qr.max(0.0), qy.max(0.0));
+                let n = (a * a + b * b).sqrt();
+                Some((radial * a + axial * b) / n)
+            } else if qr >= qy {
+                Some(radial)
+            } else {
+                Some(axial)
+            }
+        }
+        _ => None,
+    }
+}
+
+#[test]
+fn the_primitives_hold_their_closed_form_gradient() {
+    // oracle: the closed forms above, written from the primitives' definitions (not from the code)
+    let n = Vec3::new(1.0, 2.0, 3.0).normalize();
+    let prims = [
+        ("sphere", SdfNode::sphere(1.0)),
+        ("plane", SdfNode::plane(n, 0.3)),
+        ("box", SdfNode::box3d(2.0, 1.0, 4.0)),
+        ("cylinder", SdfNode::cylinder(0.5, 4.0)),
+    ];
+    let mut rng = Lcg(0x0c10_5edf_0123_4567);
+    let mut compared = 0_usize;
+    for (kind, node) in &prims {
+        for _ in 0..2000 {
+            let p = Vec3::new(
+                rng.range(-3.0, 3.0),
+                rng.range(-3.0, 3.0),
+                rng.range(-3.0, 3.0),
+            );
+            let half = [0.0_f32, 1e-3, 0.05][(rng.next() * 3.0) as usize % 3];
+            let g = eval_interval_gradient(
+                node,
+                Vec3Interval::from_bounds(p - Vec3::splat(half), p + Vec3::splat(half)),
+            );
+            let want = closed_form(kind, p).expect("kind");
+            if !want.is_finite() {
+                continue;
+            }
+            let tol = 1e-5;
+            assert!(
+                want.x >= g.x.lo - tol
+                    && want.x <= g.x.hi + tol
+                    && want.y >= g.y.lo - tol
+                    && want.y <= g.y.hi + tol
+                    && want.z >= g.z.lo - tol
+                    && want.z <= g.z.hi + tol,
+                "{kind}: closed form {want} at {p} outside {g:?} (half {half})"
+            );
+            compared += 1;
+        }
+    }
+    assert!(compared > 7_000, "only {compared} compared");
+}
+
+#[test]
+fn a_point_box_away_from_edges_is_tight() {
+    // a box of zero width off every edge: the enclosure is the closed form within a few ulp
+    let g = eval_interval_gradient(
+        &SdfNode::sphere(1.0),
+        Vec3Interval::from_bounds(Vec3::new(0.6, 0.8, 0.0), Vec3::new(0.6, 0.8, 0.0)),
+    );
+    assert!(g.x.width() < 1e-5 && g.y.width() < 1e-5, "{g:?}");
+    assert!(
+        (g.x.lo - 0.6).abs() < 1e-5 && (g.y.lo - 0.8).abs() < 1e-5,
+        "{g:?}"
     );
 }
