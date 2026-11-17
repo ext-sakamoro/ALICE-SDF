@@ -56,6 +56,15 @@ impl std::ops::Deref for Checked {
     }
 }
 
+/// A gap the air-side proof found (ruling: a proven gap below the limit fails): the width it reports is
+/// the distance between two wall points across the gap, so it is at least the true gap and below the limit
+fn assert_proven_gap(width: f32, truth: f32, limit: f32, what: &str) {
+    assert!(
+        width + GAP_TOLERANCE >= truth && width < limit,
+        "{what}: proven gap width {width} vs the closed form {truth} against {limit}"
+    );
+}
+
 fn measure_gaps(node: &SdfNode, lo: Vec3, hi: Vec3, cell: f32) -> Result<Checked, GapError> {
     alice_sdf::validity::measure_gaps(node, lo, hi, cell).map(|report| Checked {
         node: node.clone(),
@@ -123,26 +132,24 @@ fn a_slot_below_the_limit_fails_with_its_width_and_passes_a_lower_limit() {
     }
     // 0.9 is above the any-shape resolution 0.866 and below the slot: a pass with its sizes
     assert_certificate(r.verdict(0.9), cell, "slot 1.0 against 0.9");
-    // exactly at the limit is not failed by the measurement's own error
-    assert_certificate(r.verdict(1.0), cell, "slot 1.0 against 1.0");
+    // exactly at the limit is not decided by the proof (the ridge of a slot as wide as the limit is
+    // neither narrower nor wider), so it is Undetermined, never a pass or a failure
+    match r.verdict(1.0) {
+        GapVerdict::Undetermined(GapUndetermined::ProofIncomplete { .. }) => {}
+        v => panic!("slot 1.0 against 1.0 (width equal to the limit): {v:?}"),
+    }
 }
 
 #[test]
-fn nothing_found_passes_only_when_the_grid_resolves_the_limit() {
+fn open_air_passes_from_the_proof_whatever_the_grid_cell() {
+    // the pass comes from the air-side proof, which looks at the whole bound: the grid's any-shape
+    // resolution (0.866 at cell 0.25, above the limit 0.5) is no longer a condition of the pass
     let block = SdfNode::box3d(10.0, 6.0, 10.0);
     let (lo, hi) = (Vec3::splat(-8.0), Vec3::splat(8.0));
     let r = measure_gaps(&block, lo, hi, 0.1).expect("samples");
     assert_certificate(r.verdict(0.5), 0.1, "open air at cell 0.1 against 0.5");
-    // at cell 0.25 the any-shape resolution 0.866 is above 0.5: a 0.5 gap could hide between the points
     let r = measure_gaps(&block, lo, hi, 0.25).expect("samples");
-    match r.verdict(0.5) {
-        GapVerdict::Undetermined(GapUndetermined::ResolutionAboveLimit {
-            any_shape_resolution,
-        }) => {
-            assert!((any_shape_resolution - any_shape(0.25)).abs() < 1e-5);
-        }
-        v => panic!("open air at a limit below the any-shape resolution: {v:?}"),
-    }
+    assert_certificate(r.verdict(0.5), 0.25, "open air at cell 0.25 against 0.5");
 }
 
 #[test]
@@ -273,6 +280,9 @@ fn fine_and_coarse(
                 (width - truth).abs() <= GAP_TOLERANCE,
                 "{name} off {off} cell {fine}: width {width} vs {truth}"
             ),
+            GapVerdict::Fail(GapFailure::ProvenGap { width, .. }) => {
+                assert_proven_gap(width, truth, limit, name);
+            }
             v => panic!("{name} off {off} cell {fine}: {v:?} ({r:?})"),
         }
         let r = measure_gaps(s, lo, hi, coarse).expect("samples");
@@ -281,6 +291,9 @@ fn fine_and_coarse(
                 (width - truth).abs() <= GAP_TOLERANCE,
                 "{name} off {off} cell {coarse}: width {width} vs {truth}"
             ),
+            GapVerdict::Fail(GapFailure::ProvenGap { width, .. }) => {
+                assert_proven_gap(width, truth, limit, name);
+            }
             GapVerdict::Undetermined(_) => {}
             v @ GapVerdict::Pass(_) => assert_certificate(v, coarse, name),
             v => panic!("{name} off {off} cell {coarse}: {v:?}"),
@@ -357,6 +370,9 @@ fn a_gap_between_small_parts_just_above_the_any_shape_bound_fails_at_the_coarse_
                 (width - 1.8).abs() <= GAP_TOLERANCE,
                 "off {off}: width {width}"
             ),
+            GapVerdict::Fail(GapFailure::ProvenGap { width, .. }) => {
+                assert_proven_gap(width, 1.8, 2.0, "spheres 1.8 apart");
+            }
             v => panic!("off {off}: 1.8 between spheres against 2.0 at cell 0.5: {v:?} ({r:?})"),
         }
     }
@@ -416,6 +432,9 @@ fn pins_smaller_than_a_cell_are_a_width_or_undetermined_never_nothing() {
                 (width - 1.0).abs() <= GAP_TOLERANCE + 0.5,
                 "off {off}: width {width} vs the closed form 1.0"
             ),
+            GapVerdict::Fail(GapFailure::ProvenGap { width, .. }) => {
+                assert_proven_gap(width, 1.0, 2.0, "pins at cell 0.5");
+            }
             GapVerdict::Undetermined(_) => {}
             v => panic!("off {off}: pins 1.0 apart at cell 0.5 against 2.0 read as {v:?} ({r:?})"),
         }

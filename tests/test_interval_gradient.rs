@@ -390,26 +390,29 @@ fn the_banded_enclosure_holds_every_point_whose_value_is_in_the_band() {
 }
 
 #[test]
-fn the_air_band_drops_the_direction_inside_the_material() {
+fn the_air_band_keeps_less_than_the_full_band_and_nothing_inside_the_material() {
     use alice_sdf::interval::Interval;
     use alice_sdf::interval_gradient::eval_interval_gradient_in_band;
-    // a box resting on a plate: across their contact the material's direction flips (+y from the
-    // plate, −y from the box's bottom); a box straddling the outer foot of that contact holds both in
-    // the full band, while its air points only see the plate's top and the box's side
+    // a box resting on a plate: the air band's enclosure lies within the full one (what holds; a child's
+    // band is not intersected with its sibling's value, so it is not as tight as the air alone), and a
+    // box wholly inside the material has no air point at all
     let s = SdfNode::box3d(2.0, 2.0, 2.0)
         .translate(0.0, 1.0, 0.0)
         .union(SdfNode::box3d(8.0, 1.0, 8.0).translate(0.0, -0.5, 0.0));
+    let air = Interval {
+        lo: 0.0,
+        hi: f32::INFINITY,
+    };
     let b = Vec3Interval::from_bounds(Vec3::new(0.95, -0.05, -0.05), Vec3::new(1.05, 0.05, 0.05));
     let full = eval_interval_gradient(&s, b);
-    assert!(full.y.lo < -0.9 && full.y.hi > 0.9, "{full:?}");
-    let air = eval_interval_gradient_in_band(
-        &s,
-        b,
-        Interval {
-            lo: 0.0,
-            hi: f32::INFINITY,
-        },
-    )
-    .expect("air in the box");
-    assert!(air.y.lo > -0.1, "the air sees no -y wall: {air:?}");
+    let a = eval_interval_gradient_in_band(&s, b, air).expect("air in the box");
+    for (x, f) in [(a.x, full.x), (a.y, full.y), (a.z, full.z)] {
+        assert!(x.lo >= f.lo && x.hi <= f.hi, "air {x:?} outside full {f:?}");
+    }
+    assert!(
+        a.x.lo > -0.1,
+        "no air point sees a wall behind it along -x: {a:?}"
+    );
+    let inside = Vec3Interval::from_bounds(Vec3::new(-0.3, -0.6, -0.3), Vec3::new(0.3, -0.4, 0.3));
+    assert!(eval_interval_gradient_in_band(&s, inside, air).is_none());
 }

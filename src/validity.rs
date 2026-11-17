@@ -365,6 +365,18 @@ pub const FACING_DOT: f32 = -0.5;
 /// are merged); further ones set [`GapProof::truncated`].
 pub const MAX_GAP_WITNESSES: usize = 256;
 
+/// One region the proof found narrow (a witness) or could not decide (an undecided box).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GapRegion {
+    /// The centre of the box.
+    pub at: Vec3,
+    /// The most opposed pair of wall directions seen from the box's air points (centre and corners),
+    /// `None` when fewer than two of them are air.
+    pub walls: Option<(Vec3, Vec3)>,
+    /// For a witness, the distance between the two nearest wall points (below the limit).
+    pub width: Option<f32>,
+}
+
 /// The result of [`prove_gaps`] for one limit.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GapProof {
@@ -372,10 +384,10 @@ pub struct GapProof {
     pub limit: f32,
     /// One point per proven narrow region: two air points of the box around it see walls facing each
     /// other (direction dot below [`FACING_DOT`]) that are less than `L` apart.
-    pub witnesses: Vec<Vec3>,
-    /// One point per region of boxes neither cleared nor proven at `max_depth` (or whose field has no
-    /// gradient enclosure).
-    pub undecided_at: Vec<Vec3>,
+    pub witnesses: Vec<GapRegion>,
+    /// One per region of boxes neither cleared nor proven at `max_depth` (or whose field has no gradient
+    /// enclosure); regions within `L` of a witness are dropped (already proven narrow).
+    pub undecided_at: Vec<GapRegion>,
     /// More regions were found than [`MAX_GAP_WITNESSES`].
     pub truncated: bool,
     /// Boxes counted undecided (each listed region may hold many).
@@ -397,12 +409,12 @@ fn min_dot(g: &GradientInterval) -> f32 {
     lo_sq(g.x) + lo_sq(g.y) + lo_sq(g.z)
 }
 
-fn push_region(list: &mut Vec<Vec3>, at: Vec3, merge: f32, truncated: &mut bool) {
-    if list.iter().any(|w| w.distance(at) <= merge) {
+fn push_region(list: &mut Vec<GapRegion>, r: GapRegion, merge: f32, truncated: &mut bool) {
+    if list.iter().any(|w| w.at.distance(r.at) <= merge) {
         return;
     }
     if list.len() < MAX_GAP_WITNESSES {
-        list.push(at);
+        list.push(r);
     } else {
         *truncated = true;
     }
@@ -422,6 +434,11 @@ fn push_region(list: &mut Vec<Vec3>, at: Vec3, merge: f32, truncated: &mut bool)
 /// - a witness when two of its points (centre and corners) are air and see walls facing each other less
 ///   than `L` apart (see `facing_pair`);
 /// - split otherwise, or undecided at `max_depth` (also where the enclosure is unknown for a node kind).
+///
+/// Width equal to the limit: where walls are exactly `L` apart along a surface (a slot as wide as the
+/// limit), every box on the ridge holds pairs on both sides of `L` within its own rounding, so it is
+/// neither cleared nor a witness and stays undecided: the proof cannot decide equality, and the verdict
+/// is `Undetermined` there.
 ///
 /// Cost: boxes are refined only next to ridges; between walls `w` apart the ridge clears once boxes are
 /// about `(w − L)/2` across, so widths just above the limit cost the most.
@@ -477,13 +494,28 @@ pub fn prove_gaps(
             Some(_) => {}
         }
         let c = (lo + hi) * 0.5;
-        if facing_pair(node, lo, hi, limit) {
-            push_region(&mut proof.witnesses, c, limit, &mut proof.truncated);
+        let seen = air_walls(node, lo, hi);
+        if let Some((walls, width)) = facing_pair(node, &seen, limit) {
+            let r = GapRegion {
+                at: c,
+                walls: Some(walls),
+                width: Some(width),
+            };
+            push_region(&mut proof.witnesses, r, limit, &mut proof.truncated);
             continue;
         }
         if depth >= max_depth {
             proof.undecided += 1;
-            push_region(&mut proof.undecided_at, c, limit, &mut proof.truncated);
+            // the walls of an undecided box are read around it, grown by twice its field value, so a box
+            // next to a groove's bisector sees both walls (its own corners may all see the same one)
+            let reach = Vec3::splat(2.0 * eval(node, c).law_max(0.0));
+            let around = air_walls(node, lo - reach, hi + reach);
+            let r = GapRegion {
+                at: c,
+                walls: most_opposed(&around),
+                width: None,
+            };
+            push_region(&mut proof.undecided_at, r, limit, &mut proof.truncated);
             continue;
         }
         for (a, b) in octants(lo, hi) {
@@ -495,15 +527,12 @@ pub fn prove_gaps(
     let witnesses = proof.witnesses.clone();
     proof
         .undecided_at
-        .retain(|u| !witnesses.iter().any(|w| w.distance(*u) <= limit));
+        .retain(|u| !witnesses.iter().any(|w| w.at.distance(u.at) <= limit));
     Ok(proof)
 }
 
-/// Whether two of the box's points (centre and corners) are air and see walls that face each other less
-/// than `limit` apart: wall directions with dot below [`FACING_DOT`], the nearest wall points
-/// `wᵢ = pᵢ − dᵢ nᵢ` each in front of the other's wall (`(w₂ − w₁)·n₁ > 0`, `(w₁ − w₂)·n₂ > 0`, so the
-/// two sides of a thin fin, whose walls face away, are not a gap), and `|w₁ − w₂| < limit`.
-fn facing_pair(node: &SdfNode, lo: Vec3, hi: Vec3, limit: f32) -> bool {
+/// The box's air points (centre and corners) with their field value and wall direction.
+fn air_walls(node: &SdfNode, lo: Vec3, hi: Vec3) -> Vec<(Vec3, f32, Vec3)> {
     let mut pts: Vec<(Vec3, f32, Vec3)> = Vec::with_capacity(9);
     let mut add = |p: Vec3| {
         let d = eval(node, p);
@@ -522,16 +551,78 @@ fn facing_pair(node: &SdfNode, lo: Vec3, hi: Vec3, limit: f32) -> bool {
             if i & 4 == 0 { lo.z } else { hi.z },
         ));
     }
-    pts.iter().enumerate().any(|(i, a)| {
-        pts[i + 1..].iter().any(|b| {
-            let (w1, w2) = (a.0 - a.2 * a.1, b.0 - b.2 * b.1);
-            a.2.dot(b.2) < FACING_DOT
+    pts
+}
+
+/// Steps of the march from an air point to its wall in [`wall_point`].
+const WALL_MARCH_STEPS: usize = 64;
+
+/// The wall point reached from the air point `p` by marching against its wall direction `n`, stepping by
+/// the field value (which never overshoots: the field is at most the distance), until the field is within
+/// `GAP_TOLERANCE / 4` of zero. `None` when it does not get there. The point is on the surface whether or
+/// not the field is distance-exact (a subtraction underestimates the distance, so `p − d n` stops short).
+fn wall_point(node: &SdfNode, p: Vec3, n: Vec3) -> Option<Vec3> {
+    let mut q = p;
+    for _ in 0..WALL_MARCH_STEPS {
+        let d = eval(node, q);
+        if d <= 0.25 * GAP_TOLERANCE {
+            return Some(q);
+        }
+        q -= n * d;
+    }
+    None
+}
+
+/// A pair of air points that see walls facing each other less than `limit` apart: wall directions with
+/// dot below [`FACING_DOT`], the wall points `wᵢ` (reached by [`wall_point`], on the surface) each in
+/// front of the other's wall (`(w₂ − w₁)·n₁ > 0`, `(w₁ − w₂)·n₂ > 0`, so the two sides of a thin fin,
+/// whose walls face away, are not a gap), and `|w₁ − w₂| < limit`: two surface points across the air
+/// nearer than the limit. Returns the two directions and `|w₁ − w₂|`.
+fn facing_pair(
+    node: &SdfNode,
+    pts: &[(Vec3, f32, Vec3)],
+    limit: f32,
+) -> Option<((Vec3, Vec3), f32)> {
+    for (i, a) in pts.iter().enumerate() {
+        for b in &pts[i + 1..] {
+            if a.2.dot(b.2) >= FACING_DOT {
+                continue;
+            }
+            let (Some(w1), Some(w2)) = (wall_point(node, a.0, a.2), wall_point(node, b.0, b.2))
+            else {
+                continue;
+            };
+            let width = w1.distance(w2);
+            if a.2.dot(b.2) < FACING_DOT
                 && (w2 - w1).dot(a.2) > 0.0
                 && (w1 - w2).dot(b.2) > 0.0
-                && w1.distance(w2) < limit
-        })
-    })
+                && width < limit
+            {
+                return Some(((a.2, b.2), width));
+            }
+        }
+    }
+    None
 }
+
+/// The pair of wall directions with the lowest dot among the air points.
+fn most_opposed(pts: &[(Vec3, f32, Vec3)]) -> Option<(Vec3, Vec3)> {
+    let mut best: Option<((Vec3, Vec3), f32)> = None;
+    for (i, a) in pts.iter().enumerate() {
+        for b in &pts[i + 1..] {
+            let d = a.2.dot(b.2);
+            if best.is_none_or(|(_, bd)| d < bd) {
+                best = Some(((a.2, b.2), d));
+            }
+        }
+    }
+    best.map(|(w, _)| w)
+}
+
+/// Largest difference, in degrees, between the air angle of a region's two walls and a crevice's
+/// `angle_deg` for the region to be read as part of that groove (the grid reads the angle at one sample,
+/// the proof at a box near the joint).
+pub const CREVICE_ANGLE_MATCH_DEG: f32 = 5.0;
 
 /// Validates a shape and its tessellation against `req`.
 #[must_use]
@@ -642,9 +733,10 @@ pub struct Crevice {
 /// Most crevices listed in a [`GapReport`] (further ones are still counted in `crevice_samples`).
 pub const MAX_CREVICES: usize = 1024;
 
-/// What a [`GapVerdict::Pass`] holds at: no gap in `[any_shape_resolution, limit)` was found, and
-/// nothing narrower than `any_shape_resolution` and no feature smaller than `min_certified_feature`
-/// is claimed (those need the interval proof that is not part of this module).
+/// What a [`GapVerdict::Pass`] holds at: the air-side proof ([`prove_gaps`]) ruled out walls facing each
+/// other nearer than the limit over the whole bound, and every groove it met was read by the grid with a
+/// mouth at or above the limit. The pass comes from the proof; the grid's cell and any-shape resolution
+/// are reported for the widths and locations it measured, not as a condition of the pass.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GapCertificate {
     /// The grid pitch measured at.
@@ -675,6 +767,14 @@ pub enum GapFailure {
         /// Where its walls meet.
         at: Vec3,
     },
+    /// The air-side proof found walls facing each other nearer than the limit, outside any groove the
+    /// grid read (see [`prove_gaps`]).
+    ProvenGap {
+        /// The centre of the box where the facing walls were seen.
+        at: Vec3,
+        /// The distance between the two nearest wall points there (an upper bound of the gap).
+        width: f32,
+    },
     /// The field touches zero without material (a zero-thickness sheet): a defect of the field.
     Sheet {
         /// One sheet point.
@@ -687,25 +787,10 @@ pub enum GapFailure {
 pub enum GapUndetermined {
     /// The limit is not a finite positive number.
     BadLimit,
-    /// The any-shape resolution is above the limit: a gap narrower than the limit could lie between
-    /// the grid points.
-    ResolutionAboveLimit {
-        /// The report's `any_shape_resolution`.
-        any_shape_resolution: f32,
-    },
     /// The proof was made for another limit than the one asked.
     ProofForAnotherLimit {
         /// The proof's limit.
         proof_limit: f32,
-    },
-    /// The proof found narrow air that no grid reading explains (no crevice with a mouth at or above
-    /// the limit within `L` of it): a gap between parts the grid does not resolve, or an acute groove
-    /// it did not read.
-    UnexplainedNarrowAir {
-        /// How many such regions.
-        count: usize,
-        /// One of them.
-        at: Vec3,
     },
     /// The proof left boxes undecided at its depth, or listed more narrow regions than it keeps.
     ProofIncomplete {
@@ -766,36 +851,44 @@ impl GapReport {
                 at: c.location,
             });
         }
-        // facing walls the proof found, or boxes it could not decide, are explained by a crevice (mouth at
-        // or above the limit, the ones below already failed) within L of them: the apex of a groove whose
-        // walls meet at or under 60°, which the grid reads by its mouth
-        let explained = |w: &Vec3| {
-            self.crevices
-                .iter()
-                .any(|c| c.location.distance(*w) <= limit)
+        // a region the proof found (facing walls, or a box it could not decide) is part of a groove
+        // when its walls meet at an angle (not parallel) that matches a crevice whose mouth is at or
+        // above the limit (the ones below already failed), and it lies along that groove: within the
+        // groove's wall length `mouth / (2 sin(α/2))` (plus L) of the crevice's joint line. The grid
+        // reads such a groove by its mouth
+        let in_groove = |r: &GapRegion| {
+            let Some((n1, n2)) = r.walls else {
+                return false;
+            };
+            let joint = n1.cross(n2);
+            if joint.length() <= PARALLEL_SIN {
+                return false;
+            }
+            let dir = joint.normalize();
+            let air_angle = alice_det_math::acos((-n1.dot(n2)).law_max(-1.0).law_min(1.0))
+                * (180.0 / core::f32::consts::PI);
+            self.crevices.iter().any(|c| {
+                let off = r.at - c.location;
+                let from_line = (off - dir * off.dot(dir)).length();
+                let half = (0.5 * c.angle_deg).to_radians();
+                let wall_length = c.mouth / (2.0 * alice_det_math::sin(half).law_max(1e-3));
+                c.mouth >= limit
+                    && (c.angle_deg - air_angle).abs() <= CREVICE_ANGLE_MATCH_DEG
+                    && from_line <= wall_length + limit
+            })
         };
-        let open_boxes = proof.undecided_at.iter().filter(|w| !explained(w)).count();
+        // the proof found walls facing each other nearer than the limit, outside any groove: a gap
+        if let Some(w) = proof.witnesses.iter().find(|w| !in_groove(w)) {
+            return GapVerdict::Fail(GapFailure::ProvenGap {
+                at: w.at,
+                width: w.width.unwrap_or(limit),
+            });
+        }
+        let open_boxes = proof.undecided_at.iter().filter(|w| !in_groove(w)).count();
         if open_boxes > 0 || proof.truncated {
             return GapVerdict::Undetermined(GapUndetermined::ProofIncomplete {
                 undecided: proof.undecided,
                 truncated: proof.truncated,
-            });
-        }
-        let unexplained: Vec<Vec3> = proof
-            .witnesses
-            .iter()
-            .copied()
-            .filter(|w| !explained(w))
-            .collect();
-        if let Some(&at) = unexplained.first() {
-            return GapVerdict::Undetermined(GapUndetermined::UnexplainedNarrowAir {
-                count: unexplained.len(),
-                at,
-            });
-        }
-        if !proof.witnesses.is_empty() && self.any_shape_resolution > limit {
-            return GapVerdict::Undetermined(GapUndetermined::ResolutionAboveLimit {
-                any_shape_resolution: self.any_shape_resolution,
             });
         }
         GapVerdict::Pass(GapCertificate {
