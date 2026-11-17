@@ -316,24 +316,8 @@ pub fn prove_erosion(
             undecided = true; // 表面を跨いだまま深さが尽きた
             continue;
         }
-        let mid = (lo + hi) * 0.5;
-        for i in 0..8_usize {
-            let (x0, x1) = if i & 1 == 0 {
-                (lo.x, mid.x)
-            } else {
-                (mid.x, hi.x)
-            };
-            let (y0, y1) = if i & 2 == 0 {
-                (lo.y, mid.y)
-            } else {
-                (mid.y, hi.y)
-            };
-            let (z0, z1) = if i & 4 == 0 {
-                (lo.z, mid.z)
-            } else {
-                (mid.z, hi.z)
-            };
-            stack.push((Vec3::new(x0, y0, z0), Vec3::new(x1, y1, z1), depth + 1));
+        for (a, b) in octants(lo, hi) {
+            stack.push((a, b, depth + 1));
         }
     }
 
@@ -343,6 +327,158 @@ pub fn prove_erosion(
         // 全 box が「erode 後の外」と証明された = どこも min_wall より薄い
         ErosionVerdict::EntirelyTooThin
     }
+}
+
+/// The eight octants of the box `lo..hi`, split at its centre (the octree step shared by
+/// [`prove_erosion`] and [`prove_gaps`]).
+fn octants(lo: Vec3, hi: Vec3) -> [(Vec3, Vec3); 8] {
+    let mid = (lo + hi) * 0.5;
+    core::array::from_fn(|i| {
+        let pick = |bit: usize, l: f32, m: f32, h: f32| if i & bit == 0 { (l, m) } else { (m, h) };
+        let (x0, x1) = pick(1, lo.x, mid.x, hi.x);
+        let (y0, y1) = pick(2, lo.y, mid.y, hi.y);
+        let (z0, z1) = pick(4, lo.z, mid.z, hi.z);
+        (Vec3::new(x0, y0, z0), Vec3::new(x1, y1, z1))
+    })
+}
+
+/// The depth, as a fraction of the limit `L`, that the closing of the material by a ball of radius
+/// `L/2` must reach into the air for [`prove_gaps`] to call it a gap (see the module's "Gaps" section):
+/// a corner of air angle `θ` fills to `(L/2)(1 − sin(θ/2))`, 0.1464 L at 90°, so 0.15 L keeps right
+/// angles out while a gap of width `w` (filled to `w/2`) counts from `w = 0.3 L`.
+pub const GAP_TAU_RATIO: f32 = 0.15;
+
+/// Most separate narrow regions [`prove_gaps`] lists (one per region: witnesses within `L` of a listed
+/// one are merged); further ones set [`GapProof::truncated`].
+pub const MAX_GAP_WITNESSES: usize = 256;
+
+/// The result of [`prove_gaps`] for one limit.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GapProof {
+    /// The limit `L` the proof was made for.
+    pub limit: f32,
+    /// The fill depth counted as a gap, `GAP_TAU_RATIO · L`.
+    pub tau: f32,
+    /// One point per proven narrow region: every point of the box around it lies at least `tau` from
+    /// the material and within `L/2` of material in every direction (the closing fills it).
+    pub witnesses: Vec<Vec3>,
+    /// More narrow regions were proven than [`MAX_GAP_WITNESSES`].
+    pub truncated: bool,
+    /// Boxes the octree could neither clear nor prove narrow at `max_depth`.
+    pub undecided: usize,
+    /// Boxes visited.
+    pub boxes: usize,
+}
+
+/// Proves, box by box over `bmin..bmax`, where the air is narrower than `limit`.
+///
+/// A point `x` of the air is narrow when the closing of the material by a ball of radius `r = L/2`
+/// covers it to a depth of at least `tau = GAP_TAU_RATIO · L`: `d(x) ≥ tau` and every point within `r`
+/// of `x` has `d < r`. A box is
+/// - skipped when its interval of `d` stays below `tau`;
+/// - cleared when a point within `r − h` of its centre (`h` its half-diagonal; such a point is within
+///   `r` of every point of the box) has `d ≥ r`: probed at the centre, along the field's direction at
+///   the centre and the box corners, and along their sum (the bisector of a corner);
+/// - a witness when its interval of `d` is at least `tau` and the interval over the box grown by `r` in
+///   every axis stays below `r`;
+/// - split otherwise, or counted undecided at `max_depth`.
+///
+/// Exact for distance-exact fields. Where the field underestimates the distance (smooth blends, some
+/// CSG), a cleared box is still cleared (a field value at least `r` bounds the true distance from
+/// below), but a witness may be a field defect rather than real narrow air.
+///
+/// # Errors
+///
+/// [`GapError::BadCell`]: `limit` is not finite positive, or the bound is not finite and ordered.
+pub fn prove_gaps(
+    node: &SdfNode,
+    limit: f32,
+    bmin: Vec3,
+    bmax: Vec3,
+    max_depth: u32,
+) -> Result<GapProof, GapError> {
+    let valid = limit.is_finite()
+        && limit > 0.0
+        && bmin.is_finite()
+        && bmax.is_finite()
+        && !bmax.cmplt(bmin).any();
+    if !valid {
+        return Err(GapError::BadCell);
+    }
+    let r = 0.5 * limit;
+    let tau = GAP_TAU_RATIO * limit;
+    let grow = Vec3::splat(r);
+    let mut proof = GapProof {
+        limit,
+        tau,
+        witnesses: Vec::new(),
+        truncated: false,
+        undecided: 0,
+        boxes: 0,
+    };
+    let mut stack: Vec<(Vec3, Vec3, u32)> = vec![(bmin, bmax, 0)];
+    while let Some((lo, hi, depth)) = stack.pop() {
+        proof.boxes += 1;
+        let iv = eval_interval(node, Vec3Interval::from_bounds(lo, hi));
+        if iv.hi < tau {
+            continue;
+        }
+        let c = (lo + hi) * 0.5;
+        let h = 0.5 * (hi - lo).length();
+        if cleared(node, lo, hi, c, r - h) {
+            continue;
+        }
+        if iv.lo >= tau
+            && eval_interval(node, Vec3Interval::from_bounds(lo - grow, hi + grow)).hi < r
+        {
+            if proof.witnesses.iter().any(|w| w.distance(c) <= limit) {
+                continue;
+            }
+            if proof.witnesses.len() < MAX_GAP_WITNESSES {
+                proof.witnesses.push(c);
+            } else {
+                proof.truncated = true;
+            }
+            continue;
+        }
+        if depth >= max_depth {
+            proof.undecided += 1;
+            continue;
+        }
+        for (a, b) in octants(lo, hi) {
+            stack.push((a, b, depth + 1));
+        }
+    }
+    Ok(proof)
+}
+
+/// Whether some point within `reach` of `c` has `d ≥ r` (then every point of the box `lo..hi`, whose
+/// half-diagonal is `r − reach`, has such a point within `r`): the centre itself, then steps of `reach`
+/// along the field's direction at the centre and at the box's corners, and along their sum.
+fn cleared(node: &SdfNode, lo: Vec3, hi: Vec3, c: Vec3, reach: f32) -> bool {
+    let r_needed = |y: Vec3| eval(node, y);
+    let r = reach + 0.5 * (hi - lo).length();
+    if r_needed(c) >= r {
+        return true;
+    }
+    if !(reach > 0.0) {
+        return false;
+    }
+    let mut dirs: Vec<Vec3> = Vec::with_capacity(10);
+    dirs.push(eval_normal(node, c).normalize_or_zero());
+    for i in 0..8_usize {
+        let corner = Vec3::new(
+            if i & 1 == 0 { lo.x } else { hi.x },
+            if i & 2 == 0 { lo.y } else { hi.y },
+            if i & 4 == 0 { lo.z } else { hi.z },
+        );
+        dirs.push(eval_normal(node, corner).normalize_or_zero());
+    }
+    let sum = dirs.iter().copied().sum::<Vec3>().normalize_or_zero();
+    dirs.push(sum);
+    dirs.iter()
+        .filter(|d| **d != Vec3::ZERO)
+        .any(|d| r_needed(c + *d * reach) >= r)
 }
 
 /// Validates a shape and its tessellation against `req`.
@@ -465,6 +601,10 @@ pub struct GapCertificate {
     pub any_shape_resolution: f32,
     /// Smallest feature (groove depth, fin or pin size) the pass speaks for: one cell.
     pub min_certified_feature: f32,
+    /// Narrowest gap the air-side proof rules out: `2 · tau` (0.3 L). Gaps between this and the
+    /// limit do not exist; narrower ones are indistinguishable from the rounding of a corner by the
+    /// closing and are not claimed.
+    pub proven_from: f32,
 }
 
 /// Why [`GapReport::verdict`] failed the shape.
@@ -502,6 +642,27 @@ pub enum GapUndetermined {
         /// The report's `any_shape_resolution`.
         any_shape_resolution: f32,
     },
+    /// The proof was made for another limit than the one asked.
+    ProofForAnotherLimit {
+        /// The proof's limit.
+        proof_limit: f32,
+    },
+    /// The proof found narrow air that no grid reading explains (no crevice with a mouth at or above
+    /// the limit within `L` of it): a gap between parts the grid does not resolve, or an acute groove
+    /// it did not read.
+    UnexplainedNarrowAir {
+        /// How many such regions.
+        count: usize,
+        /// One of them.
+        at: Vec3,
+    },
+    /// The proof left boxes undecided at its depth, or listed more narrow regions than it keeps.
+    ProofIncomplete {
+        /// Boxes left undecided.
+        undecided: usize,
+        /// Narrow regions beyond the listed ones.
+        truncated: bool,
+    },
 }
 
 /// One answer for the gaps of a shape against a printer's limit, from [`GapReport::verdict`].
@@ -516,16 +677,24 @@ pub enum GapVerdict {
 }
 
 impl GapReport {
-    /// The verdict for a printer that cannot keep gaps narrower than `limit` open.
+    /// The verdict for a printer that cannot keep gaps narrower than `limit` open, with the air-side
+    /// proof `proof` made by [`prove_gaps`] for the same limit and bound.
     ///
-    /// `Fail` (a width with `width + GAP_TOLERANCE < limit`, a crevice mouth below `limit`, or any
-    /// zero-thickness sheet) outranks `Undetermined` (a limit that is not finite positive, or an
-    /// any-shape resolution above it), which outranks `Pass`. There is no bare pass: the certificate
-    /// states the sizes it holds at.
+    /// `Fail` (any zero-thickness sheet, a width with `width + GAP_TOLERANCE < limit`, or a crevice
+    /// mouth below `limit`) outranks `Undetermined`, which outranks `Pass`. `Undetermined`: a limit
+    /// that is not finite positive, a proof for another limit, narrow air the proof found that no
+    /// crevice reading explains, a proof left incomplete, or (when the proof found narrow air) a grid
+    /// too coarse to read it. `Pass` comes only from a proof that found no narrow air and left nothing
+    /// undecided; its certificate states the band it holds for (`proven_from` up to the limit).
     #[must_use]
-    pub fn verdict(&self, limit: f32) -> GapVerdict {
+    pub fn verdict(&self, limit: f32, proof: &GapProof) -> GapVerdict {
         if !(limit.is_finite() && limit > 0.0) {
             return GapVerdict::Undetermined(GapUndetermined::BadLimit);
+        }
+        if proof.limit.to_bits() != limit.to_bits() {
+            return GapVerdict::Undetermined(GapUndetermined::ProofForAnotherLimit {
+                proof_limit: proof.limit,
+            });
         }
         if let Some(at) = self.sheet_location {
             return GapVerdict::Fail(GapFailure::Sheet { at });
@@ -546,7 +715,32 @@ impl GapReport {
                 at: c.location,
             });
         }
-        if self.any_shape_resolution > limit {
+        if proof.undecided > 0 || proof.truncated {
+            return GapVerdict::Undetermined(GapUndetermined::ProofIncomplete {
+                undecided: proof.undecided,
+                truncated: proof.truncated,
+            });
+        }
+        // narrow air the proof found is explained by a crevice (mouth at or above the limit, the ones
+        // below already failed) within L of it: the closing fills the apex of an acute groove
+        let unexplained: Vec<Vec3> = proof
+            .witnesses
+            .iter()
+            .copied()
+            .filter(|w| {
+                !self
+                    .crevices
+                    .iter()
+                    .any(|c| c.location.distance(*w) <= limit)
+            })
+            .collect();
+        if let Some(&at) = unexplained.first() {
+            return GapVerdict::Undetermined(GapUndetermined::UnexplainedNarrowAir {
+                count: unexplained.len(),
+                at,
+            });
+        }
+        if !proof.witnesses.is_empty() && self.any_shape_resolution > limit {
             return GapVerdict::Undetermined(GapUndetermined::ResolutionAboveLimit {
                 any_shape_resolution: self.any_shape_resolution,
             });
@@ -555,6 +749,7 @@ impl GapReport {
             cell: self.cell,
             any_shape_resolution: self.any_shape_resolution,
             min_certified_feature: self.cell,
+            proven_from: 2.0 * proof.tau,
         })
     }
 }
