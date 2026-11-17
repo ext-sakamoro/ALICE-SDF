@@ -1,12 +1,14 @@
 # scripts/semver_gate.py: the consumer feature sets of alice-sdf and the equal-version mode
 #
-# The sets are the `consumer-features` / `consumer-features-why` / `consumer-check-features` of
+# The sets are the `consumer-features` / `consumer-features-why` / `consumer-check-features` /
+# `exclude-features` of
 # [crate.alice-sdf] in ALICE-Law release-train.toml, the roster its publish gate builds the
 # packaged crate with; keep them equal. The gate also runs the default features and no
 # default features
 consumer-features = [["aaa", "all-shaders", "asp", "blinkscript", "cli", "codec", "destruction", "ffi", "font", "gi", "glsl", "godot", "gpu", "gpu-mesh", "hlsl", "image", "jit", "msl", "openvdb", "physics", "rust", "sdf-cache", "svo", "svo-gpu", "terrain", "texture-fit", "unity", "unreal", "volume", "wasm"]]
 consumer-features-why = "python は cargo check で見る (PyO3 の extension module で link は maturin が行う、cargo build の cdylib link は -undefined dynamic_lookup が無く macOS で失敗する)"
 consumer-check-features = [["python"]]
+exclude-features = { gpu-slot-guard = "この crate 自身の試験専用 (slot の無い実 GPU adapter を拒否する、試験の build では自身への dev-dependency が有効にする) 利用側が有効にすることは無い" }
 
 # Cargo.toml keeps the released version while changes accumulate under [Unreleased]; the
 # version is raised when the release is cut. An equal version is checked as the smallest
