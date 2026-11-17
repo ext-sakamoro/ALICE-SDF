@@ -12,8 +12,9 @@
 
 use alice_sdf::prelude::*;
 use alice_sdf::validity::{
-    local_gap, measure_gaps, Crevice, GapError, GapReport, GAP_TOLERANCE, MAX_CREVICES,
-    MAX_GAP_GRID_POINTS,
+    local_gap, measure_gaps, prove_gaps, Crevice, GapError, GapFailure, GapReport, GapUndetermined,
+    GapVerdict, GAP_PROOF_WORK, GAP_TOLERANCE, MAX_CREVICES, MAX_GAP_GRID_POINTS,
+    MAX_GAP_WITNESSES,
 };
 use glam::Vec3;
 
@@ -72,6 +73,39 @@ fn main() {
         Ok(r) => describe("post and wall", &r),
         Err(GapError::TooManyPoints) => println!("grid too fine: use a coarser cell"),
         Err(e) => println!("nothing measured: {e:?}"),
+    }
+
+    // the verdict: the grid's reading together with the air-side proof over the slot between them
+    let (slo, shi) = (Vec3::new(6.0, 0.5, -4.0), Vec3::new(11.0, 9.0, 4.0));
+    match (
+        measure_gaps(&part, slo, shi, cell),
+        prove_gaps(&part, LIMIT, slo, shi, 8, GAP_PROOF_WORK),
+    ) {
+        (Ok(r), Ok(proof)) => {
+            let kept = if proof.truncated {
+                format!(" (first {MAX_GAP_WITNESSES} kept)")
+            } else {
+                String::new()
+            };
+            println!(
+                "slot proof: {} witnesses{kept}, {} undecided, {} boxes",
+                proof.witnesses.len(),
+                proof.undecided,
+                proof.boxes
+            );
+            match r.verdict(LIMIT, &proof) {
+                GapVerdict::Pass(c) => println!("verdict: pass from {}", c.proven_from),
+                GapVerdict::Fail(GapFailure::ProvenGap { width, at }) => {
+                    println!("verdict: fail, a gap of at most {width:.3} at {at}");
+                }
+                GapVerdict::Fail(f) => println!("verdict: fail, {f:?}"),
+                GapVerdict::Undetermined(GapUndetermined::ProofIncomplete { .. }) => {
+                    println!("verdict: undetermined, the proof did not finish");
+                }
+                GapVerdict::Undetermined(u) => println!("verdict: undetermined, {u:?}"),
+            }
+        }
+        (r, p) => println!("no verdict: {:?} / {:?}", r.err(), p.err()),
     }
 
     // from one point on the post's surface, straight at the wall
