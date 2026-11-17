@@ -163,7 +163,10 @@ fn a_crevice_whose_mouth_is_below_the_limit_fails_with_its_mouth() {
             cell,
         )
         .expect("samples");
-        assert!(!r.crevices.is_empty(), "cell {cell}: the V is a crevice ({r:?})");
+        assert!(
+            !r.crevices.is_empty(),
+            "cell {cell}: the V is a crevice ({r:?})"
+        );
         for c in &r.crevices {
             assert!(
                 (c.mouth - mouth_true).abs() <= 0.05,
@@ -173,7 +176,10 @@ fn a_crevice_whose_mouth_is_below_the_limit_fails_with_its_mouth() {
         }
         match r.verdict(3.0) {
             GapVerdict::Fail(GapFailure::CreviceMouth { mouth, .. }) => {
-                assert!((mouth - mouth_true).abs() <= 0.05, "cell {cell}: mouth {mouth}");
+                assert!(
+                    (mouth - mouth_true).abs() <= 0.05,
+                    "cell {cell}: mouth {mouth}"
+                );
             }
             v => panic!("cell {cell}: V mouth {mouth_true} against 3.0: {v:?}"),
         }
@@ -201,7 +207,16 @@ fn a_gap_narrower_than_the_any_shape_resolution_never_passes_bare() {
 }
 
 /// fine cell: found; coarse cell: Undetermined, or a pass that certifies nothing below one cell
-fn fine_and_coarse(name: &str, s: &SdfNode, lo0: Vec3, hi: Vec3, truth: f32, fine: f32, coarse: f32, limit: f32) {
+fn fine_and_coarse(
+    name: &str,
+    s: &SdfNode,
+    lo0: Vec3,
+    hi: Vec3,
+    truth: f32,
+    fine: f32,
+    coarse: f32,
+    limit: f32,
+) {
     for off in OFFSETS {
         let lo = lo0 + Vec3::splat(off);
         let r = measure_gaps(s, lo, hi, fine).expect("samples");
@@ -231,7 +246,16 @@ fn a_shallow_groove_is_measured_at_a_fine_cell_and_not_certified_below_one_cell(
     let slab = SdfNode::box3d(20.0, 4.0, 10.0).translate(0.0, -2.0, 0.0);
     let groove = SdfNode::box3d(1.0, 1.0, 20.0).translate(0.13, 0.3, 0.0);
     let s = slab.subtract(groove);
-    fine_and_coarse("shallow groove", &s, Vec3::new(-4.0, -1.0, -2.0), Vec3::new(4.0, 2.0, 2.0), 1.0, 0.05, 0.5, 2.0);
+    fine_and_coarse(
+        "shallow groove",
+        &s,
+        Vec3::new(-4.0, -1.0, -2.0),
+        Vec3::new(4.0, 2.0, 2.0),
+        1.0,
+        0.05,
+        0.5,
+        2.0,
+    );
 }
 
 #[test]
@@ -240,7 +264,16 @@ fn two_small_spheres_are_measured_at_a_fine_cell_and_not_certified_below_one_cel
     let s = SdfNode::sphere(0.3)
         .translate(-0.8, 0.0, 0.0)
         .union(SdfNode::sphere(0.3).translate(0.8, 0.0, 0.0));
-    fine_and_coarse("spheres", &s, Vec3::new(-2.0, -1.5, -1.5), Vec3::new(2.0, 1.5, 1.5), 1.0, 0.25, 0.5, 2.0);
+    fine_and_coarse(
+        "spheres",
+        &s,
+        Vec3::new(-2.0, -1.5, -1.5),
+        Vec3::new(2.0, 1.5, 1.5),
+        1.0,
+        0.25,
+        0.5,
+        2.0,
+    );
 }
 
 #[test]
@@ -249,7 +282,16 @@ fn a_thin_fin_is_measured_at_a_fine_cell_and_not_certified_below_one_cell() {
     let wall = SdfNode::box3d(4.0, 20.0, 20.0).translate(2.0, 0.0, 0.0);
     let fin = SdfNode::box3d(6.0, 0.2, 10.0).translate(-4.0, 0.0, 0.0);
     let s = wall.union(fin);
-    fine_and_coarse("thin fin", &s, Vec3::new(-8.0, -5.07, -3.0), Vec3::new(0.5, 5.0, 3.0), 1.0, 0.25, 0.5, 2.0);
+    fine_and_coarse(
+        "thin fin",
+        &s,
+        Vec3::new(-8.0, -5.07, -3.0),
+        Vec3::new(0.5, 5.0, 3.0),
+        1.0,
+        0.25,
+        0.5,
+        2.0,
+    );
 }
 
 #[test]
@@ -270,4 +312,66 @@ fn a_gap_between_small_parts_just_above_the_any_shape_bound_fails_at_the_coarse_
             v => panic!("off {off}: 1.8 between spheres against 2.0 at cell 0.5: {v:?} ({r:?})"),
         }
     }
+}
+
+/// The thin slice: two pins of radius 0.3 with 1.0 of air between them, measured at cell 0.25, give
+/// one verdict per limit.
+///
+/// oracle: the closed form of two parallel cylinders of radius r whose axes are `c` apart: the
+/// narrowest air between them is `c − 2r` = 1.6 − 0.6 = 1.0, on the line through both axes; against a
+/// limit of 2.0 that is a `Fail` with width 1.0 (± `GAP_TOLERANCE`), against 0.9 (above the any-shape
+/// resolution `2·√3·0.25 ≈ 0.866`) a `Pass` whose certificate states cell 0.25, 0.866 and one cell
+#[test]
+fn two_pins_one_apart_fail_two_and_pass_point_nine_at_cell_quarter() {
+    let floor = SdfNode::box3d(20.0, 2.0, 20.0).translate(0.0, -1.0, 0.0);
+    let pin = |x: f32| SdfNode::cylinder(0.3, 6.0).translate(x, 3.0, 0.0);
+    let s = floor.union(pin(-0.8)).union(pin(0.8));
+    let cell = 0.25;
+    let mut compared = 0;
+    for off in OFFSETS {
+        let lo = Vec3::new(-3.0 + off, 0.5, -2.0 + off);
+        let r = measure_gaps(&s, lo, Vec3::new(3.0, 5.0, 2.0), cell).expect("samples");
+        match r.verdict(2.0) {
+            GapVerdict::Fail(GapFailure::Width { width, .. }) => assert!(
+                (width - 1.0).abs() <= GAP_TOLERANCE,
+                "off {off}: width {width} vs the closed form 1.0"
+            ),
+            v => panic!("off {off}: pins 1.0 apart against 2.0: {v:?} ({r:?})"),
+        }
+        assert_certificate(
+            r.verdict(0.9),
+            cell,
+            &format!("off {off}: pins 1.0 apart against 0.9"),
+        );
+        compared += 1;
+    }
+    assert!(compared >= 2, "only {compared} offsets compared");
+}
+
+/// The same pins at cell 0.5 (any-shape resolution ≈ 1.73): the grid may not resolve a pin of radius
+/// 0.3, but it must never answer with nothing. A width, or an `Undetermined` verdict for a limit it
+/// cannot speak for, is allowed; a missing gap with a `Pass` against 2.0 is not.
+///
+/// oracle: the same closed form (1.0 of air); the rule (ruling A, point 1) that a gap between parts
+/// smaller than a cell is a width or undetermined, not silence
+#[test]
+fn pins_smaller_than_a_cell_are_a_width_or_undetermined_never_nothing() {
+    let floor = SdfNode::box3d(20.0, 2.0, 20.0).translate(0.0, -1.0, 0.0);
+    let pin = |x: f32| SdfNode::cylinder(0.3, 6.0).translate(x, 3.0, 0.0);
+    let s = floor.union(pin(-0.8)).union(pin(0.8));
+    let mut compared = 0;
+    for off in OFFSETS {
+        let lo = Vec3::new(-3.0 + off, 0.5, -2.0 + off);
+        let r = measure_gaps(&s, lo, Vec3::new(3.0, 5.0, 2.0), 0.5).expect("samples");
+        match r.verdict(2.0) {
+            GapVerdict::Fail(GapFailure::Width { width, .. }) => assert!(
+                (width - 1.0).abs() <= GAP_TOLERANCE + 0.5,
+                "off {off}: width {width} vs the closed form 1.0"
+            ),
+            GapVerdict::Undetermined(_) => {}
+            v => panic!("off {off}: pins 1.0 apart at cell 0.5 against 2.0 read as {v:?} ({r:?})"),
+        }
+        compared += 1;
+    }
+    assert!(compared >= 2, "only {compared} offsets compared");
 }
