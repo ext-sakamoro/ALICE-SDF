@@ -187,7 +187,10 @@ pub mod slot_guard {
     pub const SLOT_VAR: &str = "ALICE_GPU_SLOT";
 
     /// Whether the fallback adapter is asked for (always `false` without the feature)
+    // Not `const`: with the feature the body reads the environment, and the public signature
+    // does not change with a test-only feature
     #[must_use]
+    #[cfg_attr(not(feature = "gpu-slot-guard"), allow(clippy::missing_const_for_fn))]
     pub fn fallback_requested() -> bool {
         #[cfg(feature = "gpu-slot-guard")]
         {
@@ -239,7 +242,11 @@ pub mod slot_guard {
     /// # Errors
     ///
     /// [`GpuError::DeviceCreation`] ([`super::refusal::ADAPTER_REFUSED`]).
-    #[cfg_attr(not(feature = "gpu-slot-guard"), allow(clippy::unnecessary_wraps))]
+    // Not `const` for the same reason as `fallback_requested`
+    #[cfg_attr(
+        not(feature = "gpu-slot-guard"),
+        allow(clippy::unnecessary_wraps, clippy::missing_const_for_fn)
+    )]
     pub fn admit(name: &str, software: bool) -> Result<(), GpuError> {
         if !ENABLED {
             let _ = (name, software);
