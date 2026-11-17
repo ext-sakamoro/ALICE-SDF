@@ -94,6 +94,7 @@ fn assert_certificate(v: GapVerdict, cell: f32, what: &str) {
             any_shape_resolution,
             min_certified_feature,
             proven_from,
+            ..
         }) => {
             assert!(
                 proven_from == 0.0,
@@ -471,4 +472,87 @@ fn a_sheet_the_exact_field_does_not_confirm_is_undetermined() {
         }
         v => panic!("cable clip against 0.5: {v:?}"),
     }
+}
+
+/// A box of open air on a floor, read by the grid over its whole bound
+fn open_air() -> (SdfNode, Vec3, Vec3) {
+    let floor = SdfNode::box3d(20.0, 2.0, 20.0).translate(0.0, -1.0, 0.0);
+    let block = SdfNode::box3d(4.0, 4.0, 4.0).translate(0.0, 2.0, 0.0);
+    (
+        floor.union(block),
+        Vec3::new(-6.0, 0.5, -6.0),
+        Vec3::new(6.0, 6.0, 6.0),
+    )
+}
+
+#[test]
+fn a_pass_states_the_bound_it_holds_for() {
+    let (s, lo, hi) = open_air();
+    let r = alice_sdf::validity::measure_gaps(&s, lo, hi, 0.5).expect("grid");
+    let p = prove_gaps(&s, 1.0, lo, hi, PROOF_DEPTH, GAP_PROOF_WORK).expect("proof");
+    match r.verdict(1.0, &p) {
+        GapVerdict::Pass(c) => assert_eq!((c.bmin, c.bmax), (lo, hi), "certificate bound"),
+        v => panic!("expected a pass, got {v:?}"),
+    }
+}
+
+#[test]
+fn a_proof_over_part_of_the_measured_bound_is_undetermined() {
+    // the slot (0.5 wide, below the limit 2.0, narrower than the grid's any-shape bound at cell 1.0)
+    // lies outside the proof's box: the proof finds nothing there, so it must not speak for the slot
+    let s = slot(0.5, 0.0);
+    let (lo, hi) = (Vec3::new(-6.0, 0.5, -4.0), Vec3::new(6.0, 5.5, 4.0));
+    let r = alice_sdf::validity::measure_gaps(&s, lo, hi, 1.0).expect("grid");
+    let (plo, phi) = (Vec3::new(4.0, 0.5, -4.0), Vec3::new(6.0, 5.5, 4.0));
+    let p = prove_gaps(&s, 2.0, plo, phi, PROOF_DEPTH, GAP_PROOF_WORK).expect("proof");
+    assert_eq!(
+        r.verdict(2.0, &p),
+        GapVerdict::Undetermined(GapUndetermined::ProofForAnotherRegion {
+            proof_bmin: plo,
+            proof_bmax: phi
+        })
+    );
+    // one axis short is enough to refuse; a proof over a larger bound covers the grid's
+    let short = prove_gaps(&s, 2.0, lo, phi - Vec3::Z, 4, GAP_PROOF_WORK).expect("proof");
+    assert!(matches!(
+        r.verdict(2.0, &short),
+        GapVerdict::Undetermined(GapUndetermined::ProofForAnotherRegion { .. })
+    ));
+    let wide = prove_gaps(
+        &s,
+        2.0,
+        lo - Vec3::ONE,
+        hi + Vec3::ONE,
+        PROOF_DEPTH,
+        GAP_PROOF_WORK,
+    )
+    .expect("proof");
+    assert!(
+        !matches!(
+            r.verdict(2.0, &wide),
+            GapVerdict::Undetermined(GapUndetermined::ProofForAnotherRegion { .. })
+        ),
+        "a proof over a larger bound was refused"
+    );
+}
+
+#[test]
+fn a_proof_of_another_shape_is_undetermined() {
+    // the grid reads the slotted part; the proof is of open air, which passes on its own
+    let s = slot(0.5, 0.0);
+    let (lo, hi) = (Vec3::new(-6.0, 0.5, -4.0), Vec3::new(6.0, 5.5, 4.0));
+    let r = alice_sdf::validity::measure_gaps(&s, lo, hi, 1.0).expect("grid");
+    let (air, _, _) = open_air();
+    let p = prove_gaps(&air, 2.0, lo, hi, PROOF_DEPTH, GAP_PROOF_WORK).expect("proof");
+    assert_eq!(
+        r.verdict(2.0, &p),
+        GapVerdict::Undetermined(GapUndetermined::ProofForAnotherShape)
+    );
+    // the same tree built again is the same shape
+    let again =
+        prove_gaps(&slot(0.5, 0.0), 2.0, lo, hi, PROOF_DEPTH, GAP_PROOF_WORK).expect("proof");
+    assert!(!matches!(
+        r.verdict(2.0, &again),
+        GapVerdict::Undetermined(GapUndetermined::ProofForAnotherShape)
+    ));
 }

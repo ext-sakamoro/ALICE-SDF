@@ -79,6 +79,7 @@
 //! so [`overhang_stats`] reports the geometric angle and leaves the policy out.
 
 use crate::compiled::real::LawMinMax;
+use crate::diff::tree_hash;
 use crate::eval::{eval, eval_normal};
 use crate::interval::{eval_interval, Vec3Interval};
 use crate::interval_gradient::{eval_interval_gradient, GradientInterval};
@@ -413,6 +414,14 @@ pub struct GapProof {
     pub undecided: usize,
     /// Boxes visited.
     pub boxes: usize,
+    /// Lower corner of the bound proven over.
+    pub bmin: Vec3,
+    /// Upper corner of the bound proven over.
+    pub bmax: Vec3,
+    /// The subdivision depth the proof stopped at.
+    pub max_depth: u32,
+    /// [`crate::diff::tree_hash`] of the shape proven.
+    pub tree: u64,
 }
 
 /// Lower bound of `a · b` over two vectors whose components lie in `g` (each axis independently).
@@ -506,6 +515,10 @@ pub fn prove_gaps(
         work: 0,
         undecided: 0,
         boxes: 0,
+        bmin,
+        bmax,
+        max_depth,
+        tree: tree_hash(node),
     };
     let mut m = Meter::new(node);
     let mut stack: Vec<(Vec3, Vec3, u32)> = vec![(bmin, bmax, 0)];
@@ -810,6 +823,12 @@ pub struct GapReport {
     pub unconfirmed_sheet_samples: usize,
     /// One unconfirmed sheet point (the first found), `None` when `unconfirmed_sheet_samples` is 0.
     pub unconfirmed_sheet_location: Option<Vec3>,
+    /// Lower corner of the bound the grid sampled.
+    pub bmin: Vec3,
+    /// Upper corner of the bound the grid sampled.
+    pub bmax: Vec3,
+    /// [`crate::diff::tree_hash`] of the shape the grid sampled.
+    pub tree: u64,
 }
 
 /// An acute joint where two walls meet, found by [`measure_gaps`].
@@ -848,6 +867,10 @@ pub struct GapCertificate {
     /// Narrowest gap between facing walls the air-side proof rules out: 0 (every width below the limit;
     /// a gap narrower than the proof's boxes leaves them undecided, which does not pass).
     pub proven_from: f32,
+    /// Lower corner of the bound the pass holds for (the bound the grid sampled; the proof covers it).
+    pub bmin: Vec3,
+    /// Upper corner of the bound the pass holds for.
+    pub bmax: Vec3,
 }
 
 /// Why [`GapReport::verdict`] failed the shape.
@@ -892,6 +915,16 @@ pub enum GapUndetermined {
         /// The proof's limit.
         proof_limit: f32,
     },
+    /// The proof was made for another shape than the one the grid sampled (their tree hashes differ).
+    ProofForAnotherShape,
+    /// The proof's bound does not cover the bound the grid sampled, so part of the measured region has
+    /// no proof.
+    ProofForAnotherRegion {
+        /// Lower corner of the proof's bound.
+        proof_bmin: Vec3,
+        /// Upper corner of the proof's bound.
+        proof_bmax: Vec3,
+    },
     /// The grid read sheets that the exact field does not confirm (see
     /// [`GapReport::unconfirmed_sheet_samples`]) and no failure was found.
     UnconfirmedSheet {
@@ -929,7 +962,7 @@ impl GapReport {
     ///
     /// `Fail` (any zero-thickness sheet, a width with `width + GAP_TOLERANCE < limit`, or a crevice
     /// mouth below `limit`) outranks `Undetermined`, which outranks `Pass`. `Undetermined`: a limit
-    /// that is not finite positive, a proof for another limit, narrow air the proof found that no
+    /// that is not finite positive, a proof for another limit, another shape or a bound that does not cover the grid's, narrow air the proof found that no
     /// crevice reading explains, a proof left incomplete, or (when the proof found narrow air) a grid
     /// too coarse to read it. `Pass` comes only from a proof that found no narrow air and left nothing
     /// undecided; its certificate states the band it holds for (`proven_from` up to the limit).
@@ -941,6 +974,15 @@ impl GapReport {
         if proof.limit.to_bits() != limit.to_bits() {
             return GapVerdict::Undetermined(GapUndetermined::ProofForAnotherLimit {
                 proof_limit: proof.limit,
+            });
+        }
+        if proof.tree != self.tree {
+            return GapVerdict::Undetermined(GapUndetermined::ProofForAnotherShape);
+        }
+        if proof.bmin.cmpgt(self.bmin).any() || proof.bmax.cmplt(self.bmax).any() {
+            return GapVerdict::Undetermined(GapUndetermined::ProofForAnotherRegion {
+                proof_bmin: proof.bmin,
+                proof_bmax: proof.bmax,
             });
         }
         if let Some(at) = self.sheet_location {
@@ -1014,6 +1056,8 @@ impl GapReport {
             any_shape_resolution: self.any_shape_resolution,
             min_certified_feature: self.cell,
             proven_from: 0.0,
+            bmin: self.bmin,
+            bmax: self.bmax,
         })
     }
 }
@@ -1545,6 +1589,9 @@ pub fn measure_gaps(
         sheet_location,
         unconfirmed_sheet_samples,
         unconfirmed_sheet_location,
+        bmin,
+        bmax,
+        tree: tree_hash(node),
     })
 }
 
