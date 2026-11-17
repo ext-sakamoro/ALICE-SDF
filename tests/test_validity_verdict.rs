@@ -18,7 +18,7 @@
 
 use alice_sdf::validity::{
     prove_gaps, GapCertificate, GapError, GapFailure, GapReport, GapUndetermined, GapVerdict,
-    GAP_TOLERANCE,
+    GAP_PROOF_WORK, GAP_TOLERANCE,
 };
 use alice_sdf::SdfNode;
 use glam::Vec3;
@@ -38,12 +38,19 @@ struct Checked {
 
 impl Checked {
     fn verdict(&self, limit: f32) -> GapVerdict {
-        match prove_gaps(&self.node, limit, self.lo, self.hi, PROOF_DEPTH) {
+        match prove_gaps(
+            &self.node,
+            limit,
+            self.lo,
+            self.hi,
+            PROOF_DEPTH,
+            GAP_PROOF_WORK,
+        ) {
             Ok(p) => self.report.verdict(limit, &p),
             // a limit the proof rejects (not finite positive) is the report's own BadLimit case
             Err(_) => self.report.verdict(
                 limit,
-                &prove_gaps(&self.node, 1.0, self.lo, self.hi, 0).expect("proof"),
+                &prove_gaps(&self.node, 1.0, self.lo, self.hi, 0, GAP_PROOF_WORK).expect("proof"),
             ),
         }
     }
@@ -114,7 +121,7 @@ fn slot(width: f32, x0: f32) -> SdfNode {
     left.union(right)
 }
 
-fn slot_bounds() -> (Vec3, Vec3) {
+const fn slot_bounds() -> (Vec3, Vec3) {
     (Vec3::new(-12.0, -1.0, -6.0), Vec3::new(12.0, 7.0, 6.0))
 }
 
@@ -209,7 +216,7 @@ fn v_groove(alpha: f32, depth: f32) -> SdfNode {
 #[test]
 fn a_crevice_whose_mouth_is_below_the_limit_fails_with_its_mouth() {
     let (alpha, depth) = (40.0_f32, 3.0);
-    let mouth_true = 2.0 * depth * (alpha.to_radians() * 0.5).sin(); // 2.052
+    let mouth_true = 2.0 * depth * alice_det_math::sin(alpha.to_radians() * 0.5); // 2.052
     for cell in [0.15_f32, 0.2, 0.25] {
         let r = measure_gaps(
             &v_groove(alpha, depth),
@@ -265,11 +272,9 @@ fn a_gap_narrower_than_the_any_shape_resolution_never_passes_bare() {
 fn fine_and_coarse(
     name: &str,
     s: &SdfNode,
-    lo0: Vec3,
-    hi: Vec3,
+    (lo0, hi): (Vec3, Vec3),
     truth: f32,
-    fine: f32,
-    coarse: f32,
+    (fine, coarse): (f32, f32),
     limit: f32,
 ) {
     for off in OFFSETS {
@@ -310,11 +315,9 @@ fn a_shallow_groove_is_measured_at_a_fine_cell_and_not_certified_below_one_cell(
     fine_and_coarse(
         "shallow groove",
         &s,
-        Vec3::new(-4.0, -1.0, -2.0),
-        Vec3::new(4.0, 2.0, 2.0),
+        (Vec3::new(-4.0, -1.0, -2.0), Vec3::new(4.0, 2.0, 2.0)),
         1.0,
-        0.05,
-        0.5,
+        (0.05, 0.5),
         2.0,
     );
 }
@@ -328,11 +331,9 @@ fn two_small_spheres_are_measured_at_a_fine_cell_and_not_certified_below_one_cel
     fine_and_coarse(
         "spheres",
         &s,
-        Vec3::new(-2.0, -1.5, -1.5),
-        Vec3::new(2.0, 1.5, 1.5),
+        (Vec3::new(-2.0, -1.5, -1.5), Vec3::new(2.0, 1.5, 1.5)),
         1.0,
-        0.25,
-        0.5,
+        (0.25, 0.5),
         2.0,
     );
 }
@@ -346,11 +347,9 @@ fn a_thin_fin_is_measured_at_a_fine_cell_and_not_certified_below_one_cell() {
     fine_and_coarse(
         "thin fin",
         &s,
-        Vec3::new(-8.0, -5.07, -3.0),
-        Vec3::new(0.5, 5.0, 3.0),
+        (Vec3::new(-8.0, -5.07, -3.0), Vec3::new(0.5, 5.0, 3.0)),
         1.0,
-        0.25,
-        0.5,
+        (0.25, 0.5),
         2.0,
     );
 }
@@ -441,4 +440,35 @@ fn pins_smaller_than_a_cell_are_a_width_or_undetermined_never_nothing() {
         compared += 1;
     }
     assert!(compared >= 2, "only {compared} offsets compared");
+}
+
+/// A cable clip (a rounded plate with a cylinder bore and a snap slot, the LOL `cable_clip(7, 28)`
+/// preset): the grid reads sheet-like samples at the bore's ends, but no sheet is confirmed on the exact
+/// field there, so the verdict is not a sheet failure; it is undetermined, never a pass
+#[test]
+fn a_sheet_the_exact_field_does_not_confirm_is_undetermined() {
+    let outer =
+        SdfNode::rounded_box(5.5, 15.0, 5.5, 1.0).intersection(SdfNode::box3d(5.5, 14.0, 5.5));
+    let bore = SdfNode::cylinder(3.6, 15.0);
+    let slot = SdfNode::box3d(2.45, 15.0, 3.775).translate(0.0, 0.0, 2.725);
+    let clip = outer.subtract(bore).subtract(slot);
+    let g = measure_gaps(
+        &clip,
+        Vec3::new(-6.0, -14.5, -6.0),
+        Vec3::new(6.0, 14.5, 6.0),
+        1.0,
+    )
+    .expect("samples");
+    assert!(g.unconfirmed_sheet_samples > 0, "{:?}", g.report);
+    assert_eq!(
+        g.sheet_samples, 0,
+        "a sheet confirmed on the clip at {:?}",
+        g.sheet_location
+    );
+    match g.verdict(0.5) {
+        GapVerdict::Undetermined(GapUndetermined::UnconfirmedSheet { samples, .. }) => {
+            assert_eq!(samples, g.unconfirmed_sheet_samples);
+        }
+        v => panic!("cable clip against 0.5: {v:?}"),
+    }
 }
