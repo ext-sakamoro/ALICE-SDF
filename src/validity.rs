@@ -840,6 +840,58 @@ fn march_empty(node: &SdfNode, origin: Vec3, dir: Vec3, t0: f32, max_march: f32)
     None
 }
 
+/// Most gap candidates refined on the surface after the grid pass (the narrowest first).
+const MAX_REFINED_CANDIDATES: usize = 64;
+
+/// Steps of the local search in [`refine_gap`].
+const REFINE_MAX_STEPS: usize = 64;
+
+/// The narrowest width near the gap sample at wall point `a0` (normal `n0`, width `w0`): a pattern
+/// search on the wall that moves the start point along the two tangents, puts it back on the wall and
+/// re-measures the width along the wall normal there, keeping a move only when the width shrinks and
+/// halving the step otherwise. The start point never travels more than `cell` from `a0` (so the search
+/// stays on the gap it started from and cannot slide into a joint where the width closes), and a width
+/// at or below `4 · GAP_TOLERANCE` (a joint) is not taken. Returns `(w0, a0)` when nothing narrower is
+/// found.
+fn refine_gap(node: &SdfNode, a0: Vec3, n0: Vec3, w0: f32, reach: f32, cell: f32) -> (f32, Vec3) {
+    let (mut a, mut n, mut w) = (a0, n0, w0);
+    let mut step = 0.5 * cell;
+    for _ in 0..REFINE_MAX_STEPS {
+        if step < 0.5 * GAP_TOLERANCE {
+            break;
+        }
+        let t1 = n.any_orthonormal_vector();
+        let t2 = n.cross(t1);
+        let mut moved = false;
+        for t in [t1, -t1, t2, -t2] {
+            let q = a + t * step;
+            let nq = eval_normal(node, q).normalize_or_zero();
+            if nq == Vec3::ZERO {
+                continue;
+            }
+            let aq = q - nq * eval(node, q);
+            if aq.distance(a0) > cell {
+                continue;
+            }
+            let n2 = eval_normal(node, aq + nq * SHEET_PROBE).normalize_or_zero();
+            if n2 == Vec3::ZERO || n2.dot(n) < EDGE_COS {
+                continue;
+            }
+            if let Some(w2) = local_gap(node, aq, n2, reach) {
+                if w2 > 4.0 * GAP_TOLERANCE && w2 < w {
+                    (a, n, w) = (aq, n2, w2);
+                    moved = true;
+                    break;
+                }
+            }
+        }
+        if !moved {
+            step *= 0.5;
+        }
+    }
+    (w, a)
+}
+
 /// Narrowest gap (hole / slot / pocket width) of `node` inside `bmin`..`bmax`.
 ///
 /// Samples every point of a grid of pitch `cell` that lies in empty space within `√3 · cell` of a
@@ -896,6 +948,9 @@ pub fn measure_gaps(
     let mut samples = 0_usize;
     let mut gaps = 0_usize;
     let mut best: Option<(f32, Vec3)> = None;
+    // every gap sample (width, wall point, wall normal): the ones within a cell of the raw minimum are
+    // refined on the surface after the pass
+    let mut candidates: Vec<(f32, Vec3, Vec3)> = Vec::new();
     let mut crevices: Vec<Crevice> = Vec::new();
     let mut crevice_samples = 0_usize;
     let mut edge_samples = 0_usize;
@@ -965,6 +1020,7 @@ pub fn measure_gaps(
                     continue;
                 }
                 gaps += 1;
+                candidates.push((width, at, n));
                 if best.is_none_or(|(b, _)| width < b) {
                     best = Some((width, at));
                 }
@@ -973,6 +1029,22 @@ pub fn measure_gaps(
     }
     if samples == 0 {
         return Err(GapError::NoSamples);
+    }
+    // a grid point measures along its own wall normal, which crosses the gap off its narrowest line by
+    // up to the sample's offset: refine every candidate within a cell of the raw minimum by a local search
+    // on the wall (bounded to one cell of travel, so it cannot slide into a joint)
+    if let Some((raw, _)) = best {
+        candidates.sort_by(|x, y| x.0.total_cmp(&y.0));
+        for &(width, at, n) in candidates
+            .iter()
+            .take_while(|c| c.0 <= raw + cell)
+            .take(MAX_REFINED_CANDIDATES)
+        {
+            let (w, a) = refine_gap(node, at, n, width, reach, cell);
+            if best.is_none_or(|(b, _)| w < b) {
+                best = Some((w, a));
+            }
+        }
     }
     Ok(GapReport {
         min_gap: best.map(|(w, _)| w),
