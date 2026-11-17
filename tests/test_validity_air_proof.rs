@@ -1,16 +1,17 @@
 //! The air-side proof of gaps narrower than a limit (`alice_sdf::validity::prove_gaps`).
 //!
-//! oracle: closed forms of the closing of the material by a ball of radius `r = L/2`.
-//! - Two parallel pins of radius 0.3 whose axes are 1.6 apart leave 1.0 of air: every point of the
-//!   gap's middle is within 0.5 of both pins, so against `L = 2.0` (`r = 1.0`) the closing fills it
-//!   to a depth of 0.5 > `tau = 0.15 L` (a gap); against `L = 0.9` (`r = 0.45`) the gap is wider
-//!   than the limit and nothing is filled to `tau`.
-//! - A corner of air angle `θ` fills to a depth of `(L/2)(1 − sin(θ/2))` from its joint: 0.1464 L for
-//!   90°, below `tau`, so a box standing on a floor has no gap.
-//! - A V groove of 60° fills to `(L/2)(1 − sin 30°) = 0.25 L > tau`: the proof flags it, and the grid's
-//!   crevice reading decides it (a mouth at or above the limit is a crevice, below it a failure).
+//! oracle: closed forms of the field's direction next to facing walls and corners.
+//! - Two parallel pins of radius 0.3 whose axes are 1.6 apart leave 1.0 of air between walls whose
+//!   directions are opposite (dot −1) across the plane between them: against `L = 2.0` that is a gap
+//!   (the nearest wall points are 1.0 apart, below 2.0); against `L = 0.9` the plane is at 0.5 from
+//!   both walls, at least `L/2`, so no gap.
+//! - A box standing on a floor meets it in a 90° corner of air: the two wall directions are
+//!   perpendicular (dot 0, above the facing bound −0.5), so no gap.
+//! - A V groove of 60° has wall directions 120° apart (dot −0.5, on the bound): its apex is a witness
+//!   or undecided, and the grid's crevice reading decides it (a mouth at or above the limit is a
+//!   crevice, below it a failure).
 
-use alice_sdf::validity::{measure_gaps, prove_gaps, GapFailure, GapVerdict, GAP_TAU_RATIO};
+use alice_sdf::validity::{measure_gaps, prove_gaps, GapFailure, GapVerdict, FACING_DOT};
 use alice_sdf::SdfNode;
 use glam::Vec3;
 
@@ -26,14 +27,9 @@ fn pins(axis_gap: f32) -> SdfNode {
 }
 
 #[test]
-fn the_fill_depth_ratio_is_stated() {
-    assert!((GAP_TAU_RATIO - 0.15).abs() < 1e-6);
-    // the 90° corner's fill, (1/2)(1 − sin 45°) = 0.1464, stays below it
-    let corner = 0.5 * (1.0 - alice_det_math::sin(45.0_f32.to_radians()));
-    assert!(
-        corner < GAP_TAU_RATIO && GAP_TAU_RATIO - corner < 0.01,
-        "{corner}"
-    );
+fn the_facing_rule_is_stated() {
+    // walls more than 120° apart face each other; a right angle (dot 0) and 90° corners never do
+    assert!((FACING_DOT + 0.5).abs() < 1e-6);
 }
 
 #[test]
@@ -115,8 +111,8 @@ fn a_sixty_degree_groove_is_a_crevice_by_its_mouth() {
         let hi = Vec3::new(6.0, 1.0, 3.0);
         let p = prove_gaps(&s, 0.8, lo, hi, DEPTH).expect("proof");
         assert!(
-            !p.witnesses.is_empty(),
-            "mouth {mouth}: the 60° apex fills past tau"
+            !p.witnesses.is_empty() || !p.undecided_at.is_empty(),
+            "mouth {mouth}: the 60° apex is on the facing bound and must not be cleared ({p:?})"
         );
         let g = measure_gaps(&s, lo, hi, 0.2).expect("samples");
         match (g.verdict(0.8, &p), fails) {

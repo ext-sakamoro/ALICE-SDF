@@ -1,4 +1,4 @@
-//! One printability verdict for gaps against a limit: `GapReport::verdict(limit)`
+//! One printability verdict for gaps against a limit: `GapReport::verdict(limit, proof)`
 //!
 //! The report lists widths, crevices, sheets and the resolutions separately; a caller comparing against
 //! a printer's limit needs one answer, and that answer has to carry the sizes it holds at. Rules (each
@@ -17,10 +17,53 @@
 //! A `Fail` outranks `Undetermined`: a gap found below the limit fails whatever else is unknown.
 
 use alice_sdf::validity::{
-    measure_gaps, GapCertificate, GapFailure, GapUndetermined, GapVerdict, GAP_TOLERANCE,
+    prove_gaps, GapCertificate, GapError, GapFailure, GapReport, GapUndetermined, GapVerdict,
+    GAP_TOLERANCE,
 };
 use alice_sdf::SdfNode;
 use glam::Vec3;
+
+/// Octree depth of the air-side proof each verdict here is given
+const PROOF_DEPTH: u32 = 9;
+
+/// The grid report together with the shape and bound it was read over, so each verdict gets the
+/// air-side proof made for its own limit (`prove_gaps` over the same bound)
+#[derive(Debug)]
+struct Checked {
+    node: SdfNode,
+    lo: Vec3,
+    hi: Vec3,
+    report: GapReport,
+}
+
+impl Checked {
+    fn verdict(&self, limit: f32) -> GapVerdict {
+        match prove_gaps(&self.node, limit, self.lo, self.hi, PROOF_DEPTH) {
+            Ok(p) => self.report.verdict(limit, &p),
+            // a limit the proof rejects (not finite positive) is the report's own BadLimit case
+            Err(_) => self.report.verdict(
+                limit,
+                &prove_gaps(&self.node, 1.0, self.lo, self.hi, 0).expect("proof"),
+            ),
+        }
+    }
+}
+
+impl std::ops::Deref for Checked {
+    type Target = GapReport;
+    fn deref(&self) -> &GapReport {
+        &self.report
+    }
+}
+
+fn measure_gaps(node: &SdfNode, lo: Vec3, hi: Vec3, cell: f32) -> Result<Checked, GapError> {
+    alice_sdf::validity::measure_gaps(node, lo, hi, cell).map(|report| Checked {
+        node: node.clone(),
+        lo,
+        hi,
+        report,
+    })
+}
 
 const OFFSETS: [f32; 4] = [0.0, 0.07, 0.13, 0.21];
 
@@ -34,7 +77,12 @@ fn assert_certificate(v: GapVerdict, cell: f32, what: &str) {
             cell: c,
             any_shape_resolution,
             min_certified_feature,
+            proven_from,
         }) => {
+            assert!(
+                proven_from == 0.0,
+                "{what}: the proof rules out every width below the limit ({proven_from})"
+            );
             assert!((c - cell).abs() < 1e-6, "{what}: cell {c}");
             assert!(
                 (any_shape_resolution - any_shape(cell)).abs() < 1e-5,
