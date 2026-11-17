@@ -268,3 +268,148 @@ fn a_point_box_away_from_edges_is_tight() {
         "{g:?}"
     );
 }
+
+/// Scenes where the band rules decide the answer: a slot (the cutter's inside is air), a rounded box
+/// next to a plate (the rounding radius shifts the box's value), smooth blends (children above / below
+/// the blended value)
+fn band_scenes() -> Vec<(&'static str, SdfNode)> {
+    let mut v = scenes();
+    v.push((
+        "slot",
+        SdfNode::box3d(6.0, 3.0, 4.0)
+            .subtract(SdfNode::box3d(1.0, 4.0, 6.0).translate(0.0, 1.0, 0.0)),
+    ));
+    v.push((
+        "rounded box on a plate",
+        SdfNode::rounded_box(1.0, 0.6, 1.0, 0.4)
+            .translate(0.0, 0.6, 0.0)
+            .union(SdfNode::box3d(6.0, 0.4, 6.0).translate(0.0, -0.2, 0.0)),
+    ));
+    v.push((
+        "smooth union of plates",
+        SdfNode::box3d(4.0, 0.3, 4.0)
+            .translate(0.0, 0.5, 0.0)
+            .smooth_union(SdfNode::box3d(4.0, 0.3, 4.0).translate(0.0, -0.5, 0.0), 0.6),
+    ));
+    v.push((
+        "smooth subtraction slot",
+        SdfNode::box3d(6.0, 3.0, 4.0)
+            .smooth_subtract(SdfNode::box3d(1.0, 4.0, 6.0).translate(0.0, 1.0, 0.0), 0.3),
+    ));
+    v.push((
+        "scaled slot",
+        SdfNode::box3d(6.0, 3.0, 4.0)
+            .subtract(SdfNode::box3d(1.0, 4.0, 6.0).translate(0.0, 1.0, 0.0))
+            .scale(0.6),
+    ));
+    v
+}
+
+#[test]
+fn the_banded_enclosure_holds_every_point_whose_value_is_in_the_band() {
+    use alice_sdf::interval::Interval;
+    use alice_sdf::interval_gradient::eval_interval_gradient_in_band;
+    let mut rng = Lcg(0xba4d_0bad_c0de_0042);
+    let (mut compared, mut in_band_boxes) = (0_usize, 0_usize);
+    let mut failures = Vec::new();
+    for (name, node) in band_scenes() {
+        for _ in 0..300 {
+            let c = Vec3::new(
+                rng.range(-2.5, 2.5),
+                rng.range(-2.5, 2.5),
+                rng.range(-2.5, 2.5),
+            );
+            let half = [0.01_f32, 0.08, 0.4][(rng.next() * 3.0) as usize % 3];
+            let (lo, hi) = (c - Vec3::splat(half), c + Vec3::splat(half));
+            let band = match (rng.next() * 4.0) as usize {
+                0 => Interval {
+                    lo: 0.0,
+                    hi: f32::INFINITY,
+                },
+                1 => Interval {
+                    lo: f32::NEG_INFINITY,
+                    hi: 0.0,
+                },
+                2 => {
+                    let a = rng.range(-1.0, 1.0);
+                    Interval {
+                        lo: a,
+                        hi: a + rng.range(0.0, 0.6),
+                    }
+                }
+                _ => {
+                    let a = rng.range(-0.3, 0.3);
+                    Interval {
+                        lo: a,
+                        hi: f32::INFINITY,
+                    }
+                }
+            };
+            let g = eval_interval_gradient_in_band(&node, Vec3Interval::from_bounds(lo, hi), band);
+            for _ in 0..12 {
+                let p = Vec3::new(
+                    rng.range(lo.x, hi.x),
+                    rng.range(lo.y, hi.y),
+                    rng.range(lo.z, hi.z),
+                );
+                let d = eval(&node, p);
+                if !(d >= band.lo && d <= band.hi) {
+                    continue;
+                }
+                let v = numeric_gradient(&node, p);
+                if !v.is_finite() {
+                    continue;
+                }
+                compared += 1;
+                let Some(g) = g else {
+                    if failures.len() < 12 {
+                        failures.push(format!(
+                            "{name}: {p} has value {d} in {band:?} but the box was left out"
+                        ));
+                    }
+                    continue;
+                };
+                in_band_boxes += 1;
+                let tol = 2e-3;
+                let inside = |i: Interval, x: f32| x >= i.lo - tol && x <= i.hi + tol;
+                if !(inside(g.x, v.x) && inside(g.y, v.y) && inside(g.z, v.z))
+                    && failures.len() < 12
+                {
+                    failures.push(format!(
+                        "{name}: at {p} (d {d}, band {band:?}) gradient {v} outside {g:?}"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        compared > 20_000 && in_band_boxes > 20_000,
+        "only {compared} points compared"
+    );
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn the_air_band_drops_the_direction_inside_the_material() {
+    use alice_sdf::interval::Interval;
+    use alice_sdf::interval_gradient::eval_interval_gradient_in_band;
+    // a box resting on a plate: across their contact the material's direction flips (+y from the
+    // plate, −y from the box's bottom); a box straddling the outer foot of that contact holds both in
+    // the full band, while its air points only see the plate's top and the box's side
+    let s = SdfNode::box3d(2.0, 2.0, 2.0)
+        .translate(0.0, 1.0, 0.0)
+        .union(SdfNode::box3d(8.0, 1.0, 8.0).translate(0.0, -0.5, 0.0));
+    let b = Vec3Interval::from_bounds(Vec3::new(0.95, -0.05, -0.05), Vec3::new(1.05, 0.05, 0.05));
+    let full = eval_interval_gradient(&s, b);
+    assert!(full.y.lo < -0.9 && full.y.hi > 0.9, "{full:?}");
+    let air = eval_interval_gradient_in_band(
+        &s,
+        b,
+        Interval {
+            lo: 0.0,
+            hi: f32::INFINITY,
+        },
+    )
+    .expect("air in the box");
+    assert!(air.y.lo > -0.1, "the air sees no -y wall: {air:?}");
+}

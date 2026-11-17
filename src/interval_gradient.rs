@@ -21,6 +21,20 @@
 //!   whole box when the children's value intervals do not overlap, and the hull of both otherwise,
 //!   which is where two walls meet (the ridge between them). The smooth forms blend the two gradients
 //!   with weights in `[0, 1]`, so the hull of both always encloses them.
+//! - Value band ([`eval_interval_gradient_in_band`]): the enclosure may be asked only for the points
+//!   whose field value lies in a band (a proof about the air asks for `d ≥ 0`, so the direction inside
+//!   the material, which flips across its inner medial axis, does not count). Each rule keeps every
+//!   point of the band:
+//!   - a node whose value interval over the box misses the band contributes nothing;
+//!   - min / max / `max(a, −b)`: where a child is the extreme, the node's value is that child's value, so
+//!     each child gets the same band, and the cutter `b` of a subtraction gets its negation;
+//!   - uniform scale `s·child(p/s)`: the child's value is the node's divided by `s`;
+//!   - rounded box `box(p) − r`: the box's value is the node's plus `r`;
+//!   - box-like leaves: the outside branch has values above 0, the inside branch the values
+//!     `max_k q_k ≤ 0`, and each is kept only when its values can lie in the band;
+//!   - smooth union lies at or below the minimum, so both children are at least the node's value (band
+//!     `[lo, ∞)`); smooth intersection at or above the maximum (`(−∞, hi]`); smooth subtraction
+//!     `smax(a, −b)` gives `a ≤ hi` and `b ≥ −hi`.
 //! - Every other node kind returns [`GradientInterval::unknown`]: `[-1, 1]` on every axis and
 //!   `known == false`. A caller must not read a narrow direction from it.
 //! - The field's value at each node comes from `eval_interval` (the same enclosure the rest of the crate
@@ -62,7 +76,7 @@ impl GradientInterval {
 
     /// A single direction (an exact gradient that does not vary over the box).
     #[must_use]
-    pub fn point(v: Vec3) -> Self {
+    pub const fn point(v: Vec3) -> Self {
         Self {
             x: Interval::point(v.x),
             y: Interval::point(v.y),
@@ -152,8 +166,10 @@ fn radial_component(a: Interval, b: Interval, inv_rho: Interval) -> Interval {
 }
 
 /// Gradient enclosure of `|max(q, 0)| + min(max_k q_k, 0)` from the component distances `q` and their
-/// unit directions `u` (see the module's MODEL).
-fn box_like(q: &[Interval], u: &[[Interval; 3]]) -> GradientInterval {
+/// unit directions `u` (see the module's MODEL), at the points whose value lies in `band`: the outside
+/// branch (value > 0) only when the band reaches above zero, the inside branch (value `max_k q_k ≤ 0`)
+/// only when that value can lie in the band. `None` when neither branch can.
+fn box_like(q: &[Interval], u: &[[Interval; 3]], band: Interval) -> Option<GradientInterval> {
     let mut out: Option<GradientInterval> = None;
     let mut add = |g: GradientInterval| {
         out = Some(match out {
@@ -162,71 +178,101 @@ fn box_like(q: &[Interval], u: &[[Interval; 3]]) -> GradientInterval {
         });
     };
     let positive: Vec<usize> = (0..q.len()).filter(|&k| q[k].hi > 0.0).collect();
-    if let [k] = positive[..] {
-        // only one component can be positive: outside, the direction is exactly that component's
-        // (its weight is m_k / |m_k| = 1; dividing the two intervals would lose that)
-        add(GradientInterval {
-            x: u[k][0],
-            y: u[k][1],
-            z: u[k][2],
-            known: true,
-        });
-    } else if !positive.is_empty() {
-        let m: Vec<Interval> = q.iter().map(|q| q.max(Interval::ZERO)).collect();
-        let norm = m
-            .iter()
-            .fold(Interval::ZERO, |acc, mk| acc + mk.sqr())
-            .sqrt();
-        let mut c = [Interval::ZERO; 3];
-        if let Some(inv) = recip(norm) {
-            for (mk, uk) in m.iter().zip(u) {
-                let w = *mk * inv;
-                for a in 0..3 {
-                    c[a] = c[a] + w * uk[a];
+    let outside_allowed = band.hi > 0.0;
+    if outside_allowed {
+        if let [k] = positive[..] {
+            // only one component can be positive: outside, the direction is exactly that component's
+            // (its weight is m_k / |m_k| = 1; dividing the two intervals would lose that)
+            add(GradientInterval {
+                x: u[k][0],
+                y: u[k][1],
+                z: u[k][2],
+                known: true,
+            });
+        } else if !positive.is_empty() {
+            let m: Vec<Interval> = q.iter().map(|q| q.max(Interval::ZERO)).collect();
+            let norm = m
+                .iter()
+                .fold(Interval::ZERO, |acc, mk| acc + mk.sqr())
+                .sqrt();
+            let mut c = [Interval::ZERO; 3];
+            if let Some(inv) = recip(norm) {
+                for (mk, uk) in m.iter().zip(u) {
+                    let w = *mk * inv;
+                    for a in 0..3 {
+                        c[a] = c[a] + w * uk[a];
+                    }
+                }
+            } else {
+                // the box touches the place where every component is zero: the weights are any
+                // non-negative unit combination, each within [0, 1], of the components that can be
+                // positive (the others weigh 0)
+                for &k in &positive {
+                    let uk = &u[k];
+                    for a in 0..3 {
+                        c[a] = c[a]
+                            + Interval {
+                                lo: law_min_f32(uk[a].lo, 0.0),
+                                hi: law_max_f32(uk[a].hi, 0.0),
+                            };
+                    }
                 }
             }
-        } else {
-            // the box touches the place where every component is zero: the weights are any
-            // non-negative unit combination, each within [0, 1]
-            for uk in u {
-                for a in 0..3 {
-                    c[a] = c[a]
-                        + Interval {
-                            lo: law_min_f32(uk[a].lo, 0.0),
-                            hi: law_max_f32(uk[a].hi, 0.0),
-                        };
-                }
-            }
+            add(GradientInterval {
+                x: c[0],
+                y: c[1],
+                z: c[2],
+                known: true,
+            });
         }
-        add(GradientInterval {
-            x: c[0],
-            y: c[1],
-            z: c[2],
-            known: true,
-        });
     }
     if q.iter().all(|q| q.lo <= 0.0) {
         let floor = q.iter().map(|q| q.lo).fold(f32::NEG_INFINITY, law_max_f32);
-        for (qk, uk) in q.iter().zip(u) {
-            if qk.hi >= floor {
-                add(GradientInterval {
-                    x: uk[0],
-                    y: uk[1],
-                    z: uk[2],
-                    known: true,
-                });
+        let top = q
+            .iter()
+            .map(|q| q.hi)
+            .fold(f32::NEG_INFINITY, law_max_f32)
+            .min(0.0);
+        // the inside value is max_k q_k, within [floor, min(top, 0)]
+        if band.lo <= top && band.hi >= floor {
+            for (qk, uk) in q.iter().zip(u) {
+                if qk.hi >= floor {
+                    add(GradientInterval {
+                        x: uk[0],
+                        y: uk[1],
+                        z: uk[2],
+                        known: true,
+                    });
+                }
             }
         }
     }
-    out.map_or_else(GradientInterval::unknown, GradientInterval::unit_bounded)
+    out.map(GradientInterval::unit_bounded)
 }
 
 /// Encloses the gradient of `node`'s distance field over `bounds` (see the module's MODEL).
 #[must_use]
 pub fn eval_interval_gradient(node: &SdfNode, bounds: Vec3Interval) -> GradientInterval {
+    eval_interval_gradient_in_band(node, bounds, Interval::EVERYTHING)
+        .unwrap_or_else(GradientInterval::unknown)
+}
+
+/// Encloses the gradient of `node`'s distance field at the points of `bounds` whose field value lies in
+/// `band` (a proof about the air passes `[0, ∞)`, so the direction inside the material does not count).
+/// `None`: no point of the box can have a value in the band.
+#[must_use]
+pub fn eval_interval_gradient_in_band(
+    node: &SdfNode,
+    bounds: Vec3Interval,
+    band: Interval,
+) -> Option<GradientInterval> {
+    if !eval_interval(node, bounds).overlaps(band) {
+        return None;
+    }
     let zero = Interval::ZERO;
+    let any = Interval::EVERYTHING;
     match node {
-        SdfNode::Sphere { .. } => match recip(bounds.length()) {
+        SdfNode::Sphere { .. } => Some(match recip(bounds.length()) {
             Some(inv) => GradientInterval {
                 x: bounds.x * inv,
                 y: bounds.y * inv,
@@ -238,23 +284,21 @@ pub fn eval_interval_gradient(node: &SdfNode, bounds: Vec3Interval) -> GradientI
                 known: true,
                 ..GradientInterval::unknown()
             },
-        },
-        SdfNode::Plane { normal, .. } => GradientInterval::point(*normal),
-        // a rounded box is the box field minus a constant: the same gradient
-        SdfNode::Box3d { half_extents } | SdfNode::RoundedBox { half_extents, .. } => {
-            let h = *half_extents;
-            let q = [
-                bounds.x.abs() - Interval::point(h.x),
-                bounds.y.abs() - Interval::point(h.y),
-                bounds.z.abs() - Interval::point(h.z),
-            ];
-            let u = [
-                [sign(bounds.x), zero, zero],
-                [zero, sign(bounds.y), zero],
-                [zero, zero, sign(bounds.z)],
-            ];
-            box_like(&q, &u)
-        }
+        }),
+        SdfNode::Plane { normal, .. } => Some(GradientInterval::point(*normal)),
+        SdfNode::Box3d { half_extents } => box_gradient(*half_extents, bounds, band),
+        // a rounded box is the box field minus `r`: the same gradient, the box's value is `band + r`
+        SdfNode::RoundedBox {
+            half_extents,
+            round_radius,
+        } => box_gradient(
+            *half_extents,
+            bounds,
+            Interval {
+                lo: band.lo + *round_radius,
+                hi: band.hi + *round_radius,
+            },
+        ),
         SdfNode::Cylinder {
             radius,
             half_height,
@@ -277,73 +321,139 @@ pub fn eval_interval_gradient(node: &SdfNode, bounds: Vec3Interval) -> GradientI
                 bounds.y.abs() - Interval::point(*half_height),
             ];
             let u = [radial, [zero, sign(bounds.y), zero]];
-            box_like(&q, &u)
+            box_like(&q, &u, band)
         }
         SdfNode::Translate { child, offset } => {
-            eval_interval_gradient(child, bounds.translate(*offset))
+            eval_interval_gradient_in_band(child, bounds.translate(*offset), band)
         }
         SdfNode::Rotate { child, rotation } => {
-            let g = eval_interval_gradient(child, bounds.rotate(*rotation));
+            let g = eval_interval_gradient_in_band(child, bounds.rotate(*rotation), band)?;
             if !g.known {
-                return GradientInterval::unknown();
+                return Some(GradientInterval::unknown());
             }
             let m = Mat3::from_quat(*rotation);
             let row = |r: Vec3| g.x * r.x + g.y * r.y + g.z * r.z;
             let t = m.transpose();
-            GradientInterval {
-                x: row(t.x_axis),
-                y: row(t.y_axis),
-                z: row(t.z_axis),
-                known: true,
-            }
-            .unit_bounded()
+            Some(
+                GradientInterval {
+                    x: row(t.x_axis),
+                    y: row(t.y_axis),
+                    z: row(t.z_axis),
+                    known: true,
+                }
+                .unit_bounded(),
+            )
         }
         SdfNode::Scale { child, factor } => {
             let inv = 1.0 / *factor;
             if !(factor.is_finite() && *factor > 0.0 && inv.is_finite()) {
-                return GradientInterval::unknown();
+                return Some(GradientInterval::unknown());
             }
             let scaled = Vec3Interval {
                 x: bounds.x * inv,
                 y: bounds.y * inv,
                 z: bounds.z * inv,
             };
-            eval_interval_gradient(child, scaled)
+            // d = s · child(p / s): the child's value is the node's divided by s
+            let child_band = Interval {
+                lo: band.lo * inv,
+                hi: band.hi * inv,
+            };
+            eval_interval_gradient_in_band(child, scaled, child_band)
         }
-        SdfNode::Union { a, b } => pick(a, b, bounds, false, false),
-        SdfNode::Intersection { a, b } => pick(a, b, bounds, true, false),
-        SdfNode::Subtraction { a, b } => pick(a, b, bounds, true, true),
-        SdfNode::SmoothUnion { a, b, .. } | SdfNode::SmoothIntersection { a, b, .. } => {
-            eval_interval_gradient(a, bounds).hull(eval_interval_gradient(b, bounds))
+        SdfNode::Union { a, b } => pick(a, b, bounds, band, false, false),
+        SdfNode::Intersection { a, b } => pick(a, b, bounds, band, true, false),
+        SdfNode::Subtraction { a, b } => pick(a, b, bounds, band, true, true),
+        // a smooth minimum lies at or below the minimum, so both children are at least the node's
+        // value; a smooth maximum lies at or above the maximum, so both are at most it
+        SdfNode::SmoothUnion { a, b, .. } => {
+            let child = Interval {
+                lo: band.lo,
+                hi: any.hi,
+            };
+            hull_opt(
+                eval_interval_gradient_in_band(a, bounds, child),
+                eval_interval_gradient_in_band(b, bounds, child),
+            )
         }
-        SdfNode::SmoothSubtraction { a, b, .. } => {
-            eval_interval_gradient(a, bounds).hull(eval_interval_gradient(b, bounds).neg())
+        SdfNode::SmoothIntersection { a, b, .. } => {
+            let child = Interval {
+                lo: any.lo,
+                hi: band.hi,
+            };
+            hull_opt(
+                eval_interval_gradient_in_band(a, bounds, child),
+                eval_interval_gradient_in_band(b, bounds, child),
+            )
         }
-        _ => GradientInterval::unknown(),
+        SdfNode::SmoothSubtraction { a, b, .. } => hull_opt(
+            eval_interval_gradient_in_band(
+                a,
+                bounds,
+                Interval {
+                    lo: any.lo,
+                    hi: band.hi,
+                },
+            ),
+            eval_interval_gradient_in_band(
+                b,
+                bounds,
+                Interval {
+                    lo: -band.hi,
+                    hi: any.hi,
+                },
+            )
+            .map(GradientInterval::neg),
+        ),
+        _ => Some(GradientInterval::unknown()),
     }
 }
 
-/// `min(a, b)` (or `max`, or `max(a, −b)`): the gradient of the child that is the extreme over the whole
-/// box, the hull of both when their value intervals overlap.
+fn box_gradient(h: Vec3, bounds: Vec3Interval, band: Interval) -> Option<GradientInterval> {
+    let zero = Interval::ZERO;
+    let q = [
+        bounds.x.abs() - Interval::point(h.x),
+        bounds.y.abs() - Interval::point(h.y),
+        bounds.z.abs() - Interval::point(h.z),
+    ];
+    let u = [
+        [sign(bounds.x), zero, zero],
+        [zero, sign(bounds.y), zero],
+        [zero, zero, sign(bounds.z)],
+    ];
+    box_like(&q, &u, band)
+}
+
+fn hull_opt(a: Option<GradientInterval>, b: Option<GradientInterval>) -> Option<GradientInterval> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(a.hull(b)),
+        (a, None) => a,
+        (None, b) => b,
+    }
+}
+
+/// `min(a, b)` (or `max`, or `max(a, −b)`) at the points whose value lies in `band`: where a child is
+/// the extreme the node's value is that child's, so each child is asked for the same band (the cutter of
+/// a subtraction for its negation); a child that is never the extreme over the box is left out.
 fn pick(
     a: &SdfNode,
     b: &SdfNode,
     bounds: Vec3Interval,
+    band: Interval,
     max: bool,
     negate_b: bool,
-) -> GradientInterval {
+) -> Option<GradientInterval> {
     let da = eval_interval(a, bounds);
     let mut db = eval_interval(b, bounds);
     if negate_b {
         db = -db;
     }
-    let ga = || eval_interval_gradient(a, bounds);
+    let ga = || eval_interval_gradient_in_band(a, bounds, band);
     let gb = || {
-        let g = eval_interval_gradient(b, bounds);
         if negate_b {
-            g.neg()
+            eval_interval_gradient_in_band(b, bounds, -band).map(GradientInterval::neg)
         } else {
-            g
+            eval_interval_gradient_in_band(b, bounds, band)
         }
     };
     let (a_wins, b_wins) = if max {
@@ -356,6 +466,6 @@ fn pick(
     } else if b_wins {
         gb()
     } else {
-        ga().hull(gb())
+        hull_opt(ga(), gb())
     }
 }
