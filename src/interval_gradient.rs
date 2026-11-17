@@ -35,8 +35,10 @@
 //!   - smooth union lies at or below the minimum, so both children are at least the node's value (band
 //!     `[lo, ∞)`); smooth intersection at or above the maximum (`(−∞, hi]`); smooth subtraction
 //!     `smax(a, −b)` gives `a ≤ hi` and `b ≥ −hi`.
-//! - Every other node kind returns [`GradientInterval::unknown`]: `[-1, 1]` on every axis and
-//!   `known == false`. A caller must not read a narrow direction from it.
+//! - Every other node kind returns [`GradientInterval::unknown`]: `known == false`, components set to
+//!   `[-1, 1]` as a placeholder only. Those kinds (twist, bend, displacement, non-uniform scale, …) are
+//!   not 1-Lipschitz, so their true gradient can leave `[-1, 1]`: an unknown result encloses nothing, not
+//!   even a magnitude. A caller must not read a direction or a bound from it.
 //! - The field's value at each node comes from `eval_interval` (the same enclosure the rest of the crate
 //!   uses), so the choice between two children is as sound as that enclosure.
 //! - Verified by `tests/test_interval_gradient.rs`: at random points of random boxes, for every covered
@@ -56,13 +58,15 @@ pub struct GradientInterval {
     pub y: Interval,
     /// `∂d/∂z` over the box.
     pub z: Interval,
-    /// `false` when the node kind (or one below it) has no gradient enclosure here: the components are
-    /// then `[-1, 1]` and say nothing about the direction.
+    /// `false` when the node kind (or one below it) has no gradient enclosure here. The components are
+    /// then a placeholder `[-1, 1]` and enclose nothing: such a field need not be 1-Lipschitz, so the
+    /// true gradient may lie outside it. Never use them as a direction or as a magnitude bound.
     pub known: bool,
 }
 
 impl GradientInterval {
-    /// Nothing is known about the direction: `[-1, 1]` on every axis.
+    /// Nothing is known: `known == false`, components a placeholder `[-1, 1]` that encloses nothing (the
+    /// field may not be 1-Lipschitz, so its gradient can leave `[-1, 1]`). Not a wide enclosure.
     #[must_use]
     pub const fn unknown() -> Self {
         // ALLOW-RAW-INTERVAL: [-1, 1] is the exact range of a unit-vector component
