@@ -66,6 +66,16 @@
 //! is never a gap; a groove of 60° or less is decided by its mouth. Limit: node kinds without a
 //! gradient enclosure leave their boxes undecided, so such a shape is Undetermined, never Pass.
 //!
+//! The gap the proof and the verdict decide: an air point `p` narrower than `L` has its distance to
+//! the material below `L/2` and two nearest material points `w₁`, `w₂` seen from it in directions with
+//! dot below [`FACING_DOT`] (so `|w₁ − w₂| < L`, and the walls' normals there face each other). Every
+//! rule reads this one statement: a witness is two air points whose wall points satisfy it; a box is
+//! cleared when no point of it can, either because the field is at least `L/2` there, or because the
+//! gradient enclosure holds no two directions with dot below [`FACING_DOT`], or because the material
+//! near it, read from the sign of the field alone, cannot hold two nearest points in such directions.
+//! The last clears what a field value cannot: a subtraction whose cutter overhangs the part leaves faces
+//! where the field reads the overhang while the material is much further (see `clear_of_material`).
+//!
 //! ## Overhang is a closed form
 //!
 //! The overhang angle of a triangle is `asin(-n · b)` for unit face normal `n`
@@ -459,6 +469,9 @@ fn push_region(list: &mut Vec<GapRegion>, r: GapRegion, merge: f32, truncated: &
 /// - cleared when the enclosure of `∇d` over the box ([`eval_interval_gradient`]) proves every pair of
 ///   directions has dot above [`FACING_DOT`]: no ridge between facing walls crosses it (a dot exactly at
 ///   the bound, the 60° groove, is not cleared);
+/// - cleared when it is all air and the material within `L/2` of it, read from the field's sign alone,
+///   cannot hold two nearest points of one of its points in directions with dot below [`FACING_DOT`]
+///   (`clear_of_material`; at `max_depth` this is also tried on its octants, two levels down);
 /// - a witness when two of its points (centre and corners) are air and see walls facing each other less
 ///   than `L` apart (see `facing_pair`);
 /// - split otherwise, or undecided at `max_depth` (also where the enclosure is unknown for a node kind).
@@ -521,6 +534,7 @@ pub fn prove_gaps(
         tree: tree_hash(node),
     };
     let mut m = Meter::new(node);
+    let mut cover = CoverTree::new(bmin, bmax, half);
     let mut stack: Vec<(Vec3, Vec3, u32)> = vec![(bmin, bmax, 0)];
     while let Some((lo, hi, depth)) = stack.pop() {
         if m.work >= max_work {
@@ -542,7 +556,8 @@ pub fn prove_gaps(
         }
         let c = (lo + hi) * 0.5;
         let seen = air_walls(&mut m, lo, hi);
-        if let Some((walls, width)) = facing_pair(&mut m, &seen, limit) {
+        let mut unreached = false;
+        if let Some((walls, width)) = facing_pair(&mut m, &seen, limit, &mut unreached) {
             let r = GapRegion {
                 at: c,
                 walls: Some(walls),
@@ -551,7 +566,17 @@ pub fn prove_gaps(
             push_region(&mut proof.witnesses, r, limit, &mut proof.truncated);
             continue;
         }
+        // a facing pair whose march does not reach the surface is a face the field has where no
+        // material is (a subtraction's cutter overhanging the part): the box may still be L/2 from
+        // every wall, which only the material cover can read
+        if unreached && iv.lo > 0.0 && clear_of_material(&mut m, &mut cover, lo, hi, half, max_work) == Cover::Clear {
+            continue;
+        }
         if depth >= max_depth {
+            // the cover's bound tightens with the box: its parts are read, two levels down
+            if unreached && iv.lo > 0.0 && clear_in_parts(&mut m, &mut cover, lo, hi, half, max_work, COVER_EXTRA_DEPTH) {
+                continue;
+            }
             proof.undecided += 1;
             // the walls of an undecided box are read around it, grown by twice its field value, so a box
             // next to a groove's bisector sees both walls (its own corners may all see the same one)
@@ -578,6 +603,242 @@ pub fn prove_gaps(
     proof.work = m.work;
     Ok(proof)
 }
+
+/// Whether every point of the box `lo..hi` is at least `reach` from the material, read from the sign of
+/// the field alone: a box whose value enclosure has a lower bound above zero holds no material, whatever
+/// the field's magnitude there. Boxes of the region around `lo..hi` grown by `reach` are split while they
+/// may hold material and lie nearer than `reach`; one no larger than `lo..hi` that may still hold material
+/// that near leaves the box uncleared. Stops uncleared when the work reaches `max_work`.
+///
+/// The value of a field is only a lower bound on the distance, so a value test cannot clear a box next
+/// to a cutter's face: inside a slot cut by a cutter that overhangs the slab, the field reads the
+/// overhang (0.1) while the slot's walls are much further; the same values arise where material does
+/// sit on that face. The sign separates the two.
+fn clear_of_material(
+    m: &mut Meter<'_>,
+    tree: &mut CoverTree,
+    lo: Vec3,
+    hi: Vec3,
+    reach: f32,
+    max_work: u64,
+) -> Cover {
+    let leaf = (hi - lo).max_element();
+    // the directions from the box to a box `a..b`: a cone around the centre of their difference that
+    // holds every `y − x`, with the least distance between the two boxes
+    let cone = |a: Vec3, b: Vec3| {
+        let (dlo, dhi) = (a - hi, b - lo);
+        let gap = dlo.max(-dhi).max(Vec3::ZERO).length();
+        let c = (dlo + dhi) * 0.5;
+        let r = ((dhi - dlo) * 0.5).length();
+        let cl = c.length();
+        let half_angle = if cl > r { (r / cl).asin() } else { core::f32::consts::PI };
+        (gap, c / cl.max(f32::MIN_POSITIVE), half_angle)
+    };
+    // an upper bound on the distance from any point of the box to the material, from material points
+    // found on the way (a point whose field is at most zero is material)
+    let mut upper = f32::INFINITY;
+    let mut held: Vec<(f32, Vec3, f32)> = Vec::new();
+    // nearest boxes first: the cones that decide the box are found before the far ones
+    let mut stack: std::collections::BinaryHeap<Near> = std::collections::BinaryHeap::new();
+    stack.push(Near(u32::MAX, CoverKey::ROOT));
+    let mut reads = 0_usize;
+    while let Some(Near(_, key)) = stack.pop() {
+        if m.work >= max_work || reads >= MAX_COVER_READS {
+            return Cover::Facing;
+        }
+        let (a, b) = tree.bounds(key);
+        let (gap, dir, half_angle) = cone(a, b);
+        if gap >= reach || gap > upper {
+            continue;
+        }
+        reads += 1;
+        if !tree.may_hold_material(m, key) {
+            continue;
+        }
+        if half_angle > CONE_LEAF && (b - a).max_element() > leaf && key.depth < CoverKey::MAX_DEPTH {
+            for child in key.children() {
+                let (ca, cb) = tree.bounds(child);
+                stack.push(Near(near_key(cone(ca, cb).0), child));
+            }
+            continue;
+        }
+        let q = (a + b) * 0.5;
+        if tree.material_at_centre(m, key) {
+            upper = upper.law_min((q - lo).abs().max((q - hi).abs()).length());
+        }
+        if held.len() >= MAX_CONES {
+            return Cover::Facing;
+        }
+        // facing axes already decide it: giving up early is always sound
+        let facing = |&(g, d, _): &(f32, Vec3, f32)| {
+            g <= upper && d.dot(dir).clamp(-1.0, 1.0).acos() >= FACING_ANGLE - FACING_MARGIN
+        };
+        if held.iter().any(facing) {
+            return Cover::Facing;
+        }
+        held.push((gap, dir, half_angle));
+    }
+    // a point of the box on a gap has two nearest material points, each at its distance (at most
+    // `upper`), seen in directions with dot below `FACING_DOT`: only boxes within `upper` can hold them
+    held.retain(|h| h.0 <= upper);
+    let mut out = Cover::Clear;
+    for (i, &(_, d1, h1)) in held.iter().enumerate() {
+        for &(_, d2, h2) in &held[i..] {
+            let between = d1.dot(d2).clamp(-1.0, 1.0).acos();
+            if between >= FACING_ANGLE - FACING_MARGIN {
+                // the cones' axes alone are (nearly) facing: smaller boxes will not clear it
+                return Cover::Facing;
+            }
+            if between + h1 + h2 >= FACING_ANGLE {
+                out = Cover::Wide;
+            }
+        }
+    }
+    out
+}
+
+/// A box of [`clear_of_material`]'s search, ordered nearest first by its distance's bits.
+struct Near(u32, CoverKey);
+
+/// The heap key of a distance: smaller distances come out first (non-negative floats order as bits).
+const fn near_key(gap: f32) -> u32 {
+    u32::MAX - gap.to_bits()
+}
+
+impl PartialEq for Near {
+    fn eq(&self, o: &Self) -> bool {
+        self.0 == o.0
+    }
+}
+impl Eq for Near {}
+impl PartialOrd for Near {
+    fn partial_cmp(&self, o: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+impl Ord for Near {
+    fn cmp(&self, o: &Self) -> core::cmp::Ordering {
+        self.0.cmp(&o.0)
+    }
+}
+
+/// A box of the material cover: its depth below the root and its index on each axis at that depth.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct CoverKey {
+    depth: u8,
+    at: [u32; 3],
+}
+
+impl CoverKey {
+    const ROOT: Self = Self { depth: 0, at: [0; 3] };
+    /// Deepest box of the cover (indices fit `u32`).
+    const MAX_DEPTH: u8 = 24;
+
+    fn children(self) -> [Self; 8] {
+        core::array::from_fn(|i| Self {
+            depth: self.depth + 1,
+            at: core::array::from_fn(|k| 2 * self.at[k] + u32::from((i >> k) & 1 == 1)),
+        })
+    }
+}
+
+/// The material cover shared by every box of one proof: one octree over the proof's bound grown by the
+/// reach, whose boxes are read once (whether they may hold material, whether their centre is material)
+/// whichever box of the proof asks.
+struct CoverTree {
+    lo: Vec3,
+    size: Vec3,
+    seen: std::collections::HashMap<CoverKey, (bool, Option<bool>)>,
+}
+
+impl CoverTree {
+    fn new(bmin: Vec3, bmax: Vec3, reach: f32) -> Self {
+        let lo = bmin - Vec3::splat(reach);
+        Self {
+            lo,
+            size: bmax + Vec3::splat(reach) - lo,
+            seen: std::collections::HashMap::new(),
+        }
+    }
+
+    fn bounds(&self, k: CoverKey) -> (Vec3, Vec3) {
+        let n = (1_u64 << k.depth) as f32;
+        let at = Vec3::new(k.at[0] as f32, k.at[1] as f32, k.at[2] as f32);
+        (self.lo + self.size * (at / n), self.lo + self.size * ((at + Vec3::ONE) / n))
+    }
+
+    /// The value enclosure's lower bound over the box is at most zero.
+    fn may_hold_material(&mut self, m: &mut Meter<'_>, k: CoverKey) -> bool {
+        if let Some(e) = self.seen.get(&k) {
+            return e.0;
+        }
+        let (a, b) = self.bounds(k);
+        let may = m.interval(Vec3Interval::from_bounds(a, b)).lo <= 0.0;
+        self.seen.insert(k, (may, None));
+        may
+    }
+
+    /// The field at the box's centre is at most zero (the centre is material).
+    fn material_at_centre(&mut self, m: &mut Meter<'_>, k: CoverKey) -> bool {
+        if let Some(&(_, Some(c))) = self.seen.get(&k) {
+            return c;
+        }
+        let (a, b) = self.bounds(k);
+        let c = m.value((a + b) * 0.5) <= 0.0;
+        self.seen.entry(k).or_insert((true, None)).1 = Some(c);
+        c
+    }
+}
+
+/// What [`clear_of_material`] read around a box.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Cover {
+    /// No point of the box can have two nearest material points facing each other.
+    Clear,
+    /// Only the cones' widths keep the box from clearing: its parts may clear.
+    Wide,
+    /// Two cones face each other along their axes (or the work or the cones ran out): the box stays.
+    Facing,
+}
+
+/// The cones' axes within this angle of facing make [`clear_of_material`] give up on a box rather
+/// than read its parts.
+const FACING_MARGIN: f32 = 0.05;
+
+/// [`clear_of_material`] on the box, or else on each of its octants down to `extra` more levels while
+/// only the cones' widths keep it from clearing.
+fn clear_in_parts(
+    m: &mut Meter<'_>,
+    tree: &mut CoverTree,
+    lo: Vec3,
+    hi: Vec3,
+    reach: f32,
+    max_work: u64,
+    extra: u32,
+) -> bool {
+    match clear_of_material(m, tree, lo, hi, reach, max_work) {
+        Cover::Clear => true,
+        Cover::Facing => false,
+        Cover::Wide => {
+            extra > 0
+                && octants(lo, hi)
+                    .into_iter()
+                    .all(|(a, b)| clear_in_parts(m, tree, a, b, reach, max_work, extra - 1))
+        }
+    }
+}
+
+/// Levels below the proof's last depth at which [`clear_in_parts`] reads the material cover.
+const COVER_EXTRA_DEPTH: u32 = 2;
+
+/// The angle between two directions whose dot is [`FACING_DOT`] (120°).
+const FACING_ANGLE: f32 = 2.0 * core::f32::consts::FRAC_PI_3;
+/// Half-angle under which a box that may hold material is kept whole in [`clear_of_material`].
+const CONE_LEAF: f32 = 0.26;
+/// Boxes read by one [`clear_of_material`] before it gives up on the box.
+const MAX_COVER_READS: usize = 4096;
+/// Boxes that may hold material kept by [`clear_of_material`] before it gives up on the box.
+const MAX_CONES: usize = 512;
 
 /// The proof's work count: every evaluation of the tree it makes, weighted by the tree's node count
 /// (a point value 1, a point direction 2, an interval value 2, an interval direction 3), so the budget
@@ -678,12 +939,14 @@ fn facing_pair(
     m: &mut Meter<'_>,
     pts: &[(Vec3, f32, Vec3)],
     limit: f32,
+    unreached: &mut bool,
 ) -> Option<((Vec3, Vec3), f32)> {
     // each air point's wall point is marched at most once (lazily: only points in a facing pair)
     let mut walls: Vec<Option<Option<Vec3>>> = vec![None; pts.len()];
     let mut wall = |m: &mut Meter<'_>, k: usize| {
         *walls[k].get_or_insert_with(|| wall_point_with(&mut |q| m.value(q), pts[k].0, pts[k].2))
     };
+    let mut real_pair = false;
     for (i, a) in pts.iter().enumerate() {
         for (j, b) in pts.iter().enumerate().skip(i + 1) {
             if a.2.dot(b.2) >= FACING_DOT {
@@ -693,15 +956,19 @@ fn facing_pair(
                 continue;
             };
             let width = w1.distance(w2);
-            if a.2.dot(b.2) < FACING_DOT
-                && (w2 - w1).dot(a.2) > 0.0
-                && (w1 - w2).dot(b.2) > 0.0
-                && width < limit
-            {
+            let fronts = (w2 - w1).dot(a.2) > 0.0 && (w1 - w2).dot(b.2) > 0.0;
+            let real = fronts && a.0.distance(w1) <= 2.0 * a.1 && b.0.distance(w2) <= 2.0 * b.1;
+            if a.2.dot(b.2) < FACING_DOT && fronts && width < limit {
                 return Some(((a.2, b.2), width));
+            }
+            // a facing pair of the material's walls (in front of each other, reached about where the
+            // field said) decides the box by width; one of the field's own faces does not
+            if real {
+                real_pair = true;
             }
         }
     }
+    *unreached = !real_pair;
     None
 }
 
