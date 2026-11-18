@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1448 |
+| 🟢 Not ignored | 1449 |
 | 🔴 Red by design | 6 |
-| ⏱ Gated (runtime / diagnostic / manual) | 10 |
+| ⏱ Gated (runtime / diagnostic / manual) | 11 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1464** |
+| **Total** | **1466** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -38,11 +38,12 @@ exact assert by itself once the defect is gone (see the test's doc).
 - `a_large_twist_keeps_the_plain_bits_on_the_gpu` (test_union_bound_oracle.rs) — known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within c…
 - `no_checked_read_leaves_its_proven_range_on_the_gpu` (test_shader_data_bounds.rs) — known defect: g3-vulkan-nocontraction: a fusing wgpu driver (Vulkan, Metal through wgpu) is tolerated within t…
 
-## ⏱ Gated (10)
+## ⏱ Gated (11)
 
 Correct tests that are too slow for every push, or that print a measurement table.
 Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ignored`.
 
+- `a_chain_of_ten_thousand_shapes_transpiles` (transpile_deep_tree.rs) — the recursive form on this base overflows the stack here; this branch only shows the recorded text is its outp…
 - `const_and_variable_arrays_agree_on_a_loft` (test_glsl_array_form.rs) — runs on the macOS lane, where Metal compiles the shader at pipeline creation
 - `gradient_norm_at_the_surface` (test_loft_oracle.rs) — measurement: |∇f| at the surface of the bent mm-scale loft (run with --ignored --nocapture)
 - `march_steps_of_the_global_bound` (test_loft_oracle.rs) — measurement: march step counts of the global bound (run with --ignored --nocapture)
@@ -54,7 +55,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `write_bincode1_fixtures` (test_bincode1_fixtures.rs) — writes tests/fixtures/bincode1; run only to capture
 
-## 🟢 Not ignored (1448)
+## 🟢 Not ignored (1449)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -259,6 +260,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_loft_shader_cpu_agreement.rs` | 1 |
 | `test_metadata_order.rs` | 1 |
 | `test_texture_shader_gpu_parity.rs` | 1 |
+| `transpile_deep_tree.rs` | 1 |
 
 ---
 
