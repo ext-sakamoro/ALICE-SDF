@@ -1959,24 +1959,69 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         point_var: &str,
         code: &mut String,
     ) -> String {
-        #[cfg(not(feature = "glsl"))]
-        return self.transpile_node_value(node, point_var, code);
-        #[cfg(feature = "glsl")]
-        self.transpile_node_traced(node, point_var, code)
+        self.walk(node, point_var, code)
     }
 
-    /// [`Self::transpile_node_inner`] with the scale trace recorded when there is one
-    #[cfg(feature = "glsl")]
-    fn transpile_node_traced(
-        &mut self,
-        node: &SdfNode,
-        point_var: &str,
-        code: &mut String,
-    ) -> String {
-        let frame = self.open_scale_frame(node);
-        let result = self.transpile_node_value(node, point_var, code);
-        self.close_scale_frame(frame, &result);
-        result
+    /// The walk behind [`Self::transpile_node_inner`], with its pending work in a list instead of
+    /// the call stack, so a tree's depth costs no stack: a binary operation waits for its first
+    /// operand's value, then for its second's, then combines them; a wrapper whose code goes
+    /// before its child's passes the child's value on. Every node's scale frame (GLSL's local
+    /// scale) opens before its code and closes with its value, and the code is emitted in the
+    /// order the recursive form emitted it, so the output is the same text
+    fn walk(&mut self, root: &SdfNode, point_var: &str, code: &mut String) -> String {
+        /// What a node waits for when its child's value comes back
+        enum Wait<'n> {
+            /// the first operand's value: then the second operand, at `point`
+            Second(&'n SdfNode, String, Option<usize>),
+            /// both values: the operation combines them
+            Combine(&'n SdfNode, String, Option<usize>),
+            /// the child's value is the wrapper's
+            Pass(Option<usize>),
+        }
+        let mut waits: Vec<Wait<'_>> = Vec::new();
+        let mut next = Some((root, point_var.to_owned()));
+        loop {
+            let mut value = match next.take() {
+                Some((node, point)) => {
+                    let frame = self.open_scale_frame(node);
+                    if let Some((first, _)) = Self::binary_operands(node) {
+                        self.binary_before_operands(node);
+                        waits.push(Wait::Second(node, point.clone(), frame));
+                        next = Some((first, point));
+                        continue;
+                    }
+                    if let Some((child, child_point)) =
+                        self.wrapper_before_child(node, &point, code)
+                    {
+                        waits.push(Wait::Pass(frame));
+                        next = Some((child, child_point));
+                        continue;
+                    }
+                    let value = self.transpile_node_value(node, &point, code);
+                    self.close_scale_frame(frame, &value);
+                    value
+                }
+                None => unreachable!("the walk always has a node or a value"),
+            };
+            loop {
+                match waits.pop() {
+                    None => return value,
+                    Some(Wait::Second(node, point, frame)) => {
+                        let Some((_, second)) = Self::binary_operands(node) else {
+                            unreachable!("a binary operation has two operands");
+                        };
+                        waits.push(Wait::Combine(node, value, frame));
+                        next = Some((second, point));
+                        break;
+                    }
+                    Some(Wait::Combine(node, first, frame)) => {
+                        value = self.combine_binary(node, &first, &value, code);
+                        self.close_scale_frame(frame, &value);
+                    }
+                    Some(Wait::Pass(frame)) => self.close_scale_frame(frame, &value),
+                }
+            }
+        }
     }
 
     /// Open the scale frame of `node` under the one being emitted, when a scale trace is kept
@@ -2074,41 +2119,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         ) {
             self.ensure_helper("columns");
         }
-    }
-
-    /// A binary operation whose first operand is itself a binary operation, and so on down: the
-    /// first operands are walked with a list instead of the call stack, so a long chain (a union
-    /// of many shapes, as an n-ary call is read: folded to the left) needs no stack of its depth
-    ///
-    /// The code is emitted in the order the recursive form emits it: each operation's helper and
-    /// scale frame before its operands, its first operand, its second operand, then the
-    /// operation, so the output is the same text
-    fn transpile_binary_chain(
-        &mut self,
-        top: &SdfNode,
-        point_var: &str,
-        code: &mut String,
-    ) -> String {
-        // the caller opened `top`'s scale frame; the ones below it are opened here
-        let mut chain: Vec<(&SdfNode, Option<usize>)> = vec![(top, None)];
-        self.binary_before_operands(top);
-        let mut first = Self::binary_operands(top).map_or(top, |(a, _)| a);
-        while let Some((a, _)) = Self::binary_operands(first) {
-            let frame = self.open_scale_frame(first);
-            self.binary_before_operands(first);
-            chain.push((first, frame));
-            first = a;
-        }
-        let mut d = self.transpile_node_inner(first, point_var, code);
-        while let Some((node, frame)) = chain.pop() {
-            let Some((_, second)) = Self::binary_operands(node) else {
-                break;
-            };
-            let d_b = self.transpile_node_inner(second, point_var, code);
-            d = self.combine_binary(node, &d, &d_b, code);
-            self.close_scale_frame(frame, &d);
-        }
-        d
     }
 
     /// The code of a binary operation from the values of its two operands
@@ -2462,6 +2472,369 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 var
             }
             _ => unreachable!("combine_binary is called only with a binary operation"),
+        }
+    }
+
+    /// For a one-child wrapper whose code goes before its child's (a transform of the point, or
+    /// nothing): that code, then the child and the point it is evaluated at; `None` for any other
+    /// node. The wrapper's value is the child's
+    #[allow(clippy::too_many_lines)]
+    fn wrapper_before_child<'n>(
+        &mut self,
+        node: &'n SdfNode,
+        point_var: &str,
+        code: &mut String,
+    ) -> Option<(&'n SdfNode, String)> {
+        match node {
+            SdfNode::Translate { child, offset } => {
+                let new_p = self.next_var();
+                let ox = self.param(offset.x);
+                let oy = self.param(offset.y);
+                let oz = self.param(offset.z);
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &format!("{} - {}", point_var, L::vec3_ctor(&ox, &oy, &oz)),
+                ));
+                Some((child, new_p))
+            }
+            SdfNode::Rotate { child, rotation } => {
+                self.ensure_helper("quat_rotate");
+                let inv_rot = rotation.inverse();
+                let new_p = self.next_var();
+                let qx = self.param(inv_rot.x);
+                let qy = self.param(inv_rot.y);
+                let qz = self.param(inv_rot.z);
+                let qw = self.param(inv_rot.w);
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &format!(
+                        "quat_rotate({}, {})",
+                        point_var,
+                        L::vec4_ctor(&qx, &qy, &qz, &qw)
+                    ),
+                ));
+                Some((child, new_p))
+            }
+            SdfNode::Twist { child, strength } => {
+                // The native `sin` / `cos` are bounded (WGSL: 2⁻¹¹ absolute) only on [−π, π], so
+                // the angle `a = strength · y` is reduced by quadrants first:
+                //   n = floor(a · 2/π + 0.5),  r = (a − n·P1) − n·P2,  P1 = 1.5703125 (201/128,
+                //   8 significant bits), P2 = fl(π/2 − P1) = 4.8382679e-4
+                // `n·P1` is exact while |n| ≤ 2¹⁶ (8 + 16 ≤ 24 bits) and `a − n·P1` is a single
+                // rounding, so |r − (a − n·π/2)| ≤ |n|·(|π/2 − P1 − P2| + ulp(n·P2)) + ulp(r)
+                // ≤ 2¹⁶ · 2⁻³⁴ + 2⁻²⁴ ≈ 4e-6. The rounding of `a · 2/π` in n can leave |r| past
+                // π/4 (0.793 measured), inside r ∈ [−π, π], which is what the native pair needs,
+                // for |a| ≤ 2¹⁶ · π/2 (≈ 1.03e5). The quadrant q = n mod 4 picks (sin, cos) of r or
+                // their swap / negation exactly (a select and a ±1 product), so c² + s² is that of
+                // the native pair on r: √(c² + s²) ∈ [1 − √2·2⁻¹¹, 1 + √2·2⁻¹¹], the twist's
+                // factor in `bound::SHADER_TWIST_DELTA`. The angle itself is within ~4e-6 of the
+                // CPU's (|a| up to 1.03e5); outside that range the reduction is not derived
+                let angle_var = self.next_var();
+                let n_var = self.next_var();
+                let r_var = self.next_var();
+                let q_var = self.next_var();
+                let c0_var = self.next_var();
+                let s0_var = self.next_var();
+                let odd_var = self.next_var();
+                let sg_var = self.next_var();
+                let c_var = self.next_var();
+                let s_var = self.next_var();
+                let new_p = self.next_var();
+                let str_val = self.param(*strength);
+                code.push_str(&L::decl_float(
+                    &angle_var,
+                    &format!("{} * {}.y", str_val, point_var),
+                ));
+                code.push_str(&L::decl_float(
+                    &n_var,
+                    &format!("floor({angle_var} * 0.63661975 + 0.5)"),
+                ));
+                code.push_str(&L::decl_float(
+                    &r_var,
+                    &format!("({angle_var} - {n_var} * 1.5703125) - {n_var} * 0.00048382679"),
+                ));
+                code.push_str(&L::decl_float(
+                    &q_var,
+                    &format!("{n_var} - 4.0 * floor({n_var} * 0.25)"),
+                ));
+                code.push_str(&L::decl_float(&c0_var, &format!("cos({r_var})")));
+                code.push_str(&L::decl_float(&s0_var, &format!("sin({r_var})")));
+                code.push_str(&L::decl_float(
+                    &odd_var,
+                    &format!("{q_var} - 2.0 * floor({q_var} * 0.5)"),
+                ));
+                code.push_str(&L::decl_float(
+                    &sg_var,
+                    &format!("1.0 - 2.0 * floor({q_var} * 0.5)"),
+                ));
+                // q = 0: (s0, c0); 1: (c0, −s0); 2: (−s0, −c0); 3: (−c0, s0)  (sin, cos of r + q·π/2)
+                code.push_str(&L::decl_float(
+                    &s_var,
+                    &format!(
+                        "{sg_var} * {}",
+                        L::select_float(&format!("{odd_var} > 0.5"), &c0_var, &s0_var)
+                    ),
+                ));
+                code.push_str(&L::decl_float(
+                    &c_var,
+                    &format!(
+                        "{sg_var} * {}",
+                        L::select_float(
+                            &format!("{odd_var} > 0.5"),
+                            &format!("-{s0_var}"),
+                            &c0_var
+                        )
+                    ),
+                ));
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &L::vec3_ctor(
+                        &format!("{} * {}.x - {} * {}.z", c_var, point_var, s_var, point_var),
+                        &format!("{}.y", point_var),
+                        &format!("{} * {}.x + {} * {}.z", s_var, point_var, c_var, point_var),
+                    ),
+                ));
+                Some((child, new_p))
+            }
+            SdfNode::Bend { child, curvature } => {
+                let angle_var = self.next_var();
+                let c_var = self.next_var();
+                let s_var = self.next_var();
+                let new_p = self.next_var();
+                let curv = self.param(*curvature);
+                code.push_str(&L::decl_float(
+                    &angle_var,
+                    &format!("{} * {}.x", curv, point_var),
+                ));
+                code.push_str(&L::decl_float(&c_var, &format!("cos({})", angle_var)));
+                code.push_str(&L::decl_float(&s_var, &format!("sin({})", angle_var)));
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &L::vec3_ctor(
+                        // `real::bend`: (c x - s y, s x + c y, z)
+                        &format!("{} * {}.x - {} * {}.y", c_var, point_var, s_var, point_var),
+                        &format!("{} * {}.x + {} * {}.y", s_var, point_var, c_var, point_var),
+                        &format!("{}.z", point_var),
+                    ),
+                ));
+                Some((child, new_p))
+            }
+            SdfNode::Elongate { child, amount } => {
+                // Same law as `crate::eval::mod::eval`'s `SdfNode::Elongate`
+                // arm and `real::elongate` (tree, VM bytecode, scalar/SIMD
+                // JIT): `q = p - clamp(p, -a, a)`, the child evaluated
+                // as-is at `q` (IQ's cheap elongate, no box correction —
+                // the previous "exact" shader law disagreed by up to 1.0 on
+                // an interior point, e.g. `elongate(1,2,3, sphere(1))` at
+                // (0.011, 0.666, 0.515): cpu -1.0 vs the old shader -1.99).
+                let bound = self.next_var();
+                let q_var = self.next_var();
+                let ax = self.param(amount.x);
+                let ay = self.param(amount.y);
+                let az = self.param(amount.z);
+                code.push_str(&L::decl_vec3(&bound, &L::vec3_ctor(&ax, &ay, &az)));
+                code.push_str(&L::decl_vec3(
+                    &q_var,
+                    &format!("{p} - clamp({p}, -{b}, {b})", p = point_var, b = bound),
+                ));
+                Some((child, q_var))
+            }
+            SdfNode::RepeatInfinite { child, spacing } => {
+                let new_p = self.next_var();
+                let sx = self.param(spacing.x);
+                let sy = self.param(spacing.y);
+                let sz = self.param(spacing.z);
+                let half_s = self.next_var();
+                code.push_str(&L::decl_vec3(
+                    &half_s,
+                    &format!("{} * 0.5", L::vec3_ctor(&sx, &sy, &sz)),
+                ));
+                // `p * (1 / s)` with the reciprocal baked as an f32 constant: the
+                // CPU paths multiply by the same reciprocal, so a cell-boundary tie
+                // resolves identically (`p / s` differs by an ulp).
+                let isx = self.param(1.0 / spacing.x);
+                let isy = self.param(1.0 / spacing.y);
+                let isz = self.param(1.0 / spacing.z);
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &format!(
+                        "{p} - {s} * floor({p} * {inv} + 0.5)",
+                        p = point_var,
+                        s = L::vec3_ctor(&sx, &sy, &sz),
+                        inv = L::vec3_ctor(&isx, &isy, &isz),
+                    ),
+                ));
+                Some((child, new_p))
+            }
+            SdfNode::RepeatCells {
+                child,
+                spacing,
+                count,
+                mirror,
+                ..
+            } => {
+                // the law of modifiers::repeat_cells, operation for operation: per repeated axis
+                // c = floor(p·(1/s) [+ h] + 0.5) (clamped to [0, n−1] when finite),
+                // q = p − c·s (or p − (c − h)·s), and, when mirrored, with k = c − ⌊(n−1)/2⌋
+                // (k = c when infinite), q·(1 − 2·(k − 2·floor(k/2)))
+                let c = count.unwrap_or([0; 3]);
+                let comps = ["x", "y", "z"];
+                let mut axes = Vec::with_capacity(3);
+                for i in 0..3 {
+                    let s = spacing[i];
+                    let pc = format!("{point_var}.{}", comps[i]);
+                    if s.is_nan() || s <= 0.0 {
+                        axes.push(pc);
+                        continue;
+                    }
+                    let sv = self.param(s);
+                    let inv = self.param(1.0 / s);
+                    let cell = self.next_var();
+                    let q = self.next_var();
+                    if c[i] == 0 {
+                        code.push_str(&L::decl_float(&cell, &format!("floor({pc} * {inv} + 0.5)")));
+                        code.push_str(&L::decl_float(&q, &format!("{pc} - {cell} * {sv}")));
+                    } else {
+                        let h = self.param((c[i] as f32 - 1.0) * 0.5);
+                        let top = self.param(c[i] as f32 - 1.0);
+                        code.push_str(&L::decl_float(
+                            &cell,
+                            &format!("min(max(floor({pc} * {inv} + {h} + 0.5), 0.0), {top})"),
+                        ));
+                        code.push_str(&L::decl_float(&q, &format!("{pc} - ({cell} - {h}) * {sv}")));
+                    }
+                    if *mirror {
+                        let base = crate::modifiers::mirror_base(c[i]);
+                        let k = if base == 0.0 {
+                            cell.clone()
+                        } else {
+                            let k = self.next_var();
+                            let b = self.param(base);
+                            code.push_str(&L::decl_float(&k, &format!("{cell} - {b}")));
+                            k
+                        };
+                        let m = self.next_var();
+                        code.push_str(&L::decl_float(
+                            &m,
+                            &format!("{q} * (1.0 - ({k} - floor({k} * 0.5) * 2.0) * 2.0)"),
+                        ));
+                        axes.push(m);
+                    } else {
+                        axes.push(q);
+                    }
+                }
+                let new_p = self.next_var();
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &L::vec3_ctor(&axes[0], &axes[1], &axes[2]),
+                ));
+                Some((child, new_p))
+            }
+            SdfNode::RepeatFinite {
+                child,
+                spacing,
+                count,
+            } => {
+                let new_p = self.next_var();
+                let sx = self.param(spacing.x);
+                let sy = self.param(spacing.y);
+                let sz = self.param(spacing.z);
+                // clamp to ±floor(count/2) like `real::repeat_finite` (the shader used to
+                // clamp to ±count, twice the CPU extent)
+                let cx = self.param((count[0] as f32 * 0.5).floor());
+                let cy = self.param((count[1] as f32 * 0.5).floor());
+                let cz = self.param((count[2] as f32 * 0.5).floor());
+                let isx = self.param(1.0 / spacing.x);
+                let isy = self.param(1.0 / spacing.y);
+                let isz = self.param(1.0 / spacing.z);
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &format!(
+                        "{p} - {s} * clamp(floor({p} * {inv} + 0.5), -{c}, {c})",
+                        p = point_var,
+                        s = L::vec3_ctor(&sx, &sy, &sz),
+                        inv = L::vec3_ctor(&isx, &isy, &isz),
+                        c = L::vec3_ctor(&cx, &cy, &cz),
+                    ),
+                ));
+                Some((child, new_p))
+            }
+            SdfNode::Mirror { child, axes } => {
+                let new_p = self.next_var();
+                let mx = if axes.x != 0.0 {
+                    format!("abs({}.x)", point_var)
+                } else {
+                    format!("{}.x", point_var)
+                };
+                let my = if axes.y != 0.0 {
+                    format!("abs({}.y)", point_var)
+                } else {
+                    format!("{}.y", point_var)
+                };
+                let mz = if axes.z != 0.0 {
+                    format!("abs({}.z)", point_var)
+                } else {
+                    format!("{}.z", point_var)
+                };
+                code.push_str(&L::decl_vec3(&new_p, &L::vec3_ctor(&mx, &my, &mz)));
+                Some((child, new_p))
+            }
+            SdfNode::OctantMirror { child } => {
+                self.ensure_helper("octant_mirror");
+                let new_p = self.next_var();
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &format!("alice_octant_mirror({})", point_var),
+                ));
+                Some((child, new_p))
+            }
+            SdfNode::IcosahedralSymmetry { child } => {
+                self.ensure_helper("icosahedral_fold");
+                let new_p = self.next_var();
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &format!("alice_icosahedral_fold({})", point_var),
+                ));
+                Some((child, new_p))
+            }
+            SdfNode::Revolution { child, offset } => {
+                let new_p = self.next_var();
+                let off = self.param(*offset);
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &L::vec3_ctor(
+                        &format!("length({}.xz) - {}", point_var, off),
+                        &format!("{}.y", point_var),
+                        "0.0",
+                    ),
+                ));
+                Some((child, new_p))
+            }
+            SdfNode::WithMaterial { child, .. } | SdfNode::Pose { child } => {
+                Some((child, point_var.to_owned()))
+            }
+            SdfNode::Shear { child, shear } => {
+                let sx = self.param(shear.x);
+                let sy = self.param(shear.y);
+                let sz = self.param(shear.z);
+                let new_p = self.next_var();
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &L::vec3_ctor(
+                        &format!("{p}.x", p = point_var),
+                        &format!("{p}.y - {sx} * {p}.x", p = point_var, sx = sx),
+                        &format!(
+                            "{p}.z - {sy} * {p}.x - {sz} * {p}.y",
+                            p = point_var,
+                            sy = sy,
+                            sz = sz
+                        ),
+                    ),
+                ));
+                Some((child, new_p))
+            }
+            SdfNode::Animated { child, .. } => Some((child, point_var.to_owned())),
+            _ => None,
         }
     }
 
@@ -3855,7 +4228,14 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             | SdfNode::ExpSmoothUnion { .. }
             | SdfNode::ExpSmoothIntersection { .. }
             | SdfNode::ExpSmoothSubtraction { .. } => {
-                self.transpile_binary_chain(node, point_var, code)
+                // reached only when called directly: the walk combines binary operations itself
+                let Some((a, b)) = Self::binary_operands(node) else {
+                    unreachable!("a binary operation has two operands");
+                };
+                self.binary_before_operands(node);
+                let d_a = self.transpile_node_inner(a, point_var, code);
+                let d_b = self.transpile_node_inner(b, point_var, code);
+                self.combine_binary(node, &d_a, &d_b, code)
             }
 
             // Division Exorcism for SmoothUnion
@@ -3867,35 +4247,26 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             // Columns operations: one helper per language, same law as the CPU
 
             // ============ Transforms ============
-            SdfNode::Translate { child, offset } => {
-                let new_p = self.next_var();
-                let ox = self.param(offset.x);
-                let oy = self.param(offset.y);
-                let oz = self.param(offset.z);
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &format!("{} - {}", point_var, L::vec3_ctor(&ox, &oy, &oz)),
-                ));
-                self.transpile_node_inner(child, &new_p, code)
-            }
-
-            SdfNode::Rotate { child, rotation } => {
-                self.ensure_helper("quat_rotate");
-                let inv_rot = rotation.inverse();
-                let new_p = self.next_var();
-                let qx = self.param(inv_rot.x);
-                let qy = self.param(inv_rot.y);
-                let qz = self.param(inv_rot.z);
-                let qw = self.param(inv_rot.w);
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &format!(
-                        "quat_rotate({}, {})",
-                        point_var,
-                        L::vec4_ctor(&qx, &qy, &qz, &qw)
-                    ),
-                ));
-                self.transpile_node_inner(child, &new_p, code)
+            SdfNode::Translate { .. }
+            | SdfNode::Rotate { .. }
+            | SdfNode::Twist { .. }
+            | SdfNode::Bend { .. }
+            | SdfNode::Elongate { .. }
+            | SdfNode::RepeatInfinite { .. }
+            | SdfNode::RepeatCells { .. }
+            | SdfNode::RepeatFinite { .. }
+            | SdfNode::Mirror { .. }
+            | SdfNode::OctantMirror { .. }
+            | SdfNode::IcosahedralSymmetry { .. }
+            | SdfNode::Revolution { .. }
+            | SdfNode::WithMaterial { .. }
+            | SdfNode::Pose { .. }
+            | SdfNode::Shear { .. }
+            | SdfNode::Animated { .. } => {
+                let Some((child, p)) = self.wrapper_before_child(node, point_var, code) else {
+                    unreachable!("a wrapper that emits its code before its child");
+                };
+                self.transpile_node_inner(child, &p, code)
             }
 
             SdfNode::Scale { child, factor } => {
@@ -3928,112 +4299,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             }
 
             // ============ Modifiers ============
-            SdfNode::Twist { child, strength } => {
-                // The native `sin` / `cos` are bounded (WGSL: 2⁻¹¹ absolute) only on [−π, π], so
-                // the angle `a = strength · y` is reduced by quadrants first:
-                //   n = floor(a · 2/π + 0.5),  r = (a − n·P1) − n·P2,  P1 = 1.5703125 (201/128,
-                //   8 significant bits), P2 = fl(π/2 − P1) = 4.8382679e-4
-                // `n·P1` is exact while |n| ≤ 2¹⁶ (8 + 16 ≤ 24 bits) and `a − n·P1` is a single
-                // rounding, so |r − (a − n·π/2)| ≤ |n|·(|π/2 − P1 − P2| + ulp(n·P2)) + ulp(r)
-                // ≤ 2¹⁶ · 2⁻³⁴ + 2⁻²⁴ ≈ 4e-6. The rounding of `a · 2/π` in n can leave |r| past
-                // π/4 (0.793 measured), inside r ∈ [−π, π], which is what the native pair needs,
-                // for |a| ≤ 2¹⁶ · π/2 (≈ 1.03e5). The quadrant q = n mod 4 picks (sin, cos) of r or
-                // their swap / negation exactly (a select and a ±1 product), so c² + s² is that of
-                // the native pair on r: √(c² + s²) ∈ [1 − √2·2⁻¹¹, 1 + √2·2⁻¹¹], the twist's
-                // factor in `bound::SHADER_TWIST_DELTA`. The angle itself is within ~4e-6 of the
-                // CPU's (|a| up to 1.03e5); outside that range the reduction is not derived
-                let angle_var = self.next_var();
-                let n_var = self.next_var();
-                let r_var = self.next_var();
-                let q_var = self.next_var();
-                let c0_var = self.next_var();
-                let s0_var = self.next_var();
-                let odd_var = self.next_var();
-                let sg_var = self.next_var();
-                let c_var = self.next_var();
-                let s_var = self.next_var();
-                let new_p = self.next_var();
-                let str_val = self.param(*strength);
-                code.push_str(&L::decl_float(
-                    &angle_var,
-                    &format!("{} * {}.y", str_val, point_var),
-                ));
-                code.push_str(&L::decl_float(
-                    &n_var,
-                    &format!("floor({angle_var} * 0.63661975 + 0.5)"),
-                ));
-                code.push_str(&L::decl_float(
-                    &r_var,
-                    &format!("({angle_var} - {n_var} * 1.5703125) - {n_var} * 0.00048382679"),
-                ));
-                code.push_str(&L::decl_float(
-                    &q_var,
-                    &format!("{n_var} - 4.0 * floor({n_var} * 0.25)"),
-                ));
-                code.push_str(&L::decl_float(&c0_var, &format!("cos({r_var})")));
-                code.push_str(&L::decl_float(&s0_var, &format!("sin({r_var})")));
-                code.push_str(&L::decl_float(
-                    &odd_var,
-                    &format!("{q_var} - 2.0 * floor({q_var} * 0.5)"),
-                ));
-                code.push_str(&L::decl_float(
-                    &sg_var,
-                    &format!("1.0 - 2.0 * floor({q_var} * 0.5)"),
-                ));
-                // q = 0: (s0, c0); 1: (c0, −s0); 2: (−s0, −c0); 3: (−c0, s0)  (sin, cos of r + q·π/2)
-                code.push_str(&L::decl_float(
-                    &s_var,
-                    &format!(
-                        "{sg_var} * {}",
-                        L::select_float(&format!("{odd_var} > 0.5"), &c0_var, &s0_var)
-                    ),
-                ));
-                code.push_str(&L::decl_float(
-                    &c_var,
-                    &format!(
-                        "{sg_var} * {}",
-                        L::select_float(
-                            &format!("{odd_var} > 0.5"),
-                            &format!("-{s0_var}"),
-                            &c0_var
-                        )
-                    ),
-                ));
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &L::vec3_ctor(
-                        &format!("{} * {}.x - {} * {}.z", c_var, point_var, s_var, point_var),
-                        &format!("{}.y", point_var),
-                        &format!("{} * {}.x + {} * {}.z", s_var, point_var, c_var, point_var),
-                    ),
-                ));
-                self.transpile_node_inner(child, &new_p, code)
-            }
-
-            SdfNode::Bend { child, curvature } => {
-                let angle_var = self.next_var();
-                let c_var = self.next_var();
-                let s_var = self.next_var();
-                let new_p = self.next_var();
-                let curv = self.param(*curvature);
-                code.push_str(&L::decl_float(
-                    &angle_var,
-                    &format!("{} * {}.x", curv, point_var),
-                ));
-                code.push_str(&L::decl_float(&c_var, &format!("cos({})", angle_var)));
-                code.push_str(&L::decl_float(&s_var, &format!("sin({})", angle_var)));
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &L::vec3_ctor(
-                        // `real::bend`: (c x - s y, s x + c y, z)
-                        &format!("{} * {}.x - {} * {}.y", c_var, point_var, s_var, point_var),
-                        &format!("{} * {}.x + {} * {}.y", s_var, point_var, c_var, point_var),
-                        &format!("{}.z", point_var),
-                    ),
-                ));
-                self.transpile_node_inner(child, &new_p, code)
-            }
-
             SdfNode::Round { child, radius } => {
                 let d = self.transpile_node_inner(child, point_var, code);
                 let var = self.next_var();
@@ -4048,150 +4313,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let th = self.param(*thickness);
                 code.push_str(&L::decl_float(&var, &format!("abs({}) - {}", d, th)));
                 var
-            }
-
-            SdfNode::Elongate { child, amount } => {
-                // Same law as `crate::eval::mod::eval`'s `SdfNode::Elongate`
-                // arm and `real::elongate` (tree, VM bytecode, scalar/SIMD
-                // JIT): `q = p - clamp(p, -a, a)`, the child evaluated
-                // as-is at `q` (IQ's cheap elongate, no box correction —
-                // the previous "exact" shader law disagreed by up to 1.0 on
-                // an interior point, e.g. `elongate(1,2,3, sphere(1))` at
-                // (0.011, 0.666, 0.515): cpu -1.0 vs the old shader -1.99).
-                let bound = self.next_var();
-                let q_var = self.next_var();
-                let ax = self.param(amount.x);
-                let ay = self.param(amount.y);
-                let az = self.param(amount.z);
-                code.push_str(&L::decl_vec3(&bound, &L::vec3_ctor(&ax, &ay, &az)));
-                code.push_str(&L::decl_vec3(
-                    &q_var,
-                    &format!("{p} - clamp({p}, -{b}, {b})", p = point_var, b = bound),
-                ));
-                self.transpile_node_inner(child, &q_var, code)
-            }
-
-            SdfNode::RepeatInfinite { child, spacing } => {
-                let new_p = self.next_var();
-                let sx = self.param(spacing.x);
-                let sy = self.param(spacing.y);
-                let sz = self.param(spacing.z);
-                let half_s = self.next_var();
-                code.push_str(&L::decl_vec3(
-                    &half_s,
-                    &format!("{} * 0.5", L::vec3_ctor(&sx, &sy, &sz)),
-                ));
-                // `p * (1 / s)` with the reciprocal baked as an f32 constant: the
-                // CPU paths multiply by the same reciprocal, so a cell-boundary tie
-                // resolves identically (`p / s` differs by an ulp).
-                let isx = self.param(1.0 / spacing.x);
-                let isy = self.param(1.0 / spacing.y);
-                let isz = self.param(1.0 / spacing.z);
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &format!(
-                        "{p} - {s} * floor({p} * {inv} + 0.5)",
-                        p = point_var,
-                        s = L::vec3_ctor(&sx, &sy, &sz),
-                        inv = L::vec3_ctor(&isx, &isy, &isz),
-                    ),
-                ));
-                self.transpile_node_inner(child, &new_p, code)
-            }
-
-            SdfNode::RepeatCells {
-                child,
-                spacing,
-                count,
-                mirror,
-                ..
-            } => {
-                // the law of modifiers::repeat_cells, operation for operation: per repeated axis
-                // c = floor(p·(1/s) [+ h] + 0.5) (clamped to [0, n−1] when finite),
-                // q = p − c·s (or p − (c − h)·s), and, when mirrored, with k = c − ⌊(n−1)/2⌋
-                // (k = c when infinite), q·(1 − 2·(k − 2·floor(k/2)))
-                let c = count.unwrap_or([0; 3]);
-                let comps = ["x", "y", "z"];
-                let mut axes = Vec::with_capacity(3);
-                for i in 0..3 {
-                    let s = spacing[i];
-                    let pc = format!("{point_var}.{}", comps[i]);
-                    if s.is_nan() || s <= 0.0 {
-                        axes.push(pc);
-                        continue;
-                    }
-                    let sv = self.param(s);
-                    let inv = self.param(1.0 / s);
-                    let cell = self.next_var();
-                    let q = self.next_var();
-                    if c[i] == 0 {
-                        code.push_str(&L::decl_float(&cell, &format!("floor({pc} * {inv} + 0.5)")));
-                        code.push_str(&L::decl_float(&q, &format!("{pc} - {cell} * {sv}")));
-                    } else {
-                        let h = self.param((c[i] as f32 - 1.0) * 0.5);
-                        let top = self.param(c[i] as f32 - 1.0);
-                        code.push_str(&L::decl_float(
-                            &cell,
-                            &format!("min(max(floor({pc} * {inv} + {h} + 0.5), 0.0), {top})"),
-                        ));
-                        code.push_str(&L::decl_float(&q, &format!("{pc} - ({cell} - {h}) * {sv}")));
-                    }
-                    if *mirror {
-                        let base = crate::modifiers::mirror_base(c[i]);
-                        let k = if base == 0.0 {
-                            cell.clone()
-                        } else {
-                            let k = self.next_var();
-                            let b = self.param(base);
-                            code.push_str(&L::decl_float(&k, &format!("{cell} - {b}")));
-                            k
-                        };
-                        let m = self.next_var();
-                        code.push_str(&L::decl_float(
-                            &m,
-                            &format!("{q} * (1.0 - ({k} - floor({k} * 0.5) * 2.0) * 2.0)"),
-                        ));
-                        axes.push(m);
-                    } else {
-                        axes.push(q);
-                    }
-                }
-                let new_p = self.next_var();
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &L::vec3_ctor(&axes[0], &axes[1], &axes[2]),
-                ));
-                self.transpile_node_inner(child, &new_p, code)
-            }
-
-            SdfNode::RepeatFinite {
-                child,
-                spacing,
-                count,
-            } => {
-                let new_p = self.next_var();
-                let sx = self.param(spacing.x);
-                let sy = self.param(spacing.y);
-                let sz = self.param(spacing.z);
-                // clamp to ±floor(count/2) like `real::repeat_finite` (the shader used to
-                // clamp to ±count, twice the CPU extent)
-                let cx = self.param((count[0] as f32 * 0.5).floor());
-                let cy = self.param((count[1] as f32 * 0.5).floor());
-                let cz = self.param((count[2] as f32 * 0.5).floor());
-                let isx = self.param(1.0 / spacing.x);
-                let isy = self.param(1.0 / spacing.y);
-                let isz = self.param(1.0 / spacing.z);
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &format!(
-                        "{p} - {s} * clamp(floor({p} * {inv} + 0.5), -{c}, {c})",
-                        p = point_var,
-                        s = L::vec3_ctor(&sx, &sy, &sz),
-                        inv = L::vec3_ctor(&isx, &isy, &isz),
-                        c = L::vec3_ctor(&cx, &cy, &cz),
-                    ),
-                ));
-                self.transpile_node_inner(child, &new_p, code)
             }
 
             SdfNode::Noise {
@@ -4216,37 +4337,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &format!("{} + {} * {}", d, n_var, amp),
                 ));
                 var
-            }
-
-            SdfNode::Mirror { child, axes } => {
-                let new_p = self.next_var();
-                let mx = if axes.x != 0.0 {
-                    format!("abs({}.x)", point_var)
-                } else {
-                    format!("{}.x", point_var)
-                };
-                let my = if axes.y != 0.0 {
-                    format!("abs({}.y)", point_var)
-                } else {
-                    format!("{}.y", point_var)
-                };
-                let mz = if axes.z != 0.0 {
-                    format!("abs({}.z)", point_var)
-                } else {
-                    format!("{}.z", point_var)
-                };
-                code.push_str(&L::decl_vec3(&new_p, &L::vec3_ctor(&mx, &my, &mz)));
-                self.transpile_node_inner(child, &new_p, code)
-            }
-
-            SdfNode::OctantMirror { child } => {
-                self.ensure_helper("octant_mirror");
-                let new_p = self.next_var();
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &format!("alice_octant_mirror({})", point_var),
-                ));
-                self.transpile_node_inner(child, &new_p, code)
             }
 
             SdfNode::ProjectiveTransform {
@@ -4454,16 +4544,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 self.transpile_node_inner(child, &q, code)
             }
 
-            SdfNode::IcosahedralSymmetry { child } => {
-                self.ensure_helper("icosahedral_fold");
-                let new_p = self.next_var();
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &format!("alice_icosahedral_fold({})", point_var),
-                ));
-                self.transpile_node_inner(child, &new_p, code)
-            }
-
             SdfNode::IFS {
                 child,
                 transforms,
@@ -4642,20 +4722,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     &format!("{} + {} * {}", d, amp, noise_var),
                 ));
                 var
-            }
-
-            SdfNode::Revolution { child, offset } => {
-                let new_p = self.next_var();
-                let off = self.param(*offset);
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &L::vec3_ctor(
-                        &format!("length({}.xz) - {}", point_var, off),
-                        &format!("{}.y", point_var),
-                        "0.0",
-                    ),
-                ));
-                self.transpile_node_inner(child, &new_p, code)
             }
 
             SdfNode::Extrude { child, half_height } => {
@@ -4871,10 +4937,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 let d = self.transpile_node_inner(child, &new_p, code);
                 code.push_str(&L::decl_float(&var, &d));
                 var
-            }
-
-            SdfNode::WithMaterial { child, .. } | SdfNode::Pose { child } => {
-                self.transpile_node_inner(child, point_var, code)
             }
 
             // ============ 2D Primitives (extruded to 3D) ============
@@ -5473,29 +5535,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_float(&var, &expr));
                 var
             }
-
-            SdfNode::Shear { child, shear } => {
-                let sx = self.param(shear.x);
-                let sy = self.param(shear.y);
-                let sz = self.param(shear.z);
-                let new_p = self.next_var();
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &L::vec3_ctor(
-                        &format!("{p}.x", p = point_var),
-                        &format!("{p}.y - {sx} * {p}.x", p = point_var, sx = sx),
-                        &format!(
-                            "{p}.z - {sy} * {p}.x - {sz} * {p}.y",
-                            p = point_var,
-                            sy = sy,
-                            sz = sz
-                        ),
-                    ),
-                ));
-                self.transpile_node_inner(child, &new_p, code)
-            }
-
-            SdfNode::Animated { child, .. } => self.transpile_node_inner(child, point_var, code),
         }
     }
 }

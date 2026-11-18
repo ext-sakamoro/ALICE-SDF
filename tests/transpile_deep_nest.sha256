@@ -1,0 +1,336 @@
+translate chain 4 | wgsl hardcoded | 8c8c5e29922114eeebb57496b1ed85885abcc8bf86c3ae3560ca9f8c23cafb2f
+translate chain 4 | wgsl dynamic | d9c5c4aaf3e92de5417d35a0b3506ef5a3ce6d1d2d3f1b916a97a93ed3427e3f
+translate chain 4 | glsl hardcoded | a9e957c799d28fa88029e624f66061c506a36f9131f6d88f114ac0efff4c00c9
+translate chain 4 | glsl dynamic | abd2f2aab5cf468d77c0b0b46fbd6295762331a7407f94545f8a6625e361ea85
+translate chain 4 | hlsl hardcoded | 7d86ffa79cb6b1c7a73d024fea583f0973c680fc83cf809a307aeb415a9fbc34
+translate chain 4 | hlsl dynamic | 4a15cd6bfe01397a15373681abbfbe3ca2473b09f4f928af8c5d56deed91c8b6
+translate chain 4 | glsl scaled hardcoded | ce15ce59a37d5cae60a7dac35e8b596ba22ce87e0aa6a19aa90e892a17f78080
+translate chain 4 | glsl scaled dynamic | 5d7043162c95b4a859cbc48575d4b33e17393b37b8694e4f425382cc61b4e903
+rotate chain 4 | wgsl hardcoded | 8bc5f09bac18972c631e00468cf4c57d93383bc4d9b613f208915c3c2f0273ca
+rotate chain 4 | wgsl dynamic | 7aae1ae6468d1c07880deaf7e723a21cf964ca8e6b8745cfe8e868127d4ad413
+rotate chain 4 | glsl hardcoded | 77bd4a16219a1b2196e3863ab353d2af7380644c90497ccdddefbd92287d2b28
+rotate chain 4 | glsl dynamic | 6d9393494bb388c18c8995621c7cdaa50e59eed97047e6fc42eb72c092013dc4
+rotate chain 4 | hlsl hardcoded | 9aa6065c2c7995f56a35c9b6760b21b6fb3cb8b0a92b4a0bbae9adb097147ac6
+rotate chain 4 | hlsl dynamic | c1f09e7a959424c4129e79877d55b9256818597bb1ffb3e21bd0dd794159e8d2
+rotate chain 4 | glsl scaled hardcoded | 091ebfaca3f93fd5c048c3b3be3a32ce99b3ec6b9b2fc4693cb38552133801c2
+rotate chain 4 | glsl scaled dynamic | ebea0a35cdfbfed6270fc00e1c88988266c8a8d8629e293ea148031a8161db0d
+twist chain 4 | wgsl hardcoded | 9cc3b06c8750c0c9b2dba928a79846da02ba47f30fe9347d5673ab4964864ead
+twist chain 4 | wgsl dynamic | 381634500c1ae97f24333fd11d3d20aa91b70451d9a0fdc3e7a5915138cf7fe5
+twist chain 4 | glsl hardcoded | b40a91dd77732783114503bbdce707e604c7662c7c467400acab5d806176e54b
+twist chain 4 | glsl dynamic | d95ec7b248f5a11d818d1b91f3ac609e76405e1054c24a6f054d836a3bc7fb72
+twist chain 4 | hlsl hardcoded | 4eb4c3c3c332eeec00586628c2d26d727f697bebc57fed3a186c32d2706ceec1
+twist chain 4 | hlsl dynamic | 26780ae670f5d0cf90d16186e1c2d052a5397a51680ad5e52c19acf8fb0fa67d
+twist chain 4 | glsl scaled hardcoded | 53fce166a73e34a912453c9757740816502b94d664799c989454e098862b122f
+twist chain 4 | glsl scaled dynamic | 5624cacfc72aa0304253774f8a5f3ab42924e60c2a073d68b50c73db637e9454
+bend chain 4 | wgsl hardcoded | 698094de08411e58463343f5cdf4278031520f3d1e9e03fc8a113fc855c3078f
+bend chain 4 | wgsl dynamic | d3baca81560a89ca3e62cdd2d0c48ca30a9d2272211960abb7190b2f8213cbd9
+bend chain 4 | glsl hardcoded | 3970bbd12de4103792fd494218293120801b4158f7b38c58eb0f11beab45259d
+bend chain 4 | glsl dynamic | dc17cdafd70f32452cfbee7513180ac886da23e3e0d4a5ac57a67808d42e3de0
+bend chain 4 | hlsl hardcoded | 67ffd446a7fb0fb7ebcf9838b2ebc9d8be5601370f4a89bff9e80d4c719ea200
+bend chain 4 | hlsl dynamic | e5f26f93f6f7b5bec3a368d2a1bccd2907247a4fba82302b841d557f8654333f
+bend chain 4 | glsl scaled hardcoded | f56feae49e4b8a9ff0651b47d1de1f22c432e97e5add2e2a09b7b266255dcf1d
+bend chain 4 | glsl scaled dynamic | c29300544457b2b988b4586388df4549e6ecb6bec3b37d7207eff5052f7ca7f2
+elongate chain 4 | wgsl hardcoded | 2f61545331b6b23619dd89a4f0e2764bd9ecc67229d0d158834add9904d3dabd
+elongate chain 4 | wgsl dynamic | e584381f4fb9d46cc3d51fb19f0f57f1ea5b767025a2c7afb78eefee712189ee
+elongate chain 4 | glsl hardcoded | e55be9a4ba8f1318303024a823c456456dcc95d8267a598931dd13e7f132bbff
+elongate chain 4 | glsl dynamic | 9124e595731959d53771e3c5a8670df4b146727009fa9c25e16d376843d3b120
+elongate chain 4 | hlsl hardcoded | 0c11d725a42fef8a8bccabcbc0b0f0c78887ba67bc884c4d185c14aa71152b69
+elongate chain 4 | hlsl dynamic | d762802e8ea5e14604d01ed2a1e4ea707bda79a5424d482a994e195095385703
+elongate chain 4 | glsl scaled hardcoded | 6c2f52c329a51a36b154413ca24564094ac961cef66a2d3d3e990c2ec82ab772
+elongate chain 4 | glsl scaled dynamic | 06bbc435b2272cfd3a40d59c01605a1bb270c350c7f8f45f311a9fd081b622fe
+repeat_infinite chain 4 | wgsl hardcoded | 96927d6b4c155455eba92fce3023ee41a6416514d7fa51e28cf1fb2ef8a409c3
+repeat_infinite chain 4 | wgsl dynamic | 9a123a104c726cd60d759fd8afb2c7bcbb86f6aa30355a9754b4c38c890df15d
+repeat_infinite chain 4 | glsl hardcoded | 48427318cbe76643a94b3eb382c46923da80bcd6643676efa579de84fe60414a
+repeat_infinite chain 4 | glsl dynamic | 243f6178b601f7bf75d75f9f2c189a52c689580098cba23c5670f6984e8113da
+repeat_infinite chain 4 | hlsl hardcoded | daf58a95500c5300d93c984d0cef3d5fd4b3231db7c54db8d5f9161ed8fd486f
+repeat_infinite chain 4 | hlsl dynamic | 48ed7d23fd120ffb0e2e15380e7908501ee8ada345b52795751b1f8f2d0a7417
+repeat_infinite chain 4 | glsl scaled hardcoded | c88e41231c10708dc98e0c6481825c9245bcdbf86d907d6e7c1e0a0d8f974904
+repeat_infinite chain 4 | glsl scaled dynamic | 60a28258907314d3340f706933904c4279051d5d7636447b02dfbeb7594d22bb
+repeat_finite chain 4 | wgsl hardcoded | 6b900d6ff6b165419789c9a194fe5c2a7f22be70a7c3c0b437b1d5373d876e15
+repeat_finite chain 4 | wgsl dynamic | 9461145678945fc8f4f09e901f323b7b23465bbfd9905035792f531eb46cd8b7
+repeat_finite chain 4 | glsl hardcoded | 3282a5c128da9f48ff494f88163ea106038aee752b27f7b2122a524536ba4da4
+repeat_finite chain 4 | glsl dynamic | 5c5d5d2448c0b085017cf8f777e6b5ebded0434cdbc20583e7a6cb9f710a69e8
+repeat_finite chain 4 | hlsl hardcoded | 2cba3127ba83c7b5cd02bce5224dd843ad617d7595b8b6a15f6781ff12b4e596
+repeat_finite chain 4 | hlsl dynamic | 5e8c4419988c05ed982bf340abdd9c4a3be76085734ad8464eaf9bfaf1532788
+repeat_finite chain 4 | glsl scaled hardcoded | 212b7d2206650ef2a43352416d7c59f7d1ed09e91e2bbcaa87d4413b6e61ca1f
+repeat_finite chain 4 | glsl scaled dynamic | 9c56693d7eee791b8792ecac92d4589be1c33177e3198635acfd21d1b6a0a20b
+mirror chain 4 | wgsl hardcoded | 80d0e3c149cc0c37a47237b25a25f810a4a7670a3f96678708fcb72e97026081
+mirror chain 4 | wgsl dynamic | 4aa74482fd064b27ceb67c475bb83da54fddd62e0d35f529023d643d19f6ba45
+mirror chain 4 | glsl hardcoded | 047424688d60735c3e64f5af9dd6a25ff5195cc47ff08a9fbf8463af18b2cb19
+mirror chain 4 | glsl dynamic | 4cce80e025c37d5bd782659aefce85959a367a0cbeecbc5ea143414e96b49977
+mirror chain 4 | hlsl hardcoded | 9c31a6786e9d0d3d2eae368603628ac05630b7012e01c8cd913dc82a7168e708
+mirror chain 4 | hlsl dynamic | b9e5bed6e9f652ac771e04cea7fc9da8eef07cd2507a8a5995b71e316b0f85c8
+mirror chain 4 | glsl scaled hardcoded | 64b2c42d6ac6c816375f64683b9413822d62eeced72390cf6fecc7b541f09896
+mirror chain 4 | glsl scaled dynamic | d73c8eb1cfa3a30fee5bac14b914cde9f16ec357706a66fd6c0664829d9c2405
+octant_mirror chain 4 | wgsl hardcoded | e10ed0d68b7950f49de04fb59bc1f71bb1914a3820a3241e64e6ca392ba3a269
+octant_mirror chain 4 | wgsl dynamic | 39e259f8b7f8ecb1dc54775e0cc4073685f9b1092a28d2d1e1bebe089e0f36d4
+octant_mirror chain 4 | glsl hardcoded | a5a52f986683b327c73d5a705e3feabd593469ffba0411a444ea54cf4929e51b
+octant_mirror chain 4 | glsl dynamic | 0d5f898a415a7ce2a55fba021c89658189178973cb53f5ba8ae6d5cbf8bfc6cc
+octant_mirror chain 4 | hlsl hardcoded | 377f0e6a28d737bcc91c170b017b5494f9d045d5175dddad568298b43399f697
+octant_mirror chain 4 | hlsl dynamic | 8dd38a9cd73f9568f0c84f0747756786ec123e78b06645342bf343b8da2d2dc1
+octant_mirror chain 4 | glsl scaled hardcoded | 9081c32eb1b9ed64d19e2707a1a1fe8e180e99884668a0d6994f4bc8878af477
+octant_mirror chain 4 | glsl scaled dynamic | 65d91ffaa7334f978b09feac7256b05406e86e22fdda9e013c9fcdda22094b3e
+icosahedral chain 4 | wgsl hardcoded | dec72f4bc77a00b7a04d86ae7b35e572f735af3c9f7aad8e45c730f4d5383bf7
+icosahedral chain 4 | wgsl dynamic | 9913ccd38ad668eec2089aa0da30073591fea6369efb5879309f7a1aacba1c28
+icosahedral chain 4 | glsl hardcoded | 0870edb94fd8454a92b656baca1a33a449a76c5953e97aee8cdbd91d019c0cec
+icosahedral chain 4 | glsl dynamic | 48acda32b9679bb4cc1108af76b25dc25b5b0af2b4c5e2a77d6e2bccb4f71639
+icosahedral chain 4 | hlsl hardcoded | dea807f6839ea071c8f1bfe614dc78305537731fd1df2380690f8e1f31648cc3
+icosahedral chain 4 | hlsl dynamic | 21af4d31de55ff0d3c0d2f70e57ab163755a55fb049c7bf5d425682f3db5b1f4
+icosahedral chain 4 | glsl scaled hardcoded | 1d9f94d036d297e08602ca7d0cbc6422c63c369572af354789065e04ff0e502d
+icosahedral chain 4 | glsl scaled dynamic | c0ec024f41455f860f4d1a0ffb1d9705d60f881ef8eafa0aeaa4d5167b595e91
+revolution chain 4 | wgsl hardcoded | 7de4ea64aa46a539e906f62d98368fca155c6662c5b0f47fc13bbfecfce39ea4
+revolution chain 4 | wgsl dynamic | aeaa15e3ff35cd8aed6ad8b8765699f09c63daf00c589782fe27c202835000ff
+revolution chain 4 | glsl hardcoded | 0e9d249cc707406f1cfcdd3cefa9f792417ab01bd8f5ab29f45b2d4726cf40da
+revolution chain 4 | glsl dynamic | cd2f4f96a9cc13a6e5e71e91db2c450ad16766e5683f58349ee87625e342d7a0
+revolution chain 4 | hlsl hardcoded | 4451f234db370d8f1f452a0224078e3db648ecec427caddb1a47c578e16104fb
+revolution chain 4 | hlsl dynamic | 8d79e6beb87f1e06f95366df7944ba031a00498c3617c5be67199163b58b47ca
+revolution chain 4 | glsl scaled hardcoded | 3a260130da82bc933845b734fdbf22ae7568fb141ee573d0258797c9f34e2090
+revolution chain 4 | glsl scaled dynamic | 45f5a1d610fe89894abfcd58affda514cca2188f29c2cb80f1a66d64d890df01
+with_material chain 4 | wgsl hardcoded | ffc1393e4eb108bdb7705b2b3fffa36d730787454d92b32558ea5d62668f9a5a
+with_material chain 4 | wgsl dynamic | 4595ce9e8d7e68307d7a0fab8905575b7108987914d64bbd2415a3214cc71e70
+with_material chain 4 | glsl hardcoded | 5df5849e264ca9426100825e9c188a00138350a118779ee64a8a2385be2c15c2
+with_material chain 4 | glsl dynamic | 664cbea53bf3e9406bde4e4d284656003a006654d2a1aaee8e9108749cd00039
+with_material chain 4 | hlsl hardcoded | 172d83243cea021b61c0bb3813654c47d026fa12743cd6309ef9434b10b7fb12
+with_material chain 4 | hlsl dynamic | e29a483de3d0bccd437c8a05250fd208f54ef693317441fcf1801954989556f7
+with_material chain 4 | glsl scaled hardcoded | 2bcb25c73c2d2dae9738aa52d18f543f2b1a9c3640ede6001edfc48da0f03189
+with_material chain 4 | glsl scaled dynamic | 9cea1faa12a1dd0215ecbfdf1de1f2a3dfd317899fbc4ff1e813daaf9c5a8742
+shear chain 4 | wgsl hardcoded | e9825bd346d8c6c2bc6a7f144ab89e4d821f8a9f9735757a9167da0d523cf3b9
+shear chain 4 | wgsl dynamic | 2d348fc85833a2c6c29e43e590f2482d845e71ad97a573a6a1e7e5e7e26f189d
+shear chain 4 | glsl hardcoded | be6d7764675edbdfdabd21cd712ee30f7f298d57ff89560aafc1e6bc5c36f873
+shear chain 4 | glsl dynamic | 81ff6218a86a498d61057895fc84965b1665f941b205a4b6585fe5def19a4350
+shear chain 4 | hlsl hardcoded | 3c2dea6b09ff443237a577621f0b22368bcbf6d4d65d27f20028533b1c83edfc
+shear chain 4 | hlsl dynamic | 955015871240c37e51ddc44f848d88f16a173e7b366e4387dffca20998383c0d
+shear chain 4 | glsl scaled hardcoded | 36a98a940cc4455ac2b45b0c6a1843b6cf75c3afe42514220254b66633a47075
+shear chain 4 | glsl scaled dynamic | f11e058b375fbf359164aad0a70854598fa6f14ef4cd2f47e6300aa323ae3586
+animated chain 4 | wgsl hardcoded | ffc1393e4eb108bdb7705b2b3fffa36d730787454d92b32558ea5d62668f9a5a
+animated chain 4 | wgsl dynamic | 4595ce9e8d7e68307d7a0fab8905575b7108987914d64bbd2415a3214cc71e70
+animated chain 4 | glsl hardcoded | 5df5849e264ca9426100825e9c188a00138350a118779ee64a8a2385be2c15c2
+animated chain 4 | glsl dynamic | 664cbea53bf3e9406bde4e4d284656003a006654d2a1aaee8e9108749cd00039
+animated chain 4 | hlsl hardcoded | 172d83243cea021b61c0bb3813654c47d026fa12743cd6309ef9434b10b7fb12
+animated chain 4 | hlsl dynamic | e29a483de3d0bccd437c8a05250fd208f54ef693317441fcf1801954989556f7
+animated chain 4 | glsl scaled hardcoded | 2bcb25c73c2d2dae9738aa52d18f543f2b1a9c3640ede6001edfc48da0f03189
+animated chain 4 | glsl scaled dynamic | 9cea1faa12a1dd0215ecbfdf1de1f2a3dfd317899fbc4ff1e813daaf9c5a8742
+scale chain 4 | wgsl hardcoded | f884693b7b9c71e003e26fe74ead95adee6b36cf998956ba2dc5d6ba0ebd73f9
+scale chain 4 | wgsl dynamic | e064d60bd645cb52c7df7d8871c2248761ab5b18e5936335bc88ebc883f2182b
+scale chain 4 | glsl hardcoded | c6f1a673ccdbba3eac49beca2b19929d4556c12badd16ef7defc2acff7ce5c11
+scale chain 4 | glsl dynamic | 78efbf66d79c389aeb8c9612d8e7c254941ab5e14fca777649022866f894926c
+scale chain 4 | hlsl hardcoded | bcfbbaeb5db1b3865fb06d457648e7cec206077df6a1eaa946203d7aec209fb4
+scale chain 4 | hlsl dynamic | fe2719c58cc20fa531bb957d76209ab78c15d3b1b3f1fdb5fb3c188527ae4b31
+scale chain 4 | glsl scaled hardcoded | 510c77b1acdb4f446bb07019cfcbec833862bfa6f47c9a709cb18faf9d721cd0
+scale chain 4 | glsl scaled dynamic | 676c86f4330cab2cffd8d4622b1e49f74ec4234e8fa3852ea9297616df9f53cf
+scale_xyz chain 4 | wgsl hardcoded | 36a2589ca9b7e2050ff92ce0c0de5c44ec8c87ff9e5ed27b5bf8c49d235636a3
+scale_xyz chain 4 | wgsl dynamic | 5264155994520b3b4c68db8165d04a50a495a75fbce5e86e0969e219161cd117
+scale_xyz chain 4 | glsl hardcoded | fa3fa6515ccb5841c08ecbaae5b9490cf574b104b5e93b6cae2833d3d357d551
+scale_xyz chain 4 | glsl dynamic | 5748d1501eeac6e2d43e35e954a404647c09aa61510783bae31d36ca2255519c
+scale_xyz chain 4 | hlsl hardcoded | 442155e32ff47ba78d2b6be4baa440b05b233d69f1b7c3be1fdcb8f62bf7847b
+scale_xyz chain 4 | hlsl dynamic | c7d7fe14f70d215bf8048ee19bc3380567c8a3a8d7597b4dab49b625596d2b4a
+scale_xyz chain 4 | glsl scaled hardcoded | e496fd381e870d774ecb2c78ba7c0541bab8390bad35fcdf6825f56da034ce66
+scale_xyz chain 4 | glsl scaled dynamic | 2e927dd8d520319a221c8c213baf368fc34d9f26304c82d75c07e8c80c75e45d
+round chain 4 | wgsl hardcoded | 1fb4373944abfb54b6358baebd7098f3921b1d776ff7719eaed6ed9e61558e61
+round chain 4 | wgsl dynamic | d5ee383218b10d47d3eb1565e349a8d212d93b1c5fda3e8ee34e3c131e55d0c2
+round chain 4 | glsl hardcoded | 9bc44f00556d4756863988ce67b3f11a76731394ceadbeeda8bd66220d8dde2a
+round chain 4 | glsl dynamic | c9668622355d3b9699e2267450a8b6cc9072860cf0de60d273a23f1061ab45a0
+round chain 4 | hlsl hardcoded | 5ac84e029e12a9643606e89681634d7d34e2e0d500ccf6ddd64013a62c05fdf6
+round chain 4 | hlsl dynamic | 9be2e845ba7a2fe3abd3e5157f3d77118533f0300a53a2ac1cf0fa5a746f49ce
+round chain 4 | glsl scaled hardcoded | 075e5ca91679043b6e1121d06290ac577a22021a2b3a88d14e2b1c13f675f823
+round chain 4 | glsl scaled dynamic | ce6a118c9360918c7bf08c4fc622fd7af3edee7cfa45b282f7c47487c587745b
+onion chain 4 | wgsl hardcoded | 10b007d4aac422a1987518da0c0b3a94440e8d3b89df8bec664a981d80636d93
+onion chain 4 | wgsl dynamic | 366a5cc4d30d6356dcc2fda803869993054cab0d686aff6564fc0d23a3d8d440
+onion chain 4 | glsl hardcoded | 7d959e401e81ea9c1ac3ff3573d85b3bb89afde9c930f8594dd928cb089d2eec
+onion chain 4 | glsl dynamic | e3775abcd6be15ba5bd6af48167ec13c165c2fd0e6a81f2d0b7f89d29d7dea70
+onion chain 4 | hlsl hardcoded | ac6541f85be22edb25ce613740090c856544c7ae702e92dea14c98559e213ccc
+onion chain 4 | hlsl dynamic | 60168017cba28e4a1a7843872cbaab015869b2d038f0993b88875dbdca0eeb2e
+onion chain 4 | glsl scaled hardcoded | c810f52d349ac7df0cb522add1d7e64e7d90d5f04072a46d2a5b7fb767665434
+onion chain 4 | glsl scaled dynamic | ab594121c21023047bf5a0c121370cbcd9013403b0a221d6f51d096355642d98
+noise chain 4 | wgsl hardcoded | 893d0860f1507d0b108ad0695369b94ba5c5c0dd5fb908e4936142f14b7f1af9
+noise chain 4 | wgsl dynamic | 321b93bb2076c37be73ae7d9a6a3968687dd15888f91551246345c73e25c0f54
+noise chain 4 | glsl hardcoded | 1c6166437dd15692921b5f545258e5a62ef7edbe4dd64d46596795b83b751009
+noise chain 4 | glsl dynamic | c86aebc3e30034a388f47ad2b462287077596ffb68530d8cc717bcc759d3c2d3
+noise chain 4 | hlsl hardcoded | a3562ef13a291a43d5ea3442f9620e457a48b00d2b0812f250ac8fafe3d9491d
+noise chain 4 | hlsl dynamic | 84ac2376dbb8bfe8e7215871ce0f1dc24c067d8161543eee38ba449298a451f0
+noise chain 4 | glsl scaled hardcoded | 66b594814ae6f58bfed1a581aef3c83e907359c2ab5e800bf2e2d5889cc34655
+noise chain 4 | glsl scaled dynamic | a91a149ac46b973c94760934f59f6cde0bc00a988db7de48a99fb352e8daafde
+taper chain 4 | wgsl hardcoded | 7511a5824287fd7f6019b06680781188812e6a897cbee7a2824b8c27151ec867
+taper chain 4 | wgsl dynamic | a8cadfbedb7bf79807e5e050ed7cc0506a0a9b12855f4a9978ab3e2e0746e1d9
+taper chain 4 | glsl hardcoded | 367dc02f9e882a91352f7d40c9639f43f96530f8f21260613ec2ddfd72ee9815
+taper chain 4 | glsl dynamic | f91b7b602cdfc7e60b27c5649562b0752d8c682c2eabc85fde8ecc210dee0606
+taper chain 4 | hlsl hardcoded | 2d8a298410e726c4c10037f18a8c5392c1264369076f21311f994473b856e636
+taper chain 4 | hlsl dynamic | f470d5a702f1410885833aaec683947bed9ff8f3c5585fac2002959b3e51d144
+taper chain 4 | glsl scaled hardcoded | 5fc03189eeb604fcc298921593808b405b3f1eeef6ad7ab104e03bea979e6c9e
+taper chain 4 | glsl scaled dynamic | 1d0e6022db9af386fb7438162b1fc43f11a6c24ed7ee3b26f6a091d69f7178be
+displacement chain 4 | wgsl hardcoded | badb722ebdc8c4b9d7bfb11bedcf88de5a1f8ef7f9908c6a429c9274e9ba28ee
+displacement chain 4 | wgsl dynamic | d2122a952390fb4903385ce06697c0c9f729ffae36dbbd14253dcf06c1c3cc65
+displacement chain 4 | glsl hardcoded | 3088def633a96111dbc21eba091f4ea331ef4f884e00de2648f2f07d13796d0c
+displacement chain 4 | glsl dynamic | 045c056e57e3609473aa8b212be06ddd9006060f34d8b36cb7369057b1efb79f
+displacement chain 4 | hlsl hardcoded | 46490ff1ef65426ee14708faa10b432b4bd54dda71a01726733ba3765f6aa443
+displacement chain 4 | hlsl dynamic | 7ce3bd2645700eae3cddeb46f5e521da52e6cfc0f88f1b7f5a01d9f75503c21f
+displacement chain 4 | glsl scaled hardcoded | a68e14875f2b3520ba8b4cbbc44f49f602c044cd9e8142923b50cc87259ea4e9
+displacement chain 4 | glsl scaled dynamic | 8d3a94cba30f774fd3f82e9a6aecebab495f9261373f47486e77029fefb30514
+sine_displacement chain 4 | wgsl hardcoded | 33d5bbeab0712d85193b9799a8f182e61dca7d852d4597f64ff7504f2fb0b1fc
+sine_displacement chain 4 | wgsl dynamic | 5cc4e83bdd6c70ad10ef2ccf948b3d19c8475c37c6dd249f6ea31002a8f7acb6
+sine_displacement chain 4 | glsl hardcoded | 92725e6ec18a11a3b2d1aac2c69a3fb6c4dc3f22014f8c7bdc484b8afa0187f2
+sine_displacement chain 4 | glsl dynamic | ca1347f0c399341f94f9ca4ef57e9cc5faa8313c31d1ee30b8aad1d85f9e737a
+sine_displacement chain 4 | hlsl hardcoded | 92f7fad83faff9cb518ef11a93fdd01f78e218442b56a831185f028b69eb425d
+sine_displacement chain 4 | hlsl dynamic | 05235e79fd907c7ec0925bffe77b74885c9e98ecfeb0d0b1d7e22d00454acb9c
+sine_displacement chain 4 | glsl scaled hardcoded | 555a39a096d9bcb4c5f1b6473616bffa044d130c6531b18c54b955e91e52a9d4
+sine_displacement chain 4 | glsl scaled dynamic | 4aea01aae08300a6d1630a7fb48ce7f8c43fde0ef5896cbbcdee85da85c0e523
+polar_repeat chain 4 | wgsl hardcoded | 108a8377e1399c69c6fdfe0364ebca224d57a54e1f00dfd53e1851b3e8c4e19c
+polar_repeat chain 4 | wgsl dynamic | df80d8a49d6e2242d277df29cc7d278b8ec7582133fa71d3644e4651d0c15ce0
+polar_repeat chain 4 | glsl hardcoded | 58c8c9428c88d60c3815f8982ae1a65d70ba6a854308c284c5ea9a4f3d104e4f
+polar_repeat chain 4 | glsl dynamic | 6dc92c03fda2da49cf6aa7aa0c06571e42c2eaf92ecbe7ea0e7176b2fcdb3270
+polar_repeat chain 4 | hlsl hardcoded | 12b91c11d2d5b4e2a81c8fd59119050206b71f736006ecdcdac9a06a43903a27
+polar_repeat chain 4 | hlsl dynamic | b91c956356dfb8b07b17c4e742ce7b50d749fd7ce84b8eb29eb787dc6d598469
+polar_repeat chain 4 | glsl scaled hardcoded | 3d261f6e2f8d7b8f2ad49d859f236c0ec733889c7f80534f1a4a5b8264da593b
+polar_repeat chain 4 | glsl scaled dynamic | a0febf7ce59a665880623716f15c2c85fbd8f2dfa69e8652097a6ee92ddb227c
+extrude chain 4 | wgsl hardcoded | d213e15efe2aa330ac87dbcd823b7c01ce1c3f21b788f997d1af6b0eeef645f4
+extrude chain 4 | wgsl dynamic | cc0f15ae7edbd5137821e7d33ee87f9b7b3c7878af031b84b297603ebde59a4e
+extrude chain 4 | glsl hardcoded | 9667ac7b49ff6b937a259e090864bc1ce1d94c27c057125444fd26d3aeae38af
+extrude chain 4 | glsl dynamic | da592e6f57c59d59702ac63384106229d94c3a78f8a4ee2a7d58012623c33df2
+extrude chain 4 | hlsl hardcoded | 3781a2658de95eafcbef9da70751e80a524a629fa58f06ad9eb05e07fb5b80c9
+extrude chain 4 | hlsl dynamic | d61c809687ccaf25f59bca5e6534ae246b76b6f30c16ab4c47352e34385d4106
+extrude chain 4 | glsl scaled hardcoded | 5a7a7143c51aba32840485d912d1a2566dbab65eb2701b919af7a0d9ca7665f8
+extrude chain 4 | glsl scaled dynamic | b172b8a7a932e36ab668993d7b28cbdcae4ca3a17b151209ed77b34e7dbe6072
+sweep_bezier chain 4 | wgsl hardcoded | 23fb7723bde1f9477af23c39927a10e4cf931d87d22e396ba576f0f17f503b39
+sweep_bezier chain 4 | wgsl dynamic | 61f8245f926c9a8fedd2d26771c0a8b05624bdf42d044e0695565f7de3b229a4
+sweep_bezier chain 4 | glsl hardcoded | b2c3a97ec03f8b725df1be652c4a4ca09cd93defb8e7b7709057ee3b46eb8585
+sweep_bezier chain 4 | glsl dynamic | fa6d3db67d654b83dbbf999a1af7f4ba1b342ed28e06b39950d0711cb2763e17
+sweep_bezier chain 4 | hlsl hardcoded | 3cb90d2c96fb00ec5d053b2d462497eb6f012bf2523ca3c5ae7087e2b74da0c9
+sweep_bezier chain 4 | hlsl dynamic | bf3bce82440f8179ecc6cb41cca2a6b438c802b4188c8ccf12d365973a818d75
+sweep_bezier chain 4 | glsl scaled hardcoded | 511dc42dee65cad43f5ab1126b1bfdc85f28911da826a7b6c0f4463d10e94b30
+sweep_bezier chain 4 | glsl scaled dynamic | 4e352945bf25e07db45219f6e8e3f3f529d9738a1fed16f3788f39281735c6da
+surface_roughness chain 4 | wgsl hardcoded | 9c98f379f5b737f3029e5fb5fa1c7cba660417414f1e4c4018300b00457ec708
+surface_roughness chain 4 | wgsl dynamic | 7f6e352fd6ecdfb458b0db3f1e50219d22fbff6253b00739546f0b207421f23f
+surface_roughness chain 4 | glsl hardcoded | 330f0632d36954087b65dd1eccc924218a347f704f0ea3a3c8361775f88ce0ff
+surface_roughness chain 4 | glsl dynamic | abf5f0bd3c887388e41ff467d486e24e676ca6ae6f936a2e281026b9c1f5a5c3
+surface_roughness chain 4 | hlsl hardcoded | 484555dc33538bd4bd3c88a5d8b51f97dd3351a8c37ac9afa895c0140f378c99
+surface_roughness chain 4 | hlsl dynamic | dff1aca89b750d04a8245572a64943d8d8df57de6056635dee6850c044d7f6a9
+surface_roughness chain 4 | glsl scaled hardcoded | 7f6925eeab50aa3c7af0fc7886501dae28a794bec63449ebfcbe4a7be0570ae3
+surface_roughness chain 4 | glsl scaled dynamic | 15af31ac4061a68f03bb9a96f17d3e436bc58331f8344a389f18a87e02471e85
+projective chain 4 | wgsl hardcoded | e66822f47f52729b9a14871f453753ff875812d1dfc1c9b9ed4c05381ae0b1d1
+projective chain 4 | wgsl dynamic | 6c9fff55271c08f75a83e4b4a078c3d7eb915c515450a05fbb7561c568d227d8
+projective chain 4 | glsl hardcoded | 7c2a217075c84678629f3de25ae61065aa62b17d92d242f2beccc0eab2e0f4d1
+projective chain 4 | glsl dynamic | 0a917ce1d003bd60d016cf8b8cdb81992aaf5edae7739cede79854453a311220
+projective chain 4 | hlsl hardcoded | 8fc58f332829cb326a17a78e60677f3902eb10ac105d59947d3042b801d457fe
+projective chain 4 | hlsl dynamic | 82fd289dcfd7a2e4ee3e961c297574f121d6fc37627a72e8749640caaade8e4e
+projective chain 4 | glsl scaled hardcoded | 0aa725728e5ea6327b3f9029982b4bac5a121a88699045c3210816f36f1bc079
+projective chain 4 | glsl scaled dynamic | 05e206381f74421e8a494a3c0226e5540856cf8bc9b6bd0699c7fa312f0962a1
+ifs chain 4 | wgsl hardcoded | e17cc7d0b9e03eb6ebad018d3f295496766329a7b8a85451eb0f5a878d08c3a8
+ifs chain 4 | wgsl dynamic | 35458682b380de5d441494263465630f205e66e575096064ab5ff8b5e0ee2dcb
+ifs chain 4 | glsl hardcoded | 9cf7eb8c5399b73e221dbbee88215df121fca8b6cf5bced0a89c5fae229fef34
+ifs chain 4 | glsl dynamic | cbc9a0dbb9378e90a4269637baee33c30bb59a17f0ee6590b22866aea1a909ab
+ifs chain 4 | hlsl hardcoded | 98bc0ee4b1516333115f367c0b61495d6c120b769ac74c1179147577dc7a353b
+ifs chain 4 | hlsl dynamic | 8a094b2429e7287041e60e913531441892ab074e80843aec3eebdb9689fe59b6
+ifs chain 4 | glsl scaled hardcoded | 5aec39848b0d0daf50a803ff9ff6bc413b2cae2e8400c2b70b1002fed3505486
+ifs chain 4 | glsl scaled dynamic | d9a9c9f4db1721f05cfe42ff2e8edb4cd0cbb50361f2de8946ee7be6e9a97d76
+union right 6 | wgsl hardcoded | d37e7801278eeee55ef083f6a40801fe9f416b1131e94688cdfcff934287e91f
+union right 6 | wgsl dynamic | 9e1e84400e4f3917be3cc727070d03578bf042a246d1315597a7d134d6a13f97
+union right 6 | glsl hardcoded | 20fadbd72846dfecf0cbdaa2a4c67813e17a9786e26ca7b195b7558eb903efde
+union right 6 | glsl dynamic | 18f3da352b51d2a7b30f189516c89ab37a8f2d26d5b635a23736bd6ba1e9d68c
+union right 6 | hlsl hardcoded | a27c29cc69d3779e2293a9191447143476c294de9fe55ed8ae6598ab3e7ba556
+union right 6 | hlsl dynamic | d7775a63ab4ba6f013908824931a018bb301cdd159297ef30f875e7e4c142071
+union right 6 | glsl scaled hardcoded | 9e24eccbfbf5a4ae3c1a895f4319625d670e4f414d8690bd8cb9cd0d2675b45d
+union right 6 | glsl scaled dynamic | 6b2df2aed89e91ee6ff8ccd767c56cd1126a0caa635aa91168e710a3d9fd67a4
+subtract right 6 | wgsl hardcoded | 69585a79d0b5ceac16767de77b5a39ae65aaa43a8ef54144c121bf7b78ea719d
+subtract right 6 | wgsl dynamic | 4316376d02b708be28c6d2e5c1b6675e8f2d69910b02454c0a4f495b2fc766cb
+subtract right 6 | glsl hardcoded | 07ac0db1ce34aa9eb5f63f7fb3394d19912b60f970ca6caf51a21334f5c0e218
+subtract right 6 | glsl dynamic | adf3c65ff4fd8bd2da13c4340d21e7fb71e0a31b662b98b0559bb27628f14cee
+subtract right 6 | hlsl hardcoded | 3de1e082b0e92e3220c9e71874c6f1f96a8c5e86662f931f70b7592e31369fa3
+subtract right 6 | hlsl dynamic | 57d6e83c7eb6bc7d5948d356dbdebd104719c29a21176973f2cb9bdd0c66076c
+subtract right 6 | glsl scaled hardcoded | 02d8d1a37e014df74c2307a35a480eb06132c494897552d7464469885fb720e1
+subtract right 6 | glsl scaled dynamic | 6e4d689492cd76017681d43022c300cb769661581a34af88b86d850e161a5de3
+smooth_union right 6 | wgsl hardcoded | 4891ee244182b6521be0705489ea4d9a6473e16b45863fbc52ac0447a8457e15
+smooth_union right 6 | wgsl dynamic | 259b887fe0c9b6384e7e1d9b92d258a5d648ab53e74ceb79126dd8996b3c4a7a
+smooth_union right 6 | glsl hardcoded | 7ca7443b272a3069b79737e3b3859b04774fa291b3881a87cce8bf0ed74f02b5
+smooth_union right 6 | glsl dynamic | 011ab98461e4a3f4679458a6f9f2db93f2b5e207d621e050329634d7a9af95d9
+smooth_union right 6 | hlsl hardcoded | 0825925385d578fd227f25a2d27171ff6c3231367bd71060506272b81bf5da4a
+smooth_union right 6 | hlsl dynamic | cf61eb859ad2ad11f1f89c827201fadfcfb8268e32fea4095e01a473e36bde98
+smooth_union right 6 | glsl scaled hardcoded | c85895a3f05e3c41672a1f8973c77f395719828814bcd968c5ab3290af76cb2b
+smooth_union right 6 | glsl scaled dynamic | f818b7594054bc5c64edf67adee9867afe34868f5b88de417f0cd4be4a046dc4
+columns_union right 6 | wgsl hardcoded | 82f01261cfe68154f61b7d67b65ebb2133e431bd1190430cecdfdd721e6d350f
+columns_union right 6 | wgsl dynamic | fd20cee235d2841c7c8ff1e1fe613a3bd6020f9183cf9e552581f946ea37836d
+columns_union right 6 | glsl hardcoded | 8aaf2abe4035a4cf08336cb7a5dea9a6ff1df03c6c0b89b935cfc1d886e688d3
+columns_union right 6 | glsl dynamic | e0624dcbae14d3260e091ac7b8888d5b0b1d6826e734bfd2bc87d2358f3c507b
+columns_union right 6 | hlsl hardcoded | 48a1c25a7f58ee425587917564c15d1c2d8f5c03641ec91494d5f49e417229c6
+columns_union right 6 | hlsl dynamic | 0c169f32038336eba8a15d91bd00301fec1f38ad62333d20e4a4d0d82631ab72
+columns_union right 6 | glsl scaled hardcoded | 6245f59cfa192acb4c5db115d83fa2ec388453a1f1496829d9dd3775b0a824e9
+columns_union right 6 | glsl scaled dynamic | f682f61dfc61970915b8108b150539dfc31f5baa5e693b2ab1f0c5f6d4584dee
+stairs_subtract right 6 | wgsl hardcoded | 983d329b78da92f65f4813a3afb1b5c02afae63594540714b70ef2174eb7cdcd
+stairs_subtract right 6 | wgsl dynamic | 739f91ce0caa459e87bf0e8536ae331d266d76c4ad18f83560bdf6c9ba17e2f2
+stairs_subtract right 6 | glsl hardcoded | 53e572c3e1bd6b32fff506448b6d566b62747f55ab8fd38de566838a492a9a86
+stairs_subtract right 6 | glsl dynamic | c1b0dfa52c80c7bf26548855d1b6eb08ab93e346d74b09cb8ae33d13681c972a
+stairs_subtract right 6 | hlsl hardcoded | 037fff641c20cd41c91a3a2b1918753d172e218a4a18429c035bd8c157cf6a5f
+stairs_subtract right 6 | hlsl dynamic | 94c3bfb56ae1f218eeeea723c234092d757777b9783b215e32690956d57d8adb
+stairs_subtract right 6 | glsl scaled hardcoded | 906b2b7f50d15d4e320b9f79a7447b5c09054e8fea143f7a605d61a28dacdd7c
+stairs_subtract right 6 | glsl scaled dynamic | 4458303f7556aeb6df9e5a666338e803a3b682f8dcba79fec3b9b7e440353320
+exp_smooth_union right 6 | wgsl hardcoded | 65a60f7a1daea221b01972757d62d5e8158ffa047e76a46df264572eb3998eff
+exp_smooth_union right 6 | wgsl dynamic | 9057a3c513ea14e234c5a3fa45929e82a6227578f35c6947be009b125e0c8c35
+exp_smooth_union right 6 | glsl hardcoded | 7ed06e1141d4826e31354fa2dba1679a11f57767ccbffafb0e1518f5a3f83fb1
+exp_smooth_union right 6 | glsl dynamic | 37b74c5c8f7f6f83f9683c4a68d816ea7090c7f259f2b488b7816e666b991cb1
+exp_smooth_union right 6 | hlsl hardcoded | ea5ec6963ada190f869e8054f56ce4a68b0a511e2cbaf29c99d8c116e209188b
+exp_smooth_union right 6 | hlsl dynamic | af6fe7425e85222b7ee21eabbdedc3d12a20bd783a68b93be4f01f4b49ed5d3a
+exp_smooth_union right 6 | glsl scaled hardcoded | 26a857c39af3f10970389f7ae08cbcfa9b20562a1783d77b5ae7f58a532232df
+exp_smooth_union right 6 | glsl scaled dynamic | c76551e878868e6e661d420197d00535efedbfbc640f4d8b0089bbbcc330bbd7
+mixed first 0 | wgsl hardcoded | bac6be2380d9bb924fe4390704ba42ba82447ff44ddbd80544b24ccfb0149bc9
+mixed first 0 | wgsl dynamic | 422edee0b1c1c282f508a62d1d04ed1334047ac7534a9929d24351993c6299bf
+mixed first 0 | glsl hardcoded | 556c699284bcd8dfdd917d96040616bc2c0b4b2dd73a794aae27ca8ecda61519
+mixed first 0 | glsl dynamic | a19802689a9d8f52ada7338ef8abc711d5c997f20e5aed1ad9511fe382e2881c
+mixed first 0 | hlsl hardcoded | 361f9a149571ef692e2047b8023b6d30f73a5a46fd085e9bc32679fc4c6a6e7c
+mixed first 0 | hlsl dynamic | e3e451cead395a44c4ca021f58f73bca07bb08059df5efa42f37da827ba8650c
+mixed first 0 | glsl scaled hardcoded | ea685bd587a6ae1bfb44835a911804de39cb2e7d93153e2a28a76795640e37a0
+mixed first 0 | glsl scaled dynamic | 306299fed23750f4901d837cd3499b1040702e2a442baefe3d4684596f22c977
+mixed second 0 | wgsl hardcoded | cd7b73d63dd6e954215da6f6ace17349f9179a4d5795d8a29f4310faa362cdd4
+mixed second 0 | wgsl dynamic | 81327fe42cc1e12fd6daadcf0b8445660162fe679a401f69b40b68cf5ce53157
+mixed second 0 | glsl hardcoded | dafc7271e14ea6bba798c2ecc1cef156a34ec4bd9ea6168a29a5e2f9bced3cd4
+mixed second 0 | glsl dynamic | eb0e67a5300c7c87d62314c64531401e1b28917d524a2a220489715d7b82eb35
+mixed second 0 | hlsl hardcoded | e0e13c7edb7d6dd24d87b16dc9ae3bb48630518281967403f65924207df68fa6
+mixed second 0 | hlsl dynamic | f8a8f5906dc8c4d7938c2f75f4013b9c048d57de03f2d8f094469a0414fc7448
+mixed second 0 | glsl scaled hardcoded | a83adda6e4a55ae8c71e7e21865f211d5773e8e3d36a3786ec47dd8491bbb9d5
+mixed second 0 | glsl scaled dynamic | eb893aaeac3e0c308208d4bdc7bbdf83d286d355775a56648b23485c65b2d01f
+mixed first 1 | wgsl hardcoded | a8a81367104f64799a5ba91bae044bbb182f90297e6a0cde9c5feede69480d8c
+mixed first 1 | wgsl dynamic | f104f830c5286a17d4c165c5dfd9a2f047bbac61ffaceae005b81701f25f0cb2
+mixed first 1 | glsl hardcoded | 4c355129a1e0a9e24badb2493c4b4245526d75642cb1247eb53d478914160026
+mixed first 1 | glsl dynamic | 8a8f5b1fe87e52c77a340c7f34f5cd69bb2e1e7e4753835b11fcbc3abd37379c
+mixed first 1 | hlsl hardcoded | 2334276b833ca388b2866317929792d22318503bba379c4c9147d0fe3ecdf7b4
+mixed first 1 | hlsl dynamic | 6485087aa0f97f1e30b3a34927e0b6c8572314ede0a8a08577a0498519e519e6
+mixed first 1 | glsl scaled hardcoded | 762ccceaa791edcd9a9f5c5a151b270ab4826ed23f53932828cbd74e7a52b290
+mixed first 1 | glsl scaled dynamic | 2093b6af88224d280e41c05d489a6a435f800cd6d931cb321691683ec6f52682
+mixed second 1 | wgsl hardcoded | d086bf521f9f4882a5019b8214fd4f9df98a5a725f62e0725712bcc31b78f0af
+mixed second 1 | wgsl dynamic | 4a876dfef31211d739c1cee393f32181f220f1362b743adf46761b640add6aba
+mixed second 1 | glsl hardcoded | 5c788fd3f913d7799d6fe0e4b22bbe66507910fcd3b61e0e48e171d4b44cc6b6
+mixed second 1 | glsl dynamic | e6510b54b3d383215be10646bacbf74b8085ab17ae5ad6a64dd5031dfb16074d
+mixed second 1 | hlsl hardcoded | b41f6d0ba5ac1c92579521b247a9aa80a53beff900088de72bbc7ebcb39d860c
+mixed second 1 | hlsl dynamic | 4f2e70946994b4449adc73182b946de004be03056557714b51616a486830ace7
+mixed second 1 | glsl scaled hardcoded | 16e9c48978e03fc02313cfc4e46f47a5edaf904f06e8848a77bc706e7ae07572
+mixed second 1 | glsl scaled dynamic | 78a1fc9a2744faedcc88cbb094de312470e6b42edd0534badb52861545163a91
+mixed first 2 | wgsl hardcoded | 7fd5f9e4984dc90ac84566f3474808705e72f4862ba024d0f84afc76b40acd44
+mixed first 2 | wgsl dynamic | 292e705881902b2597a6820115c16bc5e36527a14c4bb259ccf26ec78dbe95e0
+mixed first 2 | glsl hardcoded | 0b9988700fd4e6e5cf707659768e16f9df0d5603cca25079c63e41a95313f7a9
+mixed first 2 | glsl dynamic | 1b1c93bd8d198f9b17c065521b895970afc0f0584167cbfff0831993b64f9b51
+mixed first 2 | hlsl hardcoded | ac614efd0ff3833b7bcc0131006b79885b39fc43ce5c326d9b1a78994462f40f
+mixed first 2 | hlsl dynamic | 845c08ee0b9f769c3864a00f3c5748b9b7f69a6c6d0b70bf7deb75e35232db64
+mixed first 2 | glsl scaled hardcoded | 03d7e723ea75742ad330b59e771548f23d82b809c186973fd75b93a5e583dd68
+mixed first 2 | glsl scaled dynamic | c289d9260d5f6cf46b3f0c06b9fc12644b675dd02d966353a5f8d3ffde5752f3
+mixed second 2 | wgsl hardcoded | 065380a6acadff99baffeba5f4cd3258f97bb6f778aec5050fe871449caf1654
+mixed second 2 | wgsl dynamic | 20c50f58eb2a53cc83c969041c74b0fcd1761f86d10ce0d4a20b5886c4d04092
+mixed second 2 | glsl hardcoded | ad9a0adb504af529989171cfdcfcb669e4cf60e01559e717023b63b76ea79780
+mixed second 2 | glsl dynamic | 8bcebad45429583cb24b269cd5dfc29549631bf1b7929f2efd3af8071765403d
+mixed second 2 | hlsl hardcoded | fb91efccf95c21ab54e5e680fe5aeeb2289413253f611a3f0ff2fb74be9e8019
+mixed second 2 | hlsl dynamic | 85c85b8af709f327c33eebb2c727c6ac54e0585d7acc8f4e8ea28baeac1ec1b9
+mixed second 2 | glsl scaled hardcoded | fb8f8a2c76c3d7ca65d64ca909afe36a49a2a05915a206ce5da0429424d77f21
+mixed second 2 | glsl scaled dynamic | 9941b4e8eb6f428165d00c9e36b12e86e08b88838d16f3c208a2ef5e15856a82
+mixed first 3 | wgsl hardcoded | 276bc3b65f9bce7d0cd484eac01e33917e87a8cb36d2c1e694bf5c9c5ff8c530
+mixed first 3 | wgsl dynamic | 7aae4f284f0e4c67c578b218b180a44c25f2e044942f333a138e4cb2c40c68d9
+mixed first 3 | glsl hardcoded | 536dc3aad0218435a27c15f104c742ce172ca8bffb7024f661aead07ab7e39db
+mixed first 3 | glsl dynamic | 5bfa2a78384012d7d5721c78ac665f37df16e20937c5294ce7528444a895bebc
+mixed first 3 | hlsl hardcoded | 516a146bc50d7a60d655bf90e64275d19755cc9d4b3f9dc604bc49f3af981fdf
+mixed first 3 | hlsl dynamic | 93f838c871dd9613ac30dac7c5e11ed917cdb7cd404dfca2b4882825db39ad3d
+mixed first 3 | glsl scaled hardcoded | e21ba118e91eba4acebbf61f3ec9c431aede9ad5c6e3be5c4f6774be94b76982
+mixed first 3 | glsl scaled dynamic | b145b0be4a7ee3e9beb3f4f7982f65ad66fc7ab9a5e2f7d657aac6592cb9be63
+mixed second 3 | wgsl hardcoded | 8b5d831baea21d2bcef88ab2b960e91013247c16d7742b4e63f644740f6e87a3
+mixed second 3 | wgsl dynamic | 1cc8a98d05f96db315f8099e655c61ee248b159df0ab876dce9e7093bcb148e4
+mixed second 3 | glsl hardcoded | a822b58e48112d1b8938feba2cbcd321846babf07a8243bf174075fad74de14e
+mixed second 3 | glsl dynamic | a6b52f5f1c956baed9c9933daabc90d8f7596fc78d03db9024191de76f5e01c6
+mixed second 3 | hlsl hardcoded | d91c5a3c04323f6e0004d04e124d9b9daeb482efb38fce8ea4418ea1b9b9ed9c
+mixed second 3 | hlsl dynamic | 5b0f040d0edb9b81808cc7d2bab8ce42134abfe1f1d5dcfa438dc8cc33e73812
+mixed second 3 | glsl scaled hardcoded | 1ff52bb79b3b6c7c84c0dda58f178df93fc07aeae32496e6d137baa30fee109f
+mixed second 3 | glsl scaled dynamic | 913764533de437da90c9cb123eead0a903dbdf5c86f08813a891b461ebb1f166
