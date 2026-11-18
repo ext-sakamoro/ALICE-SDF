@@ -1062,6 +1062,22 @@ pub(crate) fn render_reads(
     out
 }
 
+/// What a node waits for when its child's value comes back
+enum WalkWait<'n, L: ShaderLang> {
+    /// the first operand's value: then the second operand, at `point`
+    Second(&'n SdfNode, String, Option<usize>),
+    /// both values: the operation combines them
+    Combine(&'n SdfNode, String, Option<usize>),
+    /// the child's value is the wrapper's
+    Pass(Option<usize>),
+    /// the wrapper's code after its child's value
+    After(AfterChild<'n, L>, Option<usize>),
+}
+
+/// The rest of a wrapper's code once its child's value is known ([`GenericTranspiler::wrapper_after_child`])
+type AfterChild<'n, L> =
+    Box<dyn FnOnce(&mut GenericTranspiler<L>, String, &mut String) -> String + 'n>;
+
 impl<L: ShaderLang> GenericTranspiler<L> {
     /// Create a new transpiler in the given mode.
     pub const fn new(mode: TranspileModeLang) -> Self {
@@ -1965,20 +1981,11 @@ impl<L: ShaderLang> GenericTranspiler<L> {
     /// The walk behind [`Self::transpile_node_inner`], with its pending work in a list instead of
     /// the call stack, so a tree's depth costs no stack: a binary operation waits for its first
     /// operand's value, then for its second's, then combines them; a wrapper whose code goes
-    /// before its child's passes the child's value on. Every node's scale frame (GLSL's local
+    /// before its child's passes the child's value on, one that emits code after it finishes with it. Every node's scale frame (GLSL's local
     /// scale) opens before its code and closes with its value, and the code is emitted in the
     /// order the recursive form emitted it, so the output is the same text
     fn walk(&mut self, root: &SdfNode, point_var: &str, code: &mut String) -> String {
-        /// What a node waits for when its child's value comes back
-        enum Wait<'n> {
-            /// the first operand's value: then the second operand, at `point`
-            Second(&'n SdfNode, String, Option<usize>),
-            /// both values: the operation combines them
-            Combine(&'n SdfNode, String, Option<usize>),
-            /// the child's value is the wrapper's
-            Pass(Option<usize>),
-        }
-        let mut waits: Vec<Wait<'_>> = Vec::new();
+        let mut waits: Vec<WalkWait<'_, L>> = Vec::new();
         let mut next = Some((root, point_var.to_owned()));
         loop {
             let mut value = match next.take() {
@@ -1986,14 +1993,21 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                     let frame = self.open_scale_frame(node);
                     if let Some((first, _)) = Self::binary_operands(node) {
                         self.binary_before_operands(node);
-                        waits.push(Wait::Second(node, point.clone(), frame));
+                        waits.push(WalkWait::Second(node, point.clone(), frame));
                         next = Some((first, point));
                         continue;
                     }
                     if let Some((child, child_point)) =
                         self.wrapper_before_child(node, &point, code)
                     {
-                        waits.push(Wait::Pass(frame));
+                        waits.push(WalkWait::Pass(frame));
+                        next = Some((child, child_point));
+                        continue;
+                    }
+                    if let Some((child, child_point, after)) =
+                        self.wrapper_after_child(node, &point, code)
+                    {
+                        waits.push(WalkWait::After(after, frame));
                         next = Some((child, child_point));
                         continue;
                     }
@@ -2006,19 +2020,23 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             loop {
                 match waits.pop() {
                     None => return value,
-                    Some(Wait::Second(node, point, frame)) => {
+                    Some(WalkWait::Second(node, point, frame)) => {
                         let Some((_, second)) = Self::binary_operands(node) else {
                             unreachable!("a binary operation has two operands");
                         };
-                        waits.push(Wait::Combine(node, value, frame));
+                        waits.push(WalkWait::Combine(node, value, frame));
                         next = Some((second, point));
                         break;
                     }
-                    Some(Wait::Combine(node, first, frame)) => {
+                    Some(WalkWait::Combine(node, first, frame)) => {
                         value = self.combine_binary(node, &first, &value, code);
                         self.close_scale_frame(frame, &value);
                     }
-                    Some(Wait::Pass(frame)) => self.close_scale_frame(frame, &value),
+                    Some(WalkWait::Pass(frame)) => self.close_scale_frame(frame, &value),
+                    Some(WalkWait::After(after, frame)) => {
+                        value = after(self, value, code);
+                        self.close_scale_frame(frame, &value);
+                    }
                 }
             }
         }
@@ -2834,6 +2852,731 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 Some((child, new_p))
             }
             SdfNode::Animated { child, .. } => Some((child, point_var.to_owned())),
+            _ => None,
+        }
+    }
+
+    /// For a one-child wrapper that emits code after its child's value too: the code before the
+    /// child, then the child, the point it is evaluated at, and the rest of the wrapper's code as a
+    /// function of the child's value; `None` for any other node
+    #[allow(clippy::too_many_lines)]
+    fn wrapper_after_child<'n>(
+        &mut self,
+        node: &'n SdfNode,
+        point_var: &str,
+        code: &mut String,
+    ) -> Option<(&'n SdfNode, String, AfterChild<'n, L>)> {
+        match node {
+            SdfNode::Scale { child, factor } => {
+                let new_p = self.next_var();
+                let inv_factor = 1.0 / factor;
+                let p_inv = self.param(inv_factor);
+                let p_factor = self.param(*factor);
+                code.push_str(&L::decl_vec3(&new_p, &format!("{} * {}", point_var, p_inv)));
+                let child_point = new_p;
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        let var = this.next_var();
+                        code.push_str(&L::decl_float(&var, &format!("{} * {}", d, p_factor)));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::ScaleNonUniform { child, factors } => {
+                let new_p = self.next_var();
+                let inv_x = self.param(1.0 / factors.x);
+                let inv_y = self.param(1.0 / factors.y);
+                let inv_z = self.param(1.0 / factors.z);
+                let min_scale = factors.x.law_min(factors.y).law_min(factors.z);
+                let p_min = self.param(min_scale);
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &format!("{} * {}", point_var, L::vec3_ctor(&inv_x, &inv_y, &inv_z)),
+                ));
+                let child_point = new_p;
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        let var = this.next_var();
+                        code.push_str(&L::decl_float(&var, &format!("{} * {}", d, p_min)));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::Round { child, radius } => {
+                let child_point = point_var.to_owned();
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        let var = this.next_var();
+                        let r = this.param(*radius);
+                        code.push_str(&L::decl_float(&var, &format!("{} - {}", d, r)));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::Onion { child, thickness } => {
+                let child_point = point_var.to_owned();
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        let var = this.next_var();
+                        let th = this.param(*thickness);
+                        code.push_str(&L::decl_float(&var, &format!("abs({}) - {}", d, th)));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::Noise {
+                child,
+                amplitude,
+                frequency,
+                seed,
+            } => {
+                // Same Perlin law as `modifiers::perlin_noise_3d` (CPU / SIMD / bytecode)
+                self.ensure_helper("perlin_noise");
+                let point_var = point_var.to_owned();
+                let child_point = point_var.clone();
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        let point_var = point_var.as_str();
+                        let n_var = this.next_var();
+                        let var = this.next_var();
+                        let freq = this.param(*frequency);
+                        let amp = this.param(*amplitude);
+                        code.push_str(&L::decl_float(
+                            &n_var,
+                            &format!("perlin_noise_3d({} * {}, {}u)", point_var, freq, seed),
+                        ));
+                        code.push_str(&L::decl_float(
+                            &var,
+                            &format!("{} + {} * {}", d, n_var, amp),
+                        ));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::ProjectiveTransform {
+                child,
+                inv_matrix,
+                lipschitz_bound,
+            } => {
+                // `projective_transform`: w = row 3 of M⁻¹ · (p, 1), q = rows
+                // 0-2 times `1 / w`, the child distance times
+                // `min(|1 / w|, lipschitz_bound)`. The matrix entries are
+                // literals; every `a * b + c` is written out in the CPU's
+                // order (two roundings, no `fma`).
+                let m = inv_matrix;
+                let w = self.next_var();
+                let inv_w = self.next_var();
+                let q = self.next_var();
+                code.push_str(&L::decl_float(
+                    &w,
+                    &format!(
+                        "{} * {point_var}.x + {} * {point_var}.y + {} * {point_var}.z + {}",
+                        lit(m[3]),
+                        lit(m[7]),
+                        lit(m[11]),
+                        lit(m[15])
+                    ),
+                ));
+                code.push_str(&L::decl_float(&inv_w, &format!("1.0 / {w}")));
+                code.push_str(&L::decl_vec3(
+                    &q,
+                    &format!("{} * {inv_w}", transform_point3_expr::<L>(m, point_var)),
+                ));
+                let child_point = q;
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        this.note_scale(&[&inv_w]);
+                        let var = this.next_var();
+                        code.push_str(&L::decl_float(
+                            &var,
+                            &format!("{d} * min(abs({inv_w}), {})", lit(*lipschitz_bound)),
+                        ));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::LatticeDeform {
+                child,
+                control_points,
+                nx,
+                ny,
+                nz,
+                bbox_min,
+                bbox_max,
+            } => {
+                // `lattice_deform`: outside the box → identity (correction 1);
+                // inside → tricubic Bernstein sum over the control points, the
+                // correction |∂q/∂x| by central difference (ε = 0.001, ≥ 0.1)
+                // divides the child distance. Control points are a module-scope
+                // array, the FFD a module-scope function (called three times).
+                let id = self.var_counter;
+                self.var_counter += 1;
+                let arr = format!("alice_ffd_cp_{id}");
+                let func = format!("alice_ffd_{id}");
+                let flat: Vec<f32> = control_points
+                    .iter()
+                    .flat_map(|c| [c.x, c.y, c.z])
+                    .collect();
+                let arr = self.data_array(&arr, &flat);
+                let cpx = (nx + 1) as usize;
+                let cpy = (ny + 1) as usize;
+                let cpz = (nz + 1) as usize;
+                let size = *bbox_max - *bbox_min;
+                let bmin = L::vec3_ctor(&lit(bbox_min.x), &lit(bbox_min.y), &lit(bbox_min.z));
+                let bmax = L::vec3_ctor(&lit(bbox_max.x), &lit(bbox_max.y), &lit(bbox_max.z));
+                let inv = L::vec3_ctor(&lit(1.0 / size.x), &lit(1.0 / size.y), &lit(1.0 / size.z));
+                let mut body = String::new();
+                body.push_str(&L::decl_vec3(
+                    "s",
+                    &format!(
+                        "clamp((p - {bmin}) * {inv}, {}, {})",
+                        L::vec3_zero(),
+                        L::vec3_splat("1.0")
+                    ),
+                ));
+                body.push_str(&L::decl_mut_vec3("r", L::vec3_zero()));
+                let bern = |t: &str, i: usize| -> String {
+                    match i {
+                        0 => format!("((1.0 - {t}) * (1.0 - {t}) * (1.0 - {t}))"),
+                        1 => format!("(3.0 * {t} * (1.0 - {t}) * (1.0 - {t}))"),
+                        2 => format!("(3.0 * {t} * {t} * (1.0 - {t}))"),
+                        _ => format!("({t} * {t} * {t})"),
+                    }
+                };
+                for i in 0..cpx.min(4) {
+                    for j in 0..cpy.min(4) {
+                        for k in 0..cpz.min(4) {
+                            let idx = i * cpy * cpz + j * cpz + k;
+                            if idx >= control_points.len() {
+                                continue;
+                            }
+                            let cp = L::vec3_ctor(
+                                &arr.at(&(idx * 3).to_string()),
+                                &arr.at(&(idx * 3 + 1).to_string()),
+                                &arr.at(&(idx * 3 + 2).to_string()),
+                            );
+                            writeln!(
+                                body,
+                                "    r = r + {cp} * ({} * {} * {});",
+                                bern("s.x", i),
+                                bern("s.y", j),
+                                bern("s.z", k)
+                            )
+                            .unwrap();
+                        }
+                    }
+                }
+                body.push_str("    return r;\n");
+                self.globals.push_str(&L::global_vec3_fn(&func, &body));
+
+                let q = self.next_var();
+                let corr = self.next_var();
+                let p = point_var;
+                code.push_str(&L::decl_mut_vec3(&q, p));
+                code.push_str(&L::decl_mut_float(&corr, "1.0"));
+                let ex = L::vec3_ctor("0.001", "0.0", "0.0");
+                writeln!(
+                    code,
+                    "    if (!({p}.x < {bmin}.x || {p}.y < {bmin}.y || {p}.z < {bmin}.z || {p}.x > {bmax}.x || {p}.y > {bmax}.y || {p}.z > {bmax}.z)) {{"
+                )
+                .unwrap();
+                writeln!(code, "        {q} = {func}({p});").unwrap();
+                writeln!(
+                    code,
+                    "        {corr} = max(length({func}({p} + {ex}) - {func}({p} - {ex})) / 0.002, 0.1);"
+                )
+                .unwrap();
+                code.push_str("    }\n");
+                let child_point = q;
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        this.note_scale(&[&corr]);
+                        let var = this.next_var();
+                        code.push_str(&L::decl_float(&var, &format!("{d} / {corr}")));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::GridWarp { child, warp } => {
+                // `transforms::grid_warp`: q = clamp(p, box), the 8 node maps of q's cell blended
+                // trilinearly (corner order 000, 100, 010, 110, 001, 101, 011, 111, each sum
+                // started at 0.0, the CPU order), x = M q; the child at x divided by the computed
+                // bound, extended outside the box by hypot(e, max(d, 0)) and clipped by the box
+                // (max with the box's signed distance b, the CPU order)
+                let (x, e, bx, lam, fl) = self.emit_grid_warp_point(warp, point_var, code);
+                let data = warp.data();
+                let child_point = x;
+                let post: AfterChild<'n, L> = Box::new(
+                    move |this: &mut Self, dc: String, code: &mut String| {
+                        let (dv, dp, out) = (this.next_var(), this.next_var(), this.next_var());
+                        this.note_scale(&[&lam, &e, &dv]);
+                        let r = lit(data.reach);
+                        let lg = lit(warp.lambda_global());
+                        code.push_str(&L::decl_float(
+                        &dv,
+                        &format!(
+                            "max(min(max({dc} / {lam}, min(-{r}, {dc} / {lg})), max({r}, {dc} / {lg})), clamp({fl}, -{r}, {r}))"
+                        ),
+                    ));
+                        code.push_str(&L::decl_float(&dp, &format!("max({dv}, 0.0)")));
+                        code.push_str(&L::decl_float(
+                            &out,
+                            &format!("max({dv} + (sqrt({e} * {e} + {dp} * {dp}) - {dp}), {bx})"),
+                        ));
+                        out
+                    },
+                );
+                Some((child, child_point, post))
+            }
+            SdfNode::BellPull { child, pull } => {
+                // `transforms::bell_pull`: the child at x(p), divided by the slope bound
+                let (x, lam) = self.emit_bell_pull_point(pull, point_var, code);
+                let child_point = x;
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, dc: String, code: &mut String| {
+                        let out = this.next_var();
+                        this.note_scale(&[&lam]);
+                        code.push_str(&L::decl_float(&out, &format!("{dc} / {lam}")));
+                        out
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::IFS {
+                child,
+                transforms,
+                iterations,
+            } => {
+                // `ifs_fold_with_scale`: per iteration keep the transform whose
+                // image is nearest the origin; the scale accumulates that
+                // matrix's X-axis length; the child distance is divided by it.
+                // Transforms and iterations are data, unrolled as literals.
+                let q = self.next_var();
+                let sc = self.next_var();
+                code.push_str(&L::decl_mut_vec3(&q, point_var));
+                code.push_str(&L::decl_mut_float(&sc, "1.0"));
+                for _ in 0..*iterations {
+                    let best = self.next_var();
+                    let bestd = self.next_var();
+                    let bests = self.next_var();
+                    code.push_str(&L::decl_mut_vec3(&best, &q));
+                    code.push_str(&L::decl_mut_float(&bestd, &format!("dot({q}, {q})")));
+                    code.push_str(&L::decl_mut_float(&bests, "1.0"));
+                    for m in transforms {
+                        let t = self.next_var();
+                        let td = self.next_var();
+                        code.push_str(&L::decl_vec3(&t, &transform_point3_expr::<L>(m, &q)));
+                        code.push_str(&L::decl_float(&td, &format!("dot({t}, {t})")));
+                        let x_axis_len = (m[2] * m[2] + (m[1] * m[1] + (m[0] * m[0]))).sqrt();
+                        writeln!(
+                            code,
+                            "    if ({td} < {bestd}) {{ {bestd} = {td}; {best} = {t}; {bests} = {}; }}",
+                            lit(x_axis_len)
+                        )
+                        .unwrap();
+                    }
+                    writeln!(code, "    {q} = {best};").unwrap();
+                    writeln!(code, "    {sc} = {sc} * {bests};").unwrap();
+                }
+                let child_point = q;
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        let var = this.next_var();
+                        code.push_str(&L::decl_float(&var, &format!("{d} / max({sc}, 1e-6)")));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::HeightmapDisplacement {
+                child,
+                heightmap,
+                width,
+                height,
+                amplitude,
+                scale,
+            } => {
+                // `heightmap_displacement`: dominant-axis projection to (u, v),
+                // mapped to [0, w-1] × [0, h-1], bilinear sample × amplitude,
+                // subtracted from the child distance. The map is a module-scope
+                // array.
+                let point_var = point_var.to_owned();
+                let child_point = point_var.clone();
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        let point_var = point_var.as_str();
+                        if heightmap.is_empty() || *width == 0 || *height == 0 {
+                            return d;
+                        }
+                        let id = this.var_counter;
+                        this.var_counter += 1;
+                        let arr = format!("alice_hm_{id}");
+                        let arr = this.data_array(&arr, heightmap);
+                        let (wm1, hm1) = (lit(*width as f32 - 1.0), lit(*height as f32 - 1.0));
+                        let sc = this.param(*scale);
+                        let amp = this.param(*amplitude);
+                        let p = point_var;
+                        let ap = this.next_var();
+                        code.push_str(&L::decl_vec3(&ap, &format!("abs({p})")));
+                        // the law of `heightmap_displacement`: the dominant face, with the other faces blended
+                        // in within FACE_BLEND_BAND (1/16) of the dominant component, as
+                        // h_dom + sum_{i != dom} (w_i / sum w) * (h_i - h_dom) in axis order (a face with no
+                        // weight adds exactly 0)
+                        let x_dom = format!("{ap}.x > {ap}.y && {ap}.x > {ap}.z");
+                        let y_dom = format!("{ap}.y > {ap}.z");
+                        let (m, lo) = (this.next_var(), this.next_var());
+                        code.push_str(&L::decl_float(
+                            &m,
+                            &format!("max(max({ap}.x, {ap}.y), {ap}.z)"),
+                        ));
+                        code.push_str(&L::decl_float(
+                            &lo,
+                            &format!("{m} - {m} * {}", lit(crate::modifiers::FACE_BLEND_BAND)),
+                        ));
+                        let wts: Vec<String> = ["x", "y", "z"]
+                            .iter()
+                            .map(|c| {
+                                let w = this.next_var();
+                                code.push_str(&L::decl_float(
+                                    &w,
+                                    &format!("max({ap}.{c} - {lo}, 0.0)"),
+                                ));
+                                w
+                            })
+                            .collect();
+                        let total = this.next_var();
+                        code.push_str(&L::decl_float(
+                            &total,
+                            &format!("({} + {}) + {}", wts[0], wts[1], wts[2]),
+                        ));
+                        let faces = [
+                            (format!("{p}.y"), format!("{p}.z")),
+                            (format!("{p}.x"), format!("{p}.z")),
+                            (format!("{p}.x"), format!("{p}.y")),
+                        ];
+                        let samples: Vec<String> = faces
+                            .iter()
+                            .map(|(u, v)| {
+                                this.heightmap_face_sample(
+                                    code, &arr, u, v, &sc, &wm1, &hm1, *width, *height,
+                                )
+                            })
+                            .collect();
+                        let h_dom = this.next_var();
+                        code.push_str(&L::decl_float(
+                            &h_dom,
+                            &L::select_float(
+                                &x_dom,
+                                &samples[0],
+                                &L::select_float(&y_dom, &samples[1], &samples[2]),
+                            ),
+                        ));
+                        let not_dom = [
+                            format!("!({x_dom})"),
+                            format!("(({x_dom}) || !({y_dom}))"),
+                            format!("(({x_dom}) || ({y_dom}))"),
+                        ];
+                        let mut acc = h_dom.clone();
+                        for axis in 0..3 {
+                            let next = this.next_var();
+                            code.push_str(&L::decl_float(
+                                &next,
+                                &L::select_float(
+                                    &format!("{} && {} > 0.0", not_dom[axis], wts[axis]),
+                                    &format!(
+                                        "{acc} + ({} / {total}) * ({} - {h_dom})",
+                                        wts[axis], samples[axis]
+                                    ),
+                                    &acc,
+                                ),
+                            ));
+                            acc = next;
+                        }
+                        let var = this.next_var();
+                        code.push_str(&L::decl_float(&var, &format!("{d} - {acc} * {amp}")));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::SurfaceRoughness {
+                child,
+                amplitude,
+                frequency,
+                octaves,
+                ..
+            } => {
+                self.ensure_helper("hash_noise");
+                let point_var = point_var.to_owned();
+                let child_point = point_var.clone();
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        let point_var = point_var.as_str();
+                        let var = this.next_var();
+                        let amp = this.param(*amplitude);
+                        let freq = this.param(*frequency);
+                        let noise_var = this.next_var();
+                        let sp = this.next_var();
+                        code.push_str(&L::decl_vec3(&sp, &format!("{} * {}", point_var, freq)));
+                        code.push_str(&L::decl_mut_float(&noise_var, "0.0"));
+                        code.push_str(&L::decl_mut_float(&format!("{}_a", noise_var), "1.0"));
+                        for i in 0..*octaves {
+                            let scale = 1u32 << i;
+                            writeln!(
+                                code,
+                                "    {n} = {n} + {n}_a * hash_noise_3d({sp} * {s}.0, 42u);",
+                                n = noise_var,
+                                sp = sp,
+                                s = scale
+                            )
+                            .unwrap();
+                            writeln!(code, "    {n}_a = {n}_a * 0.5;", n = noise_var).unwrap();
+                        }
+                        code.push_str(&L::decl_float(
+                            &var,
+                            &format!("{} + {} * {}", d, amp, noise_var),
+                        ));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::Extrude { child, half_height } => {
+                // `real::extrude_point` / `extrude_distance`: the 2-D child lives in
+                // XY (z = 0) and the slab is |z| ≤ half_height
+                let new_p_2d = self.next_var();
+                code.push_str(&L::decl_vec3(
+                    &new_p_2d,
+                    &L::vec3_ctor(
+                        &format!("{}.x", point_var),
+                        &format!("{}.y", point_var),
+                        "0.0",
+                    ),
+                ));
+                let point_var = point_var.to_owned();
+                let child_point = new_p_2d;
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        let point_var = point_var.as_str();
+                        let var = this.next_var();
+                        let hh = this.param(*half_height);
+                        let w_var = this.next_var();
+                        code.push_str(&L::decl_vec2(
+                            &w_var,
+                            &L::vec2_ctor(&d, &format!("abs({}.z) - {}", point_var, hh)),
+                        ));
+                        code.push_str(&L::decl_float(
+                            &var,
+                            &format!(
+                                "min(max({w}.x, {w}.y), 0.0) + length(max({w}, {z}))",
+                                w = w_var,
+                                z = L::vec2_zero()
+                            ),
+                        ));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::Taper {
+                child,
+                factor,
+                reach,
+            } => {
+                self.ensure_helper("taper_bound");
+                let new_p = self.next_var();
+                let f = self.param(*factor);
+                // `reach` may be INFINITY (unbounded child); shaders have no
+                // inf literal, so ≥ 1e30 is the "no cone bound" sentinel on
+                // every path (`real::taper_bound` uses the same test).
+                let rx = self.param(if reach[0] < 1e30 { reach[0] } else { 1e30 });
+                let ry = self.param(if reach[1] < 1e30 { reach[1] } else { 1e30 });
+                // CPU law (`real::taper`): den = 1 - y * f, |den| >= 1e-6 with the
+                // sign kept. The transpilers used to emit `1 + y * f` (mirrored
+                // taper) with a `max(den, 0.001)` clamp — a different law.
+                let taper_var = self.next_var();
+                let mag_var = self.next_var();
+                let den_var = self.next_var();
+                code.push_str(&L::decl_float(
+                    &taper_var,
+                    &format!("1.0 - {}.y * {}", point_var, f),
+                ));
+                code.push_str(&L::decl_float(
+                    &mag_var,
+                    &format!("max(abs({}), 1e-6)", taper_var),
+                ));
+                code.push_str(&L::decl_float(
+                    &den_var,
+                    &L::select_float(
+                        &format!("{} < 0.0", taper_var),
+                        &format!("-{}", mag_var),
+                        &mag_var,
+                    ),
+                ));
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &L::vec3_ctor(
+                        &format!("{}.x / {}", point_var, den_var),
+                        &format!("{}.y", point_var),
+                        &format!("{}.z / {}", point_var, den_var),
+                    ),
+                ));
+                // Child distance at the tapered point → parent-space bound
+                // (`real::taper_bound`, same law as every CPU path).
+                let point_var = point_var.to_owned();
+                let child_point = new_p;
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        let point_var = point_var.as_str();
+                        let var = this.next_var();
+                        code.push_str(&L::decl_float(
+                            &var,
+                            &format!("alice_taper_bound({d}, {point_var}, {f}, {rx}, {ry})"),
+                        ));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::Displacement { child, strength } => {
+                let point_var = point_var.to_owned();
+                let child_point = point_var.clone();
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        let point_var = point_var.as_str();
+                        let var = this.next_var();
+                        let s = this.param(*strength);
+                        code.push_str(&L::decl_float(
+                            &var,
+                            &format!(
+                                // `modifier_displacement`: sin(5x) sin(5y) sin(5z)
+                                "{} + {} * sin({p}.x * 5.0) * sin({p}.y * 5.0) * sin({p}.z * 5.0)",
+                                d,
+                                s,
+                                p = point_var
+                            ),
+                        ));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::SineDisplacement {
+                child,
+                amplitude,
+                frequency,
+            } => {
+                let point_var = point_var.to_owned();
+                let child_point = point_var.clone();
+                let post: AfterChild<'n, L> =
+                    Box::new(move |this: &mut Self, d: String, code: &mut String| {
+                        let point_var = point_var.as_str();
+                        let var = this.next_var();
+                        let a = this.param(*amplitude);
+                        let fx = this.param(frequency.x);
+                        let fy = this.param(frequency.y);
+                        let fz = this.param(frequency.z);
+                        code.push_str(&L::decl_float(
+                            &var,
+                            &format!(
+                                "{} + {} * sin({p}.x * {}) * sin({p}.y * {}) * sin({p}.z * {})",
+                                d,
+                                a,
+                                fx,
+                                fy,
+                                fz,
+                                p = point_var
+                            ),
+                        ));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::SweepBezier { child, p0, p1, p2 } => {
+                // p0, p1, p2 are Vec2 (XZ plane). We project p into XZ, find closest on bezier,
+                // then evaluate child in local frame.
+                let var = self.next_var();
+                let p0x = self.param(p0.x);
+                let p0y = self.param(p0.y);
+                let p1x = self.param(p1.x);
+                let p1y = self.param(p1.y);
+                let p2x = self.param(p2.x);
+                let p2y = self.param(p2.y);
+                // Closed-form distance to the curve (IQ sdBezier), one helper
+                // per language mirroring `modifiers::sweep::bezier_distance_2d`.
+                self.ensure_helper("bezier_distance_2d");
+                let local_p = self.next_var();
+                code.push_str(&L::decl_vec3(
+                    &local_p,
+                    &L::vec3_ctor(
+                        &format!(
+                            "bezier_distance_2d({}, {}, {}, {})",
+                            L::vec2_ctor(&format!("{point_var}.x"), &format!("{point_var}.z")),
+                            L::vec2_ctor(&p0x, &p0y),
+                            L::vec2_ctor(&p1x, &p1y),
+                            L::vec2_ctor(&p2x, &p2y)
+                        ),
+                        &format!("{point_var}.y"),
+                        "0.0",
+                    ),
+                ));
+                let child_point = local_p;
+                let post: AfterChild<'n, L> =
+                    Box::new(move |_this: &mut Self, d: String, code: &mut String| {
+                        code.push_str(&L::decl_float(&var, &d));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
+            SdfNode::PolarRepeat { child, count } => {
+                let var = self.next_var();
+                let n = self.param(*count as f32);
+                let angle_var = self.next_var();
+                let sector_var = self.next_var();
+                let recip_var = self.next_var();
+                let snapped_var = self.next_var();
+                let c_var = self.next_var();
+                let s_var = self.next_var();
+                let new_p = self.next_var();
+                let pi2 = self.param(std::f32::consts::TAU);
+                self.ensure_helper("alice_atan2");
+                code.push_str(&L::decl_float(
+                    &angle_var,
+                    &L::atan2_expr(&format!("{point_var}.z"), &format!("{point_var}.x")),
+                ));
+                code.push_str(&L::decl_float(&sector_var, &format!("{} / {}", pi2, n)));
+                // `angle * (n / TAU)` with the same operands as the CPU law
+                // (`real::polar_repeat`), so a boundary angle snaps to the same
+                // sector on every path (`angle / sector` differs by an ulp).
+                code.push_str(&L::decl_float(&recip_var, &format!("{} / {}", n, pi2)));
+                code.push_str(&L::decl_float(
+                    &snapped_var,
+                    &format!(
+                        "floor({} * {} + 0.5) * {}",
+                        angle_var, recip_var, sector_var
+                    ),
+                ));
+                code.push_str(&L::decl_float(&c_var, &format!("cos({})", snapped_var)));
+                code.push_str(&L::decl_float(&s_var, &format!("sin({})", snapped_var)));
+                code.push_str(&L::decl_vec3(
+                    &new_p,
+                    &L::vec3_ctor(
+                        &format!(
+                            "{c} * {p}.x + {s} * {p}.z",
+                            c = c_var,
+                            s = s_var,
+                            p = point_var
+                        ),
+                        &format!("{}.y", point_var),
+                        &format!(
+                            "-{s} * {p}.x + {c} * {p}.z",
+                            c = c_var,
+                            s = s_var,
+                            p = point_var
+                        ),
+                    ),
+                ));
+                let child_point = new_p;
+                let post: AfterChild<'n, L> =
+                    Box::new(move |_this: &mut Self, d: String, code: &mut String| {
+                        code.push_str(&L::decl_float(&var, &d));
+                        var
+                    });
+                Some((child, child_point, post))
+            }
             _ => None,
         }
     }
@@ -4269,251 +5012,32 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 self.transpile_node_inner(child, &p, code)
             }
 
-            SdfNode::Scale { child, factor } => {
-                let new_p = self.next_var();
-                let inv_factor = 1.0 / factor;
-                let p_inv = self.param(inv_factor);
-                let p_factor = self.param(*factor);
-                code.push_str(&L::decl_vec3(&new_p, &format!("{} * {}", point_var, p_inv)));
-                let d = self.transpile_node_inner(child, &new_p, code);
-                let var = self.next_var();
-                code.push_str(&L::decl_float(&var, &format!("{} * {}", d, p_factor)));
-                var
-            }
-
-            SdfNode::ScaleNonUniform { child, factors } => {
-                let new_p = self.next_var();
-                let inv_x = self.param(1.0 / factors.x);
-                let inv_y = self.param(1.0 / factors.y);
-                let inv_z = self.param(1.0 / factors.z);
-                let min_scale = factors.x.law_min(factors.y).law_min(factors.z);
-                let p_min = self.param(min_scale);
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &format!("{} * {}", point_var, L::vec3_ctor(&inv_x, &inv_y, &inv_z)),
-                ));
-                let d = self.transpile_node_inner(child, &new_p, code);
-                let var = self.next_var();
-                code.push_str(&L::decl_float(&var, &format!("{} * {}", d, p_min)));
-                var
+            SdfNode::Scale { .. }
+            | SdfNode::ScaleNonUniform { .. }
+            | SdfNode::Round { .. }
+            | SdfNode::Onion { .. }
+            | SdfNode::Noise { .. }
+            | SdfNode::ProjectiveTransform { .. }
+            | SdfNode::LatticeDeform { .. }
+            | SdfNode::GridWarp { .. }
+            | SdfNode::BellPull { .. }
+            | SdfNode::IFS { .. }
+            | SdfNode::HeightmapDisplacement { .. }
+            | SdfNode::SurfaceRoughness { .. }
+            | SdfNode::Extrude { .. }
+            | SdfNode::Taper { .. }
+            | SdfNode::Displacement { .. }
+            | SdfNode::SineDisplacement { .. }
+            | SdfNode::SweepBezier { .. }
+            | SdfNode::PolarRepeat { .. } => {
+                let Some((child, p, post)) = self.wrapper_after_child(node, point_var, code) else {
+                    unreachable!("a wrapper that emits code after its child");
+                };
+                let d = self.transpile_node_inner(child, &p, code);
+                post(self, d, code)
             }
 
             // ============ Modifiers ============
-            SdfNode::Round { child, radius } => {
-                let d = self.transpile_node_inner(child, point_var, code);
-                let var = self.next_var();
-                let r = self.param(*radius);
-                code.push_str(&L::decl_float(&var, &format!("{} - {}", d, r)));
-                var
-            }
-
-            SdfNode::Onion { child, thickness } => {
-                let d = self.transpile_node_inner(child, point_var, code);
-                let var = self.next_var();
-                let th = self.param(*thickness);
-                code.push_str(&L::decl_float(&var, &format!("abs({}) - {}", d, th)));
-                var
-            }
-
-            SdfNode::Noise {
-                child,
-                amplitude,
-                frequency,
-                seed,
-            } => {
-                // Same Perlin law as `modifiers::perlin_noise_3d` (CPU / SIMD / bytecode)
-                self.ensure_helper("perlin_noise");
-                let d = self.transpile_node_inner(child, point_var, code);
-                let n_var = self.next_var();
-                let var = self.next_var();
-                let freq = self.param(*frequency);
-                let amp = self.param(*amplitude);
-                code.push_str(&L::decl_float(
-                    &n_var,
-                    &format!("perlin_noise_3d({} * {}, {}u)", point_var, freq, seed),
-                ));
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("{} + {} * {}", d, n_var, amp),
-                ));
-                var
-            }
-
-            SdfNode::ProjectiveTransform {
-                child,
-                inv_matrix,
-                lipschitz_bound,
-            } => {
-                // `projective_transform`: w = row 3 of M⁻¹ · (p, 1), q = rows
-                // 0-2 times `1 / w`, the child distance times
-                // `min(|1 / w|, lipschitz_bound)`. The matrix entries are
-                // literals; every `a * b + c` is written out in the CPU's
-                // order (two roundings, no `fma`).
-                let m = inv_matrix;
-                let w = self.next_var();
-                let inv_w = self.next_var();
-                let q = self.next_var();
-                code.push_str(&L::decl_float(
-                    &w,
-                    &format!(
-                        "{} * {point_var}.x + {} * {point_var}.y + {} * {point_var}.z + {}",
-                        lit(m[3]),
-                        lit(m[7]),
-                        lit(m[11]),
-                        lit(m[15])
-                    ),
-                ));
-                code.push_str(&L::decl_float(&inv_w, &format!("1.0 / {w}")));
-                code.push_str(&L::decl_vec3(
-                    &q,
-                    &format!("{} * {inv_w}", transform_point3_expr::<L>(m, point_var)),
-                ));
-                let d = self.transpile_node_inner(child, &q, code);
-                self.note_scale(&[&inv_w]);
-                let var = self.next_var();
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("{d} * min(abs({inv_w}), {})", lit(*lipschitz_bound)),
-                ));
-                var
-            }
-
-            SdfNode::LatticeDeform {
-                child,
-                control_points,
-                nx,
-                ny,
-                nz,
-                bbox_min,
-                bbox_max,
-            } => {
-                // `lattice_deform`: outside the box → identity (correction 1);
-                // inside → tricubic Bernstein sum over the control points, the
-                // correction |∂q/∂x| by central difference (ε = 0.001, ≥ 0.1)
-                // divides the child distance. Control points are a module-scope
-                // array, the FFD a module-scope function (called three times).
-                let id = self.var_counter;
-                self.var_counter += 1;
-                let arr = format!("alice_ffd_cp_{id}");
-                let func = format!("alice_ffd_{id}");
-                let flat: Vec<f32> = control_points
-                    .iter()
-                    .flat_map(|c| [c.x, c.y, c.z])
-                    .collect();
-                let arr = self.data_array(&arr, &flat);
-                let cpx = (nx + 1) as usize;
-                let cpy = (ny + 1) as usize;
-                let cpz = (nz + 1) as usize;
-                let size = *bbox_max - *bbox_min;
-                let bmin = L::vec3_ctor(&lit(bbox_min.x), &lit(bbox_min.y), &lit(bbox_min.z));
-                let bmax = L::vec3_ctor(&lit(bbox_max.x), &lit(bbox_max.y), &lit(bbox_max.z));
-                let inv = L::vec3_ctor(&lit(1.0 / size.x), &lit(1.0 / size.y), &lit(1.0 / size.z));
-                let mut body = String::new();
-                body.push_str(&L::decl_vec3(
-                    "s",
-                    &format!(
-                        "clamp((p - {bmin}) * {inv}, {}, {})",
-                        L::vec3_zero(),
-                        L::vec3_splat("1.0")
-                    ),
-                ));
-                body.push_str(&L::decl_mut_vec3("r", L::vec3_zero()));
-                let bern = |t: &str, i: usize| -> String {
-                    match i {
-                        0 => format!("((1.0 - {t}) * (1.0 - {t}) * (1.0 - {t}))"),
-                        1 => format!("(3.0 * {t} * (1.0 - {t}) * (1.0 - {t}))"),
-                        2 => format!("(3.0 * {t} * {t} * (1.0 - {t}))"),
-                        _ => format!("({t} * {t} * {t})"),
-                    }
-                };
-                for i in 0..cpx.min(4) {
-                    for j in 0..cpy.min(4) {
-                        for k in 0..cpz.min(4) {
-                            let idx = i * cpy * cpz + j * cpz + k;
-                            if idx >= control_points.len() {
-                                continue;
-                            }
-                            let cp = L::vec3_ctor(
-                                &arr.at(&(idx * 3).to_string()),
-                                &arr.at(&(idx * 3 + 1).to_string()),
-                                &arr.at(&(idx * 3 + 2).to_string()),
-                            );
-                            writeln!(
-                                body,
-                                "    r = r + {cp} * ({} * {} * {});",
-                                bern("s.x", i),
-                                bern("s.y", j),
-                                bern("s.z", k)
-                            )
-                            .unwrap();
-                        }
-                    }
-                }
-                body.push_str("    return r;\n");
-                self.globals.push_str(&L::global_vec3_fn(&func, &body));
-
-                let q = self.next_var();
-                let corr = self.next_var();
-                let p = point_var;
-                code.push_str(&L::decl_mut_vec3(&q, p));
-                code.push_str(&L::decl_mut_float(&corr, "1.0"));
-                let ex = L::vec3_ctor("0.001", "0.0", "0.0");
-                writeln!(
-                    code,
-                    "    if (!({p}.x < {bmin}.x || {p}.y < {bmin}.y || {p}.z < {bmin}.z || {p}.x > {bmax}.x || {p}.y > {bmax}.y || {p}.z > {bmax}.z)) {{"
-                )
-                .unwrap();
-                writeln!(code, "        {q} = {func}({p});").unwrap();
-                writeln!(
-                    code,
-                    "        {corr} = max(length({func}({p} + {ex}) - {func}({p} - {ex})) / 0.002, 0.1);"
-                )
-                .unwrap();
-                code.push_str("    }\n");
-                let d = self.transpile_node_inner(child, &q, code);
-                self.note_scale(&[&corr]);
-                let var = self.next_var();
-                code.push_str(&L::decl_float(&var, &format!("{d} / {corr}")));
-                var
-            }
-
-            SdfNode::GridWarp { child, warp } => {
-                // `transforms::grid_warp`: q = clamp(p, box), the 8 node maps of q's cell blended
-                // trilinearly (corner order 000, 100, 010, 110, 001, 101, 011, 111, each sum
-                // started at 0.0, the CPU order), x = M q; the child at x divided by the computed
-                // bound, extended outside the box by hypot(e, max(d, 0)) and clipped by the box
-                // (max with the box's signed distance b, the CPU order)
-                let (x, e, bx, lam, fl) = self.emit_grid_warp_point(warp, point_var, code);
-                let data = warp.data();
-                let dc = self.transpile_node_inner(child, &x, code);
-                let (dv, dp, out) = (self.next_var(), self.next_var(), self.next_var());
-                self.note_scale(&[&lam, &e, &dv]);
-                let r = lit(data.reach);
-                let lg = lit(warp.lambda_global());
-                code.push_str(&L::decl_float(
-                    &dv,
-                    &format!(
-                        "max(min(max({dc} / {lam}, min(-{r}, {dc} / {lg})), max({r}, {dc} / {lg})), clamp({fl}, -{r}, {r}))"
-                    ),
-                ));
-                code.push_str(&L::decl_float(&dp, &format!("max({dv}, 0.0)")));
-                code.push_str(&L::decl_float(
-                    &out,
-                    &format!("max({dv} + (sqrt({e} * {e} + {dp} * {dp}) - {dp}), {bx})"),
-                ));
-                out
-            }
-
-            SdfNode::BellPull { child, pull } => {
-                // `transforms::bell_pull`: the child at x(p), divided by the slope bound
-                let (x, lam) = self.emit_bell_pull_point(pull, point_var, code);
-                let dc = self.transpile_node_inner(child, &x, code);
-                let out = self.next_var();
-                self.note_scale(&[&lam]);
-                code.push_str(&L::decl_float(&out, &format!("{dc} / {lam}")));
-                out
-            }
-
             SdfNode::SdfSkinning { child, bones } => {
                 // `sdf_skinning`: Σ w · bind(current(p)) / Σ w over bones with
                 // w ≥ 1e-6 (glam column-major `transform_point3` twice);
@@ -4544,400 +5068,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 self.transpile_node_inner(child, &q, code)
             }
 
-            SdfNode::IFS {
-                child,
-                transforms,
-                iterations,
-            } => {
-                // `ifs_fold_with_scale`: per iteration keep the transform whose
-                // image is nearest the origin; the scale accumulates that
-                // matrix's X-axis length; the child distance is divided by it.
-                // Transforms and iterations are data, unrolled as literals.
-                let q = self.next_var();
-                let sc = self.next_var();
-                code.push_str(&L::decl_mut_vec3(&q, point_var));
-                code.push_str(&L::decl_mut_float(&sc, "1.0"));
-                for _ in 0..*iterations {
-                    let best = self.next_var();
-                    let bestd = self.next_var();
-                    let bests = self.next_var();
-                    code.push_str(&L::decl_mut_vec3(&best, &q));
-                    code.push_str(&L::decl_mut_float(&bestd, &format!("dot({q}, {q})")));
-                    code.push_str(&L::decl_mut_float(&bests, "1.0"));
-                    for m in transforms {
-                        let t = self.next_var();
-                        let td = self.next_var();
-                        code.push_str(&L::decl_vec3(&t, &transform_point3_expr::<L>(m, &q)));
-                        code.push_str(&L::decl_float(&td, &format!("dot({t}, {t})")));
-                        let x_axis_len = (m[2] * m[2] + (m[1] * m[1] + (m[0] * m[0]))).sqrt();
-                        writeln!(
-                            code,
-                            "    if ({td} < {bestd}) {{ {bestd} = {td}; {best} = {t}; {bests} = {}; }}",
-                            lit(x_axis_len)
-                        )
-                        .unwrap();
-                    }
-                    writeln!(code, "    {q} = {best};").unwrap();
-                    writeln!(code, "    {sc} = {sc} * {bests};").unwrap();
-                }
-                let d = self.transpile_node_inner(child, &q, code);
-                let var = self.next_var();
-                code.push_str(&L::decl_float(&var, &format!("{d} / max({sc}, 1e-6)")));
-                var
-            }
-
-            SdfNode::HeightmapDisplacement {
-                child,
-                heightmap,
-                width,
-                height,
-                amplitude,
-                scale,
-            } => {
-                // `heightmap_displacement`: dominant-axis projection to (u, v),
-                // mapped to [0, w-1] × [0, h-1], bilinear sample × amplitude,
-                // subtracted from the child distance. The map is a module-scope
-                // array.
-                let d = self.transpile_node_inner(child, point_var, code);
-                if heightmap.is_empty() || *width == 0 || *height == 0 {
-                    return d;
-                }
-                let id = self.var_counter;
-                self.var_counter += 1;
-                let arr = format!("alice_hm_{id}");
-                let arr = self.data_array(&arr, heightmap);
-                let (wm1, hm1) = (lit(*width as f32 - 1.0), lit(*height as f32 - 1.0));
-                let sc = self.param(*scale);
-                let amp = self.param(*amplitude);
-                let p = point_var;
-                let ap = self.next_var();
-                code.push_str(&L::decl_vec3(&ap, &format!("abs({p})")));
-                // the law of `heightmap_displacement`: the dominant face, with the other faces blended
-                // in within FACE_BLEND_BAND (1/16) of the dominant component, as
-                // h_dom + sum_{i != dom} (w_i / sum w) * (h_i - h_dom) in axis order (a face with no
-                // weight adds exactly 0)
-                let x_dom = format!("{ap}.x > {ap}.y && {ap}.x > {ap}.z");
-                let y_dom = format!("{ap}.y > {ap}.z");
-                let (m, lo) = (self.next_var(), self.next_var());
-                code.push_str(&L::decl_float(
-                    &m,
-                    &format!("max(max({ap}.x, {ap}.y), {ap}.z)"),
-                ));
-                code.push_str(&L::decl_float(
-                    &lo,
-                    &format!("{m} - {m} * {}", lit(crate::modifiers::FACE_BLEND_BAND)),
-                ));
-                let wts: Vec<String> = ["x", "y", "z"]
-                    .iter()
-                    .map(|c| {
-                        let w = self.next_var();
-                        code.push_str(&L::decl_float(&w, &format!("max({ap}.{c} - {lo}, 0.0)")));
-                        w
-                    })
-                    .collect();
-                let total = self.next_var();
-                code.push_str(&L::decl_float(
-                    &total,
-                    &format!("({} + {}) + {}", wts[0], wts[1], wts[2]),
-                ));
-                let faces = [
-                    (format!("{p}.y"), format!("{p}.z")),
-                    (format!("{p}.x"), format!("{p}.z")),
-                    (format!("{p}.x"), format!("{p}.y")),
-                ];
-                let samples: Vec<String> = faces
-                    .iter()
-                    .map(|(u, v)| {
-                        self.heightmap_face_sample(
-                            code, &arr, u, v, &sc, &wm1, &hm1, *width, *height,
-                        )
-                    })
-                    .collect();
-                let h_dom = self.next_var();
-                code.push_str(&L::decl_float(
-                    &h_dom,
-                    &L::select_float(
-                        &x_dom,
-                        &samples[0],
-                        &L::select_float(&y_dom, &samples[1], &samples[2]),
-                    ),
-                ));
-                let not_dom = [
-                    format!("!({x_dom})"),
-                    format!("(({x_dom}) || !({y_dom}))"),
-                    format!("(({x_dom}) || ({y_dom}))"),
-                ];
-                let mut acc = h_dom.clone();
-                for axis in 0..3 {
-                    let next = self.next_var();
-                    code.push_str(&L::decl_float(
-                        &next,
-                        &L::select_float(
-                            &format!("{} && {} > 0.0", not_dom[axis], wts[axis]),
-                            &format!(
-                                "{acc} + ({} / {total}) * ({} - {h_dom})",
-                                wts[axis], samples[axis]
-                            ),
-                            &acc,
-                        ),
-                    ));
-                    acc = next;
-                }
-                let var = self.next_var();
-                code.push_str(&L::decl_float(&var, &format!("{d} - {acc} * {amp}")));
-                var
-            }
-
-            SdfNode::SurfaceRoughness {
-                child,
-                amplitude,
-                frequency,
-                octaves,
-                ..
-            } => {
-                self.ensure_helper("hash_noise");
-                let d = self.transpile_node_inner(child, point_var, code);
-                let var = self.next_var();
-                let amp = self.param(*amplitude);
-                let freq = self.param(*frequency);
-                let noise_var = self.next_var();
-                let sp = self.next_var();
-                code.push_str(&L::decl_vec3(&sp, &format!("{} * {}", point_var, freq)));
-                code.push_str(&L::decl_mut_float(&noise_var, "0.0"));
-                code.push_str(&L::decl_mut_float(&format!("{}_a", noise_var), "1.0"));
-                for i in 0..*octaves {
-                    let scale = 1u32 << i;
-                    writeln!(
-                        code,
-                        "    {n} = {n} + {n}_a * hash_noise_3d({sp} * {s}.0, 42u);",
-                        n = noise_var,
-                        sp = sp,
-                        s = scale
-                    )
-                    .unwrap();
-                    writeln!(code, "    {n}_a = {n}_a * 0.5;", n = noise_var).unwrap();
-                }
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("{} + {} * {}", d, amp, noise_var),
-                ));
-                var
-            }
-
-            SdfNode::Extrude { child, half_height } => {
-                // `real::extrude_point` / `extrude_distance`: the 2-D child lives in
-                // XY (z = 0) and the slab is |z| ≤ half_height
-                let new_p_2d = self.next_var();
-                code.push_str(&L::decl_vec3(
-                    &new_p_2d,
-                    &L::vec3_ctor(
-                        &format!("{}.x", point_var),
-                        &format!("{}.y", point_var),
-                        "0.0",
-                    ),
-                ));
-                let d = self.transpile_node_inner(child, &new_p_2d, code);
-                let var = self.next_var();
-                let hh = self.param(*half_height);
-                let w_var = self.next_var();
-                code.push_str(&L::decl_vec2(
-                    &w_var,
-                    &L::vec2_ctor(&d, &format!("abs({}.z) - {}", point_var, hh)),
-                ));
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!(
-                        "min(max({w}.x, {w}.y), 0.0) + length(max({w}, {z}))",
-                        w = w_var,
-                        z = L::vec2_zero()
-                    ),
-                ));
-                var
-            }
-
-            SdfNode::Taper {
-                child,
-                factor,
-                reach,
-            } => {
-                self.ensure_helper("taper_bound");
-                let new_p = self.next_var();
-                let f = self.param(*factor);
-                // `reach` may be INFINITY (unbounded child); shaders have no
-                // inf literal, so ≥ 1e30 is the "no cone bound" sentinel on
-                // every path (`real::taper_bound` uses the same test).
-                let rx = self.param(if reach[0] < 1e30 { reach[0] } else { 1e30 });
-                let ry = self.param(if reach[1] < 1e30 { reach[1] } else { 1e30 });
-                // CPU law (`real::taper`): den = 1 - y * f, |den| >= 1e-6 with the
-                // sign kept. The transpilers used to emit `1 + y * f` (mirrored
-                // taper) with a `max(den, 0.001)` clamp — a different law.
-                let taper_var = self.next_var();
-                let mag_var = self.next_var();
-                let den_var = self.next_var();
-                code.push_str(&L::decl_float(
-                    &taper_var,
-                    &format!("1.0 - {}.y * {}", point_var, f),
-                ));
-                code.push_str(&L::decl_float(
-                    &mag_var,
-                    &format!("max(abs({}), 1e-6)", taper_var),
-                ));
-                code.push_str(&L::decl_float(
-                    &den_var,
-                    &L::select_float(
-                        &format!("{} < 0.0", taper_var),
-                        &format!("-{}", mag_var),
-                        &mag_var,
-                    ),
-                ));
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &L::vec3_ctor(
-                        &format!("{}.x / {}", point_var, den_var),
-                        &format!("{}.y", point_var),
-                        &format!("{}.z / {}", point_var, den_var),
-                    ),
-                ));
-                // Child distance at the tapered point → parent-space bound
-                // (`real::taper_bound`, same law as every CPU path).
-                let d = self.transpile_node_inner(child, &new_p, code);
-                let var = self.next_var();
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("alice_taper_bound({d}, {point_var}, {f}, {rx}, {ry})"),
-                ));
-                var
-            }
-
-            SdfNode::Displacement { child, strength } => {
-                let d = self.transpile_node_inner(child, point_var, code);
-                let var = self.next_var();
-                let s = self.param(*strength);
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!(
-                        // `modifier_displacement`: sin(5x) sin(5y) sin(5z)
-                        "{} + {} * sin({p}.x * 5.0) * sin({p}.y * 5.0) * sin({p}.z * 5.0)",
-                        d,
-                        s,
-                        p = point_var
-                    ),
-                ));
-                var
-            }
-
             // Phase 28: SineDisplacement (= 軸別 frequency Vec3) を transpile
-            SdfNode::SineDisplacement {
-                child,
-                amplitude,
-                frequency,
-            } => {
-                let d = self.transpile_node_inner(child, point_var, code);
-                let var = self.next_var();
-                let a = self.param(*amplitude);
-                let fx = self.param(frequency.x);
-                let fy = self.param(frequency.y);
-                let fz = self.param(frequency.z);
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!(
-                        "{} + {} * sin({p}.x * {}) * sin({p}.y * {}) * sin({p}.z * {})",
-                        d,
-                        a,
-                        fx,
-                        fy,
-                        fz,
-                        p = point_var
-                    ),
-                ));
-                var
-            }
-
-            SdfNode::SweepBezier { child, p0, p1, p2 } => {
-                // p0, p1, p2 are Vec2 (XZ plane). We project p into XZ, find closest on bezier,
-                // then evaluate child in local frame.
-                let var = self.next_var();
-                let p0x = self.param(p0.x);
-                let p0y = self.param(p0.y);
-                let p1x = self.param(p1.x);
-                let p1y = self.param(p1.y);
-                let p2x = self.param(p2.x);
-                let p2y = self.param(p2.y);
-                // Closed-form distance to the curve (IQ sdBezier), one helper
-                // per language mirroring `modifiers::sweep::bezier_distance_2d`.
-                self.ensure_helper("bezier_distance_2d");
-                let local_p = self.next_var();
-                code.push_str(&L::decl_vec3(
-                    &local_p,
-                    &L::vec3_ctor(
-                        &format!(
-                            "bezier_distance_2d({}, {}, {}, {})",
-                            L::vec2_ctor(&format!("{point_var}.x"), &format!("{point_var}.z")),
-                            L::vec2_ctor(&p0x, &p0y),
-                            L::vec2_ctor(&p1x, &p1y),
-                            L::vec2_ctor(&p2x, &p2y)
-                        ),
-                        &format!("{point_var}.y"),
-                        "0.0",
-                    ),
-                ));
-                let d = self.transpile_node_inner(child, &local_p, code);
-                code.push_str(&L::decl_float(&var, &d));
-                var
-            }
-
-            SdfNode::PolarRepeat { child, count } => {
-                let var = self.next_var();
-                let n = self.param(*count as f32);
-                let angle_var = self.next_var();
-                let sector_var = self.next_var();
-                let recip_var = self.next_var();
-                let snapped_var = self.next_var();
-                let c_var = self.next_var();
-                let s_var = self.next_var();
-                let new_p = self.next_var();
-                let pi2 = self.param(std::f32::consts::TAU);
-                self.ensure_helper("alice_atan2");
-                code.push_str(&L::decl_float(
-                    &angle_var,
-                    &L::atan2_expr(&format!("{point_var}.z"), &format!("{point_var}.x")),
-                ));
-                code.push_str(&L::decl_float(&sector_var, &format!("{} / {}", pi2, n)));
-                // `angle * (n / TAU)` with the same operands as the CPU law
-                // (`real::polar_repeat`), so a boundary angle snaps to the same
-                // sector on every path (`angle / sector` differs by an ulp).
-                code.push_str(&L::decl_float(&recip_var, &format!("{} / {}", n, pi2)));
-                code.push_str(&L::decl_float(
-                    &snapped_var,
-                    &format!(
-                        "floor({} * {} + 0.5) * {}",
-                        angle_var, recip_var, sector_var
-                    ),
-                ));
-                code.push_str(&L::decl_float(&c_var, &format!("cos({})", snapped_var)));
-                code.push_str(&L::decl_float(&s_var, &format!("sin({})", snapped_var)));
-                code.push_str(&L::decl_vec3(
-                    &new_p,
-                    &L::vec3_ctor(
-                        &format!(
-                            "{c} * {p}.x + {s} * {p}.z",
-                            c = c_var,
-                            s = s_var,
-                            p = point_var
-                        ),
-                        &format!("{}.y", point_var),
-                        &format!(
-                            "-{s} * {p}.x + {c} * {p}.z",
-                            c = c_var,
-                            s = s_var,
-                            p = point_var
-                        ),
-                    ),
-                ));
-                let d = self.transpile_node_inner(child, &new_p, code);
-                code.push_str(&L::decl_float(&var, &d));
-                var
-            }
 
             // ============ 2D Primitives (extruded to 3D) ============
             SdfNode::Circle2D {

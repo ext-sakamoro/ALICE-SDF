@@ -229,7 +229,6 @@ fn ten_thousand_wrappers_before_their_child() {
 
 /// A chain of 10,000 wrappers that emit code after their child's value
 #[test]
-#[ignore = "src gap: wrappers that emit after their child still recurse (stage 2b)"]
 fn ten_thousand_wrappers_after_their_child() {
     deep_transpiles("scale", &wrap_chain(AFTER[0].1, 10_000));
 }
@@ -242,7 +241,6 @@ fn ten_thousand_operations_nested_to_the_right() {
 
 /// 3,000 levels of wrapper / operation / wrapper mixes (9,000 nodes deep), each way
 #[test]
-#[ignore = "src gap: wrappers that emit after their child still recurse (stage 2b)"]
 fn deep_mixes_both_ways() {
     deep_transpiles("mixed first", &mixed(3_000, true, 1));
     deep_transpiles("mixed second", &mixed(3_000, false, 2));
