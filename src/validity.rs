@@ -415,7 +415,9 @@ pub struct GapRegion {
     /// The most opposed pair of wall directions seen from the box's air points (centre and corners),
     /// `None` when fewer than two of them are air.
     pub walls: Option<(Vec3, Vec3)>,
-    /// For a witness, the distance between the two nearest wall points (below the limit).
+    /// For a witness, the distance between the two wall points across the gap: within
+    /// [`GAP_TOLERANCE`] of the distance between the walls (each march stops just short of its wall),
+    /// and below the limit by more than that.
     pub width: Option<f32>,
 }
 
@@ -425,7 +427,8 @@ pub struct GapProof {
     /// The limit `L` the proof was made for.
     pub limit: f32,
     /// One point per proven narrow region: two air points of the box around it see walls facing each
-    /// other (direction dot below [`FACING_DOT`]) that are less than `L` apart.
+    /// other (direction dot below [`FACING_DOT`]) that are less than `L` apart, by more than
+    /// [`GAP_TOLERANCE`] (the wall points' own tolerance).
     pub witnesses: Vec<GapRegion>,
     /// One per region of boxes neither cleared nor proven at `max_depth` (or whose field has no gradient
     /// enclosure); regions within `L` of a witness are dropped (already proven narrow).
@@ -494,7 +497,8 @@ fn push_region(list: &mut Vec<GapRegion>, r: GapRegion, merge: f32, truncated: &
 ///   cannot hold two nearest points of one of its points in directions with dot below [`FACING_DOT`]
 ///   (`clear_of_material`; at `max_depth` this is also tried on its octants, two levels down);
 /// - a witness when two of its points (centre and corners) are air and see walls facing each other less
-///   than `L` apart (see `facing_pair`);
+///   than `L` apart by more than [`GAP_TOLERANCE`] (see `facing_pair`; a pair within the tolerance of
+///   `L` is neither narrower nor wider, so its box is split like any other and left undecided);
 /// - split otherwise, or undecided at `max_depth` (also where the enclosure is unknown for a node kind).
 ///
 /// Soundness of clearing: a gap is a ridge in the air between facing walls, so a box with such a ridge
@@ -1171,8 +1175,9 @@ fn wall_point_with(field: &mut impl FnMut(Vec3) -> f32, p: Vec3, n: Vec3) -> Opt
 /// A pair of air points that see walls facing each other less than `limit` apart: wall directions with
 /// dot below [`FACING_DOT`], the wall points `wᵢ` (reached by [`wall_point`], on the surface) each in
 /// front of the other's wall (`(w₂ − w₁)·n₁ > 0`, `(w₁ − w₂)·n₂ > 0`, so the two sides of a thin fin,
-/// whose walls face away, are not a gap), and `|w₁ − w₂| < limit`: two surface points across the air
-/// nearer than the limit. Returns the two directions and `|w₁ − w₂|`.
+/// whose walls face away, are not a gap), and `|w₁ − w₂| + GAP_TOLERANCE < limit`: two surface points
+/// across the air nearer than the limit by more than the wall points' tolerance, the same margin the
+/// grid's widths fail by. Returns the two directions and `|w₁ − w₂|`.
 fn facing_pair(
     m: &mut Meter<'_>,
     pts: &[(Vec3, f32, Vec3)],
@@ -1196,7 +1201,10 @@ fn facing_pair(
             let width = w1.distance(w2);
             let fronts = (w2 - w1).dot(a.2) > 0.0 && (w1 - w2).dot(b.2) > 0.0;
             let real = fronts && a.0.distance(w1) <= 2.0 * a.1 && b.0.distance(w2) <= 2.0 * b.1;
-            if a.2.dot(b.2) < FACING_DOT && fronts && width < limit {
+            // each wall point stops within the march's tolerance of its wall (in the air, or past it
+            // when a step overshoots), so `width` is the walls' distance only to within
+            // `GAP_TOLERANCE`: a width within that of the limit proves nothing either way
+            if a.2.dot(b.2) < FACING_DOT && fronts && width + GAP_TOLERANCE < limit {
                 return Some(((a.2, b.2), width));
             }
             // a facing pair of the material's walls (in front of each other, reached about where the
@@ -1404,7 +1412,8 @@ pub enum GapFailure {
     ProvenGap {
         /// The centre of the box where the facing walls were seen.
         at: Vec3,
-        /// The distance between the two nearest wall points there (an upper bound of the gap).
+        /// The distance between the two wall points there: within [`GAP_TOLERANCE`] of the gap, and
+        /// below the limit by more than that.
         width: f32,
     },
     /// The field touches zero without material (a zero-thickness sheet): a defect of the field.

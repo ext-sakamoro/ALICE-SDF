@@ -149,6 +149,21 @@ fn a_slot_below_the_limit_fails_with_its_width_and_passes_a_lower_limit() {
 }
 
 #[test]
+fn a_slot_exactly_as_wide_as_the_limit_turned_off_the_axes_is_undetermined() {
+    // the same slot as wide as the limit, turned about two axes so no wall is axis-aligned: the
+    // march to a wall then stops short of it (in the air, within the march's tolerance), so two
+    // wall points across the slot read a little under its width. They do not prove a gap below the
+    // limit; the slot is neither narrower nor wider, so the verdict is Undetermined, never a failure
+    let (lo, hi) = slot_bounds();
+    let node = slot(1.0, 0.37).rotate_euler(0.0, 0.31, 0.47);
+    let r = measure_gaps(&node, lo, hi, 0.25).expect("samples");
+    match r.verdict(1.0) {
+        GapVerdict::Undetermined(GapUndetermined::ProofIncomplete { .. }) => {}
+        v => panic!("turned slot 1.0 against 1.0 (width equal to the limit): {v:?}"),
+    }
+}
+
+#[test]
 fn open_air_passes_from_the_proof_whatever_the_grid_cell() {
     // the pass comes from the air-side proof, which looks at the whole bound: the grid's any-shape
     // resolution (0.866 at cell 0.25, above the limit 0.5) is no longer a condition of the pass
