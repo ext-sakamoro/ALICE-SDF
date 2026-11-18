@@ -89,6 +89,9 @@
 //! all decide the gap before the cover, with the cover forced to clear), and a search over random
 //! combined shapes is still to run. Until it has, the cover keeps soundness tests of its own (the rule
 //! on two cones, material thinner than its field reads, a 40° V), so it stays sound if the claim fails.
+//! Its cones are bounds under rounding as well: each half-angle and each angle between two axes is an
+//! upper bound of the exact one, and a pair clears only below `2π/3` less the rounding left over (the
+//! derivation term by term at `cover_cone`, `cone_pair` and `CLEAR_BELOW`).
 //!
 //! ## Overhang is a closed form
 //!
@@ -109,7 +112,7 @@ use crate::interval::{eval_interval, Vec3Interval};
 use crate::interval_gradient::{eval_interval_gradient, GradientInterval};
 use crate::mesh::{validate_mesh, Mesh, MeshValidation};
 use crate::types::SdfNode;
-use glam::Vec3;
+use glam::{DVec3, Vec3};
 
 /// Smallest march step, so a ray starting exactly on a surface still advances.
 const MARCH_EPS: f32 = 1e-4;
@@ -679,8 +682,9 @@ fn clear_of_material(
     out
 }
 
-/// A held cone: its least distance from the box, its axis, and its half-angle.
-type HeldCone = (f32, Vec3, f32);
+/// A held cone: its least distance from the box, its axis (not normalised), and an upper bound on its
+/// half-angle.
+type HeldCone = (f32, DVec3, f32);
 
 /// The cones of directions from the box `lo..hi` to the boxes of the cover near enough to hold its
 /// nearest material, with the upper bound on the distance to the material found on the way; `None`
@@ -699,15 +703,8 @@ fn material_cones(
     let cone = |a: Vec3, b: Vec3| {
         let (dlo, dhi) = (a - hi, b - lo);
         let gap = dlo.law_max(-dhi).law_max(Vec3::ZERO).length();
-        let c = (dlo + dhi) * 0.5;
-        let r = ((dhi - dlo) * 0.5).length();
-        let cl = c.length();
-        let half_angle = if cl > r {
-            alice_det_math::asin(r / cl)
-        } else {
-            core::f32::consts::PI
-        };
-        (gap, c / cl.law_max(f32::MIN_POSITIVE), half_angle)
+        let (axis, half_angle) = cover_cone(lo, hi, a, b);
+        (gap, axis, half_angle)
     };
     // an upper bound on the distance from any point of the box to the material, from material points
     // found on the way (a point whose field is at most zero is material)
@@ -763,18 +760,123 @@ fn material_cones(
     Some((held, upper))
 }
 
-/// Whether two cones of directions (unit axes `d1`, `d2`, half-angles `h1`, `h2`) can hold directions
+/// The cone of directions from the box `lo..hi` to the box `a..b`: its axis `C` (the centre of the
+/// difference box `a − hi ..= b − lo`) and an upper bound on its half-angle `asin(R/|C|)`, where `R` is
+/// the difference box's half-diagonal; the ball of radius `R` around `C` holds every `y − x`, so the
+/// cone holds every direction from the box to the other box. `π` when the ball holds the origin.
+///
+/// Rounding (`u = 2⁻⁵³`, one `f64` rounding): the corners are `f32`, so each difference is one
+/// rounding in `f64`, and with `D = C ∓ R` per component the computed centre and half-diagonal are
+/// within `u(2|C| + R)(1 + u)` and `u(|C| + 2R)(1 + u)` of the exact ones; each length adds at most
+/// `2.5u` (three squares, two sums, a square root) and the ratio `u`. For `q = R/|C|` that leaves the
+/// computed ratio at least `q − u(1 + 10q + q²)`, which is `q − 12u` for `q ≤ 1`, and at least
+/// `1 − 12u` whenever `q ≥ 1` (the bound grows with `q` until `|C|` is lost in the rounding, where the
+/// computed ratio is near `1/u`). Adding [`Q_SLACK`] (`12u`, `u` for second-order terms, `u` for the
+/// addition) leaves a ratio at least the exact one, or at least 1. It is cast to the `f32` at or above
+/// it, `asin` is increasing, and `alice_det_math::asin` is within 1 ulp of the correctly rounded value,
+/// so two steps up hold the exact half-angle (two, so the bound holds when the exact value lies past a
+/// power of two above the computed one).
+///
+/// The bias goes on the argument, not on the result: `asin` is only ½-Hölder at 1, so an `f32` ratio
+/// a few ulp short of 1 moves the half-angle by up to `sqrt(2δ)` (`7·10⁻⁴` rad at an exact `q = 1`,
+/// `cover_tests::a_cone_through_the_box_holds_a_half_space`), more than any margin on the angles
+/// would cover.
+///
+/// The `f32` bound rests on the accuracy table of `alice-det-math` (`asin` / `acos` within 1 ulp
+/// of the correctly rounded value, so within two steps of the exact one), which that crate measures
+/// on every `f32` of `[-1, 1]` (its `tests/exhaustive_ulp_f32.rs`).
+fn cover_cone(lo: Vec3, hi: Vec3, a: Vec3, b: Vec3) -> (DVec3, f32) {
+    let (dlo, dhi) = (a.as_dvec3() - hi.as_dvec3(), b.as_dvec3() - lo.as_dvec3());
+    let c = (dlo + dhi) * 0.5;
+    let r = ((dhi - dlo) * 0.5).length();
+    let cl = c.length();
+    let q = if cl > 0.0 {
+        r / cl + Q_SLACK
+    } else {
+        f64::INFINITY
+    };
+    let half_angle = if q < 1.0 {
+        two_ulps_up(alice_det_math::asin(f32_at_or_above(q)))
+    } else {
+        core::f32::consts::PI
+    };
+    (c, half_angle)
+}
+
+/// One `f64` rounding, `2⁻⁵³`.
+const U64: f64 = f64::EPSILON / 2.0;
+
+/// Added to a cone's computed ratio `R/|C|` so it is at least the exact one ([`cover_cone`]): `12u`
+/// for the differences, the lengths and the division, `u` for second-order terms, `u` for the addition.
+const Q_SLACK: f64 = 14.0 * U64;
+
+/// Taken off the computed cosine of the angle between two axes so it is at most the exact cosine
+/// ([`cone_pair`]): `3u` for the dot of three products, `5u` for the two lengths, `u` for their
+/// product, `u` for the division, `u` for second-order terms, `u` for the subtraction.
+const DOT_SLACK: f64 = 12.0 * U64;
+
+/// A pair of cones whose angles sum below this clears ([`cone_pair`]). The sum is in `f64`, of the
+/// angle between the computed axes (an upper bound), and the two half-angles (upper bounds around the
+/// exact centres). The widest angle between the cones is at most that sum plus two axis terms: each
+/// computed axis is within `u(2 + q)(1 + u)|C| ≤ 3.01u|C|` of the exact centre where a pair can clear
+/// (`q < 1`), so at most `asin(3.01u) < 5u` off it. The `f64` sum of three angles near `2π/3` rounds
+/// twice by at most half an ulp of `[2, 4)`, `2u` each. So a pair clears soundly when the sum is below
+/// `2π/3 − 14u`. `2·FRAC_PI_3` is within `2u` of `2π/3` (the constant is correctly rounded), and the
+/// grid of `f64` in `[2, 4)` is `4u`, so `2·FRAC_PI_3 − 20u` is exact and at most `2π/3 − 18u`
+/// (`cover_tests::the_clearing_bound_is_its_derivation` recomputes it).
+const CLEAR_BELOW: f64 = 2.094_395_102_393_193_5;
+
+/// `x` rounded to the `f32` at or above it.
+fn f32_at_or_above(x: f64) -> f32 {
+    #[allow(clippy::cast_possible_truncation)] // the rounding is the point; it is corrected below
+    let y = x as f32;
+    if f64::from(y) < x {
+        y.next_up()
+    } else {
+        y
+    }
+}
+
+/// `x` rounded to the `f32` at or below it.
+fn f32_at_or_below(x: f64) -> f32 {
+    #[allow(clippy::cast_possible_truncation)] // the rounding is the point; it is corrected below
+    let y = x as f32;
+    if f64::from(y) > x {
+        y.next_down()
+    } else {
+        y
+    }
+}
+
+/// Two steps up: past a result within 1 ulp of the exact one on either side of a power of two.
+const fn two_ulps_up(x: f32) -> f32 {
+    x.next_up().next_up()
+}
+
+/// Whether two cones of directions (axes `c1`, `c2`, half-angle bounds `h1`, `h2`) can hold directions
 /// with dot below [`FACING_DOT`]: the widest angle between them is the angle between the axes plus both
 /// half-angles. `Facing` when the axes alone are (nearly) that far apart, so smaller boxes will not clear
 /// it; `Wide` when only the widths reach it.
-fn cone_pair(d1: Vec3, h1: f32, d2: Vec3, h2: f32) -> Cover {
-    let between = alice_det_math::acos(d1.dot(d2).clamp(-1.0, 1.0));
+///
+/// The angle between the axes is an upper bound: the cosine computed in `f64` less [`DOT_SLACK`] is at
+/// most the exact one, cast to the `f32` at or below it, and `acos` is decreasing and within 1 ulp, so
+/// two steps up hold the exact angle. The sum clears only below [`CLEAR_BELOW`].
+fn cone_pair(c1: DVec3, h1: f32, c2: DVec3, h2: f32) -> Cover {
+    let den = c1.length() * c2.length();
+    // a zero, overflowing or NaN length (a cone whose ball holds the origin) never clears
+    if !den.is_finite() || den <= 0.0 {
+        return Cover::Wide;
+    }
+    let cos_lo = f32_at_or_below(c1.dot(c2) / den - DOT_SLACK)
+        .law_max(-1.0)
+        .law_min(1.0);
+    let between = two_ulps_up(alice_det_math::acos(cos_lo));
     if between >= FACING_ANGLE - FACING_MARGIN {
         Cover::Facing
-    } else if between + h1 + h2 >= FACING_ANGLE {
-        Cover::Wide
-    } else {
+    } else if f64::from(between) + f64::from(h1) + f64::from(h2) < CLEAR_BELOW {
         Cover::Clear
+    } else {
+        Cover::Wide
     }
 }
 
@@ -2115,9 +2217,9 @@ mod cover_tests {
         clear_of_material(&mut m, &mut tree, lo, hi, reach, GAP_PROOF_WORK)
     }
 
-    fn at(degrees: f32) -> Vec3 {
+    fn at(degrees: f32) -> DVec3 {
         let (s, c) = alice_det_math::sin_cos(degrees.to_radians());
-        Vec3::new(c, s, 0.0)
+        DVec3::new(f64::from(c), f64::from(s), 0.0)
     }
 
     /// A small seeded generator (xorshift64*), so the random scenes are the same on every run.
@@ -2221,6 +2323,83 @@ mod cover_tests {
             GAP_PROOF_WORK,
             COVER_EXTRA_DEPTH
         ));
+    }
+
+    #[test]
+    fn the_clearing_bound_is_its_derivation() {
+        // 2π/3 less the axis terms (2 × 5u) and the sum's two roundings (2 × 2u) is 14u below; the
+        // constant is the nearest grid point of [2, 4) (spacing 4u) under 2·FRAC_PI_3 − 18u
+        assert_eq!(CLEAR_BELOW, 2.0 * core::f64::consts::FRAC_PI_3 - 20.0 * U64);
+        assert_eq!(2.0 * core::f64::consts::FRAC_PI_3 - CLEAR_BELOW, 20.0 * U64);
+        assert_eq!(Q_SLACK, (12.0 + 1.0 + 1.0) * U64);
+        assert_eq!(DOT_SLACK, (3.0 + 5.0 + 1.0 + 1.0 + 1.0 + 1.0) * U64);
+    }
+
+    #[test]
+    fn a_pair_that_reaches_one_hundred_twenty_degrees_does_not_clear() {
+        // axes θ apart and half-angles at or above (2π/3 − θ)/2 each: the cones reach 120°, so the
+        // pair must not clear; with the half-angles 1e-6 rad short of that it clears (the bounds give
+        // up less than that)
+        let third = 2.0 * core::f64::consts::FRAC_PI_3;
+        let mut rng = Rng(HELD_SEED);
+        let mut checked = 0;
+        for _ in 0..4000 {
+            let theta = 60.0_f64.to_radians() + f64::from(rng.next()) * 55.0_f64.to_radians();
+            let (s, c) = alice_det_math::sin_cos64(theta);
+            let (a, b) = (DVec3::X, DVec3::new(c, s, 0.0));
+            // the angle between the two axes as built (atan2 within 1 ulp; the pad covers it)
+            let exact = alice_det_math::atan2_64(s, c);
+            let h = f32_at_or_above((third - exact) / 2.0 + 1e-12);
+            assert_ne!(cone_pair(a, h, b, h), Cover::Clear, "θ {theta}");
+            let short = f32_at_or_below((third - exact) / 2.0 - 1e-6);
+            assert_eq!(cone_pair(a, short, b, short), Cover::Clear, "θ {theta}");
+            checked += 1;
+        }
+        assert_eq!(checked, 4000);
+    }
+
+    #[test]
+    fn the_casts_round_towards_the_safe_side() {
+        // each cast gives the nearest f32 on its side: at or past x, and one step back crosses x
+        let mut rng = Rng(HELD_SEED ^ 0xCA57);
+        let mut below_nearest = 0;
+        for _ in 0..20_000 {
+            let x = f64::from(rng.next()) * 4.0 - 2.0 + f64::from(rng.next()) * 1e-9;
+            let up = f32_at_or_above(x);
+            assert!(
+                f64::from(up) >= x && f64::from(up.next_down()) < x,
+                "up {x}"
+            );
+            let down = f32_at_or_below(x);
+            assert!(
+                f64::from(down) <= x && f64::from(down.next_up()) > x,
+                "down {x}"
+            );
+            #[allow(clippy::cast_possible_truncation)]
+            let nearest = x as f32;
+            if f64::from(nearest) < x {
+                below_nearest += 1;
+            }
+        }
+        // a nearest cast lands on the wrong side for some of these inputs, so they test the direction
+        assert!(
+            below_nearest > 1000,
+            "{below_nearest} inputs below their nearest f32"
+        );
+    }
+
+    #[test]
+    fn a_cone_through_the_box_holds_a_half_space() {
+        // the difference box (−p..w, 2p..w/2, 0..e) has dlo·dhi = −pw + 2p·w/2 = 0 exactly: its ball
+        // passes through the origin, so the cone is exactly a half-space (half-angle π/2). In f32 these
+        // corners round the centre longer than the half-diagonal (ratio 1 − 2.4e-7) and asin then
+        // falls 7e-4 rad short.
+        let p = f32::from_bits(0x3eb9_b428);
+        let w = f32::from_bits(0x3fdf_28ff);
+        let e = f32::from_bits(0x3dde_b5c8);
+        let (a, b) = (Vec3::new(-p, 2.0 * p, 0.0), Vec3::new(w, w / 2.0, e));
+        let (_, half) = cover_cone(Vec3::ZERO, Vec3::ZERO, a, b);
+        assert!(half >= core::f32::consts::FRAC_PI_2, "half-angle {half}");
     }
 
     #[test]
