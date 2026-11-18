@@ -489,6 +489,9 @@ cargo test --features jit,msl,rust,glsl,hlsl --test test_node_backend_matrix --t
 step "test: shader text has no fused multiply-add (msl + glsl + hlsl + blinkscript、ci.yml と対)"
 cargo test --features msl,glsl,hlsl,blinkscript --test test_shader_no_fused_multiply_add
 
+step "test: deep and wide trees through WGSL / GLSL / HLSL, output SHA-256 vs recorded list (gpu + glsl + hlsl、ci.yml と対)"
+cargo test --features gpu,glsl,hlsl --test transpile_deep_tree
+
 step "test: HLSL / BlinkScript value parity + exports + round-tie hlsl arm (ci.yml の HLSL step と対)"
 ALICE_SDF_REQUIRE_CXX=1 cargo test --features "hlsl,blinkscript" --test test_hlsl_blinkscript_parity \
   --test test_hlsl_export_oracle --test test_round_tie_parity --test test_shader_precise_temporaries

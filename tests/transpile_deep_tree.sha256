@@ -1,0 +1,584 @@
+union left 6 | wgsl hardcoded | d864376b70e54b5882fcfec35a2110dd96c55ccdd5fe2659bd80895778167ed6
+union left 6 | wgsl dynamic | 3b86c06fe402dbfa563fdec80fd80b5ad327e3da95fc8817a8a64ec73856c5c6
+union left 6 | glsl hardcoded | 3a3e0c58ee2a5ecf1e4c6d962fabec70e50b8d8c06ab0d3b3c47598419bea948
+union left 6 | glsl dynamic | a9ea11204be8b5573856c444e53175eeefbdfd1800c0246b33cd599e7f048217
+union left 6 | hlsl hardcoded | 212bac766e819761532bcfec84e7efc510f1403914ce7cbed479cea8b5a66277
+union left 6 | hlsl dynamic | 78f082ebca1c109feef237bc1d768d45567ca18fc52900b37badb8622af5219c
+union left 6 | glsl scaled hardcoded | fcb0d7b07e7b325939fafe7a91c4e88673b7d2f134718a839928562b91341251
+union left 6 | glsl scaled dynamic | d13a3c06778b96492f0a2596b25b06db6a70320904247a74c6f9f43a1258f515
+union right 4 | wgsl hardcoded | 646a2414b81491d6846553e2e86a51440eee693f9bc4a2967f968e25e2860ca8
+union right 4 | wgsl dynamic | 3c6f60fe8c43fa007aee54831ce1d3469ae2b0a0561431feb10a486c2b465020
+union right 4 | glsl hardcoded | 7dea43f634a35098b0c2721b61b39cc96cbd4f1f445f02753a62e6e33e4a2c20
+union right 4 | glsl dynamic | 98d3237f2c7c4f7b3d474e100025774f8f0167918bd78106d377f9c2598dd08a
+union right 4 | hlsl hardcoded | d83bf03e3fd64b6ec8f658a5efb03399838d547bc1802a0ba14021f2916dcaca
+union right 4 | hlsl dynamic | b9334852ec0e09cf8e0131a216f92fd7fcfc1a327d6e9bab77bace43ab05fe05
+union right 4 | glsl scaled hardcoded | 0ecedcc1411269b8dd3c6a6e937a5ff00eba53d6d6cbe6400df9179b8fdd9350
+union right 4 | glsl scaled dynamic | d55d693dbbeea935c65654b0af4ea5403fc43693ab15636b137c72f0ef289284
+union with chamfer_union mixed | wgsl hardcoded | 1427d99915628a4a41f6a80359b77dc7ca833647eeece055e10f0963049e3603
+union with chamfer_union mixed | wgsl dynamic | 15ebcf07d07369bfda3470b2555bb6955918213868fc1247a8bbe62ee960563c
+union with chamfer_union mixed | glsl hardcoded | 16f3630b19c8235516a2bb6cbc4d89f33779775372d7ee2baf71548844f6edec
+union with chamfer_union mixed | glsl dynamic | d7481607902e9fb4145bd4e60a9a1000cd945d6b3d189dbb4ef05f4b38259b14
+union with chamfer_union mixed | hlsl hardcoded | 8cd154a6b295c32c95fd92b46b1bb8cda4cd37e242f480564c02acdc0fe08265
+union with chamfer_union mixed | hlsl dynamic | 6b9cbe152d77c421bf454980cd6396b5d0c2a463fd766e7f719eb25a4df24a59
+union with chamfer_union mixed | glsl scaled hardcoded | f9c3477d118bf4b18c86a0eb443d6fea8c6d2074017c825b5838ecf17b7737c3
+union with chamfer_union mixed | glsl scaled dynamic | 0438d4046423abbd3bc9f47236886ea667e08b170f12a639ecc320df27fc0ff8
+intersection left 6 | wgsl hardcoded | 87a969114d7f742e37d5a3b4a408762244940974a259b2225fe40dc1ad877604
+intersection left 6 | wgsl dynamic | 9a3de1fa99aaeeca5ef8af481d95fc1500f74347fc0c93548f75e0da33ff9ddd
+intersection left 6 | glsl hardcoded | 8c5c7e946aa19ed0ce45f7b6bf64426578d22e102d42202eca90299af128d5a9
+intersection left 6 | glsl dynamic | eccb70677d8e44ca9a5e456cc15b71dc79f585a735e5445ffa2ccdf037c4a370
+intersection left 6 | hlsl hardcoded | 3af7a147cd73ad1ce59d198c5ae2a8a8fd6ce3615d3cfc9ee370ea60a1253953
+intersection left 6 | hlsl dynamic | bcda62d9465be88f0592d9ac90beaa425e5fb8b03f4c0ff6dbcc90ccf63040ec
+intersection left 6 | glsl scaled hardcoded | c0702c7bada9200ea9fa12c11d2b2c69f3f56177907e1add3ded7601e78f8cc4
+intersection left 6 | glsl scaled dynamic | 5008c2848a6096267b21baae82d9dd78c70a9e3d3007bf39e8a8806f6662188a
+intersection right 4 | wgsl hardcoded | 4fb003e2437fae0c7006e11f7d0c8b77c7ba14c5684f36b172e4ceb177b05248
+intersection right 4 | wgsl dynamic | 2f20187ab7faa8e354cda60b95489a2b2cfa61d3f466a0eaf6a185bcb398202f
+intersection right 4 | glsl hardcoded | 0867f8e6ab1dbf95dcd4a04e00557a9bb228175b44ea49c1efa604ea137d644e
+intersection right 4 | glsl dynamic | 6687cb3f105255ae50248c80ea515dd56e2a08b93d158740ff9866da85a6ded5
+intersection right 4 | hlsl hardcoded | 4afd63f09917d3b6c81a1687e9e8c0684fa0fa6bbceb0d37c7a918884a7f9de9
+intersection right 4 | hlsl dynamic | 30148ab274ee0703bba98ec961534f8a395f2ab427f7e80a4af58bf5b05e27da
+intersection right 4 | glsl scaled hardcoded | f1dac7cba8b4d0a5c88ae2f1b6d9d8ca630fce6b9df7b8b0560fb12e107dafe3
+intersection right 4 | glsl scaled dynamic | 14f706dc91a9cafa9ba7e3895a77251b7693e8dd7c60ba4674ad0e47fa7914f9
+intersection with chamfer_intersection mixed | wgsl hardcoded | df480bb5a0a5806edb905fa27915b5f14c25be0a3bf0162c9d7ccc9820f0c779
+intersection with chamfer_intersection mixed | wgsl dynamic | b4cbd4776f799e4eaeaf4208a8cb43737ee989f49a93fb42a3a09d25e29f1192
+intersection with chamfer_intersection mixed | glsl hardcoded | f4791b127886fe5fa0ace90abc9c4c8f0104bab32c922207be2d26baebf4a625
+intersection with chamfer_intersection mixed | glsl dynamic | c7a7e3c3a3a0c491ac7261fa796668a6cade0f4338c7faf631f18a443dc14f06
+intersection with chamfer_intersection mixed | hlsl hardcoded | 1e7748a54c3d068374df5892c9129a91628b6d181dd53a2867ec723e416a2d0f
+intersection with chamfer_intersection mixed | hlsl dynamic | 38510e39fc335abd828f7e09fa90d8666f2a814adcfd0a55e3db43ca582f71d1
+intersection with chamfer_intersection mixed | glsl scaled hardcoded | 10718a386851d763791a0f1d4bb184ffc8ff9816df3ecf866e60898fdb12083f
+intersection with chamfer_intersection mixed | glsl scaled dynamic | 04f12f5ec0e245328b37fe4ca6ee09f625971578cb84f8502dc17cd08b655b33
+subtract left 6 | wgsl hardcoded | ee252350964ccbeeb98726401a3bf86409cd1226201bd445302772ba4d1a175a
+subtract left 6 | wgsl dynamic | 8df6d84da1a679d8261b5dec5846e0f3d5c8ce342ba7b998dfb99b13b5783488
+subtract left 6 | glsl hardcoded | e372a8cce3234df4be6f4ab8adf2e1d119bab4cdda7e341136a9850d94f19cbe
+subtract left 6 | glsl dynamic | 00f497d1bcd637c7e079d26a540dfc0f6104fa6964d24315c8ebb0047834a799
+subtract left 6 | hlsl hardcoded | 2733b2a91bc356bd89bf9f9a43206aa852aeeccc4c95182f21e9a48a3a77b872
+subtract left 6 | hlsl dynamic | 4864e8724948e886a74a7d33daf3a04d8e826ee6d2fda6f89a95b386c748ef9b
+subtract left 6 | glsl scaled hardcoded | fb80a131031d64eefb18934604b5eb1f9430901959e4a23a1049baf299d1da5c
+subtract left 6 | glsl scaled dynamic | e3424a42ff0501ee2cf8fba621fbbbe95db49b03b4f53d7456adf5a88e41b735
+subtract right 4 | wgsl hardcoded | cbfbeabdc69a9c90a0fab3e606550dba0f28c7e3909d81d48e32f32eb72ca747
+subtract right 4 | wgsl dynamic | 57b4e382d68d80835d0e872c9823930c32ba4a51dafa04b0847f0b4b9df74a63
+subtract right 4 | glsl hardcoded | 3954e7623923fa9517a1a741a5fcb7d58b0de3de067a2df7a669375fee134efc
+subtract right 4 | glsl dynamic | c820e43be1fbd3182e2e79d912bcd972d0ec0f97deb9adaa58fe7684911d1a98
+subtract right 4 | hlsl hardcoded | 3dff69cd2a6cc67a3ad7169b4e8e555ec981f940f2d77316fa3ef5a5a9925ec8
+subtract right 4 | hlsl dynamic | 2fa670eeb3e4d8af02715d7c56f3e784054c70456cab8dc11db81db45a9e5d77
+subtract right 4 | glsl scaled hardcoded | 41e8b15deb72284f0e367b39fe9cba86286d1b9e727386536b6782bbecea0760
+subtract right 4 | glsl scaled dynamic | 58aae2cf891787eb35330fe0c9593faadb2ce1bff205d601465c9edd1e1eac5d
+subtract with chamfer_subtract mixed | wgsl hardcoded | 278d806a677222da244d65fc839c53c1c2c32ed85c7befe8ff9ba4aef165dd29
+subtract with chamfer_subtract mixed | wgsl dynamic | 89081af4fbf2293ca1af749b513e275aeb54723c693fd901ce885934cdfcf9a5
+subtract with chamfer_subtract mixed | glsl hardcoded | 19ecb978b5f7d0fc9695d7fb2e378767e6c486a5ce51a2b885a2a5480958cb7d
+subtract with chamfer_subtract mixed | glsl dynamic | 79e56c4e320071064f1e61b4715b10c19cbc90696c74efcd56dc57137bf5f2b6
+subtract with chamfer_subtract mixed | hlsl hardcoded | 3acb392a677e4f2a3e81804dcf7c65c2e4921e7c70ec03a905c62dca6ee22794
+subtract with chamfer_subtract mixed | hlsl dynamic | 7fbe50d1023e8d46877ca78a4d8a64ac2550bb1bc9cef0f16c7e290638b042cd
+subtract with chamfer_subtract mixed | glsl scaled hardcoded | 45ec4ca39b192f4efb5756f629e6136f46cd699b4b31d5a62ff5d622b9272652
+subtract with chamfer_subtract mixed | glsl scaled dynamic | aace2da8dbc87f1f5402a2006a01514382f9659fc62e96e663b18741dab1cbb1
+smooth_union left 6 | wgsl hardcoded | 9847c266f204833be691ec04a428ba1b7c840d01caeac23b5186857692fd0db4
+smooth_union left 6 | wgsl dynamic | 9f32c6c28564e80015e010f4a079eb613be1227e2e26dce8929ae505f4bc278b
+smooth_union left 6 | glsl hardcoded | a6799500c25554b17efeafad165a34cd01d15c13fc31c17e3843c5d3c01c41fc
+smooth_union left 6 | glsl dynamic | f92f18521fa3bf732b4a19c678ed00002340007b2bf35eb26132b26a574cb3fa
+smooth_union left 6 | hlsl hardcoded | 5567fb01bba5241725da1e917f2a93de80b4f94d1cea42fb93e05f6efe14bffe
+smooth_union left 6 | hlsl dynamic | dbadda8d6005fb8a0bbc263bdf25a529834309ebbdbd8fa140ce71b91962a228
+smooth_union left 6 | glsl scaled hardcoded | b8bb35017326deff430d3164353412b95e912e8a8b2b05b3a8d5d1fbf21d72c5
+smooth_union left 6 | glsl scaled dynamic | a89082ca90067e0e289d087ac05f7bbcd2dc5b990637a27b9a6fc930bad0eb65
+smooth_union right 4 | wgsl hardcoded | 0d1bacf8f70003e90c867ccf97062707657602fa7a0f08837f094b3ced0e620f
+smooth_union right 4 | wgsl dynamic | 10398ff7481d03001033185a894cd9aa83455d912cb6d71c0f9c84b73fc03108
+smooth_union right 4 | glsl hardcoded | 3b399b5283a2e49d1ceac56de98dbd8aa0e94f147b975df8c2a83fb88037dc62
+smooth_union right 4 | glsl dynamic | 7c707971fa26fd377effc0ba5e9521ee7245c0321c5989e30194ff00e3266680
+smooth_union right 4 | hlsl hardcoded | 66d29fbccfce891301869246f450550c5d80ec6b8fc34783afbfb06f90a67208
+smooth_union right 4 | hlsl dynamic | 99474f85c72c51203944fd4344dad23d3168f82b93979ddc6d57a78a24bfb165
+smooth_union right 4 | glsl scaled hardcoded | 73e830f9465598d6a7de07d2f80fd4a79d9bfb37999702d0e2a7db421851af71
+smooth_union right 4 | glsl scaled dynamic | 73387c9951631d2e149b22cee9c7be88d21f0c3fc713441484251c6189de6a48
+smooth_union with stairs_union mixed | wgsl hardcoded | 4677a06906478d6ba10e7303280b7562dbf08a461642dca3ee02bed02024af82
+smooth_union with stairs_union mixed | wgsl dynamic | bdfff9aa8d5f0fe53fb59b2249b7ee35d24ed64729cb8cd4e35d5d5c44a4ea58
+smooth_union with stairs_union mixed | glsl hardcoded | 7d739ca0a30f857d13a770be919290dbcfbec25ebf7bf978ac4ab6ebfc0fc58e
+smooth_union with stairs_union mixed | glsl dynamic | 37069fad757cc796729a50dca2b951cc5f9dc93f5f8a69c2536cff136d26f73a
+smooth_union with stairs_union mixed | hlsl hardcoded | ad0db48e5761abdcf74436de558498116570c43d709ac89ce4748735d99f42ea
+smooth_union with stairs_union mixed | hlsl dynamic | c442b0648f3a7158a7d207284a8ae9a7f498eccfb81a12f37ef6c3fd033cf1a2
+smooth_union with stairs_union mixed | glsl scaled hardcoded | 42aa2c981f982dfd7d0850d8e65acd41454207636822ef71215f8e4dd5b967f7
+smooth_union with stairs_union mixed | glsl scaled dynamic | d3a2cc289c1ef49c40cb9db5e4018e5d39ce1425daf3b90251ef8e447207368f
+smooth_union_k0 left 6 | wgsl hardcoded | d864376b70e54b5882fcfec35a2110dd96c55ccdd5fe2659bd80895778167ed6
+smooth_union_k0 left 6 | wgsl dynamic | 9f32c6c28564e80015e010f4a079eb613be1227e2e26dce8929ae505f4bc278b
+smooth_union_k0 left 6 | glsl hardcoded | 3a3e0c58ee2a5ecf1e4c6d962fabec70e50b8d8c06ab0d3b3c47598419bea948
+smooth_union_k0 left 6 | glsl dynamic | f92f18521fa3bf732b4a19c678ed00002340007b2bf35eb26132b26a574cb3fa
+smooth_union_k0 left 6 | hlsl hardcoded | 212bac766e819761532bcfec84e7efc510f1403914ce7cbed479cea8b5a66277
+smooth_union_k0 left 6 | hlsl dynamic | dbadda8d6005fb8a0bbc263bdf25a529834309ebbdbd8fa140ce71b91962a228
+smooth_union_k0 left 6 | glsl scaled hardcoded | fcb0d7b07e7b325939fafe7a91c4e88673b7d2f134718a839928562b91341251
+smooth_union_k0 left 6 | glsl scaled dynamic | a89082ca90067e0e289d087ac05f7bbcd2dc5b990637a27b9a6fc930bad0eb65
+smooth_union_k0 right 4 | wgsl hardcoded | 646a2414b81491d6846553e2e86a51440eee693f9bc4a2967f968e25e2860ca8
+smooth_union_k0 right 4 | wgsl dynamic | 10398ff7481d03001033185a894cd9aa83455d912cb6d71c0f9c84b73fc03108
+smooth_union_k0 right 4 | glsl hardcoded | 7dea43f634a35098b0c2721b61b39cc96cbd4f1f445f02753a62e6e33e4a2c20
+smooth_union_k0 right 4 | glsl dynamic | 7c707971fa26fd377effc0ba5e9521ee7245c0321c5989e30194ff00e3266680
+smooth_union_k0 right 4 | hlsl hardcoded | d83bf03e3fd64b6ec8f658a5efb03399838d547bc1802a0ba14021f2916dcaca
+smooth_union_k0 right 4 | hlsl dynamic | 99474f85c72c51203944fd4344dad23d3168f82b93979ddc6d57a78a24bfb165
+smooth_union_k0 right 4 | glsl scaled hardcoded | 0ecedcc1411269b8dd3c6a6e937a5ff00eba53d6d6cbe6400df9179b8fdd9350
+smooth_union_k0 right 4 | glsl scaled dynamic | 73387c9951631d2e149b22cee9c7be88d21f0c3fc713441484251c6189de6a48
+smooth_union_k0 with stairs_intersection mixed | wgsl hardcoded | 97b6d3bb7f5008d1607b5c6c77cea3c21bb8e0bbdd902901b9b984edbd9c2c5b
+smooth_union_k0 with stairs_intersection mixed | wgsl dynamic | 16bc5d341e52cb6b42a44a50f34549de6230b8fc4c4cca84e5ab2bd52ae0f42e
+smooth_union_k0 with stairs_intersection mixed | glsl hardcoded | 88f81acdd0d68e5507febe553ce2d39e894cd0d85fff745a0436076144f6602d
+smooth_union_k0 with stairs_intersection mixed | glsl dynamic | 215fd7ac3d46b5e1400591b9a119469671535de03d44549bdbb708401f9e8009
+smooth_union_k0 with stairs_intersection mixed | hlsl hardcoded | acc66ca31961d6519043fce06d847f47ab854e58b40a062cdf83479a0da94820
+smooth_union_k0 with stairs_intersection mixed | hlsl dynamic | 749ba4e18581cc85ce839e52991405fa6db8c76e5304e0dbe1907b97f25e72d8
+smooth_union_k0 with stairs_intersection mixed | glsl scaled hardcoded | c98fea6b9652f70fef5578ba791824f7505a12af3edd64ebb6c0c4802a402fcf
+smooth_union_k0 with stairs_intersection mixed | glsl scaled dynamic | 1d1746e54a26ecbbcfd0adf54fbdb1cc1d94e4b8a089854f1a7496f9c285cbac
+smooth_intersection left 6 | wgsl hardcoded | b1409e372ebf1e571af704ca7c608ee85cb3fee691a44138d97e80e42a407d1e
+smooth_intersection left 6 | wgsl dynamic | 852e83500fcd60391214e44d6795c8cba20917508993c67d846428812577f942
+smooth_intersection left 6 | glsl hardcoded | bb9b92685775090ef2a2c38f94c079286f298abb86c0e592c068f2ed1c88e941
+smooth_intersection left 6 | glsl dynamic | 9a0341e17952e06484baac6eb368e0fcd27e13b74807e6dd86040bedc375c739
+smooth_intersection left 6 | hlsl hardcoded | fab43f2f63b7c404c247357023b3d327cd10aed93e815b381f5fd7ba5203a655
+smooth_intersection left 6 | hlsl dynamic | a0df287caa356878dad6d3ed3f734818bcbff4ed3c3b99ee23b4f0994e903319
+smooth_intersection left 6 | glsl scaled hardcoded | 5decb4fac2d5edfdbbb65c8f6c480fd70f951aade8d733115833516a90f2ca8a
+smooth_intersection left 6 | glsl scaled dynamic | 95e957dc6fd06565c40370c4aefc678e92fcc5a0af69a1294c9d82d8abf3a930
+smooth_intersection right 4 | wgsl hardcoded | 53a93b25040927e6838d29522e8df37733e463b3245df79e203700beb735a6c3
+smooth_intersection right 4 | wgsl dynamic | 685e2944d13431f00020275359a7be6e008dfd2fee70c3f1f5eae99fcae599ae
+smooth_intersection right 4 | glsl hardcoded | ca7ec3549f32c91ee61505bf8b6857b9e1029f6a82e433ce30799233cda6ca64
+smooth_intersection right 4 | glsl dynamic | ea4ae125d4661967a29d4508f5413ed5b3b3921b7706de77b50ad69ed1f41327
+smooth_intersection right 4 | hlsl hardcoded | 0b285ef91d810aeea78c41e56c916edf638365d5fc55b6594779076ccdc2ef4c
+smooth_intersection right 4 | hlsl dynamic | c728d92588499af738ff9329d59ea297a963a2e55abbfb895d748d3bd4385901
+smooth_intersection right 4 | glsl scaled hardcoded | e146d3f051a054b01cbd40a456924c29a132c06ca8dde6abfa3f86a7ec02d79e
+smooth_intersection right 4 | glsl scaled dynamic | a8285cc5465227d301d4ec043e069017de1eacff155807a6326076a613239579
+smooth_intersection with stairs_subtract mixed | wgsl hardcoded | aef024d72997bd23e96cd11a8cae3e3670b1884b559d5b0717811f7e806e6631
+smooth_intersection with stairs_subtract mixed | wgsl dynamic | ba8d1acebf788684b58f682737c09e6439ab37027aa5d3d6963c948876bc20c8
+smooth_intersection with stairs_subtract mixed | glsl hardcoded | c7c8d7c084c14e57740cbab7edd40adae22128f269e420178444f9576f11e0f4
+smooth_intersection with stairs_subtract mixed | glsl dynamic | 9b99753eac8b75467f86b51d5bd796470bd556b0db00419a442e6c896405b29f
+smooth_intersection with stairs_subtract mixed | hlsl hardcoded | 78abb6684bc0b19e5df8bb35505ee2e0315b9834eb1d15fe5c0cf0fd56394def
+smooth_intersection with stairs_subtract mixed | hlsl dynamic | 2c9904db1af0f73ccf40d0b7997e37e98ccb964515ac920048acf02d23598667
+smooth_intersection with stairs_subtract mixed | glsl scaled hardcoded | 1bae17d98508c23f0e5ecad6d30cb039a7c6845e13ba8e6c08ea0bb73ef2371f
+smooth_intersection with stairs_subtract mixed | glsl scaled dynamic | 513bfecd37d746b65425af8c56e33c9c8640e0860235a205d3e6f3d95684d214
+smooth_subtract left 6 | wgsl hardcoded | fc664a863bc95cee402bfebd30d696a11bcc6449646be0960ae629cdf36c0844
+smooth_subtract left 6 | wgsl dynamic | a9a01389137dcf2313203957ebacdbed6b3841d0f1e30b9574764d347a87407b
+smooth_subtract left 6 | glsl hardcoded | f756d662492fe4b1fdd5350258985d0ddcbf299e40f491c14fac44c53a3f360d
+smooth_subtract left 6 | glsl dynamic | 0ebeb57b1f0bcb5ed0c9146cda8851994f1dec7d45634bac1d628f2fe05c60b0
+smooth_subtract left 6 | hlsl hardcoded | f3d7f582162c0f7c4178e51c3a655681964e0a04c8a1e396fce02f1c70769ea0
+smooth_subtract left 6 | hlsl dynamic | 4bd1478318697a51b0f6cb7faae4a99211f34fad8b48c7552981a6add50ec46b
+smooth_subtract left 6 | glsl scaled hardcoded | ca60d344b7781a036348d33f677f9030bef268a432bfcc486d402962138ffda2
+smooth_subtract left 6 | glsl scaled dynamic | 1620f9b69feb5a256fa609b5c2b70a4ef7aa3cd4d91620baabbaa5c5f3df9370
+smooth_subtract right 4 | wgsl hardcoded | f9b863552cc4eabe9f1b9ada03b8d801eeeea6e54762e2c088337e8436d550b5
+smooth_subtract right 4 | wgsl dynamic | 903cf1a5cf6524b57651ecf9afbdf9642df45b6c33bf76a67aa2447738388c1e
+smooth_subtract right 4 | glsl hardcoded | 1da60e6b99e66ab5269085489ba9e2ac1aa309a10acf79cab9a3eca5881401ac
+smooth_subtract right 4 | glsl dynamic | 65bbab7577e1626a4013392bb3b025e238fcb02db9cafe76af77ae9ffe4f1b34
+smooth_subtract right 4 | hlsl hardcoded | c14218badad9be68a37a5ca402abb9bac0989b1096d9cff6ecd014232b4c6334
+smooth_subtract right 4 | hlsl dynamic | 7d12ae6a150420d4365e13c3f58da39567ef3a8bd0ceb1a2a3c4dfef03a59a1a
+smooth_subtract right 4 | glsl scaled hardcoded | b8cd08719e2f2109735ea68d445d1c9c8e4277e69817455dd142a3819caab330
+smooth_subtract right 4 | glsl scaled dynamic | 9db74e1b8502941d0bcfe77677dcc2d21367615e3eba81801377956774f9cc46
+smooth_subtract with xor mixed | wgsl hardcoded | 1d3253088c655b8610e8e557db054e51f41b554e7073da434638608d12ad97f5
+smooth_subtract with xor mixed | wgsl dynamic | 95f9f3dbaaaf226040c92e95635e244acf35a54e3b89ff87341398e4f4fdddc5
+smooth_subtract with xor mixed | glsl hardcoded | 17f6cc8d57895ca0808d23b5a9c8aa08325a6e93bc1cfbf77caa7eec047b789b
+smooth_subtract with xor mixed | glsl dynamic | 94edc4e52e99cbdfbdfb55881e5456ff6981b2c88702cefd095d9f243c6ac055
+smooth_subtract with xor mixed | hlsl hardcoded | f06467ba7bcb6d9f468ef9ec56a2a412b27720b99197742ed34dcd7878cbb3b5
+smooth_subtract with xor mixed | hlsl dynamic | 940cc106672fec7aa2c74968c61ec2c73dccdac66d33c838db0c1f00d2137b33
+smooth_subtract with xor mixed | glsl scaled hardcoded | 71fc643117f8d3f4bc15d56d8cf080bb912238f4f6cb57229d1ba7aaeae731f0
+smooth_subtract with xor mixed | glsl scaled dynamic | e79bc2c2cb5ba7c07cbd826b556388370b463c75f338c0c984c2253a261df47b
+chamfer_union left 6 | wgsl hardcoded | 5537efe99c3bc8426ed2a10301467e5f89f88e56dcffc6029980b746f4d2fb70
+chamfer_union left 6 | wgsl dynamic | 43424cbeafc2f8df478b8c490d11482f537c66194bafffe232f565bb482a1f86
+chamfer_union left 6 | glsl hardcoded | a01de991a982d29dac9bfe47f907eee6ac1fb97dc9b03e24852979adddc7ddf3
+chamfer_union left 6 | glsl dynamic | 5a3b3af49398c64c08b11a4089a0becde87717940170bab89eb5f65dc693e7dd
+chamfer_union left 6 | hlsl hardcoded | 57140e8c8fd709e0de66525788c9a63f7878148244839cb51c91be73d75c3a6a
+chamfer_union left 6 | hlsl dynamic | d6bc9baae20738991a2945861725ecf2eb887a22149a2af59140682dd5957ead
+chamfer_union left 6 | glsl scaled hardcoded | d7f662c691d65fd8a0109c103e15ec93409f262b0e4993b640f59c9dce83e91f
+chamfer_union left 6 | glsl scaled dynamic | e800d9a1438f40c9adca73e7bd4248fe08cc6a9a57cd9e2535edd95dcd3e0c3d
+chamfer_union right 4 | wgsl hardcoded | cdf031041c917ce167f4e3287909621bd898e881e96ecadba9cdbbd3a74f5bc0
+chamfer_union right 4 | wgsl dynamic | 2031b14fcba0cb700e4b748ff0b217db1e0da9ac20126a6211eec4130f468cb8
+chamfer_union right 4 | glsl hardcoded | 3ff8c4440f01340b5eb1cbd6a00087d4434216e957805d5b0150f48ee439aa4c
+chamfer_union right 4 | glsl dynamic | a2a936dc4462f5bec57b889d51549e34ca721b22c8aaab9c6adf69359b72f6dc
+chamfer_union right 4 | hlsl hardcoded | 00f938f8d131ce828b2ce2d825188da3d2f5f2a4969afb611cd3b673c1caa0cf
+chamfer_union right 4 | hlsl dynamic | 41b311179bfe501c98ea6152e0a50dd37812443ac5363bae81188efe04972f0b
+chamfer_union right 4 | glsl scaled hardcoded | 418590d4e0a29d8c7f21d2adb9fc025da21e59e3ad2918e8ad5ea82657cb8e3d
+chamfer_union right 4 | glsl scaled dynamic | 351cf14226bd8e27f123a475eba2be8ec5ef3c4620331bff9c6d60e808138a5e
+chamfer_union with morph mixed | wgsl hardcoded | b9aba9a8e4e774008aa28b78dcaa330d374f4c7193334e94f2ab04294028c9be
+chamfer_union with morph mixed | wgsl dynamic | cacee88fab9266819f1e98ccb0b12ee7e299cdac2124506cb27af7cf110ba92c
+chamfer_union with morph mixed | glsl hardcoded | bdc55f60f97a91ebc30bdc8c3259b7ed4fb0f631ea3dde49e923bd578ab68266
+chamfer_union with morph mixed | glsl dynamic | d6dcc4f584eee9d4d252a704c95f35b0747eec66114938574b746e69913dc84d
+chamfer_union with morph mixed | hlsl hardcoded | f6487fce0a3d458aa282a8aca61d3c47e6764efbb58cdb173922377627df4c6e
+chamfer_union with morph mixed | hlsl dynamic | a5350462284f79fb81bf213746a7cb9ec87ceb94eb94f61da0aadb1aa0b4389f
+chamfer_union with morph mixed | glsl scaled hardcoded | 372a7c0ab44ccff32ef6035651f30cee2bfc638cabf54652e3c1a882ba4151b6
+chamfer_union with morph mixed | glsl scaled dynamic | d05dcb405ab3f2f1e39cc65873da40debb534dd3025e9ff9e5cee60c311cdf54
+chamfer_intersection left 6 | wgsl hardcoded | 25694e4d79a818cb66eb5da8b151d3fee99dbbffff1852f6739de75f33fbe4f3
+chamfer_intersection left 6 | wgsl dynamic | d09cd6225a6cd2452c152a39c8481e4663c6da73445fcf183c19b39dfa9a6d79
+chamfer_intersection left 6 | glsl hardcoded | 60a2e3cdae594677d4b6887f02fc436012e875e1f9f1179122243fc3317e772b
+chamfer_intersection left 6 | glsl dynamic | 08159e7faebe5bffd98e0ed75216e2fc537692a8e8f6cbe6cd31f96267797ca5
+chamfer_intersection left 6 | hlsl hardcoded | d02b25c637403db0f2832aace2c6806b38f4267bee54e06afd448ddb223300a2
+chamfer_intersection left 6 | hlsl dynamic | 0d6cee97281b09c36326aafec4144d6f080045e6bca3d7bf58a792bc8c22614d
+chamfer_intersection left 6 | glsl scaled hardcoded | e03c5523f62150918a37b85688a56b2df4c652f362810d374f1079e25362cf5f
+chamfer_intersection left 6 | glsl scaled dynamic | 11aaee3a3d227ed42e6b5a7bae0a8c9de249b9a1591d0bf2e7c9e7a035264817
+chamfer_intersection right 4 | wgsl hardcoded | efeddf7c6c15d0fc5924b4e9f056a5c514ad74dc065785fd0c458aff3acc363a
+chamfer_intersection right 4 | wgsl dynamic | 524e469893bd72c24c7841a88d165d9b1012379707070cf5ef1913a7eedf50b0
+chamfer_intersection right 4 | glsl hardcoded | 80a63ff87a4a41a1cc779edc72994e3fe11a70cd260afc93b3db1cd7c50c572d
+chamfer_intersection right 4 | glsl dynamic | 48c448b8b5875b4670e8cc68ba8303b2355b3cb973c94b2f6e0399e49d839dba
+chamfer_intersection right 4 | hlsl hardcoded | 1b0643c20c432cf93fa6a6a93513c99ff2f486f4d174aa8af7886158ad6380f4
+chamfer_intersection right 4 | hlsl dynamic | 9c51c3835918b457057d01295b716c9fb92b33789a508b3321c87a5fdf53161f
+chamfer_intersection right 4 | glsl scaled hardcoded | fb50ebf151e0b7155bbf3665efb1e2edb491eeb6e30a54e4c069367f245de10e
+chamfer_intersection right 4 | glsl scaled dynamic | 5d853b87898e9cae85cc51b597d080976d3b968a9d4d1496feaa49c30f3120ae
+chamfer_intersection with columns_union mixed | wgsl hardcoded | 2b3d2bcf4c3c0ce91e247a0a29e38b6d00927187959e6c61ea4d091cb6feda80
+chamfer_intersection with columns_union mixed | wgsl dynamic | 802f3c100f305312448fb3528ddb7a84f49442771dbd99ac27f8511aa315f75e
+chamfer_intersection with columns_union mixed | glsl hardcoded | c115a1a2d67c70ddbd4f6de88c7ca866020b604b23f8fc97d9e79123bc880afe
+chamfer_intersection with columns_union mixed | glsl dynamic | e963fd25cdeaf9b5e77a000d23afd935e7de04ac7a590b69cf55a28bf6804d03
+chamfer_intersection with columns_union mixed | hlsl hardcoded | 277e7c8d0ab7c14ca55dc6e1a4772c9cbd7f1ea010818d9d2a4470fda449ab28
+chamfer_intersection with columns_union mixed | hlsl dynamic | 7fe6932b5de4aaf4ec0f53545417649ae6b07b981b3303e48446287231ee2ac8
+chamfer_intersection with columns_union mixed | glsl scaled hardcoded | d426b39a83899afe044972c7be5c8338cf636780bce9a010836953b748e21906
+chamfer_intersection with columns_union mixed | glsl scaled dynamic | 892d4d0718efb629f59f1abb8389dba667f466b51dd876438976adc74b22e285
+chamfer_subtract left 6 | wgsl hardcoded | 68ca95b820d452829f2ad07320e0b1304453d1f6c0a9e7c62b629241da108807
+chamfer_subtract left 6 | wgsl dynamic | 8bcdf2607eb672430053b6723ab29f42b57b9cbc1ba3a24091e1e2fa5fc81c07
+chamfer_subtract left 6 | glsl hardcoded | d913219af3426ccc695cdddfd223829444c10be207281887c8a77b68c4ca2400
+chamfer_subtract left 6 | glsl dynamic | cc498a19d2d7b69c6b50ed0bc419552e0fdc57da71cf82e5e158e3ae87b0dbf9
+chamfer_subtract left 6 | hlsl hardcoded | 30fc7f6b28776b73ab798614883c95988119bbee6d1825434b99128df99f9f92
+chamfer_subtract left 6 | hlsl dynamic | 8fedf3c4670a5b880e2ad9248a09aafa13626a95101157c17ac1775c6750c5e7
+chamfer_subtract left 6 | glsl scaled hardcoded | fe8f8dac0fc24f65857e06902db23429e31313437473d96bb994bafe843263dd
+chamfer_subtract left 6 | glsl scaled dynamic | 6eef931272cb82a9dbff821b15c75f201c7c8bee2490c1ffc42ba8256a7b6839
+chamfer_subtract right 4 | wgsl hardcoded | a2b0607c52daf4527869b688da88a50e6ac78516aebda38e9164aff724559fce
+chamfer_subtract right 4 | wgsl dynamic | 5d0cf861bdd09bb41782215a1b1b95c1616a2c9eb1bd5af4a1c8e64b13972ebf
+chamfer_subtract right 4 | glsl hardcoded | 51966ef9f167547dc5378430cf8d63e037aea4525671fe6535c94a3a1902c5c5
+chamfer_subtract right 4 | glsl dynamic | 1fbf9d93805ca08e9a849643fb53db3378fcd89c8f96b64f310fab381d4f5cca
+chamfer_subtract right 4 | hlsl hardcoded | 783752c56b5cf16451662d251f33e8d6264d4786c3ef4ee2bafaad3fd3ca21e7
+chamfer_subtract right 4 | hlsl dynamic | 1933656644774303c420f9914ec0bf2406059210880b16f407f8d08055d3beac
+chamfer_subtract right 4 | glsl scaled hardcoded | 0567792a8f7c50bd7a605d3be27858e6912a98bcea3087eb90946794c78900b4
+chamfer_subtract right 4 | glsl scaled dynamic | 244092429c6b9342e2d9ac4375bbf774295acb62a840128bf934cc1f6ddc49bd
+chamfer_subtract with columns_intersection mixed | wgsl hardcoded | 58e750e091eb19919b6430ee62907868f57d6104c576a15f2d26bd493ebfd85a
+chamfer_subtract with columns_intersection mixed | wgsl dynamic | c9b00cd371c856f6a8719a59890e9262e3915b051f277b6f84b52fd83487bbad
+chamfer_subtract with columns_intersection mixed | glsl hardcoded | b1d9669cc4c81e66acf13ed229d07003c735e76fd22618896d265eae3ae7cb8b
+chamfer_subtract with columns_intersection mixed | glsl dynamic | 80792f8a98f5bbe1ee60af007ae1213493cee7d3d82146e04606da0c874905f9
+chamfer_subtract with columns_intersection mixed | hlsl hardcoded | 985a2cf78edcd732093f19029e4c983868f799d243d68a5fde1ce513589acfce
+chamfer_subtract with columns_intersection mixed | hlsl dynamic | e7dc50afd5a1414a64502bd7f431266e405d4d2fea4fdc964e6177ea4ad03a41
+chamfer_subtract with columns_intersection mixed | glsl scaled hardcoded | de1e10e5d4e954af0514e13bacba23e1ff3a2aa92b44981061877c08df1c9699
+chamfer_subtract with columns_intersection mixed | glsl scaled dynamic | 0e4a82f9be0d677126fdba0241248755c0df4ae7f0d0ae7a62f126ec9f8540cd
+stairs_union left 6 | wgsl hardcoded | 258e2cec5d6d53635bdf5122a037a83beedc8e65d438f3faf62a539b23867bef
+stairs_union left 6 | wgsl dynamic | b5da1d5a796a56a6322d7e0d58f42006abb7c369c44f1f9e49d9f0b486b29447
+stairs_union left 6 | glsl hardcoded | db4647314b3b63ce62e7a38677eea26376be96181cce853ff3d12084b12ae09f
+stairs_union left 6 | glsl dynamic | 83e81a78abd847e475d0e78d0a4879433d26d1c76f6b8163e22fd3da1935b448
+stairs_union left 6 | hlsl hardcoded | 7f9994e9c5e132e15c0d6c7ca87ab065b50fcddc4ea24d4216c19d5bc6e5e88d
+stairs_union left 6 | hlsl dynamic | d72eb0dcd8b4edf4e17945a6e5c436cf15d8d747991609865836564345e72c40
+stairs_union left 6 | glsl scaled hardcoded | fade1a1a598b9a0b5b9d09b0ee2c75dbf8cb41fa448a70c463509f97f49628d1
+stairs_union left 6 | glsl scaled dynamic | 642a3883d828dbbbdc9b5b1719e6c358930f3ffe52426e11320d632927d75dea
+stairs_union right 4 | wgsl hardcoded | a8159386940330fba3c867f0bd302f10b6e8197a36fb7bf32e5e2f2cb2c21bb4
+stairs_union right 4 | wgsl dynamic | 133723c44187e7dc4f7012e1fcd6555f92040faa8e9fe82da6fcec5b4e8c25eb
+stairs_union right 4 | glsl hardcoded | 48a53a07b04a917f129ea9ba84eaa2f882998143c12a1309213ee12e8a669ed5
+stairs_union right 4 | glsl dynamic | f8d3665facad4c6502e597e55438db3cf393b7a44a60cea870cc3f252cae5eb5
+stairs_union right 4 | hlsl hardcoded | 3ab8aa3d99bef163b0326b651f50fb2df3b0d357d4377de664ded6653ec6e8e9
+stairs_union right 4 | hlsl dynamic | 70b00f312ea64fb55928b6597785bd581a282093f8ce84516e0895b81b6b57a2
+stairs_union right 4 | glsl scaled hardcoded | cd9dbef9e6941cb8b35cfe986bba37de010b1d84e27f46e1a64c0d9986e2fbe0
+stairs_union right 4 | glsl scaled dynamic | 67a9a861160cb7f84e07606f3f169376c854ff391ab1b9a1dc90476ff70ddeb9
+stairs_union with columns_subtract mixed | wgsl hardcoded | 633e59f894deb5e9f32418ae8503ab000abcf7fbc7acc64624f62f5d28366074
+stairs_union with columns_subtract mixed | wgsl dynamic | 0ea764b3d6f070f3bb53b4dcba1cc90bca796d94cdeebcdb67af0866df815376
+stairs_union with columns_subtract mixed | glsl hardcoded | 99aa8e70d730f6e6af06781c132e8e089976522a49a70fd08855c11b5a78cf45
+stairs_union with columns_subtract mixed | glsl dynamic | 350345907989afd8190dceefbb49908be949ea3d3ff27122e0b6ea348ab6ed2b
+stairs_union with columns_subtract mixed | hlsl hardcoded | 79ff21b27f4c39bed4060e489cbe17cd1643bb5b3fbacae5b29cbe6f958d7972
+stairs_union with columns_subtract mixed | hlsl dynamic | 40b4b6e5f6cd2e0e7b4b5c650065b8ebc1d876f5f04ee2d68d04071a97b2c952
+stairs_union with columns_subtract mixed | glsl scaled hardcoded | d5fcad46927b3e8f6fd27758ca0c4cb6da7659de4e6d9a3576580e37d3770785
+stairs_union with columns_subtract mixed | glsl scaled dynamic | 14bedb8202ee818837a6f519b0c75a558b62db7a400279591fc337edfc3df61a
+stairs_intersection left 6 | wgsl hardcoded | a592033552d7fcf5dab90112670513e7d8e7f21dbe8e27ecc412cbe3519f94b1
+stairs_intersection left 6 | wgsl dynamic | 100f09cf6eb907fd237463081fa614bd7ee19d7fb6888f34437630542b281aa5
+stairs_intersection left 6 | glsl hardcoded | b6910c8a414e181a79d153461f3f54db7725f37364b9c343fd5bae30cdbfe6a7
+stairs_intersection left 6 | glsl dynamic | ff96cbf129819e8dcf2f97c00f1c94f89a1bb9379fadfa33fefda31e19329bc8
+stairs_intersection left 6 | hlsl hardcoded | 06faf37b9230f656883746056628dde143a7ed4d697e271ae0b9f02a0f3ef3b7
+stairs_intersection left 6 | hlsl dynamic | 0f56f6cd72fead111806da784cea86eb87d92925d64e0cc32caf69da6bfbde45
+stairs_intersection left 6 | glsl scaled hardcoded | 48bf203de7a9e9f7a0ed87590e5e380563705d882ff002b9f2f43db70330fd95
+stairs_intersection left 6 | glsl scaled dynamic | 51a1f4abd3402ef360d97853318d0f5558de8262f61b2960f00f9c2b63d6104c
+stairs_intersection right 4 | wgsl hardcoded | 17972945459045999d8f45c1809a5c1e2492b2063d4580de4a0baba61641e092
+stairs_intersection right 4 | wgsl dynamic | 1be7e365e3ccf276b9c00c2afc29f9ea9dcfaa9d72b3b2ea9fd547dbcfde257b
+stairs_intersection right 4 | glsl hardcoded | 88d73bc50444b93f32e316c72f2e6467e0084724f654d09971a7ccc0e735b30d
+stairs_intersection right 4 | glsl dynamic | 4cc49768730da1583c80ff402ebc51b64b4f3f9826092649aa735ffa090c539b
+stairs_intersection right 4 | hlsl hardcoded | 85f8ed7c47daf23fd388843bcd826fb7e0750dda251f47bdb063dc677280f5e5
+stairs_intersection right 4 | hlsl dynamic | 463754d888520bd568237cd73b59b6d4e4d2f4c7d7185175103bea14e73c891f
+stairs_intersection right 4 | glsl scaled hardcoded | 393c6ae2067075170c00c889e6b46dfa32e5637d273017ddb0acdc1eb680e8a5
+stairs_intersection right 4 | glsl scaled dynamic | c22a3352cd82c31be8a865800413ee3efbbd1cb89fdea937a76a4f724f72eefe
+stairs_intersection with pipe mixed | wgsl hardcoded | 8ece29e9d17174b86f2f871143c1e22741e96921841cdd4c69c6f0158f4f0825
+stairs_intersection with pipe mixed | wgsl dynamic | 077f7c43dc44f2cc64782a0b6056f4a6d157d05e836e83a1893d44659c77e986
+stairs_intersection with pipe mixed | glsl hardcoded | 9e359d1500fcaa58ff4dc2305ca9abcb8200574ff72a0708f0b4482f5805a234
+stairs_intersection with pipe mixed | glsl dynamic | 41bdc213704948f5b9e9ffb402b98582272283551c53c40e2cd01efab2e2a808
+stairs_intersection with pipe mixed | hlsl hardcoded | 9727af7027ec69adac652299d2c5163e2795dfaf47052f381379988037e832d7
+stairs_intersection with pipe mixed | hlsl dynamic | 0200a1c7a365c8ad08e0de5ab28958b26ebbf25bb4580d2a062c9324238c6af0
+stairs_intersection with pipe mixed | glsl scaled hardcoded | 56686c2030c5376973310eab2b163d5267e1bd6732bb010e9b3cb8a6819fb667
+stairs_intersection with pipe mixed | glsl scaled dynamic | edc1fc7ea6d96e8a5e1f265d9bdeac9daec67a0b57da9a28a97c095abdb25e28
+stairs_subtract left 6 | wgsl hardcoded | cffd8745c2ca687c33ab6f6e17c6d4c14834324d3505df98392f08d40530062a
+stairs_subtract left 6 | wgsl dynamic | 1fbe4e719348ebf355baae3eba869de6eb2a6d415a039dee9d430cfd1469bf33
+stairs_subtract left 6 | glsl hardcoded | 35d48dc070de48464d6371de0e6ff63f6282082e5282eea8ce6149ce2b4e2e62
+stairs_subtract left 6 | glsl dynamic | cbb092075bdf1934082668b534a8d9177060ac0cd30c899facca16b712ef809c
+stairs_subtract left 6 | hlsl hardcoded | 1c396adb97526cbd8572c9fe3d18e9369932732c17fd44391eaa148dc667580d
+stairs_subtract left 6 | hlsl dynamic | c4402fa228aa6ceccf3daa7d74c5abe249ed55416ebabe97bc108b77da405c2b
+stairs_subtract left 6 | glsl scaled hardcoded | 6d8aa8069a4a00d76f6ea649ac5df6a9db5f802374db116f0306a66bfd15614c
+stairs_subtract left 6 | glsl scaled dynamic | 8f1a7b99087bcd5aba38bbe28498bff998e2f508a5d3e98bcd7c24c39771d722
+stairs_subtract right 4 | wgsl hardcoded | 277b1a68aa67b61d28edb268b98f2d2dd2cc445fb4ff142e40ea9c6e8d770461
+stairs_subtract right 4 | wgsl dynamic | 0e68ad26e9e1810b96f8cc95343c8bfeab4cc661f9529ac4e03287ebd1aa025b
+stairs_subtract right 4 | glsl hardcoded | 7dea19f3ee046aeff936bd603cc598a8c21be254fec894b268a1f64647f47ac7
+stairs_subtract right 4 | glsl dynamic | 1f0b20d81a1468a5a09ab41a7abbae8376495949fe55d9d47cf4f2a6bad8ca8f
+stairs_subtract right 4 | hlsl hardcoded | 998b189f8aa30d1b12f1f5d947fd5d529c07c6df8e86412820b095708e5a2a89
+stairs_subtract right 4 | hlsl dynamic | a5c696754dc347f492077c6eccbd4540affb773ff53788ed52a7310ccba73235
+stairs_subtract right 4 | glsl scaled hardcoded | b92f90130657ced7680b0e0947105191e549c9fc5a7fcf9cde161f72203bd26c
+stairs_subtract right 4 | glsl scaled dynamic | 07a5723fab92ec7a3cfdbbc0a4e6001f60268e681f689fb9e1491fbb47ca065f
+stairs_subtract with engrave mixed | wgsl hardcoded | 25dce46b368e4356ad725dd0aa32baccd569aa9cc72c3aa28c446112b00e00ea
+stairs_subtract with engrave mixed | wgsl dynamic | 9d4bc420221003e040951ffa0053950d026c9315e014cf488a44273a0e9bb11b
+stairs_subtract with engrave mixed | glsl hardcoded | b8f5f48b7b9673837170fd860d5f164ba498b584a0e4fdd9bc663ff77f461ec2
+stairs_subtract with engrave mixed | glsl dynamic | 775c826f435b0334cfa3062d36698e1542de06afca9e00d1bbffac4c4055b051
+stairs_subtract with engrave mixed | hlsl hardcoded | 42033e0765ecedc38427da0af0991f5b9c1b221c894fed928884aafc52db0a9c
+stairs_subtract with engrave mixed | hlsl dynamic | 101e27235d8d21151f4b30089c978acccc3d33aaeda08db9c581f601b80f1e2b
+stairs_subtract with engrave mixed | glsl scaled hardcoded | 06bec5ffeb31d1a25838c84c7bbd3c2703c79e0c064ceb7e91f43bdec4abead3
+stairs_subtract with engrave mixed | glsl scaled dynamic | 1b60d64fb66a30869aa2cb6c6c479ba1a64041cdcda1b772df0a3ee8000a8d0e
+xor left 6 | wgsl hardcoded | d15581ef84c76b36f1b2cacb6ccd5bed6ae5123c0cec6bd10e905530c87cbedb
+xor left 6 | wgsl dynamic | e969d44069a9919822dc4cfc35e215e931eff76f3aa9ec08f3bddff1464cda4e
+xor left 6 | glsl hardcoded | 010dd6839f4c5b858172bac12ded9a98541acf3c649e6987fe232f5b4898c95d
+xor left 6 | glsl dynamic | faad2d9f0eea0c3661ddf863ce55036b8f1a52738117a91bbb3da9393b9dd813
+xor left 6 | hlsl hardcoded | 342ccc04f6fae702797c0f8397774f39d7abddd6515c5fea7950ec80dd409afd
+xor left 6 | hlsl dynamic | 83845efa48e519957322a107aee4716d125143eec10487f06f6932117ef50d45
+xor left 6 | glsl scaled hardcoded | 5455e3eac2acc490003fdd089a9da281e7337a10e12a5c4e7c4686eb21d57fc9
+xor left 6 | glsl scaled dynamic | 7b53f65d4c7fd02f073b7fb7a317504624fe11bce6d9517c004f2857279b4ba9
+xor right 4 | wgsl hardcoded | d4c018ad9ff90c14ead4d12ced285e059827baadca9e1e82236f5fff7346a800
+xor right 4 | wgsl dynamic | 101622320c1576b526c2d8b20ecfb974b3dd67b944b3ca10980acfca1aae610f
+xor right 4 | glsl hardcoded | be5b6231f5b5a5bc411c1d9cae0c56fd4b49b71e95b29426386e497588dda4a5
+xor right 4 | glsl dynamic | 9bd4b9b9e658f0892ba19c008154399480c0e81f3229bce07a5e9f3c9208b18e
+xor right 4 | hlsl hardcoded | 04b76439182d8b82005d48c2b557a9bd5e5e0c1db5b100a186ee89515ab1dae4
+xor right 4 | hlsl dynamic | 6623aad150fad1bc243b53c0e9ae8990f4773552c6d530a43b28e7341c5c51a5
+xor right 4 | glsl scaled hardcoded | c0d8b5073c2019c4a120c3a7b9e103fd1c3bf135ff81c391850924a4b029ab8c
+xor right 4 | glsl scaled dynamic | 2511647f21967d8b15a2328bed23529cfd93009a127036ce9a8986ab9a6704da
+xor with groove mixed | wgsl hardcoded | 8247fbc38722d8e569f6e4a363a686d61a8cb35694f7a4bdc82711f0fe2dd662
+xor with groove mixed | wgsl dynamic | 3bed55d3430c295100981439a3e811b071443a89d609e688c1f017ba8b2e03ab
+xor with groove mixed | glsl hardcoded | a2f4b94e2fe1f264c56759bf1b625a694cb9d8cabbaa58269171621ee635598c
+xor with groove mixed | glsl dynamic | 190c7677f7b24e7293dfea92f4c658730f8eb58370de3b9f8d12f88f570a037f
+xor with groove mixed | hlsl hardcoded | 1cc506f548b834d99be04b90592f743d9c2073d6afd984af5c8edc5d0d38e2b3
+xor with groove mixed | hlsl dynamic | b780ea6530d300856a76f0a6a7b1a3c94a9c3220c128db2cc9449b443b3d79f0
+xor with groove mixed | glsl scaled hardcoded | 910b7d77c7ebe1d83c38343fcb6009dc51d5dcd731b557d6f69ef7f5fd9cf1cb
+xor with groove mixed | glsl scaled dynamic | b28b64cb9db092d69d4702449e31702649f5f8b147fe2431fc4c48db51831344
+morph left 6 | wgsl hardcoded | 13a5113a079af3c9e890a4569f5b7f579a558f0f9d778c6d3feb50bed615653f
+morph left 6 | wgsl dynamic | 5b09f4639546588b276da22c7c46490bb27309be6df7977e2705241d66a95b59
+morph left 6 | glsl hardcoded | a01d068e563d839524c013f6ade926a4a8d1cfbef6580e35f7a04eea85030a31
+morph left 6 | glsl dynamic | 809645c343da3b37eec228bcd785c5bce26edb92c0623302228e134a3a254d17
+morph left 6 | hlsl hardcoded | b3b057927c74347906772ac624ad68373210e7b5897e52f8740a74d0d7cbd64b
+morph left 6 | hlsl dynamic | 4bc5f96779e419a9c42c36eea78471fd76d653e82c45d501fb4ddd246225cb24
+morph left 6 | glsl scaled hardcoded | f7569e9e2c1b063c57d34e8f05defbfa34291dd38412fafb2dbae9d86d1978d0
+morph left 6 | glsl scaled dynamic | adb09491a83bac9d3378d9247afe0c82ab67b4f34c434cb27cdf08f718be1ec2
+morph right 4 | wgsl hardcoded | 04e6efa7015a9e3750dd0a9e36b9357152f6425efa67ce902dfee4b3c0ed100d
+morph right 4 | wgsl dynamic | 2ff7bc26f1944030b8ca1ad86ab3f18e7c9224337799dc2fe2c8bb3fbe9c3982
+morph right 4 | glsl hardcoded | 3066146b3eea24af6f10ef0e55e836d55ffcc949a45248cdde53d55d941aad4c
+morph right 4 | glsl dynamic | c7365c63607cc92c497a4daf216f7498786e7f17d05e19c57ff357fe3c8dc974
+morph right 4 | hlsl hardcoded | d3896bd344e4c060a12b51436de6821f6b1739e1f756884547f050b1c0fcf315
+morph right 4 | hlsl dynamic | 1ac68acf9c4f79ac33bc874a69db1eea457a5e5f0780704817040b8d14179a6d
+morph right 4 | glsl scaled hardcoded | b344a3d62090d67f3b4e33709241ba38ba27e57512b33880486917172bcaeaeb
+morph right 4 | glsl scaled dynamic | cf3bf28a1ea7256eff2ff0db5caf162246dd95f6f6e60a977dee941b0f32c076
+morph with tongue mixed | wgsl hardcoded | e476e4973efc8091a332ec972ff75fe7ea5c2b9a6c18a97ba23ed43a739ec3e7
+morph with tongue mixed | wgsl dynamic | d38d9118b422925b349e679ddfad3ed7e112c2f088de3ea6232d9cd0f6f85b7d
+morph with tongue mixed | glsl hardcoded | 67590b3b4d4710e022f5c11334d3def9e43dddd2e3df99b98b074bb04df87110
+morph with tongue mixed | glsl dynamic | e9d5fb32af99a85d2a8f348a2c5c92ca4b44e4c9b8e44b0e06eae24e0e6aea96
+morph with tongue mixed | hlsl hardcoded | 9d240b4acce90197e3bc65de1d26a06ca04447774f5bb7c04d516605426e496c
+morph with tongue mixed | hlsl dynamic | d26c58c6cf0de549ee9a7279f33eb10eb3a5a5e4cbc54221b249fcb638b647fb
+morph with tongue mixed | glsl scaled hardcoded | 697a1b83bc184ef119b99054cafaa5cdd17bad69a2f2055d39c2d28e081e2840
+morph with tongue mixed | glsl scaled dynamic | cb7b5b0fd34f18822833c3a2b885d5764bdcf727103c948a3876d73d310e48ee
+columns_union left 6 | wgsl hardcoded | f18a2be5ce92031036b0225c147374a2fd4ad5eedd6f61a6916306e11b5712fc
+columns_union left 6 | wgsl dynamic | 434446ed619dd3018610d045854059924ceb4d1cc8f23af0a22fcdbc5d2e9e22
+columns_union left 6 | glsl hardcoded | eb441325afb3f658040e776fa16f668a041fb580e4f4f4d8196075d4e74724ba
+columns_union left 6 | glsl dynamic | 99e1ae2b89fb4ebd7555f894c14a908558124af6808243524b23cfd81e26bfaa
+columns_union left 6 | hlsl hardcoded | b875abda99a2420cc115c5a496c2769ca93403d5fe66341a892596b70689008e
+columns_union left 6 | hlsl dynamic | 0efba2ced0c714c645d836f4d870e4fda85e715e690e26be5a32d248ecce0679
+columns_union left 6 | glsl scaled hardcoded | 7c86aa5c5f450ee86fce7ac9a9d8035abb04b6e7783a58c9641470deb85a0779
+columns_union left 6 | glsl scaled dynamic | c39a1252754c1aa8737ec435f8918b6a6a21de8ee0e051d7b0906822f489b74b
+columns_union right 4 | wgsl hardcoded | 99514b875014e56c8b01a8f25b76a1070f4c86a303b488f9346d063813caa547
+columns_union right 4 | wgsl dynamic | 7aee74b691b642dd0089c147abbc0a6d47a743921f0f109f67ef4aa66fddacb3
+columns_union right 4 | glsl hardcoded | 64776a281c4eaf79fb76e0132dd960ee746f0f4d4a1f15bcca7bb3b67226beeb
+columns_union right 4 | glsl dynamic | bb4f093ba7fb65c70d0527c584059e5e15d205f75576eb4c877ad8cb60536321
+columns_union right 4 | hlsl hardcoded | d27cb14141dc2497de99c0cf6d5fb17e10d3849dfc7d8b05538c78e2fa000632
+columns_union right 4 | hlsl dynamic | 203dd16ececd3550a62f0ceffdaa6aef0e482baf66bf5912ef62cc7d0df4da37
+columns_union right 4 | glsl scaled hardcoded | aaef037383e8310620a7b75eee16b4c73e2a739511d71aaca26c5ec160982b8e
+columns_union right 4 | glsl scaled dynamic | 053f91fef9fc9cac43e223925404454a9506d695b54139bba95361b29a2cc560
+columns_union with exp_smooth_union mixed | wgsl hardcoded | 097d7d71de7f51486b83dffa74a545b8ec5b63479587ebb0c0df00ed16686f99
+columns_union with exp_smooth_union mixed | wgsl dynamic | fe5574905d21612abccfeb1a4832c8c59328948bd097485facdd3e2216394054
+columns_union with exp_smooth_union mixed | glsl hardcoded | ebfb1b353c82fb3fe0761b1c494e0b756ba97725f7b2400c11985544e747be56
+columns_union with exp_smooth_union mixed | glsl dynamic | dea8b17cb93425063a8b50dca9026a565e6c923f8420ade4cf358f5d520a172e
+columns_union with exp_smooth_union mixed | hlsl hardcoded | 4248f0643e6042defcfb81e05cffccf38a7aedfb232107991a01d39ac6a63a16
+columns_union with exp_smooth_union mixed | hlsl dynamic | faf732d37e367d746be84532d609ac46c398d6ca71d9562a69b9ad45ceeac268
+columns_union with exp_smooth_union mixed | glsl scaled hardcoded | c2982a79667a37dfca15bea9636c78ce012fd615e1e6809f406d7593e7293aab
+columns_union with exp_smooth_union mixed | glsl scaled dynamic | 07f5ee7056a18f7421192b218b6a879b1799b0d682a192757cb3659c51e6f226
+columns_intersection left 6 | wgsl hardcoded | 39e5296a362579ac1766695c33b54d4f095ae9fc07e9dfb9d8613f13e3c36756
+columns_intersection left 6 | wgsl dynamic | 772a822fd2923ac9da80a1b53dca7b2f0eaca5e572949bf4e5fdcb27dcf5a47a
+columns_intersection left 6 | glsl hardcoded | aee7e68dbc7ba25821ea1fda58bccd9a6ce132e33f40f5383d4f594e29567fc8
+columns_intersection left 6 | glsl dynamic | ba98ec14897074b1c16d55915d32a58875e4c3c1df052a1c85f3ae757e895d5a
+columns_intersection left 6 | hlsl hardcoded | fc79c0ca9a99fa60cd2e105c8f77378205fc1ceba6d3a2000be0b86f5cde3254
+columns_intersection left 6 | hlsl dynamic | 4be7c64f4a2c4cde3d46b8b7a7b089195629cdfd764d3b92c72fd10c8d33215c
+columns_intersection left 6 | glsl scaled hardcoded | e5c4f33cf4fb744c1d31a695cf682b1eb90747e8f4dc90921c5e5234cdbbe1e5
+columns_intersection left 6 | glsl scaled dynamic | 67578cfff2c2b44f7bf1a1d23095dac813147981fb9c513070c242b52c9daea1
+columns_intersection right 4 | wgsl hardcoded | cb2e6df0dddab7fab700cc0fa5de49a43dd3e366ac5d381963153e67d37276af
+columns_intersection right 4 | wgsl dynamic | 2e078c992beb144aeff7d260ace9350d8930c187c239a78e99c62117266eeeb0
+columns_intersection right 4 | glsl hardcoded | 0e01a59349be682b88938755546a631514e8aa6bb2eacc364ce4a887b388879b
+columns_intersection right 4 | glsl dynamic | 864d23218a01f4b37433f212ea167c5aee18f3994cfa97cb849212599620f706
+columns_intersection right 4 | hlsl hardcoded | 2717e5585f1ca0532fbe37dd1d473b9d062bc60b186e7ae063f6292128ae3728
+columns_intersection right 4 | hlsl dynamic | af601d2babe15bbb765878ca71268e3e95e74eba3095cf24240e03da9982075c
+columns_intersection right 4 | glsl scaled hardcoded | 874855e0a5a3d93cde27efb0cdc72903186d37bdc404defea0a518c9a5b1b41b
+columns_intersection right 4 | glsl scaled dynamic | 4146b286c3560a44394fb3f6e6db52d6fa962b21431ec19f7725194cd7e6a909
+columns_intersection with exp_smooth_subtract mixed | wgsl hardcoded | b86f17cc12fddb5e59670e94f7f85a14e92cbe17657ecb3059a763faab7be9fb
+columns_intersection with exp_smooth_subtract mixed | wgsl dynamic | 3d3aa0c910eec2312177fc00bdb328dcf46a13449d3ec7878c120518881fed86
+columns_intersection with exp_smooth_subtract mixed | glsl hardcoded | 32cf8fac7276c10e383f015c89bfa8026bafffadb50c8f2a446400e8318f80f8
+columns_intersection with exp_smooth_subtract mixed | glsl dynamic | f93ccc2e4ecbd07e1737ffa8214edd8a84eeeabdd1abfe6b5ce3b238d32db5e0
+columns_intersection with exp_smooth_subtract mixed | hlsl hardcoded | 939afffcb67849d443a75bcd25842d3acbba484e0f886fabc8c7c31c1b762c49
+columns_intersection with exp_smooth_subtract mixed | hlsl dynamic | c910234703d1d1f33bc646842d34810baa7021a9096d9cff71b8c4fe19e9230e
+columns_intersection with exp_smooth_subtract mixed | glsl scaled hardcoded | 4acaa47fa1d144d806d7ad464e4407fec656751a5fe803ee402346e223a9a20f
+columns_intersection with exp_smooth_subtract mixed | glsl scaled dynamic | 2f633d7569ef47474e32266959193575382d823eb4c379b275a26ac49a35fbe6
+columns_subtract left 6 | wgsl hardcoded | 50680d229a49512929916f779a80ac5f0baf67e580810ff2f85a8feb4e1062bc
+columns_subtract left 6 | wgsl dynamic | a9dd688050f8b26e8407668f441af5d5442dfcf7a856066935d1a7bf673785a7
+columns_subtract left 6 | glsl hardcoded | 442a3e0c307f4f8bbe3a7c443ab31ea6a56ac7427b366cc39120f0fa63386a6a
+columns_subtract left 6 | glsl dynamic | 1158f68379b7fe0ad605d9fc6276bf2f0fa5cbd9c7cc04140e22d71172046b94
+columns_subtract left 6 | hlsl hardcoded | d86de5436526e281846c72a30e61f36e3090a1253e0d638bb258a8d049446ea2
+columns_subtract left 6 | hlsl dynamic | 3a3275dcba0a6049e31d6842ad1927da82661efae010a1a0d8ebb3b1b4b69351
+columns_subtract left 6 | glsl scaled hardcoded | bcee965fba89c7ad7d1fb106782b13cfec40d8a3e6e97a2f8a178b76f14737b6
+columns_subtract left 6 | glsl scaled dynamic | f1da929deada8bc483ce7ce4da9b4013f69426844e905069967a6fe48f06ada0
+columns_subtract right 4 | wgsl hardcoded | 427fc9c856b559a9d4be5bf074bf5b50b1c3b22a853f7f56545948788dcc8667
+columns_subtract right 4 | wgsl dynamic | 77e88402ff26ee17f9913ffe4c4034af39de0d9aa04d09a8199c2034583c0d21
+columns_subtract right 4 | glsl hardcoded | 98ec440c0e9b7d1cda2d95998b650a9a4535c0ad579608f7c23f0eeb4408b8e1
+columns_subtract right 4 | glsl dynamic | 57fad82243491aa1ba28698adb63e09e4e866a68f2f5226d4cf9aa81095dc5ec
+columns_subtract right 4 | hlsl hardcoded | 56e4bd676d2f857a941ed60c9dc8c1a790e0bfca722d506408e8d860a04fecdf
+columns_subtract right 4 | hlsl dynamic | 3092edc313dacde70f3801cb38fe8206d781f052f368fc644e695c62020ff107
+columns_subtract right 4 | glsl scaled hardcoded | 5bace1aff964a49d1926a6b559a1a86c23547b812536b9bf7d89236bc93861ba
+columns_subtract right 4 | glsl scaled dynamic | aa6e0c017b3c0d529edbb59e34feea00819656272f89024a6551110161a480a1
+columns_subtract with union mixed | wgsl hardcoded | eb54e4051714995a06897e4d743ea4d5f8a577c1d85a15d86835ec04cd08bde0
+columns_subtract with union mixed | wgsl dynamic | d0b4e8db57fe355dca2791221acb130473aef802b156d1c003fab07f9f6fec1d
+columns_subtract with union mixed | glsl hardcoded | 28f54a1490641881bc229493dd6922685ba342d2b20ee8bc6fbdb1265a710084
+columns_subtract with union mixed | glsl dynamic | 51ad7371eb863a48e03a6edbefc4017ad8dafbff4115c799382c4e62b296ca45
+columns_subtract with union mixed | hlsl hardcoded | 787d86a724f7021cd23b53e45f3c72d871e1324995f92af6b283ddc95c8a441b
+columns_subtract with union mixed | hlsl dynamic | b8b64d5acaceb396945d261c93a6a13abee8c17e65103e742817c0c72652a419
+columns_subtract with union mixed | glsl scaled hardcoded | 52026ed105f8ed0a6ebfc99dd4fa3762d02d14dc20189f4b24432489cf062ab0
+columns_subtract with union mixed | glsl scaled dynamic | f24c07c5fa6f98226e15681765db18cedcfba84882f8bc583d6b05c493a3a53f
+pipe left 6 | wgsl hardcoded | 2b2536eb30670a8c5ee490fb5a447c36566eb241de7352e52ea2e226c934da8a
+pipe left 6 | wgsl dynamic | ff1870bb382b366ee5380acd56b4be0e2d1435f3731d6f65fa02627e197a04ba
+pipe left 6 | glsl hardcoded | 14a9ca8f47ef8d7a1c6b837b06d5c364779e3918cd0e8dd8f642b747dfbc7f33
+pipe left 6 | glsl dynamic | 22dcaea86d3b4f93e0c7e678008b81eaf5f5810c1d596dbf50dcdc9b52ae879a
+pipe left 6 | hlsl hardcoded | 34d4d2212fe396b3edf7872ebcc7d4052a7677657396761bab01e6ffcb544272
+pipe left 6 | hlsl dynamic | ab4a75fe2abd983daa0ec4524d58ca0c70c71bdde48a53bd23e05f13aaa6d2ce
+pipe left 6 | glsl scaled hardcoded | 57e2afb235ebcf21d94f42382e0bd323cce47192e7e2cef5c0007981ff9c1179
+pipe left 6 | glsl scaled dynamic | c134af0b7ab416d2a6fd96b1681dda9185ecf596e8c2bcb12f7c6786228136a3
+pipe right 4 | wgsl hardcoded | 7925a758b752c05f2c01974c138a783a3e7fbdff63ac6de85faa6f3f81d56066
+pipe right 4 | wgsl dynamic | 1ec17e0ade8fc352a8a20c5cc5fe2bacb4d82ede0fecb0e390fd9fbdb8477c58
+pipe right 4 | glsl hardcoded | 1b6a52d12d442305e8023ddc87bc41e012841b9d1683da57ad43a7146ebd3510
+pipe right 4 | glsl dynamic | 83385680b5d75a2e5958fb103794a0dfb3f5e749de52eb950bda9fb9c0dc868e
+pipe right 4 | hlsl hardcoded | b6e5ed22ff327ffcb9133fd44dd99318cfc091977af876e1cd70b578bd3f4ecf
+pipe right 4 | hlsl dynamic | 68c17e0ac03427c1d42d8132cf3fdc3276a24f3803feaa4ed3990c14f8514253
+pipe right 4 | glsl scaled hardcoded | 0d874deeeab17cc2c35b2e5bb97b39a5ce55e78d6e5f0754e3cb902e581a6593
+pipe right 4 | glsl scaled dynamic | bee62a705fbc30e6d1fc6c55f2d28fa505f9c005996879d85f1ad5da2ae6f41c
+pipe with intersection mixed | wgsl hardcoded | 40362dcaa3e0accc2def23765401976c63cb576e5f71150f0f05bd8a244c2957
+pipe with intersection mixed | wgsl dynamic | 2298c66205c0828eb2de1bc2f93bdab2a4d86248806bf410e82e2e9788b9c038
+pipe with intersection mixed | glsl hardcoded | 60f6e7f9a0026aee84fed8b98f0f324a42cf8f4cc40bc40f902a571a0a6b55e2
+pipe with intersection mixed | glsl dynamic | af4570a18a92343570efef854280ed678a8d1d0f64e9298a6259bb5b6a71ebd2
+pipe with intersection mixed | hlsl hardcoded | ce81acdd9d6397f9e6b90ad27af8a6b0dbcd15dba8818c61ae5972704e729b91
+pipe with intersection mixed | hlsl dynamic | 3eb400fe15df6894986c2dbd6c131eff8ca31f0598d29040b7367ec7346544db
+pipe with intersection mixed | glsl scaled hardcoded | 856b1ef8e4dcb8ff8191f04bf54ce0146ca3ba9935178e3e3a0660a99697fbd0
+pipe with intersection mixed | glsl scaled dynamic | e1d7a6743ffe8b20b2b4f8ec998b17c23498ff187a062280ddb5eddedc1c7c93
+engrave left 6 | wgsl hardcoded | 409108d842a6f7328b95fbf2ae4c06a798cbb74c8f5c204b08a596470c2f36e8
+engrave left 6 | wgsl dynamic | f4d426dc0a793e589ed492d1515f8177d090ca29f90e0b3e44d79d20c3ee8400
+engrave left 6 | glsl hardcoded | 8dcf16be137f95ce7f21c49af2d290f538eadc7c5d622f73b99fb34d0e0da279
+engrave left 6 | glsl dynamic | 4f6c7ecabe5ca94b3a8a4cc7949c78fbd25fd3defdc6924f5fab2179233f9e92
+engrave left 6 | hlsl hardcoded | f156fe64346309e6778b3efa858b390d9aff0d73d6f9bb2ab40fd85ff0714a17
+engrave left 6 | hlsl dynamic | a2fc13f2d5228443bfa51398a33c43c6d39020581d178df60a557933789ff54a
+engrave left 6 | glsl scaled hardcoded | 2fafa8e9d0ddea6acd1360b792cabfd7d7c0698d8fb7fb179b4b22c98ebe3946
+engrave left 6 | glsl scaled dynamic | 0cc2257ad4b092de94d8afd4129911759e15b903e6066be7acc39632fd7547b5
+engrave right 4 | wgsl hardcoded | 21efcf7c7c3f2d2951018801bab60c83510c9f9e6dae2de0217fa4fda6764c7a
+engrave right 4 | wgsl dynamic | 324a091dc02efa8324e026a5dd13e64f034a7454c9f6cca7152194abd8d78735
+engrave right 4 | glsl hardcoded | d323f5a34e41ff03c6295a8be15e81b0b7c25ff3452d5d90409aec11e63c40cc
+engrave right 4 | glsl dynamic | 2f16df0d7e97c658096c4922f40c4d6a409b61eb5ddee1a3abc212a8fc04fc04
+engrave right 4 | hlsl hardcoded | 9198cecced6f3835c5d6bf4684a5f45a3c2babbaf9cf6890483b31bf2b8d4efb
+engrave right 4 | hlsl dynamic | 83922d1d8096a51e43e3764a1664acb9a87e1b5f257902499fcee9900c82230c
+engrave right 4 | glsl scaled hardcoded | b5a743047ad077759fa87248af9b6d29f895a9e868b7a2cf4fbcba3d83adba0c
+engrave right 4 | glsl scaled dynamic | ab78ef856a4109554401db3cbe9a1dd82088ea85ce8bd9f6d04ffd2ca3a196c1
+engrave with subtract mixed | wgsl hardcoded | ad748cbfcf45bd35ae83bce6d3b8d3cf8dbe0076773db9af1e431649bbdceef1
+engrave with subtract mixed | wgsl dynamic | 384b40588e0af0dca299526e9acb2d39d3fd7b59b0d1c85fd42d0dfd3964c79d
+engrave with subtract mixed | glsl hardcoded | 7b69db9beb05f1b9f60696173a2e53d63a3001d4537d0c53029d4a8aed7130cd
+engrave with subtract mixed | glsl dynamic | 39ed4c33b903b03ac45795b40f4aa1c5189eb7f17d543f5e9006e8816a0c0a9d
+engrave with subtract mixed | hlsl hardcoded | 51c82bdecfdbe158fd931085aa1b77e4dda65a945a96856b19617c7bb21bb01d
+engrave with subtract mixed | hlsl dynamic | b2c212adc71f08cfd936881dc3e97d48cd4d40f4e05b2192e588c902d826875e
+engrave with subtract mixed | glsl scaled hardcoded | 87bfef46946b823c9dff76251e8008341bbe983e6187423d580f705e299cff25
+engrave with subtract mixed | glsl scaled dynamic | b8cbd9e91b165c83911dae5e1959fd4ef27df3225f577a93f447b22958c3a18a
+groove left 6 | wgsl hardcoded | 649376ed42f2c756651149503168aaa7b15098ae5582d6d629e5cd59b334e30d
+groove left 6 | wgsl dynamic | c30652bc8f3b570c2b3e4ac6ea358ef629495974190968449ce142953d11d2db
+groove left 6 | glsl hardcoded | 1abd2c4eafb9c3365bf7c1fc70fc4b4b4d958013d438d199cb24920be30f8bd7
+groove left 6 | glsl dynamic | 806339c0102bad51c2811ec40a0a32ed334b896e5fe13b9de5b648d8f3c74f35
+groove left 6 | hlsl hardcoded | b36341d7cef31e0db59714d703d800286115d47c79b326052d8e2bee2a572dc3
+groove left 6 | hlsl dynamic | 1cf69f91ea0ff4ae255c8263e4806adf2b4e25c36422ef70644da236e6870981
+groove left 6 | glsl scaled hardcoded | 7ba34f435a082c69aac8175073d3c2569a459d17cf7fe866752912f006f78c7c
+groove left 6 | glsl scaled dynamic | 5e2467cf7f8924b9b2956dc68c1d2a70d4bda7866dc5b75d893a9d9de7960486
+groove right 4 | wgsl hardcoded | 5ef4ee03e04be8ef62af2b91f53242e0b66e96cf444c5edb28b92a80b3838373
+groove right 4 | wgsl dynamic | dadba5815104e97f627e03e8f73c5e04b03f2fef2cc3a3ebe9907c410075e225
+groove right 4 | glsl hardcoded | 0a6734637b5e112f22f95ef14d6ac69605c2d5b9fd9945d614beedb96b96b9ad
+groove right 4 | glsl dynamic | cc0c3801f3dc94e7d4b6cae2a99f7ec5c503be81889a42e224d49331e275a415
+groove right 4 | hlsl hardcoded | 881715607d0b9307666dfc320ccd302414732699a73b5df4232865494f5035a8
+groove right 4 | hlsl dynamic | 0a1d87a419fb4737f2848a9148696ef288e5b3a74e3d97e0170d856aceef5907
+groove right 4 | glsl scaled hardcoded | f0cc762a15f68210b78d74b4c285901f5bffc6710283ceab046c5cffc0c07ebe
+groove right 4 | glsl scaled dynamic | ea52a28615f7c2171edbf6ddd08e0ef6abdb1bfba73c36a51d1466f5fa64abd1
+groove with smooth_union mixed | wgsl hardcoded | 7717d713b0b3224d7aec4f0fc78a1cbc688865069341f7502b4a9a23fc211e5e
+groove with smooth_union mixed | wgsl dynamic | 1668f56acbf32eef018f7f8a0adeac857336e054c26eea0d6936c26c0035ff2f
+groove with smooth_union mixed | glsl hardcoded | 1f5863185bd5c1cbcef8ffc23a2ae1ef644ee9159840b03a54541d03b8194deb
+groove with smooth_union mixed | glsl dynamic | b7c396c5454c4f5540328fe3f32d2d9c5102a60a283d7aba85f3bf18e2cca9da
+groove with smooth_union mixed | hlsl hardcoded | 07b2fead062881063446a6e675fe9fcb4bc0ef4b5c0d9812a5bb075f2d34c7b0
+groove with smooth_union mixed | hlsl dynamic | 41357b7571aace1ab5f1269fe480ab6e0590e70434b8ecf7bd78d1a24d6efc9d
+groove with smooth_union mixed | glsl scaled hardcoded | 8c6065cad872b8a53d5a64e5ec1df4152fe14ea06941d8df9b92af08d1aa581a
+groove with smooth_union mixed | glsl scaled dynamic | 68875062b618a430debb83cdd5cbaa54efa568263f9086f5de772e5186c2bab4
+tongue left 6 | wgsl hardcoded | 755f1590d03499838bdaa94a008819c7421b07841dbc3304db07f72dfef9a248
+tongue left 6 | wgsl dynamic | d45ae489463689fd3e4b73d482e5fcc567624baa07b0a674c3bb96481250609b
+tongue left 6 | glsl hardcoded | 32feab13aaffda9813aee0addb7d20cd66bc2cd1b3d255c8b6d02c22b158fbb7
+tongue left 6 | glsl dynamic | e15049aade08efea5da80189d8203da6576388516b9fd8b9999614e3ec66b9b6
+tongue left 6 | hlsl hardcoded | fd393ad38e3efe719fba88be6566dedb3ff88df31fc06d0149722aa0463411a6
+tongue left 6 | hlsl dynamic | d99e4d89eaaf7804d9f3660537105182569771744ea6181248a5dd45d86e1476
+tongue left 6 | glsl scaled hardcoded | 5ee319659b87bb9c55149940efbad8ddfafe3b980f096e8d6cc2a0301b86400c
+tongue left 6 | glsl scaled dynamic | d60aba1eef6691443928c9eddc0848bf27f6689a04e0e5367103b9259e3938df
+tongue right 4 | wgsl hardcoded | 06f054c899e79e93b98f51e0eeecbf8ac08a6bceb727583e213822789e37996f
+tongue right 4 | wgsl dynamic | d7e4077a1222c682632ab8cd2d6c517d8999ea2ad5d63f67d96ea842e8ccaf58
+tongue right 4 | glsl hardcoded | 060aa3160322620963159a867abcbd8b6b7ab70ed4eb196c8bb34da6bf175526
+tongue right 4 | glsl dynamic | b6e4e612e0ee2d995d887b87b336ec4e7a28c440eb7cf3eadd0b5a023bde7bd3
+tongue right 4 | hlsl hardcoded | 55b6f32ca18dca829ef2a39eee018289f02f218346415e41156eb6e10681e3f9
+tongue right 4 | hlsl dynamic | 273df2783b0704d170bcace64920e427f732bfa58e43b27b9104c471fdde041a
+tongue right 4 | glsl scaled hardcoded | 0041259dcbab90a1a1cf7170ad3443a244538bc0ba0709db2fbf8db67bdbe747
+tongue right 4 | glsl scaled dynamic | 08506355cb795f162dfe6ef12446f4a379eb821285430e1552a1aa28af1feeeb
+tongue with smooth_union_k0 mixed | wgsl hardcoded | 7d7a10e2d2cdc9e4c76d9c3d41e4c3c36e83d91b29ee6fc09a4db8d57ec7da22
+tongue with smooth_union_k0 mixed | wgsl dynamic | 5283848d5beb92239d97b9f3cf0663f78b8cf508750c480bee6e6bd4b8c81bc1
+tongue with smooth_union_k0 mixed | glsl hardcoded | 2283794bcc05b51cd6fa0a0a74e653bdcea6c4b52b3e3bb6360617eececa000f
+tongue with smooth_union_k0 mixed | glsl dynamic | 690284c28664890eb696d256128808a7d128285768eb1100a108cabedb631e50
+tongue with smooth_union_k0 mixed | hlsl hardcoded | 606b3f73924f31f9911b604398b934b919dce72689eac64ada06bf19790fef18
+tongue with smooth_union_k0 mixed | hlsl dynamic | c3c768e04d4236b2bdf73c74d4e36ceed62cfb4b2c8d5689d14289fb52687be8
+tongue with smooth_union_k0 mixed | glsl scaled hardcoded | 55cc89b011c8c4a89b2f7f131be763efbabae3a900d19b746bd06d54739db3e0
+tongue with smooth_union_k0 mixed | glsl scaled dynamic | ba24457ec6d019e468e05eb8b31b6a2b48074fa8fc0e2ced87716bfc85f2d67e
+exp_smooth_union left 6 | wgsl hardcoded | 61e2df1c3a127ffea7a724a7b7f0731f36299ae6ddfbc7ec975da92bae9993bc
+exp_smooth_union left 6 | wgsl dynamic | 67067d5b016c3d55f4845a5d170e0c81298ea6cefd6793320c7cf79eba8c202b
+exp_smooth_union left 6 | glsl hardcoded | c98980a2d382ceecc535854630c847e4ba9cd77ac2015d6972c9b5551209749e
+exp_smooth_union left 6 | glsl dynamic | 1b3c8f4d28dccf6bb7a308ca4210f9517fb7667a6842c0141e221ee3180595dc
+exp_smooth_union left 6 | hlsl hardcoded | db108657a4713a83d3cafb30306b2f1c0c3ec25d2af4b81ab887da1cfa28b297
+exp_smooth_union left 6 | hlsl dynamic | a067189ee92058ded224cd6e354a5602a8f127ec95f6313a07bc1f385e8bc770
+exp_smooth_union left 6 | glsl scaled hardcoded | 06f877abd9cee2a9c5fa81d478278d0da8f6484feaabfbfa3e960be2279a2719
+exp_smooth_union left 6 | glsl scaled dynamic | 76bf39c7784b20479be32deb3343f52cb2e3ddcf339ad52642c1e1dcf083bf9f
+exp_smooth_union right 4 | wgsl hardcoded | fdc34d1baa5dfcabbaeee02d72a371ebafd19f285341ef38b097b1e916bde649
+exp_smooth_union right 4 | wgsl dynamic | 90a055930ce9a8a5fa5a78293215a83b4eb0c6a3570fddf462eb232ea5ed83ff
+exp_smooth_union right 4 | glsl hardcoded | 276a98f54a49240204a9ffd80b2b3621d4132212aefec6b6332428f289d3d876
+exp_smooth_union right 4 | glsl dynamic | 0d1cee86fe38d2ed5e3462b196d23cae47ef37d3f81188c5447b05e924822827
+exp_smooth_union right 4 | hlsl hardcoded | d6ee8bdac9688fd36b52f3fbef17350028bf89464a86b650968eee5a53d2e3dd
+exp_smooth_union right 4 | hlsl dynamic | af0859e6bde339714877b692a527af9542e1eb0c50adc7c073bb0e054358b21e
+exp_smooth_union right 4 | glsl scaled hardcoded | 3e63542f01da6c910207590628fba3b1e3401e085310f51dc14abcbaad88b697
+exp_smooth_union right 4 | glsl scaled dynamic | b60c31fb9e5ff29433a13f5f8d3cf009a390695929cc62606850d6bfc071ae91
+exp_smooth_union with smooth_intersection mixed | wgsl hardcoded | 5405e3ed708ad1329ee10fb0a33d6c2890935c01780c374ea31bec1142bc219e
+exp_smooth_union with smooth_intersection mixed | wgsl dynamic | 572ed7b757283c8a4bd96c0ebcb3515b7016a58f50f15df83e8ef494d871d9f9
+exp_smooth_union with smooth_intersection mixed | glsl hardcoded | 0ee37b2cbbee30fb674ac995e72cc2b3dd506a18888cbf06dcb0179d22aada98
+exp_smooth_union with smooth_intersection mixed | glsl dynamic | ab916cde6f0866196198de3903f6fe692df8b8b678a2141c38dd7c63b7474803
+exp_smooth_union with smooth_intersection mixed | hlsl hardcoded | 13e03810c7c2c13bb2b99c6f989cb4c3656fe07b985ede7585ee249833a3f5f9
+exp_smooth_union with smooth_intersection mixed | hlsl dynamic | 9fbe883e07005b0a730658a0fae194f17eb784b0586cf4dd17278af124ee191d
+exp_smooth_union with smooth_intersection mixed | glsl scaled hardcoded | 7ed9dfbe070fb4cdebc3420e21e187704149243c7705e1efaa51cf64ea47d855
+exp_smooth_union with smooth_intersection mixed | glsl scaled dynamic | dc2b580b28b813decc48b5583dc7d46adf9cced1ef22a81b01be1b34b1c74e6c
+exp_smooth_subtract left 6 | wgsl hardcoded | 2cd811c8dd2bc793025d775ebc79da5caaf2f5672a771a43f75b73f36de58cdf
+exp_smooth_subtract left 6 | wgsl dynamic | 02edec4374936c0a7faf9a3befdeddaf5846fc8b53f61a2562f41ab1597b7056
+exp_smooth_subtract left 6 | glsl hardcoded | aa2d9e4f0100080904eaffffb51f326fb96b26ef9776263a8373843d5806fa76
+exp_smooth_subtract left 6 | glsl dynamic | 32b57dda06e1c78c5e2e50dbb12a09e3495bbeffa4bb4f367b790c29153f19d4
+exp_smooth_subtract left 6 | hlsl hardcoded | 2fdc4f6f57dc19d1d7808ad9b3c605d607ef998a5a98945bcdd1577abfc1eacb
+exp_smooth_subtract left 6 | hlsl dynamic | 3dbabf1233a89e7c7336f86314d3aee5be1b9bb464712a31261ec102c9f181cf
+exp_smooth_subtract left 6 | glsl scaled hardcoded | c576c27324522e87dac114876fe80dc2a0f33bb7b38412e79e533c007d522ecc
+exp_smooth_subtract left 6 | glsl scaled dynamic | f63e8376d9098c1e20e7d3ea6a320918c60014d944ea15fc955fe4894b1b0627
+exp_smooth_subtract right 4 | wgsl hardcoded | 273b23c421c02424015c349cc7755cb3c165100d61514d7de8195e87d5224db8
+exp_smooth_subtract right 4 | wgsl dynamic | b387322c8406f3cf6dbe2dbd12b4b8a4321e319bd14d37917bb39bd3e80b641b
+exp_smooth_subtract right 4 | glsl hardcoded | 5a79653d86ef794824dcc6a4b4b9ceffe62f47f60a8185e01437cd19f391be10
+exp_smooth_subtract right 4 | glsl dynamic | ea64042f3c1b405d4df229089f5fcdc74bada47a96e3b2910f7ddf6667454d24
+exp_smooth_subtract right 4 | hlsl hardcoded | c1713353fced7ce79b1a8b8e8fe38babe14ea0a30d6f919c68fb3df999094b8d
+exp_smooth_subtract right 4 | hlsl dynamic | cad26e395507aef5e61c0174946008c26d960514cbd6a91b86e8bd86988c5f5f
+exp_smooth_subtract right 4 | glsl scaled hardcoded | 50cc2b746d70689068457d554ed6052be712191154a8fe27ff43ac9d9e6a6285
+exp_smooth_subtract right 4 | glsl scaled dynamic | c5fde53b57146add2eea97c77a1bcdc1a68cfc2c97b733401805b3e3334ca30e
+exp_smooth_subtract with smooth_subtract mixed | wgsl hardcoded | ad8cec9cc16be78d15c4ddb4f17a2291f09706d6860c884b2ab25b60a3ed7703
+exp_smooth_subtract with smooth_subtract mixed | wgsl dynamic | daf3967ee38e465c23b0cb887b3db1e7ff54609498fe936fbc30e49ef1aa2294
+exp_smooth_subtract with smooth_subtract mixed | glsl hardcoded | be1699e9b50fc2c889cc234e93d6c374045c0130e1d66b1a13df3050cc0dd040
+exp_smooth_subtract with smooth_subtract mixed | glsl dynamic | c0ef1f0e4cc302f47feb4c5693bea6f7f027250ae4e9fb9ef60fa0e07b3ca7af
+exp_smooth_subtract with smooth_subtract mixed | hlsl hardcoded | 44a2cd47babed0dbf901f86a1231c69a8da6a036115201e95732ee2e26bde29a
+exp_smooth_subtract with smooth_subtract mixed | hlsl dynamic | b1778968dd07d75e52e8ef1d3b0da97dc0395836adb72a9d3d606b8cafe5cdbf
+exp_smooth_subtract with smooth_subtract mixed | glsl scaled hardcoded | a5c4c97deff78b767601583d2fb585cc02de4bf9c3b438217cfb6bb786a42e75
+exp_smooth_subtract with smooth_subtract mixed | glsl scaled dynamic | 792a89530084a44bee6ebb79ecaa28eaa9bd399252c38ff1f5c4c9e5818c869c
+crash shape: smooth_union k 0 of 128 | wgsl hardcoded | c40baaa18545eb4a1161c392beef3a0cddc226378c72203f6672171da713f69f
+crash shape: smooth_union k 0 of 128 | wgsl dynamic | dc8f83c17671a5da523310d4c605fe25c0d16a72a882b64b46363a6cacd11c0d
+crash shape: smooth_union k 0 of 128 | glsl hardcoded | b4fe8ea6a04242b62bd22ac0c91ee72b4efb156e2ec3f3bd134663933f75a906
+crash shape: smooth_union k 0 of 128 | glsl dynamic | d85c1d2ae3727a7da3ad7f71884750a26d92c7f78133675f2bcfbd18ec31384c
+crash shape: smooth_union k 0 of 128 | hlsl hardcoded | 9adad3a35ca0d46fd81b68ec02a95d4c6036c0d2334b5d1b697836e7ab76911e
+crash shape: smooth_union k 0 of 128 | hlsl dynamic | 8068bd602485dec44fdfa56ea06a284e3efa9981b8097e045bed6e67bed92436
+crash shape: smooth_union k 0 of 128 | glsl scaled hardcoded | 0d56eef60fd95e38956a4859e7203c86ce012741a1edbf54c27be0bfcf1a26b4
+crash shape: smooth_union k 0 of 128 | glsl scaled dynamic | 7886ada94dadfd0cfa2303e28609d6129f16b362fa5131982fb852fb2bebc956
