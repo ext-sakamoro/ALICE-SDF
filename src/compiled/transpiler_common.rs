@@ -532,6 +532,18 @@ struct ScaleTrace {
 }
 
 #[cfg(feature = "glsl")]
+/// The frames whose scale the scale of `f` is made from, in the order they are emitted
+const fn scale_children(f: &ScaleFrame) -> &[usize] {
+    match (f.kind, f.children.as_slice(), f.notes.as_slice()) {
+        (ScaleKind::Two, c @ &[_, _], _)
+        | (ScaleKind::Child | ScaleKind::Ratio(_), c @ &[_], _)
+        | (ScaleKind::Projective(_) | ScaleKind::Lattice | ScaleKind::Times, c @ &[_], [_])
+        | (ScaleKind::GridWarp, c @ &[_], [_, _, _]) => c,
+        _ => &[],
+    }
+}
+
+#[cfg(feature = "glsl")]
 fn scale_kind(node: &SdfNode) -> ScaleKind {
     use crate::compiled::real::LawMinMax;
     match node {
@@ -1835,15 +1847,40 @@ impl<L: ShaderLang> GenericTranspiler<L> {
 
     #[cfg(feature = "glsl")]
     /// The scale of recorded instance `i` (see [`ScaleKind`]); its name or a literal
-    fn emit_scale(&mut self, trace: &ScaleTrace, i: usize, code: &mut String) -> String {
+    fn emit_scale(&mut self, trace: &ScaleTrace, root: usize, code: &mut String) -> String {
+        // children before their parent, the first child's frames before the second's: the order a
+        // recursive walk emits in, with a list instead of the call stack
+        let mut scale: Vec<Option<String>> = vec![None; trace.frames.len()];
+        let mut stack = vec![(root, false)];
+        while let Some((i, expanded)) = stack.pop() {
+            let kids = scale_children(&trace.frames[i]);
+            if expanded {
+                let child: Vec<String> = kids
+                    .iter()
+                    .map(|&c| scale[c].take().unwrap_or_default())
+                    .collect();
+                scale[i] = Some(self.combine_scale(trace, i, &child, code));
+            } else {
+                stack.push((i, true));
+                stack.extend(kids.iter().rev().map(|&c| (c, false)));
+            }
+        }
+        scale[root].take().unwrap_or_default()
+    }
+
+    /// The local scale of frame `i` from its children's scales (the ones [`scale_children`] names)
+    fn combine_scale(
+        &mut self,
+        trace: &ScaleTrace,
+        i: usize,
+        child: &[String],
+        code: &mut String,
+    ) -> String {
         let f = &trace.frames[i];
         let one = || "1.0".to_owned();
         match (f.kind, f.children.as_slice(), f.notes.as_slice()) {
             (ScaleKind::Two, &[a, b], _) => {
-                let (sa, sb) = (
-                    self.emit_scale(trace, a, code),
-                    self.emit_scale(trace, b, code),
-                );
+                let (sa, sb) = (child[0].clone(), child[1].clone());
                 let (da, db, v) = (&trace.frames[a].result, &trace.frames[b].result, &f.result);
                 let s = self.next_var();
                 let inner = L::select_expr(
@@ -1857,15 +1894,15 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 s
             }
-            (ScaleKind::Child, &[c], _) => self.emit_scale(trace, c, code),
-            (ScaleKind::Ratio(r), &[c], _) => {
-                let sc = self.emit_scale(trace, c, code);
+            (ScaleKind::Child, &[_], _) => child[0].clone(),
+            (ScaleKind::Ratio(r), &[_], _) => {
+                let sc = child[0].clone();
                 let s = self.next_var();
                 code.push_str(&L::decl_float(&s, &format!("{sc} * {}", lit(r))));
                 s
             }
-            (ScaleKind::Projective(l), &[c], [inv_w]) => {
-                let sc = self.emit_scale(trace, c, code);
+            (ScaleKind::Projective(l), &[_], [inv_w]) => {
+                let sc = child[0].clone();
                 let s = self.next_var();
                 code.push_str(&L::decl_float(
                     &s,
@@ -1873,20 +1910,20 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 s
             }
-            (ScaleKind::Lattice, &[c], [corr]) => {
-                let sc = self.emit_scale(trace, c, code);
+            (ScaleKind::Lattice, &[_], [corr]) => {
+                let sc = child[0].clone();
                 let s = self.next_var();
                 code.push_str(&L::decl_float(&s, &format!("{sc} * {corr}")));
                 s
             }
-            (ScaleKind::Times, &[c], [lam]) => {
-                let sc = self.emit_scale(trace, c, code);
+            (ScaleKind::Times, &[_], [lam]) => {
+                let sc = child[0].clone();
                 let s = self.next_var();
                 code.push_str(&L::decl_float(&s, &format!("{lam} * {sc}")));
                 s
             }
             (ScaleKind::GridWarp, &[c], [lam, e, dv]) => {
-                let sc = self.emit_scale(trace, c, code);
+                let sc = child[0].clone();
                 let (own, s) = (self.next_var(), self.next_var());
                 let (dc, out) = (&trace.frames[c].result, &f.result);
                 code.push_str(&L::decl_float(&own, &format!("{dc} / {lam}")));
@@ -1936,9 +1973,16 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         point_var: &str,
         code: &mut String,
     ) -> String {
-        let Some(trace) = self.scale_trace.as_mut() else {
-            return self.transpile_node_value(node, point_var, code);
-        };
+        let frame = self.open_scale_frame(node);
+        let result = self.transpile_node_value(node, point_var, code);
+        self.close_scale_frame(frame, &result);
+        result
+    }
+
+    /// Open the scale frame of `node` under the one being emitted, when a scale trace is kept
+    #[cfg(feature = "glsl")]
+    fn open_scale_frame(&mut self, node: &SdfNode) -> Option<usize> {
+        let trace = self.scale_trace.as_mut()?;
         let idx = trace.frames.len();
         if let Some(&parent) = trace.open.last() {
             trace.frames[parent].children.push(idx);
@@ -1950,13 +1994,29 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             notes: Vec::new(),
         });
         trace.open.push(idx);
-        let result = self.transpile_node_value(node, point_var, code);
-        if let Some(trace) = self.scale_trace.as_mut() {
-            trace.open.pop();
-            trace.frames[idx].result.clone_from(&result);
-        }
-        result
+        Some(idx)
     }
+
+    /// Without the GLSL scale trace there are no frames
+    #[cfg(not(feature = "glsl"))]
+    #[allow(clippy::unused_self, clippy::missing_const_for_fn)]
+    fn open_scale_frame(&mut self, _node: &SdfNode) -> Option<usize> {
+        None
+    }
+
+    /// Close the frame [`Self::open_scale_frame`] opened, recording the node's value
+    #[cfg(feature = "glsl")]
+    fn close_scale_frame(&mut self, frame: Option<usize>, result: &str) {
+        if let (Some(idx), Some(trace)) = (frame, self.scale_trace.as_mut()) {
+            trace.open.pop();
+            result.clone_into(&mut trace.frames[idx].result);
+        }
+    }
+
+    /// Without the GLSL scale trace there are no frames
+    #[cfg(not(feature = "glsl"))]
+    #[allow(clippy::unused_self, clippy::missing_const_for_fn)]
+    fn close_scale_frame(&mut self, _frame: Option<usize>, _result: &str) {}
 
     /// Record values the scale of the node being emitted needs (no-op without a scale trace)
     #[cfg_attr(not(feature = "glsl"), allow(clippy::unused_self))]
@@ -3339,342 +3399,40 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             }
 
             // ============ Boolean Operations ============
-            SdfNode::Union { a, b } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
-                var
-            }
-
-            SdfNode::Intersection { a, b } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
-                var
-            }
-
-            SdfNode::Subtraction { a, b } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
-                var
+            SdfNode::Union { .. }
+            | SdfNode::Intersection { .. }
+            | SdfNode::Subtraction { .. }
+            | SdfNode::SmoothUnion { .. }
+            | SdfNode::SmoothIntersection { .. }
+            | SdfNode::SmoothSubtraction { .. }
+            | SdfNode::ChamferUnion { .. }
+            | SdfNode::ChamferIntersection { .. }
+            | SdfNode::ChamferSubtraction { .. }
+            | SdfNode::StairsUnion { .. }
+            | SdfNode::StairsIntersection { .. }
+            | SdfNode::StairsSubtraction { .. }
+            | SdfNode::XOR { .. }
+            | SdfNode::Morph { .. }
+            | SdfNode::ColumnsUnion { .. }
+            | SdfNode::ColumnsIntersection { .. }
+            | SdfNode::ColumnsSubtraction { .. }
+            | SdfNode::Pipe { .. }
+            | SdfNode::Engrave { .. }
+            | SdfNode::Groove { .. }
+            | SdfNode::Tongue { .. }
+            | SdfNode::ExpSmoothUnion { .. }
+            | SdfNode::ExpSmoothIntersection { .. }
+            | SdfNode::ExpSmoothSubtraction { .. } => {
+                self.transpile_binary_chain(node, point_var, code)
             }
 
             // Division Exorcism for SmoothUnion
-            SdfNode::SmoothUnion { a, b, k } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
-                    code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
-                    return var;
-                }
-                let k_str = self.param(*k);
-                let inv_k_str = self.param(1.0 / k);
-                let h_var = self.next_var();
-                code.push_str(&L::decl_float(
-                    &h_var,
-                    &format!("max(1.0 - abs({} - {}) * {}, 0.0)", d_a, d_b, inv_k_str),
-                ));
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!(
-                        "min({}, {}) - {} * {} * ({} * 0.25)",
-                        d_a, d_b, h_var, h_var, k_str
-                    ),
-                ));
-                var
-            }
-
-            SdfNode::SmoothIntersection { a, b, k } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
-                    code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
-                    return var;
-                }
-                let k_str = self.param(*k);
-                let inv_k_str = self.param(1.0 / k);
-                let h_var = self.next_var();
-                code.push_str(&L::decl_float(
-                    &h_var,
-                    &format!("max(1.0 - abs({} - {}) * {}, 0.0)", d_a, d_b, inv_k_str),
-                ));
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!(
-                        "max({}, {}) + {} * {} * ({} * 0.25)",
-                        d_a, d_b, h_var, h_var, k_str
-                    ),
-                ));
-                var
-            }
-
-            SdfNode::SmoothSubtraction { a, b, k } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
-                    code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
-                    return var;
-                }
-                let k_str = self.param(*k);
-                let inv_k_str = self.param(1.0 / k);
-                let h_var = self.next_var();
-                let neg_b = self.next_var();
-                code.push_str(&L::decl_float(&neg_b, &format!("-{}", d_b)));
-                code.push_str(&L::decl_float(
-                    &h_var,
-                    &format!("max(1.0 - abs({} - {}) * {}, 0.0)", d_a, neg_b, inv_k_str),
-                ));
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!(
-                        "max({}, {}) + {} * {} * ({} * 0.25)",
-                        d_a, neg_b, h_var, h_var, k_str
-                    ),
-                ));
-                var
-            }
 
             // Chamfer blends
-            SdfNode::ChamferUnion { a, b, r } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
-                    code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
-                    return var;
-                }
-                let r_str = self.param(*r);
-                let s_str = self.param(std::f32::consts::FRAC_1_SQRT_2);
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!(
-                        "min(min({}, {}), ({} + {}) * {} - {})",
-                        d_a, d_b, d_a, d_b, s_str, r_str
-                    ),
-                ));
-                var
-            }
-
-            SdfNode::ChamferIntersection { a, b, r } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
-                    code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
-                    return var;
-                }
-                let r_str = self.param(*r);
-                let s_str = self.param(std::f32::consts::FRAC_1_SQRT_2);
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!(
-                        "max(max({}, {}), ({} + {}) * {} + {})",
-                        d_a, d_b, d_a, d_b, s_str, r_str
-                    ),
-                ));
-                var
-            }
-
-            SdfNode::ChamferSubtraction { a, b, r } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
-                    code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
-                    return var;
-                }
-                let r_str = self.param(*r);
-                let s_str = self.param(std::f32::consts::FRAC_1_SQRT_2);
-                let neg_b = self.next_var();
-                code.push_str(&L::decl_float(&neg_b, &format!("-{}", d_b)));
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!(
-                        "max(max({}, {}), ({} + {}) * {} + {})",
-                        d_a, neg_b, d_a, neg_b, s_str, r_str
-                    ),
-                ));
-                var
-            }
 
             // Stairs blends
-            SdfNode::StairsUnion { a, b, r, n } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
-                    code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
-                    return var;
-                }
-                let r_s = self.param(*r);
-                let n_s = self.param(*n);
-                self.emit_stairs_union_inline(code, &d_a, &d_b, &r_s, &n_s, &var);
-                var
-            }
-
-            SdfNode::StairsIntersection { a, b, r, n } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
-                    code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
-                    return var;
-                }
-                let na = self.next_var();
-                let nb = self.next_var();
-                code.push_str(&L::decl_float(&na, &format!("-{}", d_a)));
-                code.push_str(&L::decl_float(&nb, &format!("-{}", d_b)));
-                let r_s = self.param(*r);
-                let n_s = self.param(*n);
-                let su = self.next_var();
-                self.emit_stairs_union_inline(code, &na, &nb, &r_s, &n_s, &su);
-                code.push_str(&L::decl_float(&var, &format!("-{}", su)));
-                var
-            }
-
-            SdfNode::StairsSubtraction { a, b, r, n } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
-                    code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
-                    return var;
-                }
-                let na = self.next_var();
-                code.push_str(&L::decl_float(&na, &format!("-{}", d_a)));
-                let r_s = self.param(*r);
-                let n_s = self.param(*n);
-                let su = self.next_var();
-                self.emit_stairs_union_inline(code, &na, &d_b, &r_s, &n_s, &su);
-                code.push_str(&L::decl_float(&var, &format!("-{}", su)));
-                var
-            }
-
-            SdfNode::XOR { a, b } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("max(min({}, {}), -max({}, {}))", d_a, d_b, d_a, d_b),
-                ));
-                var
-            }
-
-            SdfNode::Morph { a, b, t } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                let t_s = self.param(*t);
-                code.push_str(&L::decl_float(&var, &L::mix_expr(&d_a, &d_b, &t_s)));
-                var
-            }
 
             // Columns operations: one helper per language, same law as the CPU
-            SdfNode::ColumnsUnion { a, b, r, n } => {
-                self.ensure_helper("columns");
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                let r_s = self.param(*r);
-                let n_s = self.param(*n);
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("alice_columns_union({d_a}, {d_b}, {r_s}, {n_s})"),
-                ));
-                var
-            }
-            SdfNode::ColumnsIntersection { a, b, r, n } => {
-                self.ensure_helper("columns");
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                let r_s = self.param(*r);
-                let n_s = self.param(*n);
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("alice_columns_intersection({d_a}, {d_b}, {r_s}, {n_s})"),
-                ));
-                var
-            }
-            SdfNode::ColumnsSubtraction { a, b, r, n } => {
-                self.ensure_helper("columns");
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                let r_s = self.param(*r);
-                let n_s = self.param(*n);
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("alice_columns_subtraction({d_a}, {d_b}, {r_s}, {n_s})"),
-                ));
-                var
-            }
-            SdfNode::Pipe { a, b, r } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                let r_s = self.param(*r);
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("length({}) - {}", L::vec2_ctor(&d_a, &d_b), r_s),
-                ));
-                var
-            }
-
-            SdfNode::Engrave { a, b, r } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                let r_s = self.param(*r);
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!(
-                        "max({}, ({} + {} - abs({})) * 0.70710678)",
-                        d_a, d_a, r_s, d_b
-                    ),
-                ));
-                var
-            }
-
-            SdfNode::Groove { a, b, ra, rb } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                let ra_s = self.param(*ra);
-                let rb_s = self.param(*rb);
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!(
-                        "max({}, min({} + {}, {} - abs({})))",
-                        d_a, d_a, ra_s, rb_s, d_b
-                    ),
-                ));
-                var
-            }
-
-            SdfNode::Tongue { a, b, ra, rb } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                let ra_s = self.param(*ra);
-                let rb_s = self.param(*rb);
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!(
-                        "min({}, max({} - {}, abs({}) - {}))",
-                        d_a, d_a, ra_s, d_b, rb_s
-                    ),
-                ));
-                var
-            }
 
             // ============ Transforms ============
             SdfNode::Translate { child, offset } => {
@@ -5259,85 +5017,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             }
 
             // Exponential smooth operations
-            SdfNode::ExpSmoothUnion { a, b, k } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
-                    code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
-                    return var;
-                }
-                // stable form: min(a, b) - k * log(1 + exp(-|a - b| / k)), same as
-                // `sdf_exp_smooth_union_r` (no underflow to log(0), no clamp)
-                let inv_k = self.param(1.0 / k.law_max(1e-6));
-                let m = self.next_var();
-                let delta = self.next_var();
-                let s = self.next_var();
-                code.push_str(&L::decl_float(&m, &format!("min({}, {})", d_a, d_b)));
-                code.push_str(&L::decl_float(&delta, &format!("abs({} - {})", d_a, d_b)));
-                code.push_str(&L::decl_float(
-                    &s,
-                    &format!("1.0 + exp(-{} * {})", inv_k, delta),
-                ));
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("{} - log({}) * {}", m, s, self.param(k.law_max(1e-6))),
-                ));
-                var
-            }
-
-            SdfNode::ExpSmoothIntersection { a, b, k } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
-                    code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
-                    return var;
-                }
-                // stable form: max(a, b) + k * log(1 + exp(-|a - b| / k))
-                let inv_k = self.param(1.0 / k.law_max(1e-6));
-                let m = self.next_var();
-                let delta = self.next_var();
-                let s = self.next_var();
-                code.push_str(&L::decl_float(&m, &format!("max({}, {})", d_a, d_b)));
-                code.push_str(&L::decl_float(&delta, &format!("abs({} - {})", d_a, d_b)));
-                code.push_str(&L::decl_float(
-                    &s,
-                    &format!("1.0 + exp(-{} * {})", inv_k, delta),
-                ));
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("{} + log({}) * {}", m, s, self.param(k.law_max(1e-6))),
-                ));
-                var
-            }
-
-            SdfNode::ExpSmoothSubtraction { a, b, k } => {
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                let var = self.next_var();
-                if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
-                    code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
-                    return var;
-                }
-                // stable form of the intersection with -b: max(a, -b) + k * log(1 + exp(-|a + b| / k))
-                let inv_k = self.param(1.0 / k.law_max(1e-6));
-                let m = self.next_var();
-                let delta = self.next_var();
-                let s = self.next_var();
-                code.push_str(&L::decl_float(&m, &format!("max({}, -{})", d_a, d_b)));
-                code.push_str(&L::decl_float(&delta, &format!("abs({} + {})", d_a, d_b)));
-                code.push_str(&L::decl_float(
-                    &s,
-                    &format!("1.0 + exp(-{} * {})", inv_k, delta),
-                ));
-                code.push_str(&L::decl_float(
-                    &var,
-                    &format!("{} + log({}) * {}", m, s, self.param(k.law_max(1e-6))),
-                ));
-                var
-            }
-
             SdfNode::SmoothBlend {
                 a,
                 b,
@@ -5385,6 +5064,438 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             }
 
             SdfNode::Animated { child, .. } => self.transpile_node_inner(child, point_var, code),
+        }
+    }
+
+    /// The two operands of a binary operation (the ones [`Self::combine_binary`] combines)
+    fn binary_operands(node: &SdfNode) -> Option<(&SdfNode, &SdfNode)> {
+        match node {
+            SdfNode::Union { a, b, .. }
+            | SdfNode::Intersection { a, b, .. }
+            | SdfNode::Subtraction { a, b, .. }
+            | SdfNode::SmoothUnion { a, b, .. }
+            | SdfNode::SmoothIntersection { a, b, .. }
+            | SdfNode::SmoothSubtraction { a, b, .. }
+            | SdfNode::ChamferUnion { a, b, .. }
+            | SdfNode::ChamferIntersection { a, b, .. }
+            | SdfNode::ChamferSubtraction { a, b, .. }
+            | SdfNode::StairsUnion { a, b, .. }
+            | SdfNode::StairsIntersection { a, b, .. }
+            | SdfNode::StairsSubtraction { a, b, .. }
+            | SdfNode::XOR { a, b, .. }
+            | SdfNode::Morph { a, b, .. }
+            | SdfNode::ColumnsUnion { a, b, .. }
+            | SdfNode::ColumnsIntersection { a, b, .. }
+            | SdfNode::ColumnsSubtraction { a, b, .. }
+            | SdfNode::Pipe { a, b, .. }
+            | SdfNode::Engrave { a, b, .. }
+            | SdfNode::Groove { a, b, .. }
+            | SdfNode::Tongue { a, b, .. }
+            | SdfNode::ExpSmoothUnion { a, b, .. }
+            | SdfNode::ExpSmoothIntersection { a, b, .. }
+            | SdfNode::ExpSmoothSubtraction { a, b, .. } => Some((a, b)),
+            _ => None,
+        }
+    }
+
+    /// What a binary operation emits before its operands (a helper it needs)
+    fn binary_before_operands(&mut self, node: &SdfNode) {
+        if matches!(
+            node,
+            SdfNode::ColumnsUnion { .. }
+                | SdfNode::ColumnsIntersection { .. }
+                | SdfNode::ColumnsSubtraction { .. }
+        ) {
+            self.ensure_helper("columns");
+        }
+    }
+
+    /// A binary operation whose first operand is itself a binary operation, and so on down: the
+    /// first operands are walked with a list instead of the call stack, so a long chain (a union
+    /// of many shapes, as an n-ary call is read: folded to the left) needs no stack of its depth
+    ///
+    /// The code is emitted in the order the recursive form emits it: each operation's helper and
+    /// scale frame before its operands, its first operand, its second operand, then the
+    /// operation, so the output is the same text
+    fn transpile_binary_chain(
+        &mut self,
+        top: &SdfNode,
+        point_var: &str,
+        code: &mut String,
+    ) -> String {
+        // the caller opened `top`'s scale frame; the ones below it are opened here
+        let mut chain: Vec<(&SdfNode, Option<usize>)> = vec![(top, None)];
+        self.binary_before_operands(top);
+        let mut first = Self::binary_operands(top).map_or(top, |(a, _)| a);
+        while let Some((a, _)) = Self::binary_operands(first) {
+            let frame = self.open_scale_frame(first);
+            self.binary_before_operands(first);
+            chain.push((first, frame));
+            first = a;
+        }
+        let mut d = self.transpile_node_inner(first, point_var, code);
+        while let Some((node, frame)) = chain.pop() {
+            let Some((_, second)) = Self::binary_operands(node) else {
+                break;
+            };
+            let d_b = self.transpile_node_inner(second, point_var, code);
+            d = self.combine_binary(node, &d, &d_b, code);
+            self.close_scale_frame(frame, &d);
+        }
+        d
+    }
+
+    /// The code of a binary operation from the values of its two operands
+    #[allow(clippy::too_many_lines)]
+    fn combine_binary(
+        &mut self,
+        node: &SdfNode,
+        d_a: &str,
+        d_b: &str,
+        code: &mut String,
+    ) -> String {
+        match node {
+            SdfNode::Union { .. } => {
+                let var = self.next_var();
+                code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
+                var
+            }
+            SdfNode::Intersection { .. } => {
+                let var = self.next_var();
+                code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
+                var
+            }
+            SdfNode::Subtraction { .. } => {
+                let var = self.next_var();
+                code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
+                var
+            }
+            SdfNode::SmoothUnion { k, .. } => {
+                let var = self.next_var();
+                if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
+                    code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
+                    return var;
+                }
+                let k_str = self.param(*k);
+                let inv_k_str = self.param(1.0 / k);
+                let h_var = self.next_var();
+                code.push_str(&L::decl_float(
+                    &h_var,
+                    &format!("max(1.0 - abs({} - {}) * {}, 0.0)", d_a, d_b, inv_k_str),
+                ));
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!(
+                        "min({}, {}) - {} * {} * ({} * 0.25)",
+                        d_a, d_b, h_var, h_var, k_str
+                    ),
+                ));
+                var
+            }
+            SdfNode::SmoothIntersection { k, .. } => {
+                let var = self.next_var();
+                if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
+                    code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
+                    return var;
+                }
+                let k_str = self.param(*k);
+                let inv_k_str = self.param(1.0 / k);
+                let h_var = self.next_var();
+                code.push_str(&L::decl_float(
+                    &h_var,
+                    &format!("max(1.0 - abs({} - {}) * {}, 0.0)", d_a, d_b, inv_k_str),
+                ));
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!(
+                        "max({}, {}) + {} * {} * ({} * 0.25)",
+                        d_a, d_b, h_var, h_var, k_str
+                    ),
+                ));
+                var
+            }
+            SdfNode::SmoothSubtraction { k, .. } => {
+                let var = self.next_var();
+                if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
+                    code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
+                    return var;
+                }
+                let k_str = self.param(*k);
+                let inv_k_str = self.param(1.0 / k);
+                let h_var = self.next_var();
+                let neg_b = self.next_var();
+                code.push_str(&L::decl_float(&neg_b, &format!("-{}", d_b)));
+                code.push_str(&L::decl_float(
+                    &h_var,
+                    &format!("max(1.0 - abs({} - {}) * {}, 0.0)", d_a, neg_b, inv_k_str),
+                ));
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!(
+                        "max({}, {}) + {} * {} * ({} * 0.25)",
+                        d_a, neg_b, h_var, h_var, k_str
+                    ),
+                ));
+                var
+            }
+            SdfNode::ChamferUnion { r, .. } => {
+                let var = self.next_var();
+                if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
+                    code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
+                    return var;
+                }
+                let r_str = self.param(*r);
+                let s_str = self.param(std::f32::consts::FRAC_1_SQRT_2);
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!(
+                        "min(min({}, {}), ({} + {}) * {} - {})",
+                        d_a, d_b, d_a, d_b, s_str, r_str
+                    ),
+                ));
+                var
+            }
+            SdfNode::ChamferIntersection { r, .. } => {
+                let var = self.next_var();
+                if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
+                    code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
+                    return var;
+                }
+                let r_str = self.param(*r);
+                let s_str = self.param(std::f32::consts::FRAC_1_SQRT_2);
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!(
+                        "max(max({}, {}), ({} + {}) * {} + {})",
+                        d_a, d_b, d_a, d_b, s_str, r_str
+                    ),
+                ));
+                var
+            }
+            SdfNode::ChamferSubtraction { r, .. } => {
+                let var = self.next_var();
+                if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
+                    code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
+                    return var;
+                }
+                let r_str = self.param(*r);
+                let s_str = self.param(std::f32::consts::FRAC_1_SQRT_2);
+                let neg_b = self.next_var();
+                code.push_str(&L::decl_float(&neg_b, &format!("-{}", d_b)));
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!(
+                        "max(max({}, {}), ({} + {}) * {} + {})",
+                        d_a, neg_b, d_a, neg_b, s_str, r_str
+                    ),
+                ));
+                var
+            }
+            SdfNode::StairsUnion { r, n, .. } => {
+                let var = self.next_var();
+                if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
+                    code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
+                    return var;
+                }
+                let r_s = self.param(*r);
+                let n_s = self.param(*n);
+                self.emit_stairs_union_inline(code, d_a, d_b, &r_s, &n_s, &var);
+                var
+            }
+            SdfNode::StairsIntersection { r, n, .. } => {
+                let var = self.next_var();
+                if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
+                    code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
+                    return var;
+                }
+                let na = self.next_var();
+                let nb = self.next_var();
+                code.push_str(&L::decl_float(&na, &format!("-{}", d_a)));
+                code.push_str(&L::decl_float(&nb, &format!("-{}", d_b)));
+                let r_s = self.param(*r);
+                let n_s = self.param(*n);
+                let su = self.next_var();
+                self.emit_stairs_union_inline(code, &na, &nb, &r_s, &n_s, &su);
+                code.push_str(&L::decl_float(&var, &format!("-{}", su)));
+                var
+            }
+            SdfNode::StairsSubtraction { r, n, .. } => {
+                let var = self.next_var();
+                if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
+                    code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
+                    return var;
+                }
+                let na = self.next_var();
+                code.push_str(&L::decl_float(&na, &format!("-{}", d_a)));
+                let r_s = self.param(*r);
+                let n_s = self.param(*n);
+                let su = self.next_var();
+                self.emit_stairs_union_inline(code, &na, d_b, &r_s, &n_s, &su);
+                code.push_str(&L::decl_float(&var, &format!("-{}", su)));
+                var
+            }
+            SdfNode::XOR { .. } => {
+                let var = self.next_var();
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!("max(min({}, {}), -max({}, {}))", d_a, d_b, d_a, d_b),
+                ));
+                var
+            }
+            SdfNode::Morph { t, .. } => {
+                let var = self.next_var();
+                let t_s = self.param(*t);
+                code.push_str(&L::decl_float(&var, &L::mix_expr(d_a, d_b, &t_s)));
+                var
+            }
+            SdfNode::ColumnsUnion { r, n, .. } => {
+                let var = self.next_var();
+                let r_s = self.param(*r);
+                let n_s = self.param(*n);
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!("alice_columns_union({d_a}, {d_b}, {r_s}, {n_s})"),
+                ));
+                var
+            }
+            SdfNode::ColumnsIntersection { r, n, .. } => {
+                let var = self.next_var();
+                let r_s = self.param(*r);
+                let n_s = self.param(*n);
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!("alice_columns_intersection({d_a}, {d_b}, {r_s}, {n_s})"),
+                ));
+                var
+            }
+            SdfNode::ColumnsSubtraction { r, n, .. } => {
+                let var = self.next_var();
+                let r_s = self.param(*r);
+                let n_s = self.param(*n);
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!("alice_columns_subtraction({d_a}, {d_b}, {r_s}, {n_s})"),
+                ));
+                var
+            }
+            SdfNode::Pipe { r, .. } => {
+                let var = self.next_var();
+                let r_s = self.param(*r);
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!("length({}) - {}", L::vec2_ctor(d_a, d_b), r_s),
+                ));
+                var
+            }
+            SdfNode::Engrave { r, .. } => {
+                let var = self.next_var();
+                let r_s = self.param(*r);
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!(
+                        "max({}, ({} + {} - abs({})) * 0.70710678)",
+                        d_a, d_a, r_s, d_b
+                    ),
+                ));
+                var
+            }
+            SdfNode::Groove { ra, rb, .. } => {
+                let var = self.next_var();
+                let ra_s = self.param(*ra);
+                let rb_s = self.param(*rb);
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!(
+                        "max({}, min({} + {}, {} - abs({})))",
+                        d_a, d_a, ra_s, rb_s, d_b
+                    ),
+                ));
+                var
+            }
+            SdfNode::Tongue { ra, rb, .. } => {
+                let var = self.next_var();
+                let ra_s = self.param(*ra);
+                let rb_s = self.param(*rb);
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!(
+                        "min({}, max({} - {}, abs({}) - {}))",
+                        d_a, d_a, ra_s, d_b, rb_s
+                    ),
+                ));
+                var
+            }
+            SdfNode::ExpSmoothUnion { k, .. } => {
+                let var = self.next_var();
+                if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
+                    code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
+                    return var;
+                }
+                // stable form: min(a, b) - k * log(1 + exp(-|a - b| / k)), same as
+                // `sdf_exp_smooth_union_r` (no underflow to log(0), no clamp)
+                let inv_k = self.param(1.0 / k.law_max(1e-6));
+                let m = self.next_var();
+                let delta = self.next_var();
+                let s = self.next_var();
+                code.push_str(&L::decl_float(&m, &format!("min({}, {})", d_a, d_b)));
+                code.push_str(&L::decl_float(&delta, &format!("abs({} - {})", d_a, d_b)));
+                code.push_str(&L::decl_float(
+                    &s,
+                    &format!("1.0 + exp(-{} * {})", inv_k, delta),
+                ));
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!("{} - log({}) * {}", m, s, self.param(k.law_max(1e-6))),
+                ));
+                var
+            }
+            SdfNode::ExpSmoothIntersection { k, .. } => {
+                let var = self.next_var();
+                if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
+                    code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
+                    return var;
+                }
+                // stable form: max(a, b) + k * log(1 + exp(-|a - b| / k))
+                let inv_k = self.param(1.0 / k.law_max(1e-6));
+                let m = self.next_var();
+                let delta = self.next_var();
+                let s = self.next_var();
+                code.push_str(&L::decl_float(&m, &format!("max({}, {})", d_a, d_b)));
+                code.push_str(&L::decl_float(&delta, &format!("abs({} - {})", d_a, d_b)));
+                code.push_str(&L::decl_float(
+                    &s,
+                    &format!("1.0 + exp(-{} * {})", inv_k, delta),
+                ));
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!("{} + log({}) * {}", m, s, self.param(k.law_max(1e-6))),
+                ));
+                var
+            }
+            SdfNode::ExpSmoothSubtraction { k, .. } => {
+                let var = self.next_var();
+                if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
+                    code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
+                    return var;
+                }
+                // stable form of the intersection with -b: max(a, -b) + k * log(1 + exp(-|a + b| / k))
+                let inv_k = self.param(1.0 / k.law_max(1e-6));
+                let m = self.next_var();
+                let delta = self.next_var();
+                let s = self.next_var();
+                code.push_str(&L::decl_float(&m, &format!("max({}, -{})", d_a, d_b)));
+                code.push_str(&L::decl_float(&delta, &format!("abs({} + {})", d_a, d_b)));
+                code.push_str(&L::decl_float(
+                    &s,
+                    &format!("1.0 + exp(-{} * {})", inv_k, delta),
+                ));
+                code.push_str(&L::decl_float(
+                    &var,
+                    &format!("{} + log({}) * {}", m, s, self.param(k.law_max(1e-6))),
+                ));
+                var
+            }
+            _ => unreachable!("combine_binary is called only with a binary operation"),
         }
     }
 }

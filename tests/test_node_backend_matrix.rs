@@ -632,35 +632,59 @@ fn constructor_names_follow_the_binding_convention() {
     assert!(!has_fn("fn my_alice_sdf_box(", "alice_sdf_box"));
 }
 
-/// The body of the first `match node {` after `fn <name>`, with comments removed.
-fn match_body(src: &str, fn_name: &str) -> String {
+/// The body of every `match node {` in `src`, with comments removed.
+fn match_bodies(src: &str) -> Vec<String> {
     let src = src.replace("\r\n", "\n");
     let code: String = src
         .lines()
         .map(|l| l.split("//").next().unwrap_or(""))
         .collect::<Vec<_>>()
         .join("\n");
-    let f = code
-        .find(&format!("fn {fn_name}"))
-        .unwrap_or_else(|| panic!("fn {fn_name} not found"));
-    let m = f + code[f..]
-        .find("match node {")
-        .unwrap_or_else(|| panic!("no `match node` in {fn_name}"));
-    let start = m + "match node {".len();
-    let mut depth = 1;
-    for (i, c) in code[start..].char_indices() {
-        match c {
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return code[start..start + i].to_string();
+    let mut bodies = Vec::new();
+    for (m, _) in code.match_indices("match node {") {
+        let start = m + "match node {".len();
+        let mut depth = 1;
+        let mut end = None;
+        for (i, c) in code[start..].char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(start + i);
+                        break;
+                    }
                 }
+                _ => {}
             }
-            _ => {}
         }
+        bodies.push(code[start..end.expect("unbalanced match")].to_string());
     }
-    panic!("unbalanced match in {fn_name}");
+    bodies
+}
+
+/// The `match node` bodies that name at least 100 `SdfNode` variants (found by what they are,
+/// not where they sit): the transpilers' dispatcher and the per-node tables beside it
+fn big_matches(src: &str) -> Vec<String> {
+    match_bodies(src)
+        .into_iter()
+        .filter(|b| b.matches("SdfNode::").count() >= 100)
+        .collect()
+}
+
+/// The transpilers' dispatcher: the one big `match node` that emits through
+/// `transpile_node_inner`; none or more than one is a failure
+fn dispatch_body(src: &str) -> String {
+    let dispatchers: Vec<String> = big_matches(src)
+        .into_iter()
+        .filter(|b| b.contains("transpile_node_inner("))
+        .collect();
+    assert_eq!(
+        dispatchers.len(),
+        1,
+        "expected exactly one `match node` naming 100 or more SdfNode variants that emits code"
+    );
+    dispatchers.into_iter().next().unwrap_or_default()
 }
 
 /// Whether a `match` body has a `_ =>` arm at its top level.
@@ -685,18 +709,36 @@ fn has_top_level_wildcard(body: &str) -> bool {
 
 #[test]
 fn transpiler_dispatch_has_no_wildcard_arm() {
-    let body = match_body(
-        include_str!("../src/compiled/transpiler_common.rs"),
-        "transpile_node_inner",
-    );
+    let body = dispatch_body(include_str!("../src/compiled/transpiler_common.rs"));
     assert!(
         body.matches("SdfNode::").count() >= 100,
-        "transpile_node_inner no longer dispatches on SdfNode"
+        "the dispatcher no longer names every SdfNode"
     );
     assert!(
         !has_top_level_wildcard(&body),
-        "transpile_node_inner gained a `_ =>` arm: a new SdfNode variant would compile without a shader law"
+        "the dispatcher gained a `_ =>` arm: a new SdfNode variant would compile without a shader law"
     );
+    // every other per-node table of the transpilers is exhaustive too
+    let big = big_matches(include_str!("../src/compiled/transpiler_common.rs"));
+    assert!(big.len() >= 2, "{} big `match node` tables", big.len());
+    for table in &big {
+        assert!(
+            !has_top_level_wildcard(table),
+            "a per-node table has a `_ =>` arm"
+        );
+    }
+    // the finder: a small `match node` anywhere is not the dispatcher, and two big ones fail
+    let arms: String = (0..100)
+        .map(|i| format!("SdfNode::V{i} {{ .. }} => {i},\n"))
+        .collect();
+    let one = format!("fn a() {{ match node {{ SdfNode::X {{ .. }} => 0, _ => 1 }} }}\nfn b() {{ match node {{ {arms} SdfNode::W {{ c }} => self.transpile_node_inner(c), }} }}");
+    assert!(dispatch_body(&one).contains("SdfNode::V99"));
+    let two = format!("{one}\nfn c() {{ match node {{ {arms} SdfNode::W {{ c }} => self.transpile_node_inner(c), }} }}");
+    // a big table that does not emit is not the dispatcher
+    let table = format!("{one}\nfn d() {{ match node {{ {arms} }} }}");
+    assert!(dispatch_body(&table).contains("transpile_node_inner("));
+    assert!(std::panic::catch_unwind(|| dispatch_body(&two)).is_err());
+    assert!(std::panic::catch_unwind(|| dispatch_body("fn a() {}")).is_err());
     // the scanner itself: a wildcard at the top level is found, one inside an arm is not
     assert!(has_top_level_wildcard(
         "SdfNode::A { .. } => 1,\n    _ => 0,"
@@ -721,8 +763,8 @@ fn the_source_readers_accept_crlf_line_endings() {
     let common = include_str!("../src/compiled/transpiler_common.rs");
     let common_crlf = common.replace("\r\n", "\n").replace('\n', "\r\n");
     assert_eq!(
-        match_body(&common_crlf, "transpile_node_inner").len(),
-        match_body(common, "transpile_node_inner").len()
+        dispatch_body(&common_crlf).len(),
+        dispatch_body(common).len()
     );
 }
 

@@ -428,6 +428,11 @@ jobs:
       - name: Shader text has no fused multiply-add (msl + glsl + hlsl + blinkscript)
         run: cargo test --features msl,glsl,hlsl,blinkscript --test test_shader_no_fused_multiply_add
 
+      # Deep and wide trees through WGSL / GLSL / HLSL on the default test-thread stack,
+      # every output's SHA-256 against the recorded list (file cfg needs gpu + glsl + hlsl)
+      - name: Deep tree transpile (gpu + glsl + hlsl)
+        run: cargo test --features gpu,glsl,hlsl --test transpile_deep_tree
+
       # FFI は extern "C" の実 export symbol を叩いて native evaluator と bit 突合する。
       # `cargo test --lib --features ffi,…` は unit のみで、この統合 test は走らない。
       # tests/ の extern "C" 宣言と src/ffi の export を「順序付きの型列」で突合する。

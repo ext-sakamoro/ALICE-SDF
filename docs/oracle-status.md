@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1440 |
+| 🟢 Not ignored | 1442 |
 | 🔴 Red by design | 6 |
 | ⏱ Gated (runtime / diagnostic / manual) | 10 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1456** |
+| **Total** | **1458** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -54,7 +54,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `write_bincode1_fixtures` (test_bincode1_fixtures.rs) — writes tests/fixtures/bincode1; run only to capture
 
-## 🟢 Not ignored (1440)
+## 🟢 Not ignored (1442)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -244,6 +244,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_unmangled_exports.rs` | 2 |
 | `test_wgsl_array_constructor_limit.rs` | 2 |
 | `test_wgsl_loop_bounds.rs` | 2 |
+| `transpile_deep_tree.rs` | 2 |
 | `mesh_sign_sliver.rs` | 1 |
 | `test_asdf_roundtrip_parity.rs` | 1 |
 | `test_compile_bytecode_golden.rs` | 1 |
