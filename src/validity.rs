@@ -1201,9 +1201,11 @@ fn facing_pair(
             let width = w1.distance(w2);
             let fronts = (w2 - w1).dot(a.2) > 0.0 && (w1 - w2).dot(b.2) > 0.0;
             let real = fronts && a.0.distance(w1) <= 2.0 * a.1 && b.0.distance(w2) <= 2.0 * b.1;
-            // each wall point stops within the march's tolerance of its wall (in the air, or past it
-            // when a step overshoots), so `width` is the walls' distance only to within
-            // `GAP_TOLERANCE`: a width within that of the limit proves nothing either way
+            // each wall point stops in the air where the field falls to `GAP_TOLERANCE / 4` (the march
+            // never overshoots a field that bounds the distance from below): on a distance-exact field
+            // that is within a quarter tolerance of its wall, so `width` is short of the walls'
+            // distance by at most half the tolerance, and a width within `GAP_TOLERANCE` of the limit
+            // proves nothing either way
             if a.2.dot(b.2) < FACING_DOT && fronts && width + GAP_TOLERANCE < limit {
                 return Some(((a.2, b.2), width));
             }
@@ -1327,15 +1329,23 @@ pub struct GapReport {
     /// One of the sheet points (the first found), `None` when `sheet_samples` is 0. Each is confirmed
     /// on the exact field (see [`GapReport::unconfirmed_sheet_samples`]).
     pub sheet_location: Option<Vec3>,
-    /// Samples that looked like a sheet on the grid (no material behind the wall point read from the
-    /// sample's own value) but whose point is not confirmed on the exact field: marched along its
-    /// direction it does not reach the surface (the field is not a distance there, e.g. a plateau with
-    /// no gradient), or at the surface the field is not positive on both sides (a region where the
-    /// field is zero rather than negative). No width is read from them, and they keep the verdict from
-    /// passing; they are not a failure, since nothing on the exact field shows a sheet.
+    /// Samples that looked like a sheet on the grid (a wall point on the surface with no material
+    /// behind it) but whose point is not confirmed on the exact field: a probe behind the surface does
+    /// not find the field positive by at least half the probe (the field rises slower than the distance
+    /// there, or is zero rather than positive). No width is read from them, and they keep the verdict
+    /// from passing; they are not a failure, since nothing on the exact field shows a sheet.
     pub unconfirmed_sheet_samples: usize,
     /// One unconfirmed sheet point (the first found), `None` when `unconfirmed_sheet_samples` is 0.
     pub unconfirmed_sheet_location: Option<Vec3>,
+    /// Samples with no wall in their direction: `p − d n` is not on the surface (the field is a lower
+    /// bound whose gradient does not point at the nearest wall, as inside a through cut, where the
+    /// cutter's term points at the cutter's own face out in the air) and a march along `−n` reaches no
+    /// surface either. Neither a width nor a sheet is read from them; the walls near them are read by
+    /// their own samples. Counted among `samples`; a grid where every sample is one of these measured
+    /// nothing ([`GapError::NoSamples`]).
+    pub no_wall_samples: usize,
+    /// One sample point with no wall (the first found), `None` when `no_wall_samples` is 0.
+    pub no_wall_location: Option<Vec3>,
     /// Lower corner of the bound the grid sampled.
     pub bmin: Vec3,
     /// Upper corner of the bound the grid sampled.
@@ -1790,7 +1800,8 @@ pub enum GapError {
     BadCell,
     /// The grid would exceed [`MAX_GAP_GRID_POINTS`] points.
     TooManyPoints,
-    /// No grid point lay in empty space near a surface: nothing was compared.
+    /// No grid point lay in empty space near a surface, or none of those that did reached a wall:
+    /// nothing was compared.
     NoSamples,
 }
 
@@ -1943,7 +1954,8 @@ fn refine_gap(node: &SdfNode, a0: Vec3, n0: Vec3, w0: f32, reach: f32, cell: f32
 ///
 /// [`GapError::BadCell`] (`cell` not finite positive, or a bad bound),
 /// [`GapError::TooManyPoints`] (the grid exceeds [`MAX_GAP_GRID_POINTS`]),
-/// [`GapError::NoSamples`] (no surface inside the bound: nothing compared).
+/// [`GapError::NoSamples`] (no surface inside the bound, or no sample reached a wall: nothing
+/// compared).
 pub fn measure_gaps(
     node: &SdfNode,
     bmin: Vec3,
@@ -1995,6 +2007,8 @@ pub fn measure_gaps(
     let mut sheet_location = None;
     let mut unconfirmed_sheet_samples = 0_usize;
     let mut unconfirmed_sheet_location = None;
+    let mut no_wall_samples = 0_usize;
+    let mut no_wall_location = None;
     let mut sheet = |c: Vec3, out: Vec3| {
         if sheet_confirmed(node, c, out) {
             sheet_samples += 1;
@@ -2020,9 +2034,23 @@ pub fn measure_gaps(
                     continue;
                 }
                 samples += 1;
+                // the wall point is `p − d n` only where that lands on the surface (a distance-exact
+                // field). Where the field is a lower bound whose gradient points elsewhere (inside a
+                // through cut the cutter's term points at the cutter's own face out in the air), that
+                // point is on no surface: march to the wall instead, and a sample whose march reaches
+                // none has no wall in its direction (counted, no width and no sheet read from it)
+                let guess = p - n * d;
+                let (at, lead) = if eval(node, guess).abs() <= GAP_TOLERANCE {
+                    (guess, d)
+                } else if let Some(w) = wall_point(node, p, n) {
+                    (w, p.distance(w))
+                } else {
+                    no_wall_samples += 1;
+                    no_wall_location.get_or_insert(p);
+                    continue;
+                };
                 // the wall point needs material behind it; a zero-thickness sheet has none (the field
                 // only touches zero there), so no width is read from it, whether or not the ray comes back
-                let at = p - n * d;
                 if !material_behind(node, at, n) {
                     sheet(at, n);
                     continue;
@@ -2036,7 +2064,8 @@ pub fn measure_gaps(
                 let Some(enter) = march_empty(node, p, n, t0, reach) else {
                     continue;
                 };
-                let width = d + enter;
+                // from the sample back to its wall (`d` where `p − d n` is the wall), then out to the hit
+                let width = lead + enter;
                 // the surface the ray came back to needs material behind it too
                 let hit = p + n * enter;
                 if !material_behind(node, hit, -n) {
@@ -2073,7 +2102,9 @@ pub fn measure_gaps(
             }
         }
     }
-    if samples == 0 {
+    // a sample whose march reached no wall compared nothing: a grid of only such samples measured
+    // nothing, whatever its count
+    if samples == no_wall_samples {
         return Err(GapError::NoSamples);
     }
     // a grid point measures along its own wall normal, which crosses the gap off its narrowest line by
@@ -2107,6 +2138,8 @@ pub fn measure_gaps(
         sheet_location,
         unconfirmed_sheet_samples,
         unconfirmed_sheet_location,
+        no_wall_samples,
+        no_wall_location,
         bmin,
         bmax,
         tree: tree_hash(node),

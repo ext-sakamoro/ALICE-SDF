@@ -459,10 +459,13 @@ fn pins_smaller_than_a_cell_are_a_width_or_undetermined_never_nothing() {
 }
 
 /// A cable clip (a rounded plate with a cylinder bore and a snap slot, the LOL `cable_clip(7, 28)`
-/// preset): the grid reads sheet-like samples at the bore's ends, but no sheet is confirmed on the exact
-/// field there, so the verdict is not a sheet failure; it is undetermined, never a pass
+/// preset): the bore and the slot are 1 longer than the plate at each end, so inside them the field is
+/// the cutter's term and points at the cutter's end faces out in the air. The grid samples there have no
+/// wall in their direction and are counted as such; they are not sheets of either kind (an earlier
+/// version read them as sheets the exact field does not confirm and left the verdict undetermined).
+/// The bore's own walls are read by their own samples, so the verdict rests on compared samples
 #[test]
-fn a_sheet_the_exact_field_does_not_confirm_is_undetermined() {
+fn a_bore_and_slot_through_a_clip_read_no_sheet() {
     let outer =
         SdfNode::rounded_box(5.5, 15.0, 5.5, 1.0).intersection(SdfNode::box3d(5.5, 14.0, 5.5));
     let bore = SdfNode::cylinder(3.6, 15.0);
@@ -475,17 +478,58 @@ fn a_sheet_the_exact_field_does_not_confirm_is_undetermined() {
         1.0,
     )
     .expect("samples");
-    assert!(g.unconfirmed_sheet_samples > 0, "{:?}", g.report);
     assert_eq!(
-        g.sheet_samples, 0,
-        "a sheet confirmed on the clip at {:?}",
-        g.sheet_location
+        (g.sheet_samples, g.unconfirmed_sheet_samples),
+        (0, 0),
+        "sheet samples on the clip at {:?} / {:?}",
+        g.sheet_location,
+        g.unconfirmed_sheet_location
     );
+    assert!(
+        g.no_wall_samples > 0 && g.no_wall_samples < g.samples,
+        "samples with no wall {} of {}",
+        g.no_wall_samples,
+        g.samples
+    );
+    match g.verdict(0.5) {
+        GapVerdict::Undetermined(GapUndetermined::UnconfirmedSheet { .. }) => {
+            panic!(
+                "cable clip against 0.5 is an unconfirmed sheet ({:?})",
+                g.report
+            )
+        }
+        GapVerdict::Fail(GapFailure::Sheet { at }) => panic!("cable clip: a sheet at {at}"),
+        _ => {}
+    }
+}
+
+/// A real zero-thickness sheet (the T-slot cutter's seam on the block's face, as in
+/// `a_zero_field_sheet_fails_whatever_the_limit`) in a field squashed along z by 4: the field is the
+/// distance times 1/4, so a probe behind the sheet reads a quarter of its length, below the half the
+/// sheet test asks for. The grid marches to the sheet (it is on the zero level set) but the exact field
+/// does not confirm it: the verdict is undetermined, never a pass and never a sheet failure
+#[test]
+fn a_sheet_in_a_field_slower_than_the_distance_is_unconfirmed() {
+    let block = SdfNode::box3d(20.0, 20.0, 20.0);
+    let neck = SdfNode::box3d(2.0, 6.0, 30.0).translate(9.0, 0.0, 0.0);
+    let punch = SdfNode::box3d(5.0, 6.0, 30.0).translate(12.5, 0.0, 0.0);
+    let squashed = block.subtract(neck.union(punch)).scale_xyz(1.0, 1.0, 0.25);
+    let g = measure_gaps(
+        &squashed,
+        Vec3::new(5.0, -5.0, -0.75),
+        Vec3::new(12.0, 5.0, 0.75),
+        0.25,
+    )
+    .expect("samples");
+    assert_eq!(g.sheet_samples, 0, "confirmed at {:?}", g.sheet_location);
+    assert!(g.unconfirmed_sheet_samples > 0, "{:?}", g.report);
+    let at = g.unconfirmed_sheet_location.expect("a point");
+    assert!((at.x - 10.0).abs() < 0.01 && at.y.abs() <= 3.01, "at {at}");
     match g.verdict(0.5) {
         GapVerdict::Undetermined(GapUndetermined::UnconfirmedSheet { samples, .. }) => {
             assert_eq!(samples, g.unconfirmed_sheet_samples);
         }
-        v => panic!("cable clip against 0.5: {v:?}"),
+        v => panic!("squashed sheet against 0.5: {v:?}"),
     }
 }
 
