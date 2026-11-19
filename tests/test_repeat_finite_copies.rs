@@ -492,8 +492,8 @@ const SITES: &[(&str, usize, &str)] = &[
     ),
     (
         "src/compiled/transpiler_common.rs",
-        2,
-        "GLSL / HLSL / WGSL / MSL emit (checked: every_shader_emit_…) and the scale-kind variant list",
+        3,
+        "GLSL / HLSL / WGSL / MSL emit (checked: every_shader_emit_…), the scale-kind variant list and the walk's list of wrappers that write before their child (routing only: the emit is the same arm)",
     ),
     (
         "src/interval.rs",
