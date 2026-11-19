@@ -298,6 +298,76 @@ fn polygon_2d_vertices_survive_compilation() {
     assert!((d_tri - d_sq).abs() > 0.05, "tri={d_tri} sq={d_sq}");
 }
 
+#[test]
+fn polygon_2d_is_exact_for_concave_outlines_and_xor_holes() {
+    // A concave "E" of 12 vertices (more than the old doc's "convex, up to 8"), and a
+    // square ring as the XOR of two squares (even-odd fill: the hole is outside).
+    // Expected distances are worked out by hand from the outlines, not by the same loop.
+    let e = SdfNode::polygon_2d(
+        [
+            (0.0, 0.0),
+            (3.0, 0.0),
+            (3.0, 1.0),
+            (1.0, 1.0),
+            (1.0, 2.0),
+            (3.0, 2.0),
+            (3.0, 3.0),
+            (1.0, 3.0),
+            (1.0, 4.0),
+            (3.0, 4.0),
+            (3.0, 5.0),
+            (0.0, 5.0),
+        ]
+        .iter()
+        .map(|&(x, y)| Vec2::new(x, y))
+        .collect(),
+        10.0,
+    );
+    let square = |h: f32| {
+        SdfNode::polygon_2d(
+            vec![
+                Vec2::new(-h, -h),
+                Vec2::new(h, -h),
+                Vec2::new(h, h),
+                Vec2::new(-h, h),
+            ],
+            10.0,
+        )
+    };
+    let ring = square(1.0).xor(square(0.5));
+    let cases: [(&SdfNode, Vec2, f32, &str); 8] = [
+        (
+            &e,
+            Vec2::new(2.0, 1.5),
+            0.5,
+            "E: in the gap between two bars",
+        ),
+        (&e, Vec2::new(2.0, 3.5), 0.5, "E: in the upper gap"),
+        (&e, Vec2::new(2.0, 0.5), -0.5, "E: inside the bottom bar"),
+        (&e, Vec2::new(0.5, 2.5), -0.5, "E: inside the spine"),
+        (&e, Vec2::new(4.0, 2.5), 1.0, "E: right of the middle bar"),
+        (&ring, Vec2::new(0.0, 0.0), 0.5, "ring: centre of the hole"),
+        (&ring, Vec2::new(0.75, 0.0), -0.25, "ring: in the band"),
+        (&ring, Vec2::new(1.5, 0.0), 0.5, "ring: outside"),
+    ];
+    for (node, p2, want, what) in cases {
+        let p = Vec3::new(p2.x, p2.y, 0.0);
+        let compiled = CompiledSdf::compile(node);
+        let got = [
+            ("eval", eval(node, p)),
+            ("compiled", eval_compiled(&compiled, p)),
+            ("simd", simd_lane0(&compiled, p)),
+            ("bvh", eval_compiled_bvh(&CompiledSdfBvh::compile(node), p)),
+        ];
+        for (path, d) in got {
+            assert!(
+                (d - want).abs() < TOL,
+                "{what} at {p2}: {path} gave {d}, want {want}"
+            );
+        }
+    }
+}
+
 // ============================================================================
 // Interval / analytic-gradient representations vs point evaluation
 // ============================================================================
