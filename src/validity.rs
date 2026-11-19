@@ -1342,7 +1342,8 @@ pub struct GapReport {
     /// cutter's term points at the cutter's own face out in the air) and a march along `−n` reaches no
     /// surface either. Neither a width nor a sheet is read from them; the walls near them are read by
     /// their own samples. Counted among `samples`; a grid where every sample is one of these measured
-    /// nothing ([`GapError::NoSamples`]).
+    /// nothing ([`GapError::NoSamples`]). A count above 0 is never a pass on its own: a sample with no
+    /// wall measured nothing, and a pass comes only from the proof over the whole bound.
     pub no_wall_samples: usize,
     /// One sample point with no wall (the first found), `None` when `no_wall_samples` is 0.
     pub no_wall_location: Option<Vec3>,

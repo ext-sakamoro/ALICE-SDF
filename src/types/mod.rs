@@ -733,7 +733,8 @@ pub enum SdfNode {
     },
     /// 2D closed polygon extruded along Z. Any simple outline, convex or concave, of 3 vertices or
     /// more: the 2D distance is exact (nearest edge, sign by the even-odd crossing count). A region
-    /// with holes is the `XOR` of its outlines (even-odd fill, still exact). GPU trees take up to
+    /// with holes is the `XOR` of its outlines (even-odd fill), exact only when the outlines are nested
+    /// and do not touch or cross each other. GPU trees take up to
     /// `MAX_GPU_POLYGON_VERTICES` vertices per polygon.
     Polygon2D {
         /// Vertices, in order around the outline (either winding)
