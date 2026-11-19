@@ -431,7 +431,7 @@ jobs:
       # Deep and wide trees through WGSL / GLSL / HLSL on the default test-thread stack,
       # every output's SHA-256 against the recorded list (file cfg needs gpu + glsl + hlsl)
       - name: Deep tree transpile (gpu + glsl + hlsl)
-        run: cargo test --features gpu,glsl,hlsl --test transpile_deep_tree
+        run: cargo test --features gpu,glsl,hlsl --test transpile_deep_tree --test transpile_deep_nest
 
       # FFI は extern "C" の実 export symbol を叩いて native evaluator と bit 突合する。
       # `cargo test --lib --features ffi,…` は unit のみで、この統合 test は走らない。
