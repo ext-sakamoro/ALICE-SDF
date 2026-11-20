@@ -48,6 +48,7 @@ pub mod build;
 pub mod cellroot;
 #[cfg(feature = "gpu")]
 pub mod gpu;
+pub mod kink;
 pub mod nearest;
 pub mod stream;
 
@@ -220,6 +221,8 @@ pub struct Sheet {
     pub hi: Vec3,
     /// The coarsest cell size (the outside lower bound uses `3 * hc`).
     pub hc: f32,
+    /// The kink cells, where `d_b` is computed exactly from the sheet's triangles and rim segments ([`kink`]).
+    pub kink: Option<std::sync::Arc<kink::KinkSheet>>,
 }
 
 /// What one sheet says at a point.
@@ -404,6 +407,8 @@ struct CellLookup {
     q0: f32,
     q1: f32,
     h: f32,
+    /// Which cell answered: level, active brick, cell `x * 64 + y * 8 + z` (for the kink cells).
+    at: (usize, usize, usize),
 }
 
 impl Sheet {
@@ -477,7 +482,7 @@ impl Sheet {
     /// The cell value at `p` from the first level that answers, interpolating the first `nmax` channels only
     /// (the march needs `s` and `d_b`; attributes are read once, at the hit).
     fn lookup(&self, p: Vec3, nmax: usize) -> Option<CellLookup> {
-        for lv in &self.levels {
+        for (li, lv) in self.levels.iter().enumerate() {
             let u = (p - lv.lo) / lv.h;
             let b = BRICK as f32;
             let bi = [(u.x / b).floor(), (u.y / b).floor(), (u.z / b).floor()];
@@ -509,6 +514,7 @@ impl Sheet {
                 q0: 0.0,
                 q1: 0.0,
                 h: lv.h,
+                at: (li, k, (c[0] * BRICK + c[1]) * BRICK + c[2]),
             };
             for (ci, ch) in lv.channels.iter().take(8.min(nmax)).enumerate() {
                 let mut acc = 0.0f32;
@@ -586,7 +592,12 @@ impl Sheet {
                 lip: 0.0,
             };
         };
-        let (s, db) = (c.values[0], c.values[1]);
+        let s = c.values[0];
+        // in a kink cell d_b is the exact value from the cell's triangles and rim segments, not the interpolation
+        let db = match &self.kink {
+            Some(ks) if nmax >= 2 => ks.db_at(c.at.0, c.at.1, c.at.2, p).unwrap_or(c.values[1]),
+            _ => c.values[1],
+        };
         let (f, g, masked) = if rule == ValidRule::CellV1 && c.umin > HALF_DIAG * c.h + c.q0 {
             let v = (c.umin - c.q0 - HALF_DIAG * c.h)
                 .max(c.ucorner - c.q0)
@@ -836,7 +847,10 @@ impl SheetField {
     pub fn march_fixed_step(&self, origin: Vec3, dir: Vec3, tmax: f32, h: f32) -> MarchResult {
         let k_n = self.sheets.len();
         let mut gprev: Vec<Option<f32>> = (0..k_n)
-            .map(|k| self.sheet_in_box(k, origin).then(|| self.sheets[k].sample_geom(origin, self.rule).g))
+            .map(|k| {
+                self.sheet_in_box(k, origin)
+                    .then(|| self.sheets[k].sample_geom(origin, self.rule).g)
+            })
             .collect();
         let mut i = 1u64;
         let mut tprev = 0.0f64;
@@ -944,7 +958,11 @@ impl SheetField {
                     let mut gq = gp;
                     let mut tq = tprev;
                     for j in 1..=n {
-                        let tj = if j == n { t } else { tprev + (t - tprev) * j as f32 / n as f32 };
+                        let tj = if j == n {
+                            t
+                        } else {
+                            tprev + (t - tprev) * j as f32 / n as f32
+                        };
                         let gj = sh.sample_geom(origin + dir * tj, self.rule).g;
                         if (gj < 0.0) != (gq < 0.0) {
                             let (mut a, mut b, mut ga) = (tq, tj, gq);
@@ -1173,10 +1191,7 @@ mod dip_tests {
         let lip = a.3.max(b.3);
         assert!(
             a.2 + b.2 > lip * (b.0 - a.0)
-                || sh
-                    .dip(o, d, (a.0, a.1, a.2), (b.0, b.1, b.2), lip, rule)
-                    .0
-                    == Dip::Clear
+                || sh.dip(o, d, (a.0, a.1, a.2), (b.0, b.1, b.2), lip, rule).0 == Dip::Clear
         );
     }
     /// The bound on the search (M1): a step the bound cannot close (a slope bound far above the true slope keeps
@@ -1196,8 +1211,15 @@ mod dip_tests {
         // both ends above the slab (no zero inside), with a slope bound 1e6 times the true one: nothing closes
         let (a, b) = (at(-0.03), at(-0.0035));
         let (r, nodes) = sh.dip(o, d, a, b, 1e6, rule);
-        assert_eq!(r, Dip::Exhausted, "an unfinished search must not answer {r:?}");
-        assert_eq!(nodes, DIP_NODE_CAP, "the cap was not the bound that stopped it");
+        assert_eq!(
+            r,
+            Dip::Exhausted,
+            "an unfinished search must not answer {r:?}"
+        );
+        assert_eq!(
+            nodes, DIP_NODE_CAP,
+            "the cap was not the bound that stopped it"
+        );
         // the same ends with the true slope bound: closed (Clear) within the cap
         let (r, nodes) = sh.dip(o, d, a, b, 1.84, rule);
         assert_eq!(r, Dip::Clear);
