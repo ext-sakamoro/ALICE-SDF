@@ -1065,13 +1065,48 @@ pub(crate) fn render_reads(
 /// What a node waits for when its child's value comes back
 enum WalkWait<'n, L: ShaderLang> {
     /// the first operand's value: then the second operand, at `point`
-    Second(&'n SdfNode, String, Option<usize>),
+    Second {
+        op: Binary,
+        second: &'n SdfNode,
+        point: String,
+        frame: Option<usize>,
+    },
     /// both values: the operation combines them
-    Combine(&'n SdfNode, String, Option<usize>),
+    Combine(Binary, String, Option<usize>),
     /// the child's value is the wrapper's
     Pass(Option<usize>),
     /// the wrapper's code after its child's value
     After(AfterChild<'n, L>, Option<usize>),
+}
+
+/// A binary operation and its parameters, read once from its node by
+/// [`GenericTranspiler::binary_operands`] (the operation [`GenericTranspiler::combine_binary`] combines)
+#[derive(Clone, Copy)]
+enum Binary {
+    Union,
+    Intersection,
+    Subtraction,
+    SmoothUnion { k: f32 },
+    SmoothIntersection { k: f32 },
+    SmoothSubtraction { k: f32 },
+    ChamferUnion { r: f32 },
+    ChamferIntersection { r: f32 },
+    ChamferSubtraction { r: f32 },
+    StairsUnion { r: f32, n: f32 },
+    StairsIntersection { r: f32, n: f32 },
+    StairsSubtraction { r: f32, n: f32 },
+    Xor,
+    Morph { t: f32 },
+    ColumnsUnion { r: f32, n: f32 },
+    ColumnsIntersection { r: f32, n: f32 },
+    ColumnsSubtraction { r: f32, n: f32 },
+    Pipe { r: f32 },
+    Engrave { r: f32 },
+    Groove { ra: f32, rb: f32 },
+    Tongue { ra: f32, rb: f32 },
+    ExpSmoothUnion { k: f32 },
+    ExpSmoothIntersection { k: f32 },
+    ExpSmoothSubtraction { k: f32 },
 }
 
 /// The rest of a wrapper's code once its child's value is known ([`GenericTranspiler::wrapper_after_child`])
@@ -1987,50 +2022,48 @@ impl<L: ShaderLang> GenericTranspiler<L> {
     /// order the recursive form emitted it, so the output is the same text
     fn walk(&mut self, root: &SdfNode, point_var: &str, code: &mut String) -> String {
         let mut waits: Vec<WalkWait<'_, L>> = Vec::new();
-        let mut next = Some((root, point_var.to_owned()));
-        loop {
-            let mut value = match next.take() {
-                Some((node, point)) => {
-                    let frame = self.open_scale_frame(node);
-                    if let Some((first, _)) = Self::binary_operands(node) {
-                        self.binary_before_operands(node);
-                        waits.push(WalkWait::Second(node, point.clone(), frame));
-                        next = Some((first, point));
-                        continue;
-                    }
-                    if let Some((child, child_point)) =
-                        self.wrapper_before_child(node, &point, code)
-                    {
-                        waits.push(WalkWait::Pass(frame));
-                        next = Some((child, child_point));
-                        continue;
-                    }
-                    if let Some((child, child_point, after)) =
-                        self.wrapper_after_child(node, &point, code)
-                    {
-                        waits.push(WalkWait::After(after, frame));
-                        next = Some((child, child_point));
-                        continue;
-                    }
-                    let value = self.transpile_node_value(node, &point, code);
-                    self.close_scale_frame(frame, &value);
-                    value
-                }
-                None => unreachable!("the walk always has a node or a value"),
-            };
+        let (mut node, mut point) = (root, point_var.to_owned());
+        'descend: loop {
+            let frame = self.open_scale_frame(node);
+            if let Some((op, first, second)) = Self::binary_operands(node) {
+                self.binary_before_operands(op);
+                waits.push(WalkWait::Second {
+                    op,
+                    second,
+                    point: point.clone(),
+                    frame,
+                });
+                node = first;
+                continue;
+            }
+            if let Some((child, child_point)) = self.wrapper_before_child(node, &point, code) {
+                waits.push(WalkWait::Pass(frame));
+                (node, point) = (child, child_point);
+                continue;
+            }
+            if let Some((child, child_point, after)) = self.wrapper_after_child(node, &point, code)
+            {
+                waits.push(WalkWait::After(after, frame));
+                (node, point) = (child, child_point);
+                continue;
+            }
+            let mut value = self.transpile_node_value(node, &point, code);
+            self.close_scale_frame(frame, &value);
             loop {
                 match waits.pop() {
                     None => return value,
-                    Some(WalkWait::Second(node, point, frame)) => {
-                        let Some((_, second)) = Self::binary_operands(node) else {
-                            unreachable!("a binary operation has two operands");
-                        };
-                        waits.push(WalkWait::Combine(node, value, frame));
-                        next = Some((second, point));
-                        break;
+                    Some(WalkWait::Second {
+                        op,
+                        second,
+                        point: second_point,
+                        frame,
+                    }) => {
+                        waits.push(WalkWait::Combine(op, value, frame));
+                        (node, point) = (second, second_point);
+                        continue 'descend;
                     }
-                    Some(WalkWait::Combine(node, first, frame)) => {
-                        value = self.combine_binary(node, &first, &value, code);
+                    Some(WalkWait::Combine(op, first, frame)) => {
+                        value = self.combine_binary(&op, &first, &value, code);
                         self.close_scale_frame(frame, &value);
                     }
                     Some(WalkWait::Pass(frame)) => self.close_scale_frame(frame, &value),
@@ -3502,14 +3535,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             | SdfNode::ExpSmoothUnion { .. }
             | SdfNode::ExpSmoothIntersection { .. }
             | SdfNode::ExpSmoothSubtraction { .. } => {
-                // reached only when called directly: the walk combines binary operations itself
-                let Some((a, b)) = Self::binary_operands(node) else {
-                    unreachable!("a binary operation has two operands");
-                };
-                self.binary_before_operands(node);
-                let d_a = self.transpile_node_inner(a, point_var, code);
-                let d_b = self.transpile_node_inner(b, point_var, code);
-                self.combine_binary(node, &d_a, &d_b, code)
+                // the walk combines binary operations itself (it never sends one here)
+                self.walk(node, point_var, code)
             }
 
             // Division Exorcism for SmoothUnion
@@ -3537,10 +3564,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             | SdfNode::Pose { .. }
             | SdfNode::Shear { .. }
             | SdfNode::Animated { .. } => {
-                let Some((child, p)) = self.wrapper_before_child(node, point_var, code) else {
-                    unreachable!("a wrapper that emits its code before its child");
-                };
-                self.transpile_node_inner(child, &p, code)
+                // the walk emits wrappers itself (it never sends one here)
+                self.walk(node, point_var, code)
             }
 
             SdfNode::Scale { .. }
@@ -3561,11 +3586,8 @@ impl<L: ShaderLang> GenericTranspiler<L> {
             | SdfNode::SineDisplacement { .. }
             | SdfNode::SweepBezier { .. }
             | SdfNode::PolarRepeat { .. } => {
-                let Some((child, p, post)) = self.wrapper_after_child(node, point_var, code) else {
-                    unreachable!("a wrapper that emits code after its child");
-                };
-                let d = self.transpile_node_inner(child, &p, code);
-                post(self, d, code)
+                // the walk emits wrappers itself (it never sends one here)
+                self.walk(node, point_var, code)
             }
 
             // ============ Modifiers ============
@@ -4200,44 +4222,67 @@ impl<L: ShaderLang> GenericTranspiler<L> {
         }
     }
 
-    /// The two operands of a binary operation (the ones [`Self::combine_binary`] combines)
-    fn binary_operands(node: &SdfNode) -> Option<(&SdfNode, &SdfNode)> {
-        match node {
-            SdfNode::Union { a, b, .. }
-            | SdfNode::Intersection { a, b, .. }
-            | SdfNode::Subtraction { a, b, .. }
-            | SdfNode::SmoothUnion { a, b, .. }
-            | SdfNode::SmoothIntersection { a, b, .. }
-            | SdfNode::SmoothSubtraction { a, b, .. }
-            | SdfNode::ChamferUnion { a, b, .. }
-            | SdfNode::ChamferIntersection { a, b, .. }
-            | SdfNode::ChamferSubtraction { a, b, .. }
-            | SdfNode::StairsUnion { a, b, .. }
-            | SdfNode::StairsIntersection { a, b, .. }
-            | SdfNode::StairsSubtraction { a, b, .. }
-            | SdfNode::XOR { a, b, .. }
-            | SdfNode::Morph { a, b, .. }
-            | SdfNode::ColumnsUnion { a, b, .. }
-            | SdfNode::ColumnsIntersection { a, b, .. }
-            | SdfNode::ColumnsSubtraction { a, b, .. }
-            | SdfNode::Pipe { a, b, .. }
-            | SdfNode::Engrave { a, b, .. }
-            | SdfNode::Groove { a, b, .. }
-            | SdfNode::Tongue { a, b, .. }
-            | SdfNode::ExpSmoothUnion { a, b, .. }
-            | SdfNode::ExpSmoothIntersection { a, b, .. }
-            | SdfNode::ExpSmoothSubtraction { a, b, .. } => Some((a, b)),
-            _ => None,
-        }
+    /// The operation and the two operands of a binary operation (what [`Self::combine_binary`] combines)
+    fn binary_operands(node: &SdfNode) -> Option<(Binary, &SdfNode, &SdfNode)> {
+        let (op, a, b) = match node {
+            SdfNode::Union { a, b, .. } => (Binary::Union, a, b),
+            SdfNode::Intersection { a, b, .. } => (Binary::Intersection, a, b),
+            SdfNode::Subtraction { a, b, .. } => (Binary::Subtraction, a, b),
+            SdfNode::SmoothUnion { a, b, k, .. } => (Binary::SmoothUnion { k: *k }, a, b),
+            SdfNode::SmoothIntersection { a, b, k, .. } => {
+                (Binary::SmoothIntersection { k: *k }, a, b)
+            }
+            SdfNode::SmoothSubtraction { a, b, k, .. } => {
+                (Binary::SmoothSubtraction { k: *k }, a, b)
+            }
+            SdfNode::ChamferUnion { a, b, r, .. } => (Binary::ChamferUnion { r: *r }, a, b),
+            SdfNode::ChamferIntersection { a, b, r, .. } => {
+                (Binary::ChamferIntersection { r: *r }, a, b)
+            }
+            SdfNode::ChamferSubtraction { a, b, r, .. } => {
+                (Binary::ChamferSubtraction { r: *r }, a, b)
+            }
+            SdfNode::StairsUnion { a, b, r, n, .. } => (Binary::StairsUnion { r: *r, n: *n }, a, b),
+            SdfNode::StairsIntersection { a, b, r, n, .. } => {
+                (Binary::StairsIntersection { r: *r, n: *n }, a, b)
+            }
+            SdfNode::StairsSubtraction { a, b, r, n, .. } => {
+                (Binary::StairsSubtraction { r: *r, n: *n }, a, b)
+            }
+            SdfNode::XOR { a, b, .. } => (Binary::Xor, a, b),
+            SdfNode::Morph { a, b, t, .. } => (Binary::Morph { t: *t }, a, b),
+            SdfNode::ColumnsUnion { a, b, r, n, .. } => {
+                (Binary::ColumnsUnion { r: *r, n: *n }, a, b)
+            }
+            SdfNode::ColumnsIntersection { a, b, r, n, .. } => {
+                (Binary::ColumnsIntersection { r: *r, n: *n }, a, b)
+            }
+            SdfNode::ColumnsSubtraction { a, b, r, n, .. } => {
+                (Binary::ColumnsSubtraction { r: *r, n: *n }, a, b)
+            }
+            SdfNode::Pipe { a, b, r, .. } => (Binary::Pipe { r: *r }, a, b),
+            SdfNode::Engrave { a, b, r, .. } => (Binary::Engrave { r: *r }, a, b),
+            SdfNode::Groove { a, b, ra, rb, .. } => (Binary::Groove { ra: *ra, rb: *rb }, a, b),
+            SdfNode::Tongue { a, b, ra, rb, .. } => (Binary::Tongue { ra: *ra, rb: *rb }, a, b),
+            SdfNode::ExpSmoothUnion { a, b, k, .. } => (Binary::ExpSmoothUnion { k: *k }, a, b),
+            SdfNode::ExpSmoothIntersection { a, b, k, .. } => {
+                (Binary::ExpSmoothIntersection { k: *k }, a, b)
+            }
+            SdfNode::ExpSmoothSubtraction { a, b, k, .. } => {
+                (Binary::ExpSmoothSubtraction { k: *k }, a, b)
+            }
+            _ => return None,
+        };
+        Some((op, a.as_ref(), b.as_ref()))
     }
 
     /// What a binary operation emits before its operands (a helper it needs)
-    fn binary_before_operands(&mut self, node: &SdfNode) {
+    fn binary_before_operands(&mut self, op: Binary) {
         if matches!(
-            node,
-            SdfNode::ColumnsUnion { .. }
-                | SdfNode::ColumnsIntersection { .. }
-                | SdfNode::ColumnsSubtraction { .. }
+            op,
+            Binary::ColumnsUnion { .. }
+                | Binary::ColumnsIntersection { .. }
+                | Binary::ColumnsSubtraction { .. }
         ) {
             self.ensure_helper("columns");
         }
@@ -4245,30 +4290,24 @@ impl<L: ShaderLang> GenericTranspiler<L> {
 
     /// The code of a binary operation from the values of its two operands
     #[allow(clippy::too_many_lines)]
-    fn combine_binary(
-        &mut self,
-        node: &SdfNode,
-        d_a: &str,
-        d_b: &str,
-        code: &mut String,
-    ) -> String {
-        match node {
-            SdfNode::Union { .. } => {
+    fn combine_binary(&mut self, op: &Binary, d_a: &str, d_b: &str, code: &mut String) -> String {
+        match op {
+            Binary::Union => {
                 let var = self.next_var();
                 code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
                 var
             }
-            SdfNode::Intersection { .. } => {
+            Binary::Intersection => {
                 let var = self.next_var();
                 code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
                 var
             }
-            SdfNode::Subtraction { .. } => {
+            Binary::Subtraction => {
                 let var = self.next_var();
                 code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
                 var
             }
-            SdfNode::SmoothUnion { k, .. } => {
+            Binary::SmoothUnion { k } => {
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
                     code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
@@ -4290,7 +4329,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::SmoothIntersection { k, .. } => {
+            Binary::SmoothIntersection { k } => {
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
                     code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
@@ -4312,7 +4351,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::SmoothSubtraction { k, .. } => {
+            Binary::SmoothSubtraction { k } => {
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
                     code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
@@ -4336,7 +4375,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::ChamferUnion { r, .. } => {
+            Binary::ChamferUnion { r } => {
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
                     code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
@@ -4353,7 +4392,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::ChamferIntersection { r, .. } => {
+            Binary::ChamferIntersection { r } => {
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
                     code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
@@ -4370,7 +4409,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::ChamferSubtraction { r, .. } => {
+            Binary::ChamferSubtraction { r } => {
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
                     code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
@@ -4389,7 +4428,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::StairsUnion { r, n, .. } => {
+            Binary::StairsUnion { r, n } => {
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
                     code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
@@ -4400,7 +4439,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 self.emit_stairs_union_inline(code, d_a, d_b, &r_s, &n_s, &var);
                 var
             }
-            SdfNode::StairsIntersection { r, n, .. } => {
+            Binary::StairsIntersection { r, n } => {
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
                     code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
@@ -4417,7 +4456,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_float(&var, &format!("-{}", su)));
                 var
             }
-            SdfNode::StairsSubtraction { r, n, .. } => {
+            Binary::StairsSubtraction { r, n } => {
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && *r < FOLD_EPSILON {
                     code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
@@ -4432,7 +4471,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 code.push_str(&L::decl_float(&var, &format!("-{}", su)));
                 var
             }
-            SdfNode::XOR { .. } => {
+            Binary::Xor => {
                 let var = self.next_var();
                 code.push_str(&L::decl_float(
                     &var,
@@ -4440,13 +4479,13 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::Morph { t, .. } => {
+            Binary::Morph { t } => {
                 let var = self.next_var();
                 let t_s = self.param(*t);
                 code.push_str(&L::decl_float(&var, &L::mix_expr(d_a, d_b, &t_s)));
                 var
             }
-            SdfNode::ColumnsUnion { r, n, .. } => {
+            Binary::ColumnsUnion { r, n } => {
                 let var = self.next_var();
                 let r_s = self.param(*r);
                 let n_s = self.param(*n);
@@ -4456,7 +4495,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::ColumnsIntersection { r, n, .. } => {
+            Binary::ColumnsIntersection { r, n } => {
                 let var = self.next_var();
                 let r_s = self.param(*r);
                 let n_s = self.param(*n);
@@ -4466,7 +4505,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::ColumnsSubtraction { r, n, .. } => {
+            Binary::ColumnsSubtraction { r, n } => {
                 let var = self.next_var();
                 let r_s = self.param(*r);
                 let n_s = self.param(*n);
@@ -4476,7 +4515,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::Pipe { r, .. } => {
+            Binary::Pipe { r } => {
                 let var = self.next_var();
                 let r_s = self.param(*r);
                 code.push_str(&L::decl_float(
@@ -4485,7 +4524,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::Engrave { r, .. } => {
+            Binary::Engrave { r } => {
                 let var = self.next_var();
                 let r_s = self.param(*r);
                 code.push_str(&L::decl_float(
@@ -4497,7 +4536,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::Groove { ra, rb, .. } => {
+            Binary::Groove { ra, rb } => {
                 let var = self.next_var();
                 let ra_s = self.param(*ra);
                 let rb_s = self.param(*rb);
@@ -4510,7 +4549,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::Tongue { ra, rb, .. } => {
+            Binary::Tongue { ra, rb } => {
                 let var = self.next_var();
                 let ra_s = self.param(*ra);
                 let rb_s = self.param(*rb);
@@ -4523,7 +4562,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::ExpSmoothUnion { k, .. } => {
+            Binary::ExpSmoothUnion { k } => {
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
                     code.push_str(&L::decl_float(&var, &format!("min({}, {})", d_a, d_b)));
@@ -4547,7 +4586,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::ExpSmoothIntersection { k, .. } => {
+            Binary::ExpSmoothIntersection { k } => {
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
                     code.push_str(&L::decl_float(&var, &format!("max({}, {})", d_a, d_b)));
@@ -4570,7 +4609,7 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            SdfNode::ExpSmoothSubtraction { k, .. } => {
+            Binary::ExpSmoothSubtraction { k } => {
                 let var = self.next_var();
                 if self.mode == TranspileModeLang::Hardcoded && k.abs() < FOLD_EPSILON {
                     code.push_str(&L::decl_float(&var, &format!("max({}, -{})", d_a, d_b)));
@@ -4593,7 +4632,6 @@ impl<L: ShaderLang> GenericTranspiler<L> {
                 ));
                 var
             }
-            _ => unreachable!("combine_binary is called only with a binary operation"),
         }
     }
 
