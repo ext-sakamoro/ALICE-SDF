@@ -469,6 +469,14 @@ impl Sheet {
         (Dip::Clear, nodes)
     }
 
+    /// The exact `s` and unsigned distance at `p` when `p`'s answering cell is an s cell ([`kink::CELL_S`]).
+    pub(crate) fn exact_s_here(&self, p: Vec3) -> Option<(f32, f32)> {
+        let ks = self.kink.as_ref()?;
+        let c = self.lookup(p, 0)?;
+        let e = ks.exact_at(c.at.0, c.at.1, c.at.2, p)?;
+        e.s.map(|s| (s, e.ud))
+    }
+
     /// [`Self::crossing_inside`] for the cell walk (M2).
     pub(crate) fn crossing_accepted(&self, p: Vec3, rule: ValidRule) -> bool {
         self.crossing_inside(p, rule)
@@ -592,12 +600,18 @@ impl Sheet {
                 lip: 0.0,
             };
         };
-        let s = c.values[0];
-        // in a kink cell d_b is the exact value from the cell's triangles and rim segments, not the interpolation
-        let db = match &self.kink {
-            Some(ks) if nmax >= 2 => ks.db_at(c.at.0, c.at.1, c.at.2, p).unwrap_or(c.values[1]),
-            _ => c.values[1],
-        };
+        // in a flagged cell s and / or d_b are the exact values from the cell's triangles and rim segments, not the
+        // interpolation ([`kink`])
+        let (mut s, mut db) = (c.values[0], c.values[1]);
+        if let Some(e) = self
+            .kink
+            .as_ref()
+            .filter(|_| nmax >= 2)
+            .and_then(|ks| ks.exact_at(c.at.0, c.at.1, c.at.2, p))
+        {
+            s = e.s.unwrap_or(s);
+            db = e.db.unwrap_or(db);
+        }
         let (f, g, masked) = if rule == ValidRule::CellV1 && c.umin > HALF_DIAG * c.h + c.q0 {
             let v = (c.umin - c.q0 - HALF_DIAG * c.h)
                 .max(c.ucorner - c.q0)

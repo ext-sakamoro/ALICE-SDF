@@ -1113,7 +1113,7 @@ fn outside_bound(p: vec3<f32>, s: SheetInfo) -> f32 {
 // kink cells (the CPU sheet_field::kink): the exact d_b from the cell's triangles and rim segments. A sheet's block
 // starts at SheetInfo.p0 in IX (NONE: no kink cells); layout in kink::gpu_layout.
 fn kf(i: u32) -> f32 { return bitcast<f32>(IX[i]); }
-fn kv(hdr: u32, v: u32) -> vec3<f32> { let b = hdr + IX[hdr + 4u] + 6u * v; return vec3<f32>(kf(b), kf(b + 1u), kf(b + 2u)); }
+fn kv(hdr: u32, v: u32) -> vec3<f32> { let b = hdr + IX[hdr + 4u] + 7u * v; return vec3<f32>(kf(b), kf(b + 1u), kf(b + 2u)); }
 
 // closest point of triangle abc to p and its feature: xyz the point, w the feature (0 face, 1 + e edge e = ab, bc, ca,
 // 4 + i corner i) (Ericson 5.1.5, line for line with the CPU closest_on_tri; a degenerate triangle by its edges)
@@ -1168,27 +1168,32 @@ fn k_closest(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> vec4<f32
     return vec4<f32>(a + ab * (vb * den) + ac * (vc * den), 0.0);
 }
 
-// x: the exact d_b at p, y: 1 when (level li, active brick bk, cell ci) of the sheet whose block starts at hdr is a
-// kink cell (0: interpolate as before)
-fn kink_db(hdr: u32, li: u32, bk: u32, ci: u32, pw: vec3<f32>) -> vec2<f32> {
-    if (li >= IX[hdr + 9u]) { return vec2<f32>(0.0, 0.0); }
+// the cell record (x = 1 found, y = ref offset, z = triangles | segments << 16, w = flags: 1 exact d_b, 2 exact s) of
+// (level li, active brick bk, cell ci) of the sheet whose kink block starts at hdr
+fn kink_cell(hdr: u32, li: u32, bk: u32, ci: u32) -> vec4<u32> {
+    if (li >= IX[hdr + 9u]) { return vec4<u32>(0u); }
     let soff = IX[hdr + 10u + 2u * li];
     let slen = IX[hdr + 11u + 2u * li];
-    if (bk >= slen) { return vec2<f32>(0.0, 0.0); }
+    if (bk >= slen) { return vec4<u32>(0u); }
     let slot = IX[hdr + soff + bk];
-    if (slot == NONE) { return vec2<f32>(0.0, 0.0); }
+    if (slot == NONE) { return vec4<u32>(0u); }
     let kb = hdr + soff + slen + 17u * slot;
     let wi = ci / 32u;
     let bit = ci % 32u;
     let m = IX[kb + wi];
-    if (((m >> bit) & 1u) == 0u) { return vec2<f32>(0.0, 0.0); }
+    if (((m >> bit) & 1u) == 0u) { return vec4<u32>(0u); }
     var below = countOneBits(m & ((1u << bit) - 1u));
     for (var j = 0u; j < wi; j = j + 1u) { below = below + countOneBits(IX[kb + j]); }
-    let rec = hdr + IX[hdr + 7u] + 2u * (IX[kb + 16u] + below);
-    let off = IX[rec];
-    let ntri = IX[rec + 1u] & 0xffffu;
-    let nseg = IX[rec + 1u] >> 16u;
-    let refs = hdr + IX[hdr + 8u] + off;
+    let rec = hdr + IX[hdr + 7u] + 3u * (IX[kb + 16u] + below);
+    return vec4<u32>(1u, IX[rec], IX[rec + 1u], IX[rec + 2u]);
+}
+
+// the exact values at world point pw in the flagged cell rc (kink_cell): x s, y d_b, z the unsigned distance, w the
+// flags (the CPU KinkSheet::exact_at, line for line)
+fn kink_exact(hdr: u32, rc: vec4<u32>, pw: vec3<f32>) -> vec4<f32> {
+    let ntri = rc.z & 0xffffu;
+    let nseg = rc.z >> 16u;
+    let refs = hdr + IX[hdr + 8u] + rc.y;
     // local coordinates: the origin is a whole number of mm, so p - origin is exact
     let p = pw - vec3<f32>(kf(hdr + 1u), kf(hdr + 2u), kf(hdr + 3u));
     var best = 1e30;
@@ -1196,36 +1201,108 @@ fn kink_db(hdr: u32, li: u32, bk: u32, ci: u32, pw: vec3<f32>) -> vec2<f32> {
     var q = vec3<f32>(0.0);
     var feat = 0.0;
     for (var i = 0u; i < ntri; i = i + 1u) {
-        let fo = hdr + IX[hdr + 5u] + 7u * IX[refs + i];
+        let fo = hdr + IX[hdr + 5u] + 16u * IX[refs + i];
         let cq = k_closest(p, kv(hdr, IX[fo]), kv(hdr, IX[fo + 1u]), kv(hdr, IX[fo + 2u]));
         let d = length(p - cq.xyz);
         if (d < best) { best = d; fb = fo; q = cq.xyz; feat = cq.w; }
     }
-    if (fb == NONE) { return vec2<f32>(1e3, 1.0); }
+    if (fb == NONE) { return vec4<f32>(1e3, 1e3, 1e3, f32(rc.w)); }
     let r = p - q;
+    let ud = length(r);
+    let fn_ = vec3<f32>(kf(fb + 3u), kf(fb + 4u), kf(fb + 5u));
     var bnd = false;
-    var n = vec3<f32>(kf(fb + 3u), kf(fb + 4u), kf(fb + 5u));
+    var nb = fn_;
+    var ns = fn_;
     if (feat >= 0.5 && feat < 3.5) {
-        bnd = ((IX[fb + 6u] >> (u32(feat) - 1u)) & 1u) == 1u;
+        let e = u32(feat) - 1u;
+        bnd = ((IX[fb + 6u] >> e) & 1u) == 1u;
+        // edge e (ab, bc, ca) is opposite corner (e + 2) % 3
+        let eo = fb + 7u + 3u * ((e + 2u) % 3u);
+        ns = vec3<f32>(kf(eo), kf(eo + 1u), kf(eo + 2u));
     } else if (feat >= 3.5) {
-        let vb = hdr + IX[hdr + 4u] + 6u * IX[fb + u32(feat) - 4u];
-        if (IX[vb + 3u] != 0x7fc00000u) { bnd = true; n = vec3<f32>(kf(vb + 3u), kf(vb + 4u), kf(vb + 5u)); }
+        let vb = hdr + IX[hdr + 4u] + 7u * IX[fb + u32(feat) - 4u];
+        ns = vec3<f32>(kf(vb + 3u), kf(vb + 4u), kf(vb + 5u));
+        if (IX[vb + 6u] == 1u) { bnd = true; nb = ns / max(length(ns), 1e-12); }
     }
-    if (bnd) {
-        let sn = dot(r, n);
-        return vec2<f32>(sqrt(max(dot(r, r) - sn * sn, 0.0)), 1.0);
+    var s = 0.0;
+    var db = 0.0;
+    if ((rc.w & 2u) != 0u) {
+        if (bnd) { s = dot(r, nb); }
+        else if (ud >= 1e-12) { let sn = dot(r, ns); s = select(select(0.0, -ud, sn < 0.0), ud, sn > 0.0); }
     }
-    var dr = 1e3;
-    for (var i = 0u; i < nseg; i = i + 1u) {
-        let so = hdr + IX[hdr + 6u] + 2u * IX[refs + ntri + i];
-        let a = kv(hdr, IX[so]);
-        let e = kv(hdr, IX[so + 1u]) - a;
-        let ee = dot(e, e);
-        var t = 0.0;
-        if (ee > 0.0) { t = clamp(dot(q - a, e) / ee, 0.0, 1.0); }
-        dr = min(dr, length(q - (a + e * t)));
+    if ((rc.w & 1u) != 0u) {
+        if (bnd) {
+            let sn = dot(r, nb);
+            db = sqrt(max(dot(r, r) - sn * sn, 0.0));
+        } else {
+            var dr = 1e3;
+            for (var i = 0u; i < nseg; i = i + 1u) {
+                let so = hdr + IX[hdr + 6u] + 2u * IX[refs + ntri + i];
+                let a = kv(hdr, IX[so]);
+                let e = kv(hdr, IX[so + 1u]) - a;
+                let ee = dot(e, e);
+                var t = 0.0;
+                if (ee > 0.0) { t = clamp(dot(q - a, e) / ee, 0.0, 1.0); }
+                dr = min(dr, length(q - (a + e * t)));
+            }
+            db = -max(min(dr, kf(hdr) - ud), 0.0);
+        }
     }
-    return vec2<f32>(-max(min(dr, kf(hdr) - length(r)), 0.0), 1.0);
+    return vec4<f32>(s, db, ud, f32(rc.w));
+}
+
+// the exact (s, unsigned distance, 1) at p when p's answering cell of sheet k is an s cell, else z = 0
+fn exact_s_here(k: u32, p: vec3<f32>) -> vec3<f32> {
+    let sh = SHEETS[k];
+    if (sh.p0 == NONE) { return vec3<f32>(0.0); }
+    for (var li = 0u; li < sh.level_count; li = li + 1u) {
+        let lv = LEVELS[sh.level_start + li];
+        let u = (p - lv.lo) / lv.h;
+        let b = f32(BRICK);
+        let bi = floor(u / b);
+        if (any(bi < vec3<f32>(0.0)) || any(bi >= vec3<f32>(lv.nb))) { continue; }
+        let bu = vec3<u32>(bi);
+        let k_ = bitcast<i32>(IX[U.index_base + lv.index_off + (bu.x * lv.nb.y + bu.y) * lv.nb.z + bu.z]);
+        if (k_ < 0) { continue; }
+        let c = min(vec3<u32>(floor(u - bi * b)), vec3<u32>(BRICK - 1u));
+        let rc = kink_cell(sh.p0, li, u32(k_), (c.x * BRICK + c.y) * BRICK + c.z);
+        if (rc.x == 0u || (rc.w & 2u) == 0u) { return vec3<f32>(0.0); }
+        let e = kink_exact(sh.p0, rc, p);
+        return vec3<f32>(e.x, e.z, 1.0);
+    }
+    return vec3<f32>(0.0);
+}
+
+// the first accepted crossing of the exact s in [ta, tb] inside one s cell (the CPU Sheet::exact_cell_root): x 1 root /
+// 0 clear / 2 capped, y the root t, z s at the last sample
+fn exact_cell_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32, h: f32) -> vec3<f32> {
+    let sub = h / 512.0;
+    let e0 = exact_s_here(k, o + d * ta);
+    if (e0.z == 0.0) { return vec3<f32>(0.0, 0.0, 0.0); }
+    var a = ta; var sa = e0.x; var ua = e0.y;
+    var n = 0u;
+    loop {
+        if (a >= tb) { break; }
+        if (n >= 2048u) { return vec3<f32>(2.0, 0.0, sa); }
+        n = n + 1u;
+        let b = min(a + max(ua - JUMP_S, sub), tb);
+        let eb = exact_s_here(k, o + d * b);
+        if (eb.z == 0.0) { break; }
+        if ((sa < 0.0) != (eb.x < 0.0)) {
+            var l = a; var r = b; var sl = sa;
+            for (var it = 0; it < 40; it = it + 1) {
+                let m = 0.5 * (l + r);
+                let em = exact_s_here(k, o + d * m);
+                if (em.z == 0.0) { break; }
+                n = n + 1u;
+                if ((em.x < 0.0) == (sl < 0.0)) { l = m; sl = em.x; } else { r = m; }
+            }
+            let tm = 0.5 * (l + r);
+            if (crossing_inside(k, o + d * tm)) { return vec3<f32>(1.0, tm, eb.x); }
+        }
+        a = b; sa = eb.x; ua = eb.y;
+    }
+    return vec3<f32>(0.0, 0.0, sa);
 }
 
 // sheet k at p, interpolating the first nmax channels only (2 while marching; attributes once, at the hit)
@@ -1323,8 +1400,12 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
             vals[ci] = acc;
         }
         if (sh.p0 != NONE && nch >= 2u) {
-            let e = kink_db(sh.p0, li, u32(k_), (c.x * BRICK + c.y) * BRICK + c.z, p);
-            if (e.y > 0.5) { vals[1] = e.x; }
+            let rc = kink_cell(sh.p0, li, u32(k_), (c.x * BRICK + c.y) * BRICK + c.z);
+            if (rc.x == 1u) {
+                let e = kink_exact(sh.p0, rc, p);
+                if ((rc.w & 2u) != 0u) { vals[0] = e.x; }
+                if ((rc.w & 1u) != 0u) { vals[1] = e.y; }
+            }
         }
         let s = vals[0];
         let db = max(vals[1], 0.0);
@@ -1510,6 +1591,29 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
         if (d.z > 0.0) { ux = min(ux, (1.0 - q0.z) / d.z); } else if (d.z < 0.0) { ux = min(ux, -q0.z / d.z); }
         ux = max(ux, 0.0);
         let ue = min(ux, (tb - t) / cl.h);
+        // an s cell: the exact s from the cell's triangles (the CPU walk, line for line)
+        let ex = exact_s_here(k, p);
+        if (ex.z == 1.0) {
+            if (prev.z == 1.0 && ((prev.y < 0.0) != (ex.x < 0.0)) && abs(prev.y) <= JUMP_S && abs(ex.x) <= JUMP_S) {
+                var fa = prev.x; var fb = t;
+                let gfa = sample_sheet(k, o + d * fa, 2u).g;
+                for (var it = 0; it < 30; it = it + 1) {
+                    let m = 0.5 * (fa + fb);
+                    if ((sample_sheet(k, o + d * m, 2u).g < 0.0) == (gfa < 0.0)) { fa = m; } else { fb = m; }
+                }
+                let tm = 0.5 * (fa + fb);
+                if (crossing_inside(k, o + d * tm)) { return vec3<f32>(1.0, tm, amb); }
+            }
+            let tn = t + ux * cl.h;
+            prev.z = 0.0;
+            if (!cl.masked) {
+                let r = exact_cell_root(k, o, d, t, t + ue * cl.h, cl.h);
+                if (r.x == 1.0) { return vec3<f32>(1.0, r.y, amb); }
+                if (r.x == 2.0) { amb = amb + 1.0; } else { prev = vec3<f32>(tn, r.z, 1.0); }
+            }
+            t = tn + max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn));
+            continue;
+        }
         var cu = vec4<f32>(0.0);
         for (var c8 = 0u; c8 < 8u; c8 = c8 + 1u) {
             var poly = vec4<f32>(1.0, 0.0, 0.0, 0.0);

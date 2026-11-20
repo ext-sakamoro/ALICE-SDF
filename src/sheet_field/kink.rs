@@ -33,7 +33,13 @@ use glam::{DVec3, Vec3};
 /// The 4 bytes an ASKC file starts with.
 pub const ASKC_MAGIC: [u8; 4] = *b"ASKC";
 /// The ASKC version this reader takes.
-pub const ASKC_VERSION: u32 = 1;
+pub const ASKC_VERSION: u32 = 2;
+/// The oldest ASKC version this reader still takes (v1: exact `d_b` cells only).
+pub const ASKC_VERSION_MIN: u32 = 1;
+/// Cell flag: the march computes `d_b` exactly in this cell.
+pub const CELL_DB: u32 = 1;
+/// Cell flag: the march computes `s` (and the unsigned distance) exactly in this cell.
+pub const CELL_S: u32 = 2;
 /// `dist_to_rim` when a cell lists no rim segment (the builder's value).
 const NO_RIM: f64 = 1e3;
 
@@ -68,6 +74,8 @@ struct Face {
     v: [u32; 3],
     n: DVec3,
     rim: u8,
+    /// Edge pseudonormals by the opposite corner (0: edge bc, 1: ca, 2: ab); zero in a v1 file.
+    epn: [DVec3; 3],
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -75,6 +83,18 @@ struct Cell {
     off: u32,
     ntri: u16,
     nseg: u16,
+    flags: u32,
+}
+
+/// The exact values at a point of a flagged cell ([`CELL_DB`], [`CELL_S`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Exact {
+    /// `s` when the cell is an s cell.
+    pub s: Option<f32>,
+    /// `d_b` when the cell is a d_b cell.
+    pub db: Option<f32>,
+    /// The unsigned distance to the sheet (from the cell's triangles).
+    pub ud: f32,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -94,6 +114,8 @@ pub struct KinkSheet {
     faces: Vec<Face>,
     /// Per vertex: the normalized pseudonormal when it is a rim vertex.
     rim_vn: Vec<Option<DVec3>>,
+    /// Per vertex: the pseudonormal as the builder holds it (the sign of `s` at a vertex); v1: rim vertices only.
+    vn: Vec<DVec3>,
     segs: Vec<[u32; 2]>,
     levels: Vec<KinkLevel>,
     cells: Vec<Cell>,
@@ -212,43 +234,102 @@ impl KinkSheet {
         self.cell(level, brick, cell).is_some()
     }
 
-    /// The exact `d_b` at `p` when `p`'s cell (level, active brick, cell index `x*64 + y*8 + z`) is a kink cell.
+    /// The exact `d_b` at `p` when `p`'s cell (level, active brick, cell index `x*64 + y*8 + z`) is a `d_b` cell.
     #[must_use]
     pub fn db_at(&self, level: usize, brick: usize, cell: usize, p: Vec3) -> Option<f32> {
+        self.exact_at(level, brick, cell, p).and_then(|e| e.db)
+    }
+
+    /// The exact values at `p` when `p`'s cell is a flagged cell: `s` in an s cell, `d_b` in a `d_b` cell, and the
+    /// unsigned distance from the cell's triangles.
+    #[must_use]
+    pub fn exact_at(&self, level: usize, brick: usize, cell: usize, p: Vec3) -> Option<Exact> {
         let c = self.cell(level, brick, cell)?;
         let off = c.off as usize;
         let tris = &self.refs[off..off + c.ntri as usize];
         let segs = &self.refs[off + c.ntri as usize..off + c.ntri as usize + c.nseg as usize];
-        Some(self.exact_db(p.as_dvec3() - self.origin, tris, segs) as f32)
+        let pl = p.as_dvec3() - self.origin;
+        let Some(nf) = self.nearest(pl, tris) else {
+            // no triangle listed (not produced by the builder): no surface within the cell's radius
+            return Some(Exact {
+                s: (c.flags & CELL_S != 0).then_some(NO_RIM as f32),
+                db: (c.flags & CELL_DB != 0).then_some(NO_RIM as f32),
+                ud: NO_RIM as f32,
+            });
+        };
+        Some(Exact {
+            s: (c.flags & CELL_S != 0).then(|| self.exact_s(pl, nf) as f32),
+            db: (c.flags & CELL_DB != 0).then(|| self.exact_db(pl, nf, segs) as f32),
+            ud: (pl - nf.1).length() as f32,
+        })
     }
 
-    /// The exact `d_b` at local point `p` from the given triangles and rim segments (module docs).
-    fn exact_db(&self, p: DVec3, tris: &[u32], segs: &[u32]) -> f64 {
+    /// The flags of (level, active brick, cell) when it is a flagged cell.
+    #[must_use]
+    pub fn flags(&self, level: usize, brick: usize, cell: usize) -> Option<u32> {
+        self.cell(level, brick, cell).map(|c| c.flags)
+    }
+
+    /// The nearest of `tris` to local `p`: face, closest point, feature (the first of equal distances wins: the
+    /// builder's order, strictly nearer by more than 1e-15).
+    fn nearest(&self, p: DVec3, tris: &[u32]) -> Option<(usize, DVec3, Feature)> {
         let mut best = f64::INFINITY;
-        let mut hit: Option<(usize, DVec3, Feature)> = None;
+        let mut hit = None;
         for &f in tris {
             let fc = &self.faces[f as usize];
             let [a, b, c] = fc.v.map(|i| self.verts[i as usize]);
             let (q, feat) = closest_on_tri(p, a, b, c);
             let d = (p - q).length();
-            // the first of equal distances wins (the builder's order: strictly nearer by more than 1e-15)
             if d < best - 1e-15 {
                 best = d;
                 hit = Some((f as usize, q, feat));
             }
         }
-        let Some((f, q, feat)) = hit else {
-            // no triangle listed: the cell lies beyond the slab of every triangle (not produced by the builder)
-            return NO_RIM;
-        };
+        hit
+    }
+
+    /// The boundary normal when the closest feature is a rim edge (its face's normal) or a rim vertex (normalized).
+    fn boundary_normal(&self, f: usize, feat: Feature) -> Option<DVec3> {
         let fc = &self.faces[f];
-        let r = p - q;
-        let boundary_normal = match feat {
+        match feat {
             Feature::Edge(e) if fc.rim >> e & 1 == 1 => Some(fc.n),
             Feature::Vertex(i) => self.rim_vn[fc.v[i as usize] as usize],
             _ => None,
+        }
+    }
+
+    /// The exact `s` at local `p` (module docs): `r.n` on a rim feature, else the distance signed by the closest
+    /// feature's pseudonormal (face normal, edge pseudonormal, vertex pseudonormal).
+    fn exact_s(&self, p: DVec3, (f, q, feat): (usize, DVec3, Feature)) -> f64 {
+        let r = p - q;
+        if let Some(n) = self.boundary_normal(f, feat) {
+            return r.dot(n);
+        }
+        let ud = r.length();
+        if ud < 1e-12 {
+            return 0.0;
+        }
+        let fc = &self.faces[f];
+        let n = match feat {
+            Feature::Face => fc.n,
+            // edge e (ab, bc, ca) is opposite corner (e + 2) % 3
+            Feature::Edge(e) => fc.epn[(usize::from(e) + 2) % 3],
+            Feature::Vertex(i) => self.vn[fc.v[usize::from(i)] as usize],
         };
-        if let Some(n) = boundary_normal {
+        let sn = r.dot(n);
+        if sn > 0.0 {
+            ud
+        } else if sn < 0.0 {
+            -ud
+        } else {
+            0.0
+        }
+    }
+
+    /// The exact `d_b` at local `p` from the nearest triangle and the given rim segments (module docs).
+    fn exact_db(&self, p: DVec3, (f, q, feat): (usize, DVec3, Feature), segs: &[u32]) -> f64 {
+        let r = p - q;
+        if let Some(n) = self.boundary_normal(f, feat) {
             let sn = r.dot(n);
             return (r.length_squared() - sn * sn).max(0.0).sqrt();
         }
@@ -265,52 +346,64 @@ pub(crate) mod gpu_layout {
     /// Words before the per-level table: slab, origin x y z, then the offsets of verts, faces, segs, cells, refs, and
     /// the level count.
     pub const HEAD: usize = 10;
-    /// Words per vertex: x, y, z (local, f32 bits), pseudonormal x, y, z (f32 bits; x is [`NOT_RIM`] off the rim).
-    pub const VERT: usize = 6;
-    /// Words per face: a, b, c, normal x, y, z (f32 bits), rim mask.
-    pub const FACE: usize = 7;
+    /// Words per vertex: x, y, z (local, f32 bits), pseudonormal x, y, z (f32 bits, as the builder holds it), rim flag.
+    pub const VERT: usize = 7;
+    /// Words per face: a, b, c, normal x, y, z (f32 bits), rim mask, edge pseudonormals by the opposite corner (9).
+    pub const FACE: usize = 16;
+    /// Words per cell record: ref offset, triangles | segments << 16, flags.
+    pub const CELL: usize = 3;
     /// Words per kink brick: the cell mask (16), the first cell record.
     pub const BRICK: usize = 17;
-    /// The pseudonormal x of a vertex that is not on the rim (a NaN).
-    pub const NOT_RIM: u32 = 0x7fc0_0000;
 }
 
 impl KinkSheet {
     /// The sheet's kink block for the GPU index table ([`gpu_layout`]).
     pub(crate) fn gpu_block(&self) -> Vec<u32> {
-        use gpu_layout::{BRICK, FACE, HEAD, NOT_RIM, VERT};
+        use gpu_layout::{BRICK, CELL, FACE, HEAD, VERT};
+        let f = |x: f64| (x as f32).to_bits();
         let nl = self.levels.len();
         let mut b = vec![0u32; HEAD + 2 * nl];
-        b[0] = (self.slab as f32).to_bits();
+        b[0] = f(self.slab);
         // the origin is a whole number of mm (the exporter floors it), exact in f32
-        b[1] = (self.origin.x as f32).to_bits();
-        b[2] = (self.origin.y as f32).to_bits();
-        b[3] = (self.origin.z as f32).to_bits();
+        b[1] = f(self.origin.x);
+        b[2] = f(self.origin.y);
+        b[3] = f(self.origin.z);
         b[4] = b.len() as u32;
-        for (v, vn) in self.verts.iter().zip(&self.rim_vn) {
-            b.extend([v.x, v.y, v.z].map(|x| (x as f32).to_bits()));
-            match vn {
-                Some(n) => b.extend([n.x, n.y, n.z].map(|x| (x as f32).to_bits())),
-                None => b.extend([NOT_RIM, 0, 0]),
-            }
+        for ((v, vn), rim) in self.verts.iter().zip(&self.vn).zip(&self.rim_vn) {
+            b.extend([
+                f(v.x),
+                f(v.y),
+                f(v.z),
+                f(vn.x),
+                f(vn.y),
+                f(vn.z),
+                u32::from(rim.is_some()),
+            ]);
         }
         debug_assert_eq!(b.len(), b[4] as usize + VERT * self.verts.len());
         b[5] = b.len() as u32;
-        for f in &self.faces {
-            b.extend(f.v);
-            b.extend([f.n.x, f.n.y, f.n.z].map(|x| (x as f32).to_bits()));
-            b.push(u32::from(f.rim));
+        for fc in &self.faces {
+            b.extend(fc.v);
+            b.extend([f(fc.n.x), f(fc.n.y), f(fc.n.z)]);
+            b.push(u32::from(fc.rim));
+            for e in &fc.epn {
+                b.extend([f(e.x), f(e.y), f(e.z)]);
+            }
         }
         debug_assert_eq!(b.len(), b[5] as usize + FACE * self.faces.len());
         b[6] = b.len() as u32;
-        for s in &self.segs {
-            b.extend(s);
+        for sg in &self.segs {
+            b.extend(sg);
         }
         b[7] = b.len() as u32;
         for c in &self.cells {
-            b.push(c.off);
-            b.push(u32::from(c.ntri) | (u32::from(c.nseg) << 16));
+            b.extend([
+                c.off,
+                u32::from(c.ntri) | (u32::from(c.nseg) << 16),
+                c.flags,
+            ]);
         }
+        debug_assert_eq!(b.len(), b[7] as usize + CELL * self.cells.len());
         b[8] = b.len() as u32;
         b.extend_from_slice(&self.refs);
         b[9] = nl as u32;
@@ -387,11 +480,12 @@ impl KinkFile {
             return Err(KinkError::Format(format!("magic {magic:?}")));
         }
         let version = rd.u32()?;
-        if version != ASKC_VERSION {
+        if !(ASKC_VERSION_MIN..=ASKC_VERSION).contains(&version) {
             return Err(KinkError::Format(format!(
-                "version {version}, this reader takes {ASKC_VERSION}"
+                "version {version}, this reader takes {ASKC_VERSION_MIN}..={ASKC_VERSION}"
             )));
         }
+        let v2 = version >= 2;
         let ns = rd.count("sheets", COUNT_CAP)?;
         let mut sheets = Vec::with_capacity(ns);
         for k in 0..ns {
@@ -399,13 +493,31 @@ impl KinkFile {
             let slab = f64::from(rd.f32()?);
             let origin = DVec3::new(rd.f64()?, rd.f64()?, rd.f64()?);
             let nv = rd.count("vertices", COUNT_CAP)?;
-            let verts = (0..nv).map(|_| rd.v3()).collect::<io::Result<Vec<_>>>()?;
+            let mut verts = Vec::with_capacity(nv);
+            let mut vn = vec![DVec3::ZERO; nv];
+            let mut rim_vn = vec![None; nv];
+            for i in 0..nv {
+                verts.push(rd.v3()?);
+                if v2 {
+                    let n = rd.v3()?;
+                    let fl = rd.u32()?;
+                    vn[i] = n;
+                    if fl & 1 == 1 {
+                        rim_vn[i] = Some(n / n.length().max(1e-12));
+                    }
+                }
+            }
             let nf = rd.count("faces", COUNT_CAP)?;
             let mut faces = Vec::with_capacity(nf);
             for _ in 0..nf {
                 let v = [rd.u32()?, rd.u32()?, rd.u32()?];
                 let n = rd.v3()?;
                 let rim = rd.u32()?;
+                let epn = if v2 {
+                    [rd.v3()?, rd.v3()?, rd.v3()?]
+                } else {
+                    [DVec3::ZERO; 3]
+                };
                 if v.iter().any(|&i| i as usize >= nv) || rim > 7 {
                     return Err(bad(format!("face {v:?} rim {rim} (vertices {nv})")));
                 }
@@ -413,17 +525,20 @@ impl KinkFile {
                     v,
                     n,
                     rim: rim as u8,
+                    epn,
                 });
             }
-            let nrv = rd.count("rim vertices", COUNT_CAP)?;
-            let mut rim_vn = vec![None; nv];
-            for _ in 0..nrv {
-                let v = rd.u32()? as usize;
-                let n = rd.v3()?;
-                if v >= nv {
-                    return Err(bad(format!("rim vertex {v} (vertices {nv})")));
+            if !v2 {
+                let nrv = rd.count("rim vertices", COUNT_CAP)?;
+                for _ in 0..nrv {
+                    let v = rd.u32()? as usize;
+                    let n = rd.v3()?;
+                    if v >= nv {
+                        return Err(bad(format!("rim vertex {v} (vertices {nv})")));
+                    }
+                    vn[v] = n;
+                    rim_vn[v] = Some(n / n.length().max(1e-12));
                 }
-                rim_vn[v] = Some(n / n.length().max(1e-12));
             }
             let nseg = rd.count("segments", COUNT_CAP)?;
             let mut segs = Vec::with_capacity(nseg);
@@ -454,10 +569,16 @@ impl KinkFile {
             let ncell = rd.count("cell records", COUNT_CAP)?;
             let mut cells = Vec::with_capacity(ncell);
             for _ in 0..ncell {
+                let (off, ntri, nseg) = (rd.u32()?, rd.u16()?, rd.u16()?);
+                let flags = if v2 { rd.u32()? } else { CELL_DB };
+                if flags == 0 || flags > (CELL_DB | CELL_S) {
+                    return Err(bad(format!("cell flags {flags}")));
+                }
                 cells.push(Cell {
-                    off: rd.u32()?,
-                    ntri: rd.u16()?,
-                    nseg: rd.u16()?,
+                    off,
+                    ntri,
+                    nseg,
+                    flags,
                 });
             }
             let nref = rd.count("refs", COUNT_CAP)?;
@@ -511,6 +632,7 @@ impl KinkFile {
                     verts,
                     faces,
                     rim_vn,
+                    vn,
                     segs,
                     levels,
                     cells,
@@ -624,8 +746,10 @@ mod tests {
                 v: [0, 1, 2],
                 n: DVec3::Z,
                 rim,
+                epn: [DVec3::Z; 3],
             }],
             rim_vn,
+            vn: vec![DVec3::Z; 3],
             segs,
             levels: Vec::new(),
             cells: Vec::new(),
@@ -633,27 +757,94 @@ mod tests {
         }
     }
 
+    fn db(ks: &KinkSheet, p: DVec3, tris: &[u32], segs: &[u32]) -> f64 {
+        ks.exact_db(p, ks.nearest(p, tris).unwrap(), segs)
+    }
+
+    fn sv(ks: &KinkSheet, p: DVec3, tris: &[u32]) -> f64 {
+        ks.exact_s(p, ks.nearest(p, tris).unwrap())
+    }
+
     #[test]
     fn exact_db_by_closed_form() {
         // oracle: the definition evaluated by hand on one triangle whose edge ab (y = 0) is the rim
         let ks = one_triangle(0b001, &[0, 1], vec![[0, 1]]);
         // beyond the rim edge ab, 0.3 below the plane line: d_b = in-plane distance to the edge = 0.25
-        let v = ks.exact_db(DVec3::new(0.5, -0.25, 0.3), &[0], &[0]);
+        let v = db(&ks, DVec3::new(0.5, -0.25, 0.3), &[0], &[0]);
         assert!((v - 0.25).abs() < 1e-12, "{v}");
         // inside, 0.2 from the rim, on the sheet: d_b = -min(0.2, H - 0) = -0.1 (the slab H = 0.1 clamps)
-        let v = ks.exact_db(DVec3::new(0.3, 0.2, 0.0), &[0], &[0]);
+        let v = db(&ks, DVec3::new(0.3, 0.2, 0.0), &[0], &[0]);
         assert!((v + 0.1).abs() < 1e-12, "{v}");
         // inside, 0.05 from the rim, 0.02 off the sheet: -min(0.05, 0.1 - 0.02) = -0.05
-        let v = ks.exact_db(DVec3::new(0.3, 0.05, 0.02), &[0], &[0]);
+        let v = db(&ks, DVec3::new(0.3, 0.05, 0.02), &[0], &[0]);
         assert!((v + 0.05).abs() < 1e-12, "{v}");
         // the cell lists no segment: dist_to_rim = 1e3, so the slab answers: -(0.1 - 0.02)
-        let v = ks.exact_db(DVec3::new(0.3, 0.05, 0.02), &[0], &[]);
+        let v = db(&ks, DVec3::new(0.3, 0.05, 0.02), &[0], &[]);
         assert!((v + 0.08).abs() < 1e-12, "{v}");
         // edge bc is not a rim edge: a point beyond it is inside (closest feature on a non-rim edge)
-        let v = ks.exact_db(DVec3::new(1.0, 1.0, 0.0), &[0], &[0]);
+        let v = db(&ks, DVec3::new(1.0, 1.0, 0.0), &[0], &[0]);
         assert!(v <= 0.0, "{v}");
         // beyond the rim vertex b: pseudonormal z, in-plane distance from b
-        let v = ks.exact_db(DVec3::new(1.3, -0.4, 0.7), &[0], &[0]);
+        let v = db(&ks, DVec3::new(1.3, -0.4, 0.7), &[0], &[0]);
         assert!((v - 0.5).abs() < 1e-12, "{v}");
+    }
+
+    #[test]
+    fn exact_s_by_closed_form() {
+        // oracle: the definition by hand on a fold of two faces sharing edge (0,0,0)-(1,0,0): face A in z = 0 (y > 0, normal
+        // +z), face B rising at 90 degrees (z > 0 half-plane x-z at y = 0... normal +y would put it behind A), here B = the
+        // triangle (0,0,0) (1,0,0) (0,0,-1)... B lies in y = 0 with normal -y; edge pseudonormal = normalize(+z - y)
+        let verts = vec![DVec3::ZERO, DVec3::X, DVec3::Y, DVec3::new(0.0, 0.0, -1.0)];
+        let epn = (DVec3::Z - DVec3::Y).normalize();
+        let ks = KinkSheet {
+            slab: 0.1,
+            origin: DVec3::ZERO,
+            verts,
+            faces: vec![
+                Face {
+                    v: [0, 1, 2],
+                    n: DVec3::Z,
+                    rim: 0,
+                    epn: [DVec3::Z, DVec3::Z, epn],
+                },
+                Face {
+                    v: [1, 0, 3],
+                    n: -DVec3::Y,
+                    rim: 0,
+                    epn: [-DVec3::Y, -DVec3::Y, epn],
+                },
+            ],
+            rim_vn: vec![None; 4],
+            vn: vec![epn; 4],
+            segs: Vec::new(),
+            levels: Vec::new(),
+            cells: Vec::new(),
+            refs: Vec::new(),
+        };
+        // above face A's interior: s = +0.3
+        assert!((sv(&ks, DVec3::new(0.3, 0.2, 0.3), &[0, 1]) - 0.3).abs() < 1e-12);
+        // below face A, but nearer face A than B: s = -0.05
+        assert!((sv(&ks, DVec3::new(0.3, 0.2, -0.05), &[0, 1]) + 0.05).abs() < 1e-12);
+        // beyond the fold edge (y < 0, z > 0): closest feature the edge, signed by its pseudonormal (+): s = +|r|
+        let p = DVec3::new(0.5, -0.3, 0.4);
+        assert!(
+            (sv(&ks, p, &[0, 1]) - 0.5).abs() < 1e-12,
+            "{}",
+            sv(&ks, p, &[0, 1])
+        );
+        // inside the fold (y > 0, z < 0) the nearest feature is a face interior (B at 0.3, A at 0.4): s = r.n_B = -0.3
+        let p = DVec3::new(0.5, 0.3, -0.4);
+        assert!(
+            (sv(&ks, p, &[0, 1]) + 0.3).abs() < 1e-12,
+            "{}",
+            sv(&ks, p, &[0, 1])
+        );
+        // a rim edge answers r.n instead (signed, not |r|): mark A's edge ab as rim and probe beyond it in A's plane + 0.1
+        let mut kr = ks.clone();
+        kr.faces[0].rim = 0b001;
+        kr.faces[1].rim = 0b001;
+        let p = DVec3::new(0.5, -0.3, 0.1);
+        let v = sv(&kr, p, &[0]);
+        assert!((v - 0.1).abs() < 1e-12, "{v}");
     }
 }
