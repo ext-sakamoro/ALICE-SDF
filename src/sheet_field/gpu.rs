@@ -80,8 +80,18 @@ pub fn march_shader_mode(max_live: u32, mode: super::RootMode) -> String {
         .replace("__MAX_LIVE__", &max_live.to_string())
         .replace("__MIN_STEP__", &format!("{:?}", super::MIN_STEP))
         .replace("__DIP_NODE_CAP__", &format!("{}u", super::DIP_NODE_CAP))
-        .replace("__CELL_WALK_CAP__", &format!("{}u", super::cellroot::CELL_WALK_CAP))
-        .replace("__ROOT_MODE__", if mode == super::RootMode::CellWalk { "1" } else { "0" })
+        .replace(
+            "__CELL_WALK_CAP__",
+            &format!("{}u", super::cellroot::CELL_WALK_CAP),
+        )
+        .replace(
+            "__ROOT_MODE__",
+            if mode == super::RootMode::CellWalk {
+                "1"
+            } else {
+                "0"
+            },
+        )
 }
 const WG: u32 = 64;
 
@@ -384,7 +394,11 @@ impl GpuSheetField {
 
     /// [`Self::new`] with the march shader's text passed through `edit` first (the module's tests use it to break
     /// one property of the shader on purpose).
-    fn build(field: &SheetField, mode: super::RootMode, edit: &dyn Fn(String) -> String) -> Result<Self, GpuError> {
+    fn build(
+        field: &SheetField,
+        mode: super::RootMode,
+        edit: &dyn Fn(String) -> String,
+    ) -> Result<Self, GpuError> {
         let mut sheets = Vec::new();
         let mut levels = Vec::new();
         let (mut index, mut rows, mut qbytes, mut scoff) = (
@@ -394,14 +408,22 @@ impl GpuSheetField {
             Vec::<f32>::new(),
         );
         let mut bands = Vec::<u32>::new();
+        // the kink blocks ([`super::kink`]), appended to the index table last; a sheet's block offset is relative to
+        // the kink table until the table's base is known, NONE when the sheet has none
+        let mut kinks = Vec::<u32>::new();
         for sh in &field.sheets {
+            let kink_at = sh.kink.as_ref().map_or(u32::MAX, |ks| {
+                let at = kinks.len() as u32;
+                kinks.extend(ks.gpu_block());
+                at
+            });
             sheets.push(SheetInfo {
                 lo: sh.lo.to_array(),
                 hc: sh.hc,
                 hi: sh.hi.to_array(),
                 level_start: levels.len() as u32,
                 level_count: sh.levels.len() as u32,
-                _pad: [0; 3],
+                _pad: [kink_at, 0, 0],
             });
             for lv in &sh.levels {
                 if !matches!(lv.channels.len(), 2 | 4 | 7) {
@@ -453,7 +475,13 @@ impl GpuSheetField {
         // the merged u32 table: brick indices, channel rows, BVH nodes, leaf entries, parent links
         let bvh = field.index();
         let mut ix: Vec<u32> = Vec::with_capacity(
-            index.len() + rows.len() + bvh.nodes.len() + bvh.leaf_entries.len() + bvh.parents.len(),
+            index.len()
+                + rows.len()
+                + bvh.nodes.len()
+                + bvh.leaf_entries.len()
+                + bvh.parents.len()
+                + bands.len()
+                + kinks.len(),
         );
         let base = |v: &Vec<u32>| v.len() as u32;
         let b_index = base(&ix);
@@ -468,6 +496,13 @@ impl GpuSheetField {
         ix.extend_from_slice(&bvh.parents);
         let b_band = base(&ix);
         ix.extend_from_slice(&bands);
+        let b_kink = base(&ix);
+        ix.extend_from_slice(&kinks);
+        for si in &mut sheets {
+            if si._pad[0] != u32::MAX {
+                si._pad[0] += b_kink;
+            }
+        }
         let bases = Bases {
             band: b_band,
             index: b_index,
@@ -1075,6 +1110,124 @@ fn outside_bound(p: vec3<f32>, s: SheetInfo) -> f32 {
     return max(box_distance(p, s.lo, s.hi), 3.0 * s.hc);
 }
 
+// kink cells (the CPU sheet_field::kink): the exact d_b from the cell's triangles and rim segments. A sheet's block
+// starts at SheetInfo.p0 in IX (NONE: no kink cells); layout in kink::gpu_layout.
+fn kf(i: u32) -> f32 { return bitcast<f32>(IX[i]); }
+fn kv(hdr: u32, v: u32) -> vec3<f32> { let b = hdr + IX[hdr + 4u] + 6u * v; return vec3<f32>(kf(b), kf(b + 1u), kf(b + 2u)); }
+
+// closest point of triangle abc to p and its feature: xyz the point, w the feature (0 face, 1 + e edge e = ab, bc, ca,
+// 4 + i corner i) (Ericson 5.1.5, line for line with the CPU closest_on_tri; a degenerate triangle by its edges)
+fn k_closest(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> vec4<f32> {
+    let ab = b - a;
+    let ac = c - a;
+    let cr = cross(ab, ac);
+    if (dot(cr, cr) <= 0.0) {
+        var best = vec4<f32>(a, 4.0);
+        var bd = 1e30;
+        for (var i = 0u; i < 3u; i = i + 1u) {
+            var x = a; var y = b;
+            if (i == 1u) { x = b; y = c; }
+            if (i == 2u) { x = c; y = a; }
+            let e = y - x;
+            let ee = dot(e, e);
+            var t = 0.0;
+            if (ee > 0.0) { t = clamp(dot(p - x, e) / ee, 0.0, 1.0); }
+            let q = x + e * t;
+            let d = dot(p - q, p - q);
+            if (d < bd) {
+                bd = d;
+                var f = 1.0 + f32(i);
+                if (t <= 0.0) { f = 4.0 + f32(i); }
+                if (t >= 1.0) { f = 4.0 + f32((i + 1u) % 3u); }
+                best = vec4<f32>(q, f);
+            }
+        }
+        return best;
+    }
+    let ap = p - a;
+    let d1 = dot(ab, ap);
+    let d2 = dot(ac, ap);
+    if (d1 <= 0.0 && d2 <= 0.0) { return vec4<f32>(a, 4.0); }
+    let bp = p - b;
+    let d3 = dot(ab, bp);
+    let d4 = dot(ac, bp);
+    if (d3 >= 0.0 && d4 <= d3) { return vec4<f32>(b, 5.0); }
+    let vc = d1 * d4 - d3 * d2;
+    if (vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0) { return vec4<f32>(a + ab * (d1 / (d1 - d3)), 1.0); }
+    let cp = p - c;
+    let d5 = dot(ab, cp);
+    let d6 = dot(ac, cp);
+    if (d6 >= 0.0 && d5 <= d6) { return vec4<f32>(c, 6.0); }
+    let vb = d5 * d2 - d1 * d6;
+    if (vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0) { return vec4<f32>(a + ac * (d2 / (d2 - d6)), 3.0); }
+    let va = d3 * d6 - d5 * d4;
+    if (va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0) {
+        return vec4<f32>(b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6))), 2.0);
+    }
+    let den = 1.0 / (va + vb + vc);
+    return vec4<f32>(a + ab * (vb * den) + ac * (vc * den), 0.0);
+}
+
+// x: the exact d_b at p, y: 1 when (level li, active brick bk, cell ci) of the sheet whose block starts at hdr is a
+// kink cell (0: interpolate as before)
+fn kink_db(hdr: u32, li: u32, bk: u32, ci: u32, pw: vec3<f32>) -> vec2<f32> {
+    if (li >= IX[hdr + 9u]) { return vec2<f32>(0.0, 0.0); }
+    let soff = IX[hdr + 10u + 2u * li];
+    let slen = IX[hdr + 11u + 2u * li];
+    if (bk >= slen) { return vec2<f32>(0.0, 0.0); }
+    let slot = IX[hdr + soff + bk];
+    if (slot == NONE) { return vec2<f32>(0.0, 0.0); }
+    let kb = hdr + soff + slen + 17u * slot;
+    let wi = ci / 32u;
+    let bit = ci % 32u;
+    let m = IX[kb + wi];
+    if (((m >> bit) & 1u) == 0u) { return vec2<f32>(0.0, 0.0); }
+    var below = countOneBits(m & ((1u << bit) - 1u));
+    for (var j = 0u; j < wi; j = j + 1u) { below = below + countOneBits(IX[kb + j]); }
+    let rec = hdr + IX[hdr + 7u] + 2u * (IX[kb + 16u] + below);
+    let off = IX[rec];
+    let ntri = IX[rec + 1u] & 0xffffu;
+    let nseg = IX[rec + 1u] >> 16u;
+    let refs = hdr + IX[hdr + 8u] + off;
+    // local coordinates: the origin is a whole number of mm, so p - origin is exact
+    let p = pw - vec3<f32>(kf(hdr + 1u), kf(hdr + 2u), kf(hdr + 3u));
+    var best = 1e30;
+    var fb = NONE;
+    var q = vec3<f32>(0.0);
+    var feat = 0.0;
+    for (var i = 0u; i < ntri; i = i + 1u) {
+        let fo = hdr + IX[hdr + 5u] + 7u * IX[refs + i];
+        let cq = k_closest(p, kv(hdr, IX[fo]), kv(hdr, IX[fo + 1u]), kv(hdr, IX[fo + 2u]));
+        let d = length(p - cq.xyz);
+        if (d < best) { best = d; fb = fo; q = cq.xyz; feat = cq.w; }
+    }
+    if (fb == NONE) { return vec2<f32>(1e3, 1.0); }
+    let r = p - q;
+    var bnd = false;
+    var n = vec3<f32>(kf(fb + 3u), kf(fb + 4u), kf(fb + 5u));
+    if (feat >= 0.5 && feat < 3.5) {
+        bnd = ((IX[fb + 6u] >> (u32(feat) - 1u)) & 1u) == 1u;
+    } else if (feat >= 3.5) {
+        let vb = hdr + IX[hdr + 4u] + 6u * IX[fb + u32(feat) - 4u];
+        if (IX[vb + 3u] != 0x7fc00000u) { bnd = true; n = vec3<f32>(kf(vb + 3u), kf(vb + 4u), kf(vb + 5u)); }
+    }
+    if (bnd) {
+        let sn = dot(r, n);
+        return vec2<f32>(sqrt(max(dot(r, r) - sn * sn, 0.0)), 1.0);
+    }
+    var dr = 1e3;
+    for (var i = 0u; i < nseg; i = i + 1u) {
+        let so = hdr + IX[hdr + 6u] + 2u * IX[refs + ntri + i];
+        let a = kv(hdr, IX[so]);
+        let e = kv(hdr, IX[so + 1u]) - a;
+        let ee = dot(e, e);
+        var t = 0.0;
+        if (ee > 0.0) { t = clamp(dot(q - a, e) / ee, 0.0, 1.0); }
+        dr = min(dr, length(q - (a + e * t)));
+    }
+    return vec2<f32>(-max(min(dr, kf(hdr) - length(r)), 0.0), 1.0);
+}
+
 // sheet k at p, interpolating the first nmax channels only (2 while marching; attributes once, at the hit)
 fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
     let sh = SHEETS[k];
@@ -1168,6 +1321,10 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
                 if (ci == 1u) { q1 = sc; }
             }
             vals[ci] = acc;
+        }
+        if (sh.p0 != NONE && nch >= 2u) {
+            let e = kink_db(sh.p0, li, u32(k_), (c.x * BRICK + c.y) * BRICK + c.z, p);
+            if (e.y > 0.5) { vals[1] = e.x; }
         }
         let s = vals[0];
         let db = max(vals[1], 0.0);
@@ -1902,6 +2059,28 @@ mod tests {
                 "{} results read from a dispatch that wrote {WG}",
                 v.len() / 4
             ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod shader_validate {
+    /// The march program (both root modes) parses and validates on the CPU (naga), before any device runs it.
+    #[test]
+    fn the_march_program_validates_without_a_device() {
+        for mode in [
+            super::super::RootMode::Dip,
+            super::super::RootMode::CellWalk,
+        ] {
+            let src = super::march_shader_mode(super::MAX_LIVE_SHEETS, mode);
+            let module = wgpu::naga::front::wgsl::parse_str(&src)
+                .unwrap_or_else(|e| panic!("{mode:?}: {}", e.emit_to_string(&src)));
+            wgpu::naga::valid::Validator::new(
+                wgpu::naga::valid::ValidationFlags::all(),
+                wgpu::naga::valid::Capabilities::all(),
+            )
+            .validate(&module)
+            .unwrap_or_else(|e| panic!("{mode:?}: {e:?}"));
         }
     }
 }

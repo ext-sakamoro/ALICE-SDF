@@ -260,6 +260,77 @@ impl KinkSheet {
     }
 }
 
+/// Layout of a sheet's kink block in the GPU index table (all `u32`; offsets relative to the block's first word).
+pub(crate) mod gpu_layout {
+    /// Words before the per-level table: slab, origin x y z, then the offsets of verts, faces, segs, cells, refs, and
+    /// the level count.
+    pub const HEAD: usize = 10;
+    /// Words per vertex: x, y, z (local, f32 bits), pseudonormal x, y, z (f32 bits; x is [`NOT_RIM`] off the rim).
+    pub const VERT: usize = 6;
+    /// Words per face: a, b, c, normal x, y, z (f32 bits), rim mask.
+    pub const FACE: usize = 7;
+    /// Words per kink brick: the cell mask (16), the first cell record.
+    pub const BRICK: usize = 17;
+    /// The pseudonormal x of a vertex that is not on the rim (a NaN).
+    pub const NOT_RIM: u32 = 0x7fc0_0000;
+}
+
+impl KinkSheet {
+    /// The sheet's kink block for the GPU index table ([`gpu_layout`]).
+    pub(crate) fn gpu_block(&self) -> Vec<u32> {
+        use gpu_layout::{BRICK, FACE, HEAD, NOT_RIM, VERT};
+        let nl = self.levels.len();
+        let mut b = vec![0u32; HEAD + 2 * nl];
+        b[0] = (self.slab as f32).to_bits();
+        // the origin is a whole number of mm (the exporter floors it), exact in f32
+        b[1] = (self.origin.x as f32).to_bits();
+        b[2] = (self.origin.y as f32).to_bits();
+        b[3] = (self.origin.z as f32).to_bits();
+        b[4] = b.len() as u32;
+        for (v, vn) in self.verts.iter().zip(&self.rim_vn) {
+            b.extend([v.x, v.y, v.z].map(|x| (x as f32).to_bits()));
+            match vn {
+                Some(n) => b.extend([n.x, n.y, n.z].map(|x| (x as f32).to_bits())),
+                None => b.extend([NOT_RIM, 0, 0]),
+            }
+        }
+        debug_assert_eq!(b.len(), b[4] as usize + VERT * self.verts.len());
+        b[5] = b.len() as u32;
+        for f in &self.faces {
+            b.extend(f.v);
+            b.extend([f.n.x, f.n.y, f.n.z].map(|x| (x as f32).to_bits()));
+            b.push(u32::from(f.rim));
+        }
+        debug_assert_eq!(b.len(), b[5] as usize + FACE * self.faces.len());
+        b[6] = b.len() as u32;
+        for s in &self.segs {
+            b.extend(s);
+        }
+        b[7] = b.len() as u32;
+        for c in &self.cells {
+            b.push(c.off);
+            b.push(u32::from(c.ntri) | (u32::from(c.nseg) << 16));
+        }
+        b[8] = b.len() as u32;
+        b.extend_from_slice(&self.refs);
+        b[9] = nl as u32;
+        for (li, lv) in self.levels.iter().enumerate() {
+            b[HEAD + 2 * li] = b.len() as u32;
+            b[HEAD + 2 * li + 1] = lv.slot.len() as u32;
+            b.extend_from_slice(&lv.slot);
+            for (m, first) in lv.masks.iter().zip(&lv.first) {
+                b.extend_from_slice(m);
+                b.push(*first);
+            }
+            debug_assert_eq!(
+                b.len(),
+                b[HEAD + 2 * li] as usize + lv.slot.len() + BRICK * lv.masks.len()
+            );
+        }
+        b
+    }
+}
+
 /// The kink cells of every sheet of one ASHF file (sheets in file order; `None` where a sheet has no rim).
 #[derive(Debug, Clone, Default)]
 pub struct KinkFile {
