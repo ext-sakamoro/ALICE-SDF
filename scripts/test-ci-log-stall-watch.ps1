@@ -5,7 +5,9 @@
 # that prints and then goes silent is killed after StallSeconds with Hung set, OnHang called
 # first, its last line reported and nothing it would have printed later in the log; a command
 # that exits while a detached grandchild still holds both redirected files returns normally and
-# the logs stay readable. Fails when nothing was compared.
+# the logs stay readable. Every line is in the times file with its stream and a non-decreasing
+# elapsed time that shows a silent stretch; OnSnapshot runs at its interval while the command
+# runs and not at all when no interval is given. Fails when nothing was compared.
 #
 #   pwsh -NoProfile -File scripts/test-ci-log-stall-watch.ps1
 
@@ -28,11 +30,11 @@ New-Item -ItemType Directory -Path $dir | Out-Null
 # OS (quotes and ';' inside a -Command argument are re-split differently on Windows and Unix)
 function Encode([string] $script) { [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script)) }
 
-function Run([string] $name, [string] $script, [int] $stall, [scriptblock] $onHang = $null) {
+function Run([string] $name, [string] $script, [int] $stall, [scriptblock] $onHang = $null, [int] $snapEvery = 0, [scriptblock] $onSnap = $null) {
     $log = Join-Path $dir "$name.log"
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $r = Invoke-StallWatched -FilePath $pwshExe -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', (Encode $script)) `
-        -LogPath $log -StallSeconds $stall -PollSeconds 1 -OnHang $onHang
+        -LogPath $log -StallSeconds $stall -PollSeconds 1 -OnHang $onHang -SnapshotSeconds $snapEvery -OnSnapshot $onSnap
     $sw.Stop()
     $text = Read-Shared $log
     if ($null -eq $text) { $text = '' }
@@ -102,6 +104,42 @@ try {
     $deadline = (Get-Date).AddSeconds(20)
     while (-not (Test-Path $done6) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 300 }
     Check (Test-Path $done6) "detached: the grandchild never finished, so case 6 compares nothing"
+
+    # 7. the times file: every line with its stream and the seconds since the start, so a silent
+    #    stretch of ~3 s between two lines reads as such (case 1's steady lines are ~0.7 s apart)
+    $g = Run 'times' "'first'; [Console]::Error.WriteLine('to err'); Start-Sleep -Seconds 3; 'after the gap'" 10
+    Check ($g.R.TimesPath -eq "$($g.Log).times") "times: TimesPath '$($g.R.TimesPath)'"
+    $rows = @((Read-Shared $g.R.TimesPath) -split "`r?`n" | Where-Object { $_ } | ForEach-Object {
+        $f = $_ -split "`t", 3
+        [pscustomobject]@{ T = [double]::Parse($f[0], [Globalization.CultureInfo]::InvariantCulture); S = $f[1]; L = $f[2] }
+    })
+    Check ($rows.Count -eq 3) "times: $($rows.Count) rows, want 3 (one per line on either stream)"
+    if ($rows.Count -eq 3) {
+        $first = $rows | Where-Object { $_.L -eq 'first' }
+        $err7 = $rows | Where-Object { $_.L -eq 'to err' }
+        $after = $rows | Where-Object { $_.L -eq 'after the gap' }
+        Check ($first.S -eq 'out' -and $after.S -eq 'out' -and $err7.S -eq 'err') "times: streams $($rows.S -join ',')"
+        Check (($after.T - $first.T) -ge 2.5) "times: the 3 s gap reads as $($after.T - $first.T) s"
+        Check (($after.T - $first.T) -lt 10) "times: the gap reads as $($after.T - $first.T) s, longer than it was"
+        Check ($first.T -ge 0) "times: a negative elapsed time $($first.T)"
+    }
+    # the command's own log keeps its text unchanged (no time prefix)
+    Check (($g.Text -split "`r?`n")[0] -eq 'first') "times: the log's first line is '$(($g.Text -split "`r?`n")[0])', want 'first'"
+
+    # 8. snapshots every 2 s over a ~7 s command: at least 2, taken while it ran (alive), and none
+    #    without an interval
+    $snapMark = Join-Path $dir "snaps.txt"
+    $h = Run 'snapshots' "1..7 | ForEach-Object { 'tick' + `$_; Start-Sleep -Seconds 1 }" 30 $null 2 {
+        param($p)
+        Add-Content -LiteralPath $snapMark "alive=$(-not $p.HasExited)"
+    }
+    $snapRows = @(Get-Content -LiteralPath $snapMark -ErrorAction SilentlyContinue)
+    Check ($h.R.Snapshots -ge 2) "snapshots: $($h.R.Snapshots) taken, want >= 2"
+    Check ($snapRows.Count -eq $h.R.Snapshots) "snapshots: $($snapRows.Count) rows written, Snapshots says $($h.R.Snapshots)"
+    Check ((@($snapRows | Where-Object { $_ -ne 'alive=True' })).Count -eq 0) "snapshots: one was taken after the command exited"
+    $noSnap = Join-Path $dir "nosnaps.txt"
+    $i = Run 'no-snapshots' "1..4 | ForEach-Object { 'tick' + `$_; Start-Sleep -Seconds 1 }" 30 $null 0 { Add-Content -LiteralPath $noSnap x }
+    Check ($i.R.Snapshots -eq 0 -and -not (Test-Path $noSnap)) "no interval: OnSnapshot ran $($i.R.Snapshots) times"
 }
 finally {
     Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue

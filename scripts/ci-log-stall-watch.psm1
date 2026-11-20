@@ -20,6 +20,10 @@
 # fails because one still writes. Both files are opened shared, readable while they are written.
 # -OnHang runs before the kill with the process object, so the caller can record what the tree
 # is doing (its output goes to the host; its errors are reported, not thrown).
+# Every line is also written to "$LogPath.times" as "<seconds since start>\t<out|err>\t<line>",
+# so a silent stretch can be read afterwards (the two logs keep the command's own text).
+# -OnSnapshot (with -SnapshotSeconds > 0) runs every SnapshotSeconds while the command runs, with
+# the process object, so the caller can record what the tree is doing before any hang.
 #
 # Tests: scripts/test-ci-log-stall-watch.ps1
 
@@ -35,7 +39,8 @@ namespace AliceCi {
         readonly object gate = new object();
         readonly ManualResetEventSlim outEnd = new ManualResetEventSlim(false);
         readonly ManualResetEventSlim errEnd = new ManualResetEventSlim(false);
-        StreamWriter outW, errW;
+        StreamWriter outW, errW, timesW;
+        readonly Stopwatch clock = Stopwatch.StartNew();
         bool closed;
         long lines, dropped;
         string last = "";
@@ -50,10 +55,11 @@ namespace AliceCi {
             return new StreamWriter(fs) { AutoFlush = true };
         }
 
-        public static StallRunner Start(string file, string[] args, string outPath, string errPath) {
+        public static StallRunner Start(string file, string[] args, string outPath, string errPath, string timesPath) {
             var r = new StallRunner();
             r.outW = Open(outPath);
             r.errW = Open(errPath);
+            r.timesW = Open(timesPath);
             var psi = new ProcessStartInfo(file) {
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -62,8 +68,8 @@ namespace AliceCi {
             };
             foreach (var a in args) psi.ArgumentList.Add(a);
             var p = new Process { StartInfo = psi };
-            p.OutputDataReceived += (s, e) => r.Take(r.outW, e.Data, r.outEnd);
-            p.ErrorDataReceived += (s, e) => r.Take(r.errW, e.Data, r.errEnd);
+            p.OutputDataReceived += (s, e) => r.Take(r.outW, "out", e.Data, r.outEnd);
+            p.ErrorDataReceived += (s, e) => r.Take(r.errW, "err", e.Data, r.errEnd);
             p.Start();
             p.BeginOutputReadLine();
             p.BeginErrorReadLine();
@@ -71,11 +77,12 @@ namespace AliceCi {
             return r;
         }
 
-        void Take(StreamWriter w, string line, ManualResetEventSlim end) {
+        void Take(StreamWriter w, string stream, string line, ManualResetEventSlim end) {
             if (line == null) { end.Set(); return; }
             lock (gate) {
                 if (closed) { dropped++; return; }
                 w.WriteLine(line);
+                timesW.WriteLine(clock.Elapsed.TotalSeconds.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + "\t" + stream + "\t" + line);
                 lines++;
                 if (line.Trim().Length > 0) last = line;
             }
@@ -95,6 +102,7 @@ namespace AliceCi {
                 closed = true;
                 outW.Dispose();
                 errW.Dispose();
+                timesW.Dispose();
             }
         }
 
@@ -125,17 +133,27 @@ function Invoke-StallWatched {
         [ValidateRange(1, 3600)] [int] $PollSeconds = 5,
         # how long to wait, after the command exits, for the output streams to end
         [ValidateRange(0, 600)] [int] $DrainSeconds = 5,
-        [scriptblock] $OnHang = $null
+        [scriptblock] $OnHang = $null,
+        # 0: no snapshots; otherwise OnSnapshot runs every SnapshotSeconds (checked at each poll)
+        [ValidateRange(0, 86400)] [int] $SnapshotSeconds = 0,
+        [scriptblock] $OnSnapshot = $null
     )
     $errPath = "$LogPath.stderr"
-    $runner = [AliceCi.StallRunner]::Start($FilePath, [string[]] $ArgumentList, $LogPath, $errPath)
+    $timesPath = "$LogPath.times"
+    $runner = [AliceCi.StallRunner]::Start($FilePath, [string[]] $ArgumentList, $LogPath, $errPath, $timesPath)
     $proc = $runner.Proc
     try {
         $seen = -1
         $lastGrowth = [DateTime]::UtcNow
         $hung = $false
         $stalled = 0
+        $snapshots = 0
+        $lastSnap = [DateTime]::UtcNow
         while (-not $proc.WaitForExit($PollSeconds * 1000)) {
+            if ($OnSnapshot -and $SnapshotSeconds -gt 0 -and ([DateTime]::UtcNow - $lastSnap).TotalSeconds -ge $SnapshotSeconds) {
+                $lastSnap = [DateTime]::UtcNow
+                try { & $OnSnapshot $proc | Out-Host; $snapshots++ } catch { Write-Host "stall watch: OnSnapshot failed: $($_.Exception.Message)" }
+            }
             $now = $runner.Lines
             if ($now -ne $seen) {
                 $seen = $now
@@ -170,6 +188,10 @@ function Invoke-StallWatched {
         LastLine       = $lastLine
         StalledSeconds = $stalled
         StderrPath     = $errPath
+        # each line with its seconds since the start and its stream (out / err)
+        TimesPath      = $timesPath
+        # how many times OnSnapshot ran
+        Snapshots      = $snapshots
         # false when a process outside the command still held its output after it exited
         Drained        = $drained
         DroppedLines   = $runner.Dropped

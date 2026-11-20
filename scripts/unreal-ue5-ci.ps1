@@ -177,15 +177,24 @@ $UatLog = Join-Path $Logs "buildplugin.log"
 #  - a build that goes silent for $StallMinutes min is stopped and fails with a HANG line and the
 #    last line it printed, well before timeout-minutes (no single silent stretch of a good build
 #    is near 20 minutes; the whole 21-action compile is ~13).
+#  - what the tree does before a hang is kept for the next one (the logs dir is retained on the
+#    runner by ci-log-retain.ps1): every BuildPlugin line with its seconds since the start
+#    (buildplugin.log.times), and a snapshot of the build processes with their CPU seconds every
+#    $SnapshotMinutes min (buildplugin.procs.log). At a hang each compiler's command line, handle
+#    count and thread states are added. Rising CPU between snapshots is a slow compile, flat CPU
+#    a blocked one, and lines arriving in bursts buffered output (2026-11-19 hang: one cl.exe
+#    started a minute before the kill, 19 min after the last line; the cause was not readable).
 $env:UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor = "false"
 $env:_MSPDBSRV_ENDPOINT_ = "alicesdf-" + [guid]::NewGuid().ToString("N")
 $StallMinutes = 20
+$SnapshotMinutes = 2
+$ProcsLog = Join-Path $Logs "buildplugin.procs.log"
 $BuildStart = Get-Date
 $BuildProcs = "cl", "link", "mspdbsrv", "UbaHost", "UnrealBuildTool", "ShaderCompileWorker", "ispc", "dotnet", "MSBuild", "UnrealEditor-Cmd"
 
 # name, pid, parent, start time and CPU seconds of the build processes, and whether each one is
 # inside the tree of $Root (when given)
-function Show-BuildProcesses([string] $Title, $Root = $null) {
+function Get-BuildProcessLines([string] $Title, $Root = $null) {
     $all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
     $inTree = @{}
     if ($Root) {
@@ -202,12 +211,40 @@ function Show-BuildProcesses([string] $Title, $Root = $null) {
         }
     }
     $rows = @(Get-Process -Name $BuildProcs -ErrorAction SilentlyContinue)
-    Write-Host "== processes: $Title ($($rows.Count))"
+    "== processes: $Title ($($rows.Count)) at {0:HH:mm:ss}, {1:N0} s into BuildPlugin" -f (Get-Date), ((Get-Date) - $BuildStart).TotalSeconds
     foreach ($r in $rows) {
         $parent = ($all | Where-Object { $_.ProcessId -eq $r.Id } | Select-Object -First 1).ParentProcessId
         $where = if (-not $Root) { "" } elseif ($inTree.ContainsKey([int]$r.Id)) { " in-tree" } else { " OUTSIDE-tree" }
-        Write-Host ("  {0} pid={1} parent={2} start={3:HH:mm:ss} cpu={4:N1}s{5}" -f $r.ProcessName, $r.Id, $parent, $r.StartTime, $r.CPU, $where)
+        "  {0} pid={1} parent={2} start={3:HH:mm:ss} cpu={4:N1}s{5}" -f $r.ProcessName, $r.Id, $parent, $r.StartTime, $r.CPU, $where
     }
+}
+
+function Show-BuildProcesses([string] $Title, $Root = $null) {
+    $lines = @(Get-BuildProcessLines $Title $Root)
+    $lines | ForEach-Object { Write-Host $_ }
+    Add-Content -LiteralPath $ProcsLog -Value $lines -ErrorAction SilentlyContinue
+}
+
+# at a hang: what each compiler is doing (its command line names the source file, the handle
+# count and the thread states tell a waiting process from a working one); the full lines go to
+# the retained log, the job log gets them through the sanitizer like everything else
+function Show-CompilerDetail {
+    $all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+    $cls = @(Get-Process -Name "cl", "link" -ErrorAction SilentlyContinue)
+    $lines = @("== compilers at the hang ($($cls.Count))")
+    foreach ($c in $cls) {
+        $cmd = ($all | Where-Object { $_.ProcessId -eq $c.Id } | Select-Object -First 1).CommandLine
+        $states = @($c.Threads | Group-Object { if ("$($_.ThreadState)" -eq "Wait") { "Wait:$($_.WaitReason)" } else { "$($_.ThreadState)" } } |
+            ForEach-Object { "$($_.Name)x$($_.Count)" }) -join " "
+        $lines += ("  {0} pid={1} cpu={2:N1}s handles={3} threads=[{4}]" -f $c.ProcessName, $c.Id, $c.CPU, $c.HandleCount, $states)
+        $lines += "    cmd: $cmd"
+        # cl.exe reads its options from a response file (@file.rsp): its first lines name the source
+        foreach ($rsp in @([regex]::Matches("$cmd", '@"?([^"\s]+\.rsp)"?') | ForEach-Object { $_.Groups[1].Value })) {
+            if (Test-Path -LiteralPath $rsp) { Get-Content -LiteralPath $rsp -TotalCount 40 | ForEach-Object { $lines += "    rsp: $_" } }
+        }
+    }
+    $lines | ForEach-Object { Write-Host $_ }
+    Add-Content -LiteralPath $ProcsLog -Value $lines -ErrorAction SilentlyContinue
 }
 
 foreach ($p in @($Staged, $Packaged)) {
@@ -218,7 +255,11 @@ Import-Module (Join-Path $PSScriptRoot "ci-log-stall-watch.psm1") -Force
 $Uat = Invoke-StallWatched -FilePath (Join-Path $EngineRoot "Engine\Build\BatchFiles\RunUAT.bat") `
     -ArgumentList @("BuildPlugin", "-Plugin=$Staged\AliceSDF.uplugin", "-Package=$Packaged", "-TargetPlatforms=Win64", "-Rocket") `
     -LogPath $UatLog -StallSeconds ($StallMinutes * 60) -PollSeconds 15 `
-    -OnHang { param($root) Show-BuildProcesses "at the hang, before the kill" $root }
+    -SnapshotSeconds ($SnapshotMinutes * 60) `
+    -OnSnapshot { param($root) Add-Content -LiteralPath $ProcsLog -Value @(Get-BuildProcessLines "snapshot" $root) -ErrorAction SilentlyContinue } `
+    -OnHang { param($root) Show-BuildProcesses "at the hang, before the kill" $root; Show-CompilerDetail }
+Write-Host ("BuildPlugin: {0} line(s) timed in buildplugin.log.times, {1} process snapshot(s) in buildplugin.procs.log" -f `
+    @(Get-Content -LiteralPath $Uat.TimesPath -ErrorAction SilentlyContinue).Count, $Uat.Snapshots)
 if (-not $Uat.Drained) {
     Show-BuildProcesses "still holding BuildPlugin's output after it exited ($($Uat.DroppedLines) later line(s) dropped)"
 }
