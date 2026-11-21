@@ -228,10 +228,10 @@ function Show-BuildProcesses([string] $Title, $Root = $null) {
 # at a hang: what each compiler is doing (its command line names the source file, the handle
 # count and the thread states tell a waiting process from a working one); the full lines go to
 # the retained log, the job log gets them through the sanitizer like everything else
-function Show-CompilerDetail {
+function Get-CompilerDetailLines([string] $Title, $Cls) {
     $all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
-    $cls = @(Get-Process -Name "cl", "link" -ErrorAction SilentlyContinue)
-    $lines = @("== compilers at the hang ($($cls.Count))")
+    $cls = @($Cls)
+    $lines = @("== compilers $Title ($($cls.Count))")
     foreach ($c in $cls) {
         $cmd = ($all | Where-Object { $_.ProcessId -eq $c.Id } | Select-Object -First 1).CommandLine
         $states = @($c.Threads | Group-Object { if ("$($_.ThreadState)" -eq "Wait") { "Wait:$($_.WaitReason)" } else { "$($_.ThreadState)" } } |
@@ -243,7 +243,45 @@ function Show-CompilerDetail {
             if (Test-Path -LiteralPath $rsp) { Get-Content -LiteralPath $rsp -TotalCount 40 | ForEach-Object { $lines += "    rsp: $_" } }
         }
     }
+    return $lines
+}
+
+function Show-CompilerDetail {
+    $lines = @(Get-CompilerDetailLines "at the hang" @(Get-Process -Name "cl", "link" -ErrorAction SilentlyContinue))
     $lines | ForEach-Object { Write-Host $_ }
+    Add-Content -LiteralPath $ProcsLog -Value $lines -ErrorAction SilentlyContinue
+}
+
+# every snapshot, into the retained log only: the process table, and for each compiler that
+# was already there at the previous snapshot and gained under $IdleCpuSeconds of CPU since, what
+# it waits on (thread wait reasons, handles, its source from the rsp), the precompiled headers
+# it may be mapping (size), and whether the work dir is excluded from the virus scanner (a scan
+# of a large PCH or object file can hold a compiler; the 2026-11-21 green 5.8 build had one cl
+# alive ~8 min with < 1 s of CPU, gaining 0.2 s per 2 min)
+$IdleCpuSeconds = 1.0
+$PrevCpu = @{}
+$IdleChecked = $false
+function Write-BuildSnapshot($Root) {
+    $lines = @(Get-BuildProcessLines "snapshot" $Root)
+    $cls = @(Get-Process -Name "cl", "link" -ErrorAction SilentlyContinue)
+    $idle = @($cls | Where-Object { $script:PrevCpu.ContainsKey($_.Id) -and ($_.CPU - $script:PrevCpu[$_.Id]) -lt $IdleCpuSeconds })
+    $now = @{}
+    foreach ($c in $cls) { $now[$c.Id] = $c.CPU }
+    $script:PrevCpu = $now
+    if ($idle.Count -gt 0) {
+        $lines += @(Get-CompilerDetailLines "gaining < $IdleCpuSeconds s CPU since the last snapshot" $idle)
+        $pch = @(Get-ChildItem -LiteralPath $Packaged -Recurse -Filter *.pch -File -ErrorAction SilentlyContinue)
+        $lines += "  pch files: $($pch.Count)" + (($pch | ForEach-Object { " {0}={1:N0}MB" -f $_.Name, ($_.Length / 1MB) }) -join "")
+        if (-not $script:IdleChecked) {
+            $script:IdleChecked = $true
+            try {
+                $mp = Get-MpPreference -ErrorAction Stop
+                $ex = @($mp.ExclusionPath | Where-Object { $_ })
+                $covered = @($ex | Where-Object { $WorkDir.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+                $lines += "  defender: realtime=$(-not $mp.DisableRealtimeMonitoring) exclusions=$($ex.Count) work-dir-excluded=$covered"
+            } catch { $lines += "  defender: not readable ($($_.Exception.Message))" }
+        }
+    }
     Add-Content -LiteralPath $ProcsLog -Value $lines -ErrorAction SilentlyContinue
 }
 
@@ -256,7 +294,7 @@ $Uat = Invoke-StallWatched -FilePath (Join-Path $EngineRoot "Engine\Build\BatchF
     -ArgumentList @("BuildPlugin", "-Plugin=$Staged\AliceSDF.uplugin", "-Package=$Packaged", "-TargetPlatforms=Win64", "-Rocket") `
     -LogPath $UatLog -StallSeconds ($StallMinutes * 60) -PollSeconds 15 `
     -SnapshotSeconds ($SnapshotMinutes * 60) `
-    -OnSnapshot { param($root) Add-Content -LiteralPath $ProcsLog -Value @(Get-BuildProcessLines "snapshot" $root) -ErrorAction SilentlyContinue } `
+    -OnSnapshot { param($root) Write-BuildSnapshot $root } `
     -OnHang { param($root) Show-BuildProcesses "at the hang, before the kill" $root; Show-CompilerDetail }
 Write-Host ("BuildPlugin: {0} line(s) timed in buildplugin.log.times, {1} process snapshot(s) in buildplugin.procs.log" -f `
     @(Get-Content -LiteralPath $Uat.TimesPath -ErrorAction SilentlyContinue).Count, $Uat.Snapshots)
