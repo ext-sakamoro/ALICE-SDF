@@ -1,6 +1,8 @@
 //! askc_build <field.ashf> <geom.asgm> <out.askc> [eps]: the kink cells of every sheet of a field (shared cover,
 //! `sheet_field::kink_build`) from the builder's per-sheet meshes, written as an ASKC v2 sidecar. The geometry file:
-//! b"ASGM", u32 1, u32 sheets; per sheet f64 slab, u32 nv, f64 V[nv*3], u32 nf, u32 F[nf*3], u32 nrim, u32 rim[nrim*2].
+//! b"ASGM", u32 version (1 or 2), u32 sheets; per sheet f64 slab, u32 nv, f64 V[nv*3], u32 nf, u32 F[nf*3], u32 nrim,
+//! u32 rim[nrim*2]; v2 then u32 attribute flags (bit 0 corner UVs, bit 1 corner author normals) and per face f64 UV[6] /
+//! f64 normal[9] for each flag set.
 
 use std::io::{BufReader, Read};
 
@@ -37,8 +39,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("not an ASGM file".into());
     }
     let mut o = 4;
-    if u32_at(&g, &mut o) != 1 {
-        return Err("ASGM version".into());
+    let gver = u32_at(&g, &mut o);
+    if !(1..=2).contains(&gver) {
+        return Err(format!("ASGM version {gver}").into());
     }
     let ns = u32_at(&g, &mut o) as usize;
     let sheets = ix.read_sheets(&mut fh, 0..ns)?;
@@ -62,11 +65,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let rim: Vec<[u32; 2]> = (0..nr)
             .map(|_| [u32_at(&g, &mut o), u32_at(&g, &mut o)])
             .collect();
+        let attr = if gver >= 2 { u32_at(&g, &mut o) } else { 0 };
+        let uvs: Vec<[[f64; 2]; 3]> = if attr & 1 == 1 {
+            (0..nf)
+                .map(|_| core::array::from_fn(|_| [f64_at(&g, &mut o), f64_at(&g, &mut o)]))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let nrms: Vec<[[f64; 3]; 3]> = if attr & 2 == 2 {
+            (0..nf)
+                .map(|_| {
+                    core::array::from_fn(|_| {
+                        [f64_at(&g, &mut o), f64_at(&g, &mut o), f64_at(&g, &mut o)]
+                    })
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let geom = SheetGeom {
             verts: &verts,
             faces: &faces,
             rim: &rim,
             slab,
+            uv: (attr & 1 == 1).then_some(uvs.as_slice()),
+            nrm: (attr & 2 == 2).then_some(nrms.as_slice()),
         };
         let (rec, st) = kink_sheet(&geom, sh, eps);
         tot.surface += st.surface;
