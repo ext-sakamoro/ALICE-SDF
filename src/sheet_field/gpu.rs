@@ -1631,23 +1631,12 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
     walk_cells = 0u;
     // the previous cell's exit (t, s, valid), for a sign change across a face (the CPU rule: both |s| <= JUMP_S)
     var prev = vec3<f32>(0.0, 0.0, 0.0);
+    var past = false;
     for (var i = 0u; i < __CELL_WALK_CAP__; i = i + 1u) {
         if (t >= tb) {
-            // the span ended on a cell face: test the next cell's sign now with the face rule (the CPU walk)
-            if (prev.z == 1.0 && prev.x <= tb) {
-                let sn = sample_sheet(k, o + d * t, 2u).s;
-                if (((prev.y < 0.0) != (sn < 0.0)) && abs(prev.y) <= JUMP_S && abs(sn) <= JUMP_S) {
-                    var fa = prev.x; var fb = t;
-                    let gfa = sample_sheet(k, o + d * fa, 2u).g;
-                    for (var it = 0; it < 30; it = it + 1) {
-                        let m = 0.5 * (fa + fb);
-                        if ((sample_sheet(k, o + d * m, 2u).g < 0.0) == (gfa < 0.0)) { fa = m; } else { fb = m; }
-                    }
-                    let tm = 0.5 * (fa + fb);
-                    if (crossing_inside(k, o + d * tm)) { return vec3<f32>(1.0, tm, amb); }
-                }
-            }
-            return vec3<f32>(0.0, 0.0, amb);
+            // the span ended on a cell face: enter that one next cell for its face rule only (the CPU walk)
+            if (past || !(prev.z == 1.0 && prev.x <= tb)) { return vec3<f32>(0.0, 0.0, amb); }
+            past = true;
         }
         walk_cells = walk_cells + 1u;
         let p = o + d * t;
@@ -1665,7 +1654,7 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
             if (ua < ux) { ux = ua; pd = abs(p[a]) / abs(d[a]); }
         }
         ux = max(ux, 0.0);
-        let ue = min(ux, (tb - t) / cl.h);
+        let ue = max(min(ux, (tb - t) / cl.h), 0.0);
         // an s cell: the exact s from the cell's triangles (the CPU walk, line for line)
         let ex = exact_s_here(k, p);
         if (ex.z == 1.0) {
@@ -1681,7 +1670,7 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
             }
             let tn = t + ux * cl.h;
             prev.z = 0.0;
-            if (!cl.masked) {
+            if (!cl.masked && !past) {
                 let r = exact_cell_root(k, o, d, t, t + ue * cl.h, cl.h);
                 if (r.x == 1.0) { return vec3<f32>(1.0, r.y, amb); }
                 if (r.x == 2.0) { amb = amb + 1.0; } else { prev = vec3<f32>(tn, r.z, 1.0); }
@@ -1709,7 +1698,7 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
             if (crossing_inside(k, o + d * tm)) { return vec3<f32>(1.0, tm, amb); }
         }
         prev = vec3<f32>(t + ux * cl.h, cub(cu, ux), 1.0);
-        if (!cl.masked) {
+        if (!cl.masked && !past) {
             let r = first_root(cu, ue);
             if (r.x == 1.0) {
                 let tr = t + r.y * cl.h;

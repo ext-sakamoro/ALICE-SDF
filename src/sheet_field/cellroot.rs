@@ -242,26 +242,16 @@ impl Sheet {
         let mut ambiguous = 0u32;
         // the previous cell's exit: (t, s) there, for a sign change across the face
         let mut prev: Option<(f64, f64)> = None;
+        // the span ended on a cell face (the last cell's exit is at or before the span's end and `t` is just past it):
+        // the walk enters that one next cell for its face rule only (no root is searched in it), so a jump across the
+        // face (an s cell next to an interpolated cell) can't fall between two walks
+        let mut past_end = false;
         for _ in 0..CELL_WALK_CAP {
             if t >= tend {
-                // the span ended on a cell face (the last cell's exit is at or before the span's end, and `t` is just
-                // past it): the next cell begins here, so its sign is tested now with the face rule; otherwise a jump
-                // across that face (an s cell next to an interpolated cell) would fall between two walks and be lost
-                if let Some((tp, sp)) = prev {
-                    if tp <= tend {
-                        let sn = f64::from(self.sample_geom(o + d * t as f32, rule).s);
-                        if (sp < 0.0) != (sn < 0.0)
-                            && sp.abs() <= f64::from(JUMP_S)
-                            && sn.abs() <= f64::from(JUMP_S)
-                        {
-                            let tm = self.face_crossing(o, d, tp as f32, t as f32, rule);
-                            if self.crossing_accepted(o + d * tm, rule) {
-                                return Walk::Root(tm);
-                            }
-                        }
-                    }
+                if past_end || !prev.is_some_and(|(tp, _)| tp <= tend) {
+                    return Walk::Clear(ambiguous);
                 }
-                return Walk::Clear(ambiguous);
+                past_end = true;
             }
             let p = o + d * t as f32;
             let Some(cell) = self.cell_at(p, rule) else {
@@ -306,7 +296,7 @@ impl Sheet {
                     .max(4.0 * f64::from(f32::EPSILON) * exit_ax.0 / exit_ax.1)
             };
             let u_exit = u_exit.max(0.0);
-            let u_end = u_exit.min((tend - t) / cell.h);
+            let u_end = u_exit.min((tend - t) / cell.h).max(0.0);
             // an s cell ([`super::kink`]): s is the exact value from the cell's triangles, not the cubic of the corners
             if let Some((s_in, _)) = self.exact_s_here(p) {
                 let s_in = f64::from(s_in);
@@ -321,7 +311,7 @@ impl Sheet {
                         }
                     }
                 }
-                let s_exit = if cell.masked {
+                let s_exit = if cell.masked || past_end {
                     None
                 } else {
                     match self.exact_cell_root(o, d, t, t + u_end * cell.h, cell.h, rule) {
@@ -352,7 +342,7 @@ impl Sheet {
                 }
             }
             prev = Some((t + u_exit * cell.h, eval(&cu, u_exit)));
-            if !cell.masked {
+            if !cell.masked && !past_end {
                 match first_root(&cu, u_end) {
                     Some(Ok(u)) => {
                         let tr = t + u * cell.h;
