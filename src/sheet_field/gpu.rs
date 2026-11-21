@@ -76,7 +76,15 @@ pub fn march_shader(max_live: u32) -> String {
 /// [`march_shader`] for a root mode (M1 dip or M2 cell walk).
 #[must_use]
 pub fn march_shader_mode(max_live: u32, mode: super::RootMode) -> String {
+    march_shader_margin(max_live, mode, 0.0)
+}
+
+/// [`march_shader_mode`] with a step margin: every step is taken from the union value less `margin`
+/// ([`super::kink::KINK_STEP_MARGIN`] for a field with kink cells, 0 otherwise; the CPU `SheetField::step_margin`).
+#[must_use]
+pub fn march_shader_margin(max_live: u32, mode: super::RootMode, margin: f32) -> String {
     SHADER
+        .replace("__STEP_MARGIN__", &format!("{margin:?}"))
         .replace("__MAX_LIVE__", &max_live.to_string())
         .replace("__MIN_STEP__", &format!("{:?}", super::MIN_STEP))
         .replace("__DIP_NODE_CAP__", &format!("{}u", super::DIP_NODE_CAP))
@@ -552,7 +560,9 @@ impl GpuSheetField {
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sheet field"),
-            source: wgpu::ShaderSource::Wgsl(edit(march_shader_mode(max_live, mode)).into()),
+            source: wgpu::ShaderSource::Wgsl(
+                edit(march_shader_margin(max_live, mode, field.step_margin())).into(),
+            ),
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("sheet field"),
@@ -1863,8 +1873,11 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         tprev = t;
         for (var j = 0u; j < n_cur; j = j + 1u) { prev_k[j] = cur_k[j]; prev_g[j] = cur_g[j]; prev_s[j] = cur_s[j]; prev_l[j] = cur_l[j]; }
         n_prev = n_cur;
-        floor_step = dd < __MIN_STEP__;
-        t = t + max(dd, __MIN_STEP__);
+        // the step margin (CPU SheetField::step_margin): with kink cells the step is taken from dd less the cover's position
+        // bound, so a step is free of every crossing the field can show whatever the rounding of t
+        let dd_step = dd - __STEP_MARGIN__;
+        floor_step = dd_step < __MIN_STEP__;
+        t = t + max(dd_step, __MIN_STEP__);
         if (t >= U.tmax) { kind = 0; break; }
     }
     if (overflow) { OUT[4u * i] = vec4<f32>(0.0, 3.0, 0.0, 0.0); return; }

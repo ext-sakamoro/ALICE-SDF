@@ -656,6 +656,16 @@ impl SheetField {
         }
     }
 
+    /// The step margin: [`kink::KINK_STEP_MARGIN`] when a sheet carries kink cells, else 0 (the march is then as before).
+    #[must_use]
+    pub fn step_margin(&self) -> f32 {
+        if self.sheets.iter().any(|s| s.kink.is_some()) {
+            kink::KINK_STEP_MARGIN
+        } else {
+            0.0
+        }
+    }
+
     /// How floor steps are searched (the GPU program is compiled for it).
     #[must_use]
     pub const fn root_mode(&self) -> RootMode {
@@ -939,6 +949,7 @@ impl SheetField {
             })
             .collect();
         let (mut t, mut tprev) = (0.0f32, 0.0f32);
+        let margin = self.step_margin();
         // whether the step that ended at `t` was a floor step (its start's bound was below MIN_STEP)
         let mut floor_step = false;
         for _ in 0..steps {
@@ -1074,7 +1085,7 @@ impl SheetField {
                 });
                 r.push(StepRecord {
                     t,
-                    step: dd.max(MIN_STEP),
+                    step: (dd - margin).max(MIN_STEP),
                     dd,
                     n_live: n_live as u32,
                     dd_sheet: dd_k,
@@ -1082,8 +1093,9 @@ impl SheetField {
                     dd_s,
                 });
             }
-            floor_step = dd < MIN_STEP;
-            t += dd.max(MIN_STEP);
+            let dd_step = dd - margin;
+            floor_step = dd_step < MIN_STEP;
+            t += dd_step.max(MIN_STEP);
             if t >= tmax {
                 return MarchResult::Miss;
             }

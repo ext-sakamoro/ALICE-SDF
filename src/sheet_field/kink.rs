@@ -36,6 +36,10 @@ pub const ASKC_MAGIC: [u8; 4] = *b"ASKC";
 pub const ASKC_VERSION: u32 = 2;
 /// The oldest ASKC version this reader still takes (v1: exact `d_b` cells only).
 pub const ASKC_VERSION_MIN: u32 = 1;
+/// The march's step margin for a field with kink cells: every step is taken from the union value less this (the s
+/// cover's position bound `eps`, [`super::kink_build::kink_sheet`]), so a step whose start is farther than the margin
+/// from every crossing the field can show stays free of them whatever the rounding of `t` (CPU and GPU alike).
+pub const KINK_STEP_MARGIN: f32 = 0.01;
 /// Cell flag: the march computes `d_b` exactly in this cell.
 pub const CELL_DB: u32 = 1;
 /// Cell flag: the march computes `s` (and the unsigned distance) exactly in this cell.
