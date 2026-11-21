@@ -282,3 +282,126 @@ fn rays_near_a_sharp_fold_stay_within_eps_with_the_s_cells() {
     );
     eprintln!("fold e2e: {n} rays, beyond eps without s cells {m0}, with 0");
 }
+
+/// A square sheet in the plane `z = z0` (normal +z), or with `vertical` the plane `y = y0` (normal +y), on one level whose
+/// grid starts at `lo`; channels from the exact distance (no kink cells: the cell walk alone is under test).
+#[cfg(feature = "gpu")]
+fn plane_field(lo: Vec3, nb: [u32; 3], vertical: bool, at: f32) -> SheetField {
+    let lv = level_from_fn(
+        lo,
+        H,
+        nb,
+        |_c, _e| true,
+        |p| {
+            let (s, u, v) = if vertical {
+                (p.y - at, p.x, p.z)
+            } else {
+                (p.z - at, p.x, p.y)
+            };
+            let (cu, cv) = if vertical {
+                (
+                    lo.x + 8.0 * H * nb[0] as f32 / 2.0,
+                    lo.z + 8.0 * H * nb[2] as f32 / 2.0,
+                )
+            } else {
+                (
+                    lo.x + 8.0 * H * nb[0] as f32 / 2.0,
+                    lo.y + 8.0 * H * nb[1] as f32 / 2.0,
+                )
+            };
+            let half = 1.5f32;
+            let (du, dv) = ((u - cu).abs() - half, (v - cv).abs() - half);
+            vec![
+                s,
+                Vec3::new(du.max(0.0), dv.max(0.0), 0.0).length() + du.max(dv).min(0.0),
+            ]
+        },
+    )
+    .unwrap();
+    let mut f = SheetField::new(vec![sheet(vec![lv]).unwrap()], ValidRule::CellV1);
+    f.set_root_mode(RootMode::CellWalk);
+    f
+}
+
+/// Two ways the GPU cell walk once spun in one cell to its cap (the ray then came back undecided while the CPU, in f64,
+/// decided it): (a) a ray along a cell face plane whose direction carries a 1e-16 residue in that axis (cos 90 degrees),
+/// (b) a field far from the origin of the coordinates (z near 1360 mm, an f32 ulp of 1.2e-4 mm) with rays starting a
+/// few mm away (t small), where a hair of 4 ulp of t past a face does not move the f32 point. Every ray must be decided
+/// and equal the CPU.
+#[cfg(feature = "gpu")]
+#[test]
+fn the_gpu_cell_walk_decides_rays_on_face_planes_and_far_from_the_origin() {
+    use alice_sdf::sheet_field::gpu::GpuSheetField;
+    let cases: Vec<(&str, SheetField, Vec<Vec3>, Vec3)> = vec![
+        {
+            // (a) vertical sheet y = 1.0; rays head -y with a 1e-16 x residue, origins exactly on x cell faces
+            let lo = Vec3::new(-2.0, -1.0, -2.0);
+            let f = plane_field(lo, [2, 2, 2], true, 1.0);
+            let o: Vec<Vec3> = (0..16)
+                .flat_map(|i| {
+                    (0..16).map(move |j| {
+                        Vec3::new(lo.x + H * (i + 2) as f32, 2.9, lo.z + 0.5 + 0.17 * j as f32)
+                    })
+                })
+                .collect();
+            ("face plane", f, o, Vec3::new(-1.224_646_8e-16, -1.0, 0.0))
+        },
+        {
+            // (b) horizontal sheet at z = 1360.0, rays from 3 mm above at 30 degrees below the horizontal
+            let lo = Vec3::new(-2.013, -2.021, 1358.0);
+            let f = plane_field(lo, [2, 2, 2], false, 1360.0);
+            let d = Vec3::new(0.0, 0.866_025_4, -0.5);
+            let o: Vec<Vec3> = (0..16)
+                .flat_map(|i| {
+                    (0..16).map(move |j| {
+                        Vec3::new(-1.0 + 0.13 * i as f32, -2.0 + 0.09 * j as f32, 1361.5)
+                    })
+                })
+                .collect();
+            ("far from the origin", f, o, d)
+        },
+    ];
+    for (name, f, o, d) in cases {
+        let g = match GpuSheetField::new_with_mode(&f, RootMode::CellWalk) {
+            Ok(g) => g,
+            Err(e) => {
+                assert!(
+                    std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+                    "ALICE_SDF_REQUIRE_GPU set but no GPU: {e}"
+                );
+                eprintln!("gpu-test: skipped (no GPU: {e})");
+                return;
+            }
+        };
+        let gm = g.march_batch_decided(&o, d, 6.0).unwrap();
+        let undecided = gm
+            .iter()
+            .filter(|m| matches!(m, MarchResult::Undecided))
+            .count();
+        assert_eq!(
+            undecided,
+            0,
+            "{name}: {undecided} of {} rays undecided on the GPU",
+            o.len()
+        );
+        let mut hits = 0;
+        for (oo, gr) in o.iter().zip(&gm) {
+            let c = f.march_decided(*oo, d, 6.0);
+            match (hit_t(&c), hit_t(gr)) {
+                (Some(a), Some(b)) => {
+                    hits += 1;
+                    assert!((a - b).abs() <= 1e-3, "{name} {oo}: cpu {a} gpu {b}");
+                }
+                (a, b) => assert_eq!(a.is_some(), b.is_some(), "{name} {oo}: cpu {a:?} gpu {b:?}"),
+            }
+        }
+        assert!(
+            hits > 0,
+            "{name}: no ray hit (the scene does not reach the walk)"
+        );
+        eprintln!(
+            "gpu-test {name}: {} rays, {hits} hits, 0 undecided, GPU = CPU",
+            o.len()
+        );
+    }
+}
