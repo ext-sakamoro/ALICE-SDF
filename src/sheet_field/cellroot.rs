@@ -244,6 +244,23 @@ impl Sheet {
         let mut prev: Option<(f64, f64)> = None;
         for _ in 0..CELL_WALK_CAP {
             if t >= tend {
+                // the span ended on a cell face (the last cell's exit is at or before the span's end, and `t` is just
+                // past it): the next cell begins here, so its sign is tested now with the face rule; otherwise a jump
+                // across that face (an s cell next to an interpolated cell) would fall between two walks and be lost
+                if let Some((tp, sp)) = prev {
+                    if tp <= tend {
+                        let sn = f64::from(self.sample_geom(o + d * t as f32, rule).s);
+                        if (sp < 0.0) != (sn < 0.0)
+                            && sp.abs() <= f64::from(JUMP_S)
+                            && sn.abs() <= f64::from(JUMP_S)
+                        {
+                            let tm = self.face_crossing(o, d, tp as f32, t as f32, rule);
+                            if self.crossing_accepted(o + d * tm, rule) {
+                                return Walk::Root(tm);
+                            }
+                        }
+                    }
+                }
                 return Walk::Clear(ambiguous);
             }
             let p = o + d * t as f32;

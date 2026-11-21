@@ -1632,7 +1632,23 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
     // the previous cell's exit (t, s, valid), for a sign change across a face (the CPU rule: both |s| <= JUMP_S)
     var prev = vec3<f32>(0.0, 0.0, 0.0);
     for (var i = 0u; i < __CELL_WALK_CAP__; i = i + 1u) {
-        if (t >= tb) { return vec3<f32>(0.0, 0.0, amb); }
+        if (t >= tb) {
+            // the span ended on a cell face: test the next cell's sign now with the face rule (the CPU walk)
+            if (prev.z == 1.0 && prev.x <= tb) {
+                let sn = sample_sheet(k, o + d * t, 2u).s;
+                if (((prev.y < 0.0) != (sn < 0.0)) && abs(prev.y) <= JUMP_S && abs(sn) <= JUMP_S) {
+                    var fa = prev.x; var fb = t;
+                    let gfa = sample_sheet(k, o + d * fa, 2u).g;
+                    for (var it = 0; it < 30; it = it + 1) {
+                        let m = 0.5 * (fa + fb);
+                        if ((sample_sheet(k, o + d * m, 2u).g < 0.0) == (gfa < 0.0)) { fa = m; } else { fb = m; }
+                    }
+                    let tm = 0.5 * (fa + fb);
+                    if (crossing_inside(k, o + d * tm)) { return vec3<f32>(1.0, tm, amb); }
+                }
+            }
+            return vec3<f32>(0.0, 0.0, amb);
+        }
         walk_cells = walk_cells + 1u;
         let p = o + d * t;
         let cl = s_cell(k, p);
