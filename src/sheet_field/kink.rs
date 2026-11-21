@@ -420,6 +420,7 @@ impl KinkSheet {
     }
 }
 
+#[cfg(feature = "gpu")]
 /// Layout of a sheet's kink block in the GPU index table (all `u32`; offsets relative to the block's first word).
 pub(crate) mod gpu_layout {
     /// Words before the per-level table: slab, origin x y z, then the offsets of verts, faces, segs, cells, refs, and
@@ -435,6 +436,7 @@ pub(crate) mod gpu_layout {
     pub const BRICK: usize = 17;
 }
 
+#[cfg(feature = "gpu")]
 impl KinkSheet {
     /// The sheet's kink block for the GPU index table ([`gpu_layout`]).
     pub(crate) fn gpu_block(&self) -> Vec<u32> {

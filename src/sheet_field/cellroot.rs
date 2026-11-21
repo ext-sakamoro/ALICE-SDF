@@ -264,13 +264,30 @@ impl Sheet {
             // zero (a ray along a face plane, e.g. cos 90 degrees = 6e-17): it cannot leave the cell through that face
             // within any span the walk covers, and counting it would give a zero exit again and again on the face
             let mut u_exit = f64::INFINITY;
+            // the exit axis (its point coordinate and direction), for the hair past the face
+            let mut exit_ax = (0.0f64, 1.0f64);
+            let pa = [pw.x, pw.y, pw.z];
             for a in 0..3 {
-                if e[a] > PARALLEL {
-                    u_exit = u_exit.min((1.0 - q0[a]) / e[a]);
+                let ua = if e[a] > PARALLEL {
+                    (1.0 - q0[a]) / e[a]
                 } else if e[a] < -PARALLEL {
-                    u_exit = u_exit.min(-q0[a] / e[a]);
+                    -q0[a] / e[a]
+                } else {
+                    continue;
+                };
+                if ua < u_exit {
+                    u_exit = ua;
+                    exit_ax = (pa[a].abs(), e[a].abs());
                 }
             }
+            // past the face by a hair the f32 lookup point can carry: 2^-20 of a cell, 4 ulp of an f32 t, and 4 ulp of the
+            // point's exit coordinate over the direction along that axis (far from the origin of the coordinates a smaller
+            // step of t does not move the f32 point at all, and the walk would look the same cell up again)
+            let hair = |tn: f64| {
+                (cell.h / 1_048_576.0)
+                    .max(4.0 * f64::from(f32::EPSILON) * tn.abs())
+                    .max(4.0 * f64::from(f32::EPSILON) * exit_ax.0 / exit_ax.1)
+            };
             let u_exit = u_exit.max(0.0);
             let u_end = u_exit.min((tend - t) / cell.h);
             // an s cell ([`super::kink`]): s is the exact value from the cell's triangles, not the cubic of the corners
@@ -301,7 +318,7 @@ impl Sheet {
                 };
                 let tn = t + u_exit * cell.h;
                 prev = s_exit.map(|se| (tn, se));
-                t = tn + (cell.h / 1_048_576.0).max(4.0 * f64::from(f32::EPSILON) * tn.abs());
+                t = tn + hair(tn);
                 continue;
             }
             let cu = cubic(&cell.corners, q0, e);
@@ -333,7 +350,7 @@ impl Sheet {
             // into the next cell: past the exit by a hair the f32 lookup point can carry (2^-20 of a cell, but at least
             // 4 ulp of an f32 t: the cell is looked up at an f32 point, so a smaller hair would leave it in this cell)
             let tn = t + u_exit * cell.h;
-            t = tn + (cell.h / 1_048_576.0).max(4.0 * f64::from(f32::EPSILON) * tn.abs());
+            t = tn + hair(tn);
         }
         if t >= tend {
             Walk::Clear(ambiguous)

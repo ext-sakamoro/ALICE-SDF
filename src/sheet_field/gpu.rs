@@ -1607,9 +1607,13 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
         var ux = 1e30;
         // a direction component below PARALLEL (1e-9) is the rounding of a zero: it cannot leave the cell through that
         // face within the walk (the CPU cellroot::PARALLEL)
-        if (d.x > 1e-9) { ux = min(ux, (1.0 - q0.x) / d.x); } else if (d.x < -1e-9) { ux = min(ux, -q0.x / d.x); }
-        if (d.y > 1e-9) { ux = min(ux, (1.0 - q0.y) / d.y); } else if (d.y < -1e-9) { ux = min(ux, -q0.y / d.y); }
-        if (d.z > 1e-9) { ux = min(ux, (1.0 - q0.z) / d.z); } else if (d.z < -1e-9) { ux = min(ux, -q0.z / d.z); }
+        // the exit axis's point coordinate over its direction (|p_a| / |d_a|), for the hair past the face (CPU walk)
+        var pd = 0.0;
+        for (var a = 0; a < 3; a = a + 1) {
+            var ua = 1e30;
+            if (d[a] > 1e-9) { ua = (1.0 - q0[a]) / d[a]; } else if (d[a] < -1e-9) { ua = -q0[a] / d[a]; }
+            if (ua < ux) { ux = ua; pd = abs(p[a]) / abs(d[a]); }
+        }
         ux = max(ux, 0.0);
         let ue = min(ux, (tb - t) / cl.h);
         // an s cell: the exact s from the cell's triangles (the CPU walk, line for line)
@@ -1632,7 +1636,7 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
                 if (r.x == 1.0) { return vec3<f32>(1.0, r.y, amb); }
                 if (r.x == 2.0) { amb = amb + 1.0; } else { prev = vec3<f32>(tn, r.z, 1.0); }
             }
-            t = tn + max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn));
+            t = tn + max(max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn)), 4.0 * 1.1920929e-7 * pd);
             continue;
         }
         var cu = vec4<f32>(0.0);
@@ -1664,7 +1668,7 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
         }
         // past the face by a hair that t can carry: 2^-20 h, but at least 4 ulp of t (t is f32 in mm, up to ~1000)
         let tn = t + ux * cl.h;
-        t = tn + max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn));
+        t = tn + max(max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn)), 4.0 * 1.1920929e-7 * pd);
     }
     if (t >= tb) { return vec3<f32>(0.0, 0.0, amb); }
     return vec3<f32>(3.0, 0.0, amb);
