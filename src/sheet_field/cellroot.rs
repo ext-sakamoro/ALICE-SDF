@@ -246,9 +246,12 @@ impl Sheet {
         // the walk enters that one next cell for its face rule only (no root is searched in it), so a jump across the
         // face (an s cell next to an interpolated cell) can't fall between two walks
         let mut past_end = false;
+        // the hair the walk stepped past the last cell's exit: an exit within it past the span's end counts as the end
+        // (the next span's f32 lookup point may already sit in the next cell, so that walk would start without it)
+        let mut last_hair = 0.0f64;
         for _ in 0..CELL_WALK_CAP {
             if t >= tend {
-                if past_end || !prev.is_some_and(|(tp, _)| tp <= tend) {
+                if past_end || !prev.is_some_and(|(tp, _)| tp <= tend + last_hair) {
                     return Walk::Clear(ambiguous);
                 }
                 past_end = true;
@@ -325,7 +328,8 @@ impl Sheet {
                 };
                 let tn = t + u_exit * cell.h;
                 prev = s_exit.map(|se| (tn, se));
-                t = tn + hair(tn);
+                last_hair = hair(tn);
+                t = tn + last_hair;
                 continue;
             }
             let cu = cubic(&cell.corners, q0, e);
@@ -357,7 +361,8 @@ impl Sheet {
             // into the next cell: past the exit by a hair the f32 lookup point can carry (2^-20 of a cell, but at least
             // 4 ulp of an f32 t: the cell is looked up at an f32 point, so a smaller hair would leave it in this cell)
             let tn = t + u_exit * cell.h;
-            t = tn + hair(tn);
+            last_hair = hair(tn);
+            t = tn + last_hair;
         }
         if t >= tend {
             Walk::Clear(ambiguous)

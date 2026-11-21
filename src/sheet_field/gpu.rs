@@ -1632,10 +1632,12 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
     // the previous cell's exit (t, s, valid), for a sign change across a face (the CPU rule: both |s| <= JUMP_S)
     var prev = vec3<f32>(0.0, 0.0, 0.0);
     var past = false;
+    // the hair stepped past the last cell's exit (the CPU walk's last_hair)
+    var last_hair = 0.0;
     for (var i = 0u; i < __CELL_WALK_CAP__; i = i + 1u) {
         if (t >= tb) {
             // the span ended on a cell face: enter that one next cell for its face rule only (the CPU walk)
-            if (past || !(prev.z == 1.0 && prev.x <= tb)) { return vec3<f32>(0.0, 0.0, amb); }
+            if (past || !(prev.z == 1.0 && prev.x <= tb + last_hair)) { return vec3<f32>(0.0, 0.0, amb); }
             past = true;
         }
         walk_cells = walk_cells + 1u;
@@ -1675,7 +1677,8 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
                 if (r.x == 1.0) { return vec3<f32>(1.0, r.y, amb); }
                 if (r.x == 2.0) { amb = amb + 1.0; } else { prev = vec3<f32>(tn, r.z, 1.0); }
             }
-            t = tn + max(max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn)), 4.0 * 1.1920929e-7 * pd);
+            last_hair = max(max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn)), 4.0 * 1.1920929e-7 * pd);
+            t = tn + last_hair;
             continue;
         }
         var cu = vec4<f32>(0.0);
@@ -1707,7 +1710,8 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
         }
         // past the face by a hair that t can carry: 2^-20 h, but at least 4 ulp of t (t is f32 in mm, up to ~1000)
         let tn = t + ux * cl.h;
-        t = tn + max(max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn)), 4.0 * 1.1920929e-7 * pd);
+        last_hair = max(max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn)), 4.0 * 1.1920929e-7 * pd);
+        t = tn + last_hair;
     }
     if (t >= tb) { return vec3<f32>(0.0, 0.0, amb); }
     return vec3<f32>(3.0, 0.0, amb);
