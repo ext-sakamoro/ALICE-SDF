@@ -261,8 +261,28 @@ function Show-CompilerDetail {
 $IdleCpuSeconds = 1.0
 $PrevCpu = @{}
 $IdleChecked = $false
+# the machine's memory at each snapshot (builds that passed showed commit well above physical
+# memory while a cl waited on a large precompiled header): physical and commit totals,
+# and the processes holding the most private memory, by name (no command lines)
+function Get-MemoryLines {
+    $out = @()
+    try {
+        # Win32_OperatingSystem in KB; the commit limit and what is free of it (the performance
+        # counter classes are not registered on this runner and the counter paths are localized)
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+        $out += "  memory: physical {0:N1} GB, free {1:N1} GB, committed {2:N1} / {3:N1} GB" -f `
+            ($os.TotalVisibleMemorySize / 1MB), ($os.FreePhysicalMemory / 1MB), `
+            (($os.TotalVirtualMemorySize - $os.FreeVirtualMemory) / 1MB), ($os.TotalVirtualMemorySize / 1MB)
+    } catch { $out += "  memory: not readable ($($_.Exception.Message))" }
+    foreach ($p in @(Get-Process -ErrorAction SilentlyContinue | Sort-Object PrivateMemorySize64 -Descending | Select-Object -First 8)) {
+        $out += "    top private: {0} pid={1} private={2:N0}MB ws={3:N0}MB" -f $p.ProcessName, $p.Id, ($p.PrivateMemorySize64 / 1MB), ($p.WorkingSet64 / 1MB)
+    }
+    return $out
+}
+
 function Write-BuildSnapshot($Root) {
     $lines = @(Get-BuildProcessLines "snapshot" $Root)
+    $lines += @(Get-MemoryLines)
     $cls = @(Get-Process -Name "cl", "link" -ErrorAction SilentlyContinue)
     $idle = @($cls | Where-Object { $script:PrevCpu.ContainsKey($_.Id) -and ($_.CPU - $script:PrevCpu[$_.Id]) -lt $IdleCpuSeconds })
     $now = @{}
