@@ -840,7 +840,7 @@ mod tests {
             sv(&ks, p, &[0, 1])
         );
         // a rim edge answers r.n instead (signed, not |r|): mark A's edge ab as rim and probe beyond it in A's plane + 0.1
-        let mut kr = ks.clone();
+        let mut kr = ks;
         kr.faces[0].rim = 0b001;
         kr.faces[1].rim = 0b001;
         let p = DVec3::new(0.5, -0.3, 0.1);
