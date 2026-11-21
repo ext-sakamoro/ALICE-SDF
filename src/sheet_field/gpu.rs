@@ -1275,10 +1275,18 @@ fn exact_s_here(k: u32, p: vec3<f32>) -> vec3<f32> {
 
 // the first accepted crossing of the exact s in [ta, tb] inside one s cell (the CPU Sheet::exact_cell_root): x 1 root /
 // 0 clear / 2 capped, y the root t, z s at the last sample
+fn exact_or_sample(k: u32, p: vec3<f32>) -> vec2<f32> {
+    let e = exact_s_here(k, p);
+    if (e.z == 1.0) { return e.xy; }
+    let c = sample_sheet(k, p, 2u);
+    return vec2<f32>(c.s, c.f);
+}
+
 fn exact_cell_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32, h: f32) -> vec3<f32> {
     let sub = h / 512.0;
-    let e0 = exact_s_here(k, o + d * ta);
-    if (e0.z == 0.0) { return vec3<f32>(0.0, 0.0, 0.0); }
+    // past the s cell (a sample that rounds into a cell that is not an s cell) the sheet's own sample stands in, so the
+    // last sub-step's sign change is still seen (the CPU exact_cell_root)
+    let e0 = exact_or_sample(k, o + d * ta);
     var a = ta; var sa = e0.x; var ua = e0.y;
     var n = 0u;
     loop {
@@ -1286,14 +1294,12 @@ fn exact_cell_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32, h: f32)
         if (n >= 2048u) { return vec3<f32>(2.0, 0.0, sa); }
         n = n + 1u;
         let b = min(a + max(ua - JUMP_S, sub), tb);
-        let eb = exact_s_here(k, o + d * b);
-        if (eb.z == 0.0) { break; }
+        let eb = exact_or_sample(k, o + d * b);
         if ((sa < 0.0) != (eb.x < 0.0)) {
             var l = a; var r = b; var sl = sa;
             for (var it = 0; it < 40; it = it + 1) {
                 let m = 0.5 * (l + r);
-                let em = exact_s_here(k, o + d * m);
-                if (em.z == 0.0) { break; }
+                let em = exact_or_sample(k, o + d * m);
                 n = n + 1u;
                 if ((em.x < 0.0) == (sl < 0.0)) { l = m; sl = em.x; } else { r = m; }
             }

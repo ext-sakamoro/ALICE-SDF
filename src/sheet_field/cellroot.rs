@@ -169,13 +169,19 @@ impl Sheet {
         rule: ValidRule,
     ) -> ExactRoot {
         let sub = h / 512.0;
+        // the exact (s, distance) in an s cell; past the cell (a sample that rounds into a cell that is not an s cell)
+        // the sheet's own sample (s, and |g| as the distance bound), so the last sub-step's sign change is still seen
         let ev = |t: f64| {
-            self.exact_s_here(o + d * t as f32)
-                .map(|(s, u)| (f64::from(s), f64::from(u)))
+            let p = o + d * t as f32;
+            self.exact_s_here(p).map_or_else(
+                || {
+                    let c = self.sample_geom(p, rule);
+                    (f64::from(c.s), f64::from(c.f))
+                },
+                |(s, u)| (f64::from(s), f64::from(u)),
+            )
         };
-        let Some((mut sa, mut ua)) = ev(ta) else {
-            return ExactRoot::Clear(0.0);
-        };
+        let (mut sa, mut ua) = ev(ta);
         let mut a = ta;
         let mut n = 0u32;
         while a < tb {
@@ -184,15 +190,12 @@ impl Sheet {
             }
             n += 1;
             let b = (a + (ua - f64::from(JUMP_S)).max(sub)).min(tb);
-            // the far end may round into a cell that is not an s cell: stop there (the walk takes over in that cell)
-            let Some((sb, ub)) = ev(b) else {
-                break;
-            };
+            let (sb, ub) = ev(b);
             if (sa < 0.0) != (sb < 0.0) {
                 let (mut l, mut r, mut sl) = (a, b, sa);
                 for _ in 0..40 {
                     let m = 0.5 * (l + r);
-                    let Some((sm, _)) = ev(m) else { break };
+                    let (sm, _) = ev(m);
                     n += 1;
                     if (sm < 0.0) == (sl < 0.0) {
                         l = m;
