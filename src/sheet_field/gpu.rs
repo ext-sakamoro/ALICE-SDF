@@ -1502,7 +1502,9 @@ fn crossing_inside(k: u32, p: vec3<f32>) -> bool {
 
 // M2 (CPU cellroot, same rules, f32 in cell units): the cell of sheet k's answering level at p, with the 8 stored s
 // corners; x of the result: 0 none answers, 1 a cell (masked in w), lo in yzw of the second
-struct SCell { found: bool, masked: bool, lo: vec3<f32>, h: f32, c: array<f32, 8> };
+// q: the point's coordinate inside the cell from the lookup's own arithmetic (w - c, in [0, 1] for the cell the lookup
+// chose), so the walk's exit cannot be computed against a differently rounded cell origin
+struct SCell { found: bool, masked: bool, lo: vec3<f32>, h: f32, c: array<f32, 8>, q: vec3<f32> };
 fn s_cell(k: u32, p: vec3<f32>) -> SCell {
     let sh = SHEETS[k];
     var out: SCell;
@@ -1518,6 +1520,7 @@ fn s_cell(k: u32, p: vec3<f32>) -> SCell {
         if (k_ < 0) { continue; }
         let w = u - bi * b;
         let c = min(vec3<u32>(floor(w)), vec3<u32>(BRICK - 1u));
+        out.q = clamp(w - vec3<f32>(c), vec3<f32>(0.0), vec3<f32>(1.0));
         let row = bitcast<i32>(IX[U.rows_base + lv.rows_off[0][0] + u32(k_)]);
         var umin = 1e30;
         var q0 = 0.0;
@@ -1600,7 +1603,7 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
         let p = o + d * t;
         let cl = s_cell(k, p);
         if (!cl.found) { t = t + outside_bound(p, SHEETS[k]); prev.z = 0.0; continue; }
-        let q0 = (p - cl.lo) / cl.h;
+        let q0 = cl.q;
         var ux = 1e30;
         if (d.x > 0.0) { ux = min(ux, (1.0 - q0.x) / d.x); } else if (d.x < 0.0) { ux = min(ux, -q0.x / d.x); }
         if (d.y > 0.0) { ux = min(ux, (1.0 - q0.y) / d.y); } else if (d.y < 0.0) { ux = min(ux, -q0.y / d.y); }
