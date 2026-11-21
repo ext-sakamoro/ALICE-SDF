@@ -49,6 +49,7 @@ pub mod cellroot;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 pub mod kink;
+pub mod kink_build;
 pub mod nearest;
 pub mod stream;
 

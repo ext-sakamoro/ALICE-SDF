@@ -341,6 +341,79 @@ impl KinkSheet {
     }
 }
 
+impl KinkSheet {
+    /// The sheet's mesh with the shared normals ([`super::kink_build::derived_normals`]) and no cells: the point
+    /// evaluator a builder uses for its node values, the same code the march runs in a flagged cell.
+    #[must_use]
+    pub fn from_geom(geom: &super::kink_build::SheetGeom) -> Self {
+        let (fnrm, epn, vn) = super::kink_build::derived_normals(geom);
+        let rim: std::collections::HashSet<(u32, u32)> = geom
+            .rim
+            .iter()
+            .map(|e| (e[0].min(e[1]), e[0].max(e[1])))
+            .collect();
+        let k = |a: u32, b: u32| rim.contains(&(a.min(b), a.max(b)));
+        let mut rim_vn = vec![None; geom.verts.len()];
+        for e in geom.rim {
+            for &v in e {
+                let n = vn[v as usize];
+                rim_vn[v as usize] = Some(n / n.length().max(1e-12));
+            }
+        }
+        Self {
+            slab: geom.slab,
+            origin: DVec3::ZERO,
+            verts: geom.verts.to_vec(),
+            faces: geom
+                .faces
+                .iter()
+                .zip(&fnrm)
+                .zip(&epn)
+                .map(|((t, n), e)| Face {
+                    v: *t,
+                    n: *n,
+                    rim: u8::from(k(t[0], t[1]))
+                        | (u8::from(k(t[1], t[2])) << 1)
+                        | (u8::from(k(t[2], t[0])) << 2),
+                    epn: *e,
+                })
+                .collect(),
+            rim_vn,
+            vn,
+            segs: geom.rim.to_vec(),
+            levels: Vec::new(),
+            cells: Vec::new(),
+            refs: Vec::new(),
+        }
+    }
+
+    /// `(s, d_b, unsigned distance)` at world point `p` from the candidate triangles `tris` (must hold the nearest
+    /// face) and rim segments `segs` (must hold every rim segment within the slab of the closest point); `None` when
+    /// `tris` is empty.
+    #[must_use]
+    pub fn eval_all(&self, p: DVec3, tris: &[u32], segs: &[u32]) -> Option<(f64, f64, f64)> {
+        let pl = p - self.origin;
+        let nf = self.nearest(pl, tris)?;
+        Some((
+            self.exact_s(pl, nf),
+            self.exact_db(pl, nf, segs),
+            (pl - nf.1).length(),
+        ))
+    }
+
+    /// Number of faces (candidate indices run below it).
+    #[must_use]
+    pub const fn face_count(&self) -> usize {
+        self.faces.len()
+    }
+
+    /// Number of rim segments (candidate indices run below it).
+    #[must_use]
+    pub const fn segment_count(&self) -> usize {
+        self.segs.len()
+    }
+}
+
 /// Layout of a sheet's kink block in the GPU index table (all `u32`; offsets relative to the block's first word).
 pub(crate) mod gpu_layout {
     /// Words before the per-level table: slab, origin x y z, then the offsets of verts, faces, segs, cells, refs, and
