@@ -11,8 +11,8 @@
 //!   ends), and its 26 neighbours on that level.
 //! - s cells: every triangle is rasterised into the cells of every level whose brick is active (triangle-box
 //!   separating-axis test). For a surface cell with stored corner values `s_i`, every face `f` crossing it gives
-//!   `dev_f = max_i |s_i - n_f.(node_i - a_f)| + q0 / 2` (trilinear reproduces the plane, so `|interp(x)| <= dev_f` for
-//!   `x` on `f` in the cell) and `g_f = sum_k min(n_fk lo_k, n_fk hi_k)` (`lo`, `hi`: the min / max of the cell's 4 edge
+//!   `dev_f = max_i |s_i - n_f.(node_i - a_f)|` (trilinear reproduces the plane, so `|interp(x)| <= dev_f` for `x` on
+//!   `f` in the cell; `s_i` are the stored values, so the quantisation is already inside `dev_f`) and `g_f = sum_k min(n_fk lo_k, n_fk hi_k)` (`lo`, `hi`: the min / max of the cell's 4 edge
 //!   differences over `h` per axis, the bounds of the interpolant's gradient), and the cell is an s cell when for
 //!   some `f` `g_f <= 0` or `dev_f / g_f > eps`: the interpolant's zero may lie farther than `eps` from the surface.
 //!
@@ -349,8 +349,7 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
                     .iter()
                     .zip(&nodes)
                     .map(|(sv, nd)| (sv - n.dot(*nd - a)).abs())
-                    .fold(0.0, f64::max)
-                    + sc / 2.0;
+                    .fold(0.0, f64::max);
                 let gf: f64 = (0..3)
                     .map(|k3| (n[k3] * glo[k3]).min(n[k3] * ghi[k3]))
                     .sum();
