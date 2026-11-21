@@ -1030,7 +1030,30 @@ impl SheetField {
                                 khit = k;
                             }
                         }
-                        cellroot::Walk::Clear(_) => {}
+                        cellroot::Walk::Clear(_) => {
+                            // a crossing exists when the step's ends have opposite signs, whatever the walk
+                            // located: the walk only places roots, and a root it rounds past the step's end (the
+                            // f32 walk on the GPU when the end lands an ulp after the surface) must not turn the
+                            // sign change into a clear step
+                            if (gc < 0.0) != (gp < 0.0) {
+                                let (mut a, mut b, mut ga) = (tprev, t, gp);
+                                for _ in 0..30 {
+                                    let mid = f32::midpoint(a, b);
+                                    let gm = sh.sample_geom(origin + dir * mid, self.rule).g;
+                                    if (gm < 0.0) == (ga < 0.0) {
+                                        a = mid;
+                                        ga = gm;
+                                    } else {
+                                        b = mid;
+                                    }
+                                }
+                                let tm = f32::midpoint(a, b);
+                                if tm < thit && sh.crossing_inside(origin + dir * tm, self.rule) {
+                                    thit = tm;
+                                    khit = k;
+                                }
+                            }
+                        }
                         cellroot::Walk::Exhausted => return MarchResult::Undecided,
                     }
                     continue;

@@ -1896,6 +1896,17 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 work = work + walk_cells;
                 if (wr.x == 3.0) { kind = 4; dip_out = true; break; }
                 if (wr.x == 1.0 && wr.y < thit) { thit = wr.y; khit = k; }
+                // a crossing exists when the step's ends have opposite signs, whatever the walk located (the CPU march)
+                if (wr.x == 0.0 && ((gc < 0.0) != (gp < 0.0))) {
+                    var fa = tprev; var fb = t; var gfa = gp;
+                    for (var it = 0; it < 30; it = it + 1) {
+                        let m = 0.5 * (fa + fb);
+                        let gm = sample_sheet(k, o + d * m, 2u).g;
+                        if ((gm < 0.0) == (gfa < 0.0)) { fa = m; gfa = gm; } else { fb = m; }
+                    }
+                    let tm = 0.5 * (fa + fb);
+                    if (tm < thit && crossing_inside(k, o + d * tm)) { thit = tm; khit = k; }
+                }
                 continue;
             }
             var a = tprev; var b = t; var ga = gp;
