@@ -25,6 +25,8 @@ use glam::Vec3;
 
 use super::{outside_lower_bound, Level, Sheet, ValidRule, BRICK, HALF_DIAG, JUMP_S};
 
+/// A direction component smaller than this is treated as parallel to the cell faces of its axis (cell walk exits).
+pub const PARALLEL: f64 = 1e-9;
 /// Bisection steps on one monotone piece.
 pub const BISECT_STEPS: u32 = 24;
 /// The multiplicity probe offset, in cell units.
@@ -258,12 +260,14 @@ impl Sheet {
                 (pw.z - cell.lo[2]) / cell.h,
             ];
             let e = [d64.x, d64.y, d64.z];
-            // exit of the cell along the ray, in cell units
+            // exit of the cell along the ray, in cell units; a direction component below PARALLEL is the rounding of a
+            // zero (a ray along a face plane, e.g. cos 90 degrees = 6e-17): it cannot leave the cell through that face
+            // within any span the walk covers, and counting it would give a zero exit again and again on the face
             let mut u_exit = f64::INFINITY;
             for a in 0..3 {
-                if e[a] > 0.0 {
+                if e[a] > PARALLEL {
                     u_exit = u_exit.min((1.0 - q0[a]) / e[a]);
-                } else if e[a] < 0.0 {
+                } else if e[a] < -PARALLEL {
                     u_exit = u_exit.min(-q0[a] / e[a]);
                 }
             }

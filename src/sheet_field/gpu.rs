@@ -1605,9 +1605,11 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
         if (!cl.found) { t = t + outside_bound(p, SHEETS[k]); prev.z = 0.0; continue; }
         let q0 = cl.q;
         var ux = 1e30;
-        if (d.x > 0.0) { ux = min(ux, (1.0 - q0.x) / d.x); } else if (d.x < 0.0) { ux = min(ux, -q0.x / d.x); }
-        if (d.y > 0.0) { ux = min(ux, (1.0 - q0.y) / d.y); } else if (d.y < 0.0) { ux = min(ux, -q0.y / d.y); }
-        if (d.z > 0.0) { ux = min(ux, (1.0 - q0.z) / d.z); } else if (d.z < 0.0) { ux = min(ux, -q0.z / d.z); }
+        // a direction component below PARALLEL (1e-9) is the rounding of a zero: it cannot leave the cell through that
+        // face within the walk (the CPU cellroot::PARALLEL)
+        if (d.x > 1e-9) { ux = min(ux, (1.0 - q0.x) / d.x); } else if (d.x < -1e-9) { ux = min(ux, -q0.x / d.x); }
+        if (d.y > 1e-9) { ux = min(ux, (1.0 - q0.y) / d.y); } else if (d.y < -1e-9) { ux = min(ux, -q0.y / d.y); }
+        if (d.z > 1e-9) { ux = min(ux, (1.0 - q0.z) / d.z); } else if (d.z < -1e-9) { ux = min(ux, -q0.z / d.z); }
         ux = max(ux, 0.0);
         let ue = min(ux, (tb - t) / cl.h);
         // an s cell: the exact s from the cell's triangles (the CPU walk, line for line)
