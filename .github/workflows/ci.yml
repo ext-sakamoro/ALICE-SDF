@@ -1368,7 +1368,7 @@ jobs:
       - name: GPU readback at volume
         env:
           ALICE_SDF_VOLUME_READBACK: "1"
-        run: cargo test --features gpu --test test_gpu_readback_volume -- --nocapture
+        run: cargo test --features gpu --test test_gpu_readback_volume --test test_sheet_field_gpu_readback -- --nocapture
 
       # The polygon / section-stack shader oracles need gpu + glsl + hlsl together (the
       # files are empty without all three), so they run as their own step, counted so a feature set

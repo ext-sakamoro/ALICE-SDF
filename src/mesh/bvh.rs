@@ -322,6 +322,28 @@ fn closest_on_segment(p: Vec3, a: Vec3, b: Vec3) -> (Vec3, f32) {
     (a + ab * t, t)
 }
 
+/// A primitive the BVH builder can split: anything with an axis-aligned box. The triangle path
+/// ([`MeshBvh::build`]) and the box path ([`BvhNode::build_over_boxes`]) share one builder, so a box BVH
+/// over triangle boxes is node for node the triangle BVH.
+pub trait HasAabb {
+    /// The primitive's box.
+    fn bvh_aabb(&self) -> &Aabb;
+}
+
+impl HasAabb for BvhTriangle {
+    #[inline]
+    fn bvh_aabb(&self) -> &Aabb {
+        &self.aabb
+    }
+}
+
+impl HasAabb for Aabb {
+    #[inline]
+    fn bvh_aabb(&self) -> &Aabb {
+        self
+    }
+}
+
 /// BVH Node
 #[derive(Debug)]
 pub enum BvhNode {
@@ -344,6 +366,19 @@ pub enum BvhNode {
 }
 
 impl BvhNode {
+    /// A BVH over boxes (leaf entries are indices into `boxes`), with the same SAH split as
+    /// [`MeshBvh::build`]. `None` for no boxes. `max_per_leaf` is clamped to at least 1.
+    pub fn build_over_boxes(boxes: &[Aabb], max_per_leaf: usize) -> Option<Self> {
+        if boxes.is_empty() {
+            return None;
+        }
+        Some(MeshBvh::build_node(
+            boxes,
+            (0..boxes.len()).collect(),
+            max_per_leaf.max(1),
+        ))
+    }
+
     /// Get AABB of this node
     #[inline]
     pub const fn aabb(&self) -> &Aabb {
@@ -413,7 +448,11 @@ impl MeshBvh {
     /// Recursively build BVH nodes
     ///
     /// [Deep Fried v2] SIMD-accelerated AABB computation for batches of 8 triangles.
-    fn build_node(triangles: &[BvhTriangle], indices: Vec<usize>, max_per_leaf: usize) -> BvhNode {
+    fn build_node<P: HasAabb>(
+        triangles: &[P],
+        indices: Vec<usize>,
+        max_per_leaf: usize,
+    ) -> BvhNode {
         // [Deep Fried v2] SIMD AABB computation — process 8 triangle AABBs at a time
         let aabb = compute_aabb_simd(triangles, &indices);
 
@@ -431,8 +470,8 @@ impl MeshBvh {
         let axis = aabb.longest_axis();
         let mut sorted_indices = indices;
         sorted_indices.sort_unstable_by(|&a, &b| {
-            let ca = triangles[a].aabb.center();
-            let cb = triangles[b].aabb.center();
+            let ca = triangles[a].bvh_aabb().center();
+            let cb = triangles[b].bvh_aabb().center();
             let va = match axis {
                 0 => ca.x,
                 1 => ca.y,
@@ -686,7 +725,7 @@ impl MeshBvh {
 /// Processes 8 triangle AABBs at a time using `wide::f32x8` for min/max reduction.
 /// Falls back to scalar for the remainder (<8 triangles).
 #[inline]
-fn compute_aabb_simd(triangles: &[BvhTriangle], indices: &[usize]) -> Aabb {
+fn compute_aabb_simd<P: HasAabb>(triangles: &[P], indices: &[usize]) -> Aabb {
     if indices.is_empty() {
         return Aabb::empty();
     }
@@ -705,64 +744,64 @@ fn compute_aabb_simd(triangles: &[BvhTriangle], indices: &[usize]) -> Aabb {
 
     for chunk in chunks {
         let min_x = f32x8::new([
-            triangles[chunk[0]].aabb.min.x,
-            triangles[chunk[1]].aabb.min.x,
-            triangles[chunk[2]].aabb.min.x,
-            triangles[chunk[3]].aabb.min.x,
-            triangles[chunk[4]].aabb.min.x,
-            triangles[chunk[5]].aabb.min.x,
-            triangles[chunk[6]].aabb.min.x,
-            triangles[chunk[7]].aabb.min.x,
+            triangles[chunk[0]].bvh_aabb().min.x,
+            triangles[chunk[1]].bvh_aabb().min.x,
+            triangles[chunk[2]].bvh_aabb().min.x,
+            triangles[chunk[3]].bvh_aabb().min.x,
+            triangles[chunk[4]].bvh_aabb().min.x,
+            triangles[chunk[5]].bvh_aabb().min.x,
+            triangles[chunk[6]].bvh_aabb().min.x,
+            triangles[chunk[7]].bvh_aabb().min.x,
         ]);
         let min_y = f32x8::new([
-            triangles[chunk[0]].aabb.min.y,
-            triangles[chunk[1]].aabb.min.y,
-            triangles[chunk[2]].aabb.min.y,
-            triangles[chunk[3]].aabb.min.y,
-            triangles[chunk[4]].aabb.min.y,
-            triangles[chunk[5]].aabb.min.y,
-            triangles[chunk[6]].aabb.min.y,
-            triangles[chunk[7]].aabb.min.y,
+            triangles[chunk[0]].bvh_aabb().min.y,
+            triangles[chunk[1]].bvh_aabb().min.y,
+            triangles[chunk[2]].bvh_aabb().min.y,
+            triangles[chunk[3]].bvh_aabb().min.y,
+            triangles[chunk[4]].bvh_aabb().min.y,
+            triangles[chunk[5]].bvh_aabb().min.y,
+            triangles[chunk[6]].bvh_aabb().min.y,
+            triangles[chunk[7]].bvh_aabb().min.y,
         ]);
         let min_z = f32x8::new([
-            triangles[chunk[0]].aabb.min.z,
-            triangles[chunk[1]].aabb.min.z,
-            triangles[chunk[2]].aabb.min.z,
-            triangles[chunk[3]].aabb.min.z,
-            triangles[chunk[4]].aabb.min.z,
-            triangles[chunk[5]].aabb.min.z,
-            triangles[chunk[6]].aabb.min.z,
-            triangles[chunk[7]].aabb.min.z,
+            triangles[chunk[0]].bvh_aabb().min.z,
+            triangles[chunk[1]].bvh_aabb().min.z,
+            triangles[chunk[2]].bvh_aabb().min.z,
+            triangles[chunk[3]].bvh_aabb().min.z,
+            triangles[chunk[4]].bvh_aabb().min.z,
+            triangles[chunk[5]].bvh_aabb().min.z,
+            triangles[chunk[6]].bvh_aabb().min.z,
+            triangles[chunk[7]].bvh_aabb().min.z,
         ]);
         let max_x = f32x8::new([
-            triangles[chunk[0]].aabb.max.x,
-            triangles[chunk[1]].aabb.max.x,
-            triangles[chunk[2]].aabb.max.x,
-            triangles[chunk[3]].aabb.max.x,
-            triangles[chunk[4]].aabb.max.x,
-            triangles[chunk[5]].aabb.max.x,
-            triangles[chunk[6]].aabb.max.x,
-            triangles[chunk[7]].aabb.max.x,
+            triangles[chunk[0]].bvh_aabb().max.x,
+            triangles[chunk[1]].bvh_aabb().max.x,
+            triangles[chunk[2]].bvh_aabb().max.x,
+            triangles[chunk[3]].bvh_aabb().max.x,
+            triangles[chunk[4]].bvh_aabb().max.x,
+            triangles[chunk[5]].bvh_aabb().max.x,
+            triangles[chunk[6]].bvh_aabb().max.x,
+            triangles[chunk[7]].bvh_aabb().max.x,
         ]);
         let max_y = f32x8::new([
-            triangles[chunk[0]].aabb.max.y,
-            triangles[chunk[1]].aabb.max.y,
-            triangles[chunk[2]].aabb.max.y,
-            triangles[chunk[3]].aabb.max.y,
-            triangles[chunk[4]].aabb.max.y,
-            triangles[chunk[5]].aabb.max.y,
-            triangles[chunk[6]].aabb.max.y,
-            triangles[chunk[7]].aabb.max.y,
+            triangles[chunk[0]].bvh_aabb().max.y,
+            triangles[chunk[1]].bvh_aabb().max.y,
+            triangles[chunk[2]].bvh_aabb().max.y,
+            triangles[chunk[3]].bvh_aabb().max.y,
+            triangles[chunk[4]].bvh_aabb().max.y,
+            triangles[chunk[5]].bvh_aabb().max.y,
+            triangles[chunk[6]].bvh_aabb().max.y,
+            triangles[chunk[7]].bvh_aabb().max.y,
         ]);
         let max_z = f32x8::new([
-            triangles[chunk[0]].aabb.max.z,
-            triangles[chunk[1]].aabb.max.z,
-            triangles[chunk[2]].aabb.max.z,
-            triangles[chunk[3]].aabb.max.z,
-            triangles[chunk[4]].aabb.max.z,
-            triangles[chunk[5]].aabb.max.z,
-            triangles[chunk[6]].aabb.max.z,
-            triangles[chunk[7]].aabb.max.z,
+            triangles[chunk[0]].bvh_aabb().max.z,
+            triangles[chunk[1]].bvh_aabb().max.z,
+            triangles[chunk[2]].bvh_aabb().max.z,
+            triangles[chunk[3]].bvh_aabb().max.z,
+            triangles[chunk[4]].bvh_aabb().max.z,
+            triangles[chunk[5]].bvh_aabb().max.z,
+            triangles[chunk[6]].bvh_aabb().max.z,
+            triangles[chunk[7]].bvh_aabb().max.z,
         ]);
 
         // Accumulate in SIMD lanes — no per-chunk extract
@@ -800,13 +839,13 @@ fn compute_aabb_simd(triangles: &[BvhTriangle], indices: &[usize]) -> Aabb {
 
     // Scalar remainder
     for &idx in remainder {
-        let t = &triangles[idx];
-        global_min_x = global_min_x.law_min(t.aabb.min.x);
-        global_min_y = global_min_y.law_min(t.aabb.min.y);
-        global_min_z = global_min_z.law_min(t.aabb.min.z);
-        global_max_x = global_max_x.law_max(t.aabb.max.x);
-        global_max_y = global_max_y.law_max(t.aabb.max.y);
-        global_max_z = global_max_z.law_max(t.aabb.max.z);
+        let t = triangles[idx].bvh_aabb();
+        global_min_x = global_min_x.law_min(t.min.x);
+        global_min_y = global_min_y.law_min(t.min.y);
+        global_min_z = global_min_z.law_min(t.min.z);
+        global_max_x = global_max_x.law_max(t.max.x);
+        global_max_y = global_max_y.law_max(t.max.y);
+        global_max_z = global_max_z.law_max(t.max.z);
     }
 
     Aabb {

@@ -44,10 +44,7 @@ fn patch_field(uv: bool, rule: ValidRule) -> SheetField {
         },
     )
     .unwrap();
-    SheetField {
-        sheets: vec![sheet(vec![lv]).unwrap()],
-        rule,
-    }
+    SheetField::new(vec![sheet(vec![lv]).unwrap()], rule)
 }
 
 fn lcg(seed: &mut u64) -> f32 {
@@ -143,10 +140,7 @@ fn the_cell_rule_removes_a_far_sign_jump_and_keeps_true_hits() {
             },
         )
         .unwrap();
-        SheetField {
-            sheets: vec![sheet(vec![lv]).unwrap()],
-            rule,
-        }
+        SheetField::new(vec![sheet(vec![lv]).unwrap()], rule)
     };
     let d = Vec3::new(0.0, 0.0, -1.0);
     // left-half rays start inside the jump's band (z = 2.2): from far away a sphere-tracing step of |s| would

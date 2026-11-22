@@ -22,10 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         |_c, _e| true,
         |p| vec![p.z, square_db(p.x, p.y), 0.5 + 0.01 * p.x, 0.5 + 0.01 * p.y],
     )?;
-    let field = SheetField {
-        sheets: vec![sheet(vec![level])?],
-        rule: ValidRule::from_name("cell-v1")?,
-    };
+    let field = SheetField::new(vec![sheet(vec![level])?], ValidRule::from_name("cell-v1")?);
     let gpu = GpuSheetField::new(&field)?;
     let origins: Vec<Vec3> = (0..225)
         .map(|i| Vec3::new(-7.0 + (i % 15) as f32, -7.0 + (i / 15) as f32, 10.0))
