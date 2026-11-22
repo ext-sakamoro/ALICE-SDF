@@ -1444,6 +1444,7 @@ jobs:
           --test test_texture_shader_gpu_parity
           --test test_npr_bytecode_gpu_parity
           --test test_instanced_wgsl_gpu_parity
+          --test test_sheet_field_gpu_parity
           --test test_gpu_eval_api_oracle
           --test test_glsl_export_oracle
           --test test_soft_shadow_glsl_parity
