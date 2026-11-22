@@ -26,6 +26,15 @@
 //! ray by proximity alone (a distance threshold would widen every rim and every sheet by that threshold). The
 //! hit's owner is the sheet whose crossing it is. A ray that runs out of steps before the far distance is
 //! reported as undecided, never as a hit.
+//!
+//! Step floor and budget: each step advances `max(f, MIN_STEP)`. Where `f >= MIN_STEP` the step stays inside the
+//! ball free of every sheet (`f` is a lower bound on the distance), so nothing is skipped. Where `f < MIN_STEP` the
+//! step is the floor and may overrun the free ball: a single crossing of an open sheet is still caught (the
+//! sheet's own `s` has opposite signs at the two ends of the step, whatever its length); what the floor can
+//! skip is two crossings of the same sheet within one step, i.e. a fold of one sheet whose two layers lie closer
+//! than `MIN_STEP` along the ray (at normal incidence, the fold's thickness), entered and left without a net sign
+//! change. A fold thicker than `MIN_STEP` cannot be skipped. [`decided_steps`] gives the budget that covers any
+//! `tmax` at the floor step, so [`SheetField::march_decided`] always ends in a hit or a miss.
 
 pub mod build;
 #[cfg(feature = "gpu")]
@@ -44,6 +53,28 @@ pub const NODES: usize = BRICK + 1;
 /// Nodes per brick.
 pub const BRICK_NODES: usize = NODES * NODES * NODES;
 const HALF_DIAG: f32 = 0.866_025_4;
+/// The smallest step of the march (mm): a fold of one sheet thinner than this along the ray can be skipped.
+pub const MIN_STEP: f32 = 0.01;
+
+/// The step budget that covers `tmax` at the floor step.
+///
+/// Every step advances at least [`MIN_STEP`] less the f32 rounding of `t` (at most `tmax * f32::EPSILON`), so a
+/// march with this many steps reaches `tmax` and is never undecided. Non-finite or non-positive `tmax` gives 1
+/// (the march then ends at once).
+#[must_use]
+pub fn decided_steps(tmax: f32) -> u32 {
+    if !tmax.is_finite() || tmax <= 0.0 {
+        return 1;
+    }
+    let least = MIN_STEP - tmax * f32::EPSILON;
+    assert!(
+        least > 0.0,
+        "tmax {tmax}: the f32 rounding of t reaches the step floor"
+    );
+    let n = (f64::from(tmax) / f64::from(least)).ceil() + 1.0;
+    assert!(n < f64::from(u32::MAX), "tmax {tmax}: budget {n} steps");
+    n as u32
+}
 /// A bisected sign change with `|s|` above this is a sign jump of `s`, not a crossing of the sheet.
 const JUMP_S: f32 = 0.02;
 
@@ -502,6 +533,12 @@ impl SheetField {
     pub fn march(&self, origin: Vec3, dir: Vec3, tmax: f32, steps: u32) -> MarchResult {
         self.march_with(origin, dir, tmax, steps, true)
     }
+
+    /// [`Self::march`] with the budget from [`decided_steps`]: the result is a hit or a miss, never undecided.
+    #[must_use]
+    pub fn march_decided(&self, origin: Vec3, dir: Vec3, tmax: f32) -> MarchResult {
+        self.march(origin, dir, tmax, decided_steps(tmax))
+    }
 }
 
 impl SheetField {
@@ -595,7 +632,7 @@ impl SheetField {
             }
             tprev = t;
             gprev = gcur;
-            t += dd.max(0.01);
+            t += dd.max(MIN_STEP);
             if t >= tmax {
                 return MarchResult::Miss;
             }

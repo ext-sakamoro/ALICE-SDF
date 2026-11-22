@@ -262,6 +262,7 @@ impl GpuSheetField {
             source: wgpu::ShaderSource::Wgsl(
                 SHADER
                     .replace("__MAX_LIVE__", &MAX_LIVE_SHEETS.to_string())
+                    .replace("__MIN_STEP__", &format!("{:?}", super::MIN_STEP))
                     .into(),
             ),
         });
@@ -411,6 +412,16 @@ impl GpuSheetField {
                 masked: o[2] != 0.0,
             })
             .collect())
+    }
+
+    /// [`Self::march_batch`] with the budget from [`super::decided_steps`]: every result is a hit or a miss.
+    pub fn march_batch_decided(
+        &self,
+        origins: &[Vec3],
+        dir: Vec3,
+        tmax: f32,
+    ) -> Result<Vec<MarchResult>, GpuError> {
+        self.march_batch(origins, dir, tmax, super::decided_steps(tmax))
     }
 
     /// March rays from `origins` along the unit `dir` up to `tmax` with at most `steps` steps.
@@ -736,7 +747,7 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         tprev = t;
         for (var j = 0u; j < n_cur; j = j + 1u) { prev_k[j] = cur_k[j]; prev_g[j] = cur_g[j]; }
         n_prev = n_cur;
-        t = t + max(dd, 0.01);
+        t = t + max(dd, __MIN_STEP__);
         if (t >= U.tmax) { kind = 0; break; }
     }
     if (overflow) { OUT[4u * i] = vec4<f32>(0.0, 3.0, 0.0, 0.0); return; }
