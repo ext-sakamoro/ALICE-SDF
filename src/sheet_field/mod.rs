@@ -13,7 +13,7 @@
 //! Validity rule `CellV1`: a cell whose 8 corners all have `|s| > sqrt(3)/2 * h + scale` cannot contain the
 //! surface (`|s|` never exceeds the true distance, and a surface point in the cell lies within half a cell
 //! diagonal of its nearest corner). Such a cell is answered with the lower bound
-//! `max(min|s| - scale - sqrt(3)/2 * h, 0.05)`, tightened per corner (below), positive, so a sign jump of `s` there (two parts of one open
+//! `max(min|s| - scale - sqrt(3)/2 * h, min(0.05, sqrt(3)/2 * h))`, tightened per corner (below), positive, so a sign jump of `s` there (two parts of one open
 //! sheet seen from opposite sides) never reads as a crossing. A masked cell never holds a true hit. A sign
 //! jump in an unmasked cell can still cross, at most `(sqrt(3) + sqrt(3)/2) * h + scale` from the sheet.
 //!
@@ -101,13 +101,21 @@ pub const JUMP_S: f32 = 0.02;
 /// [`SheetField::hit_agrees_with_reference`].
 pub const REFERENCE_T_TOL: f32 = MIN_STEP / 20.0 + MIN_STEP / 1_073_741_824.0;
 
-/// The floor of a masked cell's lower bound (the field's length unit, mm).
+/// The largest floor of a masked cell's lower bound (the field's length unit, mm).
 ///
-/// It is a valid lower bound only where a masked cell's true distance is at least it: masking needs `min |s_c| >
-/// HALF_DIAG h + q0`, so the true distance is over `HALF_DIAG h`, and the floor holds for `h >= MASKED_FLOOR /
-/// HALF_DIAG` (about 0.0577). A level with a smaller cell is refused where fields are read
-/// ([`stream::AshfIndex::read_sheets`]).
+/// The floor a level uses is [`masked_floor`] of its `h`: masking needs `min |s_c| > HALF_DIAG h + q0`, so a masked
+/// cell's true distance is over `HALF_DIAG h`, and a floor is a valid lower bound only up to that.
 pub const MASKED_FLOOR: f32 = 0.05;
+
+/// The floor of a masked cell's lower bound for cells of size `h`.
+///
+/// It is `min(MASKED_FLOOR, HALF_DIAG h)`, which never exceeds the masked cell's true distance. For `h >= MASKED_FLOOR
+/// / HALF_DIAG` (about 0.0577) it is `MASKED_FLOOR`. The GPU march substitutes the same constant and computes the same
+/// `min` in f32.
+#[must_use]
+pub fn masked_floor(h: f32) -> f32 {
+    MASKED_FLOOR.min(HALF_DIAG * h)
+}
 
 /// One step of a profiled march ([`SheetField::march_profile`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -561,7 +569,7 @@ impl Sheet {
         let (f, g, masked) = if rule == ValidRule::CellV1 && c.umin > HALF_DIAG * c.h + c.q0 {
             let v = (c.umin - c.q0 - HALF_DIAG * c.h)
                 .max(c.ucorner - c.q0)
-                .max(MASKED_FLOOR);
+                .max(masked_floor(c.h));
             (v, v, true)
         } else {
             let f = (s * s + db.max(0.0) * db.max(0.0)).sqrt();
