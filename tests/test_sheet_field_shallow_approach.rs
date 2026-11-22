@@ -67,7 +67,11 @@ fn shallow_approaches_are_decided_and_hit_where_the_fixed_step_reference_hits() 
             panic!("the reference does not hit at {o} (analytic {t_an}): {want:?}")
         };
         let off = (*o + *d * hr.t).z;
-        assert!(off.abs() <= decode_bound(), "reference {} (analytic {t_an}) is {off} off the plane", hr.t);
+        assert!(
+            off.abs() <= decode_bound(),
+            "reference {} (analytic {t_an}) is {off} off the plane",
+            hr.t
+        );
         match f.march_decided(*o, *d, tmax) {
             MarchResult::Hit(h) => {
                 assert!(
@@ -82,6 +86,11 @@ fn shallow_approaches_are_decided_and_hit_where_the_fixed_step_reference_hits() 
             m => panic!("{o} {d}: {m:?}, the reference hits at {}", hr.t),
         }
     }
-    assert_eq!(undecided, 0, "{undecided} of {} rays undecided ({hits} hit)", rs.len());
+    assert_eq!(
+        undecided,
+        0,
+        "{undecided} of {} rays undecided ({hits} hit)",
+        rs.len()
+    );
     assert_eq!(hits, rs.len());
 }

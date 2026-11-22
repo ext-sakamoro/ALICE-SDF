@@ -394,10 +394,7 @@ impl GpuSheetField {
 
     /// [`Self::new`] with the march shader's text passed through `edit` first (the module's tests use it to break
     /// one property of the shader on purpose).
-    fn build(
-        field: &SheetField,
-        edit: &dyn Fn(String) -> String,
-    ) -> Result<Self, GpuError> {
+    fn build(field: &SheetField, edit: &dyn Fn(String) -> String) -> Result<Self, GpuError> {
         let mut sheets = Vec::new();
         let mut levels = Vec::new();
         let (mut index, mut rows, mut qbytes, mut scoff) = (

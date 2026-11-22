@@ -624,19 +624,40 @@ fn a_field_of_cells_finer_than_the_floor_reads_and_its_masked_bound_stays_under_
     let written = sheet(vec![lv]).unwrap();
     let b = field_bytes(vec![written.clone()]);
     let ix = AshfIndex::scan(&mut Cursor::new(&b)).unwrap();
-    let read = ix.read_sheets(&mut Cursor::new(&b), 0..1).expect("a stream of 0.005 cells reads");
+    let read = ix
+        .read_sheets(&mut Cursor::new(&b), 0..1)
+        .expect("a stream of 0.005 cells reads");
     assert_eq!(read.len(), 1);
-    assert!(masked_floor(HS) < MASKED_FLOOR, "the scene must test a cell under the floor's range");
+    assert!(
+        masked_floor(HS) < MASKED_FLOOR,
+        "the scene must test a cell under the floor's range"
+    );
     let (mut masked, mut n) = (0usize, 0usize);
     for i in 0..40 {
         for k in 0..60 {
-            let p = Vec3::new(-0.035 + 0.0017 * i as f32, 0.003, -0.037 + 0.00121 * k as f32);
-            let (a, w) = (read[0].sample(p, ValidRule::CellV1), written.sample(p, ValidRule::CellV1));
-            assert_eq!((a.f.to_bits(), a.g.to_bits(), a.masked), (w.f.to_bits(), w.g.to_bits(), w.masked), "{p}");
+            let p = Vec3::new(
+                -0.035 + 0.0017 * i as f32,
+                0.003,
+                -0.037 + 0.00121 * k as f32,
+            );
+            let (a, w) = (
+                read[0].sample(p, ValidRule::CellV1),
+                written.sample(p, ValidRule::CellV1),
+            );
+            assert_eq!(
+                (a.f.to_bits(), a.g.to_bits(), a.masked),
+                (w.f.to_bits(), w.g.to_bits(), w.masked),
+                "{p}"
+            );
             n += 1;
             if a.masked {
                 masked += 1;
-                assert!(a.f <= p.z.abs(), "{p}: masked bound {} over the distance {}", a.f, p.z.abs());
+                assert!(
+                    a.f <= p.z.abs(),
+                    "{p}: masked bound {} over the distance {}",
+                    a.f,
+                    p.z.abs()
+                );
             }
         }
     }
