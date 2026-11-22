@@ -607,6 +607,7 @@ impl Sheet {
         // in a flagged cell s and / or d_b are the exact values from the cell's triangles and rim segments, not the
         // interpolation ([`kink`])
         let (mut s, mut db) = (c.values[0], c.values[1]);
+        let (mut ex_uv, mut ex_nrm) = (None, None);
         if let Some(e) = self
             .kink
             .as_ref()
@@ -615,6 +616,9 @@ impl Sheet {
         {
             s = e.s.unwrap_or(s);
             db = e.db.unwrap_or(db);
+            // and the attributes of the exact closest point (its face's corners by the barycentric weights), so a hit
+            // that the exact s moved reads the UV / author normal of where it is, not a blend across a seam
+            (ex_uv, ex_nrm) = (e.uv, e.nrm);
         }
         let (f, g, masked) = if rule == ValidRule::CellV1 && c.umin > HALF_DIAG * c.h + c.q0 {
             let v = (c.umin - c.q0 - HALF_DIAG * c.h)
@@ -626,11 +630,12 @@ impl Sheet {
             (f, if s < 0.0 { -f } else { f }, false)
         };
         let uv = if c.nch >= 4 {
-            Some([c.values[2], c.values[3]])
+            Some(ex_uv.unwrap_or([c.values[2], c.values[3]]))
         } else {
             None
         };
-        let attr_normal = (c.nch >= 7).then(|| [c.values[4], c.values[5], c.values[6]]);
+        let attr_normal =
+            (c.nch >= 7).then(|| ex_nrm.unwrap_or([c.values[4], c.values[5], c.values[6]]));
         Sample {
             f,
             g,
