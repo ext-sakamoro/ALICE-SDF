@@ -100,7 +100,6 @@ pub const JUMP_S: f32 = 0.02;
 /// [`SheetField::hit_agrees_with_reference`].
 pub const REFERENCE_T_TOL: f32 = MIN_STEP / 20.0 + MIN_STEP / 1_073_741_824.0;
 
-
 /// The largest floor of a masked cell's lower bound (the field's length unit, mm). The floor a level uses is
 /// [`masked_floor`]`(h)`: masking needs `min |s_c| > HALF_DIAG h + q0`, so a masked cell's true distance is over
 /// `HALF_DIAG h`, and a floor is a valid lower bound only up to that.
@@ -790,7 +789,14 @@ impl SheetField {
     /// face, and the two can then differ by the jump over the slope of `s` along the ray, which grows without bound
     /// as the ray grazes). A hit on another surface (through the near one) leaves `|s|` far above `JUMP_S` between.
     #[must_use]
-    pub fn hit_agrees_with_reference(&self, k: usize, origin: Vec3, dir: Vec3, t: f32, t_ref: f32) -> bool {
+    pub fn hit_agrees_with_reference(
+        &self,
+        k: usize,
+        origin: Vec3,
+        dir: Vec3,
+        t: f32,
+        t_ref: f32,
+    ) -> bool {
         if (t - t_ref).abs() <= REFERENCE_T_TOL {
             return true;
         }

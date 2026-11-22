@@ -374,8 +374,11 @@ fn the_gpu_cell_walk_decides_rays_on_face_planes_and_far_from_the_origin() {
             let o: Vec<Vec3> = (0..64)
                 .flat_map(|i| {
                     (0..64).map(move |j| {
-                        Vec3::new(-1.2 + 0.0371 * i as f32, -1.2 + 0.0293 * j as f32 + 0.000_37 * i as f32, 468.3)
-                            - d * 470.0
+                        Vec3::new(
+                            -1.2 + 0.0371 * i as f32,
+                            -1.2 + 0.0293 * j as f32 + 0.000_37 * i as f32,
+                            468.3,
+                        ) - d * 470.0
                     })
                 })
                 .collect();
@@ -394,7 +397,11 @@ fn the_gpu_cell_walk_decides_rays_on_face_planes_and_far_from_the_origin() {
                 return;
             }
         };
-        let tmax = if name.starts_with("span end") { 480.0 } else { 6.0 };
+        let tmax = if name.starts_with("span end") {
+            480.0
+        } else {
+            6.0
+        };
         let gm = g.march_batch_decided(&o, d, tmax).unwrap();
         let undecided = gm
             .iter()

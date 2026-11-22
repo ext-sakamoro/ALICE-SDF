@@ -17,7 +17,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::cast_precision_loss)]
 
 use alice_sdf::sheet_field::build::{level_from_fn, sheet};
-use alice_sdf::sheet_field::{MarchResult, RootMode, SheetField, ValidRule, BRICK, JUMP_S, Q_MAX, REFERENCE_T_TOL};
+use alice_sdf::sheet_field::{
+    MarchResult, RootMode, SheetField, ValidRule, BRICK, JUMP_S, Q_MAX, REFERENCE_T_TOL,
+};
 use glam::Vec3;
 
 const H: f32 = 0.27;
@@ -34,7 +36,14 @@ fn decode_bound() -> f32 {
 fn plane() -> SheetField {
     let lo = Vec3::new(-2.0 + 0.013, -2.0 + 0.021, 0.5 - 2.0 + 0.007);
     let nb = (4.0 / (8.0 * H)).ceil() as u32;
-    let lv = level_from_fn(lo, H, [nb, nb, nb], |_c, _e| true, |p| vec![p.z - 0.5, -1.0]).unwrap();
+    let lv = level_from_fn(
+        lo,
+        H,
+        [nb, nb, nb],
+        |_c, _e| true,
+        |p| vec![p.z - 0.5, -1.0],
+    )
+    .unwrap();
     SheetField::new(vec![sheet(vec![lv]).unwrap()], ValidRule::CellV1)
 }
 
@@ -69,7 +78,11 @@ fn a_far_plane_seen_head_on_is_hit_where_the_fixed_step_reference_hits() {
             panic!("the reference does not hit at {o} {d}")
         };
         let off = (o + d * hr.t).z - 0.5;
-        assert!(off.abs() <= decode_bound(), "reference {} is {off} off the plane", hr.t);
+        assert!(
+            off.abs() <= decode_bound(),
+            "reference {} is {off} off the plane",
+            hr.t
+        );
         match f.march_decided(o, d, tmax) {
             MarchResult::Hit(h) => {
                 hits += 1;
@@ -101,23 +114,43 @@ fn a_far_plane_seen_head_on_is_hit_where_the_fixed_step_reference_hits() {
 fn the_reference_agreement_check_refuses_a_hit_through_the_near_surface_and_accepts_one_stretch() {
     let lo = Vec3::new(-2.0 + 0.013, -2.0 + 0.021, -3.5 + 0.007);
     let nb = (8.0 / (8.0 * H)).ceil() as u32;
-    let lv = level_from_fn(lo, H, [nb, nb, nb], |_c, _e| true, |p| vec![(p.z - 0.5).abs() - 2.0, -1.0]).unwrap();
+    let lv = level_from_fn(
+        lo,
+        H,
+        [nb, nb, nb],
+        |_c, _e| true,
+        |p| vec![(p.z - 0.5).abs() - 2.0, -1.0],
+    )
+    .unwrap();
     let slab = SheetField::new(vec![sheet(vec![lv]).unwrap()], ValidRule::CellV1);
     let d = Vec3::new(0.05, 0.03, -1.0).normalize();
     let o = Vec3::new(0.1, 0.2, 2.5) - d * 10.0;
     // near face z = 2.5 at t 10, far face z = -1.5 four units below
     let (near, far) = (10.0, 10.0 + 4.0 / -d.z);
-    assert!(!slab.hit_agrees_with_reference(0, o, d, far, near), "a hit through the slab was accepted");
+    assert!(
+        !slab.hit_agrees_with_reference(0, o, d, far, near),
+        "a hit through the slab was accepted"
+    );
     assert!(slab.hit_agrees_with_reference(0, o, d, near + 0.5 * REFERENCE_T_TOL, near));
     assert!(!slab.hit_agrees_with_reference(0, o, d, near + 2.0 * REFERENCE_T_TOL + 0.05, near));
 
     let lo = Vec3::new(-2.0 + 0.013, -2.0 + 0.021, 0.5 - 2.0 + 0.007);
     let nb = (4.0 / (8.0 * H)).ceil() as u32;
-    let lv = level_from_fn(lo, H, [nb, nb, nb], |_c, _e| true, |p| vec![p.z - 0.5, -1.0]).unwrap();
+    let lv = level_from_fn(
+        lo,
+        H,
+        [nb, nb, nb],
+        |_c, _e| true,
+        |p| vec![p.z - 0.5, -1.0],
+    )
+    .unwrap();
     let plane = SheetField::new(vec![sheet(vec![lv]).unwrap()], ValidRule::CellV1);
     let g = Vec3::new(1.0, 0.0, -0.01).normalize();
     let o = Vec3::new(-1.0, 0.1, 0.5 + 0.0015);
     // s along the ray: 0.0015 - 0.01 t (per unit t, to first order): t in [0, 0.3] keeps |s| <= 0.0015
-    assert!(plane.hit_agrees_with_reference(0, o, g, 0.3, 0.0), "one stretch within JUMP_S was refused");
+    assert!(
+        plane.hit_agrees_with_reference(0, o, g, 0.3, 0.0),
+        "one stretch within JUMP_S was refused"
+    );
     assert!(0.3 > REFERENCE_T_TOL * 100.0 && 0.0015 < JUMP_S);
 }
