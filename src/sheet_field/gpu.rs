@@ -55,9 +55,9 @@ struct LevelInfo {
     index_off: u32,
     nch: u32,
     _pad: [u32; 3],
-    rows_off: [u32; 4],
-    q_off: [u32; 4],
-    sc_off: [u32; 4],
+    rows_off: [u32; 8],
+    q_off: [u32; 8],
+    sc_off: [u32; 8],
 }
 
 #[repr(C)]
@@ -159,7 +159,7 @@ impl GpuSheetField {
                 _pad: [0; 3],
             });
             for lv in &sh.levels {
-                if lv.channels.len() < 2 || lv.channels.len() > 4 {
+                if !matches!(lv.channels.len(), 2 | 4 | 7) {
                     return Err(GpuError::InvalidFormat(format!(
                         "sheet field level with {} channels",
                         lv.channels.len()
@@ -172,9 +172,9 @@ impl GpuSheetField {
                     index_off: index.len() as u32,
                     nch: lv.channels.len() as u32,
                     _pad: [0; 3],
-                    rows_off: [0; 4],
-                    q_off: [0; 4],
-                    sc_off: [0; 4],
+                    rows_off: [0; 8],
+                    q_off: [0; 8],
+                    sc_off: [0; 8],
                 };
                 index.extend_from_slice(&lv.index);
                 for (c, ch) in lv.channels.iter().enumerate() {
@@ -276,7 +276,7 @@ impl GpuSheetField {
                 layout: Some(&pl),
                 module: &module,
                 entry_point: Some(entry_point),
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
                 cache: None,
             })
         };
@@ -298,7 +298,7 @@ impl GpuSheetField {
         })
     }
 
-    fn uniforms(&self, count: u32, steps: u32, dir: Vec3, tmax: f32) -> Uniforms {
+    const fn uniforms(&self, count: u32, steps: u32, dir: Vec3, tmax: f32) -> Uniforms {
         let b = self.bases;
         Uniforms {
             n_sheets: self.n_sheets,
@@ -428,11 +428,13 @@ impl GpuSheetField {
         let out = self.run(
             &self.march_pipeline,
             &input,
-            3,
+            4,
             self.uniforms(origins.len() as u32, steps, dir, tmax),
         )?;
         let mut res = Vec::with_capacity(origins.len());
-        for r in out.chunks_exact(3) {
+        let (rows, rest) = out.as_chunks::<4>();
+        debug_assert!(rest.is_empty(), "4 output words a ray");
+        for r in rows {
             let kind = r[0][1] as i32;
             res.push(match kind {
                 1 => MarchResult::Hit(Hit {
@@ -440,6 +442,7 @@ impl GpuSheetField {
                     sheet: r[0][2] as usize,
                     normal: Vec3::new(r[1][0], r[1][1], r[1][2]),
                     uv: (r[2][2] != 0.0).then_some([r[2][0], r[2][1]]),
+                    attr_normal: (r[3][3] != 0.0).then(|| Vec3::new(r[3][0], r[3][1], r[3][2])),
                 }),
                 0 => MarchResult::Miss,
                 2 => MarchResult::Undecided,
@@ -454,10 +457,10 @@ impl GpuSheetField {
     }
 }
 
-const SHADER: &str = r#"
+const SHADER: &str = r"
 struct SheetInfo { lo: vec3<f32>, hc: f32, hi: vec3<f32>, level_start: u32, level_count: u32, p0: u32, p1: u32, p2: u32 };
 struct LevelInfo { lo: vec3<f32>, h: f32, nb: vec3<u32>, index_off: u32, nch: u32, p0: u32, p1: u32, p2: u32,
-                   rows_off: vec4<u32>, q_off: vec4<u32>, sc_off: vec4<u32> };
+                   rows_off: array<vec4<u32>, 2>, q_off: array<vec4<u32>, 2>, sc_off: array<vec4<u32>, 2> };
 struct Uniforms { n_sheets: u32, rule: u32, count: u32, steps: u32, dir: vec3<f32>, tmax: f32,
                   index_base: u32, rows_base: u32, bn_base: u32, bl_base: u32, bp_base: u32, bn_len: u32, p0: u32, p1: u32 };
 @group(0) @binding(0) var<uniform> U: Uniforms;
@@ -475,9 +478,10 @@ const BRICK: u32 = 8u;
 const NODES: u32 = 9u;
 const BRICK_NODES: u32 = 729u;
 const HALF_DIAG: f32 = 0.8660254;
+const JUMP_S: f32 = 0.02;
 const MAX_LIVE: u32 = __MAX_LIVE__u;
 
-struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool };
+struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool, s: f32, db: f32, db_step: f32, an: vec3<f32>, has_an: bool };
 
 fn qbyte(byte_index: u32) -> f32 {
     let w = QW[byte_index >> 2u];
@@ -492,7 +496,8 @@ fn outside_bound(p: vec3<f32>, s: SheetInfo) -> f32 {
     return max(box_distance(p, s.lo, s.hi), 3.0 * s.hc);
 }
 
-fn sample_sheet(k: u32, p: vec3<f32>) -> Sample {
+// sheet k at p, interpolating the first nmax channels only (2 while marching; attributes once, at the hit)
+fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
     let sh = SHEETS[k];
     var out: Sample;
     for (var li = 0u; li < sh.level_count; li = li + 1u) {
@@ -507,15 +512,17 @@ fn sample_sheet(k: u32, p: vec3<f32>) -> Sample {
         let w = u - bi * b;
         let c = min(vec3<u32>(floor(w)), vec3<u32>(BRICK - 1u));
         let t = w - vec3<f32>(c);
-        var vals = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
+        var vals = array<f32, 8>(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         var umin = 1e30;
         var q0 = 0.0;
-        for (var ci = 0u; ci < lv.nch; ci = ci + 1u) {
-            let row = bitcast<i32>(IX[U.rows_base + lv.rows_off[ci] + u32(k_)]);
+        var q1 = 0.0;
+        let nch = min(lv.nch, nmax);
+        for (var ci = 0u; ci < nch; ci = ci + 1u) {
+            let row = bitcast<i32>(IX[U.rows_base + lv.rows_off[ci / 4u][ci % 4u] + u32(k_)]);
             var acc = 0.0;
             if (row >= 0) {
-                let sc = SC[2u * (lv.sc_off[ci] + u32(row))];
-                let off = SC[2u * (lv.sc_off[ci] + u32(row)) + 1u];
+                let sc = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row))];
+                let off = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row)) + 1u];
                 for (var dx = 0u; dx < 2u; dx = dx + 1u) {
                     for (var dy = 0u; dy < 2u; dy = dy + 1u) {
                         for (var dz = 0u; dz < 2u; dz = dz + 1u) {
@@ -523,13 +530,14 @@ fn sample_sheet(k: u32, p: vec3<f32>) -> Sample {
                             let wy = select(1.0 - t.y, t.y, dy == 1u);
                             let wz = select(1.0 - t.z, t.z, dz == 1u);
                             let node = ((c.x + dx) * NODES + (c.y + dy)) * NODES + (c.z + dz);
-                            let v = qbyte(lv.q_off[ci] + u32(row) * BRICK_NODES + node) * sc + off;
+                            let v = qbyte(lv.q_off[ci / 4u][ci % 4u] + u32(row) * BRICK_NODES + node) * sc + off;
                             acc = acc + (wx * wy * wz) * v;
                             if (ci == 0u) { umin = min(umin, abs(v)); }
                         }
                     }
                 }
                 if (ci == 0u) { q0 = sc; }
+                if (ci == 1u) { q1 = sc; }
             }
             vals[ci] = acc;
         }
@@ -544,13 +552,24 @@ fn sample_sheet(k: u32, p: vec3<f32>) -> Sample {
             out.masked = true;
         }
         out.f = f; out.g = g; out.inside = true;
-        out.has_uv = lv.nch >= 4u;
+        out.s = s; out.db = vals[1]; out.db_step = q1;
+        out.has_uv = nch >= 4u;
+        out.has_an = nch >= 7u;
+        out.an = vec3<f32>(vals[4], vals[5], vals[6]);
         out.uv = vec2<f32>(vals[2], vals[3]);
         return out;
     }
     let v = outside_bound(p, sh);
-    out.f = v; out.g = v; out.inside = false; out.masked = false; out.has_uv = false;
+    out.f = v; out.g = v; out.inside = false; out.masked = false; out.has_uv = false; out.has_an = false; out.an = vec3<f32>(0.0);
+    out.s = 0.0; out.db = 0.0; out.db_step = 0.0;
     return out;
+}
+
+// a bisected sign change of sheet k's g at p is a crossing of the sheet: answered, unmasked, |s| <= JUMP_S,
+// d_b <= step/2 (inside the boundary up to the rounding of the stored d_b), as SheetField::march
+fn crossing_inside(k: u32, p: vec3<f32>) -> bool {
+    let c = sample_sheet(k, p, 2u);
+    return c.inside && !c.masked && abs(c.s) <= JUMP_S && c.db <= 0.5 * c.db_step;
 }
 
 fn in_box(k: u32, p: vec3<f32>) -> bool {
@@ -581,7 +600,7 @@ fn eval_union(p: vec3<f32>) -> Union {
                 let sh = SHEETS[k];
                 var v: f32; var w: f32; var m = false;
                 if (box_distance(p, sh.lo, sh.hi) == 0.0) {
-                    let s = sample_sheet(k, p);
+                    let s = sample_sheet(k, p, 2u);
                     v = s.f; w = s.g; m = s.masked;
                 } else {
                     v = outside_bound(p, sh); w = v;
@@ -677,17 +696,18 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let n0 = live_sheets(o, &lv);
     if (n0 > MAX_LIVE) { overflow = true; }
     else {
-        for (var j = 0u; j < n0; j = j + 1u) { prev_k[j] = lv[j]; prev_g[j] = sample_sheet(lv[j], o).g; }
+        for (var j = 0u; j < n0; j = j + 1u) { prev_k[j] = lv[j]; prev_g[j] = sample_sheet(lv[j], o, 2u).g; }
         n_prev = n0;
     }
     var t = 0.0;
     var tprev = 0.0;
     var kind = 2;
+    var own = 0u;
     for (var step = 0u; step < U.steps && !overflow; step = step + 1u) {
         let p = o + d * t;
         let dd = eval_union(p).f;
-        var stop = dd < 0.01;
         var thit = 1e30;
+        var khit = 0u;
         var cur_k: array<u32, __MAX_LIVE__>;
         var cur_g: array<f32, __MAX_LIVE__>;
         var n_cur = 0u;
@@ -695,9 +715,9 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (nl > MAX_LIVE) { overflow = true; break; }
         for (var li = 0u; li < nl; li = li + 1u) {
             let k = lv[li];
-            let gc = sample_sheet(k, p).g;
+            let gc = sample_sheet(k, p, 2u).g;
             cur_k[n_cur] = k; cur_g[n_cur] = gc; n_cur = n_cur + 1u;
-            if (stop || t <= 0.0) { continue; }
+            if (t <= 0.0) { continue; }
             var found = false; var gp = 0.0;
             for (var j = 0u; j < n_prev; j = j + 1u) { if (prev_k[j] == k) { found = true; gp = prev_g[j]; } }
             if (!found) { continue; }
@@ -705,45 +725,40 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             var a = tprev; var b = t; var ga = gp;
             for (var it = 0; it < 30; it = it + 1) {
                 let mid = 0.5 * (a + b);
-                let gm = sample_sheet(k, o + d * mid).g;
+                let gm = sample_sheet(k, o + d * mid, 2u).g;
                 if ((gm < 0.0) == (ga < 0.0)) { a = mid; ga = gm; } else { b = mid; }
             }
             let tm = 0.5 * (a + b);
-            if (sample_sheet(k, o + d * tm).f < 0.02) { thit = min(thit, tm); }
+            if (tm < thit && crossing_inside(k, o + d * tm)) { thit = tm; khit = k; }
         }
         if (overflow) { break; }
-        if (thit < 1e29) { t = thit; stop = true; }
-        if (stop) { kind = 1; break; }
+        if (thit < 1e29) { t = thit; own = khit; kind = 1; break; }
         tprev = t;
         for (var j = 0u; j < n_cur; j = j + 1u) { prev_k[j] = cur_k[j]; prev_g[j] = cur_g[j]; }
         n_prev = n_cur;
         t = t + max(dd, 0.01);
         if (t >= U.tmax) { kind = 0; break; }
     }
-    if (overflow) { OUT[3u * i] = vec4<f32>(0.0, 3.0, 0.0, 0.0); return; }
+    if (overflow) { OUT[4u * i] = vec4<f32>(0.0, 3.0, 0.0, 0.0); return; }
     var nrm = vec3<f32>(0.0, 0.0, 1.0);
     var uv = vec3<f32>(0.0);
-    var own = 0u;
+    var an = vec4<f32>(0.0);
     if (kind == 1) {
         let p = o + d * t;
         let e = 0.05;
-        var best = 1e30;
-        for (var k = 0u; k < U.n_sheets; k = k + 1u) {
-            let sh = SHEETS[k];
-            if (!(all(p >= sh.lo - vec3<f32>(e)) && all(p <= sh.hi + vec3<f32>(e)))) { continue; }
-            let v = sample_sheet(k, p).f;
-            if (v < best) { best = v; own = k; }
-        }
+        // normal = gradient of the sheet's side channel s (the distance g bends toward the rim), as SheetField
         let n = vec3<f32>(
-            sample_sheet(own, p + vec3<f32>(e, 0.0, 0.0)).g - sample_sheet(own, p - vec3<f32>(e, 0.0, 0.0)).g,
-            sample_sheet(own, p + vec3<f32>(0.0, e, 0.0)).g - sample_sheet(own, p - vec3<f32>(0.0, e, 0.0)).g,
-            sample_sheet(own, p + vec3<f32>(0.0, 0.0, e)).g - sample_sheet(own, p - vec3<f32>(0.0, 0.0, e)).g);
+            sample_sheet(own, p + vec3<f32>(e, 0.0, 0.0), 2u).s - sample_sheet(own, p - vec3<f32>(e, 0.0, 0.0), 2u).s,
+            sample_sheet(own, p + vec3<f32>(0.0, e, 0.0), 2u).s - sample_sheet(own, p - vec3<f32>(0.0, e, 0.0), 2u).s,
+            sample_sheet(own, p + vec3<f32>(0.0, 0.0, e), 2u).s - sample_sheet(own, p - vec3<f32>(0.0, 0.0, e), 2u).s);
         if (length(n) > 1e-12) { nrm = normalize(n); }
-        let s = sample_sheet(own, p);
+        let s = sample_sheet(own, p, 8u);
         if (s.has_uv && s.inside) { uv = vec3<f32>(s.uv, 1.0); }
+        if (s.has_an && s.inside && length(s.an) > 1e-12) { an = vec4<f32>(normalize(s.an), 1.0); }
     }
-    OUT[3u * i] = vec4<f32>(t, f32(kind), f32(own), 0.0);
-    OUT[3u * i + 1u] = vec4<f32>(nrm, 0.0);
-    OUT[3u * i + 2u] = vec4<f32>(uv, 0.0);
+    OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), 0.0);
+    OUT[4u * i + 1u] = vec4<f32>(nrm, 0.0);
+    OUT[4u * i + 2u] = vec4<f32>(uv, 0.0);
+    OUT[4u * i + 3u] = an;
 }
-"#;
+";

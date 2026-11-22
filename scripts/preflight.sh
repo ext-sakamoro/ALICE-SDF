@@ -572,7 +572,7 @@ step "gpu-parity: GPU <-> CPU law parity, shader validation, GPU marching cubes 
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_law_parity --test test_gpu_workgroup_size --test test_gpu_noise_parity --test test_round_tie_parity \
   --test test_transpiler_naga_validate --test noise_shader_validate --test test_mesh_orientation --test test_mc_shared_vertex_oracle \
-  --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity --test test_instanced_wgsl_gpu_parity --test test_sheet_field_gpu_parity --test test_grid_warp_oracle \
+  --test test_texture_shader_gpu_parity --test test_npr_bytecode_gpu_parity --test test_instanced_wgsl_gpu_parity --test test_sheet_field_gpu_parity --test test_sheet_field_rim --test test_sheet_field_attr_normal --test test_grid_warp_oracle \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_soft_shadow_glsl_parity --test test_shader_precise_temporaries \
   --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle --test test_gpu_lifecycle_oracle --test test_one_call_site
 
