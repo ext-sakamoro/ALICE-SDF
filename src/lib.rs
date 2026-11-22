@@ -175,6 +175,7 @@ pub mod heatmap;
 pub mod incremental;
 pub mod measure;
 pub mod sdf2d;
+pub mod sheet_field;
 pub mod shell;
 pub mod validity;
 
