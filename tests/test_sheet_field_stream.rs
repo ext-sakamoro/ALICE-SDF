@@ -16,7 +16,9 @@ use alice_sdf::sheet_field::stream::{
     chunk_split, host_batches, march_streamed, sheet_payload_bytes, write_ashf, AshfIndex,
     StreamError,
 };
-use alice_sdf::sheet_field::{Hit, MarchResult, Sheet, SheetField, ValidRule, BRICK_NODES};
+use alice_sdf::sheet_field::{
+    masked_floor, Hit, MarchResult, Sheet, SheetField, ValidRule, BRICK_NODES, MASKED_FLOOR,
+};
 use glam::Vec3;
 use std::io::Cursor;
 
@@ -607,4 +609,36 @@ fn a_sheet_over_128_mib_marches_on_the_gpu_like_the_cpu() {
         );
     }
     assert!(hits > 300, "hits {hits}");
+}
+
+/// Cells finer than `MASKED_FLOOR / HALF_DIAG` (about 0.0577) are read: the masked bound's floor shrinks with the cell
+/// (`masked_floor(h) = min(MASKED_FLOOR, HALF_DIAG h)`), so it stays a lower bound. Oracle: the plane `s = z` in cells
+/// of 0.005, whose true distance at `p` is `|p.z|`. Read back from the stream, every sampled point of a masked cell
+/// answers at most that distance (a floor of 0.05 would answer 0.05 at points 0.01 to 0.04 from the plane), and the
+/// read sheet samples bit for bit like the one written.
+#[test]
+fn a_field_of_cells_finer_than_the_floor_reads_and_its_masked_bound_stays_under_the_distance() {
+    const HS: f32 = 0.005;
+    let lo = Vec3::new(-0.04 + 0.0013, -0.04 + 0.0021, -0.04 + 0.0007);
+    let lv = level_from_fn(lo, HS, [2, 2, 2], |_c, _e| true, |p| vec![p.z, -1.0]).unwrap();
+    let written = sheet(vec![lv]).unwrap();
+    let b = field_bytes(vec![written.clone()]);
+    let ix = AshfIndex::scan(&mut Cursor::new(&b)).unwrap();
+    let read = ix.read_sheets(&mut Cursor::new(&b), 0..1).expect("a stream of 0.005 cells reads");
+    assert_eq!(read.len(), 1);
+    assert!(masked_floor(HS) < MASKED_FLOOR, "the scene must test a cell under the floor's range");
+    let (mut masked, mut n) = (0usize, 0usize);
+    for i in 0..40 {
+        for k in 0..60 {
+            let p = Vec3::new(-0.035 + 0.0017 * i as f32, 0.003, -0.037 + 0.00121 * k as f32);
+            let (a, w) = (read[0].sample(p, ValidRule::CellV1), written.sample(p, ValidRule::CellV1));
+            assert_eq!((a.f.to_bits(), a.g.to_bits(), a.masked), (w.f.to_bits(), w.g.to_bits(), w.masked), "{p}");
+            n += 1;
+            if a.masked {
+                masked += 1;
+                assert!(a.f <= p.z.abs(), "{p}: masked bound {} over the distance {}", a.f, p.z.abs());
+            }
+        }
+    }
+    assert!(masked > n / 4, "only {masked} of {n} points masked");
 }
