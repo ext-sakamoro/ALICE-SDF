@@ -59,7 +59,12 @@ fn eval(c: &[f64; 4], u: f64) -> f64 {
 }
 
 fn mul(a: &[f64; 4], b: [f64; 2]) -> [f64; 4] {
-    [a[0] * b[0], a[1] * b[0] + a[0] * b[1], a[2] * b[0] + a[1] * b[1], a[3] * b[0] + a[2] * b[1]]
+    [
+        a[0] * b[0],
+        a[1] * b[0] + a[0] * b[1],
+        a[2] * b[0] + a[1] * b[1],
+        a[3] * b[0] + a[2] * b[1],
+    ]
 }
 
 /// The cubic of the trilinear interpolant along `q0 + e u`.
@@ -67,7 +72,13 @@ fn cubic(corners: &[f64; 8], q0: [f64; 3], e: [f64; 3]) -> [f64; 4] {
     let mut out = [0.0; 4];
     for (i, &v) in corners.iter().enumerate() {
         let (dx, dy, dz) = (i >> 2 & 1, i >> 1 & 1, i & 1);
-        let w = |bit: usize, a: usize| if bit == 1 { [q0[a], e[a]] } else { [1.0 - q0[a], -e[a]] };
+        let w = |bit: usize, a: usize| {
+            if bit == 1 {
+                [q0[a], e[a]]
+            } else {
+                [1.0 - q0[a], -e[a]]
+            }
+        };
         let p = mul(&mul(&[1.0, 0.0, 0.0, 0.0], w(dx, 0)), w(dy, 1));
         let p = mul(&p, w(dz, 2));
         for k in 0..4 {
@@ -129,7 +140,82 @@ fn first_root(c: &[f64; 4], u_end: f64) -> Option<Result<f64, ()>> {
     None
 }
 
+/// The answer of [`Sheet::exact_cell_root`].
+enum ExactRoot {
+    /// An accepted crossing at this `t`.
+    Root(f32),
+    /// None in the span; `s` at its last sample.
+    Clear(f64),
+    /// [`EXACT_CAP`] samples were not enough (counted as ambiguous, the step stays undecided-free only if the walk
+    /// finds a root elsewhere).
+    Capped,
+}
+
+/// Samples of the exact `s` in one s cell (the span over the sub-step is at most 512 per cell, plus bisections).
+pub const EXACT_CAP: u32 = 2048;
+
 impl Sheet {
+    /// The first accepted crossing of the exact `s` in `[ta, tb]` (inside one s cell). Steps by the unsigned distance
+    /// less [`JUMP_S`] (an accepted crossing lies on the sheet within `d_b <= step/2`, so no point with a smaller
+    /// distance is skipped: the distance is 1-Lipschitz), at least `h / 512`; a sign change between two samples is
+    /// bisected on the exact `s` and taken when the crossing test accepts it.
+    fn exact_cell_root(
+        &self,
+        o: Vec3,
+        d: Vec3,
+        ta: f64,
+        tb: f64,
+        h: f64,
+        rule: ValidRule,
+    ) -> ExactRoot {
+        let sub = h / 512.0;
+        // the exact (s, distance) in an s cell; past the cell (a sample that rounds into a cell that is not an s cell)
+        // the sheet's own sample (s, and |g| as the distance bound), so the last sub-step's sign change is still seen
+        let ev = |t: f64| {
+            let p = o + d * t as f32;
+            self.exact_s_here(p).map_or_else(
+                || {
+                    let c = self.sample_geom(p, rule);
+                    (f64::from(c.s), f64::from(c.f))
+                },
+                |(s, u)| (f64::from(s), f64::from(u)),
+            )
+        };
+        let (mut sa, mut ua) = ev(ta);
+        let mut a = ta;
+        let mut n = 0u32;
+        while a < tb {
+            if n >= EXACT_CAP {
+                return ExactRoot::Capped;
+            }
+            n += 1;
+            let b = (a + (ua - f64::from(JUMP_S)).max(sub)).min(tb);
+            let (sb, ub) = ev(b);
+            if (sa < 0.0) != (sb < 0.0) {
+                let (mut l, mut r, mut sl) = (a, b, sa);
+                for _ in 0..40 {
+                    let m = 0.5 * (l + r);
+                    let (sm, _) = ev(m);
+                    n += 1;
+                    if (sm < 0.0) == (sl < 0.0) {
+                        l = m;
+                        sl = sm;
+                    } else {
+                        r = m;
+                    }
+                }
+                let tm = (0.5 * (l + r)) as f32;
+                if self.crossing_accepted(o + d * tm, rule) {
+                    return ExactRoot::Root(tm);
+                }
+            }
+            a = b;
+            sa = sb;
+            ua = ub;
+        }
+        ExactRoot::Clear(sa)
+    }
+
     fn cell_at(&self, p: Vec3, rule: ValidRule) -> Option<Cell> {
         for lv in &self.levels {
             if let Some(c) = cell_in(lv, p, rule) {
@@ -140,7 +226,14 @@ impl Sheet {
     }
 
     /// M2 (module docs): the first accepted root of this sheet in `[ta, tb]` along `o + d t`.
-    pub(crate) fn walk_first_root(&self, o: Vec3, d: Vec3, ta: f32, tb: f32, rule: ValidRule) -> Walk {
+    pub(crate) fn walk_first_root(
+        &self,
+        o: Vec3,
+        d: Vec3,
+        ta: f32,
+        tb: f32,
+        rule: ValidRule,
+    ) -> Walk {
         let (o64, d64) = (o.as_dvec3(), d.as_dvec3());
         let mut t = f64::from(ta);
         let tend = f64::from(tb);
@@ -159,7 +252,11 @@ impl Sheet {
                 continue;
             };
             let pw = o64 + d64 * t;
-            let q0 = [(pw.x - cell.lo[0]) / cell.h, (pw.y - cell.lo[1]) / cell.h, (pw.z - cell.lo[2]) / cell.h];
+            let q0 = [
+                (pw.x - cell.lo[0]) / cell.h,
+                (pw.y - cell.lo[1]) / cell.h,
+                (pw.z - cell.lo[2]) / cell.h,
+            ];
             let e = [d64.x, d64.y, d64.z];
             // exit of the cell along the ray, in cell units
             let mut u_exit = f64::INFINITY;
@@ -172,10 +269,44 @@ impl Sheet {
             }
             let u_exit = u_exit.max(0.0);
             let u_end = u_exit.min((tend - t) / cell.h);
+            // an s cell ([`super::kink`]): s is the exact value from the cell's triangles, not the cubic of the corners
+            if let Some((s_in, _)) = self.exact_s_here(p) {
+                let s_in = f64::from(s_in);
+                if let Some((tp, sp)) = prev {
+                    if (sp < 0.0) != (s_in < 0.0)
+                        && sp.abs() <= f64::from(JUMP_S)
+                        && s_in.abs() <= f64::from(JUMP_S)
+                    {
+                        let tm = self.face_crossing(o, d, tp as f32, t as f32, rule);
+                        if self.crossing_accepted(o + d * tm, rule) {
+                            return Walk::Root(tm);
+                        }
+                    }
+                }
+                let s_exit = if cell.masked {
+                    None
+                } else {
+                    match self.exact_cell_root(o, d, t, t + u_end * cell.h, cell.h, rule) {
+                        ExactRoot::Root(tr) => return Walk::Root(tr),
+                        ExactRoot::Capped => {
+                            ambiguous += 1;
+                            None
+                        }
+                        ExactRoot::Clear(se) => Some(se),
+                    }
+                };
+                let tn = t + u_exit * cell.h;
+                prev = s_exit.map(|se| (tn, se));
+                t = tn + (cell.h / 1_048_576.0).max(4.0 * f64::from(f32::EPSILON) * tn.abs());
+                continue;
+            }
             let cu = cubic(&cell.corners, q0, e);
             let s_in = eval(&cu, 0.0);
             if let Some((tp, sp)) = prev {
-                if (sp < 0.0) != (s_in < 0.0) && sp.abs() <= f64::from(JUMP_S) && s_in.abs() <= f64::from(JUMP_S) {
+                if (sp < 0.0) != (s_in < 0.0)
+                    && sp.abs() <= f64::from(JUMP_S)
+                    && s_in.abs() <= f64::from(JUMP_S)
+                {
                     let tm = self.face_crossing(o, d, tp as f32, t as f32, rule);
                     if self.crossing_accepted(o + d * tm, rule) {
                         return Walk::Root(tm);
@@ -229,7 +360,11 @@ fn cell_in(lv: &Level, p: Vec3, rule: ValidRule) -> Option<Cell> {
     let u = (p - lv.lo) / lv.h;
     let b = BRICK as f32;
     let bi = [(u.x / b).floor(), (u.y / b).floor(), (u.z / b).floor()];
-    if bi.iter().zip(lv.nb.iter()).any(|(&v, &n)| v < 0.0 || v >= n as f32) {
+    if bi
+        .iter()
+        .zip(lv.nb.iter())
+        .any(|(&v, &n)| v < 0.0 || v >= n as f32)
+    {
         return None;
     }
     let (bx, by, bz) = (bi[0] as usize, bi[1] as usize, bi[2] as usize);
@@ -254,7 +389,11 @@ fn cell_in(lv: &Level, p: Vec3, rule: ValidRule) -> Option<Cell> {
         umin = umin.min(v.abs());
         *slot = f64::from(v);
     }
-    let q0 = if row >= 0 { ch.scale[row as usize] } else { 0.0 };
+    let q0 = if row >= 0 {
+        ch.scale[row as usize]
+    } else {
+        0.0
+    };
     let masked = rule == ValidRule::CellV1 && umin > HALF_DIAG * lv.h + q0;
     let h = f64::from(lv.h);
     let lo = [
@@ -262,7 +401,12 @@ fn cell_in(lv: &Level, p: Vec3, rule: ValidRule) -> Option<Cell> {
         f64::from(lv.lo.y) + (bi[1] as f64 * f64::from(b) + c[1] as f64) * h,
         f64::from(lv.lo.z) + (bi[2] as f64 * f64::from(b) + c[2] as f64) * h,
     ];
-    Some(Cell { lo, h, corners, masked })
+    Some(Cell {
+        lo,
+        h,
+        corners,
+        masked,
+    })
 }
 
 #[cfg(test)]
@@ -284,7 +428,11 @@ mod tests {
                 let w = |bit: usize, x: f64| if bit == 1 { x } else { 1.0 - x };
                 want += v * w(dx, q[0]) * w(dy, q[1]) * w(dz, q[2]);
             }
-            assert!((eval(&c, u) - want).abs() < 1e-12, "u {u}: {} vs {want}", eval(&c, u));
+            assert!(
+                (eval(&c, u) - want).abs() < 1e-12,
+                "u {u}: {} vs {want}",
+                eval(&c, u)
+            );
         }
     }
 
@@ -294,11 +442,16 @@ mod tests {
     fn the_first_simple_root_is_taken_and_a_tangent_touch_is_not() {
         // (u - 0.3)(u - 0.5) = u^2 - 0.8 u + 0.15
         let two = [0.15, -0.8, 1.0, 0.0];
-        let Some(Ok(u)) = first_root(&two, 1.0) else { panic!("no root") };
+        let Some(Ok(u)) = first_root(&two, 1.0) else {
+            panic!("no root")
+        };
         assert!((u - 0.3).abs() < 1e-6, "{u}");
         // (u - 0.4)^2: touches zero, no sign change
         let touch = [0.16, -0.8, 1.0, 0.0];
-        assert!(!matches!(first_root(&touch, 1.0), Some(Ok(_))), "a tangent touch was taken as a root");
+        assert!(
+            !matches!(first_root(&touch, 1.0), Some(Ok(_))),
+            "a tangent touch was taken as a root"
+        );
         // the valley's two roots both lie past the interval's end: none
         assert!(first_root(&two, 0.25).is_none());
     }
@@ -326,7 +479,16 @@ mod tests {
             0.25,
             [1, 1, 2],
             |_c, _e| true,
-            |p| vec![0.9 * if p.z.abs() < 0.125 { -0.004 } else { p.z.abs() - 0.004 }, -1.0],
+            |p| {
+                vec![
+                    0.9 * if p.z.abs() < 0.125 {
+                        -0.004
+                    } else {
+                        p.z.abs() - 0.004
+                    },
+                    -1.0,
+                ]
+            },
         )
         .unwrap();
         let sh = sheet(vec![lv]).unwrap();
@@ -347,8 +509,13 @@ mod tests {
             let want = z0 - z_zero;
             match f.march(o, -Vec3::Z, 1.0, 4096) {
                 MarchResult::Hit(h) => {
-                    let tol = 4.0 * f32::EPSILON * want + 0.25 / 1_048_576.0 + 2.0 * f32::EPSILON * z0;
-                    assert!((h.t - want).abs() <= tol, "z0 {z0}: t {} want {want} (tol {tol})", h.t);
+                    let tol =
+                        4.0 * f32::EPSILON * want + 0.25 / 1_048_576.0 + 2.0 * f32::EPSILON * z0;
+                    assert!(
+                        (h.t - want).abs() <= tol,
+                        "z0 {z0}: t {} want {want} (tol {tol})",
+                        h.t
+                    );
                     compared += 1;
                 }
                 other => panic!("z0 {z0}: {other:?} (the near face at t {want} was missed)"),
@@ -365,9 +532,22 @@ mod tests {
         use crate::sheet_field::ValidRule;
         use glam::Vec3;
         let lo = Vec3::new(-1.0 + 0.013, -1.0 + 0.021, -2.0);
-        let lv = level_from_fn(lo, 0.25, [1, 1, 2], |_c, _e| true, |p| {
-            vec![0.9 * if p.z.abs() < 0.125 { -0.004 } else { p.z.abs() - 0.004 }, -1.0]
-        })
+        let lv = level_from_fn(
+            lo,
+            0.25,
+            [1, 1, 2],
+            |_c, _e| true,
+            |p| {
+                vec![
+                    0.9 * if p.z.abs() < 0.125 {
+                        -0.004
+                    } else {
+                        p.z.abs() - 0.004
+                    },
+                    -1.0,
+                ]
+            },
+        )
         .unwrap();
         let sh = sheet(vec![lv]).unwrap();
         let (x, y) = (lo.x + 4.0 * 0.25 - 1e-4, 0.2f32);
@@ -377,7 +557,10 @@ mod tests {
         let z0 = z_zero + 0.0002;
         let d = Vec3::new(1.0, 0.0, -0.05).normalize();
         let want = (z0 - z_zero) / -d.z;
-        assert!(want * d.x > 1e-4 * 1.5, "the root is not past the face: test geometry");
+        assert!(
+            want * d.x > 1e-4 * 1.5,
+            "the root is not past the face: test geometry"
+        );
         match sh.walk_first_root(Vec3::new(x, y, z0), d, 0.0, 0.01, ValidRule::CellV1) {
             super::Walk::Root(t) => assert!((t - want).abs() < 1e-5, "t {t} want {want}"),
             other => panic!("{other:?}: the root in the next cell was missed"),

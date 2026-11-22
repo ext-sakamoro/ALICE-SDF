@@ -628,12 +628,41 @@ pub fn march_streamed<R, F>(
     chunks: &[Range<usize>],
     batches: &[Range<usize>],
     n_rays: usize,
+    march: F,
+) -> Result<(Vec<MarchResult>, StreamStats), StreamError>
+where
+    R: Read + Seek,
+    F: FnMut(&SheetField) -> Result<Vec<MarchResult>, String>,
+{
+    march_streamed_kink(index, r, None, chunks, batches, n_rays, march)
+}
+
+/// [`march_streamed`] with the field's kink cells ([`super::kink`]).
+///
+/// Each batch's sheets get their kink cells from `kink` (sheets numbered as in the file) before they are marched. The
+/// peak host bytes count the sheets only.
+pub fn march_streamed_kink<R, F>(
+    index: &AshfIndex,
+    r: &mut R,
+    kink: Option<&super::kink::KinkFile>,
+    chunks: &[Range<usize>],
+    batches: &[Range<usize>],
+    n_rays: usize,
     mut march: F,
 ) -> Result<(Vec<MarchResult>, StreamStats), StreamError>
 where
     R: Read + Seek,
     F: FnMut(&SheetField) -> Result<Vec<MarchResult>, String>,
 {
+    if let Some(k) = kink {
+        if k.len() != index.spans.len() {
+            return Err(StreamError::Format(format!(
+                "the kink file describes {} sheets, the field has {}",
+                k.len(),
+                index.spans.len()
+            )));
+        }
+    }
     let covered: usize = batches.iter().map(|b| b.len()).sum();
     if covered != chunks.len() || batches.windows(2).any(|w| w[0].end != w[1].start) {
         return Err(StreamError::Format(format!(
@@ -653,6 +682,10 @@ where
             continue;
         };
         let mut sheets = index.read_sheets(r, first.start..last.end)?;
+        if let Some(k) = kink {
+            k.attach(&mut sheets, first.start)
+                .map_err(|e| StreamError::Format(e.to_string()))?;
+        }
         let held: u64 = sheets.iter().map(sheet_payload_bytes).sum();
         stats.peak_host_bytes = stats.peak_host_bytes.max(held);
         stats.batches += 1;
