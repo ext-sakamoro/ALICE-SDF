@@ -48,6 +48,8 @@ pub mod build;
 pub mod cellroot;
 #[cfg(feature = "gpu")]
 pub mod gpu;
+pub mod kink;
+pub mod kink_build;
 pub mod nearest;
 pub mod stream;
 
@@ -222,6 +224,8 @@ pub struct Sheet {
     pub hi: Vec3,
     /// The coarsest cell size (the outside lower bound uses `3 * hc`).
     pub hc: f32,
+    /// The kink cells, where `d_b` is computed exactly from the sheet's triangles and rim segments ([`kink`]).
+    pub kink: Option<std::sync::Arc<kink::KinkSheet>>,
 }
 
 /// What one sheet says at a point.
@@ -406,6 +410,8 @@ struct CellLookup {
     q0: f32,
     q1: f32,
     h: f32,
+    /// Which cell answered: level, active brick, cell `x * 64 + y * 8 + z` (for the kink cells).
+    at: (usize, usize, usize),
 }
 
 impl Sheet {
@@ -467,6 +473,14 @@ impl Sheet {
         (Dip::Clear, nodes)
     }
 
+    /// The exact `s` and unsigned distance at `p` when `p`'s answering cell is an s cell ([`kink::CELL_S`]).
+    pub(crate) fn exact_s_here(&self, p: Vec3) -> Option<(f32, f32)> {
+        let ks = self.kink.as_ref()?;
+        let c = self.lookup(p, 0)?;
+        let e = ks.exact_at(c.at.0, c.at.1, c.at.2, p)?;
+        e.s.map(|s| (s, e.ud))
+    }
+
     /// [`Self::crossing_inside`] for the cell walk (M2).
     pub(crate) fn crossing_accepted(&self, p: Vec3, rule: ValidRule) -> bool {
         self.crossing_inside(p, rule)
@@ -480,7 +494,7 @@ impl Sheet {
     /// The cell value at `p` from the first level that answers, interpolating the first `nmax` channels only
     /// (the march needs `s` and `d_b`; attributes are read once, at the hit).
     fn lookup(&self, p: Vec3, nmax: usize) -> Option<CellLookup> {
-        for lv in &self.levels {
+        for (li, lv) in self.levels.iter().enumerate() {
             let u = (p - lv.lo) / lv.h;
             let b = BRICK as f32;
             let bi = [(u.x / b).floor(), (u.y / b).floor(), (u.z / b).floor()];
@@ -512,6 +526,7 @@ impl Sheet {
                 q0: 0.0,
                 q1: 0.0,
                 h: lv.h,
+                at: (li, k, (c[0] * BRICK + c[1]) * BRICK + c[2]),
             };
             for (ci, ch) in lv.channels.iter().take(8.min(nmax)).enumerate() {
                 let mut acc = 0.0f32;
@@ -589,7 +604,18 @@ impl Sheet {
                 lip: 0.0,
             };
         };
-        let (s, db) = (c.values[0], c.values[1]);
+        // in a flagged cell s and / or d_b are the exact values from the cell's triangles and rim segments, not the
+        // interpolation ([`kink`])
+        let (mut s, mut db) = (c.values[0], c.values[1]);
+        if let Some(e) = self
+            .kink
+            .as_ref()
+            .filter(|_| nmax >= 2)
+            .and_then(|ks| ks.exact_at(c.at.0, c.at.1, c.at.2, p))
+        {
+            s = e.s.unwrap_or(s);
+            db = e.db.unwrap_or(db);
+        }
         let (f, g, masked) = if rule == ValidRule::CellV1 && c.umin > HALF_DIAG * c.h + c.q0 {
             let v = (c.umin - c.q0 - HALF_DIAG * c.h)
                 .max(c.ucorner - c.q0)
@@ -630,6 +656,16 @@ impl SheetField {
             rule,
             index: flatten_nodes(tree.as_ref()),
             root_mode: RootMode::Dip,
+        }
+    }
+
+    /// The step margin: [`kink::KINK_STEP_MARGIN`] when a sheet carries kink cells, else 0 (the march is then as before).
+    #[must_use]
+    pub fn step_margin(&self) -> f32 {
+        if self.sheets.iter().any(|s| s.kink.is_some()) {
+            kink::KINK_STEP_MARGIN
+        } else {
+            0.0
         }
     }
 
@@ -916,6 +952,7 @@ impl SheetField {
             })
             .collect();
         let (mut t, mut tprev) = (0.0f32, 0.0f32);
+        let margin = self.step_margin();
         // whether the step that ended at `t` was a floor step (its start's bound was below MIN_STEP)
         let mut floor_step = false;
         for _ in 0..steps {
@@ -1051,7 +1088,7 @@ impl SheetField {
                 });
                 r.push(StepRecord {
                     t,
-                    step: dd.max(MIN_STEP),
+                    step: (dd - margin).max(MIN_STEP),
                     dd,
                     n_live: n_live as u32,
                     dd_sheet: dd_k,
@@ -1059,8 +1096,9 @@ impl SheetField {
                     dd_s,
                 });
             }
-            floor_step = dd < MIN_STEP;
-            t += dd.max(MIN_STEP);
+            let dd_step = dd - margin;
+            floor_step = dd_step < MIN_STEP;
+            t += dd_step.max(MIN_STEP);
             if t >= tmax {
                 return MarchResult::Miss;
             }
