@@ -5,7 +5,7 @@
 //! Run: `cargo run --example sheet_field_gpu --features gpu`
 
 use alice_sdf::sheet_field::build::{level_from_fn, sheet};
-use alice_sdf::sheet_field::gpu::GpuSheetField;
+use alice_sdf::sheet_field::gpu::{storage_binding_limit, GpuSheetField};
 use alice_sdf::sheet_field::{MarchResult, SheetField, ValidRule};
 use glam::Vec3;
 
@@ -25,6 +25,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let field = SheetField::new(vec![sheet(vec![level])?], ValidRule::from_name("cell-v1")?);
     let gpu = GpuSheetField::new(&field)?;
+    println!(
+        "device: storage binding up to {} bytes; march compiled for {} live sheets",
+        storage_binding_limit()?,
+        gpu.max_live()
+    );
     let origins: Vec<Vec3> = (0..225)
         .map(|i| Vec3::new(-7.0 + (i % 15) as f32, -7.0 + (i / 15) as f32, 10.0))
         .collect();

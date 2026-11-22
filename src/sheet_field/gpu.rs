@@ -10,18 +10,70 @@
 //!
 //! The union is the BVH walk of [`SheetField::eval`]; the march keeps, per ray, the previous signed value of
 //! each sheet whose box holds the current point (found by the BVH walk of [`SheetField::sheets_containing`])
-//! in a fixed list of [`MAX_LIVE_SHEETS`] entries. A ray that would need more reports [`GpuError`] for the
-//! batch (never a guessed answer).
+//! in a list compiled per field: [`max_live_for`] of [`live_bound`] entries, at least [`MAX_LIVE_SHEETS`].
+//! The bound: a point held by the boxes of a set S of sheets lies in every box of S, so every box of S meets
+//! every other box of S (inclusive intersection of the same `f32` boxes the shader tests), and |S| is at most
+//! the count of boxes meeting any one of them, itself included; [`live_bound`] is the largest such count over
+//! the sheets. The list length is not in the arithmetic, so a field whose bound is at most 64 compiles the same
+//! program as the earlier fixed 64 list and gives the same results. A ray that would still need more (it
+//! cannot, by the bound) reports [`GpuError`] for the batch (never a guessed answer); a bound over
+//! [`MAX_LIVE_CAP`] is refused at upload.
 
 use glam::Vec3;
 use wgpu::util::DeviceExt;
 
-use super::{Hit, MarchResult, SheetField, ValidRule, BRICK_NODES};
+use super::{Hit, MarchResult, SheetField, ValidRule};
 use crate::compiled::GpuError;
-use crate::gpu_context::GpuContext;
+use crate::gpu_context::{GpuContext, Held};
 
-/// Sheets whose boxes may hold one march point at once (per-ray list on the GPU).
+/// The smallest per-ray list of live sheets the march compiles (fields whose [`live_bound`] is at most this).
 pub const MAX_LIVE_SHEETS: u32 = 64;
+/// The largest per-ray list the march compiles; a field whose [`live_bound`] is over it is refused.
+pub const MAX_LIVE_CAP: u32 = 1024;
+
+/// The most sheet boxes that can hold one point of `field`.
+///
+/// Over the sheets, the count of boxes meeting that sheet's box (inclusive, itself included). See the module docs for why no point is in more boxes.
+#[must_use]
+pub fn live_bound(field: &SheetField) -> u32 {
+    let s = &field.sheets;
+    let mut order: Vec<usize> = (0..s.len()).collect();
+    order.sort_by(|&a, &b| s[a].lo.x.total_cmp(&s[b].lo.x));
+    let mut count = vec![1u32; s.len()];
+    // sweep in x: a pair can meet only if their x ranges overlap
+    for (i, &a) in order.iter().enumerate() {
+        for &b in &order[i + 1..] {
+            if s[b].lo.x > s[a].hi.x {
+                break;
+            }
+            if s[a].lo.cmple(s[b].hi).all() && s[b].lo.cmple(s[a].hi).all() {
+                count[a] += 1;
+                count[b] += 1;
+            }
+        }
+    }
+    count.into_iter().max().unwrap_or(0)
+}
+
+/// The list size compiled for a bound.
+///
+/// [`MAX_LIVE_SHEETS`] up to it, then the next power of two up to [`MAX_LIVE_CAP`] (at most 5 programs per process: 64, 128, 256, 512, 1024). Refuses a bound over the cap.
+pub fn max_live_for(bound: u32) -> Result<u32, GpuError> {
+    if bound > MAX_LIVE_CAP {
+        return Err(GpuError::InvalidFormat(format!(
+            "sheet field: {bound} sheet boxes can hold one point, over the march's cap {MAX_LIVE_CAP}"
+        )));
+    }
+    Ok(bound.max(MAX_LIVE_SHEETS).next_power_of_two())
+}
+
+/// The march program's text for a list of `max_live` live sheets.
+#[must_use]
+pub fn march_shader(max_live: u32) -> String {
+    SHADER
+        .replace("__MAX_LIVE__", &max_live.to_string())
+        .replace("__MIN_STEP__", &format!("{:?}", super::MIN_STEP))
+}
 const WG: u32 = 64;
 
 /// What the GPU says at one point.
@@ -54,10 +106,16 @@ struct LevelInfo {
     nb: [u32; 3],
     index_off: u32,
     nch: u32,
-    _pad: [u32; 3],
+    /// Where this level's band masks start (relative to the band table), when a channel is a band.
+    band_off: u32,
+    _pad: [u32; 2],
     rows_off: [u32; 8],
     q_off: [u32; 8],
     sc_off: [u32; 8],
+    /// Nodes per brick axis of each channel (9, a coarse attribute grid, or 0 = band).
+    nodes: [u32; 8],
+    /// For a band channel: where its row starts are in the band table.
+    st_off: [u32; 8],
 }
 
 #[repr(C)]
@@ -75,12 +133,15 @@ struct Uniforms {
     bl_base: u32,
     bp_base: u32,
     bn_len: u32,
-    _pad: [u32; 2],
+    /// Where the band table (masks and row starts) starts in the merged `u32` buffer.
+    band_base: u32,
+    _pad: u32,
 }
 
 /// Where each table starts in the merged `u32` buffer.
 #[derive(Clone, Copy)]
 struct Bases {
+    band: u32,
     index: u32,
     rows: u32,
     bn: u32,
@@ -89,9 +150,12 @@ struct Bases {
     bn_len: u32,
 }
 
-/// A [`SheetField`] uploaded to the GPU.
-pub struct GpuSheetField {
-    context: GpuContext,
+/// A [`SheetField`] uploaded to the GPU: its buffers and pipelines, held with the context that made them
+/// ([`Held`] drops them before the context).
+pub type GpuSheetField = Held<SheetFieldResources>;
+
+/// The buffers and pipelines of a [`GpuSheetField`] (no context of their own).
+pub struct SheetFieldResources {
     sheets: wgpu::Buffer,
     levels: wgpu::Buffer,
     ix: wgpu::Buffer,
@@ -103,6 +167,7 @@ pub struct GpuSheetField {
     eval_pipeline: wgpu::ComputePipeline,
     march_pipeline: wgpu::ComputePipeline,
     layout: wgpu::BindGroupLayout,
+    max_live: u32,
 }
 
 fn storage_init(device: &wgpu::Device, label: &str, bytes: &[u8]) -> wgpu::Buffer {
@@ -138,6 +203,16 @@ const fn entry(binding: u32, ty: wgpu::BufferBindingType) -> wgpu::BindGroupLayo
     }
 }
 
+/// The largest storage binding a sheet field can use on this machine's GPU, in bytes.
+///
+/// The adapter's limits as [`GpuContext::request_with_adapter_storage_limits`] requests them (the
+/// smaller of the binding and buffer sizes). A chunk of sheets whose channel bytes exceed it cannot be uploaded.
+pub fn storage_binding_limit() -> Result<u64, GpuError> {
+    let context = GpuContext::request_with_adapter_storage_limits("ALICE-SDF sheet field limits")?;
+    let l = context.device().limits();
+    Ok(u64::from(l.max_storage_buffer_binding_size).min(l.max_buffer_size))
+}
+
 impl GpuSheetField {
     /// Upload `field` and build the pipelines.
     pub fn new(field: &SheetField) -> Result<Self, GpuError> {
@@ -149,6 +224,7 @@ impl GpuSheetField {
             Vec::<u8>::new(),
             Vec::<f32>::new(),
         );
+        let mut bands = Vec::<u32>::new();
         for sh in &field.sheets {
             sheets.push(SheetInfo {
                 lo: sh.lo.to_array(),
@@ -171,17 +247,27 @@ impl GpuSheetField {
                     nb: lv.nb,
                     index_off: index.len() as u32,
                     nch: lv.channels.len() as u32,
-                    _pad: [0; 3],
+                    band_off: bands.len() as u32,
+                    _pad: [0; 2],
                     rows_off: [0; 8],
                     q_off: [0; 8],
                     sc_off: [0; 8],
+                    nodes: [0; 8],
+                    st_off: [0; 8],
                 };
+                bands.extend_from_slice(&lv.band);
                 index.extend_from_slice(&lv.index);
                 for (c, ch) in lv.channels.iter().enumerate() {
                     li.rows_off[c] = rows.len() as u32;
                     rows.extend_from_slice(&ch.rows);
                     li.q_off[c] = qbytes.len() as u32;
-                    debug_assert_eq!(ch.q.len(), ch.scale.len() * BRICK_NODES);
+                    li.nodes[c] = ch.nodes;
+                    li.st_off[c] = bands.len() as u32;
+                    bands.extend_from_slice(&ch.starts);
+                    debug_assert!(
+                        ch.nodes == super::BAND
+                            || ch.q.len() == ch.scale.len() * (ch.nodes as usize).pow(3)
+                    );
                     qbytes.extend_from_slice(&ch.q);
                     li.sc_off[c] = (scoff.len() / 2) as u32;
                     for (s, o) in ch.scale.iter().zip(&ch.offset) {
@@ -211,7 +297,10 @@ impl GpuSheetField {
         ix.extend_from_slice(&bvh.leaf_entries);
         let b_bp = base(&ix);
         ix.extend_from_slice(&bvh.parents);
+        let b_band = base(&ix);
+        ix.extend_from_slice(&bands);
         let bases = Bases {
+            band: b_band,
             index: b_index,
             rows: b_rows,
             bn: b_bn,
@@ -219,7 +308,8 @@ impl GpuSheetField {
             bp: b_bp,
             bn_len: bvh.nodes.len() as u32,
         };
-        let context = GpuContext::request("ALICE-SDF sheet field")?;
+        let max_live = max_live_for(live_bound(field))?;
+        let context = GpuContext::request_with_adapter_storage_limits("ALICE-SDF sheet field")?;
         let device = context.device();
         let max = u64::from(device.limits().max_storage_buffer_binding_size);
         for (name, len) in [
@@ -242,29 +332,23 @@ impl GpuSheetField {
             "sheet field scale-offset",
             bytemuck::cast_slice(&scoff),
         );
-        use wgpu::BufferBindingType as T;
-        let ro = T::Storage { read_only: true };
+        let ro = wgpu::BufferBindingType::Storage { read_only: true };
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("sheet field layout"),
             entries: &[
-                entry(0, T::Uniform),
+                entry(0, wgpu::BufferBindingType::Uniform),
                 entry(1, ro),
                 entry(2, ro),
                 entry(3, ro),
                 entry(4, ro),
                 entry(5, ro),
                 entry(6, ro),
-                entry(7, T::Storage { read_only: false }),
+                entry(7, wgpu::BufferBindingType::Storage { read_only: false }),
             ],
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sheet field"),
-            source: wgpu::ShaderSource::Wgsl(
-                SHADER
-                    .replace("__MAX_LIVE__", &MAX_LIVE_SHEETS.to_string())
-                    .replace("__MIN_STEP__", &format!("{:?}", super::MIN_STEP))
-                    .into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(march_shader(max_live).into()),
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("sheet field"),
@@ -283,7 +367,7 @@ impl GpuSheetField {
         };
         let eval_pipeline = pipe("eval_main");
         let march_pipeline = pipe("march_main");
-        Ok(Self {
+        let resources = SheetFieldResources {
             n_sheets: sheets.len() as u32,
             rule: u32::from(field.rule == ValidRule::CellV1),
             sheets: b_sheets,
@@ -295,11 +379,12 @@ impl GpuSheetField {
             eval_pipeline,
             march_pipeline,
             layout,
-            context,
-        })
+            max_live,
+        };
+        Ok(context.hold(resources))
     }
 
-    const fn uniforms(&self, count: u32, steps: u32, dir: Vec3, tmax: f32) -> Uniforms {
+    fn uniforms(&self, count: u32, steps: u32, dir: Vec3, tmax: f32) -> Uniforms {
         let b = self.bases;
         Uniforms {
             n_sheets: self.n_sheets,
@@ -314,7 +399,8 @@ impl GpuSheetField {
             bl_base: b.bl,
             bp_base: b.bp,
             bn_len: b.bn_len,
-            _pad: [0; 2],
+            band_base: b.band,
+            _pad: 0,
         }
     }
 
@@ -325,8 +411,8 @@ impl GpuSheetField {
         out_vec4s: usize,
         u: Uniforms,
     ) -> Result<Vec<[f32; 4]>, GpuError> {
-        let device = self.context.device();
-        let queue = self.context.queue();
+        let device = self.context().device();
+        let queue = self.context().queue();
         let n = input.len().max(1);
         let b_u = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("sheet field uniforms"),
@@ -375,14 +461,14 @@ impl GpuSheetField {
         }
         enc.copy_buffer_to_buffer(&b_out, 0, &staging, 0, out_bytes);
         // the GPU's writes -> the CPU's read of the mapped staging buffer (see GpuContext::before_host_read)
-        self.context.before_host_read(&mut enc);
+        self.context().before_host_read(&mut enc);
         queue.submit(std::iter::once(enc.finish()));
         let slice = staging.slice(..);
         let (sender, receiver) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |r| {
             let _ = sender.send(r);
         });
-        self.context.wait_for_mapping(&receiver)?;
+        self.context().wait_for_mapping(&receiver)?;
         let out = {
             let mapped = slice.get_mapped_range();
             let data: &[[f32; 4]] = bytemuck::cast_slice(&mapped);
@@ -390,6 +476,12 @@ impl GpuSheetField {
         };
         staging.unmap();
         Ok(out)
+    }
+
+    /// The per-ray list size this field's march was compiled with ([`max_live_for`] of [`live_bound`]).
+    #[must_use]
+    pub fn max_live(&self) -> u32 {
+        self.max_live
     }
 
     /// The union value at each point.
@@ -445,8 +537,14 @@ impl GpuSheetField {
         let mut res = Vec::with_capacity(origins.len());
         let (rows, rest) = out.as_chunks::<4>();
         debug_assert!(rest.is_empty(), "4 output words a ray");
-        for r in rows {
+        for (i, r) in rows.iter().enumerate() {
             let kind = r[0][1] as i32;
+            if kind == 1 && r[0][3] != 0.0 {
+                return Err(GpuError::InvalidFormat(format!(
+                    "sheet field march: ray {i} hit sheet {} where an attribute node lies outside its band",
+                    r[0][2] as usize
+                )));
+            }
             res.push(match kind {
                 1 => MarchResult::Hit(Hit {
                     t: r[0][0],
@@ -459,7 +557,8 @@ impl GpuSheetField {
                 2 => MarchResult::Undecided,
                 _ => {
                     return Err(GpuError::InvalidFormat(format!(
-                        "sheet field march: more than {MAX_LIVE_SHEETS} sheet boxes hold one point"
+                        "sheet field march: more than {} sheet boxes hold one point",
+                        self.max_live
                     )))
                 }
             });
@@ -470,10 +569,11 @@ impl GpuSheetField {
 
 const SHADER: &str = r"
 struct SheetInfo { lo: vec3<f32>, hc: f32, hi: vec3<f32>, level_start: u32, level_count: u32, p0: u32, p1: u32, p2: u32 };
-struct LevelInfo { lo: vec3<f32>, h: f32, nb: vec3<u32>, index_off: u32, nch: u32, p0: u32, p1: u32, p2: u32,
-                   rows_off: array<vec4<u32>, 2>, q_off: array<vec4<u32>, 2>, sc_off: array<vec4<u32>, 2> };
+struct LevelInfo { lo: vec3<f32>, h: f32, nb: vec3<u32>, index_off: u32, nch: u32, band_off: u32, p1: u32, p2: u32,
+                   rows_off: array<vec4<u32>, 2>, q_off: array<vec4<u32>, 2>, sc_off: array<vec4<u32>, 2>,
+                   nodes: array<vec4<u32>, 2>, st_off: array<vec4<u32>, 2> };
 struct Uniforms { n_sheets: u32, rule: u32, count: u32, steps: u32, dir: vec3<f32>, tmax: f32,
-                  index_base: u32, rows_base: u32, bn_base: u32, bl_base: u32, bp_base: u32, bn_len: u32, p0: u32, p1: u32 };
+                  index_base: u32, rows_base: u32, bn_base: u32, bl_base: u32, bp_base: u32, bn_len: u32, band_base: u32, p1: u32 };
 @group(0) @binding(0) var<uniform> U: Uniforms;
 @group(0) @binding(1) var<storage, read> SHEETS: array<SheetInfo>;
 @group(0) @binding(2) var<storage, read> LEVELS: array<LevelInfo>;
@@ -488,11 +588,12 @@ const NONE: u32 = 0xffffffffu;
 const BRICK: u32 = 8u;
 const NODES: u32 = 9u;
 const BRICK_NODES: u32 = 729u;
+const BAND_WORDS: u32 = 23u;
 const HALF_DIAG: f32 = 0.8660254;
 const JUMP_S: f32 = 0.02;
 const MAX_LIVE: u32 = __MAX_LIVE__u;
 
-struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool, s: f32, db: f32, db_step: f32, an: vec3<f32>, has_an: bool };
+struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool, s: f32, db: f32, db_step: f32, an: vec3<f32>, has_an: bool, band_miss: bool };
 
 fn qbyte(byte_index: u32) -> f32 {
     let w = QW[byte_index >> 2u];
@@ -525,13 +626,56 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
         let t = w - vec3<f32>(c);
         var vals = array<f32, 8>(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         var umin = 1e30;
+        var band_miss = false;
         var q0 = 0.0;
         var q1 = 0.0;
         let nch = min(lv.nch, nmax);
         for (var ci = 0u; ci < nch; ci = ci + 1u) {
             let row = bitcast<i32>(IX[U.rows_base + lv.rows_off[ci / 4u][ci % 4u] + u32(k_)]);
             var acc = 0.0;
-            if (row >= 0) {
+            let nn = lv.nodes[ci / 4u][ci % 4u];
+            if (row >= 0 && nn == 0u) {
+                // a band: only the nodes in the brick's mask are stored, packed; a node outside it is a miss
+                let sc = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row))];
+                let off = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row)) + 1u];
+                let mw = U.band_base + lv.band_off + u32(k_) * BAND_WORDS;
+                let start = IX[U.band_base + lv.st_off[ci / 4u][ci % 4u] + u32(row)];
+                for (var dx = 0u; dx < 2u; dx = dx + 1u) {
+                    for (var dy = 0u; dy < 2u; dy = dy + 1u) {
+                        for (var dz = 0u; dz < 2u; dz = dz + 1u) {
+                            let wx = select(1.0 - t.x, t.x, dx == 1u);
+                            let wy = select(1.0 - t.y, t.y, dy == 1u);
+                            let wz = select(1.0 - t.z, t.z, dz == 1u);
+                            let node = ((c.x + dx) * NODES + (c.y + dy)) * NODES + (c.z + dz);
+                            let word = IX[mw + node / 32u];
+                            let bit = node % 32u;
+                            if (((word >> bit) & 1u) == 0u) { band_miss = true; continue; }
+                            var rank = countOneBits(word & ((1u << bit) - 1u));
+                            for (var j = 0u; j < node / 32u; j = j + 1u) { rank = rank + countOneBits(IX[mw + j]); }
+                            acc = acc + (wx * wy * wz) * (qbyte(lv.q_off[ci / 4u][ci % 4u] + start + rank) * sc + off);
+                        }
+                    }
+                }
+            } else if (row >= 0 && nn != NODES) {
+                // an attribute on a coarse grid: trilinear on its own nodes (every BRICK / (nn - 1)-th corner)
+                let sc = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row))];
+                let off = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row)) + 1u];
+                let wc = w / f32(BRICK / (nn - 1u));
+                let cc = min(vec3<u32>(max(floor(wc), vec3<f32>(0.0))), vec3<u32>(nn - 2u));
+                let tc = wc - vec3<f32>(cc);
+                let base = lv.q_off[ci / 4u][ci % 4u] + u32(row) * nn * nn * nn;
+                for (var dx = 0u; dx < 2u; dx = dx + 1u) {
+                    for (var dy = 0u; dy < 2u; dy = dy + 1u) {
+                        for (var dz = 0u; dz < 2u; dz = dz + 1u) {
+                            let wx = select(1.0 - tc.x, tc.x, dx == 1u);
+                            let wy = select(1.0 - tc.y, tc.y, dy == 1u);
+                            let wz = select(1.0 - tc.z, tc.z, dz == 1u);
+                            let node = ((cc.x + dx) * nn + (cc.y + dy)) * nn + (cc.z + dz);
+                            acc = acc + (wx * wy * wz) * (qbyte(base + node) * sc + off);
+                        }
+                    }
+                }
+            } else if (row >= 0) {
                 let sc = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row))];
                 let off = SC[2u * (lv.sc_off[ci / 4u][ci % 4u] + u32(row)) + 1u];
                 for (var dx = 0u; dx < 2u; dx = dx + 1u) {
@@ -565,6 +709,7 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
         out.f = f; out.g = g; out.inside = true;
         out.s = s; out.db = vals[1]; out.db_step = q1;
         out.has_uv = nch >= 4u;
+        out.band_miss = band_miss;
         out.has_an = nch >= 7u;
         out.an = vec3<f32>(vals[4], vals[5], vals[6]);
         out.uv = vec2<f32>(vals[2], vals[3]);
@@ -572,6 +717,7 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
     }
     let v = outside_bound(p, sh);
     out.f = v; out.g = v; out.inside = false; out.masked = false; out.has_uv = false; out.has_an = false; out.an = vec3<f32>(0.0);
+    out.band_miss = false;
     out.s = 0.0; out.db = 0.0; out.db_step = 0.0;
     return out;
 }
@@ -754,6 +900,7 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var nrm = vec3<f32>(0.0, 0.0, 1.0);
     var uv = vec3<f32>(0.0);
     var an = vec4<f32>(0.0);
+    var miss = 0.0;
     if (kind == 1) {
         let p = o + d * t;
         let e = 0.05;
@@ -764,10 +911,11 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             sample_sheet(own, p + vec3<f32>(0.0, 0.0, e), 2u).s - sample_sheet(own, p - vec3<f32>(0.0, 0.0, e), 2u).s);
         if (length(n) > 1e-12) { nrm = normalize(n); }
         let s = sample_sheet(own, p, 8u);
+        if (s.band_miss) { miss = 1.0; }
         if (s.has_uv && s.inside) { uv = vec3<f32>(s.uv, 1.0); }
         if (s.has_an && s.inside && length(s.an) > 1e-12) { an = vec4<f32>(normalize(s.an), 1.0); }
     }
-    OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), 0.0);
+    OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), miss);
     OUT[4u * i + 1u] = vec4<f32>(nrm, 0.0);
     OUT[4u * i + 2u] = vec4<f32>(uv, 0.0);
     OUT[4u * i + 3u] = an;
