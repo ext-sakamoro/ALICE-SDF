@@ -126,20 +126,49 @@ def blank_span(code: str, a: int, b: int) -> str:
     return code[:a] + "".join("\n" if ch == "\n" else " " for ch in code[a:b]) + code[b:]
 
 
+def cfg_test_end(code: str, j: int) -> tuple[int, str]:
+    """`#[cfg(test)]` の直後 `j` から、それが付いたものの終わりを探す: 最初の `{` (block を持つ item) / `;` (item) /
+    `,` (field・variant・引数、`,` まで) / 外側の `}` か `)` (末尾の field・引数、そこは含めない) 括弧 `()` `[]` `<>` の
+    中の `,` は区切りでない (`(u32, u32)` / `HashMap<K, V>`)、`->` と `=>` の `>` は閉じ括弧でない"""
+    n = len(code)
+    depth = 0
+    init = False  # `=` の後 (const / static の初期化式) では `<` `>` は比較・shift なので括弧に数えない
+    while j < n:
+        ch = code[j]
+        angle = ch in "<>" and not init
+        if ch == "=" and depth == 0 and code[j + 1 : j + 2] not in ("=", ">") and code[j - 1 : j] not in "!<>=":
+            init = True
+        elif ch in "([" or (ch == "<" and angle):
+            depth += 1
+        elif ch == ">" and (not angle or code[j - 1 : j] in "-="):
+            pass
+        elif ch in ")]" or ch == ">":
+            if depth == 0:
+                return j, ")"
+            depth -= 1
+        elif depth == 0 and ch in "{;,}":
+            return j, ch
+        j += 1
+    return n, ""
+
+
 def remove_cfg_test(code: str) -> str:
-    """`#[cfg(test)]` が付いた item (mod / fn / use) を丸ごと空白にする."""
+    """`#[cfg(test)]` が付いたもの (mod / fn / use / struct の field / enum の variant / 引数) を丸ごと空白にする
+    field に付いた形 (`#[cfg(test)] cut: (u32, u32),`) は `,` か外側の `}` で終わり、struct の `}` や後続の item を
+    消さない"""
     while True:
         m = CFG_TEST_RE.search(code)
         if not m:
             return code
-        j = m.end()
         n = len(code)
-        while j < n and code[j] not in "{;":
-            j += 1
+        j, end = cfg_test_end(code, m.end())
         if j >= n:
             return blank_span(code, m.start(), n)
-        if code[j] == ";":
+        if end in ";,":
             code = blank_span(code, m.start(), j + 1)
+            continue
+        if end in "})":
+            code = blank_span(code, m.start(), j)
             continue
         depth, k = 0, j
         while k < n:
