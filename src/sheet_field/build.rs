@@ -4,7 +4,7 @@ use glam::Vec3;
 
 use super::{
     Channel, Level, Sheet, SheetFieldError, BAND, BAND_WORDS, BRICK, BRICK_NODES, COARSE_NODES,
-    NODES,
+    NODES, Q_MAX,
 };
 
 /// Quantize one channel's node values for the active bricks (`values[brick][node]`) to bytes.
@@ -28,13 +28,13 @@ pub fn quantize(values: &[Vec<f32>], drop_nonpositive: bool) -> Channel {
             continue;
         }
         let lo = v.iter().copied().fold(f32::INFINITY, f32::min);
-        let sc = (hi - lo).max(1e-6) / 255.0;
+        let sc = (hi - lo).max(1e-6) / Q_MAX;
         ch.rows.push(ch.scale.len() as i32);
         ch.scale.push(sc);
         ch.offset.push(lo);
         ch.q.extend(
             v.iter()
-                .map(|x| ((x - lo) / sc).round().clamp(0.0, 255.0) as u8),
+                .map(|x| ((x - lo) / sc).round().clamp(0.0, Q_MAX) as u8),
         );
     }
     ch
