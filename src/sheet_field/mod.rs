@@ -24,6 +24,8 @@
 //! steps before the far distance is reported as undecided, never as a hit.
 
 pub mod build;
+#[cfg(feature = "gpu")]
+pub mod gpu;
 
 use glam::Vec3;
 
