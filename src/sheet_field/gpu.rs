@@ -1502,7 +1502,9 @@ fn crossing_inside(k: u32, p: vec3<f32>) -> bool {
 
 // M2 (CPU cellroot, same rules, f32 in cell units): the cell of sheet k's answering level at p, with the 8 stored s
 // corners; x of the result: 0 none answers, 1 a cell (masked in w), lo in yzw of the second
-struct SCell { found: bool, masked: bool, lo: vec3<f32>, h: f32, c: array<f32, 8> };
+// q: the point's coordinate inside the cell from the lookup's own arithmetic (w - c, in [0, 1] for the cell the lookup
+// chose), so the walk's exit cannot be computed against a differently rounded cell origin
+struct SCell { found: bool, masked: bool, lo: vec3<f32>, h: f32, c: array<f32, 8>, q: vec3<f32> };
 fn s_cell(k: u32, p: vec3<f32>) -> SCell {
     let sh = SHEETS[k];
     var out: SCell;
@@ -1518,6 +1520,7 @@ fn s_cell(k: u32, p: vec3<f32>) -> SCell {
         if (k_ < 0) { continue; }
         let w = u - bi * b;
         let c = min(vec3<u32>(floor(w)), vec3<u32>(BRICK - 1u));
+        out.q = clamp(w - vec3<f32>(c), vec3<f32>(0.0), vec3<f32>(1.0));
         let row = bitcast<i32>(IX[U.rows_base + lv.rows_off[0][0] + u32(k_)]);
         var umin = 1e30;
         var q0 = 0.0;
@@ -1600,11 +1603,17 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
         let p = o + d * t;
         let cl = s_cell(k, p);
         if (!cl.found) { t = t + outside_bound(p, SHEETS[k]); prev.z = 0.0; continue; }
-        let q0 = (p - cl.lo) / cl.h;
+        let q0 = cl.q;
         var ux = 1e30;
-        if (d.x > 0.0) { ux = min(ux, (1.0 - q0.x) / d.x); } else if (d.x < 0.0) { ux = min(ux, -q0.x / d.x); }
-        if (d.y > 0.0) { ux = min(ux, (1.0 - q0.y) / d.y); } else if (d.y < 0.0) { ux = min(ux, -q0.y / d.y); }
-        if (d.z > 0.0) { ux = min(ux, (1.0 - q0.z) / d.z); } else if (d.z < 0.0) { ux = min(ux, -q0.z / d.z); }
+        // a direction component below PARALLEL (1e-9) is the rounding of a zero: it cannot leave the cell through that
+        // face within the walk (the CPU cellroot::PARALLEL)
+        // the exit axis's point coordinate over its direction (|p_a| / |d_a|), for the hair past the face (CPU walk)
+        var pd = 0.0;
+        for (var a = 0; a < 3; a = a + 1) {
+            var ua = 1e30;
+            if (d[a] > 1e-9) { ua = (1.0 - q0[a]) / d[a]; } else if (d[a] < -1e-9) { ua = -q0[a] / d[a]; }
+            if (ua < ux) { ux = ua; pd = abs(p[a]) / abs(d[a]); }
+        }
         ux = max(ux, 0.0);
         let ue = min(ux, (tb - t) / cl.h);
         // an s cell: the exact s from the cell's triangles (the CPU walk, line for line)
@@ -1627,7 +1636,7 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
                 if (r.x == 1.0) { return vec3<f32>(1.0, r.y, amb); }
                 if (r.x == 2.0) { amb = amb + 1.0; } else { prev = vec3<f32>(tn, r.z, 1.0); }
             }
-            t = tn + max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn));
+            t = tn + max(max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn)), 4.0 * 1.1920929e-7 * pd);
             continue;
         }
         var cu = vec4<f32>(0.0);
@@ -1659,7 +1668,7 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
         }
         // past the face by a hair that t can carry: 2^-20 h, but at least 4 ulp of t (t is f32 in mm, up to ~1000)
         let tn = t + ux * cl.h;
-        t = tn + max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn));
+        t = tn + max(max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn)), 4.0 * 1.1920929e-7 * pd);
     }
     if (t >= tb) { return vec3<f32>(0.0, 0.0, amb); }
     return vec3<f32>(3.0, 0.0, amb);
