@@ -1631,8 +1631,15 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
     walk_cells = 0u;
     // the previous cell's exit (t, s, valid), for a sign change across a face (the CPU rule: both |s| <= JUMP_S)
     var prev = vec3<f32>(0.0, 0.0, 0.0);
+    var past = false;
+    // the hair stepped past the last cell's exit (the CPU walk's last_hair)
+    var last_hair = 0.0;
     for (var i = 0u; i < __CELL_WALK_CAP__; i = i + 1u) {
-        if (t >= tb) { return vec3<f32>(0.0, 0.0, amb); }
+        if (t >= tb) {
+            // the span ended on a cell face: enter that one next cell for its face rule only (the CPU walk)
+            if (past || !(prev.z == 1.0 && prev.x <= tb + last_hair)) { return vec3<f32>(0.0, 0.0, amb); }
+            past = true;
+        }
         walk_cells = walk_cells + 1u;
         let p = o + d * t;
         let cl = s_cell(k, p);
@@ -1649,7 +1656,7 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
             if (ua < ux) { ux = ua; pd = abs(p[a]) / abs(d[a]); }
         }
         ux = max(ux, 0.0);
-        let ue = min(ux, (tb - t) / cl.h);
+        let ue = max(min(ux, (tb - t) / cl.h), 0.0);
         // an s cell: the exact s from the cell's triangles (the CPU walk, line for line)
         let ex = exact_s_here(k, p);
         if (ex.z == 1.0) {
@@ -1665,12 +1672,13 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
             }
             let tn = t + ux * cl.h;
             prev.z = 0.0;
-            if (!cl.masked) {
+            if (!cl.masked && !past) {
                 let r = exact_cell_root(k, o, d, t, t + ue * cl.h, cl.h);
                 if (r.x == 1.0) { return vec3<f32>(1.0, r.y, amb); }
                 if (r.x == 2.0) { amb = amb + 1.0; } else { prev = vec3<f32>(tn, r.z, 1.0); }
             }
-            t = tn + max(max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn)), 4.0 * 1.1920929e-7 * pd);
+            last_hair = max(max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn)), 4.0 * 1.1920929e-7 * pd);
+            t = tn + last_hair;
             continue;
         }
         var cu = vec4<f32>(0.0);
@@ -1693,7 +1701,7 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
             if (crossing_inside(k, o + d * tm)) { return vec3<f32>(1.0, tm, amb); }
         }
         prev = vec3<f32>(t + ux * cl.h, cub(cu, ux), 1.0);
-        if (!cl.masked) {
+        if (!cl.masked && !past) {
             let r = first_root(cu, ue);
             if (r.x == 1.0) {
                 let tr = t + r.y * cl.h;
@@ -1702,7 +1710,8 @@ fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3
         }
         // past the face by a hair that t can carry: 2^-20 h, but at least 4 ulp of t (t is f32 in mm, up to ~1000)
         let tn = t + ux * cl.h;
-        t = tn + max(max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn)), 4.0 * 1.1920929e-7 * pd);
+        last_hair = max(max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn)), 4.0 * 1.1920929e-7 * pd);
+        t = tn + last_hair;
     }
     if (t >= tb) { return vec3<f32>(0.0, 0.0, amb); }
     return vec3<f32>(3.0, 0.0, amb);
@@ -1887,6 +1896,17 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 work = work + walk_cells;
                 if (wr.x == 3.0) { kind = 4; dip_out = true; break; }
                 if (wr.x == 1.0 && wr.y < thit) { thit = wr.y; khit = k; }
+                // a crossing exists when the step's ends have opposite signs, whatever the walk located (the CPU march)
+                if (wr.x == 0.0 && ((gc < 0.0) != (gp < 0.0))) {
+                    var fa = tprev; var fb = t; var gfa = gp;
+                    for (var it = 0; it < 30; it = it + 1) {
+                        let m = 0.5 * (fa + fb);
+                        let gm = sample_sheet(k, o + d * m, 2u).g;
+                        if ((gm < 0.0) == (gfa < 0.0)) { fa = m; gfa = gm; } else { fb = m; }
+                    }
+                    let tm = 0.5 * (fa + fb);
+                    if (tm < thit && crossing_inside(k, o + d * tm)) { thit = tm; khit = k; }
+                }
                 continue;
             }
             var a = tprev; var b = t; var ga = gp;
