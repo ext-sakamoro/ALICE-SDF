@@ -91,6 +91,43 @@ class UnwiredItems(unittest.TestCase):
         })
         self.assertIn("only_tested", unwired(wg.check(r)))
 
+    def test_a_cfg_test_struct_field_does_not_hide_the_code_after_it(self):
+        # a `#[cfg(test)]` field ends at its `,` (or the struct's `}`): it must not swallow the struct's `}` and the
+        # next fn, whose call to `helper` wires it (before the fix: unbalanced_braces and `helper` reported unwired)
+        for field in ("cut: (u32, u32),", "cut: std::collections::HashMap<u32, u32>"):
+            r = crate({
+                "src/lib.rs": LIB,
+                "src/a.rs": "pub fn helper() {}\n",
+                "src/b.rs": f"""
+                    struct Control {{
+                        next: usize,
+                        #[cfg(test)]
+                        {field}
+                    }}
+                    pub fn entry() {{ crate::a::helper(); }}
+                """,
+                "examples/e.rs": "fn main() { mycrate::b::entry(); }\n",
+            })
+            vs = wg.check(r)
+            self.assertNotIn("unbalanced_braces", kinds(vs), field)
+            self.assertNotIn("helper", unwired(vs), field)
+            self.assertNotIn("entry", unwired(vs), field)
+
+    def test_a_cfg_test_const_with_a_shift_ends_at_its_semicolon(self):
+        r = crate({
+            "src/lib.rs": LIB,
+            "src/a.rs": "pub fn helper() {}\n",
+            "src/b.rs": """
+                #[cfg(test)]
+                const SHIFTED: usize = 1 << 3;
+                pub fn entry() { crate::a::helper(); }
+            """,
+            "examples/e.rs": "fn main() { mycrate::b::entry(); }\n",
+        })
+        vs = wg.check(r)
+        self.assertNotIn("unbalanced_braces", kinds(vs))
+        self.assertNotIn("helper", unwired(vs))
+
     def test_referenced_only_from_the_tests_directory_does_not_count(self):
         r = crate({
             "src/lib.rs": LIB,
