@@ -99,6 +99,7 @@ this file or listed twice, or when a linked file does not exist.
 | Module | Summary | Feature | Example |
 |--------|---------|---------|---------|
 | `svo` | sparse voxel octree built from a field | `svo` |  |
+| `sheet_field` | union of open zero-thickness sheets stored as sparse quantized bricks (side and boundary channels, optional UV), with a ray march | | `sheet_field_patch` |
 | `destruction` | voxel destruction (carving, debris) | `destruction` |  |
 | `terrain` | heightmap terrain with erosion and caves | `terrain` |  |
 
