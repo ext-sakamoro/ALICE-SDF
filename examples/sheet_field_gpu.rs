@@ -7,7 +7,7 @@
 
 use alice_sdf::sheet_field::build::{level_from_fn, sheet};
 use alice_sdf::sheet_field::gpu::{
-    storage_binding_limit, GpuSheetField, DISPATCH_WAIT, SPREAD_BLOCK,
+    march_shader, storage_binding_limit, GpuSheetField, DISPATCH_WAIT, SPREAD_BLOCK,
 };
 use alice_sdf::sheet_field::{MarchResult, SheetField, ValidRule};
 use glam::Vec3;
@@ -32,6 +32,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "device: storage binding up to {} bytes; march compiled for {} live sheets",
         storage_binding_limit()?,
         gpu.max_live()
+    );
+    println!(
+        "march program: {} bytes of WGSL",
+        march_shader(gpu.max_live()).len()
     );
     let origins: Vec<Vec3> = (0..225)
         .map(|i| Vec3::new(-7.0 + (i % 15) as f32, -7.0 + (i / 15) as f32, 10.0))

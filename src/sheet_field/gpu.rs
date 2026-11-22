@@ -70,9 +70,28 @@ pub fn max_live_for(bound: u32) -> Result<u32, GpuError> {
 /// The march program's text for a list of `max_live` live sheets.
 #[must_use]
 pub fn march_shader(max_live: u32) -> String {
+    march_shader_mode(max_live, super::RootMode::Dip)
+}
+
+/// [`march_shader`] for a root mode (M1 dip or M2 cell walk).
+#[must_use]
+pub fn march_shader_mode(max_live: u32, mode: super::RootMode) -> String {
     SHADER
         .replace("__MAX_LIVE__", &max_live.to_string())
         .replace("__MIN_STEP__", &format!("{:?}", super::MIN_STEP))
+        .replace("__DIP_NODE_CAP__", &format!("{}u", super::DIP_NODE_CAP))
+        .replace(
+            "__CELL_WALK_CAP__",
+            &format!("{}u", super::cellroot::CELL_WALK_CAP),
+        )
+        .replace(
+            "__ROOT_MODE__",
+            if mode == super::RootMode::CellWalk {
+                "1"
+            } else {
+                "0"
+            },
+        )
 }
 const WG: u32 = 64;
 
@@ -373,12 +392,21 @@ pub fn storage_binding_limit() -> Result<u64, GpuError> {
 impl GpuSheetField {
     /// Upload `field` and build the pipelines.
     pub fn new(field: &SheetField) -> Result<Self, GpuError> {
-        Self::build(field, &|src| src)
+        Self::new_with_mode(field, field.root_mode())
+    }
+
+    /// [`Self::new`] with the march program compiled for `mode` (M1 dip / M2 cell walk) whatever the field's own.
+    pub fn new_with_mode(field: &SheetField, mode: super::RootMode) -> Result<Self, GpuError> {
+        Self::build(field, mode, &|src| src)
     }
 
     /// [`Self::new`] with the march shader's text passed through `edit` first (the module's tests use it to break
     /// one property of the shader on purpose).
-    fn build(field: &SheetField, edit: &dyn Fn(String) -> String) -> Result<Self, GpuError> {
+    fn build(
+        field: &SheetField,
+        mode: super::RootMode,
+        edit: &dyn Fn(String) -> String,
+    ) -> Result<Self, GpuError> {
         let mut sheets = Vec::new();
         let mut levels = Vec::new();
         let (mut index, mut rows, mut qbytes, mut scoff) = (
@@ -511,7 +539,7 @@ impl GpuSheetField {
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sheet field"),
-            source: wgpu::ShaderSource::Wgsl(edit(march_shader(max_live)).into()),
+            source: wgpu::ShaderSource::Wgsl(edit(march_shader_mode(max_live, mode)).into()),
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("sheet field"),
@@ -1058,10 +1086,11 @@ const NODES: u32 = 9u;
 const BRICK_NODES: u32 = 729u;
 const BAND_WORDS: u32 = 23u;
 const HALF_DIAG: f32 = 0.8660254;
+const SQRT3: f32 = 1.7320508;
 const JUMP_S: f32 = 0.02;
 const MAX_LIVE: u32 = __MAX_LIVE__u;
 
-struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool, s: f32, db: f32, db_step: f32, an: vec3<f32>, has_an: bool, band_miss: bool };
+struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool, s: f32, db: f32, db_step: f32, an: vec3<f32>, has_an: bool, band_miss: bool, lip: f32 };
 
 fn qbyte(byte_index: u32) -> f32 {
     let w = QW[byte_index >> 2u];
@@ -1183,6 +1212,7 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
         }
         out.f = f; out.g = g; out.inside = true;
         out.s = s; out.db = vals[1]; out.db_step = q1;
+        out.lip = SQRT3 * (1.0 + 2.0 * max(q0, q1) / lv.h);
         out.has_uv = nch >= 4u;
         out.band_miss = band_miss;
         out.has_an = nch >= 7u;
@@ -1193,15 +1223,199 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
     let v = outside_bound(p, sh);
     out.f = v; out.g = v; out.inside = false; out.masked = false; out.has_uv = false; out.has_an = false; out.an = vec3<f32>(0.0);
     out.band_miss = false;
-    out.s = 0.0; out.db = 0.0; out.db_step = 0.0;
+    out.s = 0.0; out.db = 0.0; out.db_step = 0.0; out.lip = 0.0;
     return out;
 }
 
 // a bisected sign change of sheet k's g at p is a crossing of the sheet: answered, unmasked, |s| <= JUMP_S,
 // d_b <= step/2 (inside the boundary up to the rounding of the stored d_b), as SheetField::march
+// the earliest sign change of sheet k's g inside a march step whose ends (t, g, |s|) have the same sign, as
+// (1, a, b, g at a), or (0, ...) when there can be none: an interval can hold a zero only if
+// |s_a| + |s_b| <= lip (t_b - t_a); passing intervals are halved, earliest half first, down to the step over 2^30
+// (line for line with the CPU Sheet::dip)
+// how far a sample is from an accepted crossing (CPU Sample::reach)
+fn reach(c: Sample) -> f32 {
+    if (c.inside) { return max(abs(c.s), c.db - 0.5 * c.db_step); }
+    return c.f;
+}
+
+// the midpoints the last dip sampled (added to the ray's work); the result's x: 0 clear, 1 crossing, 2 exhausted (the
+// cap or the 32-interval stack stopped it with an interval open: the ray is undecided, never a miss)
+var<private> dip_nodes: u32;
+fn dip(k: u32, o: vec3<f32>, d: vec3<f32>, a: vec3<f32>, b: vec3<f32>, lip: f32) -> vec4<f32> {
+    dip_nodes = 0u;
+    if (lip <= 0.0) { return vec4<f32>(0.0); }
+    let side = a.y < 0.0;
+    let floor_w = (b.x - a.x) * (1.0 / 1073741824.0);
+    var stl: array<vec3<f32>, 32>;
+    var str: array<vec3<f32>, 32>;
+    var n = 1u;
+    stl[0] = a; str[0] = b;
+    loop {
+        if (n == 0u) { break; }
+        n = n - 1u;
+        let l = stl[n];
+        let r = str[n];
+        if (l.z + r.z > lip * (r.x - l.x) || r.x - l.x <= floor_w) { continue; }
+        if (dip_nodes >= __DIP_NODE_CAP__) { return vec4<f32>(2.0, 0.0, 0.0, 0.0); }
+        let tm = 0.5 * (l.x + r.x);
+        let c = sample_sheet(k, o + d * tm, 2u);
+        dip_nodes = dip_nodes + 1u;
+        let m = vec3<f32>(tm, c.g, reach(c));
+        if ((c.g < 0.0) != side) { return vec4<f32>(1.0, l.x, tm, l.y); }
+        if (n + 2u > 32u) { return vec4<f32>(2.0, 0.0, 0.0, 0.0); }
+        stl[n] = m; str[n] = r;
+        stl[n + 1u] = l; str[n + 1u] = m;
+        n = n + 2u;
+    }
+    return vec4<f32>(0.0);
+}
+
 fn crossing_inside(k: u32, p: vec3<f32>) -> bool {
     let c = sample_sheet(k, p, 2u);
     return c.inside && !c.masked && abs(c.s) <= JUMP_S && c.db <= 0.5 * c.db_step;
+}
+
+// M2 (CPU cellroot, same rules, f32 in cell units): the cell of sheet k's answering level at p, with the 8 stored s
+// corners; x of the result: 0 none answers, 1 a cell (masked in w), lo in yzw of the second
+struct SCell { found: bool, masked: bool, lo: vec3<f32>, h: f32, c: array<f32, 8> };
+fn s_cell(k: u32, p: vec3<f32>) -> SCell {
+    let sh = SHEETS[k];
+    var out: SCell;
+    out.found = false;
+    for (var li = 0u; li < sh.level_count; li = li + 1u) {
+        let lv = LEVELS[sh.level_start + li];
+        let u = (p - lv.lo) / lv.h;
+        let b = f32(BRICK);
+        let bi = floor(u / b);
+        if (any(bi < vec3<f32>(0.0)) || any(bi >= vec3<f32>(lv.nb))) { continue; }
+        let bu = vec3<u32>(bi);
+        let k_ = bitcast<i32>(IX[U.index_base + lv.index_off + (bu.x * lv.nb.y + bu.y) * lv.nb.z + bu.z]);
+        if (k_ < 0) { continue; }
+        let w = u - bi * b;
+        let c = min(vec3<u32>(floor(w)), vec3<u32>(BRICK - 1u));
+        let row = bitcast<i32>(IX[U.rows_base + lv.rows_off[0][0] + u32(k_)]);
+        var umin = 1e30;
+        var q0 = 0.0;
+        if (row >= 0) {
+            let sc = SC[2u * (lv.sc_off[0][0] + u32(row))];
+            let off = SC[2u * (lv.sc_off[0][0] + u32(row)) + 1u];
+            q0 = sc;
+            for (var i = 0u; i < 8u; i = i + 1u) {
+                let node = ((c.x + ((i >> 2u) & 1u)) * NODES + (c.y + ((i >> 1u) & 1u))) * NODES + (c.z + (i & 1u));
+                let v = qbyte(lv.q_off[0][0] + u32(row) * BRICK_NODES + node) * sc + off;
+                out.c[i] = v;
+                umin = min(umin, abs(v));
+            }
+        } else {
+            for (var i = 0u; i < 8u; i = i + 1u) { out.c[i] = 0.0; }
+            umin = 0.0;
+        }
+        out.found = true;
+        out.masked = U.rule == 1u && umin > HALF_DIAG * lv.h + q0;
+        out.h = lv.h;
+        out.lo = lv.lo + (bi * b + vec3<f32>(c)) * lv.h;
+        return out;
+    }
+    return out;
+}
+
+fn cub(c: vec4<f32>, u: f32) -> f32 { return ((c.w * u + c.z) * u + c.y) * u + c.x; }
+
+fn mulc(a: vec4<f32>, b: vec2<f32>) -> vec4<f32> {
+    return vec4<f32>(a.x * b.x, a.y * b.x + a.x * b.y, a.z * b.x + a.y * b.y, a.w * b.x + a.z * b.y);
+}
+
+// the first zero with a sign change of c in (0, ue]: x 1 found (u in y), 2 ambiguous, 0 none
+fn first_root(c: vec4<f32>, ue: f32) -> vec2<f32> {
+    let a = 3.0 * c.w; let b = 2.0 * c.z; let cc = c.y;
+    var cuts = array<f32, 4>(0.0, ue, ue, ue);
+    var n = 1u;
+    if (abs(a) > 0.0) {
+        let disc = b * b - 4.0 * a * cc;
+        if (disc >= 0.0) {
+            let r = sqrt(disc);
+            let x0 = min((-b - r) / (2.0 * a), (-b + r) / (2.0 * a));
+            let x1 = max((-b - r) / (2.0 * a), (-b + r) / (2.0 * a));
+            if (x0 > 0.0 && x0 < ue) { cuts[n] = x0; n = n + 1u; }
+            if (x1 > 0.0 && x1 < ue) { cuts[n] = x1; n = n + 1u; }
+        }
+    } else if (abs(b) > 0.0) {
+        let x = -cc / b;
+        if (x > 0.0 && x < ue) { cuts[n] = x; n = n + 1u; }
+    }
+    cuts[n] = ue;
+    let scale = abs(c.x) + abs(c.y) + abs(c.z) + abs(c.w);
+    for (var j = 0u; j < n; j = j + 1u) {
+        var l = cuts[j]; var r = cuts[j + 1u];
+        let fl = cub(c, l); let fr = cub(c, r);
+        if ((fl < 0.0) == (fr < 0.0)) { continue; }
+        for (var it = 0u; it < 24u; it = it + 1u) {
+            let m = 0.5 * (l + r);
+            if ((cub(c, m) < 0.0) == (fl < 0.0)) { l = m; } else { r = m; }
+        }
+        let u = 0.5 * (l + r);
+        let sm = cub(c, u - 1.52587890625e-5); let sp = cub(c, u + 1.52587890625e-5);
+        if (abs(sm) <= 9.5367431640625e-7 * scale || abs(sp) <= 9.5367431640625e-7 * scale) { return vec2<f32>(2.0, u); }
+        if ((sm < 0.0) != (sp < 0.0)) { return vec2<f32>(1.0, u); }
+    }
+    return vec2<f32>(0.0, 0.0);
+}
+
+// the cell walk of sheet k over [ta, tb]: x 1 root at t = y, 0 clear, 3 exhausted; z counts ambiguous roots
+var<private> walk_cells: u32;
+fn walk_first_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32) -> vec3<f32> {
+    var t = ta;
+    var amb = 0.0;
+    walk_cells = 0u;
+    // the previous cell's exit (t, s, valid), for a sign change across a face (the CPU rule: both |s| <= JUMP_S)
+    var prev = vec3<f32>(0.0, 0.0, 0.0);
+    for (var i = 0u; i < __CELL_WALK_CAP__; i = i + 1u) {
+        if (t >= tb) { return vec3<f32>(0.0, 0.0, amb); }
+        walk_cells = walk_cells + 1u;
+        let p = o + d * t;
+        let cl = s_cell(k, p);
+        if (!cl.found) { t = t + outside_bound(p, SHEETS[k]); prev.z = 0.0; continue; }
+        let q0 = (p - cl.lo) / cl.h;
+        var ux = 1e30;
+        if (d.x > 0.0) { ux = min(ux, (1.0 - q0.x) / d.x); } else if (d.x < 0.0) { ux = min(ux, -q0.x / d.x); }
+        if (d.y > 0.0) { ux = min(ux, (1.0 - q0.y) / d.y); } else if (d.y < 0.0) { ux = min(ux, -q0.y / d.y); }
+        if (d.z > 0.0) { ux = min(ux, (1.0 - q0.z) / d.z); } else if (d.z < 0.0) { ux = min(ux, -q0.z / d.z); }
+        ux = max(ux, 0.0);
+        let ue = min(ux, (tb - t) / cl.h);
+        var cu = vec4<f32>(0.0);
+        for (var c8 = 0u; c8 < 8u; c8 = c8 + 1u) {
+            var poly = vec4<f32>(1.0, 0.0, 0.0, 0.0);
+            poly = mulc(poly, select(vec2<f32>(1.0 - q0.x, -d.x), vec2<f32>(q0.x, d.x), ((c8 >> 2u) & 1u) == 1u));
+            poly = mulc(poly, select(vec2<f32>(1.0 - q0.y, -d.y), vec2<f32>(q0.y, d.y), ((c8 >> 1u) & 1u) == 1u));
+            poly = mulc(poly, select(vec2<f32>(1.0 - q0.z, -d.z), vec2<f32>(q0.z, d.z), (c8 & 1u) == 1u));
+            cu = cu + cl.c[c8] * poly;
+        }
+        let s_in = cu.x;
+        if (prev.z == 1.0 && ((prev.y < 0.0) != (s_in < 0.0)) && abs(prev.y) <= JUMP_S && abs(s_in) <= JUMP_S) {
+            var fa = prev.x; var fb = t;
+            let gfa = sample_sheet(k, o + d * fa, 2u).g;
+            for (var it = 0; it < 30; it = it + 1) {
+                let m = 0.5 * (fa + fb);
+                if ((sample_sheet(k, o + d * m, 2u).g < 0.0) == (gfa < 0.0)) { fa = m; } else { fb = m; }
+            }
+            let tm = 0.5 * (fa + fb);
+            if (crossing_inside(k, o + d * tm)) { return vec3<f32>(1.0, tm, amb); }
+        }
+        prev = vec3<f32>(t + ux * cl.h, cub(cu, ux), 1.0);
+        if (!cl.masked) {
+            let r = first_root(cu, ue);
+            if (r.x == 1.0) {
+                let tr = t + r.y * cl.h;
+                if (crossing_inside(k, o + d * tr)) { return vec3<f32>(1.0, tr, amb); }
+            } else if (r.x == 2.0) { amb = amb + 1.0; }
+        }
+        // past the face by a hair that t can carry: 2^-20 h, but at least 4 ulp of t (t is f32 in mm, up to ~1000)
+        let tn = t + ux * cl.h;
+        t = tn + max(9.5367431640625e-7 * cl.h, 4.0 * 1.1920929e-7 * abs(tn));
+    }
+    if (t >= tb) { return vec3<f32>(0.0, 0.0, amb); }
+    return vec3<f32>(3.0, 0.0, amb);
 }
 
 fn in_box(k: u32, p: vec3<f32>) -> bool {
@@ -1322,6 +1536,8 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let d = U.dir;
     var prev_k: array<u32, __MAX_LIVE__>;
     var prev_g: array<f32, __MAX_LIVE__>;
+    var prev_s: array<f32, __MAX_LIVE__>;
+    var prev_l: array<f32, __MAX_LIVE__>;
     var n_prev = 0u;
     var overflow = false;
     var unsorted = false;
@@ -1331,7 +1547,8 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     else {
         for (var j = 0u; j < n0; j = j + 1u) {
             if (j > 0u && lv[j] <= lv[j - 1u]) { unsorted = true; }
-            prev_k[j] = lv[j]; prev_g[j] = sample_sheet(lv[j], o, 2u).g;
+            let c0 = sample_sheet(lv[j], o, 2u);
+            prev_k[j] = lv[j]; prev_g[j] = c0.g; prev_s[j] = reach(c0); prev_l[j] = c0.lip;
         }
         n_prev = n0;
     }
@@ -1342,6 +1559,8 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // the ray's work: live sheets x (previous live sheets + 1) summed over its steps; over the budget the ray is
     // refused (kind 4, reported as undecided), so no ray's work is unbounded by more than one step
     var work = 0u;
+    var dip_out = false;
+    var floor_step = false;
     for (var step = 0u; step < U.steps && !overflow; step = step + 1u) {
         let p = o + d * t;
         let dd = eval_union(p).f;
@@ -1349,6 +1568,8 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         var khit = 0u;
         var cur_k: array<u32, __MAX_LIVE__>;
         var cur_g: array<f32, __MAX_LIVE__>;
+        var cur_s: array<f32, __MAX_LIVE__>;
+        var cur_l: array<f32, __MAX_LIVE__>;
         var n_cur = 0u;
         let nl = live_sheets(p, &lv);
         if (nl > MAX_LIVE) { overflow = true; break; }
@@ -1363,14 +1584,35 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         for (var li = 0u; li < nl; li = li + 1u) {
             let k = lv[li];
             if (li > 0u && k <= lv[li - 1u]) { unsorted = true; }
-            let gc = sample_sheet(k, p, 2u).g;
-            cur_k[n_cur] = k; cur_g[n_cur] = gc; n_cur = n_cur + 1u;
+            let cs = sample_sheet(k, p, 2u);
+            let gc = cs.g;
+            cur_k[n_cur] = k; cur_g[n_cur] = gc; cur_s[n_cur] = reach(cs); cur_l[n_cur] = cs.lip; n_cur = n_cur + 1u;
             if (t <= 0.0) { continue; }
             while (jp < n_prev && prev_k[jp] < k) { jp = jp + 1u; }
             if (jp >= n_prev || prev_k[jp] != k) { continue; }
             let gp = prev_g[jp];
-            if ((gc < 0.0) == (gp < 0.0)) { continue; }
+            if (__ROOT_MODE__u == 1u && floor_step) {
+                let wr = walk_first_root(k, o, d, tprev, t);
+                if (work > U.work_budget - min(walk_cells, U.work_budget)) { work = U.work_budget; kind = 4; dip_out = true; break; }
+                work = work + walk_cells;
+                if (wr.x == 3.0) { kind = 4; dip_out = true; break; }
+                if (wr.x == 1.0 && wr.y < thit) { thit = wr.y; khit = k; }
+                continue;
+            }
             var a = tprev; var b = t; var ga = gp;
+            if ((gc < 0.0) == (gp < 0.0) && __ROOT_MODE__u == 1u) { continue; }
+            if ((gc < 0.0) == (gp < 0.0)) {
+                // the same side at both ends: a crossing inside the step needs |s| to go to 0 and back (CPU dip)
+                var lip = 0.0;
+                if (prev_l[jp] > 0.0 && cs.lip > 0.0) { lip = max(prev_l[jp], cs.lip); }
+                let dr = dip(k, o, d, vec3<f32>(tprev, gp, prev_s[jp]), vec3<f32>(t, gc, reach(cs)), lip);
+                // the dip's midpoints are part of the ray's work: over the budget the ray is refused (kind 4)
+                if (work > U.work_budget - min(dip_nodes, U.work_budget)) { work = U.work_budget; kind = 4; dip_out = true; break; }
+                work = work + dip_nodes;
+                if (dr.x == 2.0) { kind = 4; dip_out = true; break; }
+                if (dr.x == 0.0) { continue; }
+                a = dr.y; b = dr.z; ga = dr.w;
+            }
             for (var it = 0; it < 30; it = it + 1) {
                 let mid = 0.5 * (a + b);
                 let gm = sample_sheet(k, o + d * mid, 2u).g;
@@ -1379,11 +1621,12 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let tm = 0.5 * (a + b);
             if (tm < thit && crossing_inside(k, o + d * tm)) { thit = tm; khit = k; }
         }
-        if (overflow) { break; }
+        if (overflow || dip_out) { break; }
         if (thit < 1e29) { t = thit; own = khit; kind = 1; break; }
         tprev = t;
-        for (var j = 0u; j < n_cur; j = j + 1u) { prev_k[j] = cur_k[j]; prev_g[j] = cur_g[j]; }
+        for (var j = 0u; j < n_cur; j = j + 1u) { prev_k[j] = cur_k[j]; prev_g[j] = cur_g[j]; prev_s[j] = cur_s[j]; prev_l[j] = cur_l[j]; }
         n_prev = n_cur;
+        floor_step = dd < __MIN_STEP__;
         t = t + max(dd, __MIN_STEP__);
         if (t >= U.tmax) { kind = 0; break; }
     }
@@ -1632,7 +1875,7 @@ mod tests {
             "no hits: the scene is wrong"
         );
         let sort = "if (j == 0u || (*L)[j - 1u] <= x) { break; }";
-        let bad = GpuSheetField::build(&f, &|src: String| {
+        let bad = GpuSheetField::build(&f, f.root_mode(), &|src: String| {
             assert_eq!(src.matches(sort).count(), 1, "the sort line moved");
             src.replace(sort, "if (j == 0u || (*L)[j - 1u] >= x) { break; }")
         })
