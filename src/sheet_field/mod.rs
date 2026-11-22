@@ -29,6 +29,10 @@ pub mod gpu;
 
 use glam::Vec3;
 
+use crate::mesh::bvh::BvhNode;
+use crate::mesh::gpu_bvh::{flatten_nodes, FlatNodes, LEAF};
+use crate::types::Aabb;
+
 /// Cells per brick edge.
 pub const BRICK: usize = 8;
 /// Nodes per brick edge.
@@ -139,6 +143,8 @@ pub struct SheetField {
     pub sheets: Vec<Sheet>,
     /// Validity rule.
     pub rule: ValidRule,
+    /// A BVH over the sheet boxes (leaf entries are sheet indices), flattened ([`crate::mesh::gpu_bvh`]).
+    index: FlatNodes,
 }
 
 /// A ray hit.
@@ -293,8 +299,162 @@ impl Sheet {
 }
 
 impl SheetField {
-    /// The union value `(f, g, owning sheet)` at `p`.
+    /// A field over `sheets` under `rule`; builds the BVH over the sheet boxes.
+    pub fn new(sheets: Vec<Sheet>, rule: ValidRule) -> Self {
+        let boxes: Vec<Aabb> = sheets.iter().map(|s| Aabb::new(s.lo, s.hi)).collect();
+        let tree = BvhNode::build_over_boxes(&boxes, 4);
+        Self {
+            sheets,
+            rule,
+            index: flatten_nodes(tree.as_ref()),
+        }
+    }
+
+    /// The flattened BVH over the sheet boxes.
+    pub const fn index(&self) -> &FlatNodes {
+        &self.index
+    }
+
+    fn node(&self, i: u32) -> (Vec3, Vec3, u32, u32) {
+        let n = &self.index.nodes[i as usize * 8..i as usize * 8 + 8];
+        let f = |w: u32| f32::from_bits(w);
+        (
+            Vec3::new(f(n[0]), f(n[1]), f(n[2])),
+            Vec3::new(f(n[4]), f(n[5]), f(n[6])),
+            n[3],
+            n[7],
+        )
+    }
+
+    /// The sheets whose box holds `p`, ascending (a parent-link walk of the BVH, no stack).
+    pub fn sheets_containing(&self, p: Vec3) -> Vec<usize> {
+        let mut out = Vec::new();
+        if self.index.nodes.is_empty() {
+            return out;
+        }
+        let inside = |lo: Vec3, hi: Vec3| p.cmpge(lo).all() && p.cmple(hi).all();
+        let (rlo, rhi, _, _) = self.node(0);
+        if !inside(rlo, rhi) {
+            return out;
+        }
+        const NONE: u32 = u32::MAX;
+        let (mut at, mut prev) = (0u32, NONE);
+        loop {
+            let (_, _, a, b) = self.node(at);
+            if a & LEAF != 0 {
+                let first = (a & !LEAF) as usize;
+                for &k in &self.index.leaf_entries[first..first + b as usize] {
+                    if self.sheet_in_box(k as usize, p) {
+                        out.push(k as usize);
+                    }
+                }
+            } else {
+                let (llo, lhi, _, _) = self.node(a);
+                let (blo, bhi, _, _) = self.node(b);
+                let (in_l, in_r) = (inside(llo, lhi), inside(blo, bhi));
+                if prev == NONE || prev == self.index.parents[at as usize] {
+                    if in_l {
+                        prev = at;
+                        at = a;
+                        continue;
+                    }
+                    if in_r {
+                        prev = at;
+                        at = b;
+                        continue;
+                    }
+                } else if prev == a && in_r {
+                    prev = at;
+                    at = b;
+                    continue;
+                }
+            }
+            if at == 0 {
+                break;
+            }
+            prev = at;
+            at = self.index.parents[at as usize];
+        }
+        out.sort_unstable();
+        out
+    }
+
+    /// The union value `(f, g, owning sheet)` at `p`: min over sheets of (`f_k` inside sheet k's box, else the
+    /// outside lower bound), lowest index on ties. A BVH walk, nearer child first, that skips a node whose box
+    /// is farther than the best value so far (every sheet in it is at least that far); equals
+    /// [`Self::eval_linear`] bit for bit.
     pub fn eval(&self, p: Vec3) -> (f32, f32, Option<usize>) {
+        let (mut fb, mut gb, mut kb) = (f32::INFINITY, f32::INFINITY, None::<usize>);
+        if self.index.nodes.is_empty() {
+            return (fb, gb, kb);
+        }
+        const NONE: u32 = u32::MAX;
+        let (mut at, mut prev) = (0u32, NONE);
+        loop {
+            let (_, _, a, b) = self.node(at);
+            if a & LEAF != 0 {
+                let first = (a & !LEAF) as usize;
+                for &k in &self.index.leaf_entries[first..first + b as usize] {
+                    let k = k as usize;
+                    let sh = &self.sheets[k];
+                    let (v, w) = if box_distance(p, sh.lo, sh.hi) == 0.0 {
+                        let s = sh.sample(p, self.rule);
+                        (s.f, s.g)
+                    } else {
+                        let v = outside_lower_bound(p, sh.lo, sh.hi, sh.hc);
+                        (v, v)
+                    };
+                    if v < fb || (v == fb && kb.is_some_and(|kk| k < kk)) {
+                        fb = v;
+                        gb = w;
+                        kb = Some(k);
+                    }
+                }
+            } else {
+                let (llo, lhi, _, _) = self.node(a);
+                let (rlo, rhi, _, _) = self.node(b);
+                let (dl, dr) = (box_distance(p, llo, lhi), box_distance(p, rlo, rhi));
+                let (first, df, second, ds) = if dr < dl {
+                    (b, dr, a, dl)
+                } else {
+                    (a, dl, b, dr)
+                };
+                if prev == NONE || prev == self.index.parents[at as usize] {
+                    if df <= fb {
+                        prev = at;
+                        at = first;
+                        continue;
+                    }
+                    if ds <= fb {
+                        prev = at;
+                        at = second;
+                        continue;
+                    }
+                } else if prev == first && ds <= fb {
+                    prev = at;
+                    at = second;
+                    continue;
+                }
+            }
+            if at == 0 {
+                break;
+            }
+            prev = at;
+            at = self.index.parents[at as usize];
+        }
+        (fb, gb, kb)
+    }
+
+    /// March one ray (`dir` unit length) up to `tmax` with at most `steps` steps (BVH-backed; equals
+    /// [`Self::march_linear`]).
+    pub fn march(&self, origin: Vec3, dir: Vec3, tmax: f32, steps: u32) -> MarchResult {
+        self.march_with(origin, dir, tmax, steps, true)
+    }
+}
+
+impl SheetField {
+    /// The union value by a linear scan over all sheets (the reference the BVH-backed [`Self::eval`] equals).
+    pub fn eval_linear(&self, p: Vec3) -> (f32, f32, Option<usize>) {
         let (mut fb, mut gb, mut kb) = (f32::INFINITY, f32::INFINITY, None);
         for (k, sh) in self.sheets.iter().enumerate() {
             let (v, w) = if box_distance(p, sh.lo, sh.hi) == 0.0 {
@@ -318,8 +478,12 @@ impl SheetField {
         p.cmpge(sh.lo).all() && p.cmple(sh.hi).all()
     }
 
-    /// March one ray (`dir` unit length) up to `tmax` with at most `steps` steps.
-    pub fn march(&self, origin: Vec3, dir: Vec3, tmax: f32, steps: u32) -> MarchResult {
+    /// [`Self::march`] with linear scans over all sheets (the reference the BVH-backed march equals).
+    pub fn march_linear(&self, origin: Vec3, dir: Vec3, tmax: f32, steps: u32) -> MarchResult {
+        self.march_with(origin, dir, tmax, steps, false)
+    }
+
+    fn march_with(&self, origin: Vec3, dir: Vec3, tmax: f32, steps: u32, bvh: bool) -> MarchResult {
         let k_n = self.sheets.len();
         let mut gprev: Vec<Option<f32>> = (0..k_n)
             .map(|k| {
@@ -333,14 +497,20 @@ impl SheetField {
         let (mut t, mut tprev) = (0.0f32, 0.0f32);
         for _ in 0..steps {
             let p = origin + dir * t;
-            let (dd, _, _) = self.eval(p);
+            let (dd, _, _) = if bvh {
+                self.eval(p)
+            } else {
+                self.eval_linear(p)
+            };
             let mut stop = dd < 0.01;
             let mut thit = f32::INFINITY;
             let mut gcur: Vec<Option<f32>> = vec![None; k_n];
-            for k in 0..k_n {
-                if !self.sheet_in_box(k, p) {
-                    continue;
-                }
+            let live: Vec<usize> = if bvh {
+                self.sheets_containing(p)
+            } else {
+                (0..k_n).filter(|&k| self.sheet_in_box(k, p)).collect()
+            };
+            for k in live {
                 let sh = &self.sheets[k];
                 let gc = sh.sample(p, self.rule).g;
                 gcur[k] = Some(gc);
