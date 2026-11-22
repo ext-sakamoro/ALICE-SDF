@@ -65,6 +65,9 @@ pub const BRICK: usize = 8;
 pub const NODES: usize = BRICK + 1;
 /// Nodes per brick.
 pub const BRICK_NODES: usize = NODES * NODES * NODES;
+/// Largest stored node code: each brick stores its node values as bytes `0..=Q_MAX` over its own `[lo, hi]`, so a
+/// decoded node value is within `(hi - lo) / Q_MAX / 2` of the value it encodes.
+pub const Q_MAX: f32 = 255.0;
 pub(crate) const HALF_DIAG: f32 = 0.866_025_4;
 const SQRT3: f32 = 1.732_050_8;
 /// The smallest step of the march (mm): a fold of one sheet thinner than this along the ray can be skipped.
@@ -90,28 +93,19 @@ pub fn decided_steps(tmax: f32) -> u32 {
     n as u32
 }
 /// A bisected sign change with `|s|` above this is a sign jump of `s`, not a crossing of the sheet.
-pub(crate) const JUMP_S: f32 = 0.02;
+pub const JUMP_S: f32 = 0.02;
+
+/// How far a hit may lie from the fixed-step reference's ([`RootMode::FixedFloor`]) and still be the same crossing by
+/// `t` alone: the reference's sub-step (`MIN_STEP / 20`) plus its bisection (`MIN_STEP / 2^30`). Past it, see
+/// [`SheetField::hit_agrees_with_reference`].
+pub const REFERENCE_T_TOL: f32 = MIN_STEP / 20.0 + MIN_STEP / 1_073_741_824.0;
+
 
 /// The floor of a masked cell's lower bound (the field's length unit, mm). It is a valid lower bound only where a
 /// masked cell's true distance is at least it: masking needs `min |s_c| > HALF_DIAG h + q0`, so the true distance is
 /// over `HALF_DIAG h`, and the floor holds for `h >= MASKED_FLOOR / HALF_DIAG` (about 0.0577). A level with a
 /// smaller cell is refused where fields are read ([`stream::AshfIndex::read_sheets`]).
 pub const MASKED_FLOOR: f32 = 0.05;
-
-/// The most midpoints one dip search samples (see [`Sheet::dip`]); past it the ray is undecided. MEASUREMENT BUILD:
-/// set from the deepest dip measured on the real fields before commit.
-pub const DIP_NODE_CAP: u32 = 64;
-
-/// The answer of one dip search.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum Dip {
-    /// A sign change inside `[t_a, t_b]`, with `g` at `t_a`.
-    Crossing(f32, f32, f32),
-    /// No zero can lie inside the step (every open interval was closed by the bound).
-    Clear,
-    /// The search stopped at its cap with an interval still open: nothing is known about the step.
-    Exhausted,
-}
 
 /// One step of a profiled march ([`SheetField::march_profile`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -250,7 +244,7 @@ pub struct Sample {
     /// The quantization step of `d_b` in the answering brick (0 when the brick stores no `d_b`).
     pub db_step: f32,
     /// The bound on `|d s / d t|` and `|d d_b / d t|` along any unit direction in the answering cell,
-    /// `sqrt(3) (1 + 2 max(scale_s, scale_db) / h)` (module docs, the dip search); 0 when no level answered.
+    /// `sqrt(3) (1 + 2 max(scale_s, scale_db) / h)` (a per-cell slope bound); 0 when no level answered.
     pub lip: f32,
 }
 
@@ -284,10 +278,9 @@ pub struct SheetField {
 /// How the CPU march finds a zero inside a floor step whose ends have the same sign.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum RootMode {
-    /// M1: the bounded dip search ([`Sheet::dip`]).
+    /// The cell walk ([`cellroot`]): every floor step is walked cell by cell for the first root of each live sheet.
+    /// The only mode the GPU program runs.
     #[default]
-    Dip,
-    /// M2: the cell walk ([`cellroot`]): every floor step is walked cell by cell for the first root of each live sheet.
     CellWalk,
     /// The oracle's reference (not for rendering): every floor step is re-walked in 20 equal sub-steps (0.0005), each
     /// compared by sign and bisected. Elsewhere the march's own steps stand (they stay inside the free ball, so they
@@ -416,60 +409,6 @@ impl Sheet {
     /// Whether a bisected sign change of this sheet's `g` at `p` is a crossing of the sheet: a level answers,
     /// unmasked, `|s| <= JUMP_S`, and `d_b <= step/2` (inside the boundary up to the rounding of the stored
     /// `d_b`; a brick that stores no `d_b` has every node `<= 0`, so its points are inside).
-    /// The earliest sign change of this sheet's `g` inside a march step whose two ends have the same sign (module
-    /// docs, the dip search). `a` and `b` are `(t, g, |s|)` at the ends and `lip` the slope bound. An interval
-    /// `[a, b]` can hold a zero only if `|s_a| + |s_b| <= lip (t_b - t_a)`; intervals that pass are halved, earliest
-    /// half first, down to the march's bisection resolution (the step over 2^30). The search is bounded: it samples
-    /// at most [`DIP_NODE_CAP`] midpoints and keeps at most 32 pending intervals; when either bound stops it with an
-    /// interval still open it answers [`Dip::Exhausted`] (the ray is then undecided, never a miss), so no step's
-    /// search is unbounded and no open interval is dropped silently. The second value is the number of midpoints
-    /// sampled (counted in the ray's work).
-    pub(crate) fn dip(
-        &self,
-        origin: Vec3,
-        dir: Vec3,
-        a: (f32, f32, f32),
-        b: (f32, f32, f32),
-        lip: f32,
-        rule: ValidRule,
-    ) -> (Dip, u32) {
-        if lip <= 0.0 {
-            return (Dip::Clear, 0);
-        }
-        let side = a.1 < 0.0;
-        let floor = (b.0 - a.0) * (1.0 / 1_073_741_824.0);
-        // depth-first, earliest first: at most one pending right half per level
-        let mut stack: [((f32, f32, f32), (f32, f32, f32)); 32] = [(a, b); 32];
-        let mut n = 1usize;
-        let mut nodes = 0u32;
-        stack[0] = (a, b);
-        while n > 0 {
-            n -= 1;
-            let (l, r) = stack[n];
-            if l.2 + r.2 > lip * (r.0 - l.0) || r.0 - l.0 <= floor {
-                continue;
-            }
-            if nodes >= DIP_NODE_CAP {
-                return (Dip::Exhausted, nodes);
-            }
-            let tm = f32::midpoint(l.0, r.0);
-            let c = self.sample_geom(origin + dir * tm, rule);
-            nodes += 1;
-            // where no level answers, the outside lower bound stands in for |s| (no crossing lies nearer than it)
-            let m = (tm, c.g, c.reach());
-            if (c.g < 0.0) != side {
-                return (Dip::Crossing(l.0, tm, l.1), nodes);
-            }
-            if n + 2 > stack.len() {
-                return (Dip::Exhausted, nodes);
-            }
-            stack[n] = (m, r);
-            stack[n + 1] = (l, m);
-            n += 2;
-        }
-        (Dip::Clear, nodes)
-    }
-
     /// The exact `s` and unsigned distance at `p` when `p`'s answering cell is an s cell ([`kink::CELL_S`]).
     pub(crate) fn exact_s_here(&self, p: Vec3) -> Option<(f32, f32)> {
         let ks = self.kink.as_ref()?;
@@ -657,7 +596,7 @@ impl SheetField {
             sheets,
             rule,
             index: flatten_nodes(tree.as_ref()),
-            root_mode: RootMode::Dip,
+            root_mode: RootMode::CellWalk,
         }
     }
 
@@ -835,6 +774,28 @@ impl SheetField {
         let mut rec = Vec::new();
         let m = self.march_with(origin, dir, tmax, decided_steps(tmax), true, Some(&mut rec));
         (m, rec)
+    }
+
+    /// Whether a hit at `t` of sheet `k` along `origin + dir t` is the same crossing as the reference's hit at
+    /// `t_ref` ([`RootMode::FixedFloor`]): `|t - t_ref| <= REFERENCE_T_TOL`, or else the sheet's stored `|s|` stays
+    /// within [`JUMP_S`] all along between the two, sampled every `REFERENCE_T_TOL / 10` (both are crossings by the
+    /// march's own acceptance rule, within the field's quantisation: bricks are quantised apart, so `s` can jump at a
+    /// face, and the two can then differ by the jump over the slope of `s` along the ray, which grows without bound
+    /// as the ray grazes). A hit on another surface (through the near one) leaves `|s|` far above `JUMP_S` between.
+    #[must_use]
+    pub fn hit_agrees_with_reference(&self, k: usize, origin: Vec3, dir: Vec3, t: f32, t_ref: f32) -> bool {
+        if (t - t_ref).abs() <= REFERENCE_T_TOL {
+            return true;
+        }
+        let Some(sh) = self.sheets.get(k) else {
+            return false;
+        };
+        let (a, b) = (t.min(t_ref), t.max(t_ref));
+        let n = ((b - a) / (REFERENCE_T_TOL / 10.0)).ceil() as usize;
+        (0..=n).all(|i| {
+            let p = origin + dir * (a + (b - a) * i as f32 / n as f32);
+            sh.sample(p, self.rule).s.abs() <= JUMP_S
+        })
     }
 
     /// [`Self::march`] with the budget from [`decided_steps`]: the result is a hit or a miss, never undecided.
@@ -1059,32 +1020,11 @@ impl SheetField {
                     continue;
                 }
                 let _ = (sp, lp);
-                let (mut a, mut b, mut ga) = (tprev, t, gp);
-                if (gc < 0.0) == (gp < 0.0) && self.root_mode != RootMode::Dip {
+                if (gc < 0.0) == (gp < 0.0) {
                     // not a floor step: the step stayed inside the free ball, so ends of one sign hold no zero
                     continue;
                 }
-                if (gc < 0.0) == (gp < 0.0) {
-                    // the same side at both ends: a crossing inside the step needs |s| to go to 0 and back
-                    // (both ends must be answered by a level: only there is |s| a measure of the way to a crossing)
-                    let lip = if lp > 0.0 && cs.lip > 0.0 {
-                        lp.max(cs.lip)
-                    } else {
-                        0.0
-                    };
-                    match sh.dip(
-                        origin,
-                        dir,
-                        (tprev, gp, sp),
-                        (t, gc, cs.reach()),
-                        lip,
-                        self.rule,
-                    ) {
-                        (Dip::Crossing(da, db, dga), _) => (a, b, ga) = (da, db, dga),
-                        (Dip::Clear, _) => continue,
-                        (Dip::Exhausted, _) => return MarchResult::Undecided,
-                    }
-                }
+                let (mut a, mut b, mut ga) = (tprev, t, gp);
                 for _ in 0..30 {
                     let mid = f32::midpoint(a, b);
                     let gm = sh.sample_geom(origin + dir * mid, self.rule).g;
@@ -1160,124 +1100,5 @@ impl SheetField {
                 .filter(|n| n.length() > 1e-12)
                 .map(Vec3::normalize),
         }
-    }
-}
-
-#[cfg(test)]
-mod dip_tests {
-    use super::build::{level_from_fn, sheet};
-    use super::{Dip, Sheet, ValidRule, DIP_NODE_CAP};
-    use glam::Vec3;
-
-    /// A slab |z| < 0.002 (s = |z| - 0.002, slope 1 along z) on cells of 0.0005 (the stored kink is sharp), tall
-    /// enough (z in about -0.032..0.032) for steps long enough to sit between the bound and half of it.
-    fn slab() -> Sheet {
-        let lv = level_from_fn(
-            Vec3::new(-0.004 + 0.00013, -0.004 + 0.00021, -0.032 + 0.00007),
-            0.0005,
-            [2, 2, 16],
-            |_c, _e| true,
-            |p| vec![p.z.abs() - 0.002, -1.0],
-        )
-        .unwrap();
-        sheet(vec![lv]).unwrap()
-    }
-
-    /// The dip search's threshold, both sides (module docs): along a vertical ray through the slab the stored
-    /// `|s|` has slope 1, so a step whose ends both sit `a` above the slab holds two zeros exactly when its length
-    /// exceeds `2 a + 0.004`. Oracle: that geometry, not the search.
-    /// - ends just close enough (`|s_a| + |s_b|` between `L dt / 2` and `L dt`, zeros inside): found with `L`, and
-    ///   not with `L / 2` (the threshold is needed at its full value);
-    /// - ends just too far for a zero (`|s_a| + |s_b| > dt - 0.004` but `<= L dt`, so searched): nothing found;
-    /// - ends over `L dt`: nothing searched, nothing found.
-    #[test]
-    fn the_dip_search_finds_zeros_exactly_inside_its_bound() {
-        let sh = slab();
-        let rule = ValidRule::CellV1;
-        let o = Vec3::new(0.0003, 0.0002, 0.0);
-        let d = -Vec3::Z;
-        let at = |t: f32| {
-            let c = sh.sample_geom(o + d * t, rule);
-            (t, c.g, c.s.abs(), c.lip)
-        };
-        // a step from z = +z0 to z = -z0 (t from -z0 to +z0 along -z): ends at |s| = z0 - 0.002
-        let step = |z0: f32| {
-            let (a, b) = (at(-z0), at(z0));
-            (a, b, a.3.max(b.3))
-        };
-        // zeros inside, |s_a| + |s_b| = 2 (z0 - 0.002) = dt - 0.004, between L dt / 2 and L dt (L ~ 1.84): the
-        // slope along the ray is 1, so only a long step puts the sum over half the bound
-        let z0 = 0.03;
-        let (a, b, lip) = step(z0);
-        let sum = a.2 + b.2;
-        assert!(
-            sum < lip * (b.0 - a.0) && sum > 0.5 * lip * (b.0 - a.0),
-            "sum {sum} lip {lip} dt {}",
-            b.0 - a.0
-        );
-        assert!((a.1 < 0.0) == (b.1 < 0.0), "the ends are on opposite sides");
-        let found = sh.dip(o, d, (a.0, a.1, a.2), (b.0, b.1, b.2), lip, rule);
-        assert!(
-            matches!(found.0, Dip::Crossing(..)),
-            "a slab {} wide inside a step of {} was not found",
-            0.004,
-            b.0 - a.0
-        );
-        assert!(
-            sh.dip(o, d, (a.0, a.1, a.2), (b.0, b.1, b.2), 0.5 * lip, rule)
-                .0
-                == Dip::Clear,
-            "half the bound still found it: this case does not test the threshold"
-        );
-        // no zero can be inside: ends farther than the slab allows, yet within L dt, so the search runs and must
-        // return nothing (it never reports a sign change that is not there)
-        for &(za, zb) in &[(0.0035f32, 0.0035f32), (0.003, 0.0052), (0.0041, 0.0029)] {
-            // a step from z = +za down to z = +zb on the same side never meets the slab
-            let (a, b) = (at(-za), at(-zb));
-            assert!(
-                sh.dip(o, d, (a.0, a.1, a.2), (b.0, b.1, b.2), a.3.max(b.3), rule)
-                    .0
-                    == Dip::Clear,
-                "{za} {zb}"
-            );
-        }
-        // over the bound: not searched
-        let (a, b) = (at(-0.0039), at(-0.0021));
-        let lip = a.3.max(b.3);
-        assert!(
-            a.2 + b.2 > lip * (b.0 - a.0)
-                || sh.dip(o, d, (a.0, a.1, a.2), (b.0, b.1, b.2), lip, rule).0 == Dip::Clear
-        );
-    }
-    /// The bound on the search (M1): a step the bound cannot close (a slope bound far above the true slope keeps
-    /// every half open) ends in `Exhausted` after exactly `DIP_NODE_CAP` midpoints, never in `Clear` (a cap that
-    /// answered "no zero" would turn an unfinished search into a miss), and a step it can close in fewer nodes
-    /// still answers as before. Oracle: the slab's geometry (no zero between two points both above it).
-    #[test]
-    fn the_dip_search_is_bounded_and_never_reports_an_unfinished_search_as_clear() {
-        let sh = slab();
-        let rule = ValidRule::CellV1;
-        let o = Vec3::new(0.0003, 0.0002, 0.0);
-        let d = -Vec3::Z;
-        let at = |t: f32| {
-            let c = sh.sample_geom(o + d * t, rule);
-            (t, c.g, c.s.abs())
-        };
-        // both ends above the slab (no zero inside), with a slope bound 1e6 times the true one: nothing closes
-        let (a, b) = (at(-0.03), at(-0.0035));
-        let (r, nodes) = sh.dip(o, d, a, b, 1e6, rule);
-        assert_eq!(
-            r,
-            Dip::Exhausted,
-            "an unfinished search must not answer {r:?}"
-        );
-        assert_eq!(
-            nodes, DIP_NODE_CAP,
-            "the cap was not the bound that stopped it"
-        );
-        // the same ends with the true slope bound: closed (Clear) within the cap
-        let (r, nodes) = sh.dip(o, d, a, b, 1.84, rule);
-        assert_eq!(r, Dip::Clear);
-        assert!(nodes < DIP_NODE_CAP, "{nodes}");
     }
 }
