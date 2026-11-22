@@ -426,6 +426,11 @@ impl GpuContext {
         }
     }
 
+    /// Whether a wait on this device went over its limit (the device is kept and not used again)
+    pub(crate) fn is_abandoned(&self) -> bool {
+        self.0.abandoned.load(Ordering::Acquire)
+    }
+
     /// Keep this device for the life of the process: work on it may still be running
     pub(crate) fn abandon(&self) {
         self.0.abandoned.store(true, Ordering::Release);
