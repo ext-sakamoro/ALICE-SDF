@@ -18,10 +18,14 @@
 //! jump in an unmasked cell can still cross, at most `(sqrt(3) + sqrt(3)/2) * h + scale` from the sheet.
 //!
 //! Union: `f = min` over sheets of (`f_k` inside sheet k's box, else `max(distance to the box, 3 h_k)`), a lower
-//! bound on the distance to sheet k. Ray hits ([`SheetField::march`]) take a stop where the union `f < 0.01`,
-//! or a sign change of one sheet's own `g_k` between two steps whose bisected point has `f_k < 0.02` (the
-//! union's `g` jumps where the nearest sheet switches, so it is not used for crossings). A ray that runs out of
-//! steps before the far distance is reported as undecided, never as a hit.
+//! bound on the distance to sheet k. A ray hit ([`SheetField::march`]) is a sign change of one sheet's own
+//! `g_k` between two steps (the union's `g` jumps where the nearest sheet switches, so it is not used for
+//! crossings), bisected, and accepted only where that sheet answers unmasked with `|s| <= 0.02` (a sign jump
+//! of `s` is not a crossing) and `d_b <= step/2`: inside its boundary up to the rounding of the stored `d_b`
+//! (half a quantization step). A crossing of the sheet's plane outside its rim is no hit, and nothing stops a
+//! ray by proximity alone (a distance threshold would widen every rim and every sheet by that threshold). The
+//! hit's owner is the sheet whose crossing it is. A ray that runs out of steps before the far distance is
+//! reported as undecided, never as a hit.
 
 pub mod build;
 #[cfg(feature = "gpu")]
@@ -40,6 +44,8 @@ pub const NODES: usize = BRICK + 1;
 /// Nodes per brick.
 pub const BRICK_NODES: usize = NODES * NODES * NODES;
 const HALF_DIAG: f32 = 0.866_025_4;
+/// A bisected sign change with `|s|` above this is a sign jump of `s`, not a crossing of the sheet.
+const JUMP_S: f32 = 0.02;
 
 /// Which cells' sign is trusted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,6 +140,16 @@ pub struct Sample {
     pub masked: bool,
     /// UV of the nearest surface point, when the sheet carries UV channels and a level answered.
     pub uv: Option<[f32; 2]>,
+    /// The author normal of the nearest surface point (interpolated, not normalized), when the sheet carries the
+    /// author-normal channels 4-6 and a level answered.
+    pub attr_normal: Option<[f32; 3]>,
+    /// The interpolated side channel `s` (0 when no level answered).
+    pub s: f32,
+    /// The interpolated boundary channel `d_b` (0 when no level answered, or in a brick that stores no `d_b`:
+    /// every node there is `<= 0`, so the point is inside the boundary).
+    pub db: f32,
+    /// The quantization step of `d_b` in the answering brick (0 when the brick stores no `d_b`).
+    pub db_step: f32,
 }
 
 /// The union of sheets.
@@ -158,6 +174,10 @@ pub struct Hit {
     pub normal: Vec3,
     /// UV at the hit, when the owning sheet carries UV channels.
     pub uv: Option<[f32; 2]>,
+    /// The author normal at the hit (normalized), when the owning sheet carries the 3 author-normal channels
+    /// (channels 4-6). Its orientation is the author's; a renderer that shades like the source mesh flips it by
+    /// the side of [`Hit::normal`] it sees, as it would flip a mesh normal by the triangle's face.
+    pub attr_normal: Option<Vec3>,
 }
 
 /// The result of marching one ray.
@@ -193,15 +213,26 @@ impl Level {
 }
 
 struct CellLookup {
-    values: [f32; 4],
+    values: [f32; 8],
     nch: usize,
     umin: f32,
     q0: f32,
+    q1: f32,
     h: f32,
 }
 
 impl Sheet {
-    fn lookup(&self, p: Vec3) -> Option<CellLookup> {
+    /// Whether a bisected sign change of this sheet's `g` at `p` is a crossing of the sheet: a level answers,
+    /// unmasked, `|s| <= JUMP_S`, and `d_b <= step/2` (inside the boundary up to the rounding of the stored
+    /// `d_b`; a brick that stores no `d_b` has every node `<= 0`, so its points are inside).
+    fn crossing_inside(&self, p: Vec3, rule: ValidRule) -> bool {
+        let c = self.sample_geom(p, rule);
+        c.inside && !c.masked && c.s.abs() <= JUMP_S && c.db <= 0.5 * c.db_step
+    }
+
+    /// The cell value at `p` from the first level that answers, interpolating the first `nmax` channels only
+    /// (the march needs `s` and `d_b`; attributes are read once, at the hit).
+    fn lookup(&self, p: Vec3, nmax: usize) -> Option<CellLookup> {
         for lv in &self.levels {
             let u = (p - lv.lo) / lv.h;
             let b = BRICK as f32;
@@ -227,13 +258,14 @@ impl Sheet {
             ];
             let t = [w[0] - c[0] as f32, w[1] - c[1] as f32, w[2] - c[2] as f32];
             let mut out = CellLookup {
-                values: [0.0; 4],
-                nch: lv.channels.len().min(4),
+                values: [0.0; 8],
+                nch: lv.channels.len().min(8).min(nmax),
                 umin: f32::INFINITY,
                 q0: 0.0,
+                q1: 0.0,
                 h: lv.h,
             };
-            for (ci, ch) in lv.channels.iter().take(4).enumerate() {
+            for (ci, ch) in lv.channels.iter().take(8.min(nmax)).enumerate() {
                 let mut acc = 0.0f32;
                 let row = ch.rows[k];
                 if row >= 0 {
@@ -254,6 +286,8 @@ impl Sheet {
                     }
                     if ci == 0 {
                         out.q0 = ch.scale[row as usize];
+                    } else if ci == 1 {
+                        out.q1 = ch.scale[row as usize];
                     }
                 }
                 out.values[ci] = acc;
@@ -263,9 +297,18 @@ impl Sheet {
         None
     }
 
-    /// The sheet's value at `p` under `rule`.
+    /// The sheet's value at `p` under `rule`, with every stored channel (UV and author normal included).
     pub fn sample(&self, p: Vec3, rule: ValidRule) -> Sample {
-        let Some(c) = self.lookup(p) else {
+        self.sample_n(p, rule, 8)
+    }
+
+    /// The geometric part of [`Sheet::sample`] (`f`, `g`, `s`, `d_b`; no attributes): what marching needs.
+    fn sample_geom(&self, p: Vec3, rule: ValidRule) -> Sample {
+        self.sample_n(p, rule, 2)
+    }
+
+    fn sample_n(&self, p: Vec3, rule: ValidRule, nmax: usize) -> Sample {
+        let Some(c) = self.lookup(p, nmax) else {
             let v = outside_lower_bound(p, self.lo, self.hi, self.hc);
             return Sample {
                 f: v,
@@ -273,6 +316,10 @@ impl Sheet {
                 inside: false,
                 masked: false,
                 uv: None,
+                attr_normal: None,
+                s: 0.0,
+                db: 0.0,
+                db_step: 0.0,
             };
         };
         let (s, db) = (c.values[0], c.values[1]);
@@ -288,12 +335,17 @@ impl Sheet {
         } else {
             None
         };
+        let attr_normal = (c.nch >= 7).then(|| [c.values[4], c.values[5], c.values[6]]);
         Sample {
             f,
             g,
             inside: true,
             masked,
             uv,
+            attr_normal,
+            s,
+            db,
+            db_step: c.q1,
         }
     }
 }
@@ -398,7 +450,7 @@ impl SheetField {
                     let k = k as usize;
                     let sh = &self.sheets[k];
                     let (v, w) = if box_distance(p, sh.lo, sh.hi) == 0.0 {
-                        let s = sh.sample(p, self.rule);
+                        let s = sh.sample_geom(p, self.rule);
                         (s.f, s.g)
                     } else {
                         let v = outside_lower_bound(p, sh.lo, sh.hi, sh.hc);
@@ -458,7 +510,7 @@ impl SheetField {
         let (mut fb, mut gb, mut kb) = (f32::INFINITY, f32::INFINITY, None);
         for (k, sh) in self.sheets.iter().enumerate() {
             let (v, w) = if box_distance(p, sh.lo, sh.hi) == 0.0 {
-                let s = sh.sample(p, self.rule);
+                let s = sh.sample_geom(p, self.rule);
                 (s.f, s.g)
             } else {
                 let v = outside_lower_bound(p, sh.lo, sh.hi, sh.hc);
@@ -488,7 +540,7 @@ impl SheetField {
         let mut gprev: Vec<Option<f32>> = (0..k_n)
             .map(|k| {
                 if self.sheet_in_box(k, origin) {
-                    Some(self.sheets[k].sample(origin, self.rule).g)
+                    Some(self.sheets[k].sample_geom(origin, self.rule).g)
                 } else {
                     None
                 }
@@ -502,8 +554,8 @@ impl SheetField {
             } else {
                 self.eval_linear(p)
             };
-            let mut stop = dd < 0.01;
             let mut thit = f32::INFINITY;
+            let mut khit = 0usize;
             let mut gcur: Vec<Option<f32>> = vec![None; k_n];
             let live: Vec<usize> = if bvh {
                 self.sheets_containing(p)
@@ -512,9 +564,9 @@ impl SheetField {
             };
             for k in live {
                 let sh = &self.sheets[k];
-                let gc = sh.sample(p, self.rule).g;
+                let gc = sh.sample_geom(p, self.rule).g;
                 gcur[k] = Some(gc);
-                if stop || t <= 0.0 {
+                if t <= 0.0 {
                     continue;
                 }
                 let Some(gp) = gprev[k] else { continue };
@@ -524,7 +576,7 @@ impl SheetField {
                 let (mut a, mut b, mut ga) = (tprev, t, gp);
                 for _ in 0..30 {
                     let mid = f32::midpoint(a, b);
-                    let gm = sh.sample(origin + dir * mid, self.rule).g;
+                    let gm = sh.sample_geom(origin + dir * mid, self.rule).g;
                     if (gm < 0.0) == (ga < 0.0) {
                         a = mid;
                         ga = gm;
@@ -533,16 +585,13 @@ impl SheetField {
                     }
                 }
                 let tm = f32::midpoint(a, b);
-                if sh.sample(origin + dir * tm, self.rule).f < 0.02 {
-                    thit = thit.min(tm);
+                if sh.crossing_inside(origin + dir * tm, self.rule) && tm < thit {
+                    thit = tm;
+                    khit = k;
                 }
             }
             if thit.is_finite() {
-                t = thit;
-                stop = true;
-            }
-            if stop {
-                return MarchResult::Hit(self.hit_at(origin + dir * t, t));
+                return MarchResult::Hit(self.hit_on(origin + dir * thit, thit, khit));
             }
             tprev = t;
             gprev = gcur;
@@ -554,26 +603,19 @@ impl SheetField {
         MarchResult::Undecided
     }
 
-    fn hit_at(&self, p: Vec3, t: f32) -> Hit {
+    /// The hit at `p` on sheet `k` (the sheet whose crossing it is): normal = the gradient of the sheet's own
+    /// side channel `s` (central differences, 0.05 mm); the distance `g` would bend it toward the rim where
+    /// `d_b > 0` reaches the stencil. UV from its channels.
+    fn hit_on(&self, p: Vec3, t: f32, k: usize) -> Hit {
         let e = 0.05f32;
-        let mut best = (f32::INFINITY, 0usize);
-        for (k, sh) in self.sheets.iter().enumerate() {
-            let pe = p.cmpge(sh.lo - Vec3::splat(e)).all() && p.cmple(sh.hi + Vec3::splat(e)).all();
-            if !pe {
-                continue;
-            }
-            let v = sh.sample(p, self.rule).f;
-            if v < best.0 {
-                best = (v, k);
-            }
-        }
-        let sh = &self.sheets[best.1];
-        let g = |q: Vec3| sh.sample(q, self.rule).g;
+        let sh = &self.sheets[k];
+        let s = |q: Vec3| sh.sample_geom(q, self.rule).s;
         let n = Vec3::new(
-            g(p + Vec3::X * e) - g(p - Vec3::X * e),
-            g(p + Vec3::Y * e) - g(p - Vec3::Y * e),
-            g(p + Vec3::Z * e) - g(p - Vec3::Z * e),
+            s(p + Vec3::X * e) - s(p - Vec3::X * e),
+            s(p + Vec3::Y * e) - s(p - Vec3::Y * e),
+            s(p + Vec3::Z * e) - s(p - Vec3::Z * e),
         );
+        let at = sh.sample(p, self.rule);
         let normal = if n.length() > 1e-12 {
             n.normalize()
         } else {
@@ -581,9 +623,14 @@ impl SheetField {
         };
         Hit {
             t,
-            sheet: best.1,
+            sheet: k,
             normal,
-            uv: sh.sample(p, self.rule).uv,
+            uv: at.uv,
+            attr_normal: at
+                .attr_normal
+                .map(Vec3::from_array)
+                .filter(|n| n.length() > 1e-12)
+                .map(Vec3::normalize),
         }
     }
 }
