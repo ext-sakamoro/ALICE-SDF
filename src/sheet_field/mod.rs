@@ -13,7 +13,7 @@
 //! Validity rule `CellV1`: a cell whose 8 corners all have `|s| > sqrt(3)/2 * h + scale` cannot contain the
 //! surface (`|s|` never exceeds the true distance, and a surface point in the cell lies within half a cell
 //! diagonal of its nearest corner). Such a cell is answered with the lower bound
-//! `max(min|s| - scale - sqrt(3)/2 * h, min(0.05, sqrt(3)/2 * h))`, tightened per corner (below), positive, so a sign jump of `s` there (two parts of one open
+//! `max(min|s| - scale - sqrt(3)/2 * h, min(0.05, h/2))`, tightened per corner (below), positive, so a sign jump of `s` there (two parts of one open
 //! sheet seen from opposite sides) never reads as a crossing. A masked cell never holds a true hit. A sign
 //! jump in an unmasked cell can still cross, at most `(sqrt(3) + sqrt(3)/2) * h + scale` from the sheet.
 //!
@@ -103,18 +103,28 @@ pub const REFERENCE_T_TOL: f32 = MIN_STEP / 20.0 + MIN_STEP / 1_073_741_824.0;
 
 /// The largest floor of a masked cell's lower bound (the field's length unit, mm).
 ///
-/// The floor a level uses is [`masked_floor`] of its `h`: masking needs `min |s_c| > HALF_DIAG h + q0`, so a masked
-/// cell's true distance is over `HALF_DIAG h`, and a floor is a valid lower bound only up to that.
+/// The floor a level uses is [`masked_floor`] of its `h`.
 pub const MASKED_FLOOR: f32 = 0.05;
+
+/// The distance from a masked cell to the surface, as a fraction of the cell's side, that masking guarantees.
+///
+/// Every surface point is more than `h/2` from every point of a masked cell. Masking needs `min |s_c| > HALF_DIAG h + q0`, so
+/// every corner is more than `HALF_DIAG h` from the surface. A point `x` within `h/2` of the cell is within
+/// `HALF_DIAG h` of a corner: take the corner on `x`'s side of the cell's centre in each axis; along an axis where
+/// `x` is inside the cell's span it is at most `h/2` from that corner, and along the `m` axes where it is outside the
+/// span by `v_i` it is `|v_i|` from it, so the squared distance is at most `|v|^2 + (3 - m) h^2/4 <= 3 h^2/4`. The
+/// bound is tight: a surface point just over `h/2` outside a face's centre is more than `HALF_DIAG h` from all eight
+/// corners. The corners' distance alone (`HALF_DIAG h`) is not a bound for the cell's interior.
+pub const MASKED_FLOOR_PER_H: f32 = 0.5;
 
 /// The floor of a masked cell's lower bound for cells of size `h`.
 ///
-/// It is `min(MASKED_FLOOR, HALF_DIAG h)`, which never exceeds the masked cell's true distance. For `h >= MASKED_FLOOR
-/// / HALF_DIAG` (about 0.0577) it is `MASKED_FLOOR`. The GPU march substitutes the same constant and computes the same
+/// It is `min(MASKED_FLOOR, MASKED_FLOOR_PER_H h)`, which never exceeds the distance from a point of a masked cell to the surface. For `h >= MASKED_FLOOR /
+/// MASKED_FLOOR_PER_H` (0.1) it is `MASKED_FLOOR`. The GPU march substitutes both constants and computes the same
 /// `min` in f32.
 #[must_use]
 pub fn masked_floor(h: f32) -> f32 {
-    MASKED_FLOOR.min(HALF_DIAG * h)
+    MASKED_FLOOR.min(MASKED_FLOOR_PER_H * h)
 }
 
 /// One step of a profiled march ([`SheetField::march_profile`]).
