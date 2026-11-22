@@ -40,6 +40,7 @@ pub mod build;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 pub mod nearest;
+pub mod stream;
 
 use glam::Vec3;
 
@@ -123,8 +124,16 @@ impl std::error::Error for SheetFieldError {}
 pub struct Channel {
     /// Per active brick: its row in `q`, or -1 when the channel dropped the brick (value 0 there).
     pub rows: Vec<i32>,
-    /// `rows_kept * BRICK_NODES` bytes, nodes in x-major order (`x * NODES^2 + y * NODES + z`).
+    /// `rows_kept * nodes^3` bytes, nodes in x-major order (`x * nodes^2 + y * nodes + z`).
     pub q: Vec<u8>,
+    /// Nodes per brick axis: [`NODES`] (one node per cell corner), or a coarser grid of an attribute channel
+    /// (5, 3 or 2: every `BRICK / (nodes - 1)`-th corner) that is read by trilinear interpolation on its own
+    /// grid; or [`BAND`]: only the nodes in the level's band mask ([`Level::band`]), packed row after row. The
+    /// channels `s` and `d_b` (0 and 1) are always on [`NODES`].
+    pub nodes: u32,
+    /// For a [`BAND`] channel: the byte where each kept row starts in `q` (rows hold different node counts);
+    /// empty otherwise.
+    pub starts: Vec<u32>,
     /// Per kept row.
     pub scale: Vec<f32>,
     /// Per kept row.
@@ -144,6 +153,10 @@ pub struct Level {
     pub index: Vec<i32>,
     /// `s`, `d_b`, then optionally `u`, `v`.
     pub channels: Vec<Channel>,
+    /// The band mask of the attribute channels stored as [`BAND`]: [`BAND_WORDS`] words per active brick (in
+    /// active-brick order), bit `i` of the node index `i = (x * NODES + y) * NODES + z`; empty when no channel is
+    /// a band.
+    pub band: Vec<u32>,
 }
 
 /// One open sheet.
@@ -232,6 +245,15 @@ pub fn outside_lower_bound(p: Vec3, lo: Vec3, hi: Vec3, hc: f32) -> f32 {
     box_distance(p, lo, hi).max(3.0 * hc)
 }
 
+/// The node counts per brick axis an attribute channel may use besides [`NODES`]: 2h, 4h and 8h grids.
+pub const COARSE_NODES: [u32; 3] = [5, 3, 2];
+
+/// [`Channel::nodes`] of an attribute channel that keeps only the nodes in its level's band mask.
+pub const BAND: u32 = 0;
+
+/// Words of one brick's band mask (one bit per node of the 9^3).
+pub const BAND_WORDS: usize = BRICK_NODES.div_ceil(32);
+
 impl Level {
     fn node(ch: &Channel, brick: usize, x: usize, y: usize, z: usize) -> Option<f32> {
         let row = ch.rows[brick];
@@ -239,8 +261,54 @@ impl Level {
             return None;
         }
         let r = row as usize;
-        let q = ch.q[r * BRICK_NODES + (x * NODES + y) * NODES + z];
+        let n = ch.nodes as usize;
+        let q = ch.q[r * n * n * n + (x * n + y) * n + z];
         Some(f32::from(q) * ch.scale[r] + ch.offset[r])
+    }
+
+    /// A band channel's value at node `i` of active brick `brick`: `NaN` when the node is not in the band (the
+    /// attribute is not stored there; a reader must not shade from it).
+    fn band_node(&self, ch: &Channel, brick: usize, i: usize) -> f32 {
+        let row = ch.rows[brick];
+        if row < 0 {
+            return 0.0;
+        }
+        let m = &self.band[brick * BAND_WORDS..(brick + 1) * BAND_WORDS];
+        let (w, b) = (i / 32, i % 32);
+        if m[w] >> b & 1 == 0 {
+            return f32::NAN;
+        }
+        let rank = m[..w].iter().map(|x| x.count_ones()).sum::<u32>()
+            + (m[w] & ((1u32 << b) - 1)).count_ones();
+        let r = row as usize;
+        let q = ch.q[(ch.starts[r] + rank) as usize];
+        f32::from(q) * ch.scale[r] + ch.offset[r]
+    }
+
+    /// A coarse channel at the brick-local point `w` (cell units, `0..=BRICK`): trilinear on its own grid.
+    fn coarse_at(ch: &Channel, brick: usize, w: [f32; 3]) -> f32 {
+        let n = ch.nodes as usize;
+        let stride = (BRICK / (n - 1)) as f32;
+        let mut c = [0usize; 3];
+        let mut t = [0.0f32; 3];
+        for a in 0..3 {
+            let wc = w[a] / stride;
+            c[a] = (wc.floor().max(0.0) as usize).min(n - 2);
+            t[a] = wc - c[a] as f32;
+        }
+        let mut acc = 0.0f32;
+        for dx in 0..2 {
+            for dy in 0..2 {
+                for dz in 0..2 {
+                    let ww = (if dx == 1 { t[0] } else { 1.0 - t[0] })
+                        * (if dy == 1 { t[1] } else { 1.0 - t[1] })
+                        * (if dz == 1 { t[2] } else { 1.0 - t[2] });
+                    acc +=
+                        ww * Self::node(ch, brick, c[0] + dx, c[1] + dy, c[2] + dz).unwrap_or(0.0);
+                }
+            }
+        }
+        acc
     }
 }
 
@@ -300,7 +368,21 @@ impl Sheet {
             for (ci, ch) in lv.channels.iter().take(8.min(nmax)).enumerate() {
                 let mut acc = 0.0f32;
                 let row = ch.rows[k];
-                if row >= 0 {
+                if row >= 0 && ch.nodes == BAND {
+                    for dx in 0..2 {
+                        for dy in 0..2 {
+                            for dz in 0..2 {
+                                let ww = (if dx == 1 { t[0] } else { 1.0 - t[0] })
+                                    * (if dy == 1 { t[1] } else { 1.0 - t[1] })
+                                    * (if dz == 1 { t[2] } else { 1.0 - t[2] });
+                                let i = ((c[0] + dx) * NODES + c[1] + dy) * NODES + c[2] + dz;
+                                acc += ww * lv.band_node(ch, k, i);
+                            }
+                        }
+                    }
+                } else if row >= 0 && ch.nodes != NODES as u32 {
+                    acc = Level::coarse_at(ch, k, w);
+                } else if row >= 0 {
                     for dx in 0..2 {
                         for dy in 0..2 {
                             for dz in 0..2 {
