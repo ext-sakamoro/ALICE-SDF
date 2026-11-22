@@ -33,7 +33,7 @@ use glam::{DVec3, Vec3};
 /// The 4 bytes an ASKC file starts with.
 pub const ASKC_MAGIC: [u8; 4] = *b"ASKC";
 /// The ASKC version this reader takes.
-pub const ASKC_VERSION: u32 = 2;
+pub const ASKC_VERSION: u32 = 3;
 /// The oldest ASKC version this reader still takes (v1: exact `d_b` cells only).
 pub const ASKC_VERSION_MIN: u32 = 1;
 /// The march's step margin for a field with kink cells.
@@ -46,6 +46,10 @@ pub const KINK_STEP_MARGIN: f32 = 0.01;
 pub const CELL_DB: u32 = 1;
 /// Cell flag: the march computes `s` (and the unsigned distance) exactly in this cell.
 pub const CELL_S: u32 = 2;
+/// Cell flag: the march takes the UV / author normal of the exact closest point in this cell (around a seam).
+///
+/// Every flagged cell does, when the file carries the attributes; this flag marks cells flagged for that alone.
+pub const CELL_ATTR: u32 = 4;
 /// `dist_to_rim` when a cell lists no rim segment (the builder's value).
 const NO_RIM: f64 = 1e3;
 
@@ -92,6 +96,9 @@ struct Cell {
     flags: u32,
 }
 
+/// The UV and author normal of a point (each when the sheet carries it).
+pub type Attributes = (Option<[f32; 2]>, Option<[f32; 3]>);
+
 /// The exact values at a point of a flagged cell ([`CELL_DB`], [`CELL_S`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Exact {
@@ -101,6 +108,10 @@ pub struct Exact {
     pub db: Option<f32>,
     /// The unsigned distance to the sheet (from the cell's triangles).
     pub ud: f32,
+    /// The UV of the closest point (its face's corner UVs by the barycentric weights), when the file carries UVs.
+    pub uv: Option<[f32; 2]>,
+    /// The author normal of the closest point (the corners' normals by the weights, not normalized), when carried.
+    pub nrm: Option<[f32; 3]>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -122,6 +133,10 @@ pub struct KinkSheet {
     rim_vn: Vec<Option<DVec3>>,
     /// Per vertex: the pseudonormal as the builder holds it (the sign of `s` at a vertex); v1: rim vertices only.
     vn: Vec<DVec3>,
+    /// Per face: the corner UVs (empty when the file carries none).
+    face_uv: Vec<[[f32; 2]; 3]>,
+    /// Per face: the corner author normals (empty when the file carries none).
+    face_nrm: Vec<[[f32; 3]; 3]>,
     segs: Vec<[u32; 2]>,
     levels: Vec<KinkLevel>,
     cells: Vec<Cell>,
@@ -216,6 +231,24 @@ fn seg_dist(q: DVec3, a: DVec3, b: DVec3) -> f64 {
     (q - (a + e * t)).length()
 }
 
+/// Barycentric weights of `q` (on the plane of `abc`) in triangle `abc`: the builder's formula (`v0 = b - a`,
+/// `v1 = c - a`, `v2 = q - a`); a degenerate triangle gives the weights of its first corner.
+#[allow(
+    clippy::suspicious_operation_groupings,
+    reason = "the 2x2 determinant d00 d11 - d01^2 of the barycentric solve"
+)]
+fn bary(q: DVec3, a: DVec3, b: DVec3, c: DVec3) -> [f64; 3] {
+    let (v0, v1, v2) = (b - a, c - a, q - a);
+    let (d00, d01, d11, d20, d21) = (v0.dot(v0), v0.dot(v1), v1.dot(v1), v2.dot(v0), v2.dot(v1));
+    let den = d00 * d11 - d01 * d01;
+    if den == 0.0 {
+        return [1.0, 0.0, 0.0];
+    }
+    let v = (d11 * d20 - d01 * d21) / den;
+    let w = (d00 * d21 - d01 * d20) / den;
+    [1.0 - v - w, v, w]
+}
+
 impl KinkSheet {
     /// The kink cell record of (level, active brick, cell) when that cell is a kink cell.
     fn cell(&self, level: usize, brick: usize, cell: usize) -> Option<Cell> {
@@ -261,13 +294,38 @@ impl KinkSheet {
                 s: (c.flags & CELL_S != 0).then_some(NO_RIM as f32),
                 db: (c.flags & CELL_DB != 0).then_some(NO_RIM as f32),
                 ud: NO_RIM as f32,
+                uv: None,
+                nrm: None,
             });
         };
+        let (uv, nrm) = self.attributes(nf);
         Some(Exact {
+            uv,
+            nrm,
             s: (c.flags & CELL_S != 0).then(|| self.exact_s(pl, nf) as f32),
             db: (c.flags & CELL_DB != 0).then(|| self.exact_db(pl, nf, segs) as f32),
             ud: (pl - nf.1).length() as f32,
         })
+    }
+
+    /// The UV and author normal at the closest point `q` of face `f` (the builder's: the corners' values by the
+    /// barycentric weights of `q`), each when the file carries it.
+    fn attributes(
+        &self,
+        (f, q, _): (usize, DVec3, Feature),
+    ) -> (Option<[f32; 2]>, Option<[f32; 3]>) {
+        if self.face_uv.is_empty() && self.face_nrm.is_empty() {
+            return (None, None);
+        }
+        let [a, b, c] = self.faces[f].v.map(|i| self.verts[i as usize]);
+        let w = bary(q, a, b, c);
+        let uv = self.face_uv.get(f).map(|t| {
+            core::array::from_fn(|k| (0..3).map(|i| w[i] * f64::from(t[i][k])).sum::<f64>() as f32)
+        });
+        let nrm = self.face_nrm.get(f).map(|t| {
+            core::array::from_fn(|k| (0..3).map(|i| w[i] * f64::from(t[i][k])).sum::<f64>() as f32)
+        });
+        (uv, nrm)
     }
 
     /// The flags of (level, active brick, cell) when it is a flagged cell.
@@ -386,6 +444,14 @@ impl KinkSheet {
                 .collect(),
             rim_vn,
             vn,
+            face_uv: geom
+                .uv
+                .map(|u| u.iter().map(|t| t.map(|c| c.map(|x| x as f32))).collect())
+                .unwrap_or_default(),
+            face_nrm: geom
+                .nrm
+                .map(|u| u.iter().map(|t| t.map(|c| c.map(|x| x as f32))).collect())
+                .unwrap_or_default(),
             segs: geom.rim.to_vec(),
             levels: Vec::new(),
             cells: Vec::new(),
@@ -407,6 +473,14 @@ impl KinkSheet {
         ))
     }
 
+    /// The UV and author normal at world point `p`'s closest point among `tris` (the builder's attribute definition,
+    /// for node values), each when carried; `None` when `tris` is empty.
+    #[must_use]
+    pub fn eval_attributes(&self, p: DVec3, tris: &[u32]) -> Option<Attributes> {
+        let nf = self.nearest(p - self.origin, tris)?;
+        Some(self.attributes(nf))
+    }
+
     /// Number of faces (candidate indices run below it).
     #[must_use]
     pub const fn face_count(&self) -> usize {
@@ -423,9 +497,9 @@ impl KinkSheet {
 #[cfg(feature = "gpu")]
 /// Layout of a sheet's kink block in the GPU index table (all `u32`; offsets relative to the block's first word).
 pub(crate) mod gpu_layout {
-    /// Words before the per-level table: slab, origin x y z, then the offsets of verts, faces, segs, cells, refs, and
-    /// the level count.
-    pub const HEAD: usize = 10;
+    /// Words before the per-level table: slab, origin x y z, the offsets of verts, faces, segs, cells, refs, the level
+    /// count, then the offsets of the per-face corner UVs (6 words) and author normals (9 words), `u32::MAX` if absent.
+    pub const HEAD: usize = 12;
     /// Words per vertex: x, y, z (local, f32 bits), pseudonormal x, y, z (f32 bits, as the builder holds it), rim flag.
     pub const VERT: usize = 7;
     /// Words per face: a, b, c, normal x, y, z (f32 bits), rim mask, edge pseudonormals by the opposite corner (9).
@@ -488,6 +562,20 @@ impl KinkSheet {
         b[8] = b.len() as u32;
         b.extend_from_slice(&self.refs);
         b[9] = nl as u32;
+        b[10] = u32::MAX;
+        b[11] = u32::MAX;
+        if !self.face_uv.is_empty() {
+            b[10] = b.len() as u32;
+            for t in &self.face_uv {
+                b.extend(t.iter().flatten().map(|x| x.to_bits()));
+            }
+        }
+        if !self.face_nrm.is_empty() {
+            b[11] = b.len() as u32;
+            for t in &self.face_nrm {
+                b.extend(t.iter().flatten().map(|x| x.to_bits()));
+            }
+        }
         for (li, lv) in self.levels.iter().enumerate() {
             b[HEAD + 2 * li] = b.len() as u32;
             b[HEAD + 2 * li + 1] = lv.slot.len() as u32;
@@ -573,6 +661,11 @@ impl KinkFile {
             let bad = |s: String| KinkError::Format(format!("sheet {k}: {s}"));
             let slab = f64::from(rd.f32()?);
             let origin = DVec3::new(rd.f64()?, rd.f64()?, rd.f64()?);
+            // v3: which per-face attributes follow each face record (bit 0 corner UVs, bit 1 corner author normals)
+            let attr = if version >= 3 { rd.u32()? } else { 0 };
+            if attr > 3 {
+                return Err(bad(format!("attribute flags {attr}")));
+            }
             let nv = rd.count("vertices", COUNT_CAP)?;
             let mut verts = Vec::with_capacity(nv);
             let mut vn = vec![DVec3::ZERO; nv];
@@ -590,6 +683,8 @@ impl KinkFile {
             }
             let nf = rd.count("faces", COUNT_CAP)?;
             let mut faces = Vec::with_capacity(nf);
+            let mut face_uv = Vec::new();
+            let mut face_nrm = Vec::new();
             for _ in 0..nf {
                 let v = [rd.u32()?, rd.u32()?, rd.u32()?];
                 let n = rd.v3()?;
@@ -599,6 +694,20 @@ impl KinkFile {
                 } else {
                     [DVec3::ZERO; 3]
                 };
+                if attr & 1 == 1 {
+                    let mut t = [[0f32; 2]; 3];
+                    for c in &mut t {
+                        *c = [rd.f32()?, rd.f32()?];
+                    }
+                    face_uv.push(t);
+                }
+                if attr & 2 == 2 {
+                    let mut t = [[0f32; 3]; 3];
+                    for c in &mut t {
+                        *c = [rd.f32()?, rd.f32()?, rd.f32()?];
+                    }
+                    face_nrm.push(t);
+                }
                 if v.iter().any(|&i| i as usize >= nv) || rim > 7 {
                     return Err(bad(format!("face {v:?} rim {rim} (vertices {nv})")));
                 }
@@ -652,7 +761,7 @@ impl KinkFile {
             for _ in 0..ncell {
                 let (off, ntri, nseg) = (rd.u32()?, rd.u16()?, rd.u16()?);
                 let flags = if v2 { rd.u32()? } else { CELL_DB };
-                if flags == 0 || flags > (CELL_DB | CELL_S) {
+                if flags == 0 || flags > (CELL_DB | CELL_S | CELL_ATTR) {
                     return Err(bad(format!("cell flags {flags}")));
                 }
                 cells.push(Cell {
@@ -714,6 +823,8 @@ impl KinkFile {
                     faces,
                     rim_vn,
                     vn,
+                    face_uv,
+                    face_nrm,
                     segs,
                     levels,
                     cells,
@@ -831,6 +942,8 @@ mod tests {
             }],
             rim_vn,
             vn: vec![DVec3::Z; 3],
+            face_uv: Vec::new(),
+            face_nrm: Vec::new(),
             segs,
             levels: Vec::new(),
             cells: Vec::new(),
@@ -897,6 +1010,8 @@ mod tests {
             ],
             rim_vn: vec![None; 4],
             vn: vec![epn; 4],
+            face_uv: Vec::new(),
+            face_nrm: Vec::new(),
             segs: Vec::new(),
             levels: Vec::new(),
             cells: Vec::new(),

@@ -1182,8 +1182,8 @@ fn k_closest(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> vec4<f32
 // (level li, active brick bk, cell ci) of the sheet whose kink block starts at hdr
 fn kink_cell(hdr: u32, li: u32, bk: u32, ci: u32) -> vec4<u32> {
     if (li >= IX[hdr + 9u]) { return vec4<u32>(0u); }
-    let soff = IX[hdr + 10u + 2u * li];
-    let slen = IX[hdr + 11u + 2u * li];
+    let soff = IX[hdr + 12u + 2u * li];
+    let slen = IX[hdr + 13u + 2u * li];
     if (bk >= slen) { return vec4<u32>(0u); }
     let slot = IX[hdr + soff + bk];
     if (slot == NONE) { return vec4<u32>(0u); }
@@ -1200,6 +1200,21 @@ fn kink_cell(hdr: u32, li: u32, bk: u32, ci: u32) -> vec4<u32> {
 
 // the exact values at world point pw in the flagged cell rc (kink_cell): x s, y d_b, z the unsigned distance, w the
 // flags (the CPU KinkSheet::exact_at, line for line)
+// the nearest face (its index) and the closest point (local) of the last kink_exact, for the attributes
+var<private> k_face: u32;
+var<private> k_q: vec3<f32>;
+
+// barycentric weights of q in triangle abc (the CPU kink::bary, the builder's formula)
+fn k_bary(q: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> vec3<f32> {
+    let v0 = b - a; let v1 = c - a; let v2 = q - a;
+    let d00 = dot(v0, v0); let d01 = dot(v0, v1); let d11 = dot(v1, v1); let d20 = dot(v2, v0); let d21 = dot(v2, v1);
+    let den = d00 * d11 - d01 * d01;
+    if (den == 0.0) { return vec3<f32>(1.0, 0.0, 0.0); }
+    let v = (d11 * d20 - d01 * d21) / den;
+    let w = (d00 * d21 - d01 * d20) / den;
+    return vec3<f32>(1.0 - v - w, v, w);
+}
+
 fn kink_exact(hdr: u32, rc: vec4<u32>, pw: vec3<f32>) -> vec4<f32> {
     let ntri = rc.z & 0xffffu;
     let nseg = rc.z >> 16u;
@@ -1216,7 +1231,9 @@ fn kink_exact(hdr: u32, rc: vec4<u32>, pw: vec3<f32>) -> vec4<f32> {
         let d = length(p - cq.xyz);
         if (d < best) { best = d; fb = fo; q = cq.xyz; feat = cq.w; }
     }
-    if (fb == NONE) { return vec4<f32>(1e3, 1e3, 1e3, f32(rc.w)); }
+    if (fb == NONE) { k_face = NONE; return vec4<f32>(1e3, 1e3, 1e3, f32(rc.w)); }
+    k_face = (fb - (hdr + IX[hdr + 5u])) / 16u;
+    k_q = q;
     let r = p - q;
     let ud = length(r);
     let fn_ = vec3<f32>(kf(fb + 3u), kf(fb + 4u), kf(fb + 5u));
@@ -1421,6 +1438,23 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
                 let e = kink_exact(sh.p0, rc, p);
                 if ((rc.w & 2u) != 0u) { vals[0] = e.x; }
                 if ((rc.w & 1u) != 0u) { vals[1] = e.y; }
+                // the attributes of the exact closest point (the CPU Sheet::sample: the face's corners by its weights)
+                let hdr = sh.p0;
+                if (k_face != NONE && (nch >= 4u)) {
+                    let fo = hdr + IX[hdr + 5u] + 16u * k_face;
+                    let w3 = k_bary(k_q, kv(hdr, IX[fo]), kv(hdr, IX[fo + 1u]), kv(hdr, IX[fo + 2u]));
+                    if (IX[hdr + 10u] != NONE) {
+                        let ub = hdr + IX[hdr + 10u] + 6u * k_face;
+                        vals[2] = w3.x * kf(ub) + w3.y * kf(ub + 2u) + w3.z * kf(ub + 4u);
+                        vals[3] = w3.x * kf(ub + 1u) + w3.y * kf(ub + 3u) + w3.z * kf(ub + 5u);
+                    }
+                    if (nch >= 7u && IX[hdr + 11u] != NONE) {
+                        let nb = hdr + IX[hdr + 11u] + 9u * k_face;
+                        vals[4] = w3.x * kf(nb) + w3.y * kf(nb + 3u) + w3.z * kf(nb + 6u);
+                        vals[5] = w3.x * kf(nb + 1u) + w3.y * kf(nb + 4u) + w3.z * kf(nb + 7u);
+                        vals[6] = w3.x * kf(nb + 2u) + w3.y * kf(nb + 5u) + w3.z * kf(nb + 8u);
+                    }
+                }
             }
         }
         let s = vals[0];
