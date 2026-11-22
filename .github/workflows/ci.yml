@@ -1447,6 +1447,7 @@ jobs:
           --test test_sheet_field_gpu_parity
           --test test_sheet_field_rim
           --test test_sheet_field_attr_normal
+          --test test_sheet_field_decided
           --test test_gpu_eval_api_oracle
           --test test_glsl_export_oracle
           --test test_soft_shadow_glsl_parity

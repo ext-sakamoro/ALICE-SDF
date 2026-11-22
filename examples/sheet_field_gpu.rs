@@ -1,5 +1,6 @@
 //! Sheet field on the GPU: the square sheet of `sheet_field_patch`, evaluated and ray-marched by the WGSL
-//! evaluator (`sheet_field::gpu::GpuSheetField`), compared with the CPU reference ray by ray.
+//! evaluator (`sheet_field::gpu::GpuSheetField`), compared with the CPU reference ray by ray, by the march with a
+//! given step budget and by the decided march.
 //!
 //! Run: `cargo run --example sheet_field_gpu --features gpu`
 
@@ -41,5 +42,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "rays 225: GPU agrees with the CPU on {agree}; first sample f {:.4}",
         samples[0].f
     );
+    let decided = gpu.march_batch_decided(&origins, Vec3::NEG_Z, 30.0)?;
+    let same = origins
+        .iter()
+        .zip(&decided)
+        .filter(
+            |(o, r)| match (field.march_decided(**o, Vec3::NEG_Z, 30.0), r) {
+                (MarchResult::Hit(a), MarchResult::Hit(b)) => (a.t - b.t).abs() < 1e-3,
+                (a, b) => std::mem::discriminant(&a) == std::mem::discriminant(b),
+            },
+        )
+        .count();
+    println!("decided march: GPU agrees with the CPU on {same} of 225 rays");
     Ok(())
 }

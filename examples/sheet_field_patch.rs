@@ -1,5 +1,6 @@
 //! Sheet field example: one open square sheet with a UV map, built from its channel function, then a grid of
-//! rays cast straight down. Prints the hits (t, normal, uv), the misses beyond the rim, and the rule's name check.
+//! rays cast straight down. Prints the hits (t, normal, uv), the misses beyond the rim, and the rule's name check,
+//! and the same rays by the decided march (a hit or a miss for every ray).
 //!
 //! Run: `cargo run --example sheet_field_patch --no-default-features`
 
@@ -51,5 +52,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .count();
     println!("BVH march equals the linear march on {agree} of 225 rays");
+    // the decided march takes its step budget from the ray's length, so it ends in a hit or a miss
+    let decided_undecided = (0..225)
+        .filter(|i| {
+            let o = Vec3::new(-7.0 + (i % 15) as f32, -7.0 + (i / 15) as f32, 10.0);
+            field.march_decided(o, Vec3::NEG_Z, 30.0) == MarchResult::Undecided
+        })
+        .count();
+    println!("decided march: undecided on {decided_undecided} of 225 rays");
     Ok(())
 }
