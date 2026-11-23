@@ -233,14 +233,17 @@ fn a_sign_jump_between_levels_is_not_a_crossing() {
 fn the_normal_near_the_rim_is_the_plane_normal() {
     let f = patch();
     #[cfg(feature = "gpu")]
-    let g = alice_sdf::sheet_field::gpu::GpuSheetField::new(&f).ok();
-    #[cfg(feature = "gpu")]
-    if g.is_none() {
-        assert!(
-            std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
-            "ALICE_SDF_REQUIRE_GPU set but no GPU"
-        );
-    }
+    let g = match alice_sdf::sheet_field::gpu::GpuSheetField::new(&f) {
+        Ok(g) => Some(g),
+        Err(e) => {
+            assert!(
+                std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+                "ALICE_SDF_REQUIRE_GPU set but no GPU: {e}"
+            );
+            eprintln!("gpu-test: skipped (no GPU: {e})");
+            None
+        }
+    };
     let deltas = [-0.005f32, -0.01, -0.03];
     let mut checked = 0;
     let mut wrong = Vec::new();
