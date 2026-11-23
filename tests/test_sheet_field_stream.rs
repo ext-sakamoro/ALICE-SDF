@@ -13,8 +13,8 @@
 
 use alice_sdf::sheet_field::build::{level_from_fn, sheet};
 use alice_sdf::sheet_field::stream::{
-    chunk_split, host_batches, march_streamed, sheet_payload_bytes, write_ashf, AshfIndex,
-    StreamError,
+    chunk_split, host_batches, march_streamed, sheet_payload_bytes, write_ashf,
+    write_ashf_with_provenance, AshfIndex, StreamError, ASHF_VERSION, ASHF_VERSION_BAND,
 };
 use alice_sdf::sheet_field::{
     masked_floor, Hit, MarchResult, Sheet, SheetField, ValidRule, BRICK_NODES, MASKED_FLOOR,
@@ -111,9 +111,10 @@ fn the_layout_size_follows_from_the_counts_and_the_index_matches_what_is_read() 
     let st = stack();
     let sheets: Vec<Sheet> = st.iter().map(|s| s.0.clone()).collect();
     let b = field_bytes(sheets.clone());
-    // expected size from the layout alone: 16 header bytes; per sheet 4; per level 32 + 4 index + 4 nch; per
+    // expected size from the layout alone: 48 header bytes (magic, version, semantics identifier 32, rule,
+    // sheets); per sheet 4; per level 32 + 4 index + 4 nch; per
     // channel 4 + 4 rows + 4 + 8 kept + kept * BRICK_NODES
-    let mut want = 16usize;
+    let mut want = 48usize;
     for sh in &sheets {
         want += 4;
         for lv in &sh.levels {
@@ -126,7 +127,7 @@ fn the_layout_size_follows_from_the_counts_and_the_index_matches_what_is_read() 
     assert_eq!(b.len(), want);
     let ix = AshfIndex::scan(&mut Cursor::new(&b)).unwrap();
     assert_eq!(ix.spans.len(), 12);
-    assert_eq!(ix.spans[0].offset, 16);
+    assert_eq!(ix.spans[0].offset, 48);
     for w in ix.spans.windows(2) {
         assert_eq!(w[0].offset + w[0].len, w[1].offset, "spans tile the file");
     }
@@ -299,6 +300,40 @@ fn bad_input_and_over_budget_are_refused() {
         AshfIndex::scan(&mut Cursor::new(&bad)),
         Err(StreamError::Format(_))
     ));
+    // the versions without the semantics identifier (1 to 3) and an unknown one are refused before the header is read
+    for v in [1u32, 3, ASHF_VERSION_BAND + 1] {
+        let mut bad = b.clone();
+        bad[4..8].copy_from_slice(&v.to_le_bytes());
+        match AshfIndex::scan(&mut Cursor::new(&bad)) {
+            Err(StreamError::Format(s)) => assert!(
+                (v < ASHF_VERSION) == s.contains("no semantics identifier"),
+                "version {v}: {s}"
+            ),
+            other => panic!("version {v} was not refused: {other:?}"),
+        }
+    }
+    // a field written under another semantics identifier is refused, naming both
+    let other = alice_sdf::provenance::Provenance::new([7u8; 32]);
+    let mut foreign = Vec::new();
+    write_ashf_with_provenance(
+        &mut foreign,
+        &SheetField::new(
+            stack().into_iter().map(|s| s.0).take(4).collect(),
+            ValidRule::CellV1,
+        ),
+        &other,
+    )
+    .unwrap();
+    assert_eq!(
+        foreign[8..40],
+        [7u8; 32],
+        "the identifier sits after the version"
+    );
+    assert_eq!(foreign[40..], b[40..], "only the identifier differs");
+    match AshfIndex::scan(&mut Cursor::new(&foreign)) {
+        Err(StreamError::Semantics(e)) => assert!(e.to_string().contains(&other.hex()), "{e}"),
+        other => panic!("another identifier was not refused: {other:?}"),
+    }
     let mut bad = b.clone();
     bad.push(0);
     assert!(
