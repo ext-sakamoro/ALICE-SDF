@@ -373,6 +373,26 @@ fn the_gpu_cell_walk_decides_rays_on_face_planes_and_far_from_the_origin() {
                 .collect();
             ("far from the origin", f, o, d)
         },
+        {
+            // (c) horizontal sheet at z = 468.3 seen from 470 mm away (t ~ 470, an ulp of t ~ 3e-5 mm against a 0.01
+            // mm floor step): over 4096 rays at irregular offsets some floor steps end an ulp after the surface, where
+            // the f32 walk places the root past the step's end; the step's end signs must still decide the crossing
+            let lo = Vec3::new(-2.0, -2.0, 466.3);
+            let f = plane_field(lo, [2, 2, 2], false, 468.3);
+            let d = Vec3::new(0.0, 0.866_025_4, -0.5);
+            let o: Vec<Vec3> = (0..64)
+                .flat_map(|i| {
+                    (0..64).map(move |j| {
+                        Vec3::new(
+                            -1.2 + 0.0371 * i as f32,
+                            -1.2 + 0.0293 * j as f32 + 0.000_37 * i as f32,
+                            468.3,
+                        ) - d * 470.0
+                    })
+                })
+                .collect();
+            ("span end an ulp past the surface", f, o, d)
+        },
     ];
     for (name, f, o, d) in cases {
         let g = match GpuSheetField::new_with_mode(&f, RootMode::CellWalk) {
@@ -386,7 +406,12 @@ fn the_gpu_cell_walk_decides_rays_on_face_planes_and_far_from_the_origin() {
                 return;
             }
         };
-        let gm = g.march_batch_decided(&o, d, 6.0).unwrap();
+        let tmax = if name.starts_with("span end") {
+            480.0
+        } else {
+            6.0
+        };
+        let gm = g.march_batch_decided(&o, d, tmax).unwrap();
         let undecided = gm
             .iter()
             .filter(|m| matches!(m, MarchResult::Undecided))
@@ -399,7 +424,7 @@ fn the_gpu_cell_walk_decides_rays_on_face_planes_and_far_from_the_origin() {
         );
         let mut hits = 0;
         for (oo, gr) in o.iter().zip(&gm) {
-            let c = f.march_decided(*oo, d, 6.0);
+            let c = f.march_decided(*oo, d, tmax);
             match (hit_t(&c), hit_t(gr)) {
                 (Some(a), Some(b)) => {
                     hits += 1;
