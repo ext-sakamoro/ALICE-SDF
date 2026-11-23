@@ -422,12 +422,6 @@ impl AshfIndex {
             let mut levels = Vec::with_capacity(nl);
             for _ in 0..nl {
                 let h = read_f32(&mut rd)?;
-                if !h.is_finite() || h * super::HALF_DIAG < super::MASKED_FLOOR {
-                    return Err(StreamError::Format(format!(
-                        "sheet {k}: cell {h} is below the masked bound's floor (needs h >= {})",
-                        super::MASKED_FLOOR / super::HALF_DIAG
-                    )));
-                }
                 let lo = Vec3::new(read_f32(&mut rd)?, read_f32(&mut rd)?, read_f32(&mut rd)?);
                 let nb = [read_u32(&mut rd)?, read_u32(&mut rd)?, read_u32(&mut rd)?];
                 let ni = read_u32(&mut rd)? as usize;
