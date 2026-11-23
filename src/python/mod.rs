@@ -17,6 +17,7 @@ mod helpers;
 mod io;
 mod node;
 mod operations;
+mod sheet;
 mod transforms;
 
 pub use compiled::PyCompiledSdf;
@@ -44,6 +45,7 @@ pub fn alice_sdf(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(functions::to_mesh_dual_contouring, m)?)?;
     m.add_function(wrap_pyfunction!(functions::decimate_mesh, m)?)?;
     m.add_function(wrap_pyfunction!(functions::version, m)?)?;
+    m.add_function(wrap_pyfunction!(sheet::sheet_nearest_faces, m)?)?;
     m.add_class::<functions::PyMeshCache>()?;
 
     // DCC-binding helpers (Maya / Cinema 4D / Nuke): module-level primitive

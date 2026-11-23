@@ -53,6 +53,7 @@ pub mod bvh;
 pub mod collision;
 pub mod decimate;
 pub mod dual_contouring;
+pub mod gpu_bvh;
 pub mod hermite;
 pub mod lightmap;
 pub mod lod;
