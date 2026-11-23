@@ -611,8 +611,8 @@ fn a_sheet_over_128_mib_marches_on_the_gpu_like_the_cpu() {
     assert!(hits > 300, "hits {hits}");
 }
 
-/// Cells finer than `MASKED_FLOOR / HALF_DIAG` (about 0.0577) are read: the masked bound's floor shrinks with the cell
-/// (`masked_floor(h) = min(MASKED_FLOOR, HALF_DIAG h)`), so it stays a lower bound. Oracle: the plane `s = z` in cells
+/// Cells finer than `MASKED_FLOOR / MASKED_FLOOR_PER_H` (0.1) are read: the masked bound's floor shrinks with the cell
+/// (`masked_floor(h) = min(MASKED_FLOOR, h/2)`), so it stays a lower bound. Oracle: the plane `s = z` in cells
 /// of 0.005, whose true distance at `p` is `|p.z|`. Read back from the stream, every sampled point of a masked cell
 /// answers at most that distance (a floor of 0.05 would answer 0.05 at points 0.01 to 0.04 from the plane), and the
 /// read sheet samples bit for bit like the one written.
