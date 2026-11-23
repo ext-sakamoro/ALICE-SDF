@@ -38,19 +38,29 @@ const LIFECYCLE_CALLS: &[&str] = &[
 /// (`gpu_loop_bound::check_counted`). A call anywhere else, or with another label, fails the census.
 const CEILING_KERNELS: &[(&str, &str)] = &[("src/sheet_field/gpu.rs", "MARCH_KERNEL")];
 
-/// The `(file, label argument)` of every `.shader_module_with_ceiling(` call in `text` (comment lines skipped).
+/// The `(file, label argument)` of every `shader_module_with_ceiling(` call in `text` (comment lines and the
+/// method's own definition skipped): the method form `x.shader_module_with_ceiling(LABEL, ..)` and the path form
+/// `GpuContext::shader_module_with_ceiling(&ctx, LABEL, ..)`, whose label is the second argument.
 fn ceiling_calls(file: &str, text: &str) -> Vec<(String, String)> {
     let code: String = text
         .lines()
         .filter(|l| !l.trim_start().starts_with("//"))
         .collect::<Vec<_>>()
         .join("\n");
-    let call = ".shader_module_with_ceiling(";
+    let call = "shader_module_with_ceiling(";
     code.match_indices(call)
+        .filter(|(at, _)| !code[..*at].trim_end().ends_with("fn"))
         .map(|(at, _)| {
             let rest = &code[at + call.len()..];
-            let label = rest.split(',').next().unwrap_or("").trim().to_string();
-            (file.to_string(), label)
+            let mut args = rest.split(',');
+            let first = args.next().unwrap_or("").trim();
+            let path_form = code[..at].ends_with("::");
+            let label = if path_form {
+                args.next().unwrap_or("").trim()
+            } else {
+                first
+            };
+            (file.to_string(), label.to_string())
         })
         .collect()
 }
@@ -82,11 +92,11 @@ fn only_listed_kernels_take_a_trip_ceiling() {
             if path.is_dir() {
                 stack.push(path);
             } else if path.extension().is_some_and(|e| e == "rs")
-                && !path.ends_with(LIFECYCLE_MODULE)
                 && !path
                     .file_name()
                     .is_some_and(|f| Path::new(file!()).ends_with(f))
             {
+                // the lifecycle module is scanned too: it defines the method and must not call it itself
                 let text = std::fs::read_to_string(&path).expect("read a source file");
                 calls.extend(ceiling_calls(&path.display().to_string(), &text));
             }
@@ -122,6 +132,17 @@ fn an_unlisted_ceiling_kernel_is_reported() {
         1
     );
     assert!(ceiling_calls("/x/src/other.rs", commented).is_empty());
+    // the path form names the context first and the label second
+    let path_form = "GpuContext::shader_module_with_ceiling(&ctx, OTHER, src, &m, c)";
+    assert_eq!(
+        ceiling_calls("/x/src/sheet_field/gpu.rs", path_form),
+        vec![("/x/src/sheet_field/gpu.rs".to_string(), "OTHER".to_string())]
+    );
+    let path_listed = "crate::gpu_context::GpuContext::shader_module_with_ceiling(\n    &self.ctx,\n    MARCH_KERNEL, src, &m, c)";
+    assert!(unlisted(&ceiling_calls("/x/src/sheet_field/gpu.rs", path_listed)).is_empty());
+    // the definition is not a call
+    let def = "    pub(crate) fn shader_module_with_ceiling(\n        &self,\n        label: &str,";
+    assert!(ceiling_calls("/x/src/gpu_context.rs", def).is_empty());
 }
 
 /// With the white space gone: a kept clone of these holds the device past its context
