@@ -270,3 +270,50 @@ fn malformed_bands_and_the_band_kind_in_a_coarse_version_file_are_refused() {
         "refused for another reason: {err}"
     );
 }
+
+/// The reader rebuilds each band channel's row starts from the brick masks, and refuses a file whose masks and rows
+/// do not fit (each written consistently by `write_ashf`, so the scan passes and the refusal is the reader's):
+/// a mask shorter than the bricks, a row past the kept rows, and a kept row no brick points to.
+#[test]
+fn a_band_file_whose_masks_and_rows_do_not_fit_is_refused_by_the_reader() {
+    let b = banded(&patch(), 2.0);
+    let c = (2..b.sheets[0].levels[0].channels.len())
+        .find(|&c| b.sheets[0].levels[0].channels[c].nodes == BAND)
+        .expect("a band channel");
+    let read = |f: &SheetField| {
+        let mut bytes = Vec::new();
+        write_ashf(&mut bytes, f).unwrap();
+        let mut cur = Cursor::new(bytes);
+        let ix = AshfIndex::scan(&mut cur).expect("written consistently, so the scan passes");
+        ix.read_sheets(&mut cur, 0..ix.spans.len())
+            .expect_err("a malformed band was read")
+            .to_string()
+    };
+    let mut short = b.clone();
+    let words = short.sheets[0].levels[0].band.len();
+    short.sheets[0].levels[0]
+        .band
+        .truncate(words - alice_sdf::sheet_field::BAND_WORDS);
+    let e = read(&short);
+    assert!(e.contains("band mask too short"), "{e}");
+    let mut past = b.clone();
+    let kept = past.sheets[0].levels[0].channels[c].scale.len() as i32;
+    let k = past.sheets[0].levels[0].channels[c]
+        .rows
+        .iter()
+        .position(|&r| r >= 0)
+        .unwrap();
+    past.sheets[0].levels[0].channels[c].rows[k] = kept;
+    let e = read(&past);
+    assert!(e.contains(&format!("row {kept} of {kept}")), "{e}");
+    let mut orphan = b;
+    let k = orphan.sheets[0].levels[0].channels[c]
+        .rows
+        .iter()
+        .position(|&r| r >= 0)
+        .unwrap();
+    let r = orphan.sheets[0].levels[0].channels[c].rows[k];
+    orphan.sheets[0].levels[0].channels[c].rows[k] = -1;
+    let e = read(&orphan);
+    assert!(e.contains(&format!("band row {r} has no brick")), "{e}");
+}

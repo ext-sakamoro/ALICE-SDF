@@ -545,8 +545,16 @@ fn bad_input_is_refused() {
         "index out of range"
     );
     assert!(nearest_faces(&v, &[], &[[0.0; 3]]).is_err(), "no faces");
-    assert!(
-        nearest_faces(&v, &[[0, 1, 2]], &[[f64::NAN, 0.0, 0.0]]).is_err(),
-        "non-finite query"
-    );
+    let refused = |v: &[[f64; 3]], q: &[[f64; 3]], want: &str| {
+        let e = nearest_faces(v, &[[0, 1, 2]], q)
+            .expect_err(want)
+            .to_string();
+        assert!(e.contains(want), "want `{want}`: {e}");
+    };
+    refused(&v, &[[f64::NAN, 0.0, 0.0]], "query 0 not finite");
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let mut w = v.clone();
+        w[1][2] = bad;
+        refused(&w, &[[0.0; 3]], "vertex 1 not finite");
+    }
 }
