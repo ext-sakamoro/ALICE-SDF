@@ -742,12 +742,13 @@ impl GpuContext {
 
     /// [`Self::shader_module`] against a stated [`crate::gpu_loop_bound::KernelCeiling`] instead of
     /// [`crate::gpu_loop_bound::MAX_TRIP_PRODUCT`]: for a kernel whose loops are all bounded and whose real work is
-    /// bounded by its own counter. Every caller's label is listed in `tests/test_gpu_lifecycle_oracle.rs`.
+    /// bounded by its own counter. Every caller's label is listed in `tests/test_gpu_lifecycle_oracle.rs`; the
+    /// method is crate-private so no caller outside this crate can raise a ceiling.
     ///
     /// # Errors
     ///
     /// As [`Self::shader_module`]; also a ceiling without a reason.
-    pub fn shader_module_with_ceiling(
+    pub(crate) fn shader_module_with_ceiling(
         &self,
         label: &str,
         source: wgpu::ShaderSource<'_>,
