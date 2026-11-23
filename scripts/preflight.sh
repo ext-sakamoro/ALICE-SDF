@@ -156,6 +156,7 @@ python3 scripts/test_api_boundary.py
 python3 scripts/api_boundary.py --skip-missing-targets
 
 step "ci-test-coverage: oracle + feature 付き oracle を走らせる cargo test が CI にある"
+python3 scripts/test_gen_nearest_golden.py
 python3 scripts/test_ci_test_coverage_check.py
 python3 scripts/ci_test_coverage_check.py
 
