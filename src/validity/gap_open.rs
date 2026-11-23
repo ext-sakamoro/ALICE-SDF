@@ -13,32 +13,48 @@
 //! * The layer is the plane through the point perpendicular to `a`. It is sampled on a square grid of
 //!   pitch `h = L / OPEN_PITCH_PER_LIMIT`, centred on the point, inside the disc of radius
 //!   `R = OPEN_REACH_LIMITS · L`.
-//! * Two neighbouring samples `p`, `q` (distance `h`) are joined when `f(p) + f(q) > h`. With
-//!   `|∇f| ≤ 1`, every point `x` of the segment has `f(x) ≥ max(f(p) − |x−p|, f(q) − |x−q|) > 0`, so a
-//!   join never crosses material, however thin the wall.
-//! * The point is **open** when a sample joined to it has `f ≥ L / 2`: a disc of diameter `L` of air,
-//!   in the layer, within `R` of the point. Otherwise it is **enclosed**.
+//! * Two neighbouring samples `p`, `q` (distance `h`) are joined when the segment between them is air,
+//!   shown by either of two sufficient conditions: (i) `f(p) + f(q) > h` (with `|∇f| ≤ 1` every point
+//!   `x` of the segment has `f(x) ≥ max(f(p) − |x−p|, f(q) − |x−q|) > 0`), or (ii) the interval bound
+//!   of `f` over the segment's bounding box is positive. Either way a join never crosses material,
+//!   however thin the wall.
+//! * The point is **open** when a sample `e` joined to it has a disc of diameter `L` of air in the
+//!   layer around it, shown by either (i) `f(e) ≥ L / 2` (a ball, so also a disc) or (ii) the interval
+//!   bound of `f` over the bounding box of the in-layer square of side `L` centred on `e` is positive
+//!   (the square holds the disc). Otherwise it is **enclosed**.
+//! * Why (ii): `f` is a 3D distance, so near a floor or a ceiling it stays below `L/2` however wide the
+//!   air is in the layer, and (i) alone reads every neck within `L/2` of a floor as enclosed. For a
+//!   build axis along a coordinate axis the bounding boxes in (ii) are flat (zero thickness along the
+//!   axis), so material above or below the layer does not count. For any other axis they are thicker
+//!   than the layer, which can only read more material (enclosed), never less.
 //! * Approximations: the reach is measured on the grid (a sample is in the disc when its grid offset
 //!   is within `R`), so the boundary is resolved to one pitch `h`. A field that underestimates the
-//!   distance can only read open air as enclosed (it never reads `f ≥ L/2` where the true distance is
-//!   smaller), which keeps a failure.
+//!   distance, and the outward-rounded interval bounds, can only read open air as enclosed, which keeps
+//!   a failure.
 //! * Not handled (read as enclosed, so the failure stands): a point whose wall faces mostly along the
 //!   build axis (a gap between a floor and the overhang above it is not a gap within one layer), and a
 //!   seed that is not air.
-//! * **Boxes** (used by [`prove_gaps_in_layers`] to stop subdividing open narrow air): a box of
-//!   half-diagonal `hd` is certified open when the search from its centre succeeds with every field
-//!   value read `hd` lower: the centre has `f > hd`, every step `f(p) + f(q) > h + 2·hd`, and the end
-//!   `f ≥ L/2 + hd`. Proof: take any point `x = c + δ` of the box, `|δ| ≤ hd`, and translate the
-//!   centre's path by `δ`. It lies in `x`'s own layer (the plane through `c` moved by `δ`), stays within
-//!   `R` of `x`, and since `f` is 1-Lipschitz each translated value is at least the original minus
-//!   `hd`: the start has `f(x) > 0`, every translated step has `f(p+δ) + f(q+δ) > h` (so the segment
-//!   is air, as above), and the end has `f ≥ L/2`. So `x` is open, for every `x` in the box. No
-//!   assumption on the box's height along the axis is needed.
+//! * **Boxes** (used by [`prove_gaps_in_layers`] to stop subdividing open narrow air): a box of centre
+//!   `c` and half-diagonal `hd` is certified open when the search from `c` succeeds with every
+//!   condition taken `hd` stronger: `f(c) > hd`; a step by (i) needs `f(p) + f(q) > h + 2·hd`, by (ii)
+//!   a positive bound over the segment's bounding box grown by `hd` on every side; the end by (i) needs
+//!   `f(e) ≥ L/2 + hd`, by (ii) a positive bound over the square's bounding box grown by `hd`. Proof:
+//!   take any point `x = c + δ` of the box, `|δ| ≤ hd`, and translate the centre's path by `δ`. It
+//!   lies in `x`'s own layer (the plane through `c` moved by `δ`) and stays within `R` of `x`. Since
+//!   `f` is 1-Lipschitz, the start has `f(x) > 0`, a translated step by (i) has
+//!   `f(p+δ) + f(q+δ) > h`, and an end by (i) has `f(e+δ) ≥ L/2`. A translated segment or square lies
+//!   inside the original bounding box grown by `|δ| ≤ hd` on every side, so a positive bound over the
+//!   grown box shows it is air. So every translated step is air and the translated end has a disc of
+//!   diameter `L` of air in `x`'s layer: `x` is open, for every `x` in the box. No assumption on the
+//!   box's height along the axis is needed.
 //! * Verified by: `gap_open_tests` (open slot vs closed pocket of the same width, the vertical
 //!   through-hole, the reach boundary just inside and just outside, a non-Z build axis, the box
-//!   margin against a case that passes only without it, the layered proof end to end).
+//!   margin against a case that passes only without it, a neck just above a floor (open) and a pocket
+//!   standing on a floor (enclosed), the layered proof end to end).
 
 use super::*;
+use crate::compiled::real::LawMinMax;
+use crate::interval::{next_down, next_up};
 
 /// How far, in limits, the air next to a narrow point may run before it reaches a disc of the limit's
 /// width for the point to count as open: `R = 2 · L`.
@@ -57,9 +73,10 @@ const OPEN_PITCH_PER_LIMIT: f32 = 8.0;
 /// layer: walls facing within 60° of the build axis are not read (enclosed).
 const IN_LAYER_MIN: f32 = 0.5;
 
-/// Whether the narrow air at the air point `seed` is open in the layer perpendicular to `build_axis`
-/// (see the module's MODEL). `false` for a seed that is not air, a limit that is not finite positive,
-/// or a build axis that is zero or not finite.
+/// Whether the narrow air at the air point `seed` is open in its layer.
+///
+/// The layer is perpendicular to `build_axis` (see the module's MODEL). `false` for a seed that is
+/// not air, a limit that is not finite positive, or a build axis that is zero or not finite.
 #[must_use]
 pub fn narrow_air_is_open(node: &SdfNode, seed: Vec3, limit: f32, build_axis: Vec3) -> bool {
     open_with_margin(node, seed, limit, build_axis, 0.0).0
@@ -78,9 +95,12 @@ pub(super) fn box_is_open(
     open_with_margin(node, 0.5 * (lo + hi), limit, axis, hd)
 }
 
-/// The layer search from `seed` with every field value read `margin` lower: a step needs
-/// `f(p) + f(q) > h + 2·margin`, the seed `f > margin`, the wide end `f ≥ L/2 + margin`. With
-/// `margin = 0` it is the point test; with the box's half-diagonal it certifies every point of the box.
+/// The layer search from `seed`, with the box margin `margin` (0 for the point test, the box's
+/// half-diagonal to certify every point of a box). A step `p → q` is taken when either
+/// `f(p) + f(q) > h + 2·margin` or the interval bound of `f` over the segment's bounding box grown by
+/// `margin` is positive; the search ends open at a sample `e` where either `f(e) ≥ L/2 + margin` or
+/// the interval bound over the bounding box of the in-layer square of side `L` centred on `e`, grown
+/// by `margin`, is positive. The seed needs `f > margin`.
 fn open_with_margin(
     node: &SdfNode,
     seed: Vec3,
@@ -88,13 +108,16 @@ fn open_with_margin(
     build_axis: Vec3,
     margin: f32,
 ) -> (bool, u64) {
-    if !(limit.is_finite() && limit > 0.0) || !seed.is_finite() || !(margin >= 0.0) {
+    if !limit.is_finite() || limit <= 0.0 || !seed.is_finite() || margin.is_nan() || margin < 0.0 {
         return (false, 0);
     }
     let Some(axis) = unit(build_axis) else {
         return (false, 0);
     };
     let mut evals = 1u64;
+    // the seed test is also what the rest implies: with f(seed) ≤ margin no step passes (f(q) ≤ f + h by
+    // the Lipschitz bound, and every grown box holds the seed's wall) and no end passes, so `<= 0.0`
+    // here would answer the same
     if eval(node, seed) <= margin {
         return (false, evals);
     }
@@ -106,21 +129,54 @@ fn open_with_margin(
     let n = (OPEN_REACH_LIMITS * OPEN_PITCH_PER_LIMIT) as i32;
     let side = (2 * n + 1) as usize;
     let index = |i: i32, j: i32| ((i + n) as usize) * side + (j + n) as usize;
+    let at = |i: i32, j: i32| seed + u * (i as f32 * h) + v * (j as f32 * h);
     let mut value: Vec<Option<f32>> = vec![None; side * side];
     let mut seen = vec![false; side * side];
-    let mut field = |i: i32, j: i32, value: &mut [Option<f32>]| -> f32 {
+    let field = |i: i32, j: i32, value: &mut [Option<f32>], evals: &mut u64| -> f32 {
         let k = index(i, j);
         *value[k].get_or_insert_with(|| {
-            evals += 1;
-            eval(node, seed + u * (i as f32 * h) + v * (j as f32 * h))
+            *evals += 1;
+            eval(node, at(i, j))
         })
     };
+    // air over the bounding box of `points`, grown by `grown` on every side (outward-rounded)
+    let air_over = |points: &[Vec3], grown: f32, evals: &mut u64| -> bool {
+        *evals += 1;
+        let (mut lo, mut hi) = (points[0], points[0]);
+        for p in &points[1..] {
+            lo = lo.law_min(*p);
+            hi = hi.law_max(*p);
+        }
+        let grow = |x: f32, s: f32| {
+            if s < 0.0 {
+                next_down(x - grown)
+            } else {
+                next_up(x + grown)
+            }
+        };
+        let lo = Vec3::new(grow(lo.x, -1.0), grow(lo.y, -1.0), grow(lo.z, -1.0));
+        let hi = Vec3::new(grow(hi.x, 1.0), grow(hi.y, 1.0), grow(hi.z, 1.0));
+        eval_interval(node, Vec3Interval::from_bounds(lo, hi)).lo > 0.0
+    };
+    let half = 0.5 * limit;
     let mut stack = vec![(0i32, 0i32)];
     seen[index(0, 0)] = true;
     let mut open = false;
     while let Some((i, j)) = stack.pop() {
-        let f = field(i, j, &mut value);
-        if f >= wide {
+        let f = field(i, j, &mut value, &mut evals);
+        let e = at(i, j);
+        if f >= wide
+            || air_over(
+                &[
+                    e + u * half + v * half,
+                    e + u * half - v * half,
+                    e - u * half + v * half,
+                    e - u * half - v * half,
+                ],
+                margin,
+                &mut evals,
+            )
+        {
             open = true;
             break;
         }
@@ -129,7 +185,9 @@ fn open_with_margin(
             if ni * ni + nj * nj > n * n || seen[index(ni, nj)] {
                 continue;
             }
-            if f + field(ni, nj, &mut value) > join {
+            if f + field(ni, nj, &mut value, &mut evals) > join
+                || air_over(&[e, at(ni, nj)], margin, &mut evals)
+            {
                 seen[index(ni, nj)] = true;
                 stack.push((ni, nj));
             }
@@ -138,9 +196,11 @@ fn open_with_margin(
     (open, evals)
 }
 
-/// Whether the narrow air beside the surface point `at` (a wall point a gap width was measured from)
-/// is open: the seed is one layer pitch off the wall along the wall's in-layer outward direction.
-/// `false` when the wall faces mostly along the build axis (see [`IN_LAYER_MIN`]).
+/// Whether the narrow air beside the surface point `at` is open.
+///
+/// `at` is a wall point a gap width was measured from; the seed is one layer pitch off the wall
+/// along the wall's in-layer outward direction. `false` when the wall faces mostly along the build
+/// axis (see [`IN_LAYER_MIN`]).
 #[must_use]
 pub fn narrow_air_beside_is_open(node: &SdfNode, at: Vec3, limit: f32, build_axis: Vec3) -> bool {
     let (Some(axis), Some(out)) = (unit(build_axis), unit(eval_normal(node, at))) else {
@@ -361,6 +421,95 @@ mod gap_open_tests {
     /// The verdict end to end (grid + layered proof) for the open slot, the closed pocket of the same
     /// width 1.5 and the 1 mm through-hole under the limit 2, printed along z: the open slot passes
     /// within the budget (the plain verdict fails it), the pocket and the hole fail
+    #[test]
+    fn a_neck_just_above_a_floor_is_open_and_a_pocket_on_a_floor_is_not() {
+        // floor top at z = 1; a post (radius 3) 1.5 from a wall: 0.3 above the floor the 3D distance is
+        // at most 0.3, so only the in-layer reading sees the wide air beside the neck
+        let floor = SdfNode::box3d_half_extents(6.0, 6.0, 1.0);
+        let post = floor
+            .clone()
+            .union(SdfNode::box3d_half_extents(1.0, 6.0, 4.0).translate(5.5, 0.0, 3.0))
+            .union(
+                SdfNode::cylinder(3.0, 6.0)
+                    .rotate_euler(core::f32::consts::FRAC_PI_2, 0.0, 0.0)
+                    .translate(0.0, 0.0, 3.0),
+            );
+        let neck = Vec3::new(3.75, 0.0, 1.3);
+        assert!(eval(&post, neck) < 0.5 * L);
+        assert!(narrow_air_is_open(&post, neck, L, Vec3::Z));
+        assert!(narrow_air_beside_is_open(
+            &post,
+            Vec3::new(3.0, 0.0, 1.3),
+            L,
+            Vec3::Z
+        ));
+        // a pocket 1.5 × 3 walled on all four sides, standing on the same floor
+        let pocket = solid(&[
+            (Vec3::ZERO, Vec3::new(6.0, 6.0, 1.0)),
+            (Vec3::new(-3.75, 0.0, 3.0), Vec3::new(3.0, 6.0, 2.0)),
+            (Vec3::new(3.75, 0.0, 3.0), Vec3::new(3.0, 6.0, 2.0)),
+            (Vec3::new(0.0, -3.75, 3.0), Vec3::new(0.75, 2.25, 2.0)),
+            (Vec3::new(0.0, 3.75, 3.0), Vec3::new(0.75, 2.25, 2.0)),
+        ]);
+        for z in [1.3, 3.0] {
+            assert!(
+                !narrow_air_is_open(&pocket, Vec3::new(0.0, 0.0, z), L, Vec3::Z),
+                "{z}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_interval_wide_end_needs_the_box_margin() {
+        // a slot 1.4 wide (tall) runs into a chamber 2.2 × 2.2 but only 0.6 high: at z = 0 the chamber
+        // holds an L-square, 0.5 higher it does not exist; f ≤ 0.3 in the chamber, so only the interval
+        // reading finds it
+        let scene = carved(&[
+            (Vec3::new(0.0, 0.5, 0.0), Vec3::new(0.7, 2.5, 5.0)),
+            (Vec3::new(0.0, 3.0, 0.0), Vec3::new(1.1, 1.1, 0.3)),
+        ]);
+        let c = Vec3::new(0.0, 1.5, 0.0);
+        assert!(narrow_air_is_open(&scene, c, L, Vec3::Z));
+        assert!(!narrow_air_is_open(
+            &scene,
+            c + Vec3::new(0.0, 0.0, 0.5),
+            L,
+            Vec3::Z
+        ));
+        let half = Vec3::new(0.2, 0.2, 0.5);
+        assert!(!box_is_open(&scene, c - half, c + half, L, Vec3::Z).0);
+        // a box held within the chamber's height is certified
+        let thin = Vec3::new(0.05, 0.05, 0.05);
+        assert!(box_is_open(&scene, c - thin, c + thin, L, Vec3::Z).0);
+    }
+
+    #[test]
+    fn the_wide_end_square_is_grown_by_the_box_margin() {
+        // a closed flat chamber 2.5 × 2.5 × 1.6: at z = 0 it holds an L-square (±1 inside ±1.25), so
+        // the point is open; a box of half-diagonal 0.52 needs the square grown to ±1.52, which meets
+        // the walls, and f ≤ 0.8 never reaches L/2 + 0.52, so the box is not certified
+        let scene = carved(&[(Vec3::ZERO, Vec3::new(1.25, 1.25, 0.8))]);
+        assert!(narrow_air_is_open(&scene, Vec3::ZERO, L, Vec3::Z));
+        let half = Vec3::splat(0.3);
+        assert!(!box_is_open(&scene, -half, half, L, Vec3::Z).0);
+    }
+
+    #[test]
+    fn a_step_box_is_grown_below_the_layer_too() {
+        // a corridor 1.0 wide and 1.2 high (z in ±0.6) leads to a wide chamber; across it a bump
+        // rises from the floor to z = −0.15. A point at z = 0 passes over the bump (f ≈ 0.15 on both
+        // sides of a step, sum above h = 0.25) and is open; a box of half-diagonal 0.35 is held 0.35
+        // below its layer, which meets the bump, so the box is not certified
+        let scene = carved(&[
+            (Vec3::new(1.25, 0.0, 0.0), Vec3::new(1.75, 0.5, 0.6)),
+            (Vec3::new(4.0, 0.0, 0.0), Vec3::new(2.0, 3.0, 3.0)),
+        ])
+        .union(SdfNode::box3d_half_extents(0.2, 0.6, 0.275).translate(1.0, 0.0, -0.425));
+        assert!(narrow_air_is_open(&scene, Vec3::ZERO, L, Vec3::Z));
+        let half = Vec3::splat(0.2);
+        assert!(!box_is_open(&scene, -half, half, L, Vec3::Z).0);
+    }
+
     fn verdicts(node: &SdfNode, half: Vec3) -> (GapVerdict, GapVerdict, GapProof) {
         let (bmin, bmax) = (-half, half);
         let cell = L / (2.0 * 3.0_f32.sqrt());
