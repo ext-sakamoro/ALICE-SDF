@@ -294,24 +294,41 @@ fn bad_input_and_over_budget_are_refused() {
         AshfIndex::scan(&mut Cursor::new(&bad)),
         Err(StreamError::Format(_))
     ));
-    let mut bad = b.clone();
-    bad[4] = 2;
-    assert!(matches!(
-        AshfIndex::scan(&mut Cursor::new(&bad)),
-        Err(StreamError::Format(_))
-    ));
-    // the versions without the semantics identifier (1 to 3) and an unknown one are refused before the header is read
-    for v in [1u32, 3, ASHF_VERSION_BAND + 1] {
+    // the versions without the semantics identifier (1 to 3) and unknown ones are refused before the header is
+    // read, each by its own message: an old version names the missing identifier, an unknown one names itself
+    for v in [1u32, 2, 3, ASHF_VERSION_BAND + 1, 99] {
         let mut bad = b.clone();
         bad[4..8].copy_from_slice(&v.to_le_bytes());
         match AshfIndex::scan(&mut Cursor::new(&bad)) {
-            Err(StreamError::Format(s)) => assert!(
-                (v < ASHF_VERSION) == s.contains("no semantics identifier"),
-                "version {v}: {s}"
-            ),
+            Err(StreamError::Format(s)) if v < ASHF_VERSION => {
+                assert!(s.contains("no semantics identifier"), "version {v}: {s}");
+            }
+            Err(StreamError::Format(s)) => assert_eq!(s, format!("version {v}")),
             other => panic!("version {v} was not refused: {other:?}"),
         }
     }
+    // header and layout fields (plain layout: rule at 40, sheets at 44, then per sheet the level count at 48, the
+    // first level's h, lo, nb at 52..80, its index length at 80, the index, then its channel count)
+    let le = |b: &[u8], at: usize| u32::from_le_bytes(b[at..at + 4].try_into().unwrap());
+    let refused = |bad: &[u8], want: &str| match AshfIndex::scan(&mut Cursor::new(bad)) {
+        Err(StreamError::Format(s)) => assert!(s.contains(want), "want `{want}`: {s}"),
+        other => panic!("want a refusal naming `{want}`: {other:?}"),
+    };
+    let mut bad = b.clone();
+    bad[40..44].copy_from_slice(&9u32.to_le_bytes());
+    refused(&bad, "unknown rule code 9");
+    let ni = le(&b, 80) as usize;
+    let mut bad = b.clone();
+    bad[80..84].copy_from_slice(&(ni as u32 + 1).to_le_bytes());
+    refused(&bad, "index of");
+    let mut bad = b.clone();
+    let nch_at = 84 + 4 * ni;
+    assert!(
+        le(&b, nch_at) >= 2,
+        "the channel count sits after the index"
+    );
+    bad[nch_at..nch_at + 4].copy_from_slice(&0u32.to_le_bytes());
+    refused(&bad, "a level without channels");
     // a field written under another semantics identifier is refused, naming both
     let other = alice_sdf::provenance::Provenance::new([7u8; 32]);
     let mut foreign = Vec::new();
@@ -343,19 +360,17 @@ fn bad_input_and_over_budget_are_refused() {
         ),
         "trailing byte"
     );
-    let short = &b[..b.len() - 1];
-    assert!(
-        AshfIndex::scan(&mut Cursor::new(short)).is_err(),
-        "truncated"
-    );
-    assert!(
-        AshfIndex::scan(&mut Cursor::new(&b[..10])).is_err(),
-        "header only"
-    );
-    assert!(
-        ix.read_sheets(&mut Cursor::new(&b), 2..9).is_err(),
-        "range past the sheets"
-    );
+    // a file cut inside an array: the array's end runs past the file
+    refused(&b[..b.len() - 1], "runs past the end");
+    // a file cut inside the header: the header read itself fails (an I/O end of file, not a layout refusal)
+    match AshfIndex::scan(&mut Cursor::new(&b[..10])) {
+        Err(StreamError::Io(e)) => assert_eq!(e.kind(), std::io::ErrorKind::UnexpectedEof),
+        other => panic!("header only: {other:?}"),
+    }
+    match ix.read_sheets(&mut Cursor::new(&b), 2..9) {
+        Err(StreamError::Format(s)) => assert!(s.contains("sheets 2..9 of 4"), "{s}"),
+        other => panic!("range past the sheets: {other:?}"),
+    }
     let small = ix.spans.iter().map(|s| s.channel_bytes).min().unwrap() - 1;
     assert!(
         matches!(chunk_split(&ix, small, small), Err(StreamError::Budget(_))),
@@ -397,7 +412,17 @@ fn bad_input_and_over_budget_are_refused() {
 #[cfg(feature = "gpu")]
 #[test]
 fn the_gpu_march_streamed_equals_the_cpu_march_streamed_per_chunk_split() {
-    use alice_sdf::sheet_field::gpu::GpuSheetField;
+    use alice_sdf::sheet_field::gpu::{storage_binding_limit, GpuSheetField};
+    // only a missing adapter skips (asked first, before any march): once a device is there, every error of the
+    // streamed GPU march (a shader or dispatch failure, a refusal) fails the test
+    if let Err(e) = storage_binding_limit() {
+        assert!(
+            std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+            "ALICE_SDF_REQUIRE_GPU set but no GPU: {e}"
+        );
+        eprintln!("gpu-test: skipped (no GPU: {e})");
+        return;
+    }
     let b = field_bytes(stack().into_iter().map(|s| s.0).collect());
     let ix = AshfIndex::scan(&mut Cursor::new(&b)).unwrap();
     let cap = ix.spans.iter().map(|s| s.channel_bytes).max().unwrap() * 3;
@@ -414,62 +439,77 @@ fn the_gpu_march_streamed_equals_the_cpu_march_streamed_per_chunk_split() {
         .max()
         .unwrap();
     let batches = host_batches(&ix, &chunks, one).unwrap();
-    let gpu = march_streamed(
+    let gpu_march = |f: &SheetField| {
+        let g = GpuSheetField::new(f).map_err(|e| e.to_string())?;
+        g.march_batch_decided(&origins, -Vec3::Z, 2.0 * Z0)
+            .map_err(|e| e.to_string())
+    };
+    let g = march_streamed(
         &ix,
         &mut Cursor::new(&b),
         &chunks,
         &batches,
         origins.len(),
-        |f| {
-            let g = GpuSheetField::new(f).map_err(|e| e.to_string())?;
-            g.march_batch_decided(&origins, -Vec3::Z, 2.0 * Z0)
-                .map_err(|e| e.to_string())
-        },
-    );
-    match gpu {
-        Ok((g, _)) => {
-            let all = host_batches(&ix, &chunks, u64::MAX).unwrap();
-            let g2 = march_streamed(
-                &ix,
-                &mut Cursor::new(&b),
-                &chunks,
-                &all,
-                origins.len(),
-                |f| {
-                    let g = GpuSheetField::new(f).map_err(|e| e.to_string())?;
-                    g.march_batch_decided(&origins, -Vec3::Z, 2.0 * Z0)
-                        .map_err(|e| e.to_string())
-                },
-            )
-            .unwrap()
-            .0;
-            assert_eq!(bits(&g), bits(&g2), "gpu: the budget changed the result");
-            let c = march_streamed(
-                &ix,
-                &mut Cursor::new(&b),
-                &chunks,
-                &batches,
-                origins.len(),
-                cpu(&origins),
-            )
-            .unwrap()
-            .0;
-            let same = g.iter().zip(&c).filter(|(a, b)| matches!((a, b), (MarchResult::Hit(x), MarchResult::Hit(y)) if x.sheet == y.sheet) || matches!((a, b), (MarchResult::Miss, MarchResult::Miss))).count();
-            assert_eq!(
-                same,
-                origins.len(),
-                "gpu and cpu disagree on hit owners or misses"
-            );
+        gpu_march,
+    )
+    .expect("the streamed GPU march on a device")
+    .0;
+    let all = host_batches(&ix, &chunks, u64::MAX).unwrap();
+    let g2 = march_streamed(
+        &ix,
+        &mut Cursor::new(&b),
+        &chunks,
+        &all,
+        origins.len(),
+        gpu_march,
+    )
+    .unwrap()
+    .0;
+    assert_eq!(bits(&g), bits(&g2), "gpu: the budget changed the result");
+    let c = march_streamed(
+        &ix,
+        &mut Cursor::new(&b),
+        &chunks,
+        &batches,
+        origins.len(),
+        cpu(&origins),
+    )
+    .unwrap()
+    .0;
+    // the parity tolerances of tests/test_sheet_field_gpu_parity.rs: t within 1e-3, normals within 0.999, UV
+    // within 2e-4; the kinds and owners must match exactly
+    let mut hits = 0;
+    for (i, (a, b)) in c.iter().zip(&g).enumerate() {
+        match (a, b) {
+            (MarchResult::Hit(x), MarchResult::Hit(y)) => {
+                hits += 1;
+                assert_eq!(x.sheet, y.sheet, "ray {i}: owner");
+                assert!(
+                    (x.t - y.t).abs() <= 1e-3,
+                    "ray {i}: t cpu {} gpu {}",
+                    x.t,
+                    y.t
+                );
+                assert!(
+                    x.normal.dot(y.normal) >= 0.999,
+                    "ray {i}: normal cpu {:?} gpu {:?}",
+                    x.normal,
+                    y.normal
+                );
+                match (x.uv, y.uv) {
+                    (Some(u), Some(v)) => assert!(
+                        (u[0] - v[0]).abs() <= 2e-4 && (u[1] - v[1]).abs() <= 2e-4,
+                        "ray {i}: uv {u:?} {v:?}"
+                    ),
+                    (None, None) => {}
+                    other => panic!("ray {i}: uv presence differs: {other:?}"),
+                }
+            }
+            (MarchResult::Miss, MarchResult::Miss) => {}
+            other => panic!("ray {i}: cpu and gpu kinds differ: {other:?}"),
         }
-        Err(StreamError::March(e)) => {
-            assert!(
-                std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
-                "ALICE_SDF_REQUIRE_GPU set but no GPU: {e}"
-            );
-            eprintln!("gpu-test: skipped (no GPU: {e})");
-        }
-        Err(e) => panic!("{e}"),
     }
+    assert!(hits > origins.len() / 4, "only {hits} hits compared");
 }
 
 #[test]

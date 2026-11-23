@@ -1,6 +1,9 @@
 //! `BvhNode::build_over_boxes` shares `MeshBvh::build`'s builder: over the triangle boxes of a mesh it
 //! returns node for node the triangle BVH (same split, same order, bit-identical boxes, same leaf entries).
-//! Oracle: the triangle path as it stands (`MeshBvh::build`), on meshes with many triangles per level.
+//! Oracle: the triangle path as it stands (`MeshBvh::build`), on meshes with many triangles per level. That
+//! comparison holds by construction (both go through one generic builder), so the tree's own invariants are checked
+//! separately on box sets that are not triangle boxes: every index in exactly one leaf, every node's box containing
+//! its children's boxes and its leaves' boxes, and no leaf over `max_per_leaf`.
 #![allow(clippy::unwrap_used)]
 
 use alice_sdf::mesh::bvh::{BvhNode, MeshBvh};
@@ -113,4 +116,84 @@ fn degenerate_box_inputs() {
     leaves(&t, &mut got);
     got.sort_unstable();
     assert_eq!(got, vec![0, 1]);
+}
+
+fn inside(inner: &Aabb, outer: &Aabb) -> bool {
+    inner.min.cmpge(outer.min).all() && inner.max.cmple(outer.max).all()
+}
+
+/// Walks a node: checks each box contains its children's and its leaves' boxes and the leaf size, and collects the
+/// leaf entries.
+fn walk(n: &BvhNode, boxes: &[Aabb], max_per_leaf: usize, seen: &mut Vec<usize>) {
+    match n {
+        BvhNode::Leaf { aabb, triangles } => {
+            assert!(!triangles.is_empty(), "an empty leaf");
+            assert!(
+                triangles.len() <= max_per_leaf,
+                "leaf of {} > {max_per_leaf}",
+                triangles.len()
+            );
+            for &i in triangles {
+                assert!(inside(&boxes[i], aabb), "box {i} outside its leaf");
+                seen.push(i);
+            }
+        }
+        BvhNode::Internal { aabb, left, right } => {
+            assert!(
+                inside(left.aabb(), aabb) && inside(right.aabb(), aabb),
+                "a child outside its parent"
+            );
+            walk(left, boxes, max_per_leaf, seen);
+            walk(right, boxes, max_per_leaf, seen);
+        }
+    }
+}
+
+/// The invariants on box sets that are not a mesh's triangle boxes: scattered boxes of mixed sizes, many equal
+/// boxes (all splits degenerate), and nested boxes; each index in exactly one leaf, boxes nested, leaves within
+/// their size. A builder that dropped or duplicated an entry, cut a box, or overfilled a leaf fails here even when
+/// it agrees with itself on triangles.
+#[test]
+fn a_box_bvh_holds_each_box_once_in_nested_boxes_and_bounded_leaves() {
+    let mut seed = 0x2545_f491_4f6c_dd1du64;
+    let mut next = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed >> 40) as f32 / (1u64 << 24) as f32
+    };
+    let mut sets: Vec<Vec<Aabb>> = Vec::new();
+    sets.push(
+        (0..257)
+            .map(|_| {
+                let c = Vec3::new(next() * 40.0, next() * 40.0, next() * 4.0);
+                let h = Vec3::new(
+                    next() * 3.0 + 0.01,
+                    next() * 0.2 + 0.01,
+                    next() * 5.0 + 0.01,
+                );
+                Aabb::new(c - h, c + h)
+            })
+            .collect(),
+    );
+    sets.push(vec![Aabb::new(Vec3::ZERO, Vec3::ONE); 33]);
+    sets.push(
+        (0..40)
+            .map(|i| Aabb::new(Vec3::splat(-(i as f32)), Vec3::splat(i as f32 + 0.5)))
+            .collect(),
+    );
+    for (s, boxes) in sets.iter().enumerate() {
+        for max_per_leaf in [1usize, 4, 7] {
+            let root = BvhNode::build_over_boxes(boxes, max_per_leaf).unwrap();
+            let mut seen = Vec::new();
+            walk(&root, boxes, max_per_leaf, &mut seen);
+            seen.sort_unstable();
+            assert_eq!(
+                seen,
+                (0..boxes.len()).collect::<Vec<_>>(),
+                "set {s}, leaf {max_per_leaf}"
+            );
+        }
+    }
+    assert!(BvhNode::build_over_boxes(&[], 4).is_none());
 }
