@@ -17,7 +17,8 @@
 //! of the cell uses (cell centre `c`, diagonal `D`, `d_c` the distance from `c` to the sheet, `rho` from `c` to the
 //! rim: triangles within `R1 = d_c + D`, segments within `R1 + min(rho + R1, H)`).
 //!
-//! On disk (the ASKC sidecar, little-endian; the ASHF file is unchanged): `b"ASKC"`, `u32` version 1, `u32` sheets
+//! On disk (the ASKC sidecar, little-endian; the ASHF file is unchanged): `b"ASKC"`, `u32` version, from v4 the
+//! 32-byte semantics identifier the sidecar was written under ([`crate::provenance`]), `u32` sheets
 //! (= the ASHF file's sheets, same order); per sheet: `f32` H, `f64` origin[3], `u32` nv, `f32` V[nv*3] (relative to
 //! the origin), `u32` nf, per face `u32` a, b, c, `f32` n[3], `u32` rim mask (bit 0 edge ab, 1 bc, 2 ca); `u32` rim
 //! vertices, per one `u32` v, `f32` pseudonormal[3]; `u32` segments, per one `u32` a, b; `u32` levels (= the sheet's
@@ -32,10 +33,10 @@ use glam::{DVec3, Vec3};
 
 /// The 4 bytes an ASKC file starts with.
 pub const ASKC_MAGIC: [u8; 4] = *b"ASKC";
-/// The ASKC version this reader takes.
-pub const ASKC_VERSION: u32 = 3;
-/// The oldest ASKC version this reader still takes (v1: exact `d_b` cells only).
-pub const ASKC_VERSION_MIN: u32 = 1;
+/// The ASKC version this reader takes (v3 with the semantics identifier after the version).
+pub const ASKC_VERSION: u32 = 4;
+/// The oldest ASKC version this reader still takes: versions 1 to 3 carry no semantics identifier and are refused.
+pub const ASKC_VERSION_MIN: u32 = 4;
 /// The march's step margin for a field with kink cells.
 ///
 /// Every step is taken from the union value less this (the s cover's position bound `eps`,
@@ -60,6 +61,8 @@ pub enum KinkError {
     Io(io::Error),
     /// The file is not a valid ASKC sidecar for the field it is attached to.
     Format(String),
+    /// The sidecar was written under another semantics identifier than this crate's (or one it still reproduces).
+    Semantics(crate::io::IoError),
 }
 
 impl std::fmt::Display for KinkError {
@@ -67,6 +70,7 @@ impl std::fmt::Display for KinkError {
         match self {
             Self::Io(e) => write!(f, "ASKC i/o: {e}"),
             Self::Format(s) => write!(f, "not a valid ASKC sidecar: {s}"),
+            Self::Semantics(e) => write!(f, "{e}"),
         }
     }
 }
@@ -656,6 +660,10 @@ impl KinkFile {
                 "version {version}, this reader takes {ASKC_VERSION_MIN}..={ASKC_VERSION}"
             )));
         }
+        let mut id = [0u8; 32];
+        rd.0.read_exact(&mut id)?;
+        crate::provenance::sdf_load_verdict(Some(id), "ASKC", false)
+            .map_err(KinkError::Semantics)?;
         let v2 = version >= 2;
         let ns = rd.count("sheets", COUNT_CAP)?;
         let mut sheets = Vec::with_capacity(ns);

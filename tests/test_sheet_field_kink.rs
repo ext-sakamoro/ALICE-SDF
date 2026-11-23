@@ -10,8 +10,10 @@
 //!   is present; `ALICE_SDF_REQUIRE_GPU` makes its absence a failure) equals the CPU.
 
 use alice_sdf::sheet_field::build::{level_from_fn, sheet};
-use alice_sdf::sheet_field::kink::{KinkFile, KinkSheet};
-use alice_sdf::sheet_field::kink_build::{kink_sheet, write_askc, SheetGeom};
+use alice_sdf::sheet_field::kink::{KinkError, KinkFile, KinkSheet, ASKC_VERSION};
+use alice_sdf::sheet_field::kink_build::{
+    kink_sheet, write_askc, write_askc_with_provenance, SheetGeom,
+};
 use alice_sdf::sheet_field::{MarchResult, RootMode, SheetField, ValidRule};
 use glam::{DVec3, Vec3};
 
@@ -575,4 +577,38 @@ fn rays_from_far_into_a_fold_equal_the_fixed_step_reference() {
         bad, 0,
         "the march differs from the fixed-step reference on {bad} of {n} rays"
     );
+}
+
+/// The sidecar carries this crate's semantics identifier after the version: read back it is accepted; written under
+/// another identifier, or relabelled as a version without one (1 to 3), or as an unknown version, it is refused
+#[test]
+fn a_sidecar_carries_the_semantics_identifier_and_another_is_refused() {
+    let records = [(None, 0.01, 0)];
+    let mut own = Vec::new();
+    write_askc(&mut own, &records).unwrap();
+    assert!(KinkFile::read(&mut own.as_slice()).is_ok());
+    let other = alice_sdf::provenance::Provenance::new([7u8; 32]);
+    let mut foreign = Vec::new();
+    write_askc_with_provenance(&mut foreign, &records, &other).unwrap();
+    assert_eq!(
+        foreign[8..40],
+        [7u8; 32],
+        "the identifier sits after the version"
+    );
+    assert_eq!(foreign[40..], own[40..], "only the identifier differs");
+    match KinkFile::read(&mut foreign.as_slice()) {
+        Err(KinkError::Semantics(e)) => assert!(e.to_string().contains(&other.hex()), "{e}"),
+        other => panic!("another identifier was not refused: {other:?}"),
+    }
+    for v in [1u32, 3, ASKC_VERSION + 1] {
+        let mut bad = own.clone();
+        bad[4..8].copy_from_slice(&v.to_le_bytes());
+        assert!(
+            matches!(
+                KinkFile::read(&mut bad.as_slice()),
+                Err(KinkError::Format(_))
+            ),
+            "version {v} was not refused"
+        );
+    }
 }
