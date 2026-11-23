@@ -308,5 +308,11 @@ pub fn sheet(levels: Vec<Level>) -> Result<Sheet, SheetFieldError> {
         hi = hi.max(lv.lo + n * (BRICK as f32 * lv.h));
         hc = hc.max(lv.h);
     }
-    Ok(Sheet { levels, lo, hi, hc })
+    Ok(Sheet {
+        levels,
+        lo,
+        hi,
+        hc,
+        kink: None,
+    })
 }
