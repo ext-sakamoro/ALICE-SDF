@@ -5,7 +5,7 @@
 //! Run: `cargo run --example sheet_field_patch --no-default-features`
 
 use alice_sdf::sheet_field::build::{level_from_fn, sheet};
-use alice_sdf::sheet_field::{MarchResult, SheetField, ValidRule};
+use alice_sdf::sheet_field::{MarchResult, RootMode, SheetField, ValidRule};
 use glam::Vec3;
 
 fn square_db(x: f32, y: f32) -> f32 {
@@ -68,5 +68,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         steps.iter().filter(|s| s.dd_masked).count(),
         matches!(centre, MarchResult::Hit(_))
     );
+    // one row of rays against the references: the fixed-step march (0.0005 steps, no bound) and the march whose
+    // floor steps are re-walked in fixed sub-steps
+    let mut reference = field.clone();
+    reference.set_root_mode(RootMode::FixedFloor);
+    let row: Vec<Vec3> = (0..15)
+        .map(|i| Vec3::new(-7.0 + i as f32, 0.3, 10.0))
+        .collect();
+    let same = |a: &MarchResult, b: &MarchResult| match (a, b) {
+        (MarchResult::Hit(x), MarchResult::Hit(y)) => (x.t - y.t).abs() < 1e-3,
+        _ => std::mem::discriminant(a) == std::mem::discriminant(b),
+    };
+    let (mut fixed, mut floor) = (0, 0);
+    for o in &row {
+        let m = field.march_decided(*o, Vec3::NEG_Z, 30.0);
+        fixed += usize::from(same(
+            &m,
+            &field.march_fixed_step(*o, Vec3::NEG_Z, 30.0, 0.0005),
+        ));
+        floor += usize::from(same(&m, &reference.march_decided(*o, Vec3::NEG_Z, 30.0)));
+    }
+    println!("row of 15 rays: same as the fixed-step march on {fixed}, as the fixed-floor march on {floor}");
     Ok(())
 }
