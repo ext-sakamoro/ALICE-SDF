@@ -384,6 +384,21 @@ mod gap_open_tests {
             "{layered:?} {proof:?}"
         );
         assert!(proof.open_boxes > 0 && !proof.exhausted, "{proof:?}");
+        // a post (radius 3, x in [-3, 3]) 1.5 from a wall (x from 4.5), both on a floor: the neck is read from boxes that straddle
+        // the wall, which are split until their all-air parts are certified
+        let post = SdfNode::box3d_half_extents(6.0, 6.0, 1.0)
+            .union(SdfNode::box3d_half_extents(1.0, 6.0, 4.0).translate(5.5, 0.0, 3.0))
+            .union(
+                SdfNode::cylinder(3.0, 6.0)
+                    .rotate_euler(core::f32::consts::FRAC_PI_2, 0.0, 0.0)
+                    .translate(0.0, 0.0, 3.0),
+            );
+        let (plain, layered, proof) = verdicts(&post, Vec3::new(6.5, 6.5, 7.5));
+        assert!(!matches!(plain, GapVerdict::Pass(_)), "{plain:?}");
+        assert!(
+            matches!(layered, GapVerdict::Pass(_)),
+            "{layered:?} {proof:?}"
+        );
         let (_, layered, _) = verdicts(&closed_pocket(), Vec3::new(6.0, 6.0, 6.0));
         assert!(matches!(layered, GapVerdict::Fail(_)), "{layered:?}");
         let hole = SdfNode::box3d_half_extents(4.0, 4.0, 1.5).subtract(
