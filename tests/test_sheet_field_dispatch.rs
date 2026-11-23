@@ -16,7 +16,10 @@
 
 use alice_sdf::compiled::GpuError;
 use alice_sdf::sheet_field::build::{level_from_fn, sheet};
-use alice_sdf::sheet_field::gpu::{spread_blocks, spread_stride, GpuSheetField, MIN_DISPATCH};
+use alice_sdf::sheet_field::gpu::{
+    dispatch_cap, spread_blocks, spread_stride, GpuSheetField, MARCH_OUT_BYTES_PER_RAY,
+    MIN_DISPATCH,
+};
 use alice_sdf::sheet_field::{MarchResult, Sheet, SheetField, ValidRule};
 use glam::Vec3;
 use std::time::Duration;
@@ -293,4 +296,35 @@ fn the_upload_refuses_a_sheet_whose_layout_does_not_fit() {
         Err(e) => panic!("refused as another error: {e}"),
         Ok(_) => panic!("a sheet with a dropped s row was uploaded"),
     }
+}
+
+/// A dispatch's results must fit one storage binding: on a device whose largest binding is 128 MiB the cap is
+/// 128 MiB / 64 B = 2,097,152 rays, under the 65,535 x 64 = 4,194,240 the workgroup limit alone allows (a dispatch
+/// sized by time alone would grow past the binding and fail the whole batch). Without a binding limit the workgroup
+/// limit decides; a binding under one ray still allows one workgroup.
+#[test]
+fn the_dispatch_cap_is_the_smaller_of_the_workgroup_and_binding_limits() {
+    assert_eq!(MARCH_OUT_BYTES_PER_RAY, 64);
+    assert_eq!(dispatch_cap(65_535, 128 << 20), (128 << 20) / 64);
+    assert_eq!(dispatch_cap(65_535, u64::MAX), 65_535 * 64);
+    assert_eq!(dispatch_cap(65_535, 2 << 30), 65_535 * 64);
+    assert_eq!(dispatch_cap(65_535, 10), 64);
+    assert!(dispatch_cap(65_535, 128 << 20) >= MIN_DISPATCH);
+}
+
+/// An empty field is refused at upload, typed and before any device work, rather than failing at dispatch on a
+/// binding smaller than one record; the CPU marches it (every ray a miss).
+#[test]
+fn an_empty_field_is_refused_at_upload_and_misses_on_the_cpu() {
+    let f = SheetField::new(Vec::new(), ValidRule::CellV1);
+    match GpuSheetField::new(&f) {
+        Err(GpuError::InvalidFormat(m)) => assert!(m.contains("no sheets"), "{m}"),
+        Err(e) => panic!("refused as another error: {e}"),
+        Ok(_) => panic!("an empty field was uploaded"),
+    }
+    assert_eq!(
+        f.march_decided(Vec3::new(0.0, 0.0, 5.0), -Vec3::Z, 10.0)
+            .unwrap(),
+        MarchResult::Miss
+    );
 }
