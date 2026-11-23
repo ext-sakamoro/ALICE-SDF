@@ -1486,7 +1486,9 @@ jobs:
           cargo test --features gpu --test test_sheet_field_coarse_attr -- --nocapture 2>&1 | tee test_sheet_field_coarse_attr.log
           python3 scripts/libtest_count.py test_sheet_field_coarse_attr.log --min 5 --what test_sheet_field_coarse_attr
           cargo test --features gpu --test test_sheet_field_dispatch -- --nocapture 2>&1 | tee test_sheet_field_dispatch.log
-          python3 scripts/libtest_count.py test_sheet_field_dispatch.log --min 7 --what test_sheet_field_dispatch
+          python3 scripts/libtest_count.py test_sheet_field_dispatch.log --min 9 --what test_sheet_field_dispatch
+          cargo test --features gpu --test test_sheet_field_dispatch_abandon -- --nocapture 2>&1 | tee test_sheet_field_dispatch_abandon.log
+          python3 scripts/libtest_count.py test_sheet_field_dispatch_abandon.log --min 1 --what test_sheet_field_dispatch_abandon
           cargo test --features gpu --test test_sheet_field_graze -- --nocapture 2>&1 | tee test_sheet_field_graze.log
           python3 scripts/libtest_count.py test_sheet_field_graze.log --min 1 --what test_sheet_field_graze
           cargo test --features gpu --test test_sheet_field_kink -- --nocapture 2>&1 | tee test_sheet_field_kink.log
