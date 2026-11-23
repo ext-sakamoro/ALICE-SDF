@@ -612,6 +612,45 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_soft_shadow_glsl_parity --test test_shader_precise_temporaries \
   --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle --test test_gpu_lifecycle_oracle --test test_one_call_site
 
+step "gpu-parity: sheet field GPU tests, each with its own count (ci.yml の Sheet field GPU tests と対)"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_band -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_band.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_band.log" --min 4 --what test_sheet_field_band
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_coarse_attr -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_coarse_attr.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_coarse_attr.log" --min 5 --what test_sheet_field_coarse_attr
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_dispatch -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_dispatch.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_dispatch.log" --min 7 --what test_sheet_field_dispatch
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_graze -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_graze.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_graze.log" --min 1 --what test_sheet_field_graze
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_kink -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_kink.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_kink.log" --min 6 --what test_sheet_field_kink
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_live_bound -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_live_bound.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_live_bound.log" --min 3 --what test_sheet_field_live_bound
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_masked_bound -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_masked_bound.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_masked_bound.log" --min 2 --what test_sheet_field_masked_bound
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_masked_floor -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_masked_floor.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_masked_floor.log" --min 1 --what test_sheet_field_masked_floor
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_stream -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_stream.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_stream.log" --min 9 --what test_sheet_field_stream
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_stairs_contract -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_stairs_contract.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_stairs_contract.log" --min 6 --what test_stairs_contract
+# gpu test files otherwise run only where a device may be absent (ci.yml の同名 step と対)
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features glsl,gpu --test npr_shader_validate -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-npr_shader_validate.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-npr_shader_validate.log" --min 21 --what npr_shader_validate
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features jit,glsl,hlsl,gpu --test test_hex_prism_apothem -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_hex_prism_apothem.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_hex_prism_apothem.log" --min 3 --what test_hex_prism_apothem
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features jit,glsl,hlsl,gpu --test test_node_backend_matrix -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_node_backend_matrix.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_node_backend_matrix.log" --min 8 --what test_node_backend_matrix
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features jit,glsl,hlsl,gpu --test test_repeat_finite_copies -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_repeat_finite_copies.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_repeat_finite_copies.log" --min 10 --what test_repeat_finite_copies
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features glsl,hlsl,gpu --test test_shader_no_fused_multiply_add -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_shader_no_fused_multiply_add.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_shader_no_fused_multiply_add.log" --min 5 --what test_shader_no_fused_multiply_add
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features physics,gpu --test test_sim_bridge_oracle -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sim_bridge_oracle.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sim_bridge_oracle.log" --min 7 --what test_sim_bridge_oracle
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu,glsl,hlsl --test transpile_deep_nest -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-transpile_deep_nest.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-transpile_deep_nest.log" --min 5 --what transpile_deep_nest
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu,glsl,hlsl --test transpile_deep_tree -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-transpile_deep_tree.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-transpile_deep_tree.log" --min 2 --what transpile_deep_tree
+
 step "gpu-parity: module arrays fit SPIR-V instructions (ci.yml の同名 step と対、3 件未満で fail、spirv-val が無ければ PREFLIGHT-SKIP 行)"
 spv_dir="${CARGO_TARGET_DIR:-target}/spirv-modules"
 rm -rf "$spv_dir"; mkdir -p "$spv_dir"
