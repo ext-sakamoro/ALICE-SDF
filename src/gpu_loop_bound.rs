@@ -1374,6 +1374,68 @@ mod tests {
         assert_eq!(two.instances, one.instances + 1, "{one:?} {two:?}");
     }
 
+    /// A call to a function placed after its caller in the module's arena: naga's WGSL front end never produces this
+    /// order, so the module is built by hand (the counted kernel, with `inner` made to call a function appended
+    /// after it). Neither walk has a bound for the callee yet, and both refuse it instead of counting 0 loops or 1
+    /// iteration.
+    #[test]
+    fn a_call_to_a_function_not_yet_checked_is_refused() {
+        let src = format!(
+            "{COUNTED_DECLS}\n@group(0) @binding(1) var<storage, read_write> o: array<f32>;\nfn tick() -> bool {{ {TICK} }}\nfn inner() -> f32 {{ var a = 0.0; for (var j = 0u; j < 4u; j = j + 1u) {{ if (!tick()) {{ break; }} a = a + 1.0; }} return a; }}\n@compute @workgroup_size(1)\nfn main() {{\n var acc = 0.0;\n{COUNTED}\n o[0] = acc;\n}}\n"
+        );
+        let mut module = parse_source(&wgpu::ShaderSource::Wgsl(src.into())).unwrap();
+        let late = module.functions.append(
+            naga::Function {
+                name: Some("late".into()),
+                ..Default::default()
+            },
+            naga::Span::UNDEFINED,
+        );
+        let inner = module
+            .functions
+            .iter()
+            .find(|(_, f)| f.name.as_deref() == Some("inner"))
+            .map(|(h, _)| h)
+            .unwrap();
+        assert!(
+            inner.index() < late.index(),
+            "the caller precedes the callee"
+        );
+        module.functions.get_mut(inner).body.push(
+            naga::Statement::Call {
+                function: late,
+                arguments: Vec::new(),
+                result: None,
+            },
+            naga::Span::UNDEFINED,
+        );
+        let m = HostMaxima::from([
+            ("u.steps".to_string(), 4000),
+            ("u.work_budget".to_string(), 100),
+        ]);
+        let r = check_module(&module, &m);
+        assert!(
+            r.unbounded
+                .iter()
+                .any(|u| u.reason.contains("before its loops were checked")),
+            "{r:?}"
+        );
+        let c = super::check_counted(
+            &module,
+            &m,
+            super::WorkCounter {
+                tick: "tick",
+                budget: "u.work_budget",
+            },
+        );
+        assert!(
+            c.problems
+                .iter()
+                .any(|p| p.contains("before its loops were counted")),
+            "{c:?}"
+        );
+    }
+
     #[test]
     fn a_ceiling_without_a_reason_is_refused() {
         let src = wrap("for (var i = 0u; i < 3u; i = i + 1u) { acc = acc + 1.0; }");
