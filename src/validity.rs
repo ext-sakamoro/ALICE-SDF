@@ -551,7 +551,9 @@ pub fn prove_gaps(
 /// [`prove_gaps`] for a shape printed in layers stacked along `build_axis`: a box whose every point is
 /// open narrow air in its own layer (certified as in the "Boxes" paragraph of the `gap_open` MODEL) is
 /// counted in [`GapProof::open_boxes`] and not subdivided, so a neck between separate walls ends
-/// instead of being split until the budget runs out. Enclosed narrow air is proven or left undecided as
+/// instead of being split until the budget runs out. A box that holds material and sees facing walls is split
+/// rather than kept as a witness until [`GapProof::max_depth`] (so the narrow air beside a wall is read
+/// in all-air parts). Enclosed narrow air is proven or left undecided as
 /// in [`prove_gaps`]. Read the result with [`GapReport::verdict_in_layers`] and the same axis.
 ///
 /// # Errors
@@ -649,6 +651,15 @@ fn prove(
         let seen = air_walls(&mut m, lo, hi);
         let mut unreached = false;
         if let Some((walls, width)) = facing_pair(&mut m, &seen, limit, &mut unreached) {
+            // in layers, a box that also holds material is split: its all-air parts are read open or not
+            // on their own, and the parts at a single wall are cleared; the witness is kept at the
+            // last depth (each part is still cleared, certified open, proven or left undecided)
+            if build_axis.is_some() && iv.lo <= 0.0 && depth < max_depth {
+                for (a, b) in octants(lo, hi) {
+                    stack.push((a, b, depth + 1));
+                }
+                continue;
+            }
             let r = GapRegion {
                 at: c,
                 walls: Some(walls),
