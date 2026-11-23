@@ -141,7 +141,85 @@ fn first_root(c: &[f64; 4], u_end: f64) -> Option<Result<f64, ()>> {
     None
 }
 
+/// The answer of [`Sheet::exact_cell_root`].
+enum ExactRoot {
+    /// An accepted crossing at this `t`.
+    Root(f32),
+    /// None in the span; `s` at its last sample.
+    Clear(f64),
+    /// [`EXACT_CAP`] samples were not enough (counted as ambiguous, the step stays undecided-free only if the walk
+    /// finds a root elsewhere).
+    Capped,
+}
+
+/// Samples of the exact `s` in one s cell (the span over the sub-step is at most 512 per cell, plus bisections).
+pub const EXACT_CAP: u32 = 2048;
+
 impl Sheet {
+    /// The first accepted crossing of the exact `s` in `[ta, tb]` (inside one s cell). Steps by the unsigned distance
+    /// less [`JUMP_S`] (an accepted crossing lies on the sheet within `d_b <= step/2`, so no point with a smaller
+    /// distance is skipped: the distance is 1-Lipschitz), at least `h / 512`; a sign change between two samples is
+    /// bisected on the exact `s` and taken when the crossing test accepts it.
+    fn exact_cell_root(
+        &self,
+        o: Vec3,
+        d: Vec3,
+        ta: f64,
+        tb: f64,
+        h: f64,
+        rule: ValidRule,
+    ) -> ExactRoot {
+        let sub = h / 512.0;
+        // the exact (s, distance) in an s cell; past the cell (a sample that rounds into a cell that is not an s cell)
+        // the sheet's own sample (s, and |g| as the distance bound), so the last sub-step's sign change is still seen
+        let ev = |t: f64| {
+            let p = o + d * t as f32;
+            self.exact_s_here(p).map_or_else(
+                || {
+                    let c = self.sample_geom(p, rule);
+                    (f64::from(c.s), f64::from(c.f))
+                },
+                |(s, u)| (f64::from(s), f64::from(u)),
+            )
+        };
+        let (mut sa, mut ua) = ev(ta);
+        let mut a = ta;
+        let mut n = 0u32;
+        loop {
+            if a >= tb {
+                break;
+            }
+            if n >= EXACT_CAP {
+                return ExactRoot::Capped;
+            }
+            n += 1;
+            let b = (a + (ua - f64::from(JUMP_S)).max(sub)).min(tb);
+            let (sb, ub) = ev(b);
+            if (sa < 0.0) != (sb < 0.0) {
+                let (mut l, mut r, mut sl) = (a, b, sa);
+                for _ in 0..40 {
+                    let m = l.midpoint(r);
+                    let (sm, _) = ev(m);
+                    n += 1;
+                    if (sm < 0.0) == (sl < 0.0) {
+                        l = m;
+                        sl = sm;
+                    } else {
+                        r = m;
+                    }
+                }
+                let tm = l.midpoint(r) as f32;
+                if self.crossing_accepted(o + d * tm, rule) {
+                    return ExactRoot::Root(tm);
+                }
+            }
+            a = b;
+            sa = sb;
+            ua = ub;
+        }
+        ExactRoot::Clear(sa)
+    }
+
     fn cell_at(&self, p: Vec3, rule: ValidRule) -> Option<Cell> {
         for lv in &self.levels {
             if let Some(c) = cell_in(lv, p, rule) {
@@ -195,6 +273,37 @@ impl Sheet {
             }
             let u_exit = u_exit.max(0.0);
             let u_end = u_exit.min((tend - t) / cell.h);
+            // an s cell ([`super::kink`]): s is the exact value from the cell's triangles, not the cubic of the corners
+            if let Some((s_in, _)) = self.exact_s_here(p) {
+                let s_in = f64::from(s_in);
+                if let Some((tp, sp)) = prev {
+                    if (sp < 0.0) != (s_in < 0.0)
+                        && sp.abs() <= f64::from(JUMP_S)
+                        && s_in.abs() <= f64::from(JUMP_S)
+                    {
+                        let tm = self.face_crossing(o, d, tp as f32, t as f32, rule);
+                        if self.crossing_accepted(o + d * tm, rule) {
+                            return Walk::Root(tm);
+                        }
+                    }
+                }
+                let s_exit = if cell.masked {
+                    None
+                } else {
+                    match self.exact_cell_root(o, d, t, t + u_end * cell.h, cell.h, rule) {
+                        ExactRoot::Root(tr) => return Walk::Root(tr),
+                        ExactRoot::Capped => {
+                            ambiguous += 1;
+                            None
+                        }
+                        ExactRoot::Clear(se) => Some(se),
+                    }
+                };
+                let tn = t + u_exit * cell.h;
+                prev = s_exit.map(|se| (tn, se));
+                t = tn + (cell.h / 1_048_576.0).max(4.0 * f64::from(f32::EPSILON) * tn.abs());
+                continue;
+            }
             let cu = cubic(&cell.corners, q0, e);
             let s_in = eval(&cu, 0.0);
             if let Some((tp, sp)) = prev {
