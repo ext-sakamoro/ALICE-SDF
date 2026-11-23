@@ -548,13 +548,15 @@ pub fn prove_gaps(
     prove(node, limit, bmin, bmax, max_depth, max_work, None)
 }
 
-/// [`prove_gaps`] for a shape printed in layers stacked along `build_axis`: a box whose every point is
-/// open narrow air in its own layer (certified as in the "Boxes" paragraph of the `gap_open` MODEL) is
-/// counted in [`GapProof::open_boxes`] and not subdivided, so a neck between separate walls ends
-/// instead of being split until the budget runs out. A box that holds material and sees facing walls is split
-/// rather than kept as a witness until [`GapProof::max_depth`] (so the narrow air beside a wall is read
-/// in all-air parts). Enclosed narrow air is proven or left undecided as
-/// in [`prove_gaps`]. Read the result with [`GapReport::verdict_in_layers`] and the same axis.
+/// [`prove_gaps`] for a shape printed in layers stacked along `build_axis`.
+///
+/// A box whose every point is open narrow air in its own layer (certified as in the "Boxes"
+/// paragraph of the `gap_open` MODEL) is counted in [`GapProof::open_boxes`] and not subdivided, so
+/// a neck between separate walls ends instead of being split until the budget runs out. A box that
+/// holds material and sees facing walls is split rather than kept as a witness until
+/// [`GapProof::max_depth`] (so the narrow air beside a wall is read in all-air parts). Enclosed
+/// narrow air is proven or left undecided as in [`prove_gaps`]. Read the result with
+/// [`GapReport::verdict_in_layers`] and the same axis.
 ///
 /// # Errors
 ///
@@ -1741,7 +1743,7 @@ impl GapReport {
 }
 
 /// The bits of a vector, for comparing build axes exactly.
-fn f32x3_bits(v: Vec3) -> [u32; 3] {
+const fn f32x3_bits(v: Vec3) -> [u32; 3] {
     [v.x.to_bits(), v.y.to_bits(), v.z.to_bits()]
 }
 
