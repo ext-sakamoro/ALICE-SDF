@@ -101,7 +101,9 @@ fn grazing_chords_shorter_than_the_floor_step_are_found_and_near_misses_stay_mis
         (w, m) => panic!("{name} x0 {x0}: the scan says {w:?}, the march {m:?}"),
     };
     for (&x0, &want) in rs.iter().zip(&refs) {
-        let m = f.march_decided(Vec3::new(x0, 0.0013, Z0), -Vec3::Z, tmax);
+        let m = f
+            .march_decided(Vec3::new(x0, 0.0013, Z0), -Vec3::Z, tmax)
+            .unwrap();
         check("cpu", x0, want, &m);
     }
 

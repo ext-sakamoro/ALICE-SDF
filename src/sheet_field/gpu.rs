@@ -993,7 +993,9 @@ impl GpuSheetField {
         dir: Vec3,
         tmax: f32,
     ) -> Result<Vec<MarchResult>, GpuError> {
-        self.march_batch(origins, dir, tmax, super::decided_steps(tmax))
+        let steps =
+            super::decided_steps(tmax).map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
+        self.march_batch(origins, dir, tmax, steps)
     }
 
     /// March rays from `origins` along the unit `dir` up to `tmax` with at most `steps` steps.

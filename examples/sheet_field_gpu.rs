@@ -58,12 +58,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let same = origins
         .iter()
         .zip(&decided)
-        .filter(
-            |(o, r)| match (field.march_decided(**o, Vec3::NEG_Z, 30.0), r) {
+        .filter(|(o, r)| {
+            match (
+                field
+                    .march_decided(**o, Vec3::NEG_Z, 30.0)
+                    .expect("tmax within the decided range"),
+                r,
+            ) {
                 (MarchResult::Hit(a), MarchResult::Hit(b)) => (a.t - b.t).abs() < 1e-3,
                 (a, b) => std::mem::discriminant(&a) == std::mem::discriminant(b),
-            },
-        )
+            }
+        })
         .count();
     println!("decided march: GPU agrees with the CPU on {same} of 225 rays");
     let stats = gpu.last_march_stats();
