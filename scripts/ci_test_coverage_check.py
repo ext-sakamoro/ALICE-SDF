@@ -180,6 +180,7 @@ class Invocation:
     other_target: bool = False     # --lib / --bin(s) / --example(s) / --bench(es)
     doc: bool = False
     other_package: bool = False
+    no_run: bool = False           # --no-run: compiles the tests, runs none
 
 
 def parse_invocation(where: str, args: list[str], package: Package) -> Invocation:
@@ -208,6 +209,8 @@ def parse_invocation(where: str, args: list[str], package: Package) -> Invocatio
                 next(it, '')
         elif a == '--doc':
             inv.doc = True
+        elif a == '--no-run':
+            inv.no_run = True
         elif key in ('-p', '--package'):
             if (val if val else next(it, '')) != package.name:
                 inv.other_package = True
@@ -219,7 +222,8 @@ def parse_invocation(where: str, args: list[str], package: Package) -> Invocatio
 
 
 def runs_file(inv: Invocation, stem: str) -> bool:
-    if inv.other_package or inv.doc:
+    # `cargo test --no-run` builds the test binaries and executes none of them: it runs no file
+    if inv.other_package or inv.doc or inv.no_run:
         return False
     if inv.tests:
         return stem in inv.tests

@@ -125,6 +125,18 @@ class CoverageTest(unittest.TestCase):
                 v, _ = self.run_case({'g': GATED_GPU}, workflow(f'- run: {cmd}\n'))
                 self.assertEqual(self.kinds(v), ['unrun'])
 
+    def test_no_run_builds_but_does_not_cover(self):
+        # measured form: ci.yml's `cargo test --no-run --features gpu --message-format=json` (a build for the
+        # slot-guard check) was counted as running every gpu file, so gpu files no step executes passed
+        for cmd in ('cargo test --no-run --features gpu --message-format=json',
+                    'cargo test --features gpu --test g --no-run'):
+            with self.subTest(cmd=cmd):
+                v, _ = self.run_case({'g': GATED_GPU}, workflow(f'- run: {cmd}\n'))
+                self.assertEqual(self.kinds(v), ['unrun'])
+        v, _ = self.run_case({'g': GATED_GPU},
+                             workflow('- run: cargo test --no-run --features gpu\n- run: cargo test --features gpu --test g\n'))
+        self.assertEqual(v, [])
+
     def test_no_target_flag_runs_every_test_file(self):
         v, _ = self.run_case({'g': GATED_GPU}, workflow('- run: cargo test --features gpu\n'))
         self.assertEqual(v, [])

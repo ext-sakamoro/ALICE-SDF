@@ -612,6 +612,28 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features "gpu,glsl,gpu-mesh,texture-fit" \
   --test test_gpu_eval_api_oracle --test test_glsl_export_oracle --test test_soft_shadow_glsl_parity --test test_shader_precise_temporaries \
   --test test_rest_point --test test_node_data_gpu_parity --test test_union_bound_oracle --test test_gpu_lifecycle_oracle --test test_one_call_site
 
+step "gpu-parity: sheet field GPU tests, each with its own count (ci.yml の Sheet field GPU tests と対)"
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_band -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_band.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_band.log" --min 4 --what test_sheet_field_band
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_coarse_attr -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_coarse_attr.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_coarse_attr.log" --min 5 --what test_sheet_field_coarse_attr
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_dispatch -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_dispatch.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_dispatch.log" --min 7 --what test_sheet_field_dispatch
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_graze -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_graze.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_graze.log" --min 1 --what test_sheet_field_graze
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_kink -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_kink.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_kink.log" --min 6 --what test_sheet_field_kink
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_live_bound -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_live_bound.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_live_bound.log" --min 3 --what test_sheet_field_live_bound
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_masked_bound -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_masked_bound.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_masked_bound.log" --min 2 --what test_sheet_field_masked_bound
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_masked_floor -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_masked_floor.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_masked_floor.log" --min 1 --what test_sheet_field_masked_floor
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_stream -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_stream.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_stream.log" --min 9 --what test_sheet_field_stream
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_stairs_contract -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_stairs_contract.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_stairs_contract.log" --min 6 --what test_stairs_contract
+
 step "gpu-parity: module arrays fit SPIR-V instructions (ci.yml の同名 step と対、3 件未満で fail、spirv-val が無ければ PREFLIGHT-SKIP 行)"
 spv_dir="${CARGO_TARGET_DIR:-target}/spirv-modules"
 rm -rf "$spv_dir"; mkdir -p "$spv_dir"
