@@ -1,5 +1,5 @@
 //! askc_build <field.ashf> <geom.asgm> <out.askc> [eps]: the kink cells of every sheet of a field (shared cover,
-//! `sheet_field::kink_build`) from the builder's per-sheet meshes, written as an ASKC v2 sidecar. The geometry file:
+//! `sheet_field::kink_build`) from the builder's per-sheet meshes, written as an ASKC sidecar (version 4, with the semantics identifier). The geometry file:
 //! b"ASGM", u32 version (1 or 2), u32 sheets; per sheet f64 slab, u32 nv, f64 V[nv*3], u32 nf, u32 F[nf*3], u32 nrim,
 //! u32 rim[nrim*2]; v2 then u32 attribute flags (bit 0 corner UVs, bit 1 corner author normals) and per face f64 UV[6] /
 //! f64 normal[9] for each flag set.
