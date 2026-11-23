@@ -80,19 +80,27 @@ pub const MIN_STEP: f32 = 0.01;
 /// Every step advances at least [`MIN_STEP`] less the f32 rounding of `t` (at most `tmax * f32::EPSILON`), so a
 /// march with this many steps reaches `tmax` and is never undecided. Non-finite or non-positive `tmax` gives 1
 /// (the march then ends at once).
-#[must_use]
-pub fn decided_steps(tmax: f32) -> u32 {
+///
+/// # Errors
+/// [`SheetFieldError::Range`] when `tmax` is so far that the f32 rounding of `t` reaches the floor step (about
+/// 83,886 mm: no step count then guarantees reaching `tmax`), or the count does not fit a `u32`.
+pub fn decided_steps(tmax: f32) -> Result<u32, SheetFieldError> {
     if !tmax.is_finite() || tmax <= 0.0 {
-        return 1;
+        return Ok(1);
     }
     let least = MIN_STEP - tmax * f32::EPSILON;
-    assert!(
-        least > 0.0,
-        "tmax {tmax}: the f32 rounding of t reaches the step floor"
-    );
+    if least <= 0.0 {
+        return Err(SheetFieldError::Range(format!(
+            "tmax {tmax}: the f32 rounding of t reaches the step floor {MIN_STEP}, no step budget decides the march"
+        )));
+    }
     let n = (f64::from(tmax) / f64::from(least)).ceil() + 1.0;
-    assert!(n < f64::from(u32::MAX), "tmax {tmax}: budget {n} steps");
-    n as u32
+    if n >= f64::from(u32::MAX) {
+        return Err(SheetFieldError::Range(format!(
+            "tmax {tmax}: a budget of {n} steps does not fit u32"
+        )));
+    }
+    Ok(n as u32)
 }
 /// A bisected sign change with `|s|` above this is a sign jump of `s`, not a crossing of the sheet.
 pub const JUMP_S: f32 = 0.02;
@@ -174,6 +182,8 @@ pub enum SheetFieldError {
     UnknownRule(String),
     /// A level or channel has inconsistent sizes.
     Shape(String),
+    /// A march parameter is outside the range the march can decide (see [`decided_steps`]).
+    Range(String),
 }
 
 impl std::fmt::Display for SheetFieldError {
@@ -181,6 +191,7 @@ impl std::fmt::Display for SheetFieldError {
         match self {
             Self::UnknownRule(r) => write!(f, "unknown validity rule `{r}`"),
             Self::Shape(s) => write!(f, "inconsistent sheet field data: {s}"),
+            Self::Range(s) => write!(f, "sheet field march out of range: {s}"),
         }
     }
 }
@@ -809,16 +820,19 @@ impl SheetField {
 
     /// [`Self::march_decided`] recording each step: the march itself (same code path), plus per step the position
     /// `t`, the step taken and the live sheets sampled. For profiling heavy rays.
-    #[must_use]
+    ///
+    /// # Errors
+    /// As [`decided_steps`].
     pub fn march_profile(
         &self,
         origin: Vec3,
         dir: Vec3,
         tmax: f32,
-    ) -> (MarchResult, Vec<StepRecord>) {
+    ) -> Result<(MarchResult, Vec<StepRecord>), SheetFieldError> {
+        let steps = decided_steps(tmax)?;
         let mut rec = Vec::new();
-        let m = self.march_with(origin, dir, tmax, decided_steps(tmax), true, Some(&mut rec));
-        (m, rec)
+        let m = self.march_with(origin, dir, tmax, steps, true, Some(&mut rec));
+        Ok((m, rec))
     }
 
     /// Whether a hit at `t` of sheet `k` along `origin + dir t` is the same crossing as the reference's hit at
@@ -851,9 +865,16 @@ impl SheetField {
     }
 
     /// [`Self::march`] with the budget from [`decided_steps`]: the result is a hit or a miss, never undecided.
-    #[must_use]
-    pub fn march_decided(&self, origin: Vec3, dir: Vec3, tmax: f32) -> MarchResult {
-        self.march(origin, dir, tmax, decided_steps(tmax))
+    ///
+    /// # Errors
+    /// As [`decided_steps`]: a `tmax` no step budget decides is refused, not marched.
+    pub fn march_decided(
+        &self,
+        origin: Vec3,
+        dir: Vec3,
+        tmax: f32,
+    ) -> Result<MarchResult, SheetFieldError> {
+        Ok(self.march(origin, dir, tmax, decided_steps(tmax)?))
     }
 }
 

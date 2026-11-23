@@ -78,7 +78,7 @@ fn a_far_plane_seen_head_on_is_hit_where_the_fixed_step_reference_hits() {
     let tmax = DIST + 3.0;
     let (mut hits, mut far, mut undecided, mut misses) = (0usize, 0usize, 0usize, 0usize);
     for (o, d) in rays() {
-        let MarchResult::Hit(hr) = fref.march_decided(o, d, tmax) else {
+        let MarchResult::Hit(hr) = fref.march_decided(o, d, tmax).unwrap() else {
             panic!("the reference does not hit at {o} {d}")
         };
         let off = (o + d * hr.t).z - 0.5;
@@ -87,7 +87,7 @@ fn a_far_plane_seen_head_on_is_hit_where_the_fixed_step_reference_hits() {
             "reference {} is {off} off the plane",
             hr.t
         );
-        match f.march_decided(o, d, tmax) {
+        match f.march_decided(o, d, tmax).unwrap() {
             MarchResult::Hit(h) => {
                 hits += 1;
                 if !f.hit_agrees_with_reference(h.sheet, o, d, h.t, hr.t) {

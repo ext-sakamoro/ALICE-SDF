@@ -62,7 +62,7 @@ fn shallow_approaches_are_decided_and_hit_where_the_fixed_step_reference_hits() 
     let tmax = 0.7;
     let (mut undecided, mut hits) = (0usize, 0usize);
     for (o, d, t_an) in &rs {
-        let want = fref.march_decided(*o, *d, tmax);
+        let want = fref.march_decided(*o, *d, tmax).unwrap();
         let MarchResult::Hit(hr) = want else {
             panic!("the reference does not hit at {o} (analytic {t_an}): {want:?}")
         };
@@ -72,7 +72,7 @@ fn shallow_approaches_are_decided_and_hit_where_the_fixed_step_reference_hits() 
             "reference {} (analytic {t_an}) is {off} off the plane",
             hr.t
         );
-        match f.march_decided(*o, *d, tmax) {
+        match f.march_decided(*o, *d, tmax).unwrap() {
             MarchResult::Hit(h) => {
                 assert!(
                     f.hit_agrees_with_reference(h.sheet, *o, *d, h.t, hr.t),
