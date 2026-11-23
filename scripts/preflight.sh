@@ -618,7 +618,9 @@ python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_band.log"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_coarse_attr -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_coarse_attr.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_coarse_attr.log" --min 5 --what test_sheet_field_coarse_attr
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_dispatch -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_dispatch.log"
-python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_dispatch.log" --min 7 --what test_sheet_field_dispatch
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_dispatch.log" --min 9 --what test_sheet_field_dispatch
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_dispatch_abandon -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_dispatch_abandon.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_dispatch_abandon.log" --min 1 --what test_sheet_field_dispatch_abandon
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_graze -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_graze.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_graze.log" --min 1 --what test_sheet_field_graze
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_kink -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_kink.log"
