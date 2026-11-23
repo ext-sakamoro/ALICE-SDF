@@ -263,7 +263,9 @@ fn a_dispatch_over_the_workgroup_limit_is_refused_not_read_unwritten() {
 fn a_ray_over_the_work_budget_ends_undecided_and_is_counted() {
     let f = deep();
     let Some(g) = gpu(&f) else { return };
-    let os = origins(4_096);
+    let mut os = origins(4_096);
+    // rays far outside every sheet's box: misses at any budget, so the "a miss never becomes a hit" rule is checked
+    os.extend((0..8).map(|i| Vec3::new(60.0 + i as f32, -60.0, 5.0)));
     let hits = g.march_batch_decided(&os, -Vec3::Z, 10.0).unwrap();
     let n_hit = hits
         .iter()
@@ -277,10 +279,14 @@ fn a_ray_over_the_work_budget_ends_undecided_and_is_counted() {
     let cut = g.march_batch_decided(&os, -Vec3::Z, 10.0).unwrap();
     let st = g.last_march_stats();
     assert!(st.over_budget > 0, "no ray ran out of the budget");
+    // a smaller budget can only turn a result into Undecided: a hit stays the same hit, a miss stays a miss (never
+    // a hit), and nothing undecided at the full budget becomes decided
+    let n_miss = hits.iter().filter(|m| **m == MarchResult::Miss).count();
+    assert!(
+        n_miss > 0,
+        "no miss at the full budget: the miss rule is untested"
+    );
     for (m, c) in hits.iter().zip(&cut) {
-        if !matches!(m, MarchResult::Hit(_)) {
-            continue;
-        }
         assert!(
             *c == *m || *c == MarchResult::Undecided,
             "a ray over the budget became something else: {c:?} (was {m:?})"

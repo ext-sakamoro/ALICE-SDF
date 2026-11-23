@@ -5,7 +5,9 @@
 //!
 //! Oracle: the square patch `z = 0` with the author normal field `n(p) = (0.2 x, -0.1 y, 1)` (linear, so trilinear
 //! interpolation reproduces it up to u8 rounding), tilted up to ~17 degrees from `+z` across the patch. At the hit
-//! of a ray straight down at `(x, y)`, `attr_normal . normalize(n(x, y, 0)) >= 0.9999`.
+//! of a ray straight down at `(x, y)`, the angle between `attr_normal` and `normalize(n(x, y, 0))` is at most
+//! [`ANGLE_BOUND`], derived from the u8 rounding alone (a sampler reading a neighbouring node instead errs by the
+//! normal's change over half a cell, about 25 times that).
 //! Channel counts other than 2, 4 or 7 are refused when the level is built.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -17,6 +19,19 @@ fn square_db(x: f32, y: f32) -> f32 {
     let dx = x.abs() - 1.0;
     let dy = y.abs() - 1.0;
     Vec3::new(dx.max(0.0), dy.max(0.0), 0.0).length() + dx.max(dy).min(0.0)
+}
+
+/// The largest angle (rad) between the read author normal and the true one. Each brick spans 8 cells of 0.0625 mm
+/// = 0.5 mm, over which `nx = 0.2 x` changes by 0.1 and `ny = -0.1 y` by 0.05 (`nz` is constant and stored exactly);
+/// a u8 row decodes within half a step of its range, 0.1 / 255 / 2 and 0.05 / 255 / 2, and trilinear interpolation
+/// of these linear channels adds nothing. The error vector is at most |(1.96e-4, 0.98e-4)| = 2.2e-4 against
+/// |n| >= 1, so the angle is at most 2.2e-4; 3e-4 adds room for the f32 arithmetic. Reading the normal one node
+/// away (half a cell, 0.03125 mm) errs by 0.2 x 0.03125 = 6.3e-3 rad.
+const ANGLE_BOUND: f32 = 3e-4;
+
+/// The angle between two vectors (rad), from the cross product (exact near 0, where a dot product is not).
+fn angle(a: Vec3, b: Vec3) -> f32 {
+    a.normalize().cross(b.normalize()).length().asin()
 }
 
 fn author(x: f32, y: f32) -> Vec3 {
@@ -69,7 +84,10 @@ fn check(label: &str, rs: &[MarchResult], os: &[Vec3], wrong: &mut Vec<String>) 
         let want = author(o.x, o.y).normalize();
         match r {
             MarchResult::Hit(h) => match h.attr_normal {
-                Some(n) if n.dot(want) >= 0.9999 && (n.length() - 1.0).abs() <= 1e-5 => {}
+                Some(n)
+                    if n.dot(want) > 0.0
+                        && angle(n, want) <= ANGLE_BOUND
+                        && (n.length() - 1.0).abs() <= 1e-5 => {}
                 other => wrong.push(format!(
                     "{label} {o:?}: attr_normal {other:?}, want {want:?}"
                 )),
@@ -126,10 +144,17 @@ fn two_or_four_channels_carry_no_author_normal() {
             r => panic!("{nch} channels: {r:?}"),
         }
         #[cfg(feature = "gpu")]
-        if let Ok(g) = alice_sdf::sheet_field::gpu::GpuSheetField::new(&f) {
-            match g.march_batch(&[o], -Vec3::Z, 1.0, 4000).unwrap()[0] {
+        match alice_sdf::sheet_field::gpu::GpuSheetField::new(&f) {
+            Ok(g) => match g.march_batch(&[o], -Vec3::Z, 1.0, 4000).unwrap()[0] {
                 MarchResult::Hit(h) => assert_eq!(h.attr_normal, None, "gpu, {nch} channels"),
                 r => panic!("gpu, {nch} channels: {r:?}"),
+            },
+            Err(e) => {
+                assert!(
+                    std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+                    "ALICE_SDF_REQUIRE_GPU set but no GPU: {e}"
+                );
+                eprintln!("gpu-test: skipped (no GPU: {e})");
             }
         }
     }
