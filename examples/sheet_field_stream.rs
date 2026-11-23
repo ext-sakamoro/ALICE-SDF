@@ -1,7 +1,7 @@
 //! Sheet field streamed from an ASHF file: a stack of flat squares written to a file, read back by its index,
 //! split into chunks by channel bytes and into batches by a host memory budget, and ray-marched one batch at a
 //! time. The streamed hits are compared with the same field held in memory. A second field stores its UV channels
-//! on a coarse grid (ASHF v2) and as a band around the surface (ASHF v3), and the bytes of the three files are
+//! on a coarse grid (ASHF version 5) and as a band around the surface (ASHF version 6), and the bytes of the three files are
 //! printed.
 //!
 //! Run: `cargo run --example sheet_field_stream --no-default-features`
