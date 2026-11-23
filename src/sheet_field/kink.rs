@@ -410,6 +410,7 @@ impl KinkSheet {
     }
 }
 
+#[cfg(feature = "gpu")]
 /// Layout of a sheet's kink block in the GPU index table (all `u32`; offsets relative to the block's first word).
 #[cfg(feature = "gpu")]
 pub(crate) mod gpu_layout {
