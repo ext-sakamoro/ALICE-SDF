@@ -114,6 +114,9 @@ use crate::mesh::{validate_mesh, Mesh, MeshValidation};
 use crate::types::SdfNode;
 use glam::{DVec3, Vec3};
 
+mod gap_open;
+pub use gap_open::{narrow_air_beside_is_open, narrow_air_is_open, OPEN_REACH_LIMITS};
+
 /// Smallest march step, so a ray starting exactly on a surface still advances.
 const MARCH_EPS: f32 = 1e-4;
 
@@ -1439,6 +1442,8 @@ pub enum GapFailure {
 pub enum GapUndetermined {
     /// The limit is not a finite positive number.
     BadLimit,
+    /// The build axis given to [`GapReport::verdict_in_layers`] is zero or not finite.
+    BadBuildAxis,
     /// The proof was made for another limit than the one asked.
     ProofForAnotherLimit {
         /// The proof's limit.
@@ -1497,6 +1502,51 @@ impl GapReport {
     /// undecided; its certificate states the band it holds for (`proven_from` up to the limit).
     #[must_use]
     pub fn verdict(&self, limit: f32, proof: &GapProof) -> GapVerdict {
+        self.verdict_with(limit, proof, &|_| false, &|_| false)
+    }
+
+    /// [`GapReport::verdict`] for a shape printed in layers stacked along `build_axis`: narrow air that
+    /// is open in its layer (it reaches air of the limit's width within [`OPEN_REACH_LIMITS`] limits in
+    /// the same layer, see [`narrow_air_is_open`]) is a neck between separate walls, not a hole, and
+    /// does not fail the shape. A measured width below the limit is skipped when the air beside its wall
+    /// point is open; a proof witness or undecided box is skipped when its centre is open air. Enclosed
+    /// narrow air (a hole, a slot closed in the layer, a hole through a plate along the build axis) fails
+    /// as in [`GapReport::verdict`]. A skipped width leaves the answer to the proof: `Pass` still needs a
+    /// complete proof.
+    ///
+    /// `node` must be the shape the report and the proof were made for (its tree hash is checked).
+    /// `Undetermined(BadBuildAxis)` for a zero or non-finite axis.
+    #[must_use]
+    pub fn verdict_in_layers(
+        &self,
+        node: &SdfNode,
+        limit: f32,
+        proof: &GapProof,
+        build_axis: Vec3,
+    ) -> GapVerdict {
+        if !(build_axis.is_finite() && build_axis.length() > 0.0) {
+            return GapVerdict::Undetermined(GapUndetermined::BadBuildAxis);
+        }
+        if tree_hash(node) != self.tree {
+            return GapVerdict::Undetermined(GapUndetermined::ProofForAnotherShape);
+        }
+        self.verdict_with(
+            limit,
+            proof,
+            &|at| narrow_air_beside_is_open(node, at, limit, build_axis),
+            &|at| narrow_air_is_open(node, at, limit, build_axis),
+        )
+    }
+
+    /// The verdict, skipping a measured width whose wall point has open air beside it
+    /// (`open_beside`) and proof regions whose centre is open air (`open_at`).
+    fn verdict_with(
+        &self,
+        limit: f32,
+        proof: &GapProof,
+        open_beside: &dyn Fn(Vec3) -> bool,
+        open_at: &dyn Fn(Vec3) -> bool,
+    ) -> GapVerdict {
         if !(limit.is_finite() && limit > 0.0) {
             return GapVerdict::Undetermined(GapUndetermined::BadLimit);
         }
@@ -1518,7 +1568,7 @@ impl GapReport {
             return GapVerdict::Fail(GapFailure::Sheet { at });
         }
         if let (Some(width), Some(at)) = (self.min_gap, self.location) {
-            if width + GAP_TOLERANCE < limit {
+            if width + GAP_TOLERANCE < limit && !open_beside(at) {
                 return GapVerdict::Fail(GapFailure::Width { width, at });
             }
         }
@@ -1560,7 +1610,11 @@ impl GapReport {
             })
         };
         // the proof found walls facing each other nearer than the limit, outside any groove: a gap
-        if let Some(w) = proof.witnesses.iter().find(|w| !in_groove(w)) {
+        if let Some(w) = proof
+            .witnesses
+            .iter()
+            .find(|w| !in_groove(w) && !open_at(w.at))
+        {
             return GapVerdict::Fail(GapFailure::ProvenGap {
                 at: w.at,
                 width: w.width.unwrap_or(limit),
@@ -1572,7 +1626,11 @@ impl GapReport {
                 samples: self.unconfirmed_sheet_samples,
             });
         }
-        let open_boxes = proof.undecided_at.iter().filter(|w| !in_groove(w)).count();
+        let open_boxes = proof
+            .undecided_at
+            .iter()
+            .filter(|w| !in_groove(w) && !open_at(w.at))
+            .count();
         if open_boxes > 0 || proof.truncated || proof.exhausted {
             return GapVerdict::Undetermined(GapUndetermined::ProofIncomplete {
                 undecided: proof.undecided,
