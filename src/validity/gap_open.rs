@@ -281,6 +281,83 @@ mod gap_open_tests {
         assert!(box_is_open(&node, lo, hi, L, Vec3::Z).0);
     }
 
+    /// A block of material with the air boxes `(centre, half extents)` cut out.
+    fn carved(air: &[(Vec3, Vec3)]) -> SdfNode {
+        air.iter().fold(
+            SdfNode::box3d_half_extents(10.0, 10.0, 10.0),
+            |m, (c, h)| {
+                m.subtract(SdfNode::box3d_half_extents(h.x, h.y, h.z).translate(c.x, c.y, c.z))
+            },
+        )
+    }
+
+    /// The union of the solid boxes `(centre, half extents)`.
+    fn solid(parts: &[(Vec3, Vec3)]) -> SdfNode {
+        parts
+            .iter()
+            .map(|(c, h)| SdfNode::box3d_half_extents(h.x, h.y, h.z).translate(c.x, c.y, c.z))
+            .reduce(SdfNode::union)
+            .expect("parts")
+    }
+
+    /// Each part of the box margin is needed. The box `[-0.2, 0.2]² × [-0.5, 0.5]` (half-diagonal 0.57)
+    /// sits in an enclosed slot; its centre's layer reaches wide air through a way that only exists near
+    /// z = 0, so its points at z = ±0.5 are enclosed and the box must not be certified
+    #[test]
+    fn every_part_of_the_box_margin_is_needed() {
+        let (lo, hi) = (Vec3::new(-0.2, -0.2, -0.5), Vec3::new(0.2, 0.2, 0.5));
+        let top = Vec3::new(0.0, 0.0, 0.5);
+        // steps: a neck 0.5 wide and 0.4 high (f ≤ 0.2) joins the slot to a chamber; steps through it sum
+        // to about 0.4 > h but not > h + 2·hd
+        // (built from solid pieces: air cut out of a block box by box reads 0 where two cut boxes meet,
+        // since the difference is a bound there, which would close the neck)
+        let neck = solid(&[
+            (Vec3::new(-2.875, 0.0, 0.0), Vec3::new(2.125, 2.0, 5.0)),
+            (Vec3::new(2.875, 0.0, 0.0), Vec3::new(2.125, 2.0, 5.0)),
+            (Vec3::new(0.0, -1.5, 0.0), Vec3::new(0.75, 0.5, 5.0)),
+            (Vec3::new(-0.5, 1.5, 0.0), Vec3::new(0.25, 0.5, 5.0)),
+            (Vec3::new(0.5, 1.5, 0.0), Vec3::new(0.25, 0.5, 5.0)),
+            (Vec3::new(0.0, 1.5, 2.6), Vec3::new(0.25, 0.5, 2.4)),
+            (Vec3::new(0.0, 1.5, -2.6), Vec3::new(0.25, 0.5, 2.4)),
+        ]);
+        assert!(narrow_air_is_open(&neck, Vec3::ZERO, L, Vec3::Z));
+        assert!(!narrow_air_is_open(&neck, top, L, Vec3::Z));
+        assert!(!box_is_open(&neck, lo, hi, L, Vec3::Z).0);
+        // wide end: the slot (1.8 wide) ends in a sphere of radius 1.4 (f = 1.4 at its centre, ≥ L/2 but
+        // below L/2 + hd); a layer 0.5 off its centre holds no air L wide
+        let (lo2, hi2) = (lo + Vec3::new(0.0, 2.5, 0.0), hi + Vec3::new(0.0, 2.5, 0.0));
+        let ball = carved(&[(Vec3::ZERO, Vec3::new(0.9, 3.0, 2.0))])
+            .subtract(SdfNode::sphere(1.4).translate(0.0, 3.3, 0.0));
+        assert!(narrow_air_is_open(
+            &ball,
+            Vec3::new(0.0, 2.5, 0.0),
+            L,
+            Vec3::Z
+        ));
+        assert!(!narrow_air_is_open(
+            &ball,
+            Vec3::new(0.0, 2.5, 0.5),
+            L,
+            Vec3::Z
+        ));
+        assert!(!box_is_open(&ball, lo2, hi2, L, Vec3::Z).0);
+    }
+
+    /// A step never crosses material, however thin: a pocket closed by a wall 0.1 thick (thinner than
+    /// the pitch h = 0.25) with open air behind it is still enclosed
+    #[test]
+    fn a_step_never_crosses_a_thin_wall() {
+        // a slot closed at y = -1 by a back wall and at y in [1.0, 1.1] by a thin wall, open air beyond
+        let node = solid(&[
+            (Vec3::new(-2.875, 0.0, 0.0), Vec3::new(2.125, 2.0, 5.0)),
+            (Vec3::new(2.875, 0.0, 0.0), Vec3::new(2.125, 2.0, 5.0)),
+            (Vec3::new(0.0, -1.5, 0.0), Vec3::new(0.75, 0.5, 5.0)),
+            (Vec3::new(0.0, 1.05, 0.0), Vec3::new(0.75, 0.05, 5.0)),
+        ]);
+        assert!(eval(&node, Vec3::new(0.0, 1.05, 0.0)) < 0.0);
+        assert!(!narrow_air_is_open(&node, Vec3::ZERO, L, Vec3::Z));
+    }
+
     /// The verdict end to end (grid + layered proof) for the open slot, the closed pocket of the same
     /// width 1.5 and the 1 mm through-hole under the limit 2, printed along z: the open slot passes
     /// within the budget (the plain verdict fails it), the pocket and the hole fail
