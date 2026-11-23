@@ -3,8 +3,9 @@
 //! absence returned another dispatch's old results at 16,384 points and up).
 //!
 //! 40 batches of 32,768 points, 3 times. Every point lies beyond the sheet's box along +x at its own
-//! distance (the union is the box distance there, oracle: the CPU reference), so a value left from another
-//! batch differs by at least 32 mm, far outside f32 evaluation noise.
+//! distance (the union is the box distance there, oracle: the closed form `x - hi.x`, the distance from the point to
+//! the box face it faces, independent of the code under test), so a value left from another batch differs by at
+//! least 32 mm, far outside f32 evaluation noise.
 //!
 //! Long: it runs only with `ALICE_SDF_VOLUME_READBACK=1` (the GPU job in CI, and the device lane), and
 //! needs a GPU then.
@@ -38,6 +39,15 @@ fn every_sheet_field_value_read_back_is_this_batch() {
     let gpu = GpuSheetField::new(&field)
         .expect("ALICE_SDF_VOLUME_READBACK is set but no GPU device was found");
     let hi = field.sheets[0].hi;
+    let lo = field.sheets[0].lo;
+    assert!(
+        lo.y < 0.0 && hi.y > 0.0 && lo.z < 0.0 && hi.z > 0.0,
+        "the points' line runs through the box"
+    );
+    assert!(
+        10.0 > 3.0 * field.sheets[0].hc,
+        "the box distance is over the outside bound's floor"
+    );
     let (mut wrong, mut checked) = (0u64, 0u64);
     for _run in 0..RUNS {
         for batch in 0..BATCHES {
@@ -47,7 +57,9 @@ fn every_sheet_field_value_read_back_is_this_batch() {
             let got = gpu.eval_batch(&pts).unwrap();
             assert_eq!(got.len(), pts.len());
             for (p, g) in pts.iter().zip(&got) {
-                let want = field.eval(*p).0;
+                // closed form: the point is on the box's +x axis line (y = z = 0 inside the box's y and z range),
+                // 10 mm or more past its face, beyond the outside bound's 3 h floor
+                let want = p.x - hi.x;
                 if (g.f - want).abs() > 1e-5 * want {
                     wrong += 1;
                 }
