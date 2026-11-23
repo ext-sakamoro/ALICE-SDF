@@ -415,9 +415,10 @@ pub struct GapRegion {
     /// The most opposed pair of wall directions seen from the box's air points (centre and corners),
     /// `None` when fewer than two of them are air.
     pub walls: Option<(Vec3, Vec3)>,
-    /// For a witness, the distance between the two wall points across the gap: within
-    /// [`GAP_TOLERANCE`] of the distance between the walls (each march stops just short of its wall),
-    /// and below the limit by more than that.
+    /// For a witness, the width of the air across the gap: the diameter of the ball tangent to the
+    /// walls at the two wall points (exact for parallel walls and round holes), within half of
+    /// [`GAP_TOLERANCE`] of it (each march stops just short of its wall), and below the limit by more
+    /// than the tolerance.
     pub width: Option<f32>,
 }
 
@@ -1172,12 +1173,29 @@ fn wall_point_with(field: &mut impl FnMut(Vec3) -> f32, p: Vec3, n: Vec3) -> Opt
     None
 }
 
+/// The width of the air between the wall points `w₁`, `w₂` whose wall directions (into the air) are
+/// `n₁`, `n₂`: the diameter `D = 2·(w₂ − w₁)·(n₁ − n₂) / |n₁ − n₂|²` of the ball tangent to both walls
+/// there.
+///
+/// oracle (closed forms): in a round hole or a spherical cavity of radius `R` every wall point is
+/// `w = O − R·n`, so `w₂ − w₁ = R·(n₁ − n₂)` and `D = 2R` for every pair; between parallel walls `W`
+/// apart (`n₂ = −n₁`, `w₂ − w₁ = W·n₁ + t` with `t ⟂ n₁`) `D = W` for every pair. The chord
+/// `|w₂ − w₁|` reads `2R·sin(φ/2)` in the hole (`φ` the angle between the directions: 0.87·2R at the
+/// facing bound), which reads a hole wider than the limit as a gap. A wall point off its wall by `eᵢ`
+/// along `nᵢ` moves `D` by `−(e₁ + e₂)`, so the march's quarter-tolerance stop keeps `D` within half
+/// the tolerance, as for the chord. Called only for facing directions (`n₁·n₂ < FACING_DOT`), where
+/// `|n₁ − n₂|² > 3`.
+fn tangent_ball_diameter(w1: Vec3, n1: Vec3, w2: Vec3, n2: Vec3) -> f32 {
+    let d = n1 - n2;
+    2.0 * (w2 - w1).dot(d) / d.length_squared()
+}
+
 /// A pair of air points that see walls facing each other less than `limit` apart: wall directions with
 /// dot below [`FACING_DOT`], the wall points `wᵢ` (reached by [`wall_point`], on the surface) each in
 /// front of the other's wall (`(w₂ − w₁)·n₁ > 0`, `(w₁ − w₂)·n₂ > 0`, so the two sides of a thin fin,
-/// whose walls face away, are not a gap), and `|w₁ − w₂| + GAP_TOLERANCE < limit`: two surface points
-/// across the air nearer than the limit by more than the wall points' tolerance, the same margin the
-/// grid's widths fail by. Returns the two directions and `|w₁ − w₂|`.
+/// whose walls face away, are not a gap), and `D + GAP_TOLERANCE < limit` for the width `D` of
+/// [`tangent_ball_diameter`]: air between the two walls narrower than the limit by more than the wall
+/// points' tolerance, the same margin the grid's widths fail by. Returns the two directions and `D`.
 fn facing_pair(
     m: &mut Meter<'_>,
     pts: &[(Vec3, f32, Vec3)],
@@ -1198,7 +1216,7 @@ fn facing_pair(
             let (Some(w1), Some(w2)) = (wall(m, i), wall(m, j)) else {
                 continue;
             };
-            let width = w1.distance(w2);
+            let width = tangent_ball_diameter(w1, a.2, w2, b.2);
             let fronts = (w2 - w1).dot(a.2) > 0.0 && (w1 - w2).dot(b.2) > 0.0;
             let real = fronts && a.0.distance(w1) <= 2.0 * a.1 && b.0.distance(w2) <= 2.0 * b.1;
             // each wall point stops in the air where the field falls to `GAP_TOLERANCE / 4` (the march

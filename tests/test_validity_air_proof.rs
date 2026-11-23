@@ -15,6 +15,7 @@
 
 use alice_sdf::validity::{
     measure_gaps, prove_gaps, GapFailure, GapUndetermined, GapVerdict, FACING_DOT, GAP_PROOF_WORK,
+    GAP_TOLERANCE,
 };
 use alice_sdf::SdfNode;
 use glam::Vec3;
@@ -176,4 +177,52 @@ fn a_proof_out_of_boxes_does_not_pass() {
         }) => {}
         v => panic!("a proof out of boxes read as {v:?}"),
     }
+}
+
+/// A plate 3 thick with a round hole of radius `r` along y.
+fn plate_with_hole(r: f32) -> SdfNode {
+    SdfNode::box3d_half_extents(4.0, 1.5, 4.0).subtract(SdfNode::cylinder(r, 10.0))
+}
+
+// oracle: a round hole of diameter 2R is a gap below L exactly when 2R < L; every facing pair of its
+// wall points (directions more than 120° apart) spans a chord 2R·sin(φ/2), as short as 0.87·2R, so a
+// chord reading calls a 2.2 hole a gap below 2.0
+#[test]
+fn a_round_hole_wider_than_the_limit_is_no_gap_on_every_offset() {
+    let s = plate_with_hole(1.1);
+    let mut compared = 0;
+    for off in OFFSETS {
+        let lo = Vec3::new(-1.3 + off * 0.1, -1.4 + off, -1.3 + off * 0.1);
+        let hi = Vec3::new(1.3, 1.4, 1.3);
+        let p = prove_gaps(&s, 2.0, lo, hi, DEPTH, GAP_PROOF_WORK).expect("proof");
+        assert!(
+            p.witnesses.is_empty(),
+            "off {off}: a 2.2 hole read as a gap below 2.0: {:?}",
+            p.witnesses
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, OFFSETS.len());
+}
+
+#[test]
+fn a_round_hole_narrower_than_the_limit_is_a_gap_of_its_diameter() {
+    let s = plate_with_hole(0.9);
+    let mut widths = 0;
+    for off in OFFSETS {
+        let lo = Vec3::new(-1.1 + off * 0.1, -1.4 + off, -1.1 + off * 0.1);
+        let hi = Vec3::new(1.1, 1.4, 1.1);
+        let p = prove_gaps(&s, 2.0, lo, hi, DEPTH, GAP_PROOF_WORK).expect("proof");
+        assert!(!p.witnesses.is_empty(), "off {off}: no gap proven ({p:?})");
+        for w in &p.witnesses {
+            let width = w.width.expect("a witness carries its width");
+            assert!(
+                (width - 1.8).abs() <= 0.5 * GAP_TOLERANCE + 1e-3,
+                "off {off}: width {width} at {} for a 1.8 hole",
+                w.at
+            );
+            widths += 1;
+        }
+    }
+    assert!(widths >= OFFSETS.len());
 }
