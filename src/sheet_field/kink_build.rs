@@ -573,7 +573,8 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
     (Some(rec), st)
 }
 
-/// Write the ASKC v3 sidecar (v2 plus per sheet the attribute flags and per face the corner UVs / author normals).
+/// Write the ASKC v4 sidecar (v2 plus per sheet the attribute flags and per face the corner UVs / author normals, and
+/// this crate's semantics identifier after the version).
 ///
 /// One record per sheet of the ASHF file, in file order, each with its slab and level count (a `None` record: the
 /// sheet has no flagged cell, written as empty levels).
@@ -581,13 +582,30 @@ pub fn write_askc<W: Write>(
     w: &mut W,
     sheets: &[(Option<KinkRecord>, f64, usize)],
 ) -> io::Result<u64> {
+    write_askc_with_provenance(w, sheets, &crate::provenance::Provenance::sdf())
+}
+
+/// [`write_askc`] with the caller's semantics identifier in the header.
+///
+/// # Errors
+///
+/// As [`write_askc`].
+pub fn write_askc_with_provenance<W: Write>(
+    w: &mut W,
+    sheets: &[(Option<KinkRecord>, f64, usize)],
+    provenance: &crate::provenance::Provenance,
+) -> io::Result<u64> {
     let mut n = 0u64;
     let mut put = |w: &mut W, b: &[u8]| -> io::Result<()> {
         n += b.len() as u64;
         w.write_all(b)
     };
-    put(w, b"ASKC")?;
-    put(w, &3u32.to_le_bytes())?;
+    put(w, &super::kink::ASKC_MAGIC)?;
+    put(w, &super::kink::ASKC_VERSION.to_le_bytes())?;
+    put(
+        w,
+        &provenance.slot_for(crate::provenance::StoredForm::KinkCells),
+    )?;
     put(w, &(sheets.len() as u32).to_le_bytes())?;
     for (rec, slab, nlev) in sheets {
         let Some(r) = rec else {

@@ -4124,3 +4124,82 @@ fn only_64_lower_case_hex_digits_ending_the_value_are_read() {
         Err(ProvenanceError::Unreadable(_))
     ));
 }
+
+/// The sheet field files (ASHF, its ASKC kink sidecar) store the identifier after the version and their own readers
+/// refuse another one
+#[test]
+fn sheet_field_writers_store_the_identifier() {
+    use alice_sdf::sheet_field::kink::KinkFile;
+    use alice_sdf::sheet_field::kink_build::{write_askc, write_askc_with_provenance};
+    use alice_sdf::sheet_field::stream::{write_ashf, write_ashf_with_provenance, AshfIndex};
+    use alice_sdf::sheet_field::{SheetField, ValidRule};
+    type SheetWrite = fn(&Path, Option<&Provenance>);
+    const SHEET_WRITERS: &[(&str, &str, SheetWrite)] = &[
+        (
+            "src/sheet_field/stream.rs::write_ashf",
+            "f.ashf",
+            |p, id| {
+                let f = SheetField::new(Vec::new(), ValidRule::CellV1);
+                let mut out = std::fs::File::create(p).unwrap();
+                match id {
+                    None => write_ashf(&mut out, &f).unwrap(),
+                    Some(id) => write_ashf_with_provenance(&mut out, &f, id).unwrap(),
+                };
+            },
+        ),
+        (
+            "src/sheet_field/kink_build.rs::write_askc",
+            "f.askc",
+            |p, id| {
+                let records = [(None, 0.01, 0)];
+                let mut out = std::fs::File::create(p).unwrap();
+                match id {
+                    None => write_askc(&mut out, &records).unwrap(),
+                    Some(id) => write_askc_with_provenance(&mut out, &records, id).unwrap(),
+                };
+            },
+        ),
+    ];
+    let mut compared = 0;
+    for &(name, file, write) in SHEET_WRITERS {
+        let path = temp(file);
+        let own_reader = |path: &Path| -> bool {
+            let bytes = std::fs::read(path).unwrap();
+            if file.ends_with(".ashf") {
+                AshfIndex::scan(&mut std::io::Cursor::new(bytes)).is_ok()
+            } else {
+                KinkFile::read(&mut bytes.as_slice()).is_ok()
+            }
+        };
+        write(&path, None);
+        assert!(
+            provenance::read(&path)
+                .unwrap()
+                .is_written_under(&Provenance::sdf()),
+            "{name}"
+        );
+        assert!(provenance::check_sdf(&path).is_ok(), "{name}");
+        assert!(own_reader(&path), "{name}: its own reader refused it");
+        write(&path, Some(&caller_id()));
+        assert!(
+            provenance::read(&path)
+                .unwrap()
+                .is_written_under(&caller_id()),
+            "{name}"
+        );
+        assert!(
+            matches!(
+                provenance::check_sdf(&path),
+                Err(ProvenanceError::Mismatch { .. })
+            ),
+            "{name}"
+        );
+        assert!(
+            !own_reader(&path),
+            "{name}: its own reader took another identifier"
+        );
+        std::fs::remove_file(&path).ok();
+        compared += 1;
+    }
+    assert_eq!(compared, SHEET_WRITERS.len());
+}
