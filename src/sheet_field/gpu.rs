@@ -331,6 +331,19 @@ struct DispatchControl {
     cut: (u32, u32),
 }
 
+/// Bytes of a ray's march result in the output binding (4 `vec4<f32>`).
+pub const MARCH_OUT_BYTES_PER_RAY: u64 = 64;
+
+/// The most rays one march dispatch may hold on a device: the workgroups one dispatch dimension allows times the
+/// workgroup size, and the rays whose results fit one storage binding (`binding_limit`, the smaller of the device's
+/// largest storage binding and largest buffer, over [`MARCH_OUT_BYTES_PER_RAY`]). Never below one workgroup.
+#[must_use]
+pub fn dispatch_cap(max_workgroups_per_dim: u32, binding_limit: u64) -> usize {
+    let by_groups = u64::from(max_workgroups_per_dim) * u64::from(WG);
+    let by_binding = binding_limit / MARCH_OUT_BYTES_PER_RAY;
+    usize::try_from(by_groups.min(by_binding).max(u64::from(WG))).unwrap_or(usize::MAX)
+}
+
 /// The next dispatch size after one of `rays` took `secs`.
 ///
 /// The rays whose predicted time (at the measured seconds per ray) is the smaller of the target and twice the last
@@ -487,6 +500,13 @@ impl GpuSheetField {
         // the kink blocks ([`super::kink`]), appended to the index table last; a sheet's block offset is relative to
         // the kink table until the table's base is known, NONE when the sheet has none
         let mut kinks = Vec::<u32>::new();
+        // an empty field has no sheet or level record to bind (a binding smaller than one record fails at dispatch):
+        // refused here, typed, before any device work; the CPU answers it (every ray a miss)
+        if field.sheets.is_empty() {
+            return Err(GpuError::InvalidFormat(
+                "sheet field: no sheets to upload (march an empty field on the CPU: every ray misses)".into(),
+            ));
+        }
         if field.sheets.len() > MAX_FIELD_SHEETS as usize {
             return Err(GpuError::InvalidFormat(format!(
                 "sheet field: {} sheets, over the upload's MAX_FIELD_SHEETS {MAX_FIELD_SHEETS}",
@@ -1031,12 +1051,11 @@ impl GpuSheetField {
         let mut res = vec![MarchResult::Miss; n];
         let mut at = 0;
         while at < n {
-            let most = self
-                .context()
-                .device()
-                .limits()
-                .max_compute_workgroups_per_dimension as usize
-                * WG as usize;
+            let limits = self.context().device().limits();
+            let most = dispatch_cap(
+                limits.max_compute_workgroups_per_dimension,
+                u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size),
+            );
             let size = self
                 .control
                 .lock()
