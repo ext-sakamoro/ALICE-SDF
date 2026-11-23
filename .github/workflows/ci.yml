@@ -681,6 +681,8 @@ jobs:
       - name: Self-hosted build stall watch (tests)
         shell: pwsh
         run: pwsh -NoProfile -File scripts/test-ci-log-stall-watch.ps1
+      - name: nearest face reference distances (GOLDEN re-derived from its inputs, and the generator's own tests)
+        run: python scripts/test_gen_nearest_golden.py
       - name: CI test coverage oracle (検査器自身の試験)
         run: python scripts/test_ci_test_coverage_check.py
       - name: CI test coverage (feature 付き oracle を走らせる cargo test が CI にある)
