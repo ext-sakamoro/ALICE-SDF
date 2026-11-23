@@ -122,37 +122,22 @@ pub fn max_live_for(bound: u32) -> Result<u32, GpuError> {
 /// The march program's text for a list of `max_live` live sheets.
 #[must_use]
 pub fn march_shader(max_live: u32) -> String {
-    march_shader_mode(max_live, super::RootMode::Dip)
+    march_shader_margin(max_live, 0.0)
 }
 
-/// [`march_shader`] for a root mode (M1 dip or M2 cell walk).
-#[must_use]
-pub fn march_shader_mode(max_live: u32, mode: super::RootMode) -> String {
-    march_shader_margin(max_live, mode, 0.0)
-}
-
-/// [`march_shader_mode`] with a step margin.
+/// [`march_shader`] with a step margin.
 ///
 /// Every step is taken from the union value less `margin` ([`super::kink::KINK_STEP_MARGIN`] for a field with kink
 /// cells, 0 otherwise; the CPU `SheetField::step_margin`).
 #[must_use]
-pub fn march_shader_margin(max_live: u32, mode: super::RootMode, margin: f32) -> String {
+pub fn march_shader_margin(max_live: u32, margin: f32) -> String {
     SHADER
         .replace("__STEP_MARGIN__", &format!("{margin:?}"))
         .replace("__MAX_LIVE__", &max_live.to_string())
         .replace("__MIN_STEP__", &format!("{:?}", super::MIN_STEP))
-        .replace("__DIP_NODE_CAP__", &format!("{}u", super::DIP_NODE_CAP))
         .replace(
             "__CELL_WALK_CAP__",
             &format!("{}u", super::cellroot::CELL_WALK_CAP),
-        )
-        .replace(
-            "__ROOT_MODE__",
-            if mode == super::RootMode::CellWalk {
-                "1"
-            } else {
-                "0"
-            },
         )
         .replace("__MAX_LEVELS__", &MAX_SHEET_LEVELS.to_string())
         .replace("__MAX_KINK_TRIS__", &MAX_KINK_CELL_TRIS.to_string())
@@ -471,18 +456,20 @@ impl GpuSheetField {
         Self::new_with_mode(field, field.root_mode())
     }
 
-    /// [`Self::new`] with the march program compiled for `mode` (M1 dip / M2 cell walk) whatever the field's own.
+    /// [`Self::new`] for `mode` whatever the field's own. The GPU program runs the cell walk only; any other mode
+    /// (the CPU's fixed-step reference) is refused, never run as something else.
     pub fn new_with_mode(field: &SheetField, mode: super::RootMode) -> Result<Self, GpuError> {
-        Self::build(field, mode, &|src| src)
+        if mode != super::RootMode::CellWalk {
+            return Err(GpuError::InvalidFormat(format!(
+                "the GPU sheet march runs the cell walk only, not {mode:?}"
+            )));
+        }
+        Self::build(field, &|src| src)
     }
 
     /// [`Self::new`] with the march shader's text passed through `edit` first (the module's tests use it to break
     /// one property of the shader on purpose).
-    fn build(
-        field: &SheetField,
-        mode: super::RootMode,
-        edit: &dyn Fn(String) -> String,
-    ) -> Result<Self, GpuError> {
+    fn build(field: &SheetField, edit: &dyn Fn(String) -> String) -> Result<Self, GpuError> {
         let mut sheets = Vec::new();
         let mut levels = Vec::new();
         let (mut index, mut rows, mut qbytes, mut scoff) = (
@@ -658,7 +645,7 @@ impl GpuSheetField {
         let module = context.shader_module_with_ceiling(
             MARCH_KERNEL,
             wgpu::ShaderSource::Wgsl(
-                edit(march_shader_margin(max_live, mode, field.step_margin())).into(),
+                edit(march_shader_margin(max_live, field.step_margin())).into(),
             ),
             &march_maxima(),
             march_ceiling(),
@@ -1643,47 +1630,10 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
 
 // a bisected sign change of sheet k's g at p is a crossing of the sheet: answered, unmasked, |s| <= JUMP_S,
 // d_b <= step/2 (inside the boundary up to the rounding of the stored d_b), as SheetField::march
-// the earliest sign change of sheet k's g inside a march step whose ends (t, g, |s|) have the same sign, as
-// (1, a, b, g at a), or (0, ...) when there can be none: an interval can hold a zero only if
-// |s_a| + |s_b| <= lip (t_b - t_a); passing intervals are halved, earliest half first, down to the step over 2^30
-// (line for line with the CPU Sheet::dip)
 // how far a sample is from an accepted crossing (CPU Sample::reach)
 fn reach(c: Sample) -> f32 {
     if (c.inside) { return max(abs(c.s), c.db - 0.5 * c.db_step); }
     return c.f;
-}
-
-// the midpoints the last dip sampled; the result's x: 0 clear, 1 crossing, 2 exhausted (the
-// cap or the 32-interval stack stopped it with an interval open: the ray is undecided, never a miss)
-var<private> dip_nodes: u32;
-fn dip(k: u32, o: vec3<f32>, d: vec3<f32>, a: vec3<f32>, b: vec3<f32>, lip: f32) -> vec4<f32> {
-    dip_nodes = 0u;
-    if (lip <= 0.0) { return vec4<f32>(0.0); }
-    let side = a.y < 0.0;
-    let floor_w = (b.x - a.x) * (1.0 / 1073741824.0);
-    var stl: array<vec3<f32>, 32>;
-    var str: array<vec3<f32>, 32>;
-    var n = 1u;
-    stl[0] = a; str[0] = b;
-    for (var pops = 0u; pops < 2u * __DIP_NODE_CAP__ + 2u; pops = pops + 1u) { if (!tick()) { break; }
-        if (n == 0u) { break; }
-        n = n - 1u;
-        let l = stl[n];
-        let r = str[n];
-        if (l.z + r.z > lip * (r.x - l.x) || r.x - l.x <= floor_w) { continue; }
-        if (dip_nodes >= __DIP_NODE_CAP__) { return vec4<f32>(2.0, 0.0, 0.0, 0.0); }
-        let tm = 0.5 * (l.x + r.x);
-        let c = sample_sheet(k, o + d * tm, 2u);
-        dip_nodes = dip_nodes + 1u;
-        let m = vec3<f32>(tm, c.g, reach(c));
-        if ((c.g < 0.0) != side) { return vec4<f32>(1.0, l.x, tm, l.y); }
-        if (n + 2u > 32u) { return vec4<f32>(2.0, 0.0, 0.0, 0.0); }
-        stl[n] = m; str[n] = r;
-        stl[n + 1u] = l; str[n + 1u] = m;
-        n = n + 2u;
-    }
-    if (n != 0u) { return vec4<f32>(2.0, 0.0, 0.0, 0.0); }
-    return vec4<f32>(0.0);
 }
 
 fn crossing_inside(k: u32, p: vec3<f32>) -> bool {
@@ -2024,7 +1974,7 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var tprev = 0.0;
     var kind = 2;
     var own = 0u;
-    var dip_out = false;
+    var walk_out = false;
     var floor_step = false;
     for (var step = 0u; step < U.steps; step = step + 1u) { if (!tick()) { break; }
         if (overflow) { break; }
@@ -2055,9 +2005,9 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             for (var adv = 0u; adv < MAX_LIVE; adv = adv + 1u) { if (!tick()) { break; } if (!(jp < n_prev && prev_k[jp] < k)) { break; } jp = jp + 1u; }
             if (jp >= n_prev || prev_k[jp] != k) { continue; }
             let gp = prev_g[jp];
-            if (__ROOT_MODE__u == 1u && floor_step) {
+            if (floor_step) {
                 let wr = walk_first_root(k, o, d, tprev, t);
-                if (wr.x == 3.0) { kind = 4; dip_out = true; break; }
+                if (wr.x == 3.0) { kind = 4; walk_out = true; break; }
                 if (wr.x == 1.0 && wr.y < thit) { thit = wr.y; khit = k; }
                 // a crossing exists when the step's ends have opposite signs, whatever the walk located (the CPU march)
                 if (wr.x == 0.0 && ((gc < 0.0) != (gp < 0.0))) {
@@ -2072,17 +2022,9 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 }
                 continue;
             }
+            // not a floor step: the step stayed inside the free ball, so ends of one sign hold no zero
+            if ((gc < 0.0) == (gp < 0.0)) { continue; }
             var a = tprev; var b = t; var ga = gp;
-            if ((gc < 0.0) == (gp < 0.0) && __ROOT_MODE__u == 1u) { continue; }
-            if ((gc < 0.0) == (gp < 0.0)) {
-                // the same side at both ends: a crossing inside the step needs |s| to go to 0 and back (CPU dip)
-                var lip = 0.0;
-                if (prev_l[jp] > 0.0 && cs.lip > 0.0) { lip = max(prev_l[jp], cs.lip); }
-                let dr = dip(k, o, d, vec3<f32>(tprev, gp, prev_s[jp]), vec3<f32>(t, gc, reach(cs)), lip);
-                if (dr.x == 2.0) { kind = 4; dip_out = true; break; }
-                if (dr.x == 0.0) { continue; }
-                a = dr.y; b = dr.z; ga = dr.w;
-            }
             for (var it = 0; it < 30; it = it + 1) { if (!tick()) { break; }
                 let mid = 0.5 * (a + b);
                 let gm = sample_sheet(k, o + d * mid, 2u).g;
@@ -2091,7 +2033,7 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let tm = 0.5 * (a + b);
             if (tm < thit && crossing_inside(k, o + d * tm)) { thit = tm; khit = k; }
         }
-        if (overflow || dip_out) { break; }
+        if (overflow || walk_out) { break; }
         if (thit < 1e29) { t = thit; own = khit; kind = 1; break; }
         tprev = t;
         for (var j = 0u; j < MAX_LIVE; j = j + 1u) { if (!tick()) { break; } if (j >= n_cur) { break; } prev_k[j] = cur_k[j]; prev_g[j] = cur_g[j]; prev_s[j] = cur_s[j]; prev_l[j] = cur_l[j]; }
@@ -2351,7 +2293,7 @@ mod tests {
             "no hits: the scene is wrong"
         );
         let sort = "if (j == 0u || (*L)[j - 1u] <= x) { break; }";
-        let bad = GpuSheetField::build(&f, f.root_mode(), &|src: String| {
+        let bad = GpuSheetField::build(&f, &|src: String| {
             assert_eq!(src.matches(sort).count(), 1, "the sort line moved");
             src.replace(sort, "if (j == 0u || (*L)[j - 1u] >= x) { break; }")
         })
@@ -2414,23 +2356,18 @@ mod tests {
 
 #[cfg(test)]
 mod shader_validate {
-    /// The march program (both root modes) parses and validates on the CPU (naga), before any device runs it.
+    /// The march program parses and validates on the CPU (naga), before any device runs it.
     #[test]
     fn the_march_program_validates_without_a_device() {
-        for mode in [
-            super::super::RootMode::Dip,
-            super::super::RootMode::CellWalk,
-        ] {
-            let src = super::march_shader_mode(super::MAX_LIVE_SHEETS, mode);
-            let module = wgpu::naga::front::wgsl::parse_str(&src)
-                .unwrap_or_else(|e| panic!("{mode:?}: {}", e.emit_to_string(&src)));
-            wgpu::naga::valid::Validator::new(
-                wgpu::naga::valid::ValidationFlags::all(),
-                wgpu::naga::valid::Capabilities::all(),
-            )
-            .validate(&module)
-            .unwrap_or_else(|e| panic!("{mode:?}: {e:?}"));
-        }
+        let src = super::march_shader(super::MAX_LIVE_SHEETS);
+        let module = wgpu::naga::front::wgsl::parse_str(&src)
+            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(&src)));
+        wgpu::naga::valid::Validator::new(
+            wgpu::naga::valid::ValidationFlags::all(),
+            wgpu::naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .unwrap_or_else(|e| panic!("{e:?}"));
     }
 
     fn parsed(src: &str) -> wgpu::naga::Module {
@@ -2447,14 +2384,8 @@ mod shader_validate {
         let mut compared = 0;
         let mut ml = super::MAX_LIVE_SHEETS;
         while ml <= super::MAX_LIVE_CAP {
-            for (mode, margin) in [
-                crate::sheet_field::RootMode::Dip,
-                crate::sheet_field::RootMode::CellWalk,
-            ]
-            .into_iter()
-            .flat_map(|m| [(m, 0.0), (m, crate::sheet_field::kink::KINK_STEP_MARGIN)])
-            {
-                let m = parsed(&super::march_shader_margin(ml, mode, margin));
+            for margin in [0.0, crate::sheet_field::kink::KINK_STEP_MARGIN] {
+                let m = parsed(&super::march_shader_margin(ml, margin));
                 let loops = crate::gpu_loop_bound::check_module(&m, &super::march_maxima());
                 assert!(loops.unbounded.is_empty(), "{ml}: {:?}", loops.unbounded);
                 let r = crate::gpu_loop_bound::check_counted(&m, &super::march_maxima(), c.counter);
@@ -2467,7 +2398,7 @@ mod shader_validate {
             }
             ml *= 2;
         }
-        assert_eq!(compared, 20);
+        assert_eq!(compared, 10);
     }
 
     /// A sheet with more levels than the GPU loops are bounded by is refused at upload, before any device.

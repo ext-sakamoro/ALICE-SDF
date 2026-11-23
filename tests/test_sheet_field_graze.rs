@@ -1,7 +1,7 @@
 //! Grazes: a ray that cuts a sheet over a chord shorter than the march's floor step (`MIN_STEP`, 0.01) has `g` of
 //! the same sign at both ends of the step that contains the chord, so a march that only compares the step's ends
-//! misses it. The dip search (module docs) finds it: a step whose ends satisfy `|s_a| + |s_b| <= L (t_b - t_a)`
-//! is searched, and no other step can hold a zero.
+//! misses it. The cell walk finds it: every floor step is walked cell by cell for the first root, and a step longer
+//! than the floor stays inside the free ball, so it cannot hold a zero.
 //!
 //! Oracle (not the march): a fine scan of the stored field along each ray, `g` sampled every 1e-5 (a hundredth of
 //! the chords below), the first sign change bisected. The scene is a thin cylinder (radius R = 0.02, axis along y,
