@@ -6,4 +6,4 @@ together.
 
 | Key | Not wired | Resolved when |
 |---|---|---|
-| `kink-point-evaluator` | `sheet_field::kink::KinkSheet::from_geom` and `KinkSheet::eval_all`: the exact point evaluator (`s`, `d_b`, unsigned distance) a sheet builder uses for its node values, the same code the march runs in a flagged cell. Checked by hand values in `src/sheet_field/kink_build.rs::derived_normals_by_hand_and_the_point_evaluator`. | A builder in this crate writes node values from a sheet's mesh through it. |
+| `kink-point-evaluator` | `sheet_field::kink::KinkSheet::from_geom`, `KinkSheet::eval_all` and `KinkSheet::eval_attributes`: the exact point evaluator (`s`, `d_b`, unsigned distance, and the UV and author normal of the closest point) a sheet builder uses for its node values, the same code the march runs in a flagged cell. Checked by hand values in `src/sheet_field/kink_build.rs::derived_normals_by_hand_and_the_point_evaluator`. | A builder in this crate writes node values from a sheet's mesh through it. |

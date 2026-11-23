@@ -26,7 +26,7 @@ use std::io::{self, Write};
 
 use glam::DVec3;
 
-use super::kink::{CELL_DB, CELL_S};
+use super::kink::{CELL_ATTR, CELL_DB, CELL_S};
 use super::{Sheet, BRICK};
 
 /// One sheet's own mesh, as its builder holds it.
@@ -40,6 +40,10 @@ pub struct SheetGeom<'a> {
     pub rim: &'a [[u32; 2]],
     /// The slab `H` of the inside `d_b`.
     pub slab: f64,
+    /// Per face: the corner UVs, when the sheet carries UV channels (the march takes them in flagged cells).
+    pub uv: Option<&'a [[[f64; 2]; 3]]>,
+    /// Per face: the corner author normals, when the sheet carries them.
+    pub nrm: Option<&'a [[[f64; 3]; 3]]>,
 }
 
 /// What [`kink_sheet`] found, for the build report.
@@ -53,8 +57,10 @@ pub struct KinkStats {
     pub s_slope_le0: usize,
     /// `d_b` cells.
     pub db_cells: usize,
-    /// Cells with both flags.
+    /// Cells with both the `d_b` and the s flag.
     pub both: usize,
+    /// Attribute cells (exact UV / author normal, around the seams).
+    pub attr_cells: usize,
     /// References (triangles and segments).
     pub refs: usize,
 }
@@ -71,6 +77,8 @@ pub struct KinkRecord {
     fnorm: Vec<[f32; 3]>,
     rim_mask: Vec<u32>,
     epn: Vec<[[f32; 3]; 3]>,
+    face_uv: Vec<[[f32; 2]; 3]>,
+    face_nrm: Vec<[[f32; 3]; 3]>,
     segs: Vec<[u32; 2]>,
     /// Per level: (brick, mask, first) in brick order.
     levels: Vec<Vec<(u32, [u32; 16], u32)>>,
@@ -212,6 +220,100 @@ const fn floor_div(a: i64, b: i64) -> i64 {
     a.div_euclid(b)
 }
 
+/// Mark every cell of the answering level that `edges` cross (each walked at `h_min / 8`, with its ends), and its 26
+/// neighbours on that level, with `flag`.
+fn mark_x1(
+    cells: &mut BTreeMap<(usize, [i64; 3]), u32>,
+    vs: &[DVec3],
+    levels: &[super::Level],
+    edges: &[[u32; 2]],
+    flag: u32,
+) {
+    if edges.is_empty() {
+        return;
+    }
+    let b = BRICK as i64;
+    let hmin = levels
+        .iter()
+        .map(|l| f64::from(l.h))
+        .fold(f64::INFINITY, f64::min);
+    for e in edges {
+        let (pa, pb) = (vs[e[0] as usize], vs[e[1] as usize]);
+        let n = (((pb - pa).length() / (hmin / 8.0)).ceil() as usize + 1).max(2);
+        for i in 0..n {
+            let p = pa + (pb - pa) * (i as f64 / (n - 1) as f64);
+            for (li, lv) in levels.iter().enumerate() {
+                let (h, lo) = (f64::from(lv.h), lv.lo.as_dvec3());
+                let u = ((p - lo) / h).floor();
+                let g = [u.x as i64, u.y as i64, u.z as i64];
+                if brick_at(lv, g.map(|x| floor_div(x, b))).is_none() {
+                    continue;
+                }
+                let prior = levels[..li].iter().any(|m| {
+                    let w = ((p - m.lo.as_dvec3()) / (f64::from(m.h) * BRICK as f64)).floor();
+                    brick_at(m, [w.x as i64, w.y as i64, w.z as i64]).is_some()
+                });
+                if prior {
+                    continue;
+                }
+                for dx in -1..=1 {
+                    for dy in -1..=1 {
+                        for dz in -1..=1 {
+                            let gg = [g[0] + dx, g[1] + dy, g[2] + dz];
+                            if brick_at(lv, gg.map(|x| floor_div(x, b))).is_some() {
+                                *cells.entry((li, gg)).or_insert(0) |= flag;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Edge (sorted vertex pair) -> its faces, each with the corners of the edge's two vertices.
+type EdgeFaces = BTreeMap<(u32, u32), Vec<(usize, usize, usize)>>;
+
+/// The attribute seams of a sheet: interior edges (two faces) whose faces carry different corner UVs or author normals
+/// at one of the edge's vertices (by more than 1e-6).
+#[must_use]
+pub fn seams(geom: &SheetGeom) -> Vec<[u32; 2]> {
+    if geom.uv.is_none() && geom.nrm.is_none() {
+        return Vec::new();
+    }
+    // (edge) -> [(face, corner of a, corner of b)]
+    let mut by_edge: EdgeFaces = BTreeMap::new();
+    for (f, t) in geom.faces.iter().enumerate() {
+        for j in 0..3 {
+            let (a, c) = (t[j], t[(j + 1) % 3]);
+            let (ka, kb, ja, jb) = if a < c {
+                (a, c, j, (j + 1) % 3)
+            } else {
+                (c, a, (j + 1) % 3, j)
+            };
+            by_edge.entry((ka, kb)).or_default().push((f, ja, jb));
+        }
+    }
+    let differ = |f0: usize, c0: usize, f1: usize, c1: usize| {
+        let uv = geom
+            .uv
+            .is_some_and(|u| (0..2).any(|k| (u[f0][c0][k] - u[f1][c1][k]).abs() > 1e-6));
+        let nr = geom
+            .nrm
+            .is_some_and(|n| (0..3).any(|k| (n[f0][c0][k] - n[f1][c1][k]).abs() > 1e-6));
+        uv || nr
+    };
+    by_edge
+        .into_iter()
+        .filter(|(_, fs)| {
+            fs.len() == 2
+                && (differ(fs[0].0, fs[0].1, fs[1].0, fs[1].1)
+                    || differ(fs[0].0, fs[0].2, fs[1].0, fs[1].2))
+        })
+        .map(|((a, c), _)| [a, c])
+        .collect()
+}
+
 /// Build one sheet's kink cells ([module docs](self)). `None` when the sheet has no flagged cell.
 #[must_use]
 pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkRecord>, KinkStats) {
@@ -232,44 +334,10 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
     let b = BRICK as i64;
     // d_b cells: X+1 around the rim
     let mut cells: BTreeMap<(usize, [i64; 3]), u32> = BTreeMap::new();
-    if !geom.rim.is_empty() {
-        let hmin = levels
-            .iter()
-            .map(|l| f64::from(l.h))
-            .fold(f64::INFINITY, f64::min);
-        for e in geom.rim {
-            let (pa, pb) = (vs[e[0] as usize], vs[e[1] as usize]);
-            let n = (((pb - pa).length() / (hmin / 8.0)).ceil() as usize + 1).max(2);
-            for i in 0..n {
-                let p = pa + (pb - pa) * (i as f64 / (n - 1) as f64);
-                for (li, lv) in levels.iter().enumerate() {
-                    let (h, lo) = (f64::from(lv.h), lv.lo.as_dvec3());
-                    let u = ((p - lo) / h).floor();
-                    let g = [u.x as i64, u.y as i64, u.z as i64];
-                    if brick_at(lv, g.map(|x| floor_div(x, b))).is_none() {
-                        continue;
-                    }
-                    let prior = levels[..li].iter().any(|m| {
-                        let w = ((p - m.lo.as_dvec3()) / (f64::from(m.h) * BRICK as f64)).floor();
-                        brick_at(m, [w.x as i64, w.y as i64, w.z as i64]).is_some()
-                    });
-                    if prior {
-                        continue;
-                    }
-                    for dx in -1..=1 {
-                        for dy in -1..=1 {
-                            for dz in -1..=1 {
-                                let gg = [g[0] + dx, g[1] + dy, g[2] + dz];
-                                if brick_at(lv, gg.map(|x| floor_div(x, b))).is_some() {
-                                    *cells.entry((li, gg)).or_insert(0) |= CELL_DB;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    mark_x1(&mut cells, vs, levels, geom.rim, CELL_DB);
+    // attribute cells: X+1 around the seams (interior edges whose two faces disagree on a shared corner's UV or author
+    // normal): there the interpolated attribute blends the two sides, so the march takes the exact closest point's
+    mark_x1(&mut cells, vs, levels, &seams(geom), CELL_ATTR);
     // s cells: the raster of every triangle, flagged by the position bound
     for (li, lv) in levels.iter().enumerate() {
         let (h, lo) = (f64::from(lv.h), lv.lo.as_dvec3());
@@ -483,17 +551,29 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
         .iter()
         .map(|e| e.map(|v| v.as_vec3().to_array()))
         .collect();
+    rec.face_uv = geom
+        .uv
+        .map(|u| u.iter().map(|t| t.map(|c| c.map(|x| x as f32))).collect())
+        .unwrap_or_default();
+    rec.face_nrm = geom
+        .nrm
+        .map(|u| u.iter().map(|t| t.map(|c| c.map(|x| x as f32))).collect())
+        .unwrap_or_default();
     rec.segs = segs;
     st.s_cells = recs.iter().filter(|r| r.3 & CELL_S != 0).count();
     st.db_cells = recs.iter().filter(|r| r.3 & CELL_DB != 0).count();
-    st.both = recs.iter().filter(|r| r.3 == CELL_DB | CELL_S).count();
+    st.both = recs
+        .iter()
+        .filter(|r| r.3 & (CELL_DB | CELL_S) == CELL_DB | CELL_S)
+        .count();
+    st.attr_cells = recs.iter().filter(|r| r.3 & CELL_ATTR != 0).count();
     st.refs = refs.len();
     rec.cells = recs;
     rec.refs = refs;
     (Some(rec), st)
 }
 
-/// Write the ASKC v2 sidecar.
+/// Write the ASKC v3 sidecar (v2 plus per sheet the attribute flags and per face the corner UVs / author normals).
 ///
 /// One record per sheet of the ASHF file, in file order, each with its slab and level count (a `None` record: the
 /// sheet has no flagged cell, written as empty levels).
@@ -507,7 +587,7 @@ pub fn write_askc<W: Write>(
         w.write_all(b)
     };
     put(w, b"ASKC")?;
-    put(w, &2u32.to_le_bytes())?;
+    put(w, &3u32.to_le_bytes())?;
     put(w, &(sheets.len() as u32).to_le_bytes())?;
     for (rec, slab, nlev) in sheets {
         let Some(r) = rec else {
@@ -515,6 +595,7 @@ pub fn write_askc<W: Write>(
             for _ in 0..3 {
                 put(w, &0f64.to_le_bytes())?;
             }
+            put(w, &0u32.to_le_bytes())?;
             for _ in 0..3 {
                 put(w, &0u32.to_le_bytes())?;
             }
@@ -530,6 +611,8 @@ pub fn write_askc<W: Write>(
         for x in [r.origin.x, r.origin.y, r.origin.z] {
             put(w, &x.to_le_bytes())?;
         }
+        let attr = u32::from(!r.face_uv.is_empty()) | (u32::from(!r.face_nrm.is_empty()) << 1);
+        put(w, &attr.to_le_bytes())?;
         put(w, &(r.verts.len() as u32).to_le_bytes())?;
         for ((v, vn), rim) in r.verts.iter().zip(&r.vn).zip(&r.rim_v) {
             for x in v.iter().chain(vn) {
@@ -538,7 +621,14 @@ pub fn write_askc<W: Write>(
             put(w, &u32::from(*rim).to_le_bytes())?;
         }
         put(w, &(r.faces.len() as u32).to_le_bytes())?;
-        for (((f, nrm), m), e) in r.faces.iter().zip(&r.fnorm).zip(&r.rim_mask).zip(&r.epn) {
+        for (fi, (((f, nrm), m), e)) in r
+            .faces
+            .iter()
+            .zip(&r.fnorm)
+            .zip(&r.rim_mask)
+            .zip(&r.epn)
+            .enumerate()
+        {
             for x in f {
                 put(w, &x.to_le_bytes())?;
             }
@@ -548,6 +638,16 @@ pub fn write_askc<W: Write>(
             put(w, &m.to_le_bytes())?;
             for x in e.iter().flatten() {
                 put(w, &x.to_le_bytes())?;
+            }
+            if let Some(t) = r.face_uv.get(fi) {
+                for x in t.iter().flatten() {
+                    put(w, &x.to_le_bytes())?;
+                }
+            }
+            if let Some(t) = r.face_nrm.get(fi) {
+                for x in t.iter().flatten() {
+                    put(w, &x.to_le_bytes())?;
+                }
             }
         }
         put(w, &(r.segs.len() as u32).to_le_bytes())?;
@@ -598,6 +698,8 @@ mod tests {
             faces: &faces,
             rim: &rim,
             slab: 0.1,
+            uv: None,
+            nrm: None,
         };
         let (fnrm, epn, vn) = derived_normals(&g);
         assert!((fnrm[0] - DVec3::Z).length() < 1e-12);
