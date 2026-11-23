@@ -13,9 +13,17 @@
 //! Validity rule `CellV1`: a cell whose 8 corners all have `|s| > sqrt(3)/2 * h + scale` cannot contain the
 //! surface (`|s|` never exceeds the true distance, and a surface point in the cell lies within half a cell
 //! diagonal of its nearest corner). Such a cell is answered with the lower bound
-//! `max(min|s| - scale - sqrt(3)/2 * h, 0.05)`, positive, so a sign jump of `s` there (two parts of one open
+//! `max(min|s| - scale - sqrt(3)/2 * h, 0.05)`, tightened per corner (below), positive, so a sign jump of `s` there (two parts of one open
 //! sheet seen from opposite sides) never reads as a crossing. A masked cell never holds a true hit. A sign
 //! jump in an unmasked cell can still cross, at most `(sqrt(3) + sqrt(3)/2) * h + scale` from the sheet.
+//!
+//! The masked cell's bound, per corner: for a corner `c` with stored `s_c`, every surface point `x` has
+//! `|x - c| >= |s_c| - scale` (the same fact: `|s|` never exceeds the true distance, up to the storage step), so
+//! `|x - p| >= |x - c| - |p - c| >= |s_c| - scale - |p - c|` for the point `p` in the cell. Every corner gives a
+//! bound, so the distance from `p` to the sheet is at least `max_c (|s_c| - |p - c|) - scale`. The cell's value
+//! is the larger of that and the bound above (which pairs the smallest `|s_c|` with the largest corner distance),
+//! floored at 0.05 as before. Measured: on the heaviest ray of a 15-part body view, 259 of 272 steps of at most
+//! 0.05 were set by a masked cell while the sheet's own `|s|` there had a median of 0.67.
 //!
 //! Union: `f = min` over sheets of (`f_k` inside sheet k's box, else `max(distance to the box, 3 h_k)`), a lower
 //! bound on the distance to sheet k. A ray hit ([`SheetField::march`]) is a sign change of one sheet's own
@@ -81,6 +89,25 @@ pub fn decided_steps(tmax: f32) -> u32 {
 }
 /// A bisected sign change with `|s|` above this is a sign jump of `s`, not a crossing of the sheet.
 const JUMP_S: f32 = 0.02;
+
+/// One step of a profiled march ([`SheetField::march_profile`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StepRecord {
+    /// Where the step started.
+    pub t: f32,
+    /// The step taken (`dd` floored at [`MIN_STEP`]).
+    pub step: f32,
+    /// The union value the step came from.
+    pub dd: f32,
+    /// The live sheets sampled at `t`.
+    pub n_live: u32,
+    /// The sheet whose value set `dd` (`None` outside every box).
+    pub dd_sheet: Option<usize>,
+    /// Whether that sheet's cell at the point was masked (its value was the cell lower bound, not `|s|`).
+    pub dd_masked: bool,
+    /// That sheet's interpolated `|s|` at the point (the offset to its layer; NaN outside its levels).
+    pub dd_s: f32,
+}
 
 /// Which cells' sign is trusted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -318,6 +345,8 @@ struct CellLookup {
     values: [f32; 8],
     nch: usize,
     umin: f32,
+    /// `max` over the cell's corners of `|s_c| - |p - c|` (the per-corner part of the masked cell's bound).
+    ucorner: f32,
     q0: f32,
     q1: f32,
     h: f32,
@@ -363,6 +392,7 @@ impl Sheet {
                 values: [0.0; 8],
                 nch: lv.channels.len().min(8).min(nmax),
                 umin: f32::INFINITY,
+                ucorner: f32::NEG_INFINITY,
                 q0: 0.0,
                 q1: 0.0,
                 h: lv.h,
@@ -396,6 +426,10 @@ impl Sheet {
                                 acc += ww * v;
                                 if ci == 0 {
                                     out.umin = out.umin.min(v.abs());
+                                    let (ex, ey, ez) =
+                                        (t[0] - dx as f32, t[1] - dy as f32, t[2] - dz as f32);
+                                    let dist = lv.h * (ex * ex + ey * ey + ez * ez).sqrt();
+                                    out.ucorner = out.ucorner.max(v.abs() - dist);
                                 }
                             }
                         }
@@ -440,7 +474,9 @@ impl Sheet {
         };
         let (s, db) = (c.values[0], c.values[1]);
         let (f, g, masked) = if rule == ValidRule::CellV1 && c.umin > HALF_DIAG * c.h + c.q0 {
-            let v = (c.umin - c.q0 - HALF_DIAG * c.h).max(0.05);
+            let v = (c.umin - c.q0 - HALF_DIAG * c.h)
+                .max(c.ucorner - c.q0)
+                .max(0.05);
             (v, v, true)
         } else {
             let f = (s * s + db.max(0.0) * db.max(0.0)).sqrt();
@@ -616,7 +652,21 @@ impl SheetField {
     /// March one ray (`dir` unit length) up to `tmax` with at most `steps` steps (BVH-backed; equals
     /// [`Self::march_linear`]).
     pub fn march(&self, origin: Vec3, dir: Vec3, tmax: f32, steps: u32) -> MarchResult {
-        self.march_with(origin, dir, tmax, steps, true)
+        self.march_with(origin, dir, tmax, steps, true, None)
+    }
+
+    /// [`Self::march_decided`] recording each step: the march itself (same code path), plus per step the position
+    /// `t`, the step taken and the live sheets sampled. For profiling heavy rays.
+    #[must_use]
+    pub fn march_profile(
+        &self,
+        origin: Vec3,
+        dir: Vec3,
+        tmax: f32,
+    ) -> (MarchResult, Vec<StepRecord>) {
+        let mut rec = Vec::new();
+        let m = self.march_with(origin, dir, tmax, decided_steps(tmax), true, Some(&mut rec));
+        (m, rec)
     }
 
     /// [`Self::march`] with the budget from [`decided_steps`]: the result is a hit or a miss, never undecided.
@@ -654,10 +704,18 @@ impl SheetField {
 
     /// [`Self::march`] with linear scans over all sheets (the reference the BVH-backed march equals).
     pub fn march_linear(&self, origin: Vec3, dir: Vec3, tmax: f32, steps: u32) -> MarchResult {
-        self.march_with(origin, dir, tmax, steps, false)
+        self.march_with(origin, dir, tmax, steps, false, None)
     }
 
-    fn march_with(&self, origin: Vec3, dir: Vec3, tmax: f32, steps: u32, bvh: bool) -> MarchResult {
+    fn march_with(
+        &self,
+        origin: Vec3,
+        dir: Vec3,
+        tmax: f32,
+        steps: u32,
+        bvh: bool,
+        mut rec: Option<&mut Vec<StepRecord>>,
+    ) -> MarchResult {
         let k_n = self.sheets.len();
         let mut gprev: Vec<Option<f32>> = (0..k_n)
             .map(|k| {
@@ -671,7 +729,7 @@ impl SheetField {
         let (mut t, mut tprev) = (0.0f32, 0.0f32);
         for _ in 0..steps {
             let p = origin + dir * t;
-            let (dd, _, _) = if bvh {
+            let (dd, _, dd_k) = if bvh {
                 self.eval(p)
             } else {
                 self.eval_linear(p)
@@ -684,6 +742,7 @@ impl SheetField {
             } else {
                 (0..k_n).filter(|&k| self.sheet_in_box(k, p)).collect()
             };
+            let n_live = live.len();
             for k in live {
                 let sh = &self.sheets[k];
                 let gc = sh.sample_geom(p, self.rule).g;
@@ -717,6 +776,21 @@ impl SheetField {
             }
             tprev = t;
             gprev = gcur;
+            if let Some(r) = rec.as_deref_mut() {
+                let (dd_masked, dd_s) = dd_k.map_or((false, f32::NAN), |k| {
+                    let c = self.sheets[k].sample_geom(p, self.rule);
+                    (c.masked, if c.inside { c.s.abs() } else { f32::NAN })
+                });
+                r.push(StepRecord {
+                    t,
+                    step: dd.max(MIN_STEP),
+                    dd,
+                    n_live: n_live as u32,
+                    dd_sheet: dd_k,
+                    dd_masked,
+                    dd_s,
+                });
+            }
             t += dd.max(MIN_STEP);
             if t >= tmax {
                 return MarchResult::Miss;
