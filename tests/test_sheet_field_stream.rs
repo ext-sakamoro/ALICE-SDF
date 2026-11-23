@@ -698,3 +698,18 @@ fn a_field_of_cells_finer_than_the_floor_reads_and_its_masked_bound_stays_under_
     }
     assert!(masked > n / 4, "only {masked} of {n} points masked");
 }
+
+/// The reader builds each sheet through `sheet`, so a file whose `s` channel drops a brick (row -1: `s` read as 0 at
+/// every node, a surface the cell rule would mask) is refused on read, not marched.
+#[test]
+fn a_file_whose_s_channel_drops_a_brick_is_refused_by_the_reader() {
+    let mut sh = stack().remove(0).0;
+    sh.levels[0].channels[0].rows[0] = -1;
+    let b = field_bytes(vec![sh]);
+    let mut cur = Cursor::new(&b);
+    let ix = AshfIndex::scan(&mut cur).unwrap();
+    let e = ix
+        .read_sheets(&mut cur, 0..ix.spans.len())
+        .expect_err("a sheet with a dropped s row was read");
+    assert!(e.to_string().contains("channel 0 (s) drops a brick"), "{e}");
+}
