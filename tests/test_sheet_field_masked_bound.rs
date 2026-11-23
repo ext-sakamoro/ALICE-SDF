@@ -68,7 +68,7 @@ fn every_ray_hits_the_upper_sheet_at_its_depth_on_cpu_and_gpu() {
     let expect = |o: Vec3| o.z - ZB;
     let mut steps_total = 0usize;
     for &o in &os {
-        let (m, rec) = f.march_profile(o, -Vec3::Z, tmax);
+        let (m, rec) = f.march_profile(o, -Vec3::Z, tmax).unwrap();
         steps_total += rec.len();
         match m {
             MarchResult::Hit(h) => {
