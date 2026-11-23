@@ -137,6 +137,10 @@ pub fn march_shader_margin(max_live: u32, margin: f32) -> String {
         .replace("__MIN_STEP__", &format!("{:?}", super::MIN_STEP))
         .replace("__MASKED_FLOOR__", &format!("{:?}", super::MASKED_FLOOR))
         .replace(
+            "__MASKED_FLOOR_PER_H__",
+            &format!("{:?}", super::MASKED_FLOOR_PER_H),
+        )
+        .replace(
             "__CELL_WALK_CAP__",
             &format!("{}u", super::cellroot::CELL_WALK_CAP),
         )
@@ -1227,6 +1231,7 @@ const HALF_DIAG: f32 = 0.8660254;
 const SQRT3: f32 = 1.7320508;
 const JUMP_S: f32 = 0.02;
 const MASKED_FLOOR: f32 = __MASKED_FLOOR__;
+const MASKED_FLOOR_PER_H: f32 = __MASKED_FLOOR_PER_H__;
 const MAX_LIVE: u32 = __MAX_LIVE__u;
 const MAX_LEVELS: u32 = __MAX_LEVELS__u;
 const MAX_CHANNELS: u32 = 8u;
@@ -1609,8 +1614,9 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
         out.masked = false;
         if (U.rule == 1u && umin > HALF_DIAG * lv.h + q0) {
             // the per-corner bound (module docs of the CPU sheet field): max over corners of |s_c| - |p - c|
-            // the floor never exceeds the masked cell's true distance (over HALF_DIAG h): SheetField's masked_floor
-            f = max(max(umin - q0 - HALF_DIAG * lv.h, ucorner - q0), min(MASKED_FLOOR, HALF_DIAG * lv.h));
+            // the floor never exceeds the distance from a point of a masked cell to the surface (over h/2):
+            // SheetField's masked_floor
+            f = max(max(umin - q0 - HALF_DIAG * lv.h, ucorner - q0), min(MASKED_FLOOR, MASKED_FLOOR_PER_H * lv.h));
             g = f;
             out.masked = true;
         }
