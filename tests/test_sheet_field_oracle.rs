@@ -5,8 +5,8 @@
 //! `f = sqrt(z^2 + max(d_b, 0)^2)` is the Euclidean distance to the patch (oracle: point-to-rectangle distance).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use alice_sdf::sheet_field::build::{level_from_fn, sheet};
-use alice_sdf::sheet_field::{MarchResult, SheetField, SheetFieldError, ValidRule, BRICK};
+use alice_sdf::sheet_field::build::{level_from_fn, quantize, sheet};
+use alice_sdf::sheet_field::{Level, MarchResult, SheetField, SheetFieldError, ValidRule, BRICK};
 use glam::Vec3;
 
 const H: f32 = 0.5;
@@ -54,8 +54,11 @@ fn lcg(seed: &mut u64) -> f32 {
     ((*seed >> 40) as f32) / ((1u64 << 24) as f32)
 }
 
-/// Distance values match the closed form within the trilinear bound for a 1-Lipschitz channel (h/2) plus one
-/// quantization step of the brick (range 8 mm / 255 < 0.04).
+/// Distance values match the closed form within h/2 plus one quantization step of the brick (range 8 mm / 255
+/// < 0.04). h/2 is a measured margin, not a derived bound: `s = z` is linear, so trilinear interpolation reproduces it
+/// and only `d_b` errs; `d_b` does not depend on z, so its error is the bilinear one in the plane, which for a
+/// 1-Lipschitz channel is at most the distance to the farthest cell corner, sqrt(2)/2 h. The patch's corners and
+/// edges keep the measured worst below h/2, and the test holds it there.
 #[test]
 fn distance_matches_the_patch_closed_form() {
     let f = patch_field(false, ValidRule::CellV1);
@@ -245,5 +248,103 @@ fn degenerate_builds_are_refused() {
     assert!(level_from_fn(lo, 1.0, [1, 1, 1], |_c, _e| false, ch).is_err());
     assert!(level_from_fn(lo, 1.0, [1, 1, 1], |_c, _e| true, |_p| vec![0.0; 3]).is_err());
     assert!(sheet(vec![]).is_err());
-    let _ = BRICK;
+    // a channel value that is not finite is refused, not folded into the brick's range
+    for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        let e = level_from_fn(
+            lo,
+            1.0,
+            [1, 1, 1],
+            |_c, _e| true,
+            move |p| vec![if p.x > 0.5 { bad } else { p.z }, -1.0],
+        )
+        .expect_err("a non-finite channel value was quantized");
+        assert!(e.to_string().contains("not finite"), "{e}");
+        let mut brick = vec![0.0f32; (BRICK + 1).pow(3)];
+        brick[3] = bad;
+        assert!(quantize(&[brick], false).is_err());
+    }
+    assert!(quantize(&[vec![0.0; 5]], false).is_err());
+}
+
+fn layout_err(lv: Level) -> String {
+    let e = sheet(vec![lv.clone()]).expect_err("a malformed level was accepted");
+    let SheetFieldError::Shape(m) = &e else {
+        panic!("not a shape error: {e:?}")
+    };
+    // the same layout assembled from the public fields is refused by `Sheet::validate`
+    let mut sh = sheet(vec![patch_level()]).unwrap();
+    sh.levels = vec![lv];
+    assert!(
+        sh.validate().is_err(),
+        "validate accepted what sheet refused: {m}"
+    );
+    m.clone()
+}
+
+fn patch_level() -> Level {
+    patch_field(false, ValidRule::CellV1).sheets[0].levels[0].clone()
+}
+
+/// Every reader indexes a level by its index, rows and kept counts, so a level that does not fit them is refused
+/// where it is made (`sheet`, which the ASHF reader also uses) and by `Sheet::validate` (which the GPU upload calls).
+/// A dropped `s` row would read 0 at every node: the cell rule would mask the brick and a ray would step straight
+/// through a surface it may contain, so `s` must be stored for every active brick.
+#[test]
+fn malformed_level_layouts_and_a_dropped_s_row_are_refused() {
+    let good = patch_level();
+    assert!(sheet(vec![good.clone()]).unwrap().validate().is_ok());
+    // a hand-built brick whose s row is dropped (row -1, the form d_b uses for a brick outside the boundary)
+    let mut lv = good.clone();
+    lv.channels[0].rows[0] = -1;
+    assert!(layout_err(lv).contains("channel 0 (s) drops a brick"));
+    // d_b may drop a brick: same level with d_b's first row dropped is accepted
+    let mut lv = good.clone();
+    lv.channels[1].rows[0] = -1;
+    assert!(sheet(vec![lv]).is_ok());
+    let mut lv = good.clone();
+    lv.index.pop();
+    assert!(layout_err(lv).contains("index of"));
+    let mut lv = good.clone();
+    let active = lv.channels[0].rows.len() as i32;
+    lv.index[0] = active;
+    assert!(layout_err(lv).contains("index entry"));
+    let mut lv = good.clone();
+    lv.index[0] = -2;
+    assert!(layout_err(lv).contains("index entry"));
+    let mut lv = good.clone();
+    lv.channels[1].rows.pop();
+    assert!(layout_err(lv).contains("rows for"));
+    let mut lv = good.clone();
+    lv.channels[1].rows[0] = lv.channels[1].scale.len() as i32;
+    assert!(layout_err(lv).contains("kept rows"));
+    let mut lv = good.clone();
+    lv.channels[0].scale[0] = f32::NAN;
+    assert!(layout_err(lv).contains("not finite and positive"));
+    let mut lv = good.clone();
+    lv.channels[0].offset[0] = f32::INFINITY;
+    assert!(layout_err(lv).contains("not finite and positive"));
+    let mut lv = good.clone();
+    lv.channels.truncate(1);
+    assert!(layout_err(lv).contains("channels (2, 4 or 7)"));
+    let mut lv = good.clone();
+    lv.lo.x = f32::NAN;
+    assert!(layout_err(lv).contains("level h"));
+    let mut lv = good;
+    lv.h = 0.0;
+    assert!(layout_err(lv).contains("level h"));
+}
+
+/// A point that is not finite is in no brick: the sample is the outside one, not brick 0's value.
+#[test]
+fn a_point_that_is_not_finite_is_outside() {
+    let f = patch_field(false, ValidRule::CellV1);
+    for p in [
+        Vec3::new(f32::NAN, 0.0, 0.0),
+        Vec3::new(0.0, f32::INFINITY, 0.0),
+        Vec3::new(0.0, 0.0, f32::NEG_INFINITY),
+    ] {
+        let s = f.sheets[0].sample(p, f.rule);
+        assert!(!s.inside, "{p} answered inside");
+        assert_eq!(s.uv, None);
+    }
 }

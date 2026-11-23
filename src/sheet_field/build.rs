@@ -11,7 +11,10 @@ use super::{
 ///
 /// Each brick has its own scale and offset. With `drop_nonpositive`, a brick whose nodes are all <= 0 is dropped (row -1): its
 /// trilinear value is then <= 0 everywhere in the brick, so `max(value, 0) = 0` exactly (the `d_b` channel).
-pub fn quantize(values: &[Vec<f32>], drop_nonpositive: bool) -> Channel {
+///
+/// # Errors
+/// [`SheetFieldError::Shape`] for a brick without `(BRICK+1)^3` nodes or a node value that is not finite.
+pub fn quantize(values: &[Vec<f32>], drop_nonpositive: bool) -> Result<Channel, SheetFieldError> {
     let mut ch = Channel {
         rows: Vec::with_capacity(values.len()),
         q: Vec::new(),
@@ -20,8 +23,18 @@ pub fn quantize(values: &[Vec<f32>], drop_nonpositive: bool) -> Channel {
         nodes: NODES as u32,
         starts: Vec::new(),
     };
-    for v in values {
-        assert_eq!(v.len(), BRICK_NODES, "a brick has (BRICK+1)^3 nodes");
+    for (k, v) in values.iter().enumerate() {
+        if v.len() != BRICK_NODES {
+            return Err(SheetFieldError::Shape(format!(
+                "brick {k}: {} nodes, a brick has {BRICK_NODES}",
+                v.len()
+            )));
+        }
+        if let Some(x) = v.iter().find(|x| !x.is_finite()) {
+            return Err(SheetFieldError::Shape(format!(
+                "brick {k}: node value {x} is not finite"
+            )));
+        }
         let hi = v.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         if drop_nonpositive && hi <= 0.0 {
             ch.rows.push(-1);
@@ -37,7 +50,7 @@ pub fn quantize(values: &[Vec<f32>], drop_nonpositive: bool) -> Channel {
                 .map(|x| ((x - lo) / sc).round().clamp(0.0, Q_MAX) as u8),
         );
     }
-    ch
+    Ok(ch)
 }
 
 /// The same channel on a coarser grid of `nodes` per brick axis (one of [`COARSE_NODES`]): every
@@ -144,7 +157,7 @@ pub fn level_from_fn(
         .iter()
         .enumerate()
         .map(|(i, v)| quantize(v, i == 1))
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(Level {
         h,
         lo,
@@ -243,7 +256,80 @@ pub fn band(lv: &Level, eps_steps: f32) -> Result<Level, SheetFieldError> {
     Ok(out)
 }
 
+/// The layout every reader of a level indexes by, checked before a level is used (the builder, the ASHF reader and the
+/// GPU upload all go through [`sheet`] or [`Sheet::validate`](super::Sheet::validate)):
+/// - `h` finite and positive, `lo` finite, every `nb` non-zero, `index` of `nb[0] * nb[1] * nb[2]` entries, each -1 or an
+///   active brick below the active count (the row count of channel 0);
+/// - 2, 4 or 7 channels, each with one row per active brick, each row -1 or below the channel's kept count, every scale
+///   finite and positive and every offset finite;
+/// - channel 0 (`s`) keeps every active brick: a dropped `s` row would read 0 at every node, a surface everywhere in the
+///   brick, which the cell rule could not tell from a far brick; only `d_b` and the attributes may drop a brick.
+pub(crate) fn check_level_layout(lv: &Level) -> Result<(), SheetFieldError> {
+    let shape = |m: String| Err(SheetFieldError::Shape(m));
+    if !lv.h.is_finite() || lv.h <= 0.0 || !lv.lo.is_finite() || lv.nb.contains(&0) {
+        return shape(format!("level h {}, lo {}, nb {:?}", lv.h, lv.lo, lv.nb));
+    }
+    let cells = lv
+        .nb
+        .iter()
+        .try_fold(1usize, |a, &n| a.checked_mul(n as usize));
+    if cells != Some(lv.index.len()) {
+        return shape(format!(
+            "index of {} entries for {:?} bricks",
+            lv.index.len(),
+            lv.nb
+        ));
+    }
+    if !matches!(lv.channels.len(), 2 | 4 | 7) {
+        return shape(format!("{} channels (2, 4 or 7)", lv.channels.len()));
+    }
+    let active = lv.channels[0].rows.len();
+    if let Some(k) = lv
+        .index
+        .iter()
+        .find(|&&k| k < -1 || k >= 0 && k as usize >= active)
+    {
+        return shape(format!("index entry {k} for {active} active bricks"));
+    }
+    for (c, ch) in lv.channels.iter().enumerate() {
+        if ch.rows.len() != active {
+            return shape(format!(
+                "channel {c}: {} rows for {active} active bricks",
+                ch.rows.len()
+            ));
+        }
+        let kept = ch.scale.len();
+        if let Some(r) = ch
+            .rows
+            .iter()
+            .find(|&&r| r < -1 || r >= 0 && r as usize >= kept)
+        {
+            return shape(format!("channel {c}: row {r} of {kept} kept rows"));
+        }
+        if c == 0 && ch.rows.contains(&-1) {
+            return shape(
+                "channel 0 (s) drops a brick: s must be stored for every active brick".into(),
+            );
+        }
+        if ch.offset.len() != kept
+            || ch.scale.iter().any(|x| !x.is_finite() || *x <= 0.0)
+            || ch.offset.iter().any(|x| !x.is_finite())
+        {
+            return shape(format!(
+                "channel {c}: {} offsets for {kept} scales, or a scale or offset not finite and positive",
+                ch.offset.len()
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// A sheet from its levels (lookup order); its box and coarsest cell are derived.
+///
+/// # Errors
+/// [`SheetFieldError::Shape`] for no level or a level whose layout does not fit (the rules on `check_level_layout`:
+/// finite cell size and origin, an index entry per brick, one row per active brick in every channel, rows within the
+/// kept rows, finite positive scales, finite offsets, and channel 0 (`s`) stored for every active brick).
 pub fn sheet(levels: Vec<Level>) -> Result<Sheet, SheetFieldError> {
     if levels.is_empty() {
         return Err(SheetFieldError::Shape("a sheet has no level".into()));
@@ -252,6 +338,7 @@ pub fn sheet(levels: Vec<Level>) -> Result<Sheet, SheetFieldError> {
     let mut hi = Vec3::splat(f32::NEG_INFINITY);
     let mut hc = 0.0f32;
     for lv in &levels {
+        check_level_layout(lv)?;
         for (c, ch) in lv.channels.iter().enumerate() {
             let fine = ch.nodes == NODES as u32;
             if c >= 2 && ch.nodes == BAND {

@@ -292,3 +292,18 @@ fn a_ray_over_the_work_budget_ends_undecided_and_is_counted() {
         "undecided rays and the counted ones differ"
     );
 }
+
+/// The upload checks every sheet's layout before any buffer or device work: a sheet assembled from its public fields
+/// with a dropped `s` row (which `sheet` would refuse) is refused as `InvalidFormat`, with or without an adapter.
+#[test]
+fn the_upload_refuses_a_sheet_whose_layout_does_not_fit() {
+    let mut f = deep();
+    f.sheets[0].levels[0].channels[0].rows[0] = -1;
+    match GpuSheetField::new(&f) {
+        Err(GpuError::InvalidFormat(m)) => {
+            assert!(m.contains("sheet 0") && m.contains("drops a brick"), "{m}");
+        }
+        Err(e) => panic!("refused as another error: {e}"),
+        Ok(_) => panic!("a sheet with a dropped s row was uploaded"),
+    }
+}

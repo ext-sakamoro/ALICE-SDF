@@ -493,7 +493,9 @@ impl GpuSheetField {
                 field.sheets.len()
             )));
         }
-        for sh in &field.sheets {
+        for (i, sh) in field.sheets.iter().enumerate() {
+            sh.validate()
+                .map_err(|e| GpuError::InvalidFormat(format!("sheet field: sheet {i}: {e}")))?;
             if sh.levels.len() > MAX_SHEET_LEVELS as usize {
                 return Err(GpuError::InvalidFormat(format!(
                     "sheet field: a sheet with {} levels, over MAX_SHEET_LEVELS {MAX_SHEET_LEVELS}",
