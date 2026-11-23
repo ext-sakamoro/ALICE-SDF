@@ -67,6 +67,8 @@ fn field(with_kink: bool) -> SheetField {
         faces: &f,
         rim: &rim,
         slab: 2.0 * f64::from(H),
+        uv: None,
+        nrm: None,
     };
     let ks = KinkSheet::from_geom(&geom);
     let tris: Vec<u32> = (0..f.len() as u32).collect();
@@ -218,6 +220,8 @@ fn fold_field(phi: f64, with_kink: bool, s_cells: bool) -> SheetField {
         faces: &f,
         rim: &rim,
         slab: 2.0 * f64::from(H),
+        uv: None,
+        nrm: None,
     };
     let ks = KinkSheet::from_geom(&geom);
     let tris: Vec<u32> = (0..f.len() as u32).collect();
@@ -413,4 +417,137 @@ fn the_gpu_cell_walk_decides_rays_on_face_planes_and_far_from_the_origin() {
             o.len()
         );
     }
+}
+
+/// A flat strip (z = 0, x from 0 to 3, y from -0.3 to 0.3) cut at x = 1.5 into two halves whose UVs disagree there (a
+/// seam: u = x / 3 on the left, x / 3 + 10 on the right, v = y): the stored UV channels interpolate across the seam.
+fn seam_field(with_kink: bool) -> SheetField {
+    let v = vec![
+        DVec3::new(0.0, -0.3, 0.0),
+        DVec3::new(1.5, -0.3, 0.0),
+        DVec3::new(3.0, -0.3, 0.0),
+        DVec3::new(0.0, 0.3, 0.0),
+        DVec3::new(1.5, 0.3, 0.0),
+        DVec3::new(3.0, 0.3, 0.0),
+    ];
+    let f = vec![[0, 1, 4], [0, 4, 3], [1, 2, 5], [1, 5, 4]];
+    let rim = vec![[0, 1], [1, 2], [2, 5], [5, 4], [4, 3], [3, 0]];
+    let uv_of = |vi: u32, right: bool| {
+        let p = v[vi as usize];
+        [p.x / 3.0 + if right { 10.0 } else { 0.0 }, p.y]
+    };
+    let uv: Vec<[[f64; 2]; 3]> = f
+        .iter()
+        .enumerate()
+        .map(|(i, t)| t.map(|c| uv_of(c, i >= 2)))
+        .collect();
+    let geom = SheetGeom {
+        verts: &v,
+        faces: &f,
+        rim: &rim,
+        slab: 2.0 * f64::from(H),
+        uv: Some(&uv),
+        nrm: None,
+    };
+    let ks = KinkSheet::from_geom(&geom);
+    let tris: Vec<u32> = (0..f.len() as u32).collect();
+    let segs: Vec<u32> = (0..rim.len() as u32).collect();
+    let lv = level_from_fn(
+        Vec3::new(-1.013, -1.021, -1.007),
+        H,
+        [3, 1, 1],
+        |_c, _e| true,
+        |p| {
+            let (s, db, _) = ks.eval_all(p.as_dvec3(), &tris, &segs).expect("faces");
+            let (uvp, _) = ks.eval_attributes(p.as_dvec3(), &tris).expect("faces");
+            let [u, w] = uvp.expect("uv");
+            vec![s as f32, db as f32, u, w]
+        },
+    )
+    .unwrap();
+    let mut sh = vec![sheet(vec![lv]).unwrap()];
+    if with_kink {
+        let (rec, st) = kink_sheet(&geom, &sh[0], 0.01);
+        assert!(st.attr_cells > 0, "{st:?}");
+        let mut bytes = Vec::new();
+        write_askc(&mut bytes, &[(rec, geom.slab, 1)]).unwrap();
+        KinkFile::read(&mut bytes.as_slice())
+            .unwrap()
+            .attach(&mut sh, 0)
+            .unwrap();
+    }
+    let mut fld = SheetField::new(sh, ValidRule::CellV1);
+    fld.set_root_mode(RootMode::CellWalk);
+    fld
+}
+
+/// The attribute cells' tooth: rays straight down near the seam. The hit's UV must be the analytic UV of the half it
+/// lies on (to 1e-3); the interpolated channels blend the two halves near the seam, the attribute cells do not.
+#[test]
+fn uv_at_a_seam_is_the_hit_face_s_with_the_attribute_cells() {
+    let dir = Vec3::new(0.0, 0.0, -1.0);
+    let (plain, kinked) = (seam_field(false), seam_field(true));
+    let (mut bad0, mut bad1, mut n) = (0, 0, 0);
+    for i in 0..60 {
+        for j in -3..=3 {
+            let x = 1.2 + 0.01 * f64::from(i) + 0.000_37;
+            let o = Vec3::new(x as f32, (0.08 * f64::from(j)) as f32, 0.5);
+            let truth = x / 3.0 + if x > 1.5 { 10.0 } else { 0.0 };
+            n += 1;
+            for (fld, bad) in [(&plain, &mut bad0), (&kinked, &mut bad1)] {
+                match fld.march_decided(o, dir, 1.0) {
+                    MarchResult::Hit(h) => {
+                        let u = f64::from(h.uv.expect("uv")[0]);
+                        if (u - truth).abs() > 1e-3 {
+                            *bad += 1;
+                        }
+                    }
+                    _ => *bad += 1,
+                }
+            }
+        }
+    }
+    assert!(
+        bad0 > 0,
+        "the interpolated UV does not show the seam (0 of {n})"
+    );
+    assert_eq!(
+        bad1, 0,
+        "with the attribute cells {bad1} of {n} hits read a wrong UV (without: {bad0})"
+    );
+    eprintln!("seam e2e: {n} rays, wrong UV without the attribute cells {bad0}, with 0");
+}
+
+/// The step margin's tooth: a fold of 60 degrees with rays climbing into it at 15 degrees from 400 mm away (t large, as
+/// in a camera view). Without the margin a full step taken from an interpolated value can pass a crossing the field
+/// shows (2 of 1560 rays in this scene, measured once); with it the march equals the fixed-step reference on every ray.
+#[test]
+fn rays_from_far_into_a_fold_equal_the_fixed_step_reference() {
+    let back = 400.0f32;
+    let b = 15f64.to_radians();
+    let dir = Vec3::new(0.0, -dcos(b) as f32, dsin(b) as f32);
+    let f = fold_field(60f64.to_radians(), true, true);
+    let mut bad = 0;
+    let mut n = 0;
+    for i in 1..40 {
+        for j in 0..40 {
+            let o = Vec3::new(0.075 * i as f32, 1.2, -0.3 + 0.015 * j as f32) - dir * back;
+            let m = hit_t(&f.march_decided(o, dir, back + 3.0));
+            let r = hit_t(&f.march_fixed_step(o + dir * (back - 0.5), dir, 3.5, 0.0005))
+                .map(|t| t + back - 0.5);
+            n += 1;
+            let same = match (m, r) {
+                (Some(x), Some(y)) => (x - y).abs() <= 2e-3,
+                (None, None) => true,
+                _ => false,
+            };
+            if !same {
+                bad += 1;
+            }
+        }
+    }
+    assert_eq!(
+        bad, 0,
+        "the march differs from the fixed-step reference on {bad} of {n} rays"
+    );
 }
