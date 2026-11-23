@@ -400,7 +400,7 @@ impl KinkSheet {
     #[must_use]
     pub fn from_geom(geom: &super::kink_build::SheetGeom) -> Self {
         let (fnrm, epn, vn) = super::kink_build::derived_normals(geom);
-        let rim: std::collections::HashSet<(u32, u32)> = geom
+        let rim: std::collections::BTreeSet<(u32, u32)> = geom
             .rim
             .iter()
             .map(|e| (e[0].min(e[1]), e[0].max(e[1])))

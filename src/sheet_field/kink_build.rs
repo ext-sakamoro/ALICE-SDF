@@ -21,7 +21,7 @@
 //! cells also the rim segments whose sphere reaches within `R1 + min(rho + R1, H)`. Every triangle and rim segment the
 //! exact value of any point of the cell can use is among them.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
 
 use glam::DVec3;
@@ -182,7 +182,7 @@ pub fn derived_normals(geom: &SheetGeom) -> (Vec<DVec3>, Vec<[DVec3; 3]>, Vec<DV
             (b - a).cross(c - a).normalize()
         })
         .collect();
-    let mut en: HashMap<(u32, u32), DVec3> = HashMap::new();
+    let mut en: BTreeMap<(u32, u32), DVec3> = BTreeMap::new();
     let mut vn = vec![DVec3::ZERO; vs.len()];
     for (i, t) in fs.iter().enumerate() {
         for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
@@ -324,7 +324,7 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
         return (None, st);
     }
     let (fnrm, epn, vn) = derived_normals(geom);
-    let rimset: HashSet<(u32, u32)> = geom.rim.iter().map(|e| key(e[0], e[1])).collect();
+    let rimset: BTreeSet<(u32, u32)> = geom.rim.iter().map(|e| key(e[0], e[1])).collect();
     let mut rim_v = vec![false; vs.len()];
     for e in geom.rim {
         rim_v[e[0] as usize] = true;
@@ -476,7 +476,7 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
             .or_default()
             .push(((cc[0] * 64 + cc[1] * 8 + cc[2]) as usize, i));
     }
-    let mut first_of: HashMap<(usize, usize), u32> = HashMap::new();
+    let mut first_of: BTreeMap<(usize, usize), u32> = BTreeMap::new();
     for (li, bricks) in lvrec.iter().enumerate() {
         for (k, list) in bricks {
             first_of.insert((li, *k), recs.len() as u32);
