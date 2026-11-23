@@ -276,11 +276,35 @@ fn instance(held: &mut Lifecycle) -> &wgpu::Instance {
     })
 }
 
-fn device_descriptor(label: &str) -> wgpu::DeviceDescriptor<'_> {
+/// Which limits a device asks for
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Wanted {
+    /// wgpu's defaults (a storage binding of 128 MiB)
+    Default,
+    /// The defaults, with the storage binding and buffer sizes raised to what the adapter allows
+    AdapterStorage,
+}
+
+/// The limits `wanted` names on `adapter`
+fn limits_for(adapter: &wgpu::Adapter, wanted: Wanted) -> wgpu::Limits {
+    match wanted {
+        Wanted::Default => wgpu::Limits::default(),
+        Wanted::AdapterStorage => {
+            let a = adapter.limits();
+            wgpu::Limits {
+                max_storage_buffer_binding_size: a.max_storage_buffer_binding_size,
+                max_buffer_size: a.max_buffer_size,
+                ..wgpu::Limits::default()
+            }
+        }
+    }
+}
+
+const fn device_descriptor(label: &str, limits: wgpu::Limits) -> wgpu::DeviceDescriptor<'_> {
     wgpu::DeviceDescriptor {
         label: Some(label),
         required_features: wgpu::Features::empty(),
-        required_limits: wgpu::Limits::default(),
+        required_limits: limits,
         memory_hints: wgpu::MemoryHints::Performance,
     }
 }
@@ -398,8 +422,14 @@ fn destroy(_held: &mut Lifecycle, device: &mut ManuallyDrop<GpuDevice>) {
     clippy::disallowed_methods,
     reason = "the device is created here, under the lock"
 )]
-fn create(held: &mut Lifecycle, label: &str) -> Result<GpuContext, GpuError> {
-    create_unless(&PROCESS_DEVICE_LOST, outstanding_work, held, label, make)
+fn create(held: &mut Lifecycle, label: &str, wanted: Wanted) -> Result<GpuContext, GpuError> {
+    create_unless(
+        &PROCESS_DEVICE_LOST,
+        outstanding_work,
+        held,
+        label,
+        |lost, held, label| make(lost, held, label, wanted),
+    )
 }
 
 /// `make` a context unless `lost` is set or `running` reports abandoned work in flight (then nothing reaches the
@@ -423,13 +453,15 @@ fn make(
     abandoned: &'static AtomicBool,
     held: &mut Lifecycle,
     label: &str,
+    wanted: Wanted,
 ) -> Result<GpuContext, GpuError> {
     let adapter = pollster::block_on(instance(held).request_adapter(&adapter_options()))
         .ok_or(GpuError::NoAdapter)?;
     let info = adapter.get_info();
     slot_guard::admit(&info.name, info.device_type == wgpu::DeviceType::Cpu)?;
+    let limits = limits_for(&adapter, wanted);
     let (device, queue) =
-        pollster::block_on(adapter.request_device(&device_descriptor(label), None))
+        pollster::block_on(adapter.request_device(&device_descriptor(label, limits), None))
             .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
     device.set_device_lost_callback(on_device_lost(abandoned));
     Ok(GpuContext::holding(device, queue, info))
@@ -518,7 +550,16 @@ impl GpuContext {
     /// held by another create or drop. On `wasm32` they wait on the browser: see
     /// [`GpuContext::request_async`].
     pub fn request(label: &str) -> Result<Self, GpuError> {
-        locked(|held| create(held, label))
+        locked(|held| create(held, label, Wanted::Default))
+    }
+
+    /// [`GpuContext::request`], with the storage binding and buffer size limits raised to what the
+    /// adapter allows (the defaults cap one storage binding at 128 MiB; an integrated GPU can allow
+    /// 4 GiB). Opt-in for data that needs it (a sheet field whose single sheet is larger); every
+    /// other limit stays at the default, and [`GpuContext::request`] is unchanged.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn request_with_adapter_storage_limits(label: &str) -> Result<Self, GpuError> {
+        locked(|held| create(held, label, Wanted::AdapterStorage))
     }
 
     /// [`GpuContext::request`] for an async caller. Native futures complete without yielding, so
@@ -544,7 +585,7 @@ impl GpuContext {
             .await
             .ok_or(GpuError::NoAdapter)?;
         let (device, queue) = adapter
-            .request_device(&device_descriptor(label), None)
+            .request_device(&device_descriptor(label, wgpu::Limits::default()), None)
             .await
             .map_err(|e| GpuError::DeviceCreation(e.to_string()))?;
         let info = adapter.get_info();
@@ -634,6 +675,11 @@ impl GpuContext {
         }
     }
 
+    /// Whether a wait on this device went over its limit (the device is kept and not used again)
+    pub(crate) fn is_abandoned(&self) -> bool {
+        self.0.abandoned.load(Ordering::Acquire)
+    }
+
     /// Keep this device for the life of the process: work on it may still be running
     pub(crate) fn abandon(&self) {
         self.0.abandoned.store(true, Ordering::Release);
@@ -685,17 +731,44 @@ impl GpuContext {
     /// # Errors
     ///
     /// [`GpuError::ShaderCompilation`]: [`refusal::UNBOUNDED_SHADER_LOOP`], or the parse error.
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "the one place that creates shader modules, after the loop check"
-    )]
     pub fn shader_module(
         &self,
         label: &str,
         source: wgpu::ShaderSource<'_>,
         maxima: &crate::gpu_loop_bound::HostMaxima,
     ) -> Result<wgpu::ShaderModule, GpuError> {
-        crate::gpu_loop_bound::require_bounded(label, &source, maxima)?;
+        self.checked_module(label, source, maxima, None)
+    }
+
+    /// [`Self::shader_module`] against a stated [`crate::gpu_loop_bound::KernelCeiling`] instead of
+    /// [`crate::gpu_loop_bound::MAX_TRIP_PRODUCT`]: for a kernel whose loops are all bounded and whose real work is
+    /// bounded by its own counter. Every caller's label is listed in `tests/test_gpu_lifecycle_oracle.rs`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::shader_module`]; also a ceiling without a reason.
+    pub fn shader_module_with_ceiling(
+        &self,
+        label: &str,
+        source: wgpu::ShaderSource<'_>,
+        maxima: &crate::gpu_loop_bound::HostMaxima,
+        ceiling: crate::gpu_loop_bound::KernelCeiling,
+    ) -> Result<wgpu::ShaderModule, GpuError> {
+        self.checked_module(label, source, maxima, Some(ceiling))
+    }
+
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the one place that creates shader modules, after the loop check"
+    )]
+    fn checked_module(
+        &self,
+        label: &str,
+        source: wgpu::ShaderSource<'_>,
+        maxima: &crate::gpu_loop_bound::HostMaxima,
+        ceiling: Option<crate::gpu_loop_bound::KernelCeiling>,
+    ) -> Result<wgpu::ShaderModule, GpuError> {
+        crate::gpu_loop_bound::require_bounded_under(label, &source, maxima, ceiling)?;
         Ok(self
             .device()
             .create_shader_module(wgpu::ShaderModuleDescriptor {
