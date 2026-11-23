@@ -511,6 +511,10 @@ impl AshfIndex {
                 });
             }
             let sh = build::sheet(levels)?;
+            // the scan and this read take the same counts from the same bytes, so for a file both accept the two sizes
+            // agree by construction (a hand-edited count changes both, or fails the scan's own end-of-array checks):
+            // this is the check that the two parsers have not drifted apart (a field added to one and not the other),
+            // reachable only by a change to this code, not by any file
             let got = sheet_payload_bytes(&sh);
             if got != self.spans[k].host_bytes {
                 return Err(StreamError::Format(format!(
