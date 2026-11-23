@@ -44,11 +44,15 @@ jobs:
           BEFORE: ${{ github.event.before }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
+          # the checkout (fetch-depth: 0) fetched every branch of the remote into refs/remotes/origin/*, so a push
+          # with no previous head reads only the commits it publishes (scripts/public_text.sh new); when the remote
+          # has no other branch the script lists the public remote's heads itself (no credentials needed)
           base=""
           if [ -n "${PR_BASE:-}" ]; then
             base="$PR_BASE"
-          elif [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
-               && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+          elif [ "${BEFORE:-}" = "0000000000000000000000000000000000000000" ]; then
+            base=new
+          elif [ -n "${BEFORE:-}" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
             base="$BEFORE"
           fi
           if [ -n "$base" ]; then scripts/public_text.sh "$base"; else scripts/public_text.sh; fi
