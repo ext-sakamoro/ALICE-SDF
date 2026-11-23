@@ -33,6 +33,97 @@ const LIFECYCLE_CALLS: &[&str] = &[
     ".create_shader_module(",
 ];
 
+/// The kernels allowed a trip ceiling over the loop check's default (`GpuContext::shader_module_with_ceiling`), by
+/// file and the label argument as written: each counts every loop iteration with its own work counter
+/// (`gpu_loop_bound::check_counted`). A call anywhere else, or with another label, fails the census.
+const CEILING_KERNELS: &[(&str, &str)] = &[("src/sheet_field/gpu.rs", "MARCH_KERNEL")];
+
+/// The `(file, label argument)` of every `.shader_module_with_ceiling(` call in `text` (comment lines skipped).
+fn ceiling_calls(file: &str, text: &str) -> Vec<(String, String)> {
+    let code: String = text
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let call = ".shader_module_with_ceiling(";
+    code.match_indices(call)
+        .map(|(at, _)| {
+            let rest = &code[at + call.len()..];
+            let label = rest.split(',').next().unwrap_or("").trim().to_string();
+            (file.to_string(), label)
+        })
+        .collect()
+}
+
+/// The calls of [`ceiling_calls`] that [`CEILING_KERNELS`] does not list.
+fn unlisted(calls: &[(String, String)]) -> Vec<(String, String)> {
+    calls
+        .iter()
+        .filter(|(f, l)| {
+            !CEILING_KERNELS
+                .iter()
+                .any(|(lf, ll)| f.ends_with(lf) && l == ll)
+        })
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn only_listed_kernels_take_a_trip_ceiling() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut calls = Vec::new();
+    let mut stack: Vec<PathBuf> = SCANNED.iter().map(|d| root.join(d)).collect();
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries {
+            let path = entry.expect("read a source directory entry").path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "rs")
+                && !path.ends_with(LIFECYCLE_MODULE)
+                && !path
+                    .file_name()
+                    .is_some_and(|f| Path::new(file!()).ends_with(f))
+            {
+                let text = std::fs::read_to_string(&path).expect("read a source file");
+                calls.extend(ceiling_calls(&path.display().to_string(), &text));
+            }
+        }
+    }
+    assert!(
+        !calls.is_empty(),
+        "no shader_module_with_ceiling call found: the census read nothing"
+    );
+    let bad = unlisted(&calls);
+    assert!(
+        bad.is_empty(),
+        "kernels with a trip ceiling not listed in CEILING_KERNELS: {bad:?}"
+    );
+    for (lf, ll) in CEILING_KERNELS {
+        assert!(
+            calls.iter().any(|(f, l)| f.ends_with(lf) && l == ll),
+            "CEILING_KERNELS lists {lf} {ll}, which makes no such call"
+        );
+    }
+}
+
+/// The census's teeth: an unlisted kernel (another file, or another label in the listed file) is reported.
+#[test]
+fn an_unlisted_ceiling_kernel_is_reported() {
+    let listed = "ctx.shader_module_with_ceiling(\n    MARCH_KERNEL,\n    src, &m, c)";
+    let other_label = "ctx.shader_module_with_ceiling(OTHER, src, &m, c)";
+    let commented = "// ctx.shader_module_with_ceiling(OTHER, src, &m, c)";
+    assert!(unlisted(&ceiling_calls("/x/src/sheet_field/gpu.rs", listed)).is_empty());
+    assert_eq!(unlisted(&ceiling_calls("/x/src/other.rs", listed)).len(), 1);
+    assert_eq!(
+        unlisted(&ceiling_calls("/x/src/sheet_field/gpu.rs", other_label)).len(),
+        1
+    );
+    assert!(ceiling_calls("/x/src/other.rs", commented).is_empty());
+}
+
 /// With the white space gone: a kept clone of these holds the device past its context
 const KEPT_HANDLES: &[&str] = &[".device().clone()", ".queue().clone()"];
 

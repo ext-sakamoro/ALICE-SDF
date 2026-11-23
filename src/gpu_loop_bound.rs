@@ -49,6 +49,53 @@ pub const MAX_SHADER_SOURCE_BYTES: usize = 16 << 20;
 /// `"len(<global>)"` for a runtime array length.
 pub type HostMaxima = BTreeMap<String, u64>;
 
+/// A stated loop-iteration ceiling for one kernel whose work is bounded by its own counter.
+///
+/// Its loops are all bounded, but their product is over [`MAX_TRIP_PRODUCT`] (the sheet march's per-ray work).
+///
+/// Only [`crate::gpu_context::GpuContext::shader_module_with_ceiling`] takes it, and every kernel that does is listed
+/// by label in `tests/test_gpu_lifecycle_oracle.rs` (the census is red on an unlisted one).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KernelCeiling {
+    /// The most loop iterations one invocation may do (the product [`LoopReport::worst`] is checked against).
+    pub max_trip_product: u64,
+    /// Why this kernel may go over [`MAX_TRIP_PRODUCT`], and what bounds its real work.
+    pub reason: &'static str,
+    /// The work counter every loop iteration of the kernel ticks ([`check_counted`]); the ceiling is checked against
+    /// [`CountedReport::bound`], not the product of the loop bounds.
+    pub counter: WorkCounter,
+}
+
+/// A kernel's work counter: a private `u32` global stored only by the function `tick`, which adds a literal > 0 and
+/// returns whether the count is still within the host value `budget`.
+///
+/// Every loop of the kernel starts its body with `if (!tick()) { break; }` (after its own exit checks only), so no
+/// iteration past the budget does work; the loops still each have their own bound ([`check_module`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkCounter {
+    /// The tick function's name.
+    pub tick: &'static str,
+    /// The host value of the budget, as [`HostMaxima`] names it (`"U.work_budget"`); its stated maximum bounds the
+    /// ticks.
+    pub budget: &'static str,
+}
+
+/// What [`check_counted`] found.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CountedReport {
+    /// Why the kernel's loops are not all counted (empty when they are).
+    pub problems: Vec<String>,
+    /// The stated maximum of the budget.
+    pub budget: u64,
+    /// Loop instances in the expanded call tree of the entry points: once the budget is spent each can be entered
+    /// at most once more (its first tick fails).
+    pub instances: u64,
+    /// The most loops entered between two ticks (directly in one loop body or entry function, calls expanded).
+    pub unit: u64,
+    /// The most loop iterations one invocation can do: `(budget + instances + 1) x (unit + 1)` (saturating).
+    pub bound: u64,
+}
+
 /// A loop of a module whose iteration count has no stated bound.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnboundedLoop {
@@ -399,13 +446,55 @@ pub fn require_bounded(
     source: &wgpu::ShaderSource<'_>,
     maxima: &HostMaxima,
 ) -> Result<LoopReport, crate::compiled::GpuError> {
+    require_bounded_under(label, source, maxima, None)
+}
+
+/// [`require_bounded`] against `ceiling` instead of [`MAX_TRIP_PRODUCT`] when one is given.
+///
+/// # Errors
+///
+/// As [`require_bounded`]; also a ceiling without a reason.
+pub fn require_bounded_under(
+    label: &str,
+    source: &wgpu::ShaderSource<'_>,
+    maxima: &HostMaxima,
+    ceiling: Option<KernelCeiling>,
+) -> Result<LoopReport, crate::compiled::GpuError> {
+    if ceiling.is_some_and(|c| c.reason.trim().is_empty()) {
+        return Err(crate::compiled::GpuError::ShaderCompilation(format!(
+            "{}shader {label}: a kernel ceiling without a reason",
+            crate::gpu_context::refusal::UNBOUNDED_SHADER_LOOP
+        )));
+    }
     let module = parse_source(source).map_err(crate::compiled::GpuError::ShaderCompilation)?;
     let report = check_module(&module, maxima);
-    if report.unbounded.is_empty() && report.worst > MAX_TRIP_PRODUCT {
+    if let (Some(c), true) = (ceiling, report.unbounded.is_empty()) {
+        let counted = check_counted(&module, maxima, c.counter);
+        if let Some(first) = counted.problems.first() {
+            return Err(crate::compiled::GpuError::ShaderCompilation(format!(
+                "{}shader {label}: {} loop(s) not counted by the work counter: {first}",
+                crate::gpu_context::refusal::UNBOUNDED_SHADER_LOOP,
+                counted.problems.len()
+            )));
+        }
+        if counted.bound > c.max_trip_product {
+            return Err(crate::compiled::GpuError::ShaderCompilation(format!(
+                "{}shader {label}: one invocation may run {} counted loop iterations, over its ceiling {} ({})",
+                crate::gpu_context::refusal::UNBOUNDED_SHADER_LOOP,
+                counted.bound,
+                c.max_trip_product,
+                c.reason
+            )));
+        }
+        return Ok(report);
+    }
+    let limit = MAX_TRIP_PRODUCT;
+    if report.unbounded.is_empty() && report.worst > limit {
         return Err(crate::compiled::GpuError::ShaderCompilation(format!(
-            "{}shader {label}: one invocation may run {} loop iterations, over the ceiling {MAX_TRIP_PRODUCT} (gpu_loop_bound::MAX_TRIP_PRODUCT); a union of many polygon operands costs rows x the largest polygon's vertices per invocation: split the tree or evaluate it on the CPU path",
+            "{}shader {label}: one invocation may run {} loop iterations, over the ceiling {limit} ({}); a union of many polygon operands costs rows x the largest polygon's vertices per invocation: split the tree or evaluate it on the CPU path",
             crate::gpu_context::refusal::UNBOUNDED_SHADER_LOOP,
-            report.worst
+            report.worst,
+            "gpu_loop_bound::MAX_TRIP_PRODUCT"
         )));
     }
     if let Some(first) = report.unbounded.first() {
@@ -515,6 +604,294 @@ fn is_increment(f: &Function, var: Handle<naga::LocalVariable>, value: Handle<Ex
     };
     let pos = |e: Handle<Expression>| matches!(&f.expressions[e], Expression::Literal(l) if lit(l).is_some_and(|v| v > 0));
     (local_of(f, left) == Some(var) && pos(right)) || (local_of(f, right) == Some(var) && pos(left))
+}
+
+/// Check that every loop of `module` is counted by `counter` and bound the iterations of one invocation.
+#[must_use]
+pub fn check_counted(module: &Module, maxima: &HostMaxima, counter: WorkCounter) -> CountedReport {
+    let mut r = CountedReport::default();
+    let Some(budget) = maxima.get(counter.budget).copied() else {
+        r.problems.push(format!(
+            "the budget `{}` has no stated maximum",
+            counter.budget
+        ));
+        return r;
+    };
+    r.budget = budget;
+    let Some((tick, tf)) = module
+        .functions
+        .iter()
+        .find(|(_, f)| f.name.as_deref() == Some(counter.tick))
+    else {
+        r.problems
+            .push(format!("no tick function `{}`", counter.tick));
+        return r;
+    };
+    let cx = Cx {
+        module,
+        maxima,
+        report: LoopReport::default(),
+        fn_bound: BTreeMap::new(),
+    };
+    let Some(g) = tick_counter(&cx, tf, counter.budget) else {
+        r.problems.push(format!(
+            "the tick function `{}` is not `G = G + <literal > 0>; return G <= {}` on a private global G",
+            counter.tick, counter.budget
+        ));
+        return r;
+    };
+    if module.global_variables[g].init.is_some() {
+        r.problems
+            .push("the work counter has an initializer".into());
+    }
+    let mut inst: BTreeMap<Handle<Function>, u64> = BTreeMap::new();
+    let mut entered: BTreeMap<Handle<Function>, u64> = BTreeMap::new();
+    let mut unit = 0u64;
+    let walk = |name: &str,
+                f: &Function,
+                inst: &BTreeMap<_, _>,
+                entered: &BTreeMap<_, _>,
+                problems: &mut Vec<String>,
+                unit: &mut u64| {
+        if stores_global(f, &f.body, g) {
+            problems.push(format!(
+                "fn {name}: stores the work counter outside the tick function"
+            ));
+        }
+        count_loops(f, name, &f.body, tick, inst, entered, problems, unit)
+    };
+    for (h, f) in module.functions.iter() {
+        if h == tick {
+            continue;
+        }
+        let name = f.name.clone().unwrap_or_else(|| format!("fn{}", h.index()));
+        let (i, e) = walk(&name, f, &inst, &entered, &mut r.problems, &mut unit);
+        inst.insert(h, i);
+        entered.insert(h, e);
+    }
+    let mut instances = 0u64;
+    for ep in &module.entry_points {
+        let (i, e) = walk(
+            &ep.name,
+            &ep.function,
+            &inst,
+            &entered,
+            &mut r.problems,
+            &mut unit,
+        );
+        instances = instances.saturating_add(i);
+        unit = unit.max(e);
+    }
+    r.instances = instances;
+    r.unit = unit;
+    r.bound = budget
+        .saturating_add(instances)
+        .saturating_add(1)
+        .saturating_mul(unit.saturating_add(1));
+    r
+}
+
+/// The private global the tick function counts with, when its body is exactly the counted form.
+fn tick_counter(cx: &Cx<'_>, f: &Function, budget: &str) -> Option<Handle<naga::GlobalVariable>> {
+    let st: Vec<&Statement> = flat(&f.body)
+        .into_iter()
+        .filter(|s| !matches!(s, Statement::Emit(_)))
+        .collect();
+    let [Statement::Store { pointer, value }, Statement::Return { value: Some(ret) }] = st[..]
+    else {
+        return None;
+    };
+    let g = private_global(cx.module, f, *pointer)?;
+    let Expression::Binary {
+        op: BinaryOperator::Add,
+        left,
+        right,
+    } = f.expressions[*value]
+    else {
+        return None;
+    };
+    let loads_g = |e: Handle<Expression>| matches!(f.expressions[e], Expression::Load { pointer } if private_global(cx.module, f, pointer) == Some(g));
+    let pos = |e: Handle<Expression>| matches!(&f.expressions[e], Expression::Literal(l) if lit(l).is_some_and(|v| v > 0));
+    if !((loads_g(left) && pos(right)) || (loads_g(right) && pos(left))) {
+        return None;
+    }
+    let Expression::Binary { op, left, right } = f.expressions[*ret] else {
+        return None;
+    };
+    let names_budget = |e: Handle<Expression>| cx.host_name(f, e).as_deref() == Some(budget);
+    let within = matches!(
+        (
+            op,
+            loads_g(left),
+            names_budget(right),
+            loads_g(right),
+            names_budget(left)
+        ),
+        (
+            BinaryOperator::LessEqual | BinaryOperator::Less,
+            true,
+            true,
+            _,
+            _
+        ) | (
+            BinaryOperator::GreaterEqual | BinaryOperator::Greater,
+            _,
+            _,
+            true,
+            true
+        )
+    );
+    within.then_some(g)
+}
+
+fn private_global(
+    module: &Module,
+    f: &Function,
+    p: Handle<Expression>,
+) -> Option<Handle<naga::GlobalVariable>> {
+    match f.expressions[p] {
+        Expression::GlobalVariable(g)
+            if module.global_variables[g].space == naga::AddressSpace::Private =>
+        {
+            Some(g)
+        }
+        _ => None,
+    }
+}
+
+/// Whether `block` stores to `g` (or into it).
+fn stores_global(f: &Function, block: &Block, g: Handle<naga::GlobalVariable>) -> bool {
+    fn root(f: &Function, mut p: Handle<Expression>) -> Option<Handle<naga::GlobalVariable>> {
+        loop {
+            match f.expressions[p] {
+                Expression::GlobalVariable(g) => return Some(g),
+                Expression::AccessIndex { base, .. } | Expression::Access { base, .. } => p = base,
+                _ => return None,
+            }
+        }
+    }
+    block.iter().any(|st| match st {
+        Statement::Store { pointer, .. } => root(f, *pointer) == Some(g),
+        Statement::Atomic { pointer, .. } => root(f, *pointer) == Some(g),
+        Statement::Block(b) => stores_global(f, b, g),
+        Statement::If { accept, reject, .. } => {
+            stores_global(f, accept, g) || stores_global(f, reject, g)
+        }
+        Statement::Switch { cases, .. } => cases.iter().any(|c| stores_global(f, &c.body, g)),
+        Statement::Loop {
+            body, continuing, ..
+        } => stores_global(f, body, g) || stores_global(f, continuing, g),
+        _ => false,
+    })
+}
+
+/// The statements of `block` with nested plain blocks spliced in.
+fn flat(block: &Block) -> Vec<&Statement> {
+    let mut out = Vec::new();
+    for st in block.iter() {
+        if let Statement::Block(b) = st {
+            out.extend(flat(b));
+        } else {
+            out.push(st);
+        }
+    }
+    out
+}
+
+/// Whether a statement may run before a loop's tick: an emit, or an `if` whose branches only break.
+fn exit_check(st: &Statement) -> bool {
+    match st {
+        Statement::Emit(_) => true,
+        Statement::If { accept, reject, .. } => {
+            (is_break(accept) || accept.is_empty()) && (is_break(reject) || reject.is_empty())
+        }
+        _ => false,
+    }
+}
+
+/// Whether a loop body starts (after exit checks only) with `if (!tick()) { break; }`.
+fn ticks_first(f: &Function, body: &Block, tick: Handle<Function>) -> bool {
+    let st = flat(body);
+    let mut i = 0;
+    while i < st.len() && exit_check(st[i]) {
+        i += 1;
+    }
+    let Some(Statement::Call {
+        function,
+        result: Some(res),
+        ..
+    }) = st.get(i)
+    else {
+        return false;
+    };
+    if *function != tick {
+        return false;
+    }
+    let mut j = i + 1;
+    while matches!(st.get(j), Some(Statement::Emit(_))) {
+        j += 1;
+    }
+    let Some(Statement::If {
+        condition,
+        accept,
+        reject,
+    }) = st.get(j)
+    else {
+        return false;
+    };
+    let not_res = matches!(f.expressions[*condition], Expression::Unary { op: naga::UnaryOperator::LogicalNot, expr } if expr == *res);
+    not_res && is_break(accept) && reject.is_empty()
+}
+
+/// For `block`: (loop instances inside it, calls expanded; loops entered directly, calls expanded). Records loops
+/// that do not tick first and updates `unit` with each loop body's direct entries.
+#[allow(clippy::too_many_arguments)]
+fn count_loops(
+    f: &Function,
+    name: &str,
+    block: &Block,
+    tick: Handle<Function>,
+    inst: &BTreeMap<Handle<Function>, u64>,
+    entered: &BTreeMap<Handle<Function>, u64>,
+    problems: &mut Vec<String>,
+    unit: &mut u64,
+) -> (u64, u64) {
+    let (mut i, mut e) = (0u64, 0u64);
+    for st in block.iter() {
+        let (a, b) = match st {
+            Statement::Block(b) => count_loops(f, name, b, tick, inst, entered, problems, unit),
+            Statement::If { accept, reject, .. } => {
+                let x = count_loops(f, name, accept, tick, inst, entered, problems, unit);
+                let y = count_loops(f, name, reject, tick, inst, entered, problems, unit);
+                (x.0.saturating_add(y.0), x.1.saturating_add(y.1))
+            }
+            Statement::Switch { cases, .. } => cases.iter().fold((0, 0), |acc: (u64, u64), c| {
+                let x = count_loops(f, name, &c.body, tick, inst, entered, problems, unit);
+                (acc.0.saturating_add(x.0), acc.1.saturating_add(x.1))
+            }),
+            Statement::Loop {
+                body, continuing, ..
+            } => {
+                if !ticks_first(f, body, tick) {
+                    problems.push(format!(
+                        "fn {name}: a loop whose body does not start with `if (!tick()) {{ break; }}`"
+                    ));
+                }
+                let x = count_loops(f, name, body, tick, inst, entered, problems, unit);
+                let y = count_loops(f, name, continuing, tick, inst, entered, problems, unit);
+                *unit = (*unit).max(x.1.saturating_add(y.1));
+                (x.0.saturating_add(y.0).saturating_add(1), 1)
+            }
+            Statement::Call { function, .. } if *function != tick => (
+                inst.get(function).copied().unwrap_or(0),
+                entered.get(function).copied().unwrap_or(0),
+            ),
+            _ => (0, 0),
+        };
+        i = i.saturating_add(a);
+        e = e.saturating_add(b);
+    }
+    (i, e)
 }
 
 #[cfg(test)]
@@ -693,5 +1070,125 @@ mod tests {
         )
         .unwrap();
         assert_eq!((r.unbounded.len(), r.worst), (0, 61), "{r:?}");
+    }
+
+    /// A counted kernel: `tick` and a body of loops, with a work budget of at most 100.
+    fn counted(
+        tick_body: &str,
+        body: &str,
+    ) -> (
+        super::CountedReport,
+        Result<LoopReport, crate::compiled::GpuError>,
+    ) {
+        let src = format!(
+            "struct U {{ steps: u32, work_budget: u32 }}\n@group(0) @binding(0) var<uniform> u: U;\n@group(0) @binding(1) var<storage, read_write> o: array<f32>;\nvar<private> work: u32;\nvar<private> other: u32;\nfn tick() -> bool {{ {tick_body} }}\nfn inner() -> f32 {{ var a = 0.0; for (var j = 0u; j < 4u; j = j + 1u) {{ if (!tick()) {{ break; }} a = a + 1.0; }} return a; }}\n@compute @workgroup_size(1)\nfn main() {{\n var acc = 0.0;\n{body}\n o[0] = acc;\n}}\n"
+        );
+        let m = HostMaxima::from([
+            ("u.steps".to_string(), 4000),
+            ("u.work_budget".to_string(), 100),
+        ]);
+        let counter = super::WorkCounter {
+            tick: "tick",
+            budget: "u.work_budget",
+        };
+        let module = parse_source(&wgpu::ShaderSource::Wgsl(src.clone().into())).unwrap();
+        let r = super::check_counted(&module, &m, counter);
+        let ceiling = super::KernelCeiling {
+            max_trip_product: 1000,
+            reason: "test",
+            counter,
+        };
+        (
+            r,
+            super::require_bounded_under(
+                "t",
+                &wgpu::ShaderSource::Wgsl(src.into()),
+                &m,
+                Some(ceiling),
+            ),
+        )
+    }
+
+    const TICK: &str = "work = work + 1u; return work <= u.work_budget;";
+    const COUNTED: &str = "for (var i = 0u; i < u.steps; i = i + 1u) { if (!tick()) { break; } acc = acc + inner(); }";
+
+    #[test]
+    fn every_loop_counted_bounds_the_invocation_by_the_budget() {
+        let (r, ok) = counted(TICK, COUNTED);
+        assert!(r.problems.is_empty(), "{r:?}");
+        // main's loop and inner's loop: 2 instances; main's loop body enters 1 loop (inner's)
+        assert_eq!(
+            (r.budget, r.instances, r.unit, r.bound),
+            (100, 2, 1, (100 + 2 + 1) * 2),
+            "{r:?}"
+        );
+        // the static product (4001 x 5) is over the default ceiling's reach only through steps; the counted bound
+        // decides, and it is under the stated 1000
+        assert!(ok.is_ok(), "{ok:?}");
+    }
+
+    #[test]
+    fn a_loop_without_a_tick_is_refused() {
+        let (r, ok) = counted(
+            TICK,
+            "for (var i = 0u; i < u.steps; i = i + 1u) { acc = acc + inner(); }",
+        );
+        assert_eq!(r.problems.len(), 1, "{r:?}");
+        assert!(ok.is_err());
+    }
+
+    #[test]
+    fn a_tick_after_work_in_the_body_is_refused() {
+        let (r, _) = counted(TICK, "for (var i = 0u; i < u.steps; i = i + 1u) { acc = acc + inner(); if (!tick()) { break; } }");
+        assert!(!r.problems.is_empty(), "{r:?}");
+    }
+
+    #[test]
+    fn a_tick_that_does_not_count_or_compare_with_the_budget_is_refused() {
+        for t in [
+            "return work <= u.work_budget;",
+            "work = work + 0u; return work <= u.work_budget;",
+            "work = work + 1u; return work <= u.steps;",
+            "other = work + 1u; return work <= u.work_budget;",
+            "work = work + 1u; return true;",
+        ] {
+            let (r, ok) = counted(t, COUNTED);
+            assert!(!r.problems.is_empty(), "{t}: {r:?}");
+            assert!(ok.is_err(), "{t}");
+        }
+    }
+
+    #[test]
+    fn a_store_to_the_counter_outside_the_tick_is_refused() {
+        let (r, _) = counted(TICK, &format!("work = 0u;\n{COUNTED}"));
+        assert_eq!(r.problems.len(), 1, "{r:?}");
+    }
+
+    #[test]
+    fn a_counted_bound_over_the_stated_ceiling_is_refused() {
+        // three nested loops: the unit grows, the bound passes 1000
+        let (r, ok) = counted(TICK, "for (var i = 0u; i < u.steps; i = i + 1u) { if (!tick()) { break; } acc = acc + inner() + inner() + inner() + inner() + inner() + inner() + inner() + inner() + inner() + inner(); }");
+        assert!(r.problems.is_empty() && r.bound > 1000, "{r:?}");
+        assert!(ok.is_err(), "{ok:?}");
+    }
+
+    #[test]
+    fn a_ceiling_without_a_reason_is_refused() {
+        let src = wrap("for (var i = 0u; i < 3u; i = i + 1u) { acc = acc + 1.0; }");
+        let c = super::KernelCeiling {
+            max_trip_product: 10,
+            reason: " ",
+            counter: super::WorkCounter {
+                tick: "tick",
+                budget: "u.n",
+            },
+        };
+        assert!(super::require_bounded_under(
+            "t",
+            &wgpu::ShaderSource::Wgsl(src.into()),
+            &maxima(),
+            Some(c)
+        )
+        .is_err());
     }
 }
