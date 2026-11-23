@@ -1,13 +1,14 @@
 //! Streamed sheet fields: march a field that does not fit in memory, one batch of sheets at a time, with the same
 //! hits as when every sheet is in memory.
 //!
-//! On disk a field is the ASHF v1 layout (little-endian): `b"ASHF"`, `u32` version 1, `u32` rule (1 = cell-v1,
+//! On disk a field is the ASHF v4 layout (little-endian): `b"ASHF"`, `u32` version 4, the 32-byte semantics
+//! identifier the field was written under ([`crate::provenance`]), `u32` rule (1 = cell-v1,
 //! 0 = none), `u32` sheet count; per sheet: `u32` level count; per level: `f32` h, `f32` lo[3], `u32` nb[3], `u32`
 //! n_index, `i32` index[n_index], `u32` channel count; per channel: `u32` n_rows, `i32` rows[n_rows], `u32` n_kept,
-//! `f32` scale[n_kept], `f32` offset[n_kept], `u8` q[n_kept * [`super::BRICK_NODES`]]. ASHF v2 is the same with one
+//! `f32` scale[n_kept], `f32` offset[n_kept], `u8` q[n_kept * [`super::BRICK_NODES`]]. ASHF v5 is the same with one
 //! `u32` nodes-per-axis after `n_kept` in every channel, and `q[n_kept * nodes^3]` (an attribute channel on a
-//! coarse grid, [`super::COARSE_NODES`]). [`write_ashf`] writes v1 when every channel is on 9 nodes (the bytes
-//! of a field without coarse channels do not change) and v2 otherwise,
+//! coarse grid, [`super::COARSE_NODES`]). [`write_ashf`] writes v4 when every channel is on 9 nodes and v5
+//! otherwise (v6 with a band); versions 1 to 3 had the same layouts without the identifier and are refused,
 //! [`AshfIndex::scan`] finds where each sheet lies (it reads the counts and seeks past the arrays), and
 //! [`AshfIndex::read_sheets`] reads a contiguous range of sheets.
 //!
@@ -29,31 +30,35 @@
 use super::{
     build, Channel, Level, MarchResult, Sheet, SheetField, SheetFieldError, ValidRule, NODES,
 };
+use crate::provenance::{Provenance, StoredForm};
 use glam::Vec3;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
 
 /// The 4 bytes an ASHF file starts with.
 pub const ASHF_MAGIC: [u8; 4] = *b"ASHF";
-/// The ASHF version written for a field whose channels are all on 9 nodes per axis.
-pub const ASHF_VERSION: u32 = 1;
+/// The ASHF version written for a field whose channels are all on 9 nodes per axis (versions 1 to 3, the same
+/// layouts without the semantics identifier, are refused).
+pub const ASHF_VERSION: u32 = 4;
 
 /// The ASHF version written when a channel is on a coarse grid (a `u32` nodes count per channel).
-pub const ASHF_VERSION_COARSE: u32 = 2;
+pub const ASHF_VERSION_COARSE: u32 = 5;
 
 /// The ASHF version written when a level holds a band ([`super::BAND`] channels).
 ///
-/// It is v2 plus, per level before its channels, `u32` n_band and `u32` band[n_band] (the mask), and for a band channel a `u32` byte count of
+/// It is v5 plus, per level before its channels, `u32` n_band and `u32` band[n_band] (the mask), and for a band channel a `u32` byte count of
 /// `q` after its nodes count (its rows hold different node counts; their starts are rebuilt on reading).
-pub const ASHF_VERSION_BAND: u32 = 3;
+pub const ASHF_VERSION_BAND: u32 = 6;
 
 /// Errors from reading, splitting or marching a streamed field.
 #[derive(Debug)]
 pub enum StreamError {
     /// Reading or writing the file failed.
     Io(io::Error),
-    /// The file is not a valid ASHF v1 field.
+    /// The file is not a valid ASHF field.
     Format(String),
+    /// The field was written under another semantics identifier than this crate's (or one it still reproduces).
+    Semantics(crate::io::IoError),
     /// A sheet's data is inconsistent.
     Field(SheetFieldError),
     /// A sheet or chunk does not fit the cap or budget it was given (refused instead of overrunning it).
@@ -66,7 +71,8 @@ impl std::fmt::Display for StreamError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Io(e) => write!(f, "ASHF i/o: {e}"),
-            Self::Format(s) => write!(f, "not a valid ASHF v1 field: {s}"),
+            Self::Format(s) => write!(f, "not a valid ASHF field: {s}"),
+            Self::Semantics(e) => write!(f, "{e}"),
             Self::Field(e) => write!(f, "{e}"),
             Self::Budget(s) => write!(f, "over budget: {s}"),
             Self::March(s) => write!(f, "march: {s}"),
@@ -109,6 +115,19 @@ fn len_u32(n: usize, what: &str) -> Result<u32, StreamError> {
 
 /// Write `field` in the ASHF layout (v1, or v2 when a channel is on a coarse grid); returns the bytes written.
 pub fn write_ashf<W: Write>(w: &mut W, field: &SheetField) -> Result<u64, StreamError> {
+    write_ashf_with_provenance(w, field, &Provenance::sdf())
+}
+
+/// [`write_ashf`] with the caller's semantics identifier in the header.
+///
+/// # Errors
+///
+/// As [`write_ashf`].
+pub fn write_ashf_with_provenance<W: Write>(
+    w: &mut W,
+    field: &SheetField,
+    provenance: &Provenance,
+) -> Result<u64, StreamError> {
     let mut n = 0u64;
     let mut put = |w: &mut W, b: &[u8]| -> io::Result<()> {
         n += b.len() as u64;
@@ -129,6 +148,7 @@ pub fn write_ashf<W: Write>(w: &mut W, field: &SheetField) -> Result<u64, Stream
     };
     put(w, &ASHF_MAGIC)?;
     put(w, &version.to_le_bytes())?;
+    put(w, &provenance.slot_for(StoredForm::SheetField))?;
     put(w, &rule_code(field.rule).to_le_bytes())?;
     put(w, &len_u32(field.sheets.len(), "sheet")?.to_le_bytes())?;
     for sh in &field.sheets {
@@ -278,11 +298,11 @@ pub struct AshfIndex {
     pub rule: ValidRule,
     /// One span per sheet, in file order.
     pub spans: Vec<SheetSpan>,
-    /// The file's ASHF version (1, 2 or 3).
+    /// The file's ASHF version (4, 5 or 6).
     pub version: u32,
 }
 
-/// A nodes-per-axis count read from a v2 / v3 file: [`NODES`], one of [`super::COARSE_NODES`], or (v3 only)
+/// A nodes-per-axis count read from a v5 / v6 file: [`NODES`], one of [`super::COARSE_NODES`], or (v6 only)
 /// [`super::BAND`].
 fn nodes_of(n: u32, version: u32) -> Result<u32, StreamError> {
     if n == NODES as u32
@@ -307,13 +327,22 @@ impl AshfIndex {
             return Err(StreamError::Format(format!("magic {magic:?}")));
         }
         let version = read_u32(r)?;
+        if (1..ASHF_VERSION).contains(&version) {
+            return Err(StreamError::Format(format!(
+                "version {version} carries no semantics identifier (write the field again)"
+            )));
+        }
         if ![ASHF_VERSION, ASHF_VERSION_COARSE, ASHF_VERSION_BAND].contains(&version) {
             return Err(StreamError::Format(format!("version {version}")));
         }
+        let mut id = [0u8; 32];
+        r.read_exact(&mut id)?;
+        crate::provenance::sdf_load_verdict(Some(id), "ASHF", false)
+            .map_err(StreamError::Semantics)?;
         let rule = rule_of(read_u32(r)?)?;
         let ns = read_u32(r)? as usize;
         let mut spans = Vec::with_capacity(ns);
-        let mut pos = 16u64;
+        let mut pos = 48u64;
         let skip = |r: &mut R, pos: &mut u64, n: u64| -> Result<(), StreamError> {
             *pos += n;
             if *pos > end {

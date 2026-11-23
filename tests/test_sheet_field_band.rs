@@ -7,15 +7,17 @@
 //! - at every hit the band gives the attributes of the full field, bit for bit, on the CPU and the GPU (the same
 //!   bytes are read; only the address differs);
 //! - the band stores fewer attribute bytes than the full field, and the geometry is the full field's;
-//! - ASHF: a banded field is written as v3 and read back with the same bytes, masks and row starts; a field
-//!   without a band is still v1 (or v2 with a coarse channel), byte for byte;
+//! - ASHF: a banded field is written as the band version and read back with the same bytes, masks and row starts; a field
+//!   without a band is still the plain version (or the coarse version with a coarse channel), byte for byte;
 //! - an empty band (every cell excluded) makes the GPU march refuse the hits and the CPU return NaN attributes;
 //! - refusals: a band of a level without attributes or of a level already banded, a mask or byte count that
-//!   does not match, and the band kind in a v2 file.
+//!   does not match, and the band kind in a coarse-version file.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::cast_precision_loss)]
 
 use alice_sdf::sheet_field::build::{band, coarsen, level_from_fn, sheet};
-use alice_sdf::sheet_field::stream::{write_ashf, AshfIndex};
+use alice_sdf::sheet_field::stream::{
+    write_ashf, AshfIndex, ASHF_VERSION, ASHF_VERSION_BAND, ASHF_VERSION_COARSE,
+};
 use alice_sdf::sheet_field::{MarchResult, SheetField, ValidRule, BAND};
 use glam::Vec3;
 use std::io::Cursor;
@@ -191,14 +193,14 @@ fn an_empty_band_is_refused_on_the_gpu_and_nan_on_the_cpu() {
 }
 
 #[test]
-fn a_banded_field_is_ashf_v3_and_others_keep_their_version() {
+fn a_banded_field_is_the_band_version_and_others_keep_their_version() {
     let full = patch();
     let version = |f: &SheetField| {
         let mut b = Vec::new();
         write_ashf(&mut b, f).unwrap();
         (u32::from_le_bytes(b[4..8].try_into().unwrap()), b)
     };
-    assert_eq!(version(&full).0, 1);
+    assert_eq!(version(&full).0, ASHF_VERSION);
     let coarse = SheetField::new(
         vec![sheet(vec![{
             let mut lv = full.sheets[0].levels[0].clone();
@@ -210,10 +212,10 @@ fn a_banded_field_is_ashf_v3_and_others_keep_their_version() {
         .unwrap()],
         full.rule,
     );
-    assert_eq!(version(&coarse).0, 2);
+    assert_eq!(version(&coarse).0, ASHF_VERSION_COARSE);
     let b = banded(&full, 2.0);
     let (v, bytes) = version(&b);
-    assert_eq!(v, 3);
+    assert_eq!(v, ASHF_VERSION_BAND);
     assert!(bytes.len() < version(&full).1.len());
     let mut cur = Cursor::new(bytes);
     let ix = AshfIndex::scan(&mut cur).unwrap();
@@ -238,7 +240,7 @@ fn a_banded_field_is_ashf_v3_and_others_keep_their_version() {
 }
 
 #[test]
-fn malformed_bands_and_the_band_kind_in_a_v2_file_are_refused() {
+fn malformed_bands_and_the_band_kind_in_a_coarse_version_file_are_refused() {
     let full = patch();
     let lv = &full.sheets[0].levels[0];
     // a level without attributes, and a level already banded
@@ -255,14 +257,14 @@ fn malformed_bands_and_the_band_kind_in_a_v2_file_are_refused() {
         sheet(vec![bad]).is_err(),
         "a mask with one bit less was accepted"
     );
-    // a band channel declared in a v2 file: write v3, relabel it v2
+    // a band channel declared in a coarse file: write the band version, relabel it the coarse version
     let f = SheetField::new(vec![sheet(vec![b]).unwrap()], full.rule);
     let mut bytes = Vec::new();
     write_ashf(&mut bytes, &f).unwrap();
-    bytes[4..8].copy_from_slice(&2u32.to_le_bytes());
-    // refused for the band kind itself (the v3 mask words would misalign a v2 read and refuse it anyway)
+    bytes[4..8].copy_from_slice(&ASHF_VERSION_COARSE.to_le_bytes());
+    // refused for the band kind itself (the band mask words would misalign a coarse-version read and refuse it anyway)
     let err = AshfIndex::scan(&mut Cursor::new(bytes))
-        .expect_err("a band channel in a v2 file was accepted");
+        .expect_err("a band channel in a coarse-version file was accepted");
     assert!(
         err.to_string().contains("0 nodes per brick axis"),
         "refused for another reason: {err}"
