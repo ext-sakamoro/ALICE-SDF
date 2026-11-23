@@ -161,6 +161,10 @@ pub enum StoredForm {
     ShaderText,
     /// A sidecar file `<path>.semantics` (raw volume data, `.splat`)
     Sidecar,
+    /// ASHF sheet field (`.ashf`, the 32 bytes after the version)
+    SheetField,
+    /// ASKC kink cell sidecar (`.askc`, the 32 bytes after the version)
+    KinkCells,
 }
 
 impl StoredForm {
@@ -196,6 +200,8 @@ impl StoredForm {
             Self::Jpeg => "jpeg",
             Self::ShaderText => "shader-text",
             Self::Sidecar => "sidecar",
+            Self::SheetField => "ashf",
+            Self::KinkCells => "askc",
         }
     }
 
@@ -757,6 +763,47 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Stored, ProvenanceError> {
     found_in(bytes).map(|(form, f)| f.of(form))
 }
 
+/// ASHF and ASKC: the versions that carry the identifier hold it in the 32 bytes after the version
+/// word; an earlier version carries none, a version this crate does not know is refused rather
+/// than read at that offset
+fn sheet_slot(bytes: &[u8]) -> Result<(StoredForm, Found), ProvenanceError> {
+    use crate::sheet_field::{kink, stream};
+    let ashf = bytes.starts_with(&stream::ASHF_MAGIC);
+    let (form, format, carries, earlier) = if ashf {
+        (
+            StoredForm::SheetField,
+            "ASHF",
+            stream::ASHF_VERSION..=stream::ASHF_VERSION_BAND,
+            1..stream::ASHF_VERSION,
+        )
+    } else {
+        (
+            StoredForm::KinkCells,
+            "ASKC",
+            kink::ASKC_VERSION_MIN..=kink::ASKC_VERSION,
+            1..kink::ASKC_VERSION_MIN,
+        )
+    };
+    let version = bytes
+        .get(4..8)
+        .map(|v| u32::from_le_bytes([v[0], v[1], v[2], v[3]]))
+        .ok_or_else(|| ProvenanceError::Unreadable(format!("{format}: truncated header")))?;
+    if earlier.contains(&version) {
+        return Err(ProvenanceError::Missing { format });
+    }
+    if !carries.contains(&version) {
+        return Err(ProvenanceError::Unreadable(format!(
+            "{format}: version {version} is not known"
+        )));
+    }
+    let id: [u8; 32] = bytes
+        .get(8..40)
+        .ok_or_else(|| ProvenanceError::Unreadable(format!("{format}: truncated header")))?
+        .try_into()
+        .unwrap();
+    Ok((form, Found::slot(id)))
+}
+
 fn found_in(bytes: &[u8]) -> Result<(StoredForm, Found), ProvenanceError> {
     if bytes.starts_with(b"PK\x03\x04") {
         return read_3mf(bytes).map(|f| (StoredForm::ThreeMf, f));
@@ -782,6 +829,9 @@ fn found_in(bytes: &[u8]) -> Result<(StoredForm, Found), ProvenanceError> {
             .try_into()
             .unwrap();
         return Ok((StoredForm::Asdf, Found::slot(id)));
+    }
+    if bytes.starts_with(b"ASHF") || bytes.starts_with(b"ASKC") {
+        return sheet_slot(bytes);
     }
     if bytes.starts_with(PNG_SIGNATURE) {
         return png_tagged(bytes).map(|p| (StoredForm::Png, Found::key(p)));
