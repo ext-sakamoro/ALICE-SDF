@@ -160,7 +160,16 @@ class Audit:
             self.findings.append(f"{where}: {kind}, nested too deep: unscanned container")
             return
         try:
-            members = self.c._members(data, kind)
+            # the checker inflates no more than the budget left (members read in chunks)
+            members = self.c._members(data, kind, budget[0])
+        except (TypeError, AttributeError):  # the checker's interface changed: an error, never a finding
+            raise
+        except self.c.OverBudget as e:  # inflates past the budget left: reported before it is held
+            self.findings.append(f"{where}: {kind}, {e.args[0]}: unscanned container")
+            return
+        except LookupError as e:  # a reader this Python does not have (zstd before 3.14)
+            self.findings.append(f"{where}: {kind}, {e.args[0]}: unscanned container")
+            return
         except Exception:  # unknown, damaged, encrypted or unsupported: reported, never passed
             self.findings.append(f"{where}: {kind}: unscanned container")
             return

@@ -13,7 +13,6 @@ usage: python3 scripts/test_release_artifact_audit.py
 from __future__ import annotations
 
 import atexit
-import hashlib
 import io
 import os
 import shutil
@@ -142,14 +141,19 @@ class Planted(unittest.TestCase):
     def test_a_private_name_held_as_a_hash_is_a_finding(self) -> None:
         c = Checker.get()
         fake = "zqvplantedproject"
-        h = hashlib.sha256(fake.encode()).hexdigest()
         data = b"\0\0header\0" + f"built for {fake} release".encode() + b"\0"
-        self.assertEqual(self.audit(data).findings, [], "the name is not private until its hash is held")
-        c.PRIVATE_NAME_HASHES.add(h)
+        # the checker holds private names as HMAC-SHA256 under a key from outside the repository; a test key here
+        saved = dict(c.NAME_KEY)
+        c.NAME_KEY.update(key=bytes(range(32)), read=True)
+        h = c.name_mac(fake)
         try:
+            self.assertEqual(self.audit(data).findings, [], "the name is not private until its hash is held")
+            c.PRIVATE_NAME_HASHES.add(h)
             self.assertTrue(any("private name" in f for f in self.audit(data).findings))
         finally:
             c.PRIVATE_NAME_HASHES.discard(h)
+            c.NAME_KEY.clear()
+            c.NAME_KEY.update(saved)
 
     def test_an_internal_word_is_a_finding(self) -> None:
         data = b"\0\0" + f"spawned by the {INTERNAL_WORD} runner".encode() + b"\0"
@@ -199,6 +203,47 @@ class Planted(unittest.TestCase):
             data = buf.getvalue()
         f = self.audit(data, "deep.zip").findings
         self.assertTrue(any("nested too deep" in x for x in f), f)
+
+    def test_a_container_past_the_budget_left_is_a_finding_before_it_is_held(self) -> None:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as w:
+            w.writestr("big", b"\0" * (1 << 20))
+        real = Checker.get()
+        limits: list[int] = []
+
+        class Spy:  # the checker, with the limit it is handed recorded
+            def __getattr__(self, name):
+                return getattr(real, name)
+
+            @staticmethod
+            def _members(data, kind, limit):
+                limits.append(limit)
+                return real._members(data, kind, limit)
+
+        a = rea.Audit(Spy())
+        a.read("big.zip", "big.zip", buf.getvalue(), 0, [1 << 16])
+        self.assertEqual(limits, [1 << 16], "the checker inflates no more than the budget left")
+        self.assertTrue(any(x.startswith("big.zip: zip, over ") and x.endswith(": unscanned container")
+                            for x in a.findings), a.findings)
+        self.assertEqual(a.files, 0, "nothing past the budget is read as a file")
+
+    def test_a_changed_checker_interface_is_an_error_not_an_unscanned_container(self) -> None:
+        # a checker whose member reader takes other arguments: every container would read as damaged
+        real = Checker.get()
+
+        class Drifted:
+            def __getattr__(self, name):
+                return getattr(real, name)
+
+            @staticmethod
+            def _members(data, kind):
+                return []
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as w:
+            w.writestr("m", b"\0\0clean bytes here\0")
+        with self.assertRaises(TypeError):
+            rea.Audit(Drifted()).read("a.zip", "a.zip", buf.getvalue(), 0, [rea.BUDGET])
 
     def test_a_copy_of_a_tracked_file_is_left_to_the_public_text_check(self) -> None:
         data = b"\0\0" + f"spawned by the {INTERNAL_WORD} runner".encode() + b"\0"
