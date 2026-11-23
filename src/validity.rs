@@ -115,6 +115,7 @@ use crate::types::SdfNode;
 use glam::{DVec3, Vec3};
 
 mod gap_open;
+use gap_open::box_is_open;
 pub use gap_open::{narrow_air_beside_is_open, narrow_air_is_open, OPEN_REACH_LIMITS};
 
 /// Smallest march step, so a ray starting exactly on a surface still advances.
@@ -459,6 +460,12 @@ pub struct GapProof {
     /// store it to match a proof to a shape later. A stored proof is bound to the shape by the shape
     /// itself and to the arithmetic by [`crate::SDF_SEMANTICS_ID`].
     pub tree: u64,
+    /// The unit build axis of a proof made by [`prove_gaps_in_layers`], `None` for [`prove_gaps`]. A
+    /// layered proof does not subdivide narrow air that is open in its layer, so it speaks only for
+    /// [`GapReport::verdict_in_layers`] with the same axis.
+    pub build_axis: Option<Vec3>,
+    /// Boxes a layered proof certified open in their layer and did not subdivide (0 for [`prove_gaps`]).
+    pub open_boxes: usize,
 }
 
 /// Lower bound of `a · b` over two vectors whose components lie in `g` (each axis independently).
@@ -538,6 +545,51 @@ pub fn prove_gaps(
     max_depth: u32,
     max_work: u64,
 ) -> Result<GapProof, GapError> {
+    prove(node, limit, bmin, bmax, max_depth, max_work, None)
+}
+
+/// [`prove_gaps`] for a shape printed in layers stacked along `build_axis`: a box whose every point is
+/// open narrow air in its own layer (certified as in the "Boxes" paragraph of the `gap_open` MODEL) is
+/// counted in [`GapProof::open_boxes`] and not subdivided, so a neck between separate walls ends
+/// instead of being split until the budget runs out. Enclosed narrow air is proven or left undecided as
+/// in [`prove_gaps`]. Read the result with [`GapReport::verdict_in_layers`] and the same axis.
+///
+/// # Errors
+///
+/// [`GapError::BadCell`]: as [`prove_gaps`], or `build_axis` zero or not finite.
+pub fn prove_gaps_in_layers(
+    node: &SdfNode,
+    limit: f32,
+    bmin: Vec3,
+    bmax: Vec3,
+    max_depth: u32,
+    max_work: u64,
+    build_axis: Vec3,
+) -> Result<GapProof, GapError> {
+    let len = build_axis.length();
+    if !(len.is_finite() && len > 0.0) {
+        return Err(GapError::BadCell);
+    }
+    prove(
+        node,
+        limit,
+        bmin,
+        bmax,
+        max_depth,
+        max_work,
+        Some(build_axis / len),
+    )
+}
+
+fn prove(
+    node: &SdfNode,
+    limit: f32,
+    bmin: Vec3,
+    bmax: Vec3,
+    max_depth: u32,
+    max_work: u64,
+    build_axis: Option<Vec3>,
+) -> Result<GapProof, GapError> {
     let valid = limit.is_finite()
         && limit > 0.0
         && bmin.is_finite()
@@ -560,6 +612,8 @@ pub fn prove_gaps(
         bmax,
         max_depth,
         tree: tree_hash(node),
+        build_axis,
+        open_boxes: 0,
     };
     let mut m = Meter::new(node);
     let mut cover = CoverTree::new(bmin, bmax, half);
@@ -581,6 +635,15 @@ pub fn prove_gaps(
         let g = m.gradient(b);
         if g.known && min_dot(&g) > FACING_DOT {
             continue;
+        }
+        // a box of air that is open narrow air in every point's own layer is a neck, not a gap
+        if let Some(axis) = build_axis.filter(|_| iv.lo > 0.0) {
+            let (open, evals) = box_is_open(node, lo, hi, limit, axis);
+            m.charge(evals);
+            if open {
+                proof.open_boxes += 1;
+                continue;
+            }
         }
         let c = (lo + hi) * 0.5;
         let seen = air_walls(&mut m, lo, hi);
@@ -1444,6 +1507,12 @@ pub enum GapUndetermined {
     BadLimit,
     /// The build axis given to [`GapReport::verdict_in_layers`] is zero or not finite.
     BadBuildAxis,
+    /// The proof was made for another build axis than the verdict reads with (`None`: a plain
+    /// [`prove_gaps`] proof read in layers, or a layered proof read by the plain verdict).
+    ProofForAnotherBuildAxis {
+        /// The proof's build axis.
+        proof_axis: Option<Vec3>,
+    },
     /// The proof was made for another limit than the one asked.
     ProofForAnotherLimit {
         /// The proof's limit.
@@ -1502,6 +1571,11 @@ impl GapReport {
     /// undecided; its certificate states the band it holds for (`proven_from` up to the limit).
     #[must_use]
     pub fn verdict(&self, limit: f32, proof: &GapProof) -> GapVerdict {
+        if proof.build_axis.is_some() {
+            return GapVerdict::Undetermined(GapUndetermined::ProofForAnotherBuildAxis {
+                proof_axis: proof.build_axis,
+            });
+        }
         self.verdict_with(limit, proof, &|_| false, &|_| false)
     }
 
@@ -1529,6 +1603,12 @@ impl GapReport {
         }
         if tree_hash(node) != self.tree {
             return GapVerdict::Undetermined(GapUndetermined::ProofForAnotherShape);
+        }
+        let axis = build_axis / build_axis.length();
+        if proof.build_axis.map(f32x3_bits) != Some(f32x3_bits(axis)) {
+            return GapVerdict::Undetermined(GapUndetermined::ProofForAnotherBuildAxis {
+                proof_axis: proof.build_axis,
+            });
         }
         self.verdict_with(
             limit,
@@ -1647,6 +1727,11 @@ impl GapReport {
             bmax: self.bmax,
         })
     }
+}
+
+/// The bits of a vector, for comparing build axes exactly.
+fn f32x3_bits(v: Vec3) -> [u32; 3] {
+    [v.x.to_bits(), v.y.to_bits(), v.z.to_bits()]
 }
 
 /// `sin` of the largest angle between facing walls still read as parallel (about 0.06°): below it the
