@@ -56,12 +56,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let decided_undecided = (0..225)
         .filter(|i| {
             let o = Vec3::new(-7.0 + (i % 15) as f32, -7.0 + (i / 15) as f32, 10.0);
-            field.march_decided(o, Vec3::NEG_Z, 30.0) == MarchResult::Undecided
+            field
+                .march_decided(o, Vec3::NEG_Z, 30.0)
+                .expect("tmax within the decided range")
+                == MarchResult::Undecided
         })
         .count();
     println!("decided march: undecided on {decided_undecided} of 225 rays");
     // the centre ray's steps, recorded by the same march
-    let (centre, steps) = field.march_profile(Vec3::new(0.0, 0.0, 10.0), Vec3::NEG_Z, 30.0);
+    let (centre, steps) = field
+        .march_profile(Vec3::new(0.0, 0.0, 10.0), Vec3::NEG_Z, 30.0)
+        .expect("tmax within the decided range");
     println!(
         "centre ray profiled: {} steps ({} from masked cells), hit {}",
         steps.len(),
@@ -81,19 +86,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let (mut fixed, mut floor) = (0, 0);
     for o in &row {
-        let m = field.march_decided(*o, Vec3::NEG_Z, 30.0);
+        let m = field
+            .march_decided(*o, Vec3::NEG_Z, 30.0)
+            .expect("tmax within the decided range");
         fixed += usize::from(same(
             &m,
             &field.march_fixed_step(*o, Vec3::NEG_Z, 30.0, 0.0005),
         ));
         // the reference's own agreement rule: within REFERENCE_T_TOL, or the same crossing within JUMP_S between
-        floor += usize::from(match (m, reference.march_decided(*o, Vec3::NEG_Z, 30.0)) {
-            (MarchResult::Hit(a), MarchResult::Hit(b)) => {
-                a.sheet == b.sheet
-                    && field.hit_agrees_with_reference(a.sheet, *o, Vec3::NEG_Z, a.t, b.t)
-            }
-            (a, b) => std::mem::discriminant(&a) == std::mem::discriminant(&b),
-        });
+        floor += usize::from(
+            match (
+                m,
+                reference
+                    .march_decided(*o, Vec3::NEG_Z, 30.0)
+                    .expect("tmax within the decided range"),
+            ) {
+                (MarchResult::Hit(a), MarchResult::Hit(b)) => {
+                    a.sheet == b.sheet
+                        && field.hit_agrees_with_reference(a.sheet, *o, Vec3::NEG_Z, a.t, b.t)
+                }
+                (a, b) => std::mem::discriminant(&a) == std::mem::discriminant(&b),
+            },
+        );
     }
     println!("row of 15 rays: same as the fixed-step march on {fixed}, as the fixed-floor march on {floor}");
     Ok(())

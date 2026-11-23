@@ -81,7 +81,7 @@ fn cpu(origins: &[Vec3]) -> impl FnMut(&SheetField) -> Result<Vec<MarchResult>, 
     move |f: &SheetField| {
         Ok(origins
             .iter()
-            .map(|o| f.march_decided(*o, -Vec3::Z, 2.0 * Z0))
+            .map(|o| f.march_decided(*o, -Vec3::Z, 2.0 * Z0).unwrap())
             .collect())
     }
 }
@@ -636,7 +636,7 @@ fn a_sheet_over_128_mib_marches_on_the_gpu_like_the_cpu() {
             }
             m => panic!("ray {o}: {m:?}"),
         }
-        let c = field.march_decided(*o, -Vec3::Z, 10.0);
+        let c = field.march_decided(*o, -Vec3::Z, 10.0).unwrap();
         assert_eq!(
             matches!(c, MarchResult::Hit(_)),
             matches!(m, MarchResult::Hit(_)),

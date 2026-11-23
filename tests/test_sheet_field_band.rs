@@ -119,8 +119,8 @@ fn at_every_hit_the_band_gives_the_full_fields_attributes_bit_for_bit() {
     );
     for o in origins() {
         let (x, y) = (
-            full.march_decided(o, -Vec3::Z, 1.0),
-            b.march_decided(o, -Vec3::Z, 1.0),
+            full.march_decided(o, -Vec3::Z, 1.0).unwrap(),
+            b.march_decided(o, -Vec3::Z, 1.0).unwrap(),
         );
         let (bx, by) = (bits(&x), bits(&y));
         assert!(bx.is_some(), "{o}: the full field missed ({x:?})");
@@ -161,7 +161,7 @@ fn an_empty_band_is_refused_on_the_gpu_and_nan_on_the_cpu() {
     assert!(lv.band.iter().all(|&w| w == 0), "the empty band kept nodes");
     assert!(lv.channels[2].q.is_empty());
     let o = origins()[100];
-    match empty.march_decided(o, -Vec3::Z, 1.0) {
+    match empty.march_decided(o, -Vec3::Z, 1.0).unwrap() {
         MarchResult::Hit(h) => {
             let uv = h.uv.unwrap();
             assert!(
@@ -233,8 +233,8 @@ fn a_banded_field_is_the_band_version_and_others_keep_their_version() {
     let rf = SheetField::new(back, ix.rule);
     for o in origins().into_iter().step_by(37) {
         assert_eq!(
-            bits(&b.march_decided(o, -Vec3::Z, 1.0)),
-            bits(&rf.march_decided(o, -Vec3::Z, 1.0))
+            bits(&b.march_decided(o, -Vec3::Z, 1.0).unwrap()),
+            bits(&rf.march_decided(o, -Vec3::Z, 1.0).unwrap())
         );
     }
 }

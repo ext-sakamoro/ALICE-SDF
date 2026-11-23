@@ -113,14 +113,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         |chunk| {
             Ok(origins
                 .iter()
-                .map(|o| chunk.march_decided(*o, Vec3::NEG_Z, 2.0 * Z0))
+                .map(|o| {
+                    chunk
+                        .march_decided(*o, Vec3::NEG_Z, 2.0 * Z0)
+                        .expect("tmax within the decided range")
+                })
                 .collect())
         },
     )?;
     let same = origins
         .iter()
         .zip(&streamed)
-        .filter(|(o, r)| field.march_decided(**o, Vec3::NEG_Z, 2.0 * Z0) == **r)
+        .filter(|(o, r)| {
+            field
+                .march_decided(**o, Vec3::NEG_Z, 2.0 * Z0)
+                .expect("tmax within the decided range")
+                == **r
+        })
         .count();
     let hits = streamed
         .iter()

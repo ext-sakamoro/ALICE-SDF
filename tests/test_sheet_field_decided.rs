@@ -57,7 +57,7 @@ fn check_miss(label: &str, r: &[MarchResult], wrong: &mut Vec<String>) {
 #[test]
 fn the_budget_covers_tmax_at_the_floor_step() {
     for tmax in [0.5f32, 1.0, 122.0, 974.8, 4000.0, 8000.0] {
-        let n = decided_steps(tmax);
+        let n = decided_steps(tmax).unwrap();
         // walk t the way the march does (f32 adds of the floor) and count the steps to reach tmax; at 8000 mm the
         // f32 rounding makes the walk 809002 steps, 9002 more than tmax / MIN_STEP
         let (mut t, mut k) = (0.0f32, 0u32);
@@ -76,9 +76,12 @@ fn the_budget_covers_tmax_at_the_floor_step() {
 fn a_ray_grazing_a_sheet_for_its_full_length_ends_in_a_miss() {
     let f = flat();
     let (os, d, tmax) = grazing();
-    let steps = decided_steps(tmax);
+    let steps = decided_steps(tmax).unwrap();
     let mut wrong = Vec::new();
-    let cpu: Vec<MarchResult> = os.iter().map(|o| f.march_decided(*o, d, tmax)).collect();
+    let cpu: Vec<MarchResult> = os
+        .iter()
+        .map(|o| f.march_decided(*o, d, tmax).unwrap())
+        .collect();
     check_miss("cpu", &cpu, &mut wrong);
     // the same rays with the earlier fixed budget run out of steps: the grazing is real, not a trivial miss
     let short: Vec<MarchResult> = os.iter().map(|o| f.march(*o, d, tmax, 4000)).collect();
@@ -111,9 +114,57 @@ fn a_ray_through_the_sheet_still_hits_at_the_analytic_distance() {
     // from z = 0.6 down at 30 degrees: meets z = 0 at t = 0.6 / sin(30 deg) = 1.2
     let d = Vec3::new(0.866_025_4, 0.0, -0.5);
     let o = Vec3::new(10.003, 0.107, 0.6);
-    match f.march_decided(o, d, 50.0) {
+    match f.march_decided(o, d, 50.0).unwrap() {
         // surface distance |dt| sin 30 within one u8 step of s (the brick spans 2 mm of s: 2 / 255 mm)
         MarchResult::Hit(h) => assert!((h.t - 1.2).abs() * 0.5 <= 2.0 / 255.0, "t {}", h.t),
         m => panic!("{m:?}"),
+    }
+}
+
+/// A `tmax` so far that the f32 rounding of `t` reaches the floor step (from about 83,886 mm: `MIN_STEP - tmax *
+/// f32::EPSILON <= 0`) has no deciding budget: it is refused as a range error on the CPU and the GPU, never a panic and
+/// never a march that silently stops short. Just inside the range the budget is still computed.
+#[test]
+fn a_tmax_no_budget_decides_is_refused_not_panicked() {
+    use alice_sdf::sheet_field::SheetFieldError;
+    let edge = MIN_STEP / f32::EPSILON;
+    for tmax in [1e5f32, edge * 1.01, f32::MAX] {
+        assert!(
+            matches!(decided_steps(tmax), Err(SheetFieldError::Range(_))),
+            "tmax {tmax}"
+        );
+        let f = flat();
+        assert!(matches!(
+            f.march_decided(Vec3::ZERO, -Vec3::Z, tmax),
+            Err(SheetFieldError::Range(_))
+        ));
+        assert!(matches!(
+            f.march_profile(Vec3::ZERO, -Vec3::Z, tmax),
+            Err(SheetFieldError::Range(_))
+        ));
+    }
+    // inside: the budget covers tmax at the reduced least step, so it exceeds tmax / MIN_STEP
+    let near = edge * 0.5;
+    let n = decided_steps(near).unwrap();
+    assert!(f64::from(n) >= f64::from(near) / f64::from(MIN_STEP), "{n}");
+    // the non-finite and non-positive cases still end at once
+    for tmax in [0.0f32, -1.0, f32::NAN, f32::INFINITY] {
+        assert_eq!(decided_steps(tmax), Ok(1), "tmax {tmax}");
+    }
+    #[cfg(feature = "gpu")]
+    match alice_sdf::sheet_field::gpu::GpuSheetField::new(&flat()) {
+        Ok(g) => {
+            let e = g
+                .march_batch_decided(&[Vec3::ZERO], -Vec3::Z, 1e5)
+                .expect_err("a tmax no budget decides was marched on the GPU");
+            assert!(e.to_string().contains("out of range"), "{e}");
+        }
+        Err(e) => {
+            assert!(
+                std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+                "ALICE_SDF_REQUIRE_GPU set but no GPU: {e}"
+            );
+            eprintln!("gpu-test: skipped (no GPU: {e})");
+        }
     }
 }
