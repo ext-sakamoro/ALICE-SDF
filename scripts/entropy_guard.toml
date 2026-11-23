@@ -5,3 +5,9 @@ path = "src/bin/main.rs"
 pattern = "Instant::now"
 count = 14
 reason = "CLI timing printed to the terminal after each command, not stored and not part of library output"
+
+[[allow]]
+path = "src/sheet_field/gpu.rs"
+pattern = "Instant::now"
+count = 1
+reason = "the sheet field march sizes its next dispatch from the measured time of the last one; each ray is marched whole in one dispatch, so the results do not depend on the sizes (tests/test_sheet_field_dispatch.rs::the_results_do_not_depend_on_the_dispatch_sizes_and_the_sizes_follow_the_rule)"
