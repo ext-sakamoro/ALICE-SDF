@@ -25,8 +25,18 @@
 //! * Not handled (read as enclosed, so the failure stands): a point whose wall faces mostly along the
 //!   build axis (a gap between a floor and the overhang above it is not a gap within one layer), and a
 //!   seed that is not air.
+//! * **Boxes** (used by [`prove_gaps_in_layers`] to stop subdividing open narrow air): a box of
+//!   half-diagonal `hd` is certified open when the search from its centre succeeds with every field
+//!   value read `hd` lower: the centre has `f > hd`, every step `f(p) + f(q) > h + 2·hd`, and the end
+//!   `f ≥ L/2 + hd`. Proof: take any point `x = c + δ` of the box, `|δ| ≤ hd`, and translate the
+//!   centre's path by `δ`. It lies in `x`'s own layer (the plane through `c` moved by `δ`), stays within
+//!   `R` of `x`, and since `f` is 1-Lipschitz each translated value is at least the original minus
+//!   `hd`: the start has `f(x) > 0`, every translated step has `f(p+δ) + f(q+δ) > h` (so the segment
+//!   is air, as above), and the end has `f ≥ L/2`. So `x` is open, for every `x` in the box. No
+//!   assumption on the box's height along the axis is needed.
 //! * Verified by: `gap_open_tests` (open slot vs closed pocket of the same width, the vertical
-//!   through-hole, the reach boundary just inside and just outside, a non-Z build axis).
+//!   through-hole, the reach boundary just inside and just outside, a non-Z build axis, the box
+//!   margin against a case that passes only without it, the layered proof end to end).
 
 use super::*;
 
@@ -52,47 +62,80 @@ const IN_LAYER_MIN: f32 = 0.5;
 /// or a build axis that is zero or not finite.
 #[must_use]
 pub fn narrow_air_is_open(node: &SdfNode, seed: Vec3, limit: f32, build_axis: Vec3) -> bool {
-    if !(limit.is_finite() && limit > 0.0) || !seed.is_finite() {
-        return false;
+    open_with_margin(node, seed, limit, build_axis, 0.0).0
+}
+
+/// Whether every point of the box `[lo, hi]` is open narrow air in its own layer (see "Boxes" in the
+/// module's MODEL), and the number of field evaluations spent.
+pub(super) fn box_is_open(
+    node: &SdfNode,
+    lo: Vec3,
+    hi: Vec3,
+    limit: f32,
+    axis: Vec3,
+) -> (bool, u64) {
+    let hd = 0.5 * (hi - lo).length();
+    open_with_margin(node, 0.5 * (lo + hi), limit, axis, hd)
+}
+
+/// The layer search from `seed` with every field value read `margin` lower: a step needs
+/// `f(p) + f(q) > h + 2·margin`, the seed `f > margin`, the wide end `f ≥ L/2 + margin`. With
+/// `margin = 0` it is the point test; with the box's half-diagonal it certifies every point of the box.
+fn open_with_margin(
+    node: &SdfNode,
+    seed: Vec3,
+    limit: f32,
+    build_axis: Vec3,
+    margin: f32,
+) -> (bool, u64) {
+    if !(limit.is_finite() && limit > 0.0) || !seed.is_finite() || !(margin >= 0.0) {
+        return (false, 0);
     }
     let Some(axis) = unit(build_axis) else {
-        return false;
+        return (false, 0);
     };
-    if eval(node, seed) <= 0.0 {
-        return false;
+    let mut evals = 1u64;
+    if eval(node, seed) <= margin {
+        return (false, evals);
     }
     let (u, v) = layer_basis(axis);
     let h = limit / OPEN_PITCH_PER_LIMIT;
-    let wide = 0.5 * limit;
+    let wide = 0.5 * limit + margin;
+    let join = h + 2.0 * margin;
     // the disc radius in grid steps (OPEN_REACH_LIMITS · OPEN_PITCH_PER_LIMIT = 16)
     let n = (OPEN_REACH_LIMITS * OPEN_PITCH_PER_LIMIT) as i32;
     let side = (2 * n + 1) as usize;
     let index = |i: i32, j: i32| ((i + n) as usize) * side + (j + n) as usize;
     let mut value: Vec<Option<f32>> = vec![None; side * side];
     let mut seen = vec![false; side * side];
-    let field = |i: i32, j: i32, value: &mut [Option<f32>]| -> f32 {
+    let mut field = |i: i32, j: i32, value: &mut [Option<f32>]| -> f32 {
         let k = index(i, j);
-        *value[k].get_or_insert_with(|| eval(node, seed + u * (i as f32 * h) + v * (j as f32 * h)))
+        *value[k].get_or_insert_with(|| {
+            evals += 1;
+            eval(node, seed + u * (i as f32 * h) + v * (j as f32 * h))
+        })
     };
     let mut stack = vec![(0i32, 0i32)];
     seen[index(0, 0)] = true;
+    let mut open = false;
     while let Some((i, j)) = stack.pop() {
         let f = field(i, j, &mut value);
         if f >= wide {
-            return true;
+            open = true;
+            break;
         }
         for (di, dj) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
             let (ni, nj) = (i + di, j + dj);
             if ni * ni + nj * nj > n * n || seen[index(ni, nj)] {
                 continue;
             }
-            if f + field(ni, nj, &mut value) > h {
+            if f + field(ni, nj, &mut value) > join {
                 seen[index(ni, nj)] = true;
                 stack.push((ni, nj));
             }
         }
     }
-    false
+    (open, evals)
 }
 
 /// Whether the narrow air beside the surface point `at` (a wall point a gap width was measured from)
@@ -145,18 +188,21 @@ mod gap_open_tests {
     fn open_slot_is_open_and_closed_pocket_of_the_same_width_is_not() {
         let wall = Vec3::new(-0.75, 0.0, 0.0);
         assert!(narrow_air_beside_is_open(&open_slot(2.0), wall, L, Vec3::Z));
-        assert!(!narrow_air_beside_is_open(&closed_pocket(), Vec3::new(-0.75, 0.0, 2.0), L, Vec3::Z));
+        assert!(!narrow_air_beside_is_open(
+            &closed_pocket(),
+            Vec3::new(-0.75, 0.0, 2.0),
+            L,
+            Vec3::Z
+        ));
     }
 
     /// A 1 mm hole through a 3 mm plate is open at both ends along the build axis, and still enclosed in
     /// its layer: the hole rule applies to it.
     #[test]
     fn vertical_through_hole_stays_enclosed() {
-        let plate = SdfNode::box3d_half_extents(10.0, 10.0, 1.5).subtract(SdfNode::cylinder(0.5, 10.0).rotate_euler(
-            core::f32::consts::FRAC_PI_2,
-            0.0,
-            0.0,
-        ));
+        let plate = SdfNode::box3d_half_extents(10.0, 10.0, 1.5).subtract(
+            SdfNode::cylinder(0.5, 10.0).rotate_euler(core::f32::consts::FRAC_PI_2, 0.0, 0.0),
+        );
         let at = Vec3::new(0.5, 0.0, 0.0);
         assert!(eval(&plate, Vec3::ZERO) > 0.0, "the hole is air");
         assert!(!narrow_air_beside_is_open(&plate, at, L, Vec3::Z));
@@ -169,7 +215,12 @@ mod gap_open_tests {
     fn reach_boundary_just_inside_and_just_outside() {
         let wall = Vec3::new(-0.75, 0.0, 0.0);
         assert!(narrow_air_beside_is_open(&open_slot(2.8), wall, L, Vec3::Z));
-        assert!(!narrow_air_beside_is_open(&open_slot(3.4), wall, L, Vec3::Z));
+        assert!(!narrow_air_beside_is_open(
+            &open_slot(3.4),
+            wall,
+            L,
+            Vec3::Z
+        ));
     }
 
     /// The build axis is the caller's: a slot 1.5 high (air z in [-0.75, 0.75]) that is 4 long in y and
@@ -193,46 +244,120 @@ mod gap_open_tests {
         assert!(narrow_air_is_open(&s, seed, L, Vec3::Z));
         assert!(!narrow_air_is_open(&s, seed, L, Vec3::ZERO));
         assert!(!narrow_air_is_open(&s, seed, f32::NAN, Vec3::Z));
-        assert!(!narrow_air_is_open(&s, Vec3::new(-2.0, 0.0, 0.0), L, Vec3::Z), "seed in material");
+        assert!(
+            !narrow_air_is_open(&s, Vec3::new(-2.0, 0.0, 0.0), L, Vec3::Z),
+            "seed in material"
+        );
     }
 
-    /// The verdict end to end (grid + air-side proof) for the open slot and the closed pocket of the same
-    /// width 1.5 under the limit 2: printed in layers along z the open slot is not a failure (the plain
-    /// verdict fails it), the closed pocket fails in both
-    fn verdicts(node: &SdfNode, half: Vec3) -> (GapVerdict, GapVerdict) {
+    /// The box margin: a slot open at its y ends below z = 0 and capped at both ends above it. A box
+    /// reaching above z = 0 has its centre in the open half, so the centre's point test reads open, while
+    /// its points above z = 0 are enclosed. Read with the half-diagonal margin the box is not open;
+    /// without the margin it would be
+    #[test]
+    fn box_margin_keeps_a_box_with_enclosed_points_out() {
+        let block = |x: f32| SdfNode::box3d_half_extents(2.0, 2.0, 5.0).translate(x, 0.0, 0.0);
+        let cap = |y: f32| SdfNode::box3d_half_extents(1.0, 0.25, 2.5).translate(0.0, y, 2.5);
+        let node = block(-2.75)
+            .union(block(2.75))
+            .union(cap(2.25))
+            .union(cap(-2.25));
+        // the field is the 3D distance, so the air just under a cap reads thin: the open point sits 1.2
+        // below the caps, the enclosed one 1 above their underside
+        let centre = Vec3::new(0.0, 0.0, -1.2);
+        assert!(narrow_air_is_open(&node, centre, L, Vec3::Z));
+        assert!(!narrow_air_is_open(
+            &node,
+            Vec3::new(0.0, 0.0, 1.0),
+            L,
+            Vec3::Z
+        ));
+        // a box around that centre reaching above z = 0 (half-diagonal 1.31): its top points are enclosed
+        let (lo, hi) = (Vec3::new(-0.2, -0.2, -2.48), Vec3::new(0.2, 0.2, 0.08));
+        assert_eq!(0.5 * (lo + hi), centre);
+        assert!(!box_is_open(&node, lo, hi, L, Vec3::Z).0);
+        // a box wholly in the open half is certified
+        let (lo, hi) = (Vec3::new(-0.1, -0.1, -2.2), Vec3::new(0.1, 0.1, -2.0));
+        assert!(box_is_open(&node, lo, hi, L, Vec3::Z).0);
+    }
+
+    /// The verdict end to end (grid + layered proof) for the open slot, the closed pocket of the same
+    /// width 1.5 and the 1 mm through-hole under the limit 2, printed along z: the open slot passes
+    /// within the budget (the plain verdict fails it), the pocket and the hole fail
+    fn verdicts(node: &SdfNode, half: Vec3) -> (GapVerdict, GapVerdict, GapProof) {
         let (bmin, bmax) = (-half, half);
         let cell = L / (2.0 * 3.0_f32.sqrt());
         let report = measure_gaps(node, bmin, bmax, cell).expect("grid");
-        let proof = prove_gaps(node, L, bmin, bmax, 12, GAP_PROOF_WORK).expect("proof");
+        let plain = prove_gaps(node, L, bmin, bmax, 12, GAP_PROOF_WORK / 16).expect("proof");
+        let layered = prove_gaps_in_layers(node, L, bmin, bmax, 12, GAP_PROOF_WORK / 16, Vec3::Z)
+            .expect("proof");
         (
-            report.verdict(L, &proof),
-            report.verdict_in_layers(node, L, &proof, Vec3::Z),
+            report.verdict(L, &plain),
+            report.verdict_in_layers(node, L, &layered, Vec3::Z),
+            layered,
         )
     }
 
     #[test]
-    fn verdict_in_layers_passes_the_open_slot_and_fails_the_closed_pocket() {
-        let (plain, layered) = verdicts(&open_slot(2.0), Vec3::new(6.0, 4.0, 11.0));
-        assert!(matches!(plain, GapVerdict::Fail(_)), "{plain:?}");
-        assert!(matches!(layered, GapVerdict::Pass(_)), "{layered:?}");
-        let (plain, layered) = verdicts(&closed_pocket(), Vec3::new(11.0, 11.0, 11.0));
-        assert!(matches!(plain, GapVerdict::Fail(_)), "{plain:?}");
+    fn layered_verdict_passes_the_open_slot_and_fails_the_pocket_and_the_hole() {
+        let (plain, layered, proof) = verdicts(&open_slot(2.0), Vec3::new(5.0, 3.0, 2.0));
+        assert!(!matches!(plain, GapVerdict::Pass(_)), "{plain:?}");
+        assert!(
+            matches!(layered, GapVerdict::Pass(_)),
+            "{layered:?} {proof:?}"
+        );
+        assert!(proof.open_boxes > 0 && !proof.exhausted, "{proof:?}");
+        let (_, layered, _) = verdicts(&closed_pocket(), Vec3::new(6.0, 6.0, 6.0));
+        assert!(matches!(layered, GapVerdict::Fail(_)), "{layered:?}");
+        let hole = SdfNode::box3d_half_extents(4.0, 4.0, 1.5).subtract(
+            SdfNode::cylinder(0.5, 10.0).rotate_euler(core::f32::consts::FRAC_PI_2, 0.0, 0.0),
+        );
+        let (_, layered, _) = verdicts(&hole, Vec3::new(5.0, 5.0, 2.0));
         assert!(matches!(layered, GapVerdict::Fail(_)), "{layered:?}");
     }
 
     #[test]
-    fn verdict_in_layers_reads_its_inputs() {
+    fn layered_verdict_reads_its_inputs() {
         let node = open_slot(2.0);
-        let half = Vec3::new(6.0, 4.0, 11.0);
+        let half = Vec3::new(5.0, 3.0, 2.0);
         let report = measure_gaps(&node, -half, half, 0.5).expect("grid");
-        let proof = prove_gaps(&node, L, -half, half, 12, GAP_PROOF_WORK).expect("proof");
+        let layered =
+            prove_gaps_in_layers(&node, L, -half, half, 6, 1 << 20, Vec3::Z).expect("proof");
+        let plain = prove_gaps(&node, L, -half, half, 6, 1 << 20).expect("proof");
         assert_eq!(
-            report.verdict_in_layers(&node, L, &proof, Vec3::ZERO),
+            report.verdict_in_layers(&node, L, &layered, Vec3::ZERO),
             GapVerdict::Undetermined(GapUndetermined::BadBuildAxis)
         );
         assert_eq!(
-            report.verdict_in_layers(&closed_pocket(), L, &proof, Vec3::Z),
+            report.verdict_in_layers(&closed_pocket(), L, &layered, Vec3::Z),
             GapVerdict::Undetermined(GapUndetermined::ProofForAnotherShape)
+        );
+        // a layered proof is read only in layers with its own axis, a plain proof only by `verdict`
+        assert!(matches!(
+            report.verdict_in_layers(&node, L, &layered, Vec3::X),
+            GapVerdict::Undetermined(GapUndetermined::ProofForAnotherBuildAxis { .. })
+        ));
+        assert!(matches!(
+            report.verdict_in_layers(&node, L, &plain, Vec3::Z),
+            GapVerdict::Undetermined(GapUndetermined::ProofForAnotherBuildAxis {
+                proof_axis: None
+            })
+        ));
+        assert!(matches!(
+            report.verdict(L, &layered),
+            GapVerdict::Undetermined(GapUndetermined::ProofForAnotherBuildAxis { .. })
+        ));
+        assert_eq!(
+            prove_gaps_in_layers(
+                &node,
+                L,
+                -half,
+                half,
+                6,
+                1 << 20,
+                Vec3::new(f32::NAN, 0.0, 0.0)
+            ),
+            Err(GapError::BadCell)
         );
     }
 }
