@@ -60,5 +60,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .count();
     println!("decided march: undecided on {decided_undecided} of 225 rays");
+    // the centre ray's steps, recorded by the same march
+    let (centre, steps) = field.march_profile(Vec3::new(0.0, 0.0, 10.0), Vec3::NEG_Z, 30.0);
+    println!(
+        "centre ray profiled: {} steps ({} from masked cells), hit {}",
+        steps.len(),
+        steps.iter().filter(|s| s.dd_masked).count(),
+        matches!(centre, MarchResult::Hit(_))
+    );
     Ok(())
 }
