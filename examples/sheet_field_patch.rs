@@ -86,7 +86,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &m,
             &field.march_fixed_step(*o, Vec3::NEG_Z, 30.0, 0.0005),
         ));
-        floor += usize::from(same(&m, &reference.march_decided(*o, Vec3::NEG_Z, 30.0)));
+        // the reference's own agreement rule: within REFERENCE_T_TOL, or the same crossing within JUMP_S between
+        floor += usize::from(match (m, reference.march_decided(*o, Vec3::NEG_Z, 30.0)) {
+            (MarchResult::Hit(a), MarchResult::Hit(b)) => {
+                a.sheet == b.sheet
+                    && field.hit_agrees_with_reference(a.sheet, *o, Vec3::NEG_Z, a.t, b.t)
+            }
+            (a, b) => std::mem::discriminant(&a) == std::mem::discriminant(&b),
+        });
     }
     println!("row of 15 rays: same as the fixed-step march on {fixed}, as the fixed-floor march on {floor}");
     Ok(())
