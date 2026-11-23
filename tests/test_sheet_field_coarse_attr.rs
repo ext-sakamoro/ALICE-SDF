@@ -7,13 +7,13 @@
 //! - the attributes are linear in the position, which trilinear interpolation reproduces on any grid, so the
 //!   fine and the coarse samples agree within one quantization step of the row (each is within half a step);
 //! - the GPU marches a coarse field like the CPU: same sheet, `t` and UV within the parity tolerances;
-//! - ASHF: a field with a coarse channel is written as v2 and read back with the same bytes and node counts, a
-//!   field without one is still v1, byte for byte as before;
-//! - refusals: `s` or `d_b` on a coarse grid, and a v2 file naming a node count that is not a grid.
+//! - ASHF: a field with a coarse channel is written as the coarse version and read back with the same bytes and node counts, a
+//!   field without one is still the plain version, byte for byte as before;
+//! - refusals: `s` or `d_b` on a coarse grid, and a coarse-version file naming a node count that is not a grid.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::cast_precision_loss)]
 
 use alice_sdf::sheet_field::build::{coarsen, level_from_fn, sheet};
-use alice_sdf::sheet_field::stream::{write_ashf, AshfIndex};
+use alice_sdf::sheet_field::stream::{write_ashf, AshfIndex, ASHF_VERSION, ASHF_VERSION_COARSE};
 use alice_sdf::sheet_field::{SheetField, ValidRule, BRICK, COARSE_NODES, NODES};
 use glam::Vec3;
 use std::io::Cursor;
@@ -212,18 +212,21 @@ fn the_gpu_marches_a_coarse_field_like_the_cpu() {
 }
 
 #[test]
-fn a_coarse_field_is_ashf_v2_and_a_fine_field_stays_v1() {
+fn a_coarse_field_is_the_coarse_version_and_a_fine_field_stays_plain() {
     let f = patch();
     let mut fine_bytes = Vec::new();
     write_ashf(&mut fine_bytes, &f).unwrap();
-    assert_eq!(u32::from_le_bytes(fine_bytes[4..8].try_into().unwrap()), 1);
+    assert_eq!(
+        u32::from_le_bytes(fine_bytes[4..8].try_into().unwrap()),
+        ASHF_VERSION
+    );
     for &n in &COARSE_NODES {
         let c = coarse(&f, n);
         let mut bytes = Vec::new();
         write_ashf(&mut bytes, &c).unwrap();
         assert_eq!(
             u32::from_le_bytes(bytes[4..8].try_into().unwrap()),
-            2,
+            ASHF_VERSION_COARSE,
             "{n} nodes"
         );
         assert!(
@@ -275,13 +278,13 @@ fn s_or_d_b_on_a_coarse_grid_and_a_v2_file_with_a_non_grid_node_count_are_refuse
     // coarsen refuses an already coarse channel and a non-grid count
     assert!(coarsen(&coarsen(&lv.channels[2], 5).unwrap(), 3).is_err());
     assert!(coarsen(&lv.channels[2], 4).is_err());
-    // a v2 file whose first channel names 4 nodes per axis
+    // a coarse-version file whose first channel names 4 nodes per axis
     let c = coarse(&f, 5);
     let mut bytes = Vec::new();
     write_ashf(&mut bytes, &c).unwrap();
-    // header 16, sheet: levels 4, level: h 4 + lo 12 + nb 12 + n_index 4 + index, n_channels 4, channel 0: n_rows 4 + rows, n_kept 4, nodes
-    let ni = u32::from_le_bytes(bytes[48..52].try_into().unwrap()) as usize;
-    let o = 52 + 4 * ni + 4;
+    // header 48 (magic, version, semantics identifier 32, rule, sheets), sheet: levels 4, level: h 4 + lo 12 + nb 12 + n_index 4 + index, n_channels 4, channel 0: n_rows 4 + rows, n_kept 4, nodes
+    let ni = u32::from_le_bytes(bytes[80..84].try_into().unwrap()) as usize;
+    let o = 84 + 4 * ni + 4;
     let nr = u32::from_le_bytes(bytes[o..o + 4].try_into().unwrap()) as usize;
     let nodes_at = o + 4 + 4 * nr + 4;
     assert_eq!(
