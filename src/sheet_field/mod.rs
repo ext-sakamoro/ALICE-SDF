@@ -428,6 +428,25 @@ struct CellLookup {
 }
 
 impl Sheet {
+    /// Check the layout every reader indexes by ([`build::sheet`] checks it on construction; a sheet assembled from
+    /// its public fields is checked here, and the GPU upload checks every sheet).
+    ///
+    /// # Errors
+    /// [`SheetFieldError::Shape`] naming the first level, channel or entry that does not fit (see the layout rules on
+    /// [`build::sheet`]).
+    pub fn validate(&self) -> Result<(), SheetFieldError> {
+        if self.levels.is_empty() {
+            return Err(SheetFieldError::Shape("a sheet has no level".into()));
+        }
+        for (i, lv) in self.levels.iter().enumerate() {
+            build::check_level_layout(lv).map_err(|e| match e {
+                SheetFieldError::Shape(m) => SheetFieldError::Shape(format!("level {i}: {m}")),
+                other => other,
+            })?;
+        }
+        Ok(())
+    }
+
     /// Whether a bisected sign change of this sheet's `g` at `p` is a crossing of the sheet: a level answers,
     /// unmasked, `|s| <= JUMP_S`, and `d_b <= step/2` (inside the boundary up to the rounding of the stored
     /// `d_b`; a brick that stores no `d_b` has every node `<= 0`, so its points are inside).
@@ -452,6 +471,10 @@ impl Sheet {
     /// The cell value at `p` from the first level that answers, interpolating the first `nmax` channels only
     /// (the march needs `s` and `d_b`; attributes are read once, at the hit).
     fn lookup(&self, p: Vec3, nmax: usize) -> Option<CellLookup> {
+        // a point that is not finite is in no brick (NaN fails both bounds tests and would index brick 0)
+        if !p.is_finite() {
+            return None;
+        }
         for (li, lv) in self.levels.iter().enumerate() {
             let u = (p - lv.lo) / lv.h;
             let b = BRICK as f32;
