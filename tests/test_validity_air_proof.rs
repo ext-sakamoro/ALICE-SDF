@@ -15,6 +15,7 @@
 
 use alice_sdf::validity::{
     measure_gaps, prove_gaps, GapFailure, GapUndetermined, GapVerdict, FACING_DOT, GAP_PROOF_WORK,
+    GAP_TOLERANCE,
 };
 use alice_sdf::SdfNode;
 use glam::Vec3;
@@ -176,4 +177,120 @@ fn a_proof_out_of_boxes_does_not_pass() {
         }) => {}
         v => panic!("a proof out of boxes read as {v:?}"),
     }
+}
+
+/// A plate 3 thick with a round hole of radius `r` along y.
+fn plate_with_hole(r: f32) -> SdfNode {
+    SdfNode::box3d_half_extents(4.0, 1.5, 4.0).subtract(SdfNode::cylinder(r, 10.0))
+}
+
+// oracle: a round hole of diameter 2R is a gap below L exactly when 2R < L; every facing pair of its
+// wall points (directions more than 120° apart) spans a chord 2R·sin(φ/2), as short as 0.87·2R, so a
+// chord reading calls a 2.2 hole a gap below 2.0
+#[test]
+fn a_round_hole_wider_than_the_limit_is_no_gap_on_every_offset() {
+    let s = plate_with_hole(1.1);
+    let mut compared = 0;
+    for off in OFFSETS {
+        let lo = Vec3::new(-1.3 + off * 0.1, -1.4 + off, -1.3 + off * 0.1);
+        let hi = Vec3::new(1.3, 1.4, 1.3);
+        let p = prove_gaps(&s, 2.0, lo, hi, DEPTH, GAP_PROOF_WORK).expect("proof");
+        assert!(
+            p.witnesses.is_empty(),
+            "off {off}: a 2.2 hole read as a gap below 2.0: {:?}",
+            p.witnesses
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, OFFSETS.len());
+}
+
+#[test]
+fn a_round_hole_narrower_than_the_limit_is_a_gap_of_its_diameter() {
+    let s = plate_with_hole(0.9);
+    let mut widths = 0;
+    for off in OFFSETS {
+        let lo = Vec3::new(-1.1 + off * 0.1, -1.4 + off, -1.1 + off * 0.1);
+        let hi = Vec3::new(1.1, 1.4, 1.1);
+        let p = prove_gaps(&s, 2.0, lo, hi, DEPTH, GAP_PROOF_WORK).expect("proof");
+        assert!(!p.witnesses.is_empty(), "off {off}: no gap proven ({p:?})");
+        for w in &p.witnesses {
+            let width = w.width.expect("a witness carries its width");
+            assert!(
+                (width - 1.8).abs() <= 0.5 * GAP_TOLERANCE + 1e-3,
+                "off {off}: width {width} at {} for a 1.8 hole",
+                w.at
+            );
+            widths += 1;
+        }
+    }
+    assert!(widths >= OFFSETS.len());
+}
+
+/// Two blocks with a slot of `width` between them, centred on the origin (walls at x = ±width/2)
+fn slot_at_origin(width: f32) -> SdfNode {
+    let half = width * 0.5;
+    let block = |x: f32| SdfNode::box3d(10.0, 6.0, 10.0).translate(x, 0.0, 0.0);
+    block(-half - 5.0).union(block(half + 5.0))
+}
+
+// oracle (no false pass): air narrower than the limit is a gap whatever the facing pairs read wider.
+// A 1.0 slot (axis-aligned and turned about two axes), a 1.8 round hole and two pins 1.0 apart are each
+// below the limit 2.0; each is proven a gap with a width no shorter than its narrowest air less half
+// the tolerance, on every offset. A width read wider at every pair (the larger reading taken from a
+// reading that is never short at the bottleneck) proves nothing here and turns this red.
+#[test]
+fn air_narrower_than_the_limit_is_a_gap_of_at_least_its_width() {
+    let turned = slot_at_origin(1.0).rotate_euler(0.0, 0.31, 0.47);
+    let cases: [(&str, SdfNode, Vec3, Vec3, f32); 4] = [
+        (
+            "slot",
+            slot_at_origin(1.0),
+            Vec3::splat(-0.9),
+            Vec3::splat(0.9),
+            1.0,
+        ),
+        (
+            "turned slot",
+            turned,
+            Vec3::splat(-0.9),
+            Vec3::splat(0.9),
+            1.0,
+        ),
+        (
+            "round hole",
+            plate_with_hole(0.9),
+            Vec3::new(-1.1, -1.4, -1.1),
+            Vec3::new(1.1, 1.4, 1.1),
+            1.8,
+        ),
+        (
+            "pins",
+            pins(1.6),
+            Vec3::new(-3.0, 0.5, -2.0),
+            Vec3::new(3.0, 5.0, 2.0),
+            1.0,
+        ),
+    ];
+    let mut compared = 0;
+    for (what, node, lo, hi, narrowest) in &cases {
+        for off in OFFSETS {
+            let lo = *lo + Vec3::new(off * 0.1, off, off * 0.1);
+            let p = prove_gaps(node, 2.0, lo, *hi, DEPTH, GAP_PROOF_WORK).expect("proof");
+            assert!(
+                !p.witnesses.is_empty(),
+                "{what} off {off}: no gap proven ({p:?})"
+            );
+            for w in &p.witnesses {
+                let width = w.width.expect("a witness carries its width");
+                assert!(
+                    width >= narrowest - 0.5 * GAP_TOLERANCE - 1e-3 && width + GAP_TOLERANCE < 2.0,
+                    "{what} off {off}: width {width} at {} for air {narrowest} wide",
+                    w.at
+                );
+                compared += 1;
+            }
+        }
+    }
+    assert!(compared >= cases.len() * OFFSETS.len());
 }
