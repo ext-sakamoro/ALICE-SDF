@@ -53,7 +53,7 @@ pub type HostMaxima = BTreeMap<String, u64>;
 ///
 /// Its loops are all bounded, but their product is over [`MAX_TRIP_PRODUCT`] (the sheet march's per-ray work).
 ///
-/// Only [`crate::gpu_context::GpuContext::shader_module_with_ceiling`] takes it, and every kernel that does is listed
+/// Only `GpuContext::shader_module_with_ceiling` (crate-private) takes it, and every kernel that does is listed
 /// by label in `tests/test_gpu_lifecycle_oracle.rs` (the census is red on an unlisted one).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KernelCeiling {
@@ -183,7 +183,21 @@ impl Cx<'_> {
                         }
                     }
                 }
-                Statement::Call { function, .. } => *self.fn_bound.get(function).unwrap_or(&1),
+                Statement::Call { function, .. } => {
+                    if let Some(b) = self.fn_bound.get(function) {
+                        *b
+                    } else {
+                        // naga orders callees first; a callee not checked yet has no bound to use
+                        self.report.unbounded.push(UnboundedLoop {
+                            function: name.to_string(),
+                            reason: format!(
+                                "calls fn{} before its loops were checked",
+                                function.index()
+                            ),
+                        });
+                        u64::MAX
+                    }
+                }
                 _ => 1,
             };
             worst = worst.max(b);
@@ -633,7 +647,7 @@ pub fn check_counted(module: &Module, maxima: &HostMaxima, counter: WorkCounter)
         report: LoopReport::default(),
         fn_bound: BTreeMap::new(),
     };
-    let Some(g) = tick_counter(&cx, tf, counter.budget) else {
+    let Some((g, _step)) = tick_counter(&cx, tf, counter.budget) else {
         r.problems.push(format!(
             "the tick function `{}` is not `G = G + <literal > 0>; return G <= {}` on a private global G",
             counter.tick, counter.budget
@@ -643,6 +657,17 @@ pub fn check_counted(module: &Module, maxima: &HostMaxima, counter: WorkCounter)
     if module.global_variables[g].init.is_some() {
         r.problems
             .push("the work counter has an initializer".into());
+    }
+    if !matches!(module.types[module.global_variables[g].ty].inner, naga::TypeInner::Scalar(s) if s == naga::Scalar::U32)
+    {
+        r.problems
+            .push("the work counter is not a u32 (the overflow bound below is for u32)".into());
+    }
+    if !budget_read_only(module, counter.budget) {
+        r.problems.push(format!(
+            "the budget `{}` is not a uniform or read-only storage value: the shader could rewrite it",
+            counter.budget
+        ));
     }
     let mut inst: BTreeMap<Handle<Function>, u64> = BTreeMap::new();
     let mut entered: BTreeMap<Handle<Function>, u64> = BTreeMap::new();
@@ -656,6 +681,11 @@ pub fn check_counted(module: &Module, maxima: &HostMaxima, counter: WorkCounter)
         if stores_global(f, &f.body, g) {
             problems.push(format!(
                 "fn {name}: stores the work counter outside the tick function"
+            ));
+        }
+        if passes_global(f, &f.body, g) {
+            problems.push(format!(
+                "fn {name}: passes the work counter to a call (the callee could store to it)"
             ));
         }
         count_loops(f, name, &f.body, tick, inst, entered, problems, unit)
@@ -692,7 +722,11 @@ pub fn check_counted(module: &Module, maxima: &HostMaxima, counter: WorkCounter)
 }
 
 /// The private global the tick function counts with, when its body is exactly the counted form.
-fn tick_counter(cx: &Cx<'_>, f: &Function, budget: &str) -> Option<Handle<naga::GlobalVariable>> {
+fn tick_counter(
+    cx: &Cx<'_>,
+    f: &Function,
+    budget: &str,
+) -> Option<(Handle<naga::GlobalVariable>, u64)> {
     let st: Vec<&Statement> = flat(&f.body)
         .into_iter()
         .filter(|s| !matches!(s, Statement::Emit(_)))
@@ -711,10 +745,15 @@ fn tick_counter(cx: &Cx<'_>, f: &Function, budget: &str) -> Option<Handle<naga::
         return None;
     };
     let loads_g = |e: Handle<Expression>| matches!(f.expressions[e], Expression::Load { pointer } if private_global(cx.module, f, pointer) == Some(g));
-    let pos = |e: Handle<Expression>| matches!(&f.expressions[e], Expression::Literal(l) if lit(l).is_some_and(|v| v > 0));
-    if !((loads_g(left) && pos(right)) || (loads_g(right) && pos(left))) {
-        return None;
-    }
+    let step = |e: Handle<Expression>| match &f.expressions[e] {
+        Expression::Literal(l) => lit(l).filter(|&v| v > 0),
+        _ => None,
+    };
+    let c = match (loads_g(left), loads_g(right)) {
+        (true, _) => step(right),
+        (_, true) => step(left),
+        _ => None,
+    }?;
     let Expression::Binary { op, left, right } = f.expressions[*ret] else {
         return None;
     };
@@ -741,7 +780,48 @@ fn tick_counter(cx: &Cx<'_>, f: &Function, budget: &str) -> Option<Handle<naga::
             true
         )
     );
-    within.then_some(g)
+    within.then_some((g, c))
+}
+
+/// Whether the budget `name` (`global.member`) is a value the shader cannot write: a uniform, or read-only storage.
+fn budget_read_only(module: &Module, name: &str) -> bool {
+    let root = name.split('.').next().unwrap_or(name);
+    module
+        .global_variables
+        .iter()
+        .find(|(_, g)| g.name.as_deref() == Some(root))
+        .is_some_and(|(_, g)| match g.space {
+            naga::AddressSpace::Uniform => true,
+            naga::AddressSpace::Storage { access } => !access.contains(naga::StorageAccess::STORE),
+            _ => false,
+        })
+}
+
+/// The global a pointer expression points into, through member and element accesses.
+fn ptr_root(f: &Function, mut p: Handle<Expression>) -> Option<Handle<naga::GlobalVariable>> {
+    loop {
+        match f.expressions[p] {
+            Expression::GlobalVariable(g) => return Some(g),
+            Expression::AccessIndex { base, .. } | Expression::Access { base, .. } => p = base,
+            _ => return None,
+        }
+    }
+}
+
+/// Whether `block` passes a pointer into `g` to a call (the callee could then store to it through its argument).
+fn passes_global(f: &Function, block: &Block, g: Handle<naga::GlobalVariable>) -> bool {
+    block.iter().any(|st| match st {
+        Statement::Call { arguments, .. } => arguments.iter().any(|a| ptr_root(f, *a) == Some(g)),
+        Statement::Block(b) => passes_global(f, b, g),
+        Statement::If { accept, reject, .. } => {
+            passes_global(f, accept, g) || passes_global(f, reject, g)
+        }
+        Statement::Switch { cases, .. } => cases.iter().any(|c| passes_global(f, &c.body, g)),
+        Statement::Loop {
+            body, continuing, ..
+        } => passes_global(f, body, g) || passes_global(f, continuing, g),
+        _ => false,
+    })
 }
 
 fn private_global(
@@ -761,18 +841,9 @@ fn private_global(
 
 /// Whether `block` stores to `g` (or into it).
 fn stores_global(f: &Function, block: &Block, g: Handle<naga::GlobalVariable>) -> bool {
-    fn root(f: &Function, mut p: Handle<Expression>) -> Option<Handle<naga::GlobalVariable>> {
-        loop {
-            match f.expressions[p] {
-                Expression::GlobalVariable(g) => return Some(g),
-                Expression::AccessIndex { base, .. } | Expression::Access { base, .. } => p = base,
-                _ => return None,
-            }
-        }
-    }
     block.iter().any(|st| match st {
-        Statement::Store { pointer, .. } => root(f, *pointer) == Some(g),
-        Statement::Atomic { pointer, .. } => root(f, *pointer) == Some(g),
+        Statement::Store { pointer, .. } => ptr_root(f, *pointer) == Some(g),
+        Statement::Atomic { pointer, .. } => ptr_root(f, *pointer) == Some(g),
         Statement::Block(b) => stores_global(f, b, g),
         Statement::If { accept, reject, .. } => {
             stores_global(f, accept, g) || stores_global(f, reject, g)
@@ -882,10 +953,18 @@ fn count_loops(
                 *unit = (*unit).max(x.1.saturating_add(y.1));
                 (x.0.saturating_add(y.0).saturating_add(1), 1)
             }
-            Statement::Call { function, .. } if *function != tick => (
-                inst.get(function).copied().unwrap_or(0),
-                entered.get(function).copied().unwrap_or(0),
-            ),
+            Statement::Call { function, .. } if *function != tick => {
+                match (inst.get(function), entered.get(function)) {
+                    (Some(&a), Some(&b)) => (a, b),
+                    _ => {
+                        problems.push(format!(
+                            "fn {name}: calls fn{} before its loops were counted",
+                            function.index()
+                        ));
+                        (0, 0)
+                    }
+                }
+            }
             _ => (0, 0),
         };
         i = i.saturating_add(a);
@@ -1080,12 +1159,29 @@ mod tests {
         super::CountedReport,
         Result<LoopReport, crate::compiled::GpuError>,
     ) {
+        counted_with(COUNTED_DECLS, "", tick_body, body, 100)
+    }
+
+    const COUNTED_DECLS: &str = "struct U { steps: u32, work_budget: u32 }\n@group(0) @binding(0) var<uniform> u: U;\nvar<private> work: u32;";
+
+    /// [`counted`] with its own declarations of `u` and `work`, extra functions or entry points, and the budget's
+    /// stated maximum.
+    fn counted_with(
+        decls: &str,
+        extra: &str,
+        tick_body: &str,
+        body: &str,
+        budget_max: u64,
+    ) -> (
+        super::CountedReport,
+        Result<LoopReport, crate::compiled::GpuError>,
+    ) {
         let src = format!(
-            "struct U {{ steps: u32, work_budget: u32 }}\n@group(0) @binding(0) var<uniform> u: U;\n@group(0) @binding(1) var<storage, read_write> o: array<f32>;\nvar<private> work: u32;\nvar<private> other: u32;\nfn tick() -> bool {{ {tick_body} }}\nfn inner() -> f32 {{ var a = 0.0; for (var j = 0u; j < 4u; j = j + 1u) {{ if (!tick()) {{ break; }} a = a + 1.0; }} return a; }}\n@compute @workgroup_size(1)\nfn main() {{\n var acc = 0.0;\n{body}\n o[0] = acc;\n}}\n"
+            "{decls}\n@group(0) @binding(1) var<storage, read_write> o: array<f32>;\nvar<private> other: u32;\nfn tick() -> bool {{ {tick_body} }}\nfn inner() -> f32 {{ var a = 0.0; for (var j = 0u; j < 4u; j = j + 1u) {{ if (!tick()) {{ break; }} a = a + 1.0; }} return a; }}\n{extra}\n@compute @workgroup_size(1)\nfn main() {{\n var acc = 0.0;\n{body}\n o[0] = acc;\n}}\n"
         );
         let m = HostMaxima::from([
             ("u.steps".to_string(), 4000),
-            ("u.work_budget".to_string(), 100),
+            ("u.work_budget".to_string(), budget_max),
         ]);
         let counter = super::WorkCounter {
             tick: "tick",
@@ -1170,6 +1266,112 @@ mod tests {
         let (r, ok) = counted(TICK, "for (var i = 0u; i < u.steps; i = i + 1u) { if (!tick()) { break; } acc = acc + inner() + inner() + inner() + inner() + inner() + inner() + inner() + inner() + inner() + inner(); }");
         assert!(r.problems.is_empty() && r.bound > 1000, "{r:?}");
         assert!(ok.is_err(), "{ok:?}");
+    }
+
+    /// A function that stores through a pointer argument, called with `&work` inside a counted loop, resets the
+    /// counter as surely as a direct store: passing the counter to any call is refused.
+    #[test]
+    fn passing_the_counter_to_a_call_is_refused() {
+        let (r, ok) = counted_with(
+            COUNTED_DECLS,
+            "fn reset(p: ptr<private, u32>) { *p = 0u; }",
+            TICK,
+            &format!("{COUNTED}\nreset(&work);"),
+            100,
+        );
+        assert!(
+            r.problems
+                .iter()
+                .any(|p| p.contains("passes the work counter")),
+            "{r:?}"
+        );
+        assert!(ok.is_err());
+    }
+
+    /// A budget the shader can write is no bound: storage read_write is refused, read-only storage and a uniform
+    /// are accepted.
+    #[test]
+    fn a_budget_the_shader_can_write_is_refused() {
+        let rw = "struct U { steps: u32, work_budget: u32 }\n@group(0) @binding(0) var<storage, read_write> u: U;\nvar<private> work: u32;";
+        let (r, ok) = counted_with(rw, "", TICK, COUNTED, 100);
+        assert!(
+            r.problems
+                .iter()
+                .any(|p| p.contains("not a uniform or read-only")),
+            "{r:?}"
+        );
+        assert!(ok.is_err());
+        let ro = "struct U { steps: u32, work_budget: u32 }\n@group(0) @binding(0) var<storage, read> u: U;\nvar<private> work: u32;";
+        let (r, _) = counted_with(ro, "", TICK, COUNTED, 100);
+        assert!(r.problems.is_empty(), "{r:?}");
+    }
+
+    /// The counter's rules on its own declaration: no initializer, and a plain u32.
+    #[test]
+    fn a_counter_with_an_initializer_or_another_type_is_refused() {
+        let init = "struct U { steps: u32, work_budget: u32 }\n@group(0) @binding(0) var<uniform> u: U;\nvar<private> work: u32 = 0u;";
+        let (r, ok) = counted_with(init, "", TICK, COUNTED, 100);
+        assert!(
+            r.problems.iter().any(|p| p.contains("initializer")),
+            "{r:?}"
+        );
+        assert!(ok.is_err());
+        let wide = "struct U { steps: u32, work_budget: i32 }\n@group(0) @binding(0) var<uniform> u: U;\nvar<private> work: i32;";
+        let (r, ok) = counted_with(
+            wide,
+            "",
+            "work = work + 1i; return work <= u.work_budget;",
+            COUNTED,
+            100,
+        );
+        assert!(r.problems.iter().any(|p| p.contains("not a u32")), "{r:?}");
+        assert!(ok.is_err());
+    }
+
+    /// The tick's only accepted use in a loop is `if (!tick()) { break; }` first in the body (after exit checks):
+    /// a tick whose result only guards work, a tick inside a branch, and a statement other than an exit check
+    /// before it are each refused.
+    #[test]
+    fn a_tick_used_in_another_form_or_place_is_refused() {
+        for body in [
+            "for (var i = 0u; i < u.steps; i = i + 1u) { if (tick()) { acc = acc + inner(); } }",
+            "for (var i = 0u; i < u.steps; i = i + 1u) { if (acc > 1.0) { if (!tick()) { break; } } acc = acc + inner(); }",
+            "for (var i = 0u; i < u.steps; i = i + 1u) { if (acc > 1.0) { acc = 0.0; } if (!tick()) { break; } acc = acc + inner(); }",
+        ] {
+            let (r, ok) = counted(TICK, body);
+            assert!(!r.problems.is_empty(), "{body}: {r:?}");
+            assert!(ok.is_err(), "{body}");
+        }
+    }
+
+    /// A loop in a loop's `continuing` block is a loop like any other: without its own tick it is refused.
+    #[test]
+    fn a_loop_in_continuing_without_a_tick_is_refused() {
+        let body = "var i = 0u; loop { if (i >= u.steps) { break; } if (!tick()) { break; } acc = acc + 1.0; continuing { for (var j = 0u; j < 3u; j = j + 1u) { acc = acc + 0.5; } i = i + 1u; } }";
+        let (r, ok) = counted(TICK, body);
+        assert!(!r.problems.is_empty(), "{r:?}");
+        assert!(ok.is_err());
+        let ticked = "var i = 0u; loop { if (i >= u.steps) { break; } if (!tick()) { break; } acc = acc + 1.0; continuing { for (var j = 0u; j < 3u; j = j + 1u) { if (!tick()) { break; } acc = acc + 0.5; } i = i + 1u; } }";
+        let (r, _) = counted(TICK, ticked);
+        assert!(r.problems.is_empty(), "{r:?}");
+    }
+
+    /// The loop instances of every entry point are summed: a second entry point with its own loop adds to them.
+    #[test]
+    fn instances_are_summed_across_entry_points() {
+        let (one, _) = counted(TICK, COUNTED);
+        let (two, _) = counted_with(
+            COUNTED_DECLS,
+            "@compute @workgroup_size(1)\nfn second() { var b = 0.0; for (var k = 0u; k < 5u; k = k + 1u) { if (!tick()) { break; } b = b + 1.0; } o[1] = b; }",
+            TICK,
+            COUNTED,
+            100,
+        );
+        assert!(
+            one.problems.is_empty() && two.problems.is_empty(),
+            "{two:?}"
+        );
+        assert_eq!(two.instances, one.instances + 1, "{one:?} {two:?}");
     }
 
     #[test]
