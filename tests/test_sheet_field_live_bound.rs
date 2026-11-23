@@ -181,7 +181,7 @@ fn a_stack_of_100_boxes_marches_on_the_gpu_like_the_cpu() {
         .march_batch_decided(&origins, -Vec3::Z, 10.0)
         .expect("the deep stack is marched, not refused");
     for (o, m) in origins.iter().zip(&gpu) {
-        let c = f.march_decided(*o, -Vec3::Z, 10.0);
+        let c = f.march_decided(*o, -Vec3::Z, 10.0).unwrap();
         match (m, c) {
             (MarchResult::Hit(a), MarchResult::Hit(b)) => {
                 assert_eq!(

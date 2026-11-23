@@ -189,7 +189,7 @@ fn the_gpu_marches_a_coarse_field_like_the_cpu() {
     let gpu = g.march_batch_decided(&origins, -Vec3::Z, 1.0).unwrap();
     let mut hits = 0;
     for (o, m) in origins.iter().zip(&gpu) {
-        match (m, f.march_decided(*o, -Vec3::Z, 1.0)) {
+        match (m, f.march_decided(*o, -Vec3::Z, 1.0).unwrap()) {
             (
                 alice_sdf::sheet_field::MarchResult::Hit(a),
                 alice_sdf::sheet_field::MarchResult::Hit(b),

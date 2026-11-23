@@ -134,7 +134,8 @@ fn rays_onto_a_thin_tip_hit_with_the_kink_cells_and_miss_without() {
     let miss_base = ps
         .iter()
         .filter(|o| {
-            hit_t(&base.march_decided(**o, dir, 1.0)).is_none_or(|t| (t - 0.5).abs() > 0.05)
+            hit_t(&base.march_decided(**o, dir, 1.0).unwrap())
+                .is_none_or(|t| (t - 0.5).abs() > 0.05)
         })
         .count();
     assert!(
@@ -145,7 +146,7 @@ fn rays_onto_a_thin_tip_hit_with_the_kink_cells_and_miss_without() {
     let fk = field(true);
     let mut miss = 0;
     for o in &ps {
-        let m = hit_t(&fk.march_decided(*o, dir, 1.0));
+        let m = hit_t(&fk.march_decided(*o, dir, 1.0).unwrap());
         let r = hit_t(&fk.march_fixed_step(*o, dir, 1.0, 0.0005));
         if m.is_none_or(|t| (t - 0.5).abs() > 0.05) {
             miss += 1;
@@ -184,7 +185,7 @@ fn gpu_equals_cpu(fk: &SheetField, ps: &[Vec3], dir: Vec3) {
     };
     let gm = g.march_batch_decided(ps, dir, 1.0).unwrap();
     for (o, gr) in ps.iter().zip(&gm) {
-        let c = hit_t(&fk.march_decided(*o, dir, 1.0));
+        let c = hit_t(&fk.march_decided(*o, dir, 1.0).unwrap());
         let gt = hit_t(gr);
         match (c, gt) {
             (Some(a), Some(b)) => assert!((a - b).abs() <= 1e-3, "{o}: cpu {a} gpu {b}"),
@@ -273,10 +274,10 @@ fn rays_near_a_sharp_fold_stay_within_eps_with_the_s_cells() {
                 hit_t(m).map_or(f32::INFINITY, |t| (t - 0.5).abs() * dsin(b) as f32)
             };
             n += 1;
-            if off(&no_s.march_decided(o, dir, 1.0)) > 0.01 {
+            if off(&no_s.march_decided(o, dir, 1.0).unwrap()) > 0.01 {
                 m0 += 1;
             }
-            let m = with_s.march_decided(o, dir, 1.0);
+            let m = with_s.march_decided(o, dir, 1.0).unwrap();
             if off(&m) > 0.01 {
                 m1 += 1;
             }
@@ -426,7 +427,7 @@ fn the_gpu_cell_walk_decides_rays_on_face_planes_and_far_from_the_origin() {
         );
         let mut hits = 0;
         for (oo, gr) in o.iter().zip(&gm) {
-            let c = f.march_decided(*oo, d, tmax);
+            let c = f.march_decided(*oo, d, tmax).unwrap();
             match (hit_t(&c), hit_t(gr)) {
                 (Some(a), Some(b)) => {
                     hits += 1;
@@ -522,7 +523,7 @@ fn uv_at_a_seam_is_the_hit_face_s_with_the_attribute_cells() {
             let truth = x / 3.0 + if x > 1.5 { 10.0 } else { 0.0 };
             n += 1;
             for (fld, bad) in [(&plain, &mut bad0), (&kinked, &mut bad1)] {
-                match fld.march_decided(o, dir, 1.0) {
+                match fld.march_decided(o, dir, 1.0).unwrap() {
                     MarchResult::Hit(h) => {
                         let u = f64::from(h.uv.expect("uv")[0]);
                         if (u - truth).abs() > 1e-3 {
@@ -559,7 +560,7 @@ fn rays_from_far_into_a_fold_equal_the_fixed_step_reference() {
     for i in 1..40 {
         for j in 0..40 {
             let o = Vec3::new(0.075 * i as f32, 1.2, -0.3 + 0.015 * j as f32) - dir * back;
-            let m = hit_t(&f.march_decided(o, dir, back + 3.0));
+            let m = hit_t(&f.march_decided(o, dir, back + 3.0).unwrap());
             let r = hit_t(&f.march_fixed_step(o + dir * (back - 0.5), dir, 3.5, 0.0005))
                 .map(|t| t + back - 0.5);
             n += 1;
