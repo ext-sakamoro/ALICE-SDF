@@ -120,8 +120,9 @@ pub struct Exact {
 
 #[derive(Debug, Clone, Default)]
 struct KinkLevel {
-    /// Per active brick: its slot in `masks` / `first`, or `u32::MAX` (no kink cell).
-    slot: Vec<u32>,
+    /// The active bricks that hold kink cells, ascending; `masks[i]` / `first[i]` belong to `bricks[i]`. Sparse, so a
+    /// large brick id in a file costs nothing before `attach` compares it with the level's active bricks.
+    bricks: Vec<u32>,
     masks: Vec<[u32; 16]>,
     first: Vec<u32>,
 }
@@ -289,18 +290,15 @@ impl KinkSheet {
     /// The kink cell record of (level, active brick, cell) when that cell is a kink cell.
     fn cell(&self, level: usize, brick: usize, cell: usize) -> Option<Cell> {
         let lv = self.levels.get(level)?;
-        let slot = *lv.slot.get(brick)?;
-        if slot == u32::MAX {
-            return None;
-        }
-        let m = &lv.masks[slot as usize];
+        let slot = lv.bricks.binary_search(&u32::try_from(brick).ok()?).ok()?;
+        let m = &lv.masks[slot];
         let (w, bit) = (cell / 32, cell % 32);
         if m[w] >> bit & 1 == 0 {
             return None;
         }
         let below: u32 = m[..w].iter().map(|x| x.count_ones()).sum::<u32>()
             + (m[w] & ((1u32 << bit) - 1)).count_ones();
-        Some(self.cells[(lv.first[slot as usize] + below) as usize])
+        Some(self.cells[(lv.first[slot] + below) as usize])
     }
 
     /// The exact values at `p` when `p`'s cell is a flagged cell: `s` in an s cell, `d_b` in a `d_b` cell, and the
@@ -551,10 +549,29 @@ impl KinkSheet {
 #[cfg(feature = "gpu")]
 impl KinkSheet {
     /// The sheet's kink block for the GPU index table ([`gpu_layout`]).
-    pub(crate) fn gpu_block(&self) -> Vec<u32> {
+    /// `Err` names what does not fit when the block would pass `u32` offsets.
+    pub(crate) fn gpu_block(&self) -> Result<Vec<u32>, String> {
         use gpu_layout::{BRICK, CELL, FACE, HEAD, VERT};
         let f = |x: f64| (x as f32).to_bits();
         let nl = self.levels.len();
+        // every offset in the block is a u32: the whole block is measured once before any is written
+        let total = HEAD
+            + 2 * nl
+            + VERT * self.verts.len()
+            + FACE * self.faces.len()
+            + 2 * self.segs.len()
+            + CELL * self.cells.len()
+            + self.refs.len()
+            + 6 * self.face_uv.len()
+            + 9 * self.face_nrm.len()
+            + self
+                .levels
+                .iter()
+                .map(|lv| lv.bricks.last().map_or(0, |&l| l as usize + 1) + BRICK * lv.masks.len())
+                .sum::<usize>();
+        if total > u32::MAX as usize {
+            return Err(format!("kink block of {total} words, over u32 offsets"));
+        }
         let mut b = vec![0u32; HEAD + 2 * nl];
         b[0] = f(self.slab);
         // the origin is a whole number of mm (the exporter floors it), exact in f32
@@ -615,19 +632,25 @@ impl KinkSheet {
             }
         }
         for (li, lv) in self.levels.iter().enumerate() {
+            let nslot = lv.bricks.last().map_or(0, |&l| l as usize + 1);
+            let mut slot = vec![u32::MAX; nslot];
+            for (i, &bk) in lv.bricks.iter().enumerate() {
+                slot[bk as usize] = i as u32;
+            }
             b[HEAD + 2 * li] = b.len() as u32;
-            b[HEAD + 2 * li + 1] = lv.slot.len() as u32;
-            b.extend_from_slice(&lv.slot);
+            b[HEAD + 2 * li + 1] = nslot as u32;
+            b.extend_from_slice(&slot);
             for (m, first) in lv.masks.iter().zip(&lv.first) {
                 b.extend_from_slice(m);
                 b.push(*first);
             }
             debug_assert_eq!(
                 b.len(),
-                b[HEAD + 2 * li] as usize + lv.slot.len() + BRICK * lv.masks.len()
+                b[HEAD + 2 * li] as usize + nslot + BRICK * lv.masks.len()
             );
         }
-        b
+        debug_assert_eq!(b.len(), total);
+        Ok(b)
     }
 }
 
@@ -665,7 +688,24 @@ impl<R: Read> Rd<'_, R> {
             f64::from(self.f32()?),
         ))
     }
-    /// A count read from the file, refused above `cap` (a corrupt count must not allocate without bound).
+    /// A float that must be finite (a NaN compares false in every march test, an infinity spreads into them).
+    fn finite32(&mut self, what: &str) -> Result<f32, KinkError> {
+        let x = self.f32()?;
+        if !x.is_finite() {
+            return Err(KinkError::Format(format!("{what} {x}")));
+        }
+        Ok(x)
+    }
+    fn finite_v3(&mut self, what: &str) -> Result<DVec3, KinkError> {
+        let v = self.v3()?;
+        if !v.is_finite() {
+            return Err(KinkError::Format(format!("{what} {v}")));
+        }
+        Ok(v)
+    }
+    /// A count read from the file, refused above `cap`. The reader never sizes memory from a count: every vector
+    /// grows as its records are read, so a corrupt count ends at the input's end (`Io`) after allocating no more
+    /// than the input holds.
     fn count(&mut self, what: &str, cap: usize) -> Result<usize, KinkError> {
         let n = self.u32()? as usize;
         if n > cap {
@@ -676,6 +716,9 @@ impl<R: Read> Rd<'_, R> {
 }
 
 const COUNT_CAP: usize = 1 << 28;
+
+/// The largest |origin| component (mm) the GPU reads exactly: whole numbers below 2^24 are exact in f32.
+const ORIGIN_LIMIT: f64 = 16_777_216.0;
 
 impl KinkFile {
     /// Read an ASKC sidecar. Every index is checked against the counts it refers to.
@@ -698,55 +741,79 @@ impl KinkFile {
             .map_err(KinkError::Semantics)?;
         let v2 = version >= 2;
         let ns = rd.count("sheets", COUNT_CAP)?;
-        let mut sheets = Vec::with_capacity(ns);
+        let mut sheets = Vec::new();
         for k in 0..ns {
             let bad = |s: String| KinkError::Format(format!("sheet {k}: {s}"));
-            let slab = f64::from(rd.f32()?);
+            let slab = f64::from(rd.finite32("slab")?);
+            if slab <= 0.0 {
+                return Err(bad(format!("slab {slab}")));
+            }
             let origin = DVec3::new(rd.f64()?, rd.f64()?, rd.f64()?);
+            // the GPU reads the origin as f32 and subtracts it in f32: a whole number of mm under 2^24 is exact there,
+            // so the GPU's local point is the CPU's (anything else drifts between the two without a sign)
+            if !origin.is_finite()
+                || origin
+                    .to_array()
+                    .iter()
+                    .any(|c| c.fract() != 0.0 || c.abs() >= ORIGIN_LIMIT)
+            {
+                return Err(bad(format!(
+                    "origin {origin}: not whole numbers of mm under {ORIGIN_LIMIT}"
+                )));
+            }
             // v3: which per-face attributes follow each face record (bit 0 corner UVs, bit 1 corner author normals)
             let attr = if version >= 3 { rd.u32()? } else { 0 };
             if attr > 3 {
                 return Err(bad(format!("attribute flags {attr}")));
             }
             let nv = rd.count("vertices", COUNT_CAP)?;
-            let mut verts = Vec::with_capacity(nv);
-            let mut vn = vec![DVec3::ZERO; nv];
-            let mut rim_vn = vec![None; nv];
-            for i in 0..nv {
-                verts.push(rd.v3()?);
+            let mut verts = Vec::new();
+            let mut vn = Vec::new();
+            let mut rim_vn = Vec::new();
+            for _ in 0..nv {
+                verts.push(rd.finite_v3("vertex")?);
+                let (mut n, mut rim) = (DVec3::ZERO, None);
                 if v2 {
-                    let n = rd.v3()?;
-                    let fl = rd.u32()?;
-                    vn[i] = n;
-                    if fl & 1 == 1 {
-                        rim_vn[i] = Some(n / n.length().max(1e-12));
+                    n = rd.finite_v3("vertex normal")?;
+                    if rd.u32()? & 1 == 1 {
+                        rim = Some(n / n.length().max(1e-12));
                     }
                 }
+                vn.push(n);
+                rim_vn.push(rim);
             }
             let nf = rd.count("faces", COUNT_CAP)?;
-            let mut faces = Vec::with_capacity(nf);
+            let mut faces = Vec::new();
             let mut face_uv = Vec::new();
             let mut face_nrm = Vec::new();
             for _ in 0..nf {
                 let v = [rd.u32()?, rd.u32()?, rd.u32()?];
-                let n = rd.v3()?;
+                let n = rd.finite_v3("face normal")?;
                 let rim = rd.u32()?;
                 let epn = if v2 {
-                    [rd.v3()?, rd.v3()?, rd.v3()?]
+                    [
+                        rd.finite_v3("edge normal")?,
+                        rd.finite_v3("edge normal")?,
+                        rd.finite_v3("edge normal")?,
+                    ]
                 } else {
                     [DVec3::ZERO; 3]
                 };
                 if attr & 1 == 1 {
                     let mut t = [[0f32; 2]; 3];
                     for c in &mut t {
-                        *c = [rd.f32()?, rd.f32()?];
+                        *c = [rd.finite32("corner uv")?, rd.finite32("corner uv")?];
                     }
                     face_uv.push(t);
                 }
                 if attr & 2 == 2 {
                     let mut t = [[0f32; 3]; 3];
                     for c in &mut t {
-                        *c = [rd.f32()?, rd.f32()?, rd.f32()?];
+                        *c = [
+                            rd.finite32("corner normal")?,
+                            rd.finite32("corner normal")?,
+                            rd.finite32("corner normal")?,
+                        ];
                     }
                     face_nrm.push(t);
                 }
@@ -764,7 +831,7 @@ impl KinkFile {
                 let nrv = rd.count("rim vertices", COUNT_CAP)?;
                 for _ in 0..nrv {
                     let v = rd.u32()? as usize;
-                    let n = rd.v3()?;
+                    let n = rd.finite_v3("rim vertex normal")?;
                     if v >= nv {
                         return Err(bad(format!("rim vertex {v} (vertices {nv})")));
                     }
@@ -773,7 +840,7 @@ impl KinkFile {
                 }
             }
             let nseg = rd.count("segments", COUNT_CAP)?;
-            let mut segs = Vec::with_capacity(nseg);
+            let mut segs = Vec::new();
             for _ in 0..nseg {
                 let s = [rd.u32()?, rd.u32()?];
                 if s.iter().any(|&i| i as usize >= nv) {
@@ -786,7 +853,7 @@ impl KinkFile {
             let mut raw = Vec::with_capacity(nl);
             for _ in 0..nl {
                 let nkb = rd.count("kink bricks", COUNT_CAP)?;
-                let mut lv = Vec::with_capacity(nkb);
+                let mut lv = Vec::new();
                 for _ in 0..nkb {
                     let brick = rd.u32()?;
                     let mut m = [0u32; 16];
@@ -799,7 +866,7 @@ impl KinkFile {
                 raw.push(lv);
             }
             let ncell = rd.count("cell records", COUNT_CAP)?;
-            let mut cells = Vec::with_capacity(ncell);
+            let mut cells = Vec::new();
             for _ in 0..ncell {
                 let (off, ntri, nseg) = (rd.u32()?, rd.u16()?, rd.u16()?);
                 let flags = if v2 { rd.u32()? } else { CELL_DB };
@@ -814,9 +881,10 @@ impl KinkFile {
                 });
             }
             let nref = rd.count("refs", COUNT_CAP)?;
-            let refs = (0..nref)
-                .map(|_| rd.u32())
-                .collect::<io::Result<Vec<_>>>()?;
+            let mut refs = Vec::new();
+            for _ in 0..nref {
+                refs.push(rd.u32()?);
+            }
             for (i, c) in cells.iter().enumerate() {
                 let end = c.off as usize + c.ntri as usize + c.nseg as usize;
                 if end > nref {
@@ -831,26 +899,25 @@ impl KinkFile {
                     )));
                 }
             }
-            for lv in raw {
+            for mut lv in raw {
+                // sorted by brick id and kept sparse: the id is checked against the level's active bricks at attach
+                lv.sort_by_key(|r| r.0);
                 let mut kl = KinkLevel::default();
                 for (brick, m, first) in lv {
                     let ones: u32 = m.iter().map(|x| x.count_ones()).sum();
-                    if (first + ones) as usize > ncell {
+                    // in u64: first near u32::MAX must not wrap past the check
+                    if u64::from(first) + u64::from(ones) > ncell as u64 {
                         return Err(bad(format!(
                             "brick {brick}: cells {first}+{ones} of {ncell}"
                         )));
                     }
-                    let b = brick as usize;
-                    if b >= COUNT_CAP {
+                    if brick as usize >= COUNT_CAP {
                         return Err(bad(format!("brick {brick}")));
                     }
-                    if kl.slot.len() <= b {
-                        kl.slot.resize(b + 1, u32::MAX);
-                    }
-                    if kl.slot[b] != u32::MAX {
+                    if kl.bricks.last() == Some(&brick) {
                         return Err(bad(format!("brick {brick} listed twice")));
                     }
-                    kl.slot[b] = kl.masks.len() as u32;
+                    kl.bricks.push(brick);
                     kl.masks.push(m);
                     kl.first.push(first);
                 }
@@ -923,11 +990,12 @@ impl KinkFile {
                 }
                 for (li, (kl, lv)) in ks.levels.iter().zip(&sh.levels).enumerate() {
                     let active = lv.index.iter().filter(|&&x| x >= 0).count();
-                    if kl.slot.len() > active {
-                        return Err(KinkError::Format(format!(
-                            "sheet {k} level {li}: kink brick {} of {active} active",
-                            kl.slot.len() - 1
-                        )));
+                    if let Some(&last) = kl.bricks.last() {
+                        if last as usize >= active {
+                            return Err(KinkError::Format(format!(
+                                "sheet {k} level {li}: kink brick {last} of {active} active"
+                            )));
+                        }
                     }
                 }
             }

@@ -868,11 +868,27 @@ impl GpuSheetField {
                     )));
                 }
             }
-            let kink_at = sh.kink.as_ref().map_or(u32::MAX, |ks| {
-                let at = kinks.len() as u32;
-                kinks.extend(ks.gpu_block());
-                at
-            });
+            let kink_at = match &sh.kink {
+                None => u32::MAX,
+                Some(ks) => {
+                    let block = ks
+                        .gpu_block()
+                        .map_err(|e| GpuError::InvalidFormat(format!("sheet field: {e}")))?;
+                    // the shader adds the block's own offsets to its start: the end must stay a u32 offset
+                    let at = u32::try_from(kinks.len())
+                        .ok()
+                        .filter(|&at| u32::try_from(u64::from(at) + block.len() as u64).is_ok())
+                        .ok_or_else(|| {
+                            GpuError::InvalidFormat(format!(
+                                "sheet field: kink blocks of {} + {} words, over u32 offsets",
+                                kinks.len(),
+                                block.len()
+                            ))
+                        })?;
+                    kinks.extend(block);
+                    at
+                }
+            };
             sheets.push(SheetInfo {
                 lo: sh.lo.to_array(),
                 hc: sh.hc,
