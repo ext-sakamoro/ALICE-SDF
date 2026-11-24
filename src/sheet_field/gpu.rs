@@ -315,6 +315,9 @@ pub struct MarchStats {
     pub over_half_budget: u64,
     /// Rays that ran out of the budget (returned as undecided).
     pub over_budget: u64,
+    /// Hits that needed an attribute node outside its band: that attribute is `None` in the hit (as on the CPU).
+    /// A field whose kink cells carry the banded attributes ([`super::kink::KinkSheet::covers_band`]) reads 0.
+    pub band_misses: u64,
 }
 
 #[derive(Debug)]
@@ -1189,10 +1192,9 @@ impl GpuSheetField {
                 stats.over_half_budget += 1;
             }
             if kind == 1 && r[0][3] != 0.0 {
-                return Err(GpuError::InvalidFormat(format!(
-                    "sheet field march: ray {i} hit sheet {} where an attribute node lies outside its band",
-                    r[0][2] as usize
-                )));
+                // an attribute the hit needed is outside its band: that attribute is None for this ray (as on the
+                // CPU), counted, and the batch goes on
+                stats.band_misses += 1;
             }
             res[i] = match kind {
                 1 => MarchResult::Hit(Hit {
@@ -1271,7 +1273,7 @@ fn tick() -> bool {
     return work <= U.work_budget;
 }
 
-struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool, s: f32, db: f32, db_step: f32, an: vec3<f32>, has_an: bool, band_miss: bool, lip: f32 };
+struct Sample { f: f32, g: f32, inside: bool, masked: bool, uv: vec2<f32>, has_uv: bool, s: f32, db: f32, db_step: f32, an: vec3<f32>, has_an: bool, band_miss: u32, lip: f32 };
 
 fn qbyte(byte_index: u32) -> f32 {
     let w = QW[byte_index >> 2u];
@@ -1529,7 +1531,8 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
         var vals = array<f32, 8>(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         var umin = 1e30;
         var ucorner = -1e30;
-        var band_miss = false;
+        // the attribute channels a corner with weight > 0 needed and the band did not store (bit = channel)
+        var band_miss = 0u;
         var q0 = 0.0;
         var q1 = 0.0;
         let nch = min(lv.nch, nmax);
@@ -1553,7 +1556,7 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
                             let node = ((c.x + dx) * NODES + (c.y + dy)) * NODES + (c.z + dz);
                             let word = IX[mw + node / 32u];
                             let bit = node % 32u;
-                            if (((word >> bit) & 1u) == 0u) { band_miss = true; continue; }
+                            if (((word >> bit) & 1u) == 0u) { if (wx * wy * wz > 0.0) { band_miss = band_miss | (1u << ci); } continue; }
                             var rank = countOneBits(word & ((1u << bit) - 1u));
                             for (var j = 0u; j < BAND_WORDS; j = j + 1u) { if (!tick()) { break; } if (j >= node / 32u) { break; } rank = rank + countOneBits(IX[mw + j]); }
                             acc = acc + (wx * wy * wz) * (qbyte(lv.q_off[ci / 4u][ci % 4u] + start + rank) * sc + off);
@@ -1620,12 +1623,15 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
                         let ub = hdr + IX[hdr + 10u] + 6u * k_face;
                         vals[2] = w3.x * kf(ub) + w3.y * kf(ub + 2u) + w3.z * kf(ub + 4u);
                         vals[3] = w3.x * kf(ub + 1u) + w3.y * kf(ub + 3u) + w3.z * kf(ub + 5u);
+                        // the UV comes from the kink face, not from the band corners read above
+                        band_miss = band_miss & ~0xCu;
                     }
                     if (nch >= 7u && IX[hdr + 11u] != NONE) {
                         let nb = hdr + IX[hdr + 11u] + 9u * k_face;
                         vals[4] = w3.x * kf(nb) + w3.y * kf(nb + 3u) + w3.z * kf(nb + 6u);
                         vals[5] = w3.x * kf(nb + 1u) + w3.y * kf(nb + 4u) + w3.z * kf(nb + 7u);
                         vals[6] = w3.x * kf(nb + 2u) + w3.y * kf(nb + 5u) + w3.z * kf(nb + 8u);
+                        band_miss = band_miss & ~0x70u;
                     }
                 }
             }
@@ -1655,7 +1661,7 @@ fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
     }
     let v = outside_bound(p, sh);
     out.f = v; out.g = v; out.inside = false; out.masked = false; out.has_uv = false; out.has_an = false; out.an = vec3<f32>(0.0);
-    out.band_miss = false;
+    out.band_miss = 0u;
     out.s = 0.0; out.db = 0.0; out.db_step = 0.0; out.lip = 0.0;
     return out;
 }
@@ -2096,9 +2102,10 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             sample_sheet(own, p + vec3<f32>(0.0, 0.0, e), 2u).s - sample_sheet(own, p - vec3<f32>(0.0, 0.0, e), 2u).s);
         if (length(n) > 1e-12) { nrm = normalize(n); }
         let s = sample_sheet(own, p, 8u);
-        if (s.band_miss) { miss = 1.0; }
-        if (s.has_uv && s.inside) { uv = vec3<f32>(s.uv, 1.0); }
-        if (s.has_an && s.inside && length(s.an) > 1e-12) { an = vec4<f32>(normalize(s.an), 1.0); }
+        // a genuine band miss: that attribute is None for this ray (the CPU's too), and the host counts the ray
+        if (s.band_miss != 0u) { miss = 1.0; }
+        if (s.has_uv && s.inside && (s.band_miss & 0xCu) == 0u) { uv = vec3<f32>(s.uv, 1.0); }
+        if (s.has_an && s.inside && (s.band_miss & 0x70u) == 0u && length(s.an) > 1e-12) { an = vec4<f32>(normalize(s.an), 1.0); }
     }
     OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), miss);
     OUT[4u * i + 1u] = vec4<f32>(nrm, bitcast<f32>(work));

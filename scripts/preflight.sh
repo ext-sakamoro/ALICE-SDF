@@ -623,7 +623,7 @@ python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_dispatch.
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_graze -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_graze.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_graze.log" --min 1 --what test_sheet_field_graze
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_kink -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_kink.log"
-python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_kink.log" --min 6 --what test_sheet_field_kink
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_kink.log" --min 8 --what test_sheet_field_kink
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_live_bound -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_live_bound.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_live_bound.log" --min 3 --what test_sheet_field_live_bound
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_masked_bound -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_masked_bound.log"

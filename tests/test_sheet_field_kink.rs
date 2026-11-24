@@ -9,7 +9,7 @@
 //! - With it: 0 misses, CPU march (cell walk) and the fixed-step reference agree on every ray, the GPU (when a device
 //!   is present; `ALICE_SDF_REQUIRE_GPU` makes its absence a failure) equals the CPU.
 
-use alice_sdf::sheet_field::build::{level_from_fn, sheet};
+use alice_sdf::sheet_field::build::{band, level_from_fn, sheet};
 use alice_sdf::sheet_field::kink::{KinkError, KinkFile, KinkSheet, ASKC_VERSION};
 use alice_sdf::sheet_field::kink_build::{
     kink_sheet, write_askc, write_askc_with_provenance, SheetGeom,
@@ -611,5 +611,178 @@ fn a_sidecar_carries_the_semantics_identifier_and_another_is_refused() {
             ),
             "version {v} was not refused"
         );
+    }
+}
+
+/// The sharp fold of [`fold`] with UV channels (u = x / 3 and v = y + z, linear on both faces, so the exact UV of a
+/// point on the sheet is known in closed form) stored as a band, and its kink cells with the s cover; `kink_uv` gives
+/// the kink cells the faces' UVs.
+fn banded_fold(phi: f64, kink_uv: bool) -> Result<SheetField, KinkError> {
+    let (v, f, rim) = fold(phi);
+    let uv_of = |c: u32| {
+        let p = v[c as usize];
+        [p.x / 3.0, p.y + p.z]
+    };
+    let uv: Vec<[[f64; 2]; 3]> = f.iter().map(|t| t.map(uv_of)).collect();
+    let geom = SheetGeom {
+        verts: &v,
+        faces: &f,
+        rim: &rim,
+        slab: 2.0 * f64::from(H),
+        uv: kink_uv.then_some(&uv[..]),
+        nrm: None,
+    };
+    let with_uv = SheetGeom {
+        uv: Some(&uv),
+        ..geom
+    };
+    let ks = KinkSheet::from_geom(&with_uv);
+    let tris: Vec<u32> = (0..f.len() as u32).collect();
+    let segs: Vec<u32> = (0..rim.len() as u32).collect();
+    let lv = level_from_fn(
+        Vec3::new(-1.013, -1.021, -1.007),
+        H,
+        [3, 2, 2],
+        |_c, _e| true,
+        |p| {
+            let (s, db, _) = ks.eval_all(p.as_dvec3(), &tris, &segs).expect("faces");
+            let (uvp, _) = ks.eval_attributes(p.as_dvec3(), &tris).expect("faces");
+            let [u, w] = uvp.expect("uv");
+            vec![s as f32, db as f32, u, w]
+        },
+    )
+    .unwrap();
+    let mut sh = vec![sheet(vec![band(&lv, 2.0).unwrap()]).unwrap()];
+    let (rec, _) = kink_sheet(&geom, &sh[0], 0.01);
+    let mut bytes = Vec::new();
+    write_askc(&mut bytes, &[(rec, geom.slab, 1)]).unwrap();
+    KinkFile::read(&mut bytes.as_slice())
+        .unwrap()
+        .attach(&mut sh, 0)?;
+    let mut fld = SheetField::new(sh, ValidRule::CellV1);
+    fld.set_root_mode(RootMode::CellWalk);
+    Ok(fld)
+}
+
+/// Whether the cell a point lies in reads an attribute corner of weight > 0 that the band does not store.
+fn outside_band(fld: &SheetField, p: Vec3) -> bool {
+    use alice_sdf::sheet_field::{BAND_WORDS, BRICK, NODES};
+    let lv = &fld.sheets[0].levels[0];
+    let u = (p - lv.lo) / lv.h;
+    let b = BRICK as f32;
+    let bi = [(u.x / b).floor(), (u.y / b).floor(), (u.z / b).floor()];
+    if bi
+        .iter()
+        .zip(lv.nb.iter())
+        .any(|(&q, &n)| q < 0.0 || q >= n as f32)
+    {
+        return false;
+    }
+    let (bx, by, bz) = (bi[0] as usize, bi[1] as usize, bi[2] as usize);
+    let Ok(k) = usize::try_from(lv.index[(bx * lv.nb[1] as usize + by) * lv.nb[2] as usize + bz])
+    else {
+        return false;
+    };
+    let w = [u.x - bi[0] * b, u.y - bi[1] * b, u.z - bi[2] * b];
+    let c = w.map(|x| (x.floor() as usize).min(BRICK - 1));
+    let t = [w[0] - c[0] as f32, w[1] - c[1] as f32, w[2] - c[2] as f32];
+    (0..8usize).any(|d| {
+        let (dx, dy, dz) = (d >> 2 & 1, d >> 1 & 1, d & 1);
+        let wt = (if dx == 1 { t[0] } else { 1.0 - t[0] })
+            * (if dy == 1 { t[1] } else { 1.0 - t[1] })
+            * (if dz == 1 { t[2] } else { 1.0 - t[2] });
+        let i = ((c[0] + dx) * NODES + c[1] + dy) * NODES + c[2] + dz;
+        wt > 0.0 && lv.band[k * BAND_WORDS + i / 32] >> (i % 32) & 1 == 0
+    })
+}
+
+/// A kink s cell can accept a hit in a cell whose stored s keeps one sign, which the band leaves out; there the hit's
+/// UV is the kink face's (u = x / 3 exactly, oracle: the faces' linear UV), on the CPU and the GPU, and no ray is a band
+/// miss. Rays as in the sharp fold scene; the scene must put some hits outside the band, or it has no tooth.
+#[test]
+fn a_kink_hit_outside_the_band_reads_the_kink_face_uv_on_both_sides() {
+    let (phi, b) = (20f64.to_radians(), 5f64.to_radians());
+    let dir = Vec3::new(0.0, -dcos(b) as f32, -dsin(b) as f32);
+    let fld = banded_fold(phi, true).expect("a kink file with face UVs attaches to a banded sheet");
+    let mut os = Vec::new();
+    for i in 1..60 {
+        for j in 1..40 {
+            let q = DVec3::new(0.05 * f64::from(i), 0.05 + 0.015 * f64::from(j), 0.0);
+            os.push((q - dir.as_dvec3() * 0.5).as_vec3());
+        }
+    }
+    let cpu: Vec<MarchResult> = os
+        .iter()
+        .map(|o| fld.march_decided(*o, dir, 1.0).unwrap())
+        .collect();
+    let (mut outside, mut hits) = (0, 0);
+    for (o, m) in os.iter().zip(&cpu) {
+        let MarchResult::Hit(h) = m else { continue };
+        hits += 1;
+        let p = *o + dir * h.t;
+        let uv = h.uv.unwrap_or_else(|| panic!("{o}: no UV at a hit"));
+        assert!(
+            (uv[0] - p.x / 3.0).abs() <= 1e-3,
+            "{o}: u {} at x {}",
+            uv[0],
+            p.x
+        );
+        if outside_band(&fld, p) {
+            outside += 1;
+        }
+    }
+    assert!(hits > 100, "{hits} hits");
+    assert!(
+        outside > 0,
+        "no hit lies in a cell outside the band (the scene has no tooth)"
+    );
+    eprintln!(
+        "kink band: {hits} hits, {outside} in cells outside the band, all with the kink face's UV"
+    );
+    #[cfg(feature = "gpu")]
+    match alice_sdf::sheet_field::gpu::GpuSheetField::new(&fld) {
+        Ok(g) => {
+            let r = g
+                .march_batch_decided(&os, dir, 1.0)
+                .expect("no band miss fails the batch");
+            assert_eq!(g.last_march_stats().band_misses, 0);
+            for ((o, a), c) in os.iter().zip(&r).zip(&cpu) {
+                match (a, c) {
+                    (MarchResult::Hit(x), MarchResult::Hit(y)) => {
+                        let (u, w) = (x.uv.expect("gpu uv"), y.uv.expect("cpu uv"));
+                        assert!(
+                            (u[0] - w[0]).abs() <= 2e-4 && (u[1] - w[1]).abs() <= 2e-4,
+                            "{o}: {u:?} {w:?}"
+                        );
+                    }
+                    (a, c) => {
+                        assert_eq!(std::mem::discriminant(a), std::mem::discriminant(c), "{o}")
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            assert!(
+                std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
+                "ALICE_SDF_REQUIRE_GPU set but no GPU: {e}"
+            );
+            eprintln!("gpu-test: skipped (no GPU: {e})");
+        }
+    }
+}
+
+/// Attaching kink cells without face UVs to a sheet that stores its UV as a band is refused, naming the sheet and the
+/// channel: such a sheet would read UV nodes the band does not store at a kink hit.
+#[test]
+fn kink_cells_without_the_banded_attributes_are_refused_at_attach() {
+    match banded_fold(20f64.to_radians(), false) {
+        Err(KinkError::Format(m)) => {
+            assert!(
+                m.contains("sheet 0") && m.contains("channel 2") && m.contains("face UVs"),
+                "{m}"
+            );
+        }
+        Err(e) => panic!("refused as another error: {e}"),
+        Ok(_) => panic!("kink cells without face UVs were attached to a banded sheet"),
     }
 }
