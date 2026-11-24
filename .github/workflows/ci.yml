@@ -1246,7 +1246,7 @@ jobs:
       # every feature of Cargo.toml except `wasm`, which builds for wasm32 only and is
       # linted by the wasm32 step below; scripts/clippy_feature_coverage.py checks
       # that the two together name every feature
-      LINT_FEATURES: "aaa,all-shaders,asdf,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,gpu-slot-guard,hlsl,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume"
+      LINT_FEATURES: "aaa,all-shaders,asdf,asp,blinkscript,cli,codec,destruction,ffi,font,gi,glsl,godot,gpu,gpu-mesh,gpu-slot-guard,hlsl,test-hooks,image,jit,msl,openvdb,physics,python,rust,sdf-cache,svo,svo-gpu,terrain,texture-fit,unity,unreal,volume"
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
