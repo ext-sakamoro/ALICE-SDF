@@ -167,6 +167,32 @@ pub enum GpuError {
         /// Rounds of re-issue tried
         rounds: u32,
     },
+    /// The device marches too slowly to run one ray at the sheet field march's fixed work budget within its wait
+    /// bound (see [`crate::sheet_field::gpu::check_device_speed`]): the budget is not lowered for it, so results stay
+    /// the same on every device that runs them
+    #[error("device too slow for this budget: {ns_per_tick:.1} ns per tick x {budget} ticks = {budget_ms} ms, over the limit of {limit_ms} ms")]
+    DeviceTooSlow {
+        /// The device's measured march time per work tick
+        ns_per_tick: f64,
+        /// The fixed per-ray work budget
+        budget: u32,
+        /// One ray at the full budget on this device
+        budget_ms: u64,
+        /// The limit (a third of the dispatch wait bound)
+        limit_ms: u64,
+    },
+    /// The adapter has no measured sheet field march speed in the crate's table (see
+    /// [`crate::sheet_field::gpu::adapter_speeds`]): without it the march's wait bound cannot be shown to hold, so
+    /// no field is uploaded to it
+    #[error("no measured march speed for adapter {adapter}: run `{command}` on it (idle) and add the row it prints to the file the variable {var} names (or, for a software adapter, to src/sheet_field/adapter_speeds.tsv)")]
+    AdapterSpeedUnknown {
+        /// The adapter's identity (vendor, device, backend, name, driver)
+        adapter: String,
+        /// The command that measures it
+        command: String,
+        /// The variable naming the machine's own speed table
+        var: String,
+    },
     /// Failed to create GPU adapter
     #[error("Failed to create GPU adapter")]
     NoAdapter,

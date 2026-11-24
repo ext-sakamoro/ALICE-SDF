@@ -286,6 +286,10 @@ name = "sheet_field_gpu"
 required-features = ["gpu"]
 
 [[example]]
+name = "sheet_field_adapter_speed"
+required-features = ["gpu"]
+
+[[example]]
 name = "text_to_3d_demo"
 required-features = ["font"]
 
