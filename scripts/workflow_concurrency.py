@@ -104,7 +104,8 @@ class EvalError(ValueError):
     pass
 
 
-TOKEN = re.compile(r"\s*(?:(?P<str>'(?:[^']|'')*')|(?P<num>\d+)|(?P<op>==|!=|&&|\|\||[!(),])"
+TOKEN = re.compile(r"\s*(?:(?P<str>'(?:[^']|'')*')"
+                   r"|(?P<num>-?(?:0[xX][0-9a-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?))|(?P<op>==|!=|&&|\|\||[!(),])"
                    r"|(?P<name>[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*))")
 
 
@@ -126,9 +127,94 @@ def truthy(v) -> bool:
     return v not in ("", 0, False, None)
 
 
+LITERALS = {"true": True, "false": False, "null": None}
+HEX = re.compile(r"[+-]?0[xX][0-9a-fA-F]+")
+DECIMAL = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?")
+
+
+def kind_of(v) -> str:
+    if v is None:
+        return "null"
+    if isinstance(v, bool):
+        return "bool"
+    if isinstance(v, (int, float)):
+        return "number"
+    if isinstance(v, str):
+        return "string"
+    return "object"
+
+
+def to_number(v) -> float:
+    """GitHub's conversion for a loose comparison: null 0, true 1, false 0, a text read as a number
+    ('' 0, hex 0x.., decimal and exponent forms), anything else NaN"""
+    k = kind_of(v)
+    if k == "null":
+        return 0.0
+    if k in ("bool", "number"):
+        return float(v)
+    if k == "string":
+        t = v.strip()
+        if t == "":
+            return 0.0
+        if HEX.fullmatch(t):
+            return float(int(t, 16))
+        if DECIMAL.fullmatch(t):
+            return float(t)
+    return float("nan")
+
+
+def loose_equal(a, b) -> bool:
+    ka, kb = kind_of(a), kind_of(b)
+    if ka == kb == "string":
+        return a.casefold() == b.casefold()
+    if ka == kb and ka != "number":
+        return a is b if ka == "object" else a == b
+    return to_number(a) == to_number(b)   # NaN (an object, a text that is no number) equals nothing
+
+
+def as_text(v) -> str:
+    """how format() writes a value: null as '', booleans as true / false, whole numbers without a point"""
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, float) and v == v and v.is_integer():
+        return str(int(v))
+    return str(v)
+
+
+def format_text(fmt: str, args: list) -> str:
+    """format(): {N} takes argument N, {{ and }} are literal braces, anything else is an error"""
+    out, i = [], 0
+    while i < len(fmt):
+        c = fmt[i]
+        if c == "{" and fmt.startswith("{{", i):
+            out.append("{")
+            i += 2
+        elif c == "}" and fmt.startswith("}}", i):
+            out.append("}")
+            i += 2
+        elif c == "{":
+            m = re.match(r"\{(\d+)\}", fmt[i:])
+            if not m:
+                raise EvalError(f"format: a lone or malformed brace in {fmt!r}")
+            n = int(m.group(1))
+            if n >= len(args):
+                raise EvalError(f"format: {{{n}}} has no argument in {fmt!r}")
+            out.append(as_text(args[n]))
+            i += m.end()
+        elif c == "}":
+            raise EvalError(f"format: a lone closing brace in {fmt!r}")
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
 def evaluate(expr: str, ctx: dict):
     """an expression of GitHub's language over the named contexts: ||, &&, ==, !=, !, (), 'text',
-    numbers, format(); a name outside ctx is an error"""
+    numbers (decimal, exponent, hex, negative), true / false / null, format() with {{ }} escapes;
+    == and != read mixed types as numbers; a name outside ctx is an error"""
     toks, pos = tokens(expr), [0]
 
     def peek():
@@ -146,7 +232,10 @@ def evaluate(expr: str, ctx: dict):
         if kind == "str":
             return v[1:-1].replace("''", "'")
         if kind == "num":
-            return int(v)
+            body = v.lstrip("-")
+            n = int(body, 16) if body[:2] in ("0x", "0X") else (float(body) if any(c in body for c in ".eE")
+                                                                else int(body))
+            return -n if v.startswith("-") else n
         if kind == "op" and v == "(":
             r = disj()
             take(")")
@@ -163,7 +252,9 @@ def evaluate(expr: str, ctx: dict):
             fmt = args[0]
             if not isinstance(fmt, str):
                 raise EvalError("format needs a text")
-            return re.sub(r"\{(\d+)\}", lambda m: str(args[1 + int(m.group(1))]), fmt)
+            return format_text(fmt, args[1:])
+        if kind == "name" and v in LITERALS:
+            return LITERALS[v]
         if kind == "name":
             if v in ctx:
                 return ctx[v]
@@ -178,8 +269,7 @@ def evaluate(expr: str, ctx: dict):
         if kind == "op" and v in ("==", "!="):
             take()
             right = primary()
-            same = (left.casefold() == right.casefold()) if isinstance(left, str) and isinstance(right, str) \
-                else left == right
+            same = loose_equal(left, right)
             return same if v == "==" else not same
         return left
 
