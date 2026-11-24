@@ -3,9 +3,9 @@
 //!
 //! On disk a field is the ASHF v4 layout (little-endian): `b"ASHF"`, `u32` version 4, the 32-byte semantics
 //! identifier the field was written under ([`crate::provenance`]), `u32` rule (1 = cell-v1,
-//! 0 = none), `u32` sheet count; per sheet: `u32` level count; per level: `f32` h, `f32` lo[3], `u32` nb[3], `u32`
-//! n_index, `i32` index[n_index], `u32` channel count; per channel: `u32` n_rows, `i32` rows[n_rows], `u32` n_kept,
-//! `f32` scale[n_kept], `f32` offset[n_kept], `u8` q[n_kept * [`super::BRICK_NODES`]]. ASHF v5 is the same with one
+//! 0 = none), `u32` sheet count; per sheet: `u32` level count; per level: `f32` h, `f32` lo\[3\], `u32` nb\[3\], `u32`
+//! n_index, `i32` index\[n_index\], `u32` channel count; per channel: `u32` n_rows, `i32` rows\[n_rows\], `u32` n_kept,
+//! `f32` scale\[n_kept\], `f32` offset\[n_kept\], `u8` q\[n_kept * [`super::BRICK_NODES`]\]. ASHF v5 is the same with one
 //! `u32` nodes-per-axis after `n_kept` in every channel, and `q[n_kept * nodes^3]` (an attribute channel on a
 //! coarse grid, [`super::COARSE_NODES`]). [`write_ashf`] writes v4 when every channel is on 9 nodes and v5
 //! otherwise (v6 with a band); versions 1 to 3 had the same layouts without the identifier and are refused,
@@ -46,7 +46,7 @@ pub const ASHF_VERSION_COARSE: u32 = 5;
 
 /// The ASHF version written when a level holds a band ([`super::BAND`] channels).
 ///
-/// It is v5 plus, per level before its channels, `u32` n_band and `u32` band[n_band] (the mask), and for a band channel a `u32` byte count of
+/// It is v5 plus, per level before its channels, `u32` n_band and `u32` band\[n_band\] (the mask), and for a band channel a `u32` byte count of
 /// `q` after its nodes count (its rows hold different node counts; their starts are rebuilt on reading).
 pub const ASHF_VERSION_BAND: u32 = 6;
 
