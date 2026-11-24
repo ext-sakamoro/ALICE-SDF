@@ -20,7 +20,7 @@ use alice_sdf::sheet_field::gpu::{
     dispatch_cap, spread_blocks, spread_stride, GpuSheetField, MARCH_OUT_BYTES_PER_RAY,
     MIN_DISPATCH,
 };
-use alice_sdf::sheet_field::{MarchResult, Sheet, SheetField, ValidRule};
+use alice_sdf::sheet_field::{MarchResult, Sheet, SheetField, ValidRule, NON_FINITE_UNION};
 use glam::Vec3;
 use std::time::Duration;
 
@@ -326,6 +326,89 @@ fn a_ray_stopped_anywhere_by_the_budget_is_undecided_never_a_hit() {
         "at its own work the ray no longer returns the same hit"
     );
     assert_eq!(g.last_march_stats().over_budget, 0);
+}
+
+/// A point, origin or direction that is not finite follows one rule on both sides: it is in no brick and in no bound,
+/// so the union is (+inf, +inf, no sheet) and the march is a miss. Oracle: that rule (`NON_FINITE_UNION`), bit for
+/// bit, on the CPU's `eval`, `eval_linear`, every sheet's `sample` and `march_decided` and on the GPU's `eval_batch` and `march_batch_decided`.
+/// The CPU used to read sheet 0's outside bound at a NaN point (0.75 here: `f32::max` drops the NaN), the GPU to keep
+/// a 1e30 start at an infinite one.
+#[test]
+fn a_point_that_is_not_finite_reads_as_on_the_cpu() {
+    let f = deep();
+    let Some(g) = gpu(&f) else { return };
+    let bad = [
+        Vec3::new(f32::NAN, 0.0, 0.5),
+        Vec3::new(0.0, f32::NAN, 0.5),
+        Vec3::new(0.0, 0.0, f32::NAN),
+        Vec3::new(f32::INFINITY, 0.0, 0.5),
+        Vec3::new(0.0, f32::NEG_INFINITY, 0.5),
+        Vec3::splat(f32::NAN),
+    ];
+    let inf = f32::INFINITY.to_bits();
+    let got = g.eval_batch(&bad).unwrap();
+    let mut compared = 0;
+    for (p, s) in bad.iter().zip(&got) {
+        let (cf, cg, ck) = f.eval(*p);
+        assert_eq!((cf, cg, ck), NON_FINITE_UNION, "{p}: CPU eval");
+        for (k, sh) in f.sheets.iter().enumerate() {
+            let c = sh.sample(*p, ValidRule::CellV1);
+            assert_eq!(
+                (c.f.to_bits(), c.g.to_bits(), c.inside),
+                (inf, inf, false),
+                "{p}: sheet {k} sample ({}, {})",
+                c.f,
+                c.g
+            );
+        }
+        assert_eq!(
+            (cf.to_bits(), cg.to_bits(), ck),
+            (inf, inf, None),
+            "{p}: CPU eval ({cf}, {cg}, {ck:?})"
+        );
+        let (lf, lg, lk) = f.eval_linear(*p);
+        assert_eq!(
+            (lf.to_bits(), lg.to_bits(), lk),
+            (inf, inf, None),
+            "{p}: CPU eval_linear ({lf}, {lg}, {lk:?})"
+        );
+        assert_eq!(
+            (s.f.to_bits(), s.g.to_bits()),
+            (inf, inf),
+            "{p}: GPU ({}, {})",
+            s.f,
+            s.g
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, 6, "non-finite rows compared");
+    // a march from each non-finite origin, and from a finite origin along each non-finite direction: a miss on both
+    let origins: Vec<Vec3> = bad.iter().map(|p| *p + Vec3::new(0.0, 0.0, 2.0)).collect();
+    let mut marched = 0;
+    for (o, m) in origins
+        .iter()
+        .zip(&g.march_batch_decided(&origins, -Vec3::Z, 10.0).unwrap())
+    {
+        let c = f.march_decided(*o, -Vec3::Z, 10.0).unwrap();
+        assert_eq!(
+            (m, &c),
+            (&MarchResult::Miss, &MarchResult::Miss),
+            "origin {o}: GPU {m:?} vs CPU {c:?}"
+        );
+        marched += 1;
+    }
+    let o = Vec3::new(0.31, 0.27, 2.0);
+    for d in bad {
+        let m = g.march_batch_decided(&[o], d, 10.0).unwrap().remove(0);
+        let c = f.march_decided(o, d, 10.0).unwrap();
+        assert_eq!(
+            (&m, &c),
+            (&MarchResult::Miss, &MarchResult::Miss),
+            "dir {d}: GPU {m:?} vs CPU {c:?}"
+        );
+        marched += 1;
+    }
+    assert_eq!(marched, 12, "non-finite marches compared");
 }
 
 /// The upload checks every sheet's layout before any buffer or device work: a sheet assembled from its public fields

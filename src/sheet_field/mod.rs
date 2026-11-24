@@ -349,12 +349,27 @@ pub enum MarchResult {
     Undecided,
 }
 
+// ALLOW-UNWIRED: the stated value of the non-finite rule; eval reaches it through outside_lower_bound, the oracles compare with it
+/// The union at a point that is not finite: `(+inf, +inf, no sheet)`, on the CPU and the GPU.
+///
+/// Such a point is in no brick (`lookup`) and in no bound ([`outside_lower_bound`] is +inf there; a NaN would pass
+/// `f32::max` as the other operand and read `3 hc`), so every sheet's value and [`Sheet::sample`] are +inf and the
+/// union takes no sheet. A march
+/// from a non-finite origin or along a non-finite direction is a [`MarchResult::Miss`] on both sides: its first
+/// point is not finite, so its first bound is +inf and the step passes `tmax`.
+pub const NON_FINITE_UNION: (f32, f32, Option<usize>) = (f32::INFINITY, f32::INFINITY, None);
+
 fn box_distance(p: Vec3, lo: Vec3, hi: Vec3) -> f32 {
     (lo - p).max(p - hi).max(Vec3::ZERO).length()
 }
 
 /// The one lower bound on the distance to a sheet for points with no active brick.
+///
+/// A point that is not finite is in no bound: +inf (see [`NON_FINITE_UNION`]).
 pub fn outside_lower_bound(p: Vec3, lo: Vec3, hi: Vec3, hc: f32) -> f32 {
+    if !p.is_finite() {
+        return f32::INFINITY;
+    }
     box_distance(p, lo, hi).max(3.0 * hc)
 }
 
