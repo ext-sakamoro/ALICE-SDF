@@ -302,6 +302,51 @@ class Expressions(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(wc.EvalError):
                 self.ev(bad)
 
+    # oracle: GitHub Actions expression language (docs "Expressions": literals, operators, format)
+    def test_literals_true_false_null(self):
+        self.assertIs(self.ev("true"), True)
+        self.assertIs(self.ev("false"), False)
+        self.assertIsNone(self.ev("null"))
+        self.assertEqual(self.ev("false || 'b'"), "b")
+        self.assertEqual(self.ev("null && 'a' || 'c'"), "c")
+
+    def test_number_literals(self):
+        self.assertEqual(self.ev("-1"), -1)
+        self.assertEqual(self.ev("2.5"), 2.5)
+        self.assertEqual(self.ev("0xff"), 255)
+
+    def test_loose_equality_coerces_to_numbers(self):
+        # a string, bool or null compared with another type is read as a number
+        for expr, want in (("'1' == 1", True), ("true == 1", True), ("false == 0", True), ("null == 0", True),
+                           ("'' == 0", True), ("'a' == 0", False), ("'0x10' == 16", True),
+                           ("true == 'true'", False), ("null == false", True)):
+            with self.subTest(expr=expr):
+                self.assertIs(self.ev(expr), want)
+
+    def test_nan_is_never_equal(self):
+        self.assertIs(self.ev("'a' == 'a' && 'x' == 0"), False)
+        self.assertIs(self.ev("'x' != 0"), True)
+
+    def test_format_escapes_doubled_braces(self):
+        self.assertEqual(self.ev("format('{{0}}-{0}', 'a')"), "{0}-a")
+        self.assertEqual(self.ev("format('}}{0}{{', 'a')"), "}a{")
+
+    def test_format_renders_literals_as_github_does(self):
+        self.assertEqual(self.ev("format('{0}/{1}/{2}', true, false, null)"), "true/false/")
+
+    def test_format_errors_are_eval_errors(self):
+        # a slot without an argument, or a lone brace, is an evaluation error (not an IndexError)
+        for bad in ("format('{1}', 'a')", "format('{0')", "format('x}', 'a')", "format('{x}', 'a')"):
+            with self.subTest(bad=bad), self.assertRaises(wc.EvalError):
+                self.ev(bad)
+
+    def test_a_bad_format_is_a_finding_not_a_crash(self):
+        conc = {"group": "${{ format('d-{1}', github.run_id) }}", "cancel-in-progress": True}
+        data = {"on": {"push": {"branches": ["**"]}, "workflow_dispatch": {}}, "jobs": {}}
+        found = wc.shared_groups("w.yml", data, conc)
+        self.assertEqual(len(found), 1)
+        self.assertIn("cannot be evaluated", found[0])
+
     def test_text_outside_the_markers_is_kept(self):
         self.assertEqual(wc.interpolate("a-${{ github.sha }}-b", self.CTX), "a-s-b")
         # two markers: the whole-value form does not stretch one marker over the text between them
