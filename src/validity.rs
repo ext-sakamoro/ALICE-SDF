@@ -76,6 +76,19 @@
 //! The last clears what a field value cannot: a subtraction whose cutter overhangs the part leaves faces
 //! where the field reads the overhang while the material is much further (see `clear_of_material`).
 //!
+//! The width a witness reports is the diameter of the largest ball that fits between its two walls
+//! (`gap_width`): the larger of the chord and the ball tangent to both walls. On a round hole the
+//! tangent ball is the diameter for every pair; on a hole whose walls tilt by `α` (a countersink) the
+//! ball tangent along a ring of radius `r` is `2r/cos α`, a real clearance (the sphere lies inside the
+//! cone), not an over-read. A pair decides a box only when its wall points lie within `√(GAP_TOLERANCE·L)`
+//! of one shared normal line (`off_normal_spread`, `spread_limit`); otherwise the box is split. The chord
+//! across a pair spread `s` is `√(D² + s²) ≤ D + s²/(2D)`, so the reported width over-reads the walls'
+//! distance by at most `GAP_TOLERANCE·L/(2D)` at any tilt (half a tolerance at `D = L`); it is never
+//! short of it by more than half a tolerance (the march stops on the air side). One-sided: air narrower
+//! than `L − 3·GAP_TOLERANCE/2` reads as a gap wherever a box at its bottleneck holds an admitted pair;
+//! where none does by the depth limit the box is undecided (never a pass). Without the spread bound a
+//! pair 135° apart across a 1.8 hole, 0.7 apart along its axis, read 1.804.
+//!
 //! Claim under test (not proven): no box that holds a gap point reaches the material cover, so the cover
 //! only clears boxes without one and never decides a gap. The proof reads the cover on a box only when
 //! the box is all air, no sampled pair of wall points is real (each wall a sample's march reached lies
@@ -1279,14 +1292,39 @@ fn tangent_ball_diameter(w1: Vec3, n1: Vec3, w2: Vec3, n2: Vec3) -> f32 {
 /// tangent ball is short only where the rays miss (convex pairs off their normal, normal error `s·δ`),
 /// where the chord is not short.
 ///
-/// No false pass: as for the chord alone, a gap is found only through a near-antipodal pair at its
-/// narrowest (`n₁ ≈ −n₂` along the common normal, the wall points within the march tolerance of the
-/// bottleneck) among the box's air points. There the chord and the tangent ball both read the walls'
-/// distance, so taking the larger reads the bottleneck as the chord did; a pair off the bottleneck may
-/// read wider (by about `s·δ`, the safe direction), and the narrowest pair over all boxes decides.
+/// No over-read past the spread bound: [`facing_pair`] admits a pair only when its wall points lie within
+/// [`spread_limit`] of one shared normal line, where the chord reads at most `D + s²/(2D)`. The tangent
+/// ball on a tilted wall reads the ball inscribed at that ring (`2r/cos α`), which is the width as
+/// defined (the largest ball that fits), not an over-read.
 fn gap_width(w1: Vec3, n1: Vec3, w2: Vec3, n2: Vec3) -> f32 {
     w1.distance(w2)
         .law_max(tangent_ball_diameter(w1, n1, w2, n2))
+}
+
+/// How far the wall points `w₁`, `w₂` lie off one shared normal line: the part of `w₂ − w₁` across
+/// `n₁ − n₂` (the direction the two walls face each other along).
+///
+/// oracle: on a round hole two wall points at one height lie on a chord parallel to `n₁ − n₂`
+/// (`w = O − R·n`, so `w₂ − w₁ = R·(n₁ − n₂)`), spread 0 at any angle between them; points `h` apart
+/// along the hole's axis spread `h`. Called only for facing directions, where `|n₁ − n₂|² > 3`.
+fn off_normal_spread(w1: Vec3, n1: Vec3, w2: Vec3, n2: Vec3) -> f32 {
+    let x = w2 - w1;
+    let d = n1 - n2;
+    let along = x.dot(d) / d.length_squared();
+    (x - d * along).length()
+}
+
+/// The largest [`off_normal_spread`] a pair may have to decide a box at `limit`: `√(GAP_TOLERANCE·L)`.
+///
+/// Derivation: the chord of a pair spread `s` off the walls' shared normal line, across walls `D` apart
+/// along it, is `√(D² + s²) ≤ D + s²/(2D)` (the march stops each wall point on the air side of its wall,
+/// so the part along the line is not long). With `s² ≤ GAP_TOLERANCE·L` the chord over-reads by at most
+/// `GAP_TOLERANCE·L/(2D)`, which is `GAP_TOLERANCE/2` at `D = L` and less than `GAP_TOLERANCE` for
+/// `D > L/2`. So air narrower than `L − 3·GAP_TOLERANCE/2` reads below `L − GAP_TOLERANCE` (a witness)
+/// wherever a box at its bottleneck holds a pair within the spread. A pair spread wider decides
+/// nothing; its box is split like any other, and left undecided at the depth limit (never a pass).
+fn spread_limit(limit: f32) -> f32 {
+    (GAP_TOLERANCE * limit).sqrt()
 }
 
 /// A pair of air points that see walls facing each other less than `limit` apart: wall directions with
@@ -1294,7 +1332,9 @@ fn gap_width(w1: Vec3, n1: Vec3, w2: Vec3, n2: Vec3) -> f32 {
 /// front of the other's wall (`(w₂ − w₁)·n₁ > 0`, `(w₁ − w₂)·n₂ > 0`, so the two sides of a thin fin,
 /// whose walls face away, are not a gap), and `D + GAP_TOLERANCE < limit` for the width `D` of
 /// [`gap_width`]: air between the two walls narrower than the limit by more than the wall
-/// points' tolerance, the same margin the grid's widths fail by. Returns the two directions and `D`.
+/// points' tolerance, the same margin the grid's widths fail by, read off a pair whose wall points lie
+/// within [`spread_limit`] of one shared normal line (a pair spread wider is left to the box's parts).
+/// Returns the two directions and `D`.
 fn facing_pair(
     m: &mut Meter<'_>,
     pts: &[(Vec3, f32, Vec3)],
@@ -1317,13 +1357,14 @@ fn facing_pair(
             };
             let width = gap_width(w1, a.2, w2, b.2);
             let fronts = (w2 - w1).dot(a.2) > 0.0 && (w1 - w2).dot(b.2) > 0.0;
+            let close = off_normal_spread(w1, a.2, w2, b.2) <= spread_limit(limit);
             let real = fronts && a.0.distance(w1) <= 2.0 * a.1 && b.0.distance(w2) <= 2.0 * b.1;
             // each wall point stops in the air where the field falls to `GAP_TOLERANCE / 4` (the march
             // never overshoots a field that bounds the distance from below): on a distance-exact field
             // that is within a quarter tolerance of its wall, so the chord, and with it `width`, is
             // short of the walls' distance by at most half the tolerance, and a width within `GAP_TOLERANCE` of the limit
             // proves nothing either way
-            if a.2.dot(b.2) < FACING_DOT && fronts && width + GAP_TOLERANCE < limit {
+            if a.2.dot(b.2) < FACING_DOT && fronts && close && width + GAP_TOLERANCE < limit {
                 return Some(((a.2, b.2), width));
             }
             // a facing pair of the material's walls (in front of each other, reached about where the
@@ -2668,5 +2709,96 @@ mod cover_tests {
         let lo = Vec3::splat(-0.05);
         let c = cover(&s, lo, lo + Vec3::splat(0.1), 0.5);
         assert_eq!(c, Cover::Facing);
+    }
+
+    /// A wall point on a cone about y of radius `r0` at `y = 0`, walls tilted `tan_a` outward per unit
+    /// height, seen from the air inside: the point and its direction into the air.
+    fn cone_wall(r0: f32, tan_a: f32, y: f32, phi: f32) -> (Vec3, Vec3) {
+        let (s, c) = (phi.sin(), phi.cos());
+        let r = r0 + y * tan_a;
+        let k = 1.0 / (1.0 + tan_a * tan_a).sqrt();
+        (
+            Vec3::new(r * c, y, r * s),
+            Vec3::new(-c * k, tan_a * k, -s * k),
+        )
+    }
+
+    #[test]
+    fn the_tangent_ball_is_never_shorter_than_the_chord_projected_on_the_facing_direction() {
+        // tb = 2·x·d/|d|² and the projection p = x·d/|d|, so tb/p = 2/|d| ≥ 1 for facing directions
+        // (|d| ≤ 2) whose wall points are in front of each other (x·d > 0): taking the larger of the two
+        // is the tangent ball alone, so the projection cannot replace the chord in `gap_width`
+        let mut rng = Rng(HELD_SEED ^ 0x7B);
+        let mut checked = 0;
+        for _ in 0..20_000 {
+            let n1 = rng.point(1.0).normalize_or_zero();
+            let n2 = rng.point(1.0).normalize_or_zero();
+            let (w1, w2) = (rng.point(2.0), rng.point(2.0));
+            let x = w2 - w1;
+            if n1 == Vec3::ZERO || n2 == Vec3::ZERO || n1.dot(n2) >= FACING_DOT {
+                continue;
+            }
+            if x.dot(n1) <= 0.0 || -x.dot(n2) <= 0.0 {
+                continue;
+            }
+            let d = n1 - n2;
+            let p = x.dot(d) / d.length();
+            let tb = tangent_ball_diameter(w1, n1, w2, n2);
+            assert!(tb >= p * (1.0 - 1e-5), "tb {tb} below p {p}");
+            checked += 1;
+        }
+        assert!(checked > 1000, "{checked} facing pairs checked");
+    }
+
+    #[test]
+    fn a_pair_within_the_spread_reads_at_most_half_a_tolerance_over_the_ball() {
+        // round and tilted holes as wide as the limit: wall points at heights up to five spread limits
+        // apart, near opposite each other. The width of a pair the spread admits is at most the ball
+        // inscribed at its ring (2r/cos α at the mean height) plus GAP_TOLERANCE/2, the derivation at
+        // `spread_limit`; pairs spread wider over-read more and are not admitted.
+        let limit = 2.0_f32;
+        let s_max = spread_limit(limit);
+        let mut rng = Rng(HELD_SEED ^ 0x5B);
+        let (mut admitted, mut refused) = (0, 0);
+        for tan_a in [0.0_f32, 0.035, 0.09, 0.18, 0.36, 0.55] {
+            let r0 = 0.5 * limit * (1.0 + tan_a * tan_a).sqrt().recip();
+            for _ in 0..4000 {
+                let ym = rng.range(-0.5, 0.5);
+                let h = rng.range(0.0, 5.0 * s_max);
+                let phi = rng.range(0.0, core::f32::consts::TAU);
+                let turn = core::f32::consts::PI + rng.range(-0.2, 0.2);
+                let (w1, n1) = cone_wall(r0, tan_a, ym - 0.5 * h, phi);
+                let (w2, n2) = cone_wall(r0, tan_a, ym + 0.5 * h, phi + turn);
+                if n1.dot(n2) >= FACING_DOT || (w2 - w1).dot(n1) <= 0.0 {
+                    continue;
+                }
+                if off_normal_spread(w1, n1, w2, n2) > s_max {
+                    refused += 1;
+                    continue;
+                }
+                let ball = 2.0 * (r0 + ym * tan_a) * (1.0 + tan_a * tan_a).sqrt();
+                let width = gap_width(w1, n1, w2, n2);
+                assert!(
+                    width <= ball + 0.5 * GAP_TOLERANCE + 1e-5,
+                    "tan α {tan_a}: width {width} over the ball {ball} (h {h})"
+                );
+                admitted += 1;
+            }
+        }
+        assert!(
+            admitted > 5000 && refused > 5000,
+            "{admitted} admitted, {refused} refused"
+        );
+    }
+
+    #[test]
+    fn the_spread_of_a_round_hole_is_its_offset_along_the_axis() {
+        // w = O − R·n on a cylinder: a pair at one height spreads 0 at any angle, a pair h apart spreads h
+        for (phi2, h) in [(2.4_f32, 0.0_f32), (3.0, 0.0), (2.4, 0.7), (3.14, 0.013)] {
+            let (w1, n1) = cone_wall(0.9, 0.0, 0.0, 0.0);
+            let (w2, n2) = cone_wall(0.9, 0.0, h, phi2);
+            let s = off_normal_spread(w1, n1, w2, n2);
+            assert!((s - h).abs() < 1e-5, "φ {phi2} h {h}: spread {s}");
+        }
     }
 }

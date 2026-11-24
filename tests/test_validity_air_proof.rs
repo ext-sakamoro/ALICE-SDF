@@ -305,3 +305,123 @@ fn air_narrower_than_the_limit_is_a_gap_of_at_least_its_width() {
     }
     assert!(compared >= cases.len() * OFFSETS.len());
 }
+
+/// Offsets for the round-hole and cone readings: the bound's lower corner on the hole's axis (0), just
+/// off it (0.03) and halfway up the plate (0.7).
+const AXIS_OFFSETS: [f32; 3] = [0.0, 0.03, 0.7];
+
+/// The largest spread a deciding pair may have at `limit` (`√(GAP_TOLERANCE·L)`) and the chord's
+/// over-read it allows across walls `d` apart, `s²/(2d)`.
+fn spread_over_read(limit: f32, d: f32) -> f32 {
+    GAP_TOLERANCE * limit / (2.0 * d)
+}
+
+// oracle (no false pass): a round hole narrower than the limit by 3/2 of the tolerance plus a margin
+// (the chord's over-read within the spread, half a tolerance at the limit, plus the gate's tolerance)
+// is a gap at every offset, and so is one 0.003 below the limit; each reads its diameter within the
+// march tolerance below and the spread's over-read above. A chord read across a box (wall points off
+// the shared normal by the box's height) passes neither and turns this red.
+#[test]
+fn a_round_hole_just_under_the_limit_is_a_gap_on_every_offset() {
+    let limit = 2.0;
+    let mut compared = 0;
+    for d in [limit - 1.5 * GAP_TOLERANCE - 1e-4, limit - 0.003] {
+        let s = plate_with_hole(0.5 * d);
+        for off in AXIS_OFFSETS {
+            let lo = Vec3::new(-1.1 + off * 0.1, -1.4 + off, -1.1 + off * 0.1);
+            let hi = Vec3::new(1.1, 1.4, 1.1);
+            let p = prove_gaps(&s, limit, lo, hi, DEPTH, GAP_PROOF_WORK).expect("proof");
+            assert!(
+                !p.exhausted,
+                "D {d} off {off}: budget ran out ({} work)",
+                p.work
+            );
+            assert!(!p.witnesses.is_empty(), "D {d} off {off}: no gap proven");
+            for w in &p.witnesses {
+                let width = w.width.expect("a witness carries its width");
+                assert!(
+                    width >= d - 0.5 * GAP_TOLERANCE - 1e-4
+                        && width <= d + spread_over_read(limit, d) + 1e-4,
+                    "D {d} off {off}: width {width} at {}",
+                    w.at
+                );
+            }
+            compared += 1;
+        }
+    }
+    assert_eq!(compared, 2 * AXIS_OFFSETS.len());
+}
+
+// oracle: the narrowest reading of a 1.8 round hole is its diameter on the axis offsets as well, the
+// tangent ball and chord both read 2R on a pair at one height
+#[test]
+fn a_round_hole_reads_its_diameter_with_the_bound_on_its_axis() {
+    let s = plate_with_hole(0.9);
+    for off in AXIS_OFFSETS {
+        let lo = Vec3::new(-1.1 + off * 0.1, -1.4 + off, -1.1 + off * 0.1);
+        let hi = Vec3::new(1.1, 1.4, 1.1);
+        let p = prove_gaps(&s, 2.0, lo, hi, DEPTH, GAP_PROOF_WORK).expect("proof");
+        let narrowest = p
+            .witnesses
+            .iter()
+            .filter_map(|w| w.width)
+            .fold(f32::INFINITY, f32::min);
+        assert!(
+            (narrowest - 1.8).abs() <= 0.5 * GAP_TOLERANCE + 1e-3,
+            "off {off}: narrowest width {narrowest} for a 1.8 hole"
+        );
+    }
+}
+
+/// A plate 3 thick with a countersunk hole about y: radius `r0` at mid-plate, walls tilted `tan_a`
+/// outward per unit height.
+fn plate_with_countersink(r0: f32, tan_a: f32) -> SdfNode {
+    let h = 10.0;
+    SdfNode::box3d_half_extents(4.0, 1.5, 4.0).subtract(SdfNode::capped_cone(
+        h,
+        r0 - 0.5 * h * tan_a,
+        r0 + 0.5 * h * tan_a,
+    ))
+}
+
+// oracle (closed form): the width at a ring of a cone hole is the ball inscribed there, `2r/cos α`
+// (tangent to the walls along the ring, centred on the axis). Every witness in the plate reads within the
+// rings' range: no shorter than the narrowest ring's ball less half the tolerance, no wider than the
+// widest ring's ball plus the spread's over-read. The limit 3.0 is far above the hole, so a pair read
+// across a coarse box (its chord spanning the plate's height, up to 0.4 over) is still a witness
+// below the limit and turns this red.
+#[test]
+fn a_countersunk_hole_reads_the_ball_inscribed_at_its_rings() {
+    let limit = 3.0;
+    let mut compared = 0;
+    for tan_a in [0.035_f32, 0.18] {
+        let s = plate_with_countersink(0.9, tan_a);
+        let ball = |y: f32| 2.0 * (0.9 + y * tan_a) * (1.0 + tan_a * tan_a).sqrt();
+        let (narrow, wide) = (ball(-1.5), ball(1.5));
+        for off in AXIS_OFFSETS {
+            let lo = Vec3::new(-1.2 + off * 0.1, -1.4 + off, -1.2 + off * 0.1);
+            let hi = Vec3::new(1.2, 1.4, 1.2);
+            let p = prove_gaps(&s, limit, lo, hi, DEPTH, GAP_PROOF_WORK).expect("proof");
+            assert!(
+                !p.exhausted,
+                "tan {tan_a} off {off}: budget ran out ({} work)",
+                p.work
+            );
+            assert!(
+                !p.witnesses.is_empty(),
+                "tan {tan_a} off {off}: no gap proven"
+            );
+            for w in &p.witnesses {
+                let width = w.width.expect("a witness carries its width");
+                assert!(
+                    width >= narrow - 0.5 * GAP_TOLERANCE - 1e-4
+                        && width <= wide + spread_over_read(limit, narrow) + 1e-4,
+                    "tan {tan_a} off {off}: width {width} at {} outside {narrow}..{wide}",
+                    w.at
+                );
+            }
+            compared += 1;
+        }
+    }
+    assert_eq!(compared, 2 * AXIS_OFFSETS.len());
+}
