@@ -291,10 +291,10 @@ cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
 
 リリース履歴は [`CHANGELOG.md`](CHANGELOG.md) にある
 
-<!-- law-integration:begin law=01ed6777a6493cad178c24045978449150497306 -->
+<!-- law-integration:begin law=d5c4a97fd034f0cae86cd511923c6bb54180953f -->
 ## ALICE-Law との統合
 
-ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `01ed6777a649` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
+ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `d5c4a97fd034` とこの repository の `alice-law-conformance.toml` から生成する 手で編集しない
 
 | | |
 |---|---|
