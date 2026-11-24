@@ -20,7 +20,7 @@ use alice_sdf::sheet_field::gpu::{
     dispatch_cap, spread_blocks, spread_stride, GpuSheetField, MARCH_OUT_BYTES_PER_RAY,
     MIN_DISPATCH,
 };
-use alice_sdf::sheet_field::{MarchResult, Sheet, SheetField, ValidRule, NON_FINITE_UNION};
+use alice_sdf::sheet_field::{MarchResult, Sheet, SheetField, ValidRule};
 use glam::Vec3;
 use std::time::Duration;
 
@@ -386,7 +386,7 @@ fn a_ray_stopped_anywhere_by_the_budget_on_a_curved_sheet_is_undecided_never_a_h
 }
 
 /// A point, origin or direction that is not finite follows one rule on both sides: it is in no brick and in no bound,
-/// so the union is (+inf, +inf, no sheet) and the march is a miss. Oracle: that rule (`NON_FINITE_UNION`), bit for
+/// so the union is (+inf, +inf, no sheet) and the march is a miss. Oracle: that rule (`(+inf, +inf, None)`), bit for
 /// bit, on the CPU's `eval`, `eval_linear`, every sheet's `sample` and `march_decided` and on the GPU's `eval_batch` and `march_batch_decided`.
 /// The CPU used to read sheet 0's outside bound at a NaN point (0.75 here: `f32::max` drops the NaN), the GPU to keep
 /// a 1e30 start at an infinite one.
@@ -407,7 +407,11 @@ fn a_point_that_is_not_finite_reads_as_on_the_cpu() {
     let mut compared = 0;
     for (p, s) in bad.iter().zip(&got) {
         let (cf, cg, ck) = f.eval(*p);
-        assert_eq!((cf, cg, ck), NON_FINITE_UNION, "{p}: CPU eval");
+        assert_eq!(
+            (cf, cg, ck),
+            (f32::INFINITY, f32::INFINITY, None),
+            "{p}: CPU eval"
+        );
         for (k, sh) in f.sheets.iter().enumerate() {
             let c = sh.sample(*p, ValidRule::CellV1);
             assert_eq!(

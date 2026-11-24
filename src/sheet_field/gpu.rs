@@ -54,7 +54,7 @@ pub const MARCH_KERNEL: &str = "sheet field march";
 /// Each is checked on the host before a dispatch: `steps` by [`GpuSheetField::march_batch`], the budget by
 /// [`GpuSheetField::set_work_budget`] (at most [`MARCH_WORK_BUDGET_CAP`]), the visits by the upload's sheet count.
 #[must_use]
-pub fn march_maxima() -> crate::gpu_loop_bound::HostMaxima {
+pub(crate) fn march_maxima() -> crate::gpu_loop_bound::HostMaxima {
     crate::gpu_loop_bound::HostMaxima::from([
         ("U.steps".to_string(), u64::from(MAX_MARCH_STEPS)),
         ("U.bn_visits".to_string(), u64::from(MAX_BVH_VISITS)),
@@ -872,11 +872,11 @@ impl GpuSheetField {
         Ok(g)
     }
 
-    // ALLOW-UNWIRED: a test hook: the work budget and device speed oracles stand in a slower or faster device with it
     /// [`Self::new`] on a device whose march time per work tick is `ns_per_tick` in place of the speed table's (a
     /// test gives it to stand for a slower or faster device): refused by [`check_device_speed`] against
     /// [`DISPATCH_WAIT`]. The work budget is [`MARCH_WORK_BUDGET`] whatever the speed.
     #[doc(hidden)]
+    #[cfg(feature = "test-hooks")]
     pub fn new_with_ns_per_tick(field: &SheetField, ns_per_tick: f64) -> Result<Self, GpuError> {
         check_device_speed(ns_per_tick, DISPATCH_WAIT)?;
         let g = Self::build(field, &|src| src)?;
@@ -886,9 +886,9 @@ impl GpuSheetField {
         Ok(g)
     }
 
-    // ALLOW-UNWIRED: read by the device speed oracles to check the admitted speed; no library path needs it
     /// The march time per work tick this field's device was admitted with (see [`check_device_speed`]).
     #[must_use]
+    #[cfg(feature = "test-hooks")]
     pub fn ns_per_tick(&self) -> f64 {
         self.control.lock().map_or(f64::NAN, |c| c.ns_per_tick)
     }
@@ -1375,19 +1375,19 @@ impl GpuSheetField {
         self.context().set_wait_limit(wait);
     }
 
-    // ALLOW-UNWIRED: a test hook: the resume oracles stop every ray after a fixed number of steps per dispatch
     /// Test only: every march dispatch stops each ray at the step boundary after `steps` steps (0 = no such stop, the
     /// production setting), so a ray is continued after every `steps` steps.
     #[doc(hidden)]
+    #[cfg(feature = "test-hooks")]
     pub fn set_slice_steps(&self, steps: u32) {
         if let Ok(mut c) = self.control.lock() {
             c.slice_steps = steps;
         }
     }
 
-    // ALLOW-UNWIRED: a test hook: the slice limit oracle lowers the limit to see a ray end undecided at it
     /// Test only: another limit on the dispatches one ray is marched in (see [`MAX_MARCH_SLICES`]; at least 1).
     #[doc(hidden)]
+    #[cfg(feature = "test-hooks")]
     pub fn set_max_march_slices(&self, slices: u32) {
         if let Ok(mut c) = self.control.lock() {
             c.max_slices = slices.max(1);
@@ -1419,7 +1419,6 @@ impl GpuSheetField {
         Ok(())
     }
 
-    // ALLOW-UNWIRED: a test hook: the grazing oracle runs rays the default budget leaves undecided to their decision
     /// [`Self::set_work_budget`] up to [`MARCH_WORK_BUDGET_CAP`], for a test that counts the work of rays the default
     /// budget leaves undecided. The device must still run one ray at `budget` within a third of the field's wait bound
     /// (raise it first with [`Self::set_dispatch_wait`]): the same rule as [`check_device_speed`], at this budget.
@@ -1429,6 +1428,7 @@ impl GpuSheetField {
     /// [`GpuError::InvalidFormat`] for a budget over [`MARCH_WORK_BUDGET_CAP`] or a field whose device speed was not
     /// measured; [`GpuError::DeviceTooSlow`] when one ray at `budget` does not fit the wait bound.
     #[doc(hidden)]
+    #[cfg(feature = "test-hooks")]
     pub fn set_work_budget_up_to_cap(&self, budget: u32) -> Result<(), GpuError> {
         if budget > MARCH_WORK_BUDGET_CAP {
             return Err(GpuError::InvalidFormat(format!(
@@ -2438,7 +2438,7 @@ var<private> walk_unfinished: bool;
 fn eval_union(p: vec3<f32>) -> Union {
     var r: Union;
     r.f = inf32(); r.g = r.f; r.k = NONE; r.masked = false;
-    // a point that is not finite is in no brick and in no bound (the CPU's NON_FINITE_UNION): +inf, no sheet
+    // a point that is not finite is in no brick and in no bound (the CPU's outside_lower_bound rule): +inf, no sheet
     if (!finite3(p)) { return r; }
     if (U.bn_len < 8u || U.n_sheets == 0u) { r.k = 0u; return r; }
     var at = 0u;

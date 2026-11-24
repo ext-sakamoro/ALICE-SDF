@@ -101,6 +101,7 @@ struct Cell {
 }
 
 /// The UV and author normal of a point (each when the sheet carries it).
+#[cfg(any(test, feature = "test-hooks"))]
 pub type Attributes = (Option<[f32; 2]>, Option<[f32; 3]>);
 
 /// The exact values at a point of a flagged cell ([`CELL_DB`], [`CELL_S`]).
@@ -265,7 +266,7 @@ impl KinkSheet {
     ///
     /// # Errors
     /// The first banded channel the kink cells do not carry, by level and channel.
-    pub fn covers_band(&self, levels: &[super::Level]) -> Result<(), String> {
+    pub(crate) fn covers_band(&self, levels: &[super::Level]) -> Result<(), String> {
         for (li, lv) in levels.iter().enumerate() {
             for (ci, ch) in lv.channels.iter().enumerate() {
                 if ch.nodes != super::BAND {
@@ -432,6 +433,8 @@ impl KinkSheet {
     /// The sheet's mesh with the shared normals ([`super::kink_build::derived_normals`]) and no cells: the point
     /// evaluator a builder uses for its node values, the same code the march runs in a flagged cell.
     #[must_use]
+    #[cfg(any(test, feature = "test-hooks"))]
+    #[doc(hidden)]
     pub fn from_geom(geom: &super::kink_build::SheetGeom) -> Self {
         let (fnrm, epn, vn) = super::kink_build::derived_normals(geom);
         let rim: std::collections::BTreeSet<(u32, u32)> = geom
@@ -487,6 +490,8 @@ impl KinkSheet {
     /// face) and rim segments `segs` (must hold every rim segment within the slab of the closest point); `None` when
     /// `tris` is empty.
     #[must_use]
+    #[cfg(any(test, feature = "test-hooks"))]
+    #[doc(hidden)]
     pub fn eval_all(&self, p: DVec3, tris: &[u32], segs: &[u32]) -> Option<(f64, f64, f64)> {
         let pl = p - self.origin;
         let nf = self.nearest(pl, tris)?;
@@ -501,6 +506,8 @@ impl KinkSheet {
     /// The UV and author normal at world point `p`'s closest point among `tris` (the builder's attribute definition,
     /// for node values), each when carried; `None` when `tris` is empty.
     #[must_use]
+    #[cfg(any(test, feature = "test-hooks"))]
+    #[doc(hidden)]
     pub fn eval_attributes(&self, p: DVec3, tris: &[u32]) -> Option<Attributes> {
         let nf = self.nearest(p - self.origin, tris)?;
         Some(self.attributes(nf))
@@ -946,19 +953,19 @@ impl KinkFile {
 
     /// Number of sheets the file describes.
     #[must_use]
-    pub const fn len(&self) -> usize {
+    pub(crate) const fn len(&self) -> usize {
         self.sheets.len()
     }
 
     /// Whether the file describes no sheet.
     #[must_use]
-    pub const fn is_empty(&self) -> bool {
+    pub(crate) const fn is_empty(&self) -> bool {
         self.sheets.is_empty()
     }
 
     /// The most triangles and the most segments one kink cell of the file refers to.
     #[must_use]
-    pub fn max_cell_refs(&self) -> (u32, u32) {
+    pub(crate) fn max_cell_refs(&self) -> (u32, u32) {
         self.sheets
             .iter()
             .flatten()
