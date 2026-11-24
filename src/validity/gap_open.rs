@@ -200,7 +200,7 @@ fn open_with_margin(
 ///
 /// `at` is a wall point a gap width was measured from; the seed is one layer pitch off the wall
 /// along the wall's in-layer outward direction. `false` when the wall faces mostly along the build
-/// axis (see [`IN_LAYER_MIN`]).
+/// axis (its in-layer part below `IN_LAYER_MIN` of the normal).
 #[must_use]
 pub fn narrow_air_beside_is_open(node: &SdfNode, at: Vec3, limit: f32, build_axis: Vec3) -> bool {
     let (Some(axis), Some(out)) = (unit(build_axis), unit(eval_normal(node, at))) else {
@@ -427,7 +427,6 @@ mod gap_open_tests {
         // at most 0.3, so only the in-layer reading sees the wide air beside the neck
         let floor = SdfNode::box3d_half_extents(6.0, 6.0, 1.0);
         let post = floor
-            .clone()
             .union(SdfNode::box3d_half_extents(1.0, 6.0, 4.0).translate(5.5, 0.0, 3.0))
             .union(
                 SdfNode::cylinder(3.0, 6.0)

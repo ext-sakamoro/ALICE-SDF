@@ -8,9 +8,9 @@ References are resolved to one definition each, so items that share a name are t
 | Level | Meaning | Count |
 |-------|---------|------:|
 | L0 | not reached by any non-test code, examples included | 13 |
-| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1451 |
+| L1 | reached only from `examples/` / `benches/` / `fuzz/` (or another crate's examples) | 1457 |
 | live | reached without examples (crate-internal roots, a binding, the CLI, or a crate of this repository) | 1283 |
-| | **total** | **2747** |
+| | **total** | **2753** |
 
 L1 is a label, not a defect: a module users call directly is example-only inside this crate.
 It does mean the item is not reached from another module or a binding.
@@ -77,7 +77,7 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - Items in the bindings (`src/ffi/`, `src/python/`, `src/godot/`, `src/wasm.rs`) and the CLI (`src/bin/`) are roots and are not listed.
 - The crates of this repository that depend on this one are indexed on their own: `fuzz/` (example-level), `server/` (root), `mobile/uniffi-wrapper/` (root), `bindings/openxr/` (root). A `src/` file of a binding crate is a root; its tests are not.
 
-## L1 — example-only (1451)
+## L1 — example-only (1457)
 
 - `src/animation.rs`: `AnimatedSdf`, `AnimatedSdf::evaluate_at`, `AnimatedSdf::evaluate_params`, `AnimatedSdf::new`, `Interpolation`, `Keyframe`, `Keyframe::cubic`, `Keyframe::new`, `Keyframe::step`, `LoopMode`, `Timeline`, `Timeline::add_track`, `Timeline::duration`, `Timeline::evaluate`, `Timeline::get_value`, `Timeline::new`, `Track`, `Track::add_keyframe`, `Track::duration`, `Track::evaluate`, `Track::new`, `Track::with_loop`, `morph`
 - `src/asp_bridge.rs`: `create_sdf_d_packet`, `create_sdf_i_packet`, `create_sdf_i_packet_with_provenance`, `decode_sdf_i_packet`, `decode_sdf_i_packet_unverified`, `estimate_packet_size`
@@ -253,7 +253,8 @@ The guard lists these as unwired; a resolved reference reaches them (level in br
 - `src/types/operations.rs`: `SdfNode::smooth_blend`
 - `src/types/transforms.rs`: `SdfNode::bell_pull`, `SdfNode::grid_warp`, `SdfNode::pose`, `SdfNode::rigid_pose`, `SdfNode::translate_vec`
 - `src/unordered.rs`: `UnorderedMap::count_values_where`, `UnorderedMap::get_mut`, `UnorderedMap::is_empty`, `UnorderedMap::max_value`, `UnorderedMap::min_key_by`, `UnorderedMap::sorted_entries_mut`, `UnorderedMap::sorted_keys`, `UnorderedMap::update_each_value`, `UnorderedSet::clear`, `UnorderedSet::extend`, `UnorderedSet::is_empty`, `UnorderedSet::len`, `UnorderedSet::with_capacity`
-- `src/validity.rs`: `CREVICE_ANGLE_MATCH_DEG`, `Crevice`, `ErosionVerdict`, `ErosionVerdict::has_thick_region`, `FACING_DOT`, `GAP_PROOF_WORK`, `GAP_TOLERANCE`, `GapCertificate`, `GapError`, `GapFailure`, `GapProof`, `GapRegion`, `GapReport`, `GapReport::verdict`, `GapUndetermined`, `GapVerdict`, `MAX_CREVICES`, `MAX_GAP_GRID_POINTS`, `MAX_GAP_WITNESSES`, `PrintRequirements`, `PrintRequirements::fdm_0_4_nozzle`, `ValidatedExportError`, `ValidityReport`, `ValidityReport::is_printable`, `export_step_validated`, `export_step_validated_with_provenance`, `local_gap`, `local_thickness`, `measure_gaps`, `overhang_stats`, `prove_erosion`, `prove_gaps`, `validate_for_printing`
+- `src/validity.rs`: `CREVICE_ANGLE_MATCH_DEG`, `Crevice`, `ErosionVerdict`, `ErosionVerdict::has_thick_region`, `FACING_DOT`, `GAP_PROOF_WORK`, `GAP_TOLERANCE`, `GapCertificate`, `GapError`, `GapFailure`, `GapProof`, `GapRegion`, `GapReport`, `GapReport::verdict`, `GapReport::verdict_in_layers`, `GapUndetermined`, `GapVerdict`, `MAX_CREVICES`, `MAX_GAP_GRID_POINTS`, `MAX_GAP_WITNESSES`, `PrintRequirements`, `PrintRequirements::fdm_0_4_nozzle`, `ValidatedExportError`, `ValidityReport`, `ValidityReport::is_printable`, `export_step_validated`, `export_step_validated_with_provenance`, `local_gap`, `local_thickness`, `measure_gaps`, `overhang_stats`, `prove_erosion`, `prove_gaps`, `prove_gaps_in_layers`, `validate_for_printing`
+- `src/validity/gap_open.rs`: `OPEN_REACH_LIMITS`, `box_is_open`, `narrow_air_beside_is_open`, `narrow_air_is_open`
 - `src/volume/bake.rs`: `bake_volume_compiled`, `bake_volume_with_normals`
 - `src/volume/export.rs`: `DdsFormat`, `export_dds_3d`, `export_dds_3d_distgrad`, `export_dds_3d_distgrad_with_provenance`, `export_dds_3d_with_provenance`, `export_raw`, `export_raw_with_mips`, `export_raw_with_mips_with_provenance`, `export_raw_with_provenance`
 - `src/volume/gpu_bake.rs`: `generate_volume_bake_shader_with_normals`, `gpu_bake_volume_with_normals`

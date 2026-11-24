@@ -2714,7 +2714,7 @@ mod cover_tests {
     /// A wall point on a cone about y of radius `r0` at `y = 0`, walls tilted `tan_a` outward per unit
     /// height, seen from the air inside: the point and its direction into the air.
     fn cone_wall(r0: f32, tan_a: f32, y: f32, phi: f32) -> (Vec3, Vec3) {
-        let (s, c) = (phi.sin(), phi.cos());
+        let (s, c) = alice_det_math::sin_cos(phi);
         let r = r0 + y * tan_a;
         let k = 1.0 / (1.0 + tan_a * tan_a).sqrt();
         (
@@ -2755,14 +2755,16 @@ mod cover_tests {
         // round and tilted holes as wide as the limit: wall points at heights up to five spread limits
         // apart, near opposite each other. The width of a pair the spread admits is at most the ball
         // inscribed at its ring (2r/cos α at the mean height) plus GAP_TOLERANCE/2, the derivation at
-        // `spread_limit`; pairs spread wider over-read more and are not admitted.
+        // `spread_limit`; pairs spread wider over-read more and are not admitted. 5000 candidates per tilt
+        // (30000 in all) admit 5922 and refuse 24078, about one in five admitted.
+        const PER_TILT: usize = 5000;
         let limit = 2.0_f32;
         let s_max = spread_limit(limit);
         let mut rng = Rng(HELD_SEED ^ 0x5B);
         let (mut admitted, mut refused) = (0, 0);
         for tan_a in [0.0_f32, 0.035, 0.09, 0.18, 0.36, 0.55] {
             let r0 = 0.5 * limit * (1.0 + tan_a * tan_a).sqrt().recip();
-            for _ in 0..4000 {
+            for _ in 0..PER_TILT {
                 let ym = rng.range(-0.5, 0.5);
                 let h = rng.range(0.0, 5.0 * s_max);
                 let phi = rng.range(0.0, core::f32::consts::TAU);
@@ -2794,7 +2796,7 @@ mod cover_tests {
     #[test]
     fn the_spread_of_a_round_hole_is_its_offset_along_the_axis() {
         // w = O − R·n on a cylinder: a pair at one height spreads 0 at any angle, a pair h apart spreads h
-        for (phi2, h) in [(2.4_f32, 0.0_f32), (3.0, 0.0), (2.4, 0.7), (3.14, 0.013)] {
+        for (phi2, h) in [(2.4_f32, 0.0_f32), (3.0, 0.0), (2.4, 0.7), (3.1, 0.013)] {
             let (w1, n1) = cone_wall(0.9, 0.0, 0.0, 0.0);
             let (w2, n2) = cone_wall(0.9, 0.0, h, phi2);
             let s = off_normal_spread(w1, n1, w2, n2);
