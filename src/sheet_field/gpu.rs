@@ -566,7 +566,7 @@ pub fn adapter_speeds() -> Result<Vec<AdapterSpeed>, GpuError> {
     Ok(rows)
 }
 
-/// The measured march speed of `info`'s adapter in `rows`.
+/// The row of `rows` for `info`'s adapter: its measured march speed and where the row came from.
 ///
 /// The row whose identity (vendor, device, backend, name and driver) is exactly the adapter's. Never measured at
 /// run time, so whether an adapter is admitted does not depend on what else the device is doing.
@@ -574,12 +574,7 @@ pub fn adapter_speeds() -> Result<Vec<AdapterSpeed>, GpuError> {
 /// # Errors
 ///
 /// [`GpuError::AdapterSpeedUnknown`] when no row is the adapter's, naming [`ADAPTER_SPEED_COMMAND`].
-pub fn table_ns_per_tick(rows: &[AdapterSpeed], info: &wgpu::AdapterInfo) -> Result<f64, GpuError> {
-    table_row(rows, info).map(|r| r.ns_per_tick)
-}
-
-/// The row of `rows` whose identity is `info`'s adapter (see [`table_ns_per_tick`]).
-fn table_row<'a>(
+pub fn adapter_speed_row<'a>(
     rows: &'a [AdapterSpeed],
     info: &wgpu::AdapterInfo,
 ) -> Result<&'a AdapterSpeed, GpuError> {
@@ -902,7 +897,7 @@ impl GpuSheetField {
         }
         let g = Self::build(field, &|src| src)?;
         let rows = adapter_speeds()?;
-        let row = table_row(&rows, g.context().adapter_info())?;
+        let row = adapter_speed_row(&rows, g.context().adapter_info())?;
         check_device_speed(row.ns_per_tick, DISPATCH_WAIT)?;
         if let Ok(mut c) = g.control.lock() {
             c.ns_per_tick = row.ns_per_tick;
@@ -916,6 +911,7 @@ impl GpuSheetField {
     /// [`DISPATCH_WAIT`]. The work budget is [`MARCH_WORK_BUDGET`] whatever the speed.
     #[doc(hidden)]
     #[cfg(feature = "test-hooks")]
+    // ALLOW-UNWIRED: test hook compiled only with the test-hooks feature, called by the sheet field tests
     pub fn new_with_ns_per_tick(field: &SheetField, ns_per_tick: f64) -> Result<Self, GpuError> {
         check_device_speed(ns_per_tick, DISPATCH_WAIT)?;
         let g = Self::build(field, &|src| src)?;
@@ -928,6 +924,7 @@ impl GpuSheetField {
     /// The march time per work tick this field's device was admitted with (see [`check_device_speed`]).
     #[must_use]
     #[cfg(feature = "test-hooks")]
+    // ALLOW-UNWIRED: test hook compiled only with the test-hooks feature, called by the sheet field tests
     pub fn ns_per_tick(&self) -> f64 {
         self.control.lock().map_or(f64::NAN, |c| c.ns_per_tick)
     }
@@ -1419,6 +1416,7 @@ impl GpuSheetField {
     /// production setting), so a ray is continued after every `steps` steps.
     #[doc(hidden)]
     #[cfg(feature = "test-hooks")]
+    // ALLOW-UNWIRED: test hook compiled only with the test-hooks feature, called by the sheet field tests
     pub fn set_slice_steps(&self, steps: u32) {
         if let Ok(mut c) = self.control.lock() {
             c.slice_steps = steps;
@@ -1428,6 +1426,7 @@ impl GpuSheetField {
     /// Test only: another limit on the dispatches one ray is marched in (see [`MAX_MARCH_SLICES`]; at least 1).
     #[doc(hidden)]
     #[cfg(feature = "test-hooks")]
+    // ALLOW-UNWIRED: test hook compiled only with the test-hooks feature, called by the sheet field tests
     pub fn set_max_march_slices(&self, slices: u32) {
         if let Ok(mut c) = self.control.lock() {
             c.max_slices = slices.max(1);
@@ -1469,6 +1468,7 @@ impl GpuSheetField {
     /// measured; [`GpuError::DeviceTooSlow`] when one ray at `budget` does not fit the wait bound.
     #[doc(hidden)]
     #[cfg(feature = "test-hooks")]
+    // ALLOW-UNWIRED: test hook compiled only with the test-hooks feature, called by the sheet field tests
     pub fn set_work_budget_up_to_cap(&self, budget: u32) -> Result<(), GpuError> {
         if budget > MARCH_WORK_BUDGET_CAP {
             return Err(GpuError::InvalidFormat(format!(

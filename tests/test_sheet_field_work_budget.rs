@@ -239,18 +239,22 @@ fn info(vendor: u32, device: u32, name: &str, driver_info: &str) -> wgpu::Adapte
 #[test]
 fn the_speed_lookup_is_exact_and_an_unknown_adapter_is_refused() {
     use alice_sdf::sheet_field::gpu::{
-        parse_adapter_speeds, table_ns_per_tick, ADAPTER_SPEED_COMMAND,
+        adapter_speed_row, parse_adapter_speeds, ADAPTER_SPEED_COMMAND,
     };
     let rows = parse_adapter_speeds(
         "0x10de\t0x20b0\tVulkan\tGPU A\tdrv 1\t320\t2026-11-24\tc\n0x10de\t0x20b0\tVulkan\tGPU A\tdrv 2\t900\t2026-11-24\tc",
     )
     .unwrap();
     assert_eq!(
-        table_ns_per_tick(&rows, &info(0x10de, 0x20b0, "GPU A", "drv 1")).unwrap(),
+        adapter_speed_row(&rows, &info(0x10de, 0x20b0, "GPU A", "drv 1"))
+            .unwrap()
+            .ns_per_tick,
         320.0
     );
     assert_eq!(
-        table_ns_per_tick(&rows, &info(0x10de, 0x20b0, "GPU A", "drv 2")).unwrap(),
+        adapter_speed_row(&rows, &info(0x10de, 0x20b0, "GPU A", "drv 2"))
+            .unwrap()
+            .ns_per_tick,
         900.0
     );
     for other in [
@@ -259,7 +263,7 @@ fn the_speed_lookup_is_exact_and_an_unknown_adapter_is_refused() {
         info(0x10de, 0x20b0, "GPU B", "drv 1"),
         info(0x10de, 0x20b0, "GPU A", "drv 3"),
     ] {
-        match table_ns_per_tick(&rows, &other) {
+        match adapter_speed_row(&rows, &other) {
             Err(GpuError::AdapterSpeedUnknown { command, var, .. }) => {
                 assert_eq!(command, ADAPTER_SPEED_COMMAND);
                 assert_eq!(var, alice_sdf::sheet_field::gpu::ADAPTER_SPEEDS_VAR);
@@ -269,7 +273,7 @@ fn the_speed_lookup_is_exact_and_an_unknown_adapter_is_refused() {
     }
     let mut metal = info(0x10de, 0x20b0, "GPU A", "drv 1");
     metal.backend = wgpu::Backend::Metal;
-    assert!(table_ns_per_tick(&rows, &metal).is_err());
+    assert!(adapter_speed_row(&rows, &metal).is_err());
 }
 
 /// This machine's adapter: measured and printed as a table row (the CI's GPU steps read it), and it must have a row
@@ -277,7 +281,7 @@ fn the_speed_lookup_is_exact_and_an_unknown_adapter_is_refused() {
 #[cfg(feature = "gpu")]
 #[test]
 fn this_adapter_is_measured_and_has_a_row() {
-    use alice_sdf::sheet_field::gpu::{adapter_speeds, measure_adapter_speed, table_ns_per_tick};
+    use alice_sdf::sheet_field::gpu::{adapter_speed_row, adapter_speeds, measure_adapter_speed};
     let row = match measure_adapter_speed("0000-00-00") {
         Ok(r) => r,
         Err(e) => {
@@ -310,7 +314,7 @@ fn this_adapter_is_measured_and_has_a_row() {
             _ => wgpu::Backend::Empty,
         },
     };
-    if let Err(e) = table_ns_per_tick(&adapter_speeds().unwrap(), &info) {
+    if let Err(e) = adapter_speed_row(&adapter_speeds().unwrap(), &info) {
         panic!("{e}");
     }
 }
