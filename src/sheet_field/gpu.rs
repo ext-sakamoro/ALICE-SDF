@@ -276,12 +276,102 @@ pub const FIRST_DISPATCH: usize = 16_384;
 /// The smallest march dispatch.
 pub const MIN_DISPATCH: usize = 1_024;
 
-/// The work one ray's march may do.
+/// The work one ray's march may do, in ticks of its work counter.
 ///
-/// The sum over its steps of `live sheets x (live sheets of the previous step + 1)` (the sheets it samples and the
-/// crossings it compares). A ray over this ends as [`MarchResult::Undecided`], never as a hit. Derived from the worst
-/// ray measured on real fields (see the field's statistics, [`GpuSheetField::last_march_stats`]).
-pub const MARCH_WORK_BUDGET: u32 = u32::MAX; // MEASUREMENT BUILD: replaced by the value derived from the measured worst ray before commit
+/// One tick per loop iteration of the march kernel, calls expanded: a step, a sheet sample, a corner read, a BVH
+/// visit and a bisection step each tick once.
+///
+/// A ray over this ends as [`MarchResult::Undecided`], never as a hit. The value is the same on every device, so a
+/// ray's result never depends on the device's speed; a device too slow to run one ray at this budget within the wait
+/// bound is refused when a field is uploaded ([`check_device_speed`]).
+///
+/// Derived from the worst ray measured on real fields (the per-ray work in [`GpuSheetField::last_march_stats`]): the
+/// census over the scanned fields gave at most 670,569 ticks (a head scan, face front view), and 152,473 on a rock scan
+/// with kink cells at 1600 x 1600 rays. 2^21 = 2,097,152 is 3.1 times the census worst. A ray grazing a flat sheet
+/// takes about 3,000 ticks per mm, so a graze over about 700 mm ends undecided.
+pub const MARCH_WORK_BUDGET: u32 = 1 << 21;
+
+/// The half length (mm) of the flat sheet the device-speed probe grazes ([`measure_ns_per_tick`]): about 30,000 ticks.
+pub const SPEED_PROBE_HALF_MM: f32 = 5.0;
+
+/// Whether a device whose march costs `ns_per_tick` runs one ray at the full [`MARCH_WORK_BUDGET`] within a third of
+/// `wait` (the read's wait bound for one dispatch, [`DISPATCH_WAIT`]).
+///
+/// The third leaves room for the rays that share the ray's dispatch and for the measurement's error. The budget is
+/// never scaled to the device: a slower device is refused, so the same ray has the same result everywhere.
+///
+/// # Errors
+///
+/// [`GpuError::DeviceTooSlow`] naming both times; [`GpuError::InvalidFormat`] for a speed that is not a finite
+/// positive number (not measured).
+pub fn check_device_speed(ns_per_tick: f64, wait: std::time::Duration) -> Result<(), GpuError> {
+    if !(ns_per_tick.is_finite() && ns_per_tick > 0.0) {
+        return Err(GpuError::InvalidFormat(format!(
+            "sheet field march: device speed {ns_per_tick} ns per tick is not a measured time"
+        )));
+    }
+    let full = ns_per_tick * f64::from(MARCH_WORK_BUDGET) * 1e-9;
+    let limit = wait.as_secs_f64() / 3.0;
+    if full > limit {
+        return Err(GpuError::DeviceTooSlow {
+            ns_per_tick,
+            budget: MARCH_WORK_BUDGET,
+            budget_ms: (full * 1e3).ceil() as u64,
+            limit_ms: (limit * 1e3).floor() as u64,
+        });
+    }
+    Ok(())
+}
+
+/// The flat sheet the device-speed probe grazes: `z = 0` over `|x|, |y| <= half`.
+fn speed_probe_field(half: f32) -> Result<SheetField, GpuError> {
+    use super::build::{level_from_fn, sheet};
+    let h = 0.25;
+    let nbx = ((2.0 * half + 8.0) / (8.0 * h)).ceil() as u32;
+    let lo = Vec3::new(-half - 4.0 + 0.013, -2.0 + 0.021, -1.0 + 0.007);
+    let db = move |x: f32, y: f32| {
+        let dx = x.abs() - half;
+        let dy = y.abs() - half;
+        Vec3::new(dx.max(0.0), dy.max(0.0), 0.0).length() + dx.max(dy).min(0.0)
+    };
+    let lv = level_from_fn(
+        lo,
+        h,
+        [nbx, 2, 1],
+        |_c, _e| true,
+        move |p| vec![p.z, db(p.x, p.y)],
+    )
+    .map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
+    let sh = sheet(vec![lv]).map_err(|e| GpuError::InvalidFormat(e.to_string()))?;
+    Ok(SheetField::new(vec![sh], ValidRule::CellV1))
+}
+
+/// The device's march time per work tick.
+///
+/// One ray alone in its dispatch grazes the probe sheet ([`SPEED_PROBE_HALF_MM`]) for its full length; the least of 3
+/// timed runs (after one untimed) over the ray's work.
+///
+/// The dispatch's fixed cost is counted in, so the figure errs on the slow side.
+///
+/// # Errors
+///
+/// The upload's or the march's error.
+pub fn measure_ns_per_tick() -> Result<f64, GpuError> {
+    let half = SPEED_PROBE_HALF_MM;
+    let g = GpuSheetField::build(&speed_probe_field(half)?, &|src| src)?;
+    let o = [Vec3::new(-half - 1.0, 0.003, 0.02)];
+    let tmax = 2.0 * half + 2.0;
+    g.march_batch_decided(&o, Vec3::X, tmax)?;
+    let mut best = f64::INFINITY;
+    let mut work = 0u32;
+    for _ in 0..3 {
+        g.march_batch_decided(&o, Vec3::X, tmax)?;
+        let st = g.last_march_stats();
+        work = st.max_work;
+        best = best.min(st.dispatches.iter().map(|d| d.1).sum::<f64>());
+    }
+    Ok(best * 1e9 / f64::from(work.max(1)))
+}
 
 /// Rounds of re-issue after a march dispatch leaves results unwritten (each round halves the dispatch size); a ray
 /// still unwritten after these is a [`GpuError::DispatchLeftUnwritten`].
@@ -326,6 +416,7 @@ struct DispatchControl {
     target: std::time::Duration,
     wait: std::time::Duration,
     work_budget: u32,
+    ns_per_tick: f64,
     spread_block: usize,
     stats: MarchStats,
     /// test only: the next `cut.1` march dispatches use `cut.0` workgroups whatever their size (a dispatch the
@@ -487,7 +578,26 @@ impl GpuSheetField {
                 "the GPU sheet march runs the cell walk only, not {mode:?}"
             )));
         }
-        Self::build(field, &|src| src)
+        Self::new_with_ns_per_tick(field, measure_ns_per_tick()?)
+    }
+
+    /// [`Self::new`] on a device whose march time per work tick is `ns_per_tick` (measured by
+    /// [`measure_ns_per_tick`], or given by a test to stand for a slower or faster device): refused by
+    /// [`check_device_speed`] against [`DISPATCH_WAIT`]. The work budget is [`MARCH_WORK_BUDGET`] whatever the speed.
+    #[doc(hidden)]
+    pub fn new_with_ns_per_tick(field: &SheetField, ns_per_tick: f64) -> Result<Self, GpuError> {
+        check_device_speed(ns_per_tick, DISPATCH_WAIT)?;
+        let g = Self::build(field, &|src| src)?;
+        if let Ok(mut c) = g.control.lock() {
+            c.ns_per_tick = ns_per_tick;
+        }
+        Ok(g)
+    }
+
+    /// The march time per work tick this field's device was admitted with (see [`check_device_speed`]).
+    #[must_use]
+    pub fn ns_per_tick(&self) -> f64 {
+        self.control.lock().map_or(f64::NAN, |c| c.ns_per_tick)
     }
 
     /// [`Self::new`] with the march shader's text passed through `edit` first (the module's tests use it to break
@@ -717,6 +827,7 @@ impl GpuSheetField {
                 target: DISPATCH_TARGET,
                 wait: DISPATCH_WAIT,
                 work_budget: MARCH_WORK_BUDGET,
+                ns_per_tick: f64::NAN,
                 spread_block: SPREAD_BLOCK,
                 stats: MarchStats::default(),
                 #[cfg(test)]

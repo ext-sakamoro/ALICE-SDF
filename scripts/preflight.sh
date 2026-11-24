@@ -634,6 +634,8 @@ ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_stream
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_stream.log" --min 9 --what test_sheet_field_stream
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_stairs_contract -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_stairs_contract.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_stairs_contract.log" --min 6 --what test_stairs_contract
+ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_work_budget -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_work_budget.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_work_budget.log" --min 3 --what test_sheet_field_work_budget
 # gpu test files otherwise run only where a device may be absent (ci.yml の同名 step と対)
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features glsl,gpu --test npr_shader_validate -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-npr_shader_validate.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-npr_shader_validate.log" --min 21 --what npr_shader_validate
