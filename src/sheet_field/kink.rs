@@ -19,12 +19,12 @@
 //!
 //! On disk (the ASKC sidecar, little-endian; the ASHF file is unchanged): `b"ASKC"`, `u32` version, from v4 the
 //! 32-byte semantics identifier the sidecar was written under ([`crate::provenance`]), `u32` sheets
-//! (= the ASHF file's sheets, same order); per sheet: `f32` H, `f64` origin[3], `u32` nv, `f32` V[nv*3] (relative to
-//! the origin), `u32` nf, per face `u32` a, b, c, `f32` n[3], `u32` rim mask (bit 0 edge ab, 1 bc, 2 ca); `u32` rim
-//! vertices, per one `u32` v, `f32` pseudonormal[3]; `u32` segments, per one `u32` a, b; `u32` levels (= the sheet's
-//! levels), per level `u32` kink bricks, per brick `u32` brick (its active number), `u32` mask[16] (bit `c` = cell
+//! (= the ASHF file's sheets, same order); per sheet: `f32` H, `f64` origin\[3\], `u32` nv, `f32` V\[nv*3\] (relative to
+//! the origin), `u32` nf, per face `u32` a, b, c, `f32` n\[3\], `u32` rim mask (bit 0 edge ab, 1 bc, 2 ca); `u32` rim
+//! vertices, per one `u32` v, `f32` pseudonormal\[3\]; `u32` segments, per one `u32` a, b; `u32` levels (= the sheet's
+//! levels), per level `u32` kink bricks, per brick `u32` brick (its active number), `u32` mask\[16\] (bit `c` = cell
 //! `c = x*64 + y*8 + z`), `u32` first (its first cell record); `u32` cell records, per one `u32` off, `u16` triangles,
-//! `u16` segments; `u32` refs, `u32` ref[refs] (per cell its triangles, then its segments).
+//! `u16` segments; `u32` refs, `u32` ref\[refs\] (per cell its triangles, then its segments).
 
 use std::io::{self, Read};
 use std::sync::Arc;
