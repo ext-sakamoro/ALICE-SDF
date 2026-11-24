@@ -403,6 +403,18 @@ pub const ADAPTER_SPEEDS_VAR: &str = "ALICE_SDF_ADAPTER_SPEEDS";
 /// The measured march speeds of the software adapters (`src/sheet_field/adapter_speeds.tsv`).
 const ADAPTER_SPEEDS_TSV: &str = include_str!("adapter_speeds.tsv");
 
+/// Where an adapter's march speed came from.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum SpeedSource {
+    /// The crate's own table (`src/sheet_field/adapter_speeds.tsv`).
+    #[default]
+    CrateTable,
+    /// The file [`ADAPTER_SPEEDS_VAR`] named, with its path as given.
+    File(String),
+    /// Measured on this device by [`measure_adapter_speed`].
+    Measured,
+}
+
 /// One adapter's measured march speed: its identity as wgpu reports it, the speed, when and how it was measured.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AdapterSpeed {
@@ -422,6 +434,8 @@ pub struct AdapterSpeed {
     pub measured: String,
     /// The command that measured it ([`ADAPTER_SPEED_COMMAND`]).
     pub command: String,
+    /// Where the row came from (not part of the table's line: [`Self::tsv`] does not write it).
+    pub source: SpeedSource,
 }
 
 impl AdapterSpeed {
@@ -496,6 +510,7 @@ pub fn parse_adapter_speeds(text: &str) -> Result<Vec<AdapterSpeed>, GpuError> {
             ns_per_tick,
             measured: measured.to_string(),
             command: command.to_string(),
+            source: SpeedSource::CrateTable,
         });
     }
     if rows.is_empty() {
@@ -531,12 +546,21 @@ pub fn adapter_speeds() -> Result<Vec<AdapterSpeed>, GpuError> {
                 path.to_string_lossy()
             ))
         })?;
-        rows.extend(parse_adapter_speeds(&text).map_err(|e| {
-            GpuError::InvalidFormat(format!(
-                "{ADAPTER_SPEEDS_VAR} {}: {e}",
-                path.to_string_lossy()
-            ))
-        })?);
+        let file = SpeedSource::File(path.to_string_lossy().into_owned());
+        rows.extend(
+            parse_adapter_speeds(&text)
+                .map_err(|e| {
+                    GpuError::InvalidFormat(format!(
+                        "{ADAPTER_SPEEDS_VAR} {}: {e}",
+                        path.to_string_lossy()
+                    ))
+                })?
+                .into_iter()
+                .map(|r| AdapterSpeed {
+                    source: file.clone(),
+                    ..r
+                }),
+        );
     }
     Ok(rows)
 }
@@ -550,9 +574,16 @@ pub fn adapter_speeds() -> Result<Vec<AdapterSpeed>, GpuError> {
 ///
 /// [`GpuError::AdapterSpeedUnknown`] when no row is the adapter's, naming [`ADAPTER_SPEED_COMMAND`].
 pub fn table_ns_per_tick(rows: &[AdapterSpeed], info: &wgpu::AdapterInfo) -> Result<f64, GpuError> {
+    table_row(rows, info).map(|r| r.ns_per_tick)
+}
+
+/// The row of `rows` whose identity is `info`'s adapter (see [`table_ns_per_tick`]).
+fn table_row<'a>(
+    rows: &'a [AdapterSpeed],
+    info: &wgpu::AdapterInfo,
+) -> Result<&'a AdapterSpeed, GpuError> {
     rows.iter()
         .find(|r| r.matches(info))
-        .map(|r| r.ns_per_tick)
         .ok_or_else(|| GpuError::AdapterSpeedUnknown {
             adapter: format!(
                 "{:#06x} {:#06x} {:?} {:?} {:?}",
@@ -580,6 +611,7 @@ pub fn measure_adapter_speed(measured: &str) -> Result<AdapterSpeed, GpuError> {
         ns_per_tick,
         measured: measured.to_string(),
         command: ADAPTER_SPEED_COMMAND.to_string(),
+        source: SpeedSource::Measured,
     })
 }
 
@@ -648,6 +680,9 @@ pub struct MarchStats {
     /// re-issue after a cut (those follow the halving of the cut size, not the size rule of [`next_dispatch`]).
     pub dispatch_round: Vec<u32>,
     /// Whether each dispatch, in the order of `dispatches`, continued rays stopped at the end of their slice.
+    /// Where the speed this field's device was admitted with came from (the crate's table, or the file
+    /// [`ADAPTER_SPEEDS_VAR`] named, so an override is visible).
+    pub speed_source: SpeedSource,
     pub dispatch_resume: Vec<bool>,
     /// Ray slices continued in a later dispatch (a ray counts once per continuation).
     pub resumed_rays: u64,
@@ -689,6 +724,7 @@ struct DispatchControl {
     spread_block: usize,
     /// test only (0 in production): see [`GpuSheetField::set_slice_steps`]
     slice_steps: u32,
+    speed_source: SpeedSource,
     max_slices: u32,
     stats: MarchStats,
     /// test only: the next `cut.1` march dispatches use `cut.0` workgroups whatever their size (a dispatch the
@@ -864,10 +900,12 @@ impl GpuSheetField {
             )));
         }
         let g = Self::build(field, &|src| src)?;
-        let ns = table_ns_per_tick(&adapter_speeds()?, g.context().adapter_info())?;
-        check_device_speed(ns, DISPATCH_WAIT)?;
+        let rows = adapter_speeds()?;
+        let row = table_row(&rows, g.context().adapter_info())?;
+        check_device_speed(row.ns_per_tick, DISPATCH_WAIT)?;
         if let Ok(mut c) = g.control.lock() {
-            c.ns_per_tick = ns;
+            c.ns_per_tick = row.ns_per_tick;
+            c.speed_source = row.source.clone();
         }
         Ok(g)
     }
@@ -1137,6 +1175,7 @@ impl GpuSheetField {
                 wait: DISPATCH_WAIT,
                 work_budget: MARCH_WORK_BUDGET,
                 slice_steps: 0,
+                speed_source: SpeedSource::default(),
                 max_slices: MAX_MARCH_SLICES,
                 ns_per_tick: f64::NAN,
                 spread_block: SPREAD_BLOCK,
@@ -1528,6 +1567,11 @@ impl GpuSheetField {
             .map_err(|_| GpuError::InvalidFormat("sheet field dispatch control poisoned".into()))?;
         let n = origins.len();
         let mut stats = MarchStats {
+            speed_source: self
+                .control
+                .lock()
+                .map(|c| c.speed_source.clone())
+                .unwrap_or_default(),
             ray_slices: vec![0; n],
             ray_work: vec![0; n],
             ray_discarded: vec![0; n],
