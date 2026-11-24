@@ -254,6 +254,38 @@ fn bary(q: DVec3, a: DVec3, b: DVec3, c: DVec3) -> [f64; 3] {
 }
 
 impl KinkSheet {
+    /// Whether this sheet's kink cells carry every attribute that `levels` store as a band.
+    ///
+    /// A kink s cell can accept a hit in a cell whose stored `s` does not change sign, which the band (cells that
+    /// straddle `s = 0`) leaves out; there the hit's attributes come from the kink face (its corners by the
+    /// barycentric weights), never from the band. So a banded UV channel (2, 3) needs the kink's face UVs and a
+    /// banded author-normal channel (4..6) its face normals; without them such a hit would read nodes the band does
+    /// not store.
+    ///
+    /// # Errors
+    /// The first banded channel the kink cells do not carry, by level and channel.
+    pub fn covers_band(&self, levels: &[super::Level]) -> Result<(), String> {
+        for (li, lv) in levels.iter().enumerate() {
+            for (ci, ch) in lv.channels.iter().enumerate() {
+                if ch.nodes != super::BAND {
+                    continue;
+                }
+                let carried = match ci {
+                    2 | 3 => !self.face_uv.is_empty(),
+                    4..=6 => !self.face_nrm.is_empty(),
+                    _ => false,
+                };
+                if !carried {
+                    return Err(format!(
+                        "level {li} stores channel {ci} as a band, and the kink cells carry no {} for it",
+                        if ci <= 3 { "face UVs" } else { "face normals" }
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// The kink cell record of (level, active brick, cell) when that cell is a kink cell.
     fn cell(&self, level: usize, brick: usize, cell: usize) -> Option<Cell> {
         let lv = self.levels.get(level)?;
@@ -868,7 +900,8 @@ impl KinkFile {
     }
 
     /// Attach the kink cells of file sheets `first..first + sheets.len()` to `sheets`. Refused when the file has fewer
-    /// sheets, or a sheet's kink levels or bricks do not exist in the sheet.
+    /// sheets, a sheet's kink levels or bricks do not exist in the sheet, or a sheet stores an attribute as a band
+    /// that its kink cells do not carry ([`KinkSheet::covers_band`]).
     pub fn attach(&self, sheets: &mut [super::Sheet], first: usize) -> Result<(), KinkError> {
         if first + sheets.len() > self.sheets.len() {
             return Err(KinkError::Format(format!(
@@ -897,6 +930,10 @@ impl KinkFile {
                         )));
                     }
                 }
+            }
+            if let Some(ks) = &ks {
+                ks.covers_band(&sh.levels)
+                    .map_err(|e| KinkError::Format(format!("sheet {k}: {e}")))?;
             }
             sh.kink = ks;
         }

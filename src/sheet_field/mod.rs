@@ -455,6 +455,10 @@ impl Sheet {
                 other => other,
             })?;
         }
+        if let Some(ks) = &self.kink {
+            ks.covers_band(&self.levels)
+                .map_err(SheetFieldError::Shape)?;
+        }
         Ok(())
     }
 
@@ -530,6 +534,10 @@ impl Sheet {
                                 let ww = (if dx == 1 { t[0] } else { 1.0 - t[0] })
                                     * (if dy == 1 { t[1] } else { 1.0 - t[1] })
                                     * (if dz == 1 { t[2] } else { 1.0 - t[2] });
+                                // a corner of weight 0 is not read (outside the band it is NaN, and 0 x NaN is NaN)
+                                if ww == 0.0 {
+                                    continue;
+                                }
                                 let i = ((c[0] + dx) * NODES + c[1] + dy) * NODES + c[2] + dz;
                                 acc += ww * lv.band_node(ch, k, i);
                             }
@@ -621,13 +629,17 @@ impl Sheet {
             let f = (s * s + db.max(0.0) * db.max(0.0)).sqrt();
             (f, if s < 0.0 { -f } else { f }, false)
         };
+        // an attribute read from a corner outside its band is NaN: that attribute is None (as on the GPU), unless the
+        // kink face supplied it
         let uv = if c.nch >= 4 {
             Some(ex_uv.unwrap_or([c.values[2], c.values[3]]))
+                .filter(|u| u.iter().all(|x| x.is_finite()))
         } else {
             None
         };
-        let attr_normal =
-            (c.nch >= 7).then(|| ex_nrm.unwrap_or([c.values[4], c.values[5], c.values[6]]));
+        let attr_normal = (c.nch >= 7)
+            .then(|| ex_nrm.unwrap_or([c.values[4], c.values[5], c.values[6]]))
+            .filter(|n| n.iter().all(|x| x.is_finite()));
         Sample {
             f,
             g,
