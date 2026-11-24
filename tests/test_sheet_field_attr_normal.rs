@@ -31,7 +31,7 @@ const ANGLE_BOUND: f32 = 3e-4;
 
 /// The angle between two vectors (rad), from the cross product (exact near 0, where a dot product is not).
 fn angle(a: Vec3, b: Vec3) -> f32 {
-    a.normalize().cross(b.normalize()).length().asin()
+    alice_det_math::asin(a.normalize().cross(b.normalize()).length())
 }
 
 fn author(x: f32, y: f32) -> Vec3 {
