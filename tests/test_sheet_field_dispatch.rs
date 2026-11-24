@@ -302,6 +302,51 @@ fn a_ray_over_the_work_budget_ends_undecided_and_is_counted() {
     );
 }
 
+/// A ray stopped by the budget at any tick, also inside the cell walk of its last floor step (the walk's corner fill
+/// and face bisection break on a failed tick and may still return a root), ends undecided, never a hit: the kernel
+/// reads the status from the work counter after the march (work over the budget overrides any root found after the
+/// first failed tick), and the counter only grows. Oracle: the same ray at the full budget (its hit and its work `W`);
+/// every budget from `W - 4096` to `W - 1` is swept one by one (the walk is the last phase before the hit, so its
+/// ticks are among the last of `W`), and a stride below that. At `W` the same hit returns.
+#[test]
+fn a_ray_stopped_anywhere_by_the_budget_is_undecided_never_a_hit() {
+    let f = deep();
+    let Some(g) = gpu(&f) else { return };
+    let o = [Vec3::new(0.31, 0.27, 2.0)];
+    let full = g.march_batch_decided(&o, -Vec3::Z, 10.0).unwrap();
+    assert!(
+        matches!(full[0], MarchResult::Hit(_)),
+        "the ray does not hit: {:?}",
+        full[0]
+    );
+    let w = g.last_march_stats().max_work;
+    assert!(w > 4_096, "the ray did little work: {w}");
+    let budgets: Vec<u32> = (1..w - 4_096).step_by(97).chain(w - 4_096..w).collect();
+    let mut compared = 0u32;
+    for &b in &budgets {
+        g.set_work_budget(b).expect("a budget under the maximum");
+        let r = g.march_batch_decided(&o, -Vec3::Z, 10.0).unwrap();
+        let st = g.last_march_stats();
+        assert_eq!(
+            r[0],
+            MarchResult::Undecided,
+            "budget {b} of {w}: a ray over the budget returned {:?}",
+            r[0]
+        );
+        assert_eq!(st.over_budget, 1, "budget {b}: the ray was not counted");
+        compared += 1;
+    }
+    assert_eq!(compared as usize, budgets.len());
+    assert!(compared > 4_096, "{compared} budgets");
+    g.set_work_budget(w).expect("the full work");
+    let again = g.march_batch_decided(&o, -Vec3::Z, 10.0).unwrap();
+    assert_eq!(
+        again, full,
+        "at its own work the ray no longer returns the same hit"
+    );
+    assert_eq!(g.last_march_stats().over_budget, 0);
+}
+
 /// The upload checks every sheet's layout before any buffer or device work: a sheet assembled from its public fields
 /// with a dropped `s` row (which `sheet` would refuse) is refused as `InvalidFormat`, with or without an adapter.
 #[test]
