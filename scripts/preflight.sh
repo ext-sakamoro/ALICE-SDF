@@ -159,6 +159,8 @@ step "ci-test-coverage: oracle + feature 付き oracle を走らせる cargo tes
 python3 scripts/test_gen_nearest_golden.py
 python3 scripts/test_ci_test_coverage_check.py
 python3 scripts/ci_test_coverage_check.py
+python3 scripts/test_commit_marker_guard.py
+python3 scripts/commit_marker_guard.py
 
 step "raw max/min manifest (test, then check against origin/main) + library clippy config"
 python3 scripts/test_raw_minmax_manifest.py
