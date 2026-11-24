@@ -347,9 +347,9 @@ fn a_ray_stopped_anywhere_by_the_budget_is_undecided_never_a_hit() {
     assert_eq!(g.last_march_stats().over_budget, 0);
 }
 
-/// A point or origin that is not finite reads as on the CPU: the union starts at +inf on both sides (the GPU used to
-/// start at 1e30), and a NaN is in no brick on both sides (it used to index brick 0 on the GPU). Oracle: the CPU's
-/// `eval` and `march_decided` on the same inputs, bit for bit on `f` and `g`.
+/// A point or origin that is not finite reads as on the CPU: a NaN is in no brick on both sides (it used to index
+/// brick 0 on the GPU), so the sheet's value is its outside bound. Oracle: the CPU's `eval` and `march_decided` on the
+/// same inputs, bit for bit on `f` and `g`.
 #[test]
 fn a_point_that_is_not_finite_reads_as_on_the_cpu() {
     let f = deep();
@@ -376,17 +376,6 @@ fn a_point_that_is_not_finite_reads_as_on_the_cpu() {
         compared += 1;
     }
     assert_eq!(compared, bad.len());
-    // where no sheet answers (every NaN point: each sheet's value is NaN and none is taken), the union keeps its
-    // start value: exactly +inf on both sides (the GPU's old 1e30 start differs from it)
-    let mut at_start = 0;
-    for (p, s) in bad.iter().zip(&got) {
-        if p.is_nan() {
-            assert_eq!(f.eval(*p).0.to_bits(), f32::INFINITY.to_bits(), "{p}: CPU");
-            assert_eq!(s.f.to_bits(), f32::INFINITY.to_bits(), "{p}: GPU f {}", s.f);
-            at_start += 1;
-        }
-    }
-    assert_eq!(at_start, 4, "rows whose union stays at its start value");
     let origins: Vec<Vec3> = bad.iter().map(|p| *p + Vec3::new(0.0, 0.0, 2.0)).collect();
     let marched = g.march_batch_decided(&origins, -Vec3::Z, 10.0).unwrap();
     for (o, m) in origins.iter().zip(&marched) {

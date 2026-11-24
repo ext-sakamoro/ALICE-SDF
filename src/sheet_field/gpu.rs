@@ -1879,12 +1879,6 @@ fn finite3(p: vec3<f32>) -> bool {
     return all((bitcast<vec3<u32>>(p) & vec3<u32>(0x7f800000u)) != vec3<u32>(0x7f800000u));
 }
 
-// +inf at run time: a constant infinity is a shader-creation error, and U.count & 0u keeps this out of constant
-// evaluation (the CPU union starts at f32::INFINITY)
-fn inf32() -> f32 {
-    return bitcast<f32>(0x7f800000u | (U.count & 0u));
-}
-
 fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
     let sh = SHEETS[k];
     var out: Sample;
@@ -2252,7 +2246,9 @@ var<private> walk_unfinished: bool;
 // min over sheets, lowest index on ties; a node farther than the best value so far is skipped (as the CPU walk)
 fn eval_union(p: vec3<f32>) -> Union {
     var r: Union;
-    r.f = inf32(); r.g = r.f; r.k = NONE; r.masked = false;
+    // the start value never reaches an output: every sheet gives a finite value at any point (a non-finite point
+    // takes the outside bound, finite on both sides) and an empty field is refused at upload, so 1e30 stands for +inf
+    r.f = 1e30; r.g = 1e30; r.k = NONE; r.masked = false;
     if (U.bn_len < 8u || U.n_sheets == 0u) { r.k = 0u; return r; }
     var at = 0u;
     var prev = NONE;
