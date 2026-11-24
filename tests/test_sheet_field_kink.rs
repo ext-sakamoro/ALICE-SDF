@@ -649,7 +649,7 @@ fn outside_band(fld: &SheetField, p: Vec3) -> bool {
 /// The sharp fold of [`fold`] with UV channels (u = x / 3 and v = y + z, linear on both faces, so the exact UV of a
 /// point on the sheet is known in closed form) stored as a band, and its kink cells with the s cover; `kink_uv` gives
 /// the kink cells the faces' UVs.
-fn banded_fold(phi: f64, kink_uv: bool, eps_steps: f32) -> Result<SheetField, KinkError> {
+fn banded_fold(phi: f64, kink_uv: bool, eps_steps: f32, cap: f32) -> Result<SheetField, KinkError> {
     let (v, f, rim) = fold(phi);
     let uv_of = |c: u32| {
         let p = v[c as usize];
@@ -680,7 +680,7 @@ fn banded_fold(phi: f64, kink_uv: bool, eps_steps: f32) -> Result<SheetField, Ki
             let (s, db, _) = ks.eval_all(p.as_dvec3(), &tris, &segs).expect("faces");
             let (uvp, _) = ks.eval_attributes(p.as_dvec3(), &tris).expect("faces");
             let [u, w] = uvp.expect("uv");
-            vec![s as f32, db as f32, u, w]
+            vec![(s as f32).clamp(-cap, cap), db as f32, u, w]
         },
     )
     .unwrap();
@@ -699,9 +699,13 @@ fn banded_fold(phi: f64, kink_uv: bool, eps_steps: f32) -> Result<SheetField, Ki
 /// The scanned field's mechanism: at a sharp fold the stored s, interpolated from its corners, cannot follow the
 /// surface, so in cells near the fold all 8 stored corners keep one sign while the kink cells' exact s puts the
 /// surface inside them (the s cover flags them because the interpolated zero lies more than its eps off the surface).
-/// Such a cell is outside a band whose eps (in quantization steps) is below the stored corners' distance from 0. At
-/// band eps 0, 0.5 and 1 step some hits lie in such cells (the tooth: at least one at each eps); every hit reads the
-/// kink face's UV (u = x / 3, closed form, the faces' UV is linear) on the CPU and the GPU, with 0 band misses.
+/// A band keeps the nodes of cells whose stored s comes within eps quantization steps of 0, so such a cell reads a
+/// corner of weight > 0 the band does not store. The stored s is truncated to +-2 cells (still a lower bound of the
+/// distance): the brick's quantization step is then small against the fold's interpolation error, as in the scanned
+/// bricks, and the case holds at the production band eps of 2 steps (1652 of 2301 hits; untruncated it holds only up
+/// to 1 step). At band eps 0, 1 and 2 every hit reads the kink face's UV (u = x / 3, closed form, the faces' UV is
+/// linear) on the CPU and the GPU, with 0 band misses; on the GPU the kink face's UV must clear the band corners'
+/// miss, or those hits lose their UV.
 #[test]
 fn a_kink_hit_outside_the_band_reads_the_kink_face_uv_on_both_sides() {
     let (phi, b) = (20f64.to_radians(), 5f64.to_radians());
@@ -713,9 +717,9 @@ fn a_kink_hit_outside_the_band_reads_the_kink_face_uv_on_both_sides() {
             os.push((q - dir.as_dvec3() * 0.5).as_vec3());
         }
     }
-    for eps in [0.0f32, 0.5, 1.0] {
-        let fld =
-            banded_fold(phi, true, eps).expect("kink cells with face UVs attach to a banded sheet");
+    for eps in [0.0f32, 1.0, 2.0] {
+        let fld = banded_fold(phi, true, eps, 2.0 * H)
+            .expect("kink cells with face UVs attach to a banded sheet");
         let cpu: Vec<MarchResult> = os
             .iter()
             .map(|o| fld.march_decided(*o, dir, 1.0).unwrap())
@@ -782,7 +786,7 @@ fn a_kink_hit_outside_the_band_reads_the_kink_face_uv_on_both_sides() {
 /// channel: such a sheet would read UV nodes the band does not store at a kink hit.
 #[test]
 fn kink_cells_without_the_banded_attributes_are_refused_at_attach() {
-    match banded_fold(20f64.to_radians(), false, 1.0) {
+    match banded_fold(20f64.to_radians(), false, 2.0, 2.0 * H) {
         Err(KinkError::Format(m)) => {
             assert!(
                 m.contains("sheet 0") && m.contains("channel 2") && m.contains("face UVs"),
