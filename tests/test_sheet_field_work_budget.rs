@@ -115,11 +115,18 @@ fn the_budget_and_the_results_do_not_follow_the_device_speed() {
         // about 500 mm of graze: under the budget, a miss
         let mid = g.march_batch_decided(&o, Vec3::X, 500.0).unwrap();
         let mid_st = g.last_march_stats();
-        // about 1000 mm of graze: over the budget, undecided
+        // about 1000 mm of graze: over the budget, so it is continued in a second dispatch and decided
         let long = g
             .march_batch_decided(&o, Vec3::X, 2.0 * HALF + 2.0)
             .unwrap();
         let long_st = g.last_march_stats();
+        // and with one dispatch a ray, the same ray ends undecided
+        g.set_max_march_slices(1);
+        let cut = g
+            .march_batch_decided(&o, Vec3::X, 2.0 * HALF + 2.0)
+            .unwrap();
+        let cut_st = g.last_march_stats();
+        g.set_max_march_slices(alice_sdf::sheet_field::gpu::MAX_MARCH_SLICES);
         eprintln!(
             "ns/tick {ns}: mid work {} {:?}, long work {} {:?}",
             mid_st.max_work, mid, long_st.max_work, long
@@ -131,10 +138,19 @@ fn the_budget_and_the_results_do_not_follow_the_device_speed() {
             "ns {ns}: mid work {}",
             mid_st.max_work
         );
-        assert_eq!(long, vec![MarchResult::Undecided], "ns {ns}");
-        assert_eq!(long_st.over_budget, 1, "ns {ns}");
-        // the long ray's own work is under twice the budget: a budget scaled up by two would decide it
-        assert!(long_st.max_work > MARCH_WORK_BUDGET, "ns {ns}");
+        assert_eq!(long, vec![MarchResult::Miss], "ns {ns}");
+        assert_eq!(long_st.ray_slices, vec![2], "ns {ns}");
+        assert_eq!(cut, vec![MarchResult::Undecided], "ns {ns}");
+        assert_eq!(cut_st.over_slices, 1, "ns {ns}");
+        // the long ray's own work is over the budget and under twice it: two slices decide it
+        assert!(
+            long_st.ray_work[0] > u64::from(MARCH_WORK_BUDGET),
+            "ns {ns}"
+        );
+        assert!(
+            long_st.ray_work[0] < 2 * u64::from(MARCH_WORK_BUDGET),
+            "ns {ns}"
+        );
         runs.push((mid, long));
     }
     assert_eq!(
