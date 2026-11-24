@@ -19,6 +19,7 @@
 //! cannot, by the bound) reports [`GpuError`] for the batch (never a guessed answer); a bound over
 //! [`MAX_LIVE_CAP`] is refused at upload.
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 use wgpu::util::DeviceExt;
 
@@ -376,7 +377,7 @@ fn speed_probe_field(half: f32) -> Result<SheetField, GpuError> {
     let db = move |x: f32, y: f32| {
         let dx = x.abs() - half;
         let dy = y.abs() - half;
-        Vec3::new(dx.max(0.0), dy.max(0.0), 0.0).length() + dx.max(dy).min(0.0)
+        Vec3::new(dx.law_max(0.0), dy.law_max(0.0), 0.0).length() + dx.law_max(dy).law_min(0.0)
     };
     let lv = level_from_fn(
         lo,
@@ -641,7 +642,7 @@ pub fn measure_ns_per_tick() -> Result<(f64, wgpu::AdapterInfo), GpuError> {
             g.march_batch_decided(&o, Vec3::X, tmax)?;
             let st = g.last_march_stats();
             work = st.max_work;
-            best = best.min(st.dispatches.iter().map(|d| d.1).sum::<f64>());
+            best = best.law_min(st.dispatches.iter().map(|d| d.1).sum::<f64>());
         }
         *pt = (work, best);
     }
@@ -761,7 +762,7 @@ pub fn next_dispatch(rays: usize, secs: f64, target: std::time::Duration) -> usi
         return rays.saturating_mul(2).max(MIN_DISPATCH);
     }
     let per_ray = secs / rays as f64;
-    let mut next = (t.min(2.0 * secs) / per_ray).floor() as usize;
+    let mut next = (t.law_min(2.0 * secs) / per_ray).floor() as usize;
     if secs > t {
         next = next.min(rays / 2);
     }

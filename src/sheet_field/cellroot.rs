@@ -22,6 +22,7 @@
 //!   than that is a sign jump, not a crossing).
 //! - Bound: at most [`CELL_WALK_CAP`] cells per call; past it the answer is [`Walk::Exhausted`] (undecided).
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 use super::{outside_lower_bound, Level, Sheet, ValidRule, BRICK, HALF_DIAG, JUMP_S};
@@ -195,7 +196,7 @@ impl Sheet {
                 return ExactRoot::Capped;
             }
             n += 1;
-            let b = (a + (ua - f64::from(JUMP_S)).max(sub)).min(tb);
+            let b = (a + (ua - f64::from(JUMP_S)).law_max(sub)).law_min(tb);
             let (sb, ub) = ev(b);
             if (sa < 0.0) != (sb < 0.0) {
                 let (mut l, mut r, mut sl) = (a, b, sa);
@@ -299,11 +300,11 @@ impl Sheet {
             // step of t does not move the f32 point at all, and the walk would look the same cell up again)
             let hair = |tn: f64| {
                 (cell.h / 1_048_576.0)
-                    .max(4.0 * f64::from(f32::EPSILON) * tn.abs())
-                    .max(4.0 * f64::from(f32::EPSILON) * exit_ax.0 / exit_ax.1)
+                    .law_max(4.0 * f64::from(f32::EPSILON) * tn.abs())
+                    .law_max(4.0 * f64::from(f32::EPSILON) * exit_ax.0 / exit_ax.1)
             };
-            let u_exit = u_exit.max(0.0);
-            let u_end = u_exit.min((tend - t) / cell.h).max(0.0);
+            let u_exit = u_exit.law_max(0.0);
+            let u_end = u_exit.law_min((tend - t) / cell.h).law_max(0.0);
             // an s cell ([`super::kink`]): s is the exact value from the cell's triangles, not the cubic of the corners
             if let Some((s_in, _)) = self.exact_s_here(p) {
                 let s_in = f64::from(s_in);
@@ -423,7 +424,7 @@ fn cell_in(lv: &Level, p: Vec3, rule: ValidRule) -> Option<Cell> {
     for (i, slot) in corners.iter_mut().enumerate() {
         let (dx, dy, dz) = (i >> 2 & 1, i >> 1 & 1, i & 1);
         let v = Level::node(ch, k, c[0] + dx, c[1] + dy, c[2] + dz).unwrap_or(0.0);
-        umin = umin.min(v.abs());
+        umin = umin.law_min(v.abs());
         *slot = f64::from(v);
     }
     let q0 = if row >= 0 {
