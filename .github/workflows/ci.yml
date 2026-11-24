@@ -687,6 +687,10 @@ jobs:
         run: python scripts/test_ci_test_coverage_check.py
       - name: CI test coverage (feature 付き oracle を走らせる cargo test が CI にある)
         run: python scripts/ci_test_coverage_check.py
+      - name: commit stop markers oracle (the guard's own tests)
+        run: python scripts/test_commit_marker_guard.py
+      - name: no commit stop marker left in src/ (a measurement build or temporary switch)
+        run: python scripts/commit_marker_guard.py
       - name: status generators oracle (台帳の生成器自身の試験)
         run: python scripts/test_gen_status.py
       # the preflight mirror of law-readme-block.yml (the check itself runs there, here its tests)
