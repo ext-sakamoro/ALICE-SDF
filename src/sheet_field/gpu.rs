@@ -768,12 +768,25 @@ const fn entry(binding: u32, ty: wgpu::BufferBindingType) -> wgpu::BindGroupLayo
     }
 }
 
+/// The device a sheet field runs on: native with the adapter's storage limits; on `wasm32` (no such request there)
+/// with the default limits, so a sheet over the default binding is refused at upload by the size check.
+#[cfg(not(target_arch = "wasm32"))]
+fn sheet_context(label: &str) -> Result<GpuContext, GpuError> {
+    GpuContext::request_with_adapter_storage_limits(label)
+}
+
+/// [`sheet_context`] on `wasm32`: the default limits.
+#[cfg(target_arch = "wasm32")]
+fn sheet_context(label: &str) -> Result<GpuContext, GpuError> {
+    GpuContext::request(label)
+}
+
 /// The largest storage binding a sheet field can use on this machine's GPU, in bytes.
 ///
 /// The adapter's limits as [`GpuContext::request_with_adapter_storage_limits`] requests them (the
 /// smaller of the binding and buffer sizes). A chunk of sheets whose channel bytes exceed it cannot be uploaded.
 pub fn storage_binding_limit() -> Result<u64, GpuError> {
-    let context = GpuContext::request_with_adapter_storage_limits("ALICE-SDF sheet field limits")?;
+    let context = sheet_context("ALICE-SDF sheet field limits")?;
     let l = context.device().limits();
     Ok(u64::from(l.max_storage_buffer_binding_size).min(l.max_buffer_size))
 }
@@ -983,7 +996,7 @@ impl GpuSheetField {
             bn_len: bvh.nodes.len() as u32,
         };
         let max_live = max_live_for(live_bound(field))?;
-        let context = GpuContext::request_with_adapter_storage_limits("ALICE-SDF sheet field")?;
+        let context = sheet_context("ALICE-SDF sheet field")?;
         let device = context.device();
         let max = u64::from(device.limits().max_storage_buffer_binding_size);
         for (name, len) in [
@@ -1861,11 +1874,24 @@ fn exact_cell_root(k: u32, o: vec3<f32>, d: vec3<f32>, ta: f32, tb: f32, h: f32)
 }
 
 // sheet k at p, interpolating the first nmax channels only (2 while marching; attributes once, at the hit)
+// whether every component of p is finite: by the exponent bits (a float comparison may be assumed NaN-free)
+fn finite3(p: vec3<f32>) -> bool {
+    return all((bitcast<vec3<u32>>(p) & vec3<u32>(0x7f800000u)) != vec3<u32>(0x7f800000u));
+}
+
+// +inf at run time: a constant infinity is a shader-creation error, and U.count & 0u keeps this out of constant
+// evaluation (the CPU union starts at f32::INFINITY)
+fn inf32() -> f32 {
+    return bitcast<f32>(0x7f800000u | (U.count & 0u));
+}
+
 fn sample_sheet(k: u32, p: vec3<f32>, nmax: u32) -> Sample {
     let sh = SHEETS[k];
     var out: Sample;
+    // a point that is not finite is in no brick, as on the CPU (NaN fails both bounds tests and would index brick 0)
+    let in_levels = finite3(p);
     for (var li = 0u; li < MAX_LEVELS; li = li + 1u) { if (!tick()) { break; }
-        if (li >= sh.level_count) { break; }
+        if (li >= sh.level_count || !in_levels) { break; }
         let lv = LEVELS[sh.level_start + li];
         let u = (p - lv.lo) / lv.h;
         let b = f32(BRICK);
@@ -2226,7 +2252,7 @@ var<private> walk_unfinished: bool;
 // min over sheets, lowest index on ties; a node farther than the best value so far is skipped (as the CPU walk)
 fn eval_union(p: vec3<f32>) -> Union {
     var r: Union;
-    r.f = 1e30; r.g = 1e30; r.k = NONE; r.masked = false;
+    r.f = inf32(); r.g = r.f; r.k = NONE; r.masked = false;
     if (U.bn_len < 8u || U.n_sheets == 0u) { r.k = 0u; return r; }
     var at = 0u;
     var prev = NONE;
