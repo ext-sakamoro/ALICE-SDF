@@ -6,22 +6,23 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1570 |
-| 🔴 Red by design | 7 |
+| 🟢 Not ignored | 1571 |
+| 🔴 Red by design | 8 |
 | ⏱ Gated (runtime / diagnostic / manual) | 10 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1587** |
+| **Total** | **1589** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
 
-## 🔴 Red by design (7)
+## 🔴 Red by design (8)
 
 Oracles kept red on purpose: the implementation is not there yet, and a companion test pins
 today's behaviour so CI coverage is not lost. The fix is in `src/`; the expected value is never loosened.
 
 - `a_countersunk_hole_reads_the_ball_inscribed_at_its_rings` (test_validity_air_proof.rs) — known defect: gap prover cannot close tilted walls
+- `grazing_rays_decide_at_the_default_budget_as_on_the_cpu` (test_sheet_field_graze_budget.rs) — known defect: sheet-field-grazing-budget
 - `the_call_sites_do_not_grow_with_the_lofts_and_stacks` (test_one_call_site.rs) — known defect: B1 lofts/stacks one-call-site pending (sdf b1 one call site)
 - `the_compile_memory_does_not_grow_with_the_lofts` (test_gpu_compile_memory.rs) — known defect: B1 lofts/stacks one-call-site pending (sdf b1 one call site)
 - `the_compiled_marcher_agrees_with_the_interpreter_near_a_scaled_surface` (test_trace_hit_scale.rs) — known defect: SDF-COMPILED-HIT-SCALE-001: the compiled, SIMD and JIT marchers hit on |d| < eps while the inter…
@@ -55,7 +56,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `write_bincode1_fixtures` (test_bincode1_fixtures.rs) — writes tests/fixtures/bincode1; run only to capture
 
-## 🟢 Not ignored (1570)
+## 🟢 Not ignored (1571)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -283,6 +284,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_sheet_field_dispatch_abandon.rs` | 1 |
 | `test_sheet_field_gpu_readback.rs` | 1 |
 | `test_sheet_field_graze.rs` | 1 |
+| `test_sheet_field_graze_budget.rs` | 1 |
 | `test_sheet_field_masked_floor.rs` | 1 |
 | `test_sheet_field_shallow_approach.rs` | 1 |
 | `test_texture_shader_gpu_parity.rs` | 1 |
