@@ -49,3 +49,10 @@ path = "fuzz_targets/fuzz_eval_parity.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fuzz_askc_read"
+path = "fuzz_targets/fuzz_askc_read.rs"
+test = false
+doc = false
+bench = false
