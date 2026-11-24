@@ -15,14 +15,16 @@
 //! - the decision: the same kind and sheet as the CPU march, and `t` within 1e-3 (the parity rule of
 //!   `test_sheet_field_gpu_parity.rs`; the CPU and GPU `t` differ in the float arithmetic, measured at most 8.13e-5 on
 //!   the A6000). The GPU `t` bits are printed per ray so devices can be compared.
-//! - the open defect, pinned and ignored: at the default budget the GPU decides the same as the CPU march. It does not
-//!   today (every one of these rays is undecided); a march that resumes over dispatches is the planned fix, and the
-//!   ignore is listed in the oracle status ledger as open work.
+//! - at the default budget the GPU decides the same as the CPU march: each ray needs more than one slice of
+//!   [`MARCH_WORK_BUDGET`], is continued from its last completed step, and its work summed over its slices equals the
+//!   one-shot work of the table (the slices per ray are printed).
 #![cfg(feature = "gpu")]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::cast_precision_loss)]
 
 use alice_sdf::sheet_field::build::{level_from_fn, sheet};
-use alice_sdf::sheet_field::gpu::{GpuSheetField, MARCH_WORK_BUDGET, MARCH_WORK_BUDGET_CAP};
+use alice_sdf::sheet_field::gpu::{
+    GpuSheetField, MARCH_WORK_BUDGET, MARCH_WORK_BUDGET_CAP, MAX_MARCH_SLICES,
+};
 use alice_sdf::sheet_field::{decided_steps, MarchResult, Sheet, SheetField, ValidRule};
 use glam::Vec3;
 use std::time::Duration;
@@ -306,8 +308,9 @@ fn grazing_rays_decide_at_the_cap_with_the_recorded_work_and_the_cpu_decision() 
 }
 
 #[test]
-#[ignore = "known defect: sheet-field-grazing-budget"]
 fn grazing_rays_decide_at_the_default_budget_as_on_the_cpu() {
+    // the default settings: each dispatch is one slice of MARCH_WORK_BUDGET work, and a ray that runs out of it is
+    // continued from its last completed step; its work summed over the slices is the one-shot work of the table
     let f = deep();
     let Some(g) = gpu(&f) else { return };
     let steps = decided_steps(30.0).unwrap();
@@ -315,14 +318,27 @@ fn grazing_rays_decide_at_the_default_budget_as_on_the_cpu() {
     for (i, (o, d)) in RAYS.iter().enumerate() {
         let (o, d) = (Vec3::from_array(*o), Vec3::from_array(*d));
         let r = g.march_batch(&[o], d, 30.0, steps).unwrap();
+        let st = g.last_march_stats();
         let cpu = f.march(o, d, 30.0, steps);
+        eprintln!(
+            "ray {i}: slices {} work {} discarded {}",
+            st.ray_slices[0], st.ray_work[0], st.ray_discarded[0]
+        );
         assert!(
             same_decision(&r[0], &cpu),
             "ray {i} at {o}: GPU {:?}, CPU {:?}",
             r[0],
             cpu
         );
+        assert_eq!(
+            st.ray_work[0],
+            u64::from(T_TABLE[i]),
+            "ray {i}: summed slice work differs from the table"
+        );
+        assert!(st.ray_slices[0] > 1, "ray {i}: decided in one slice");
+        assert!(st.ray_slices[0] <= MAX_MARCH_SLICES, "ray {i}");
         compared += 1;
     }
+    eprintln!("decided {compared} grazing rays at the default budget");
     assert_eq!(compared, RAYS.len());
 }

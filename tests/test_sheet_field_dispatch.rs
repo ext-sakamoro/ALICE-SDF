@@ -260,9 +260,12 @@ fn a_ray_over_the_work_budget_ends_undecided_and_is_counted() {
     assert!(worst > 1_000, "the deep stack did little work: {worst}");
     g.set_work_budget(worst / 4)
         .expect("a budget under the maximum");
+    // one slice a ray: a ray over the budget is not continued, so this is the budget's own cut
+    g.set_max_march_slices(1);
     let cut = g.march_batch_decided(&os, -Vec3::Z, 10.0).unwrap();
     let st = g.last_march_stats();
-    assert!(st.over_budget > 0, "no ray ran out of the budget");
+    let stopped = st.over_budget + st.over_slices;
+    assert!(stopped > 0, "no ray ran out of the budget");
     // a smaller budget can only turn a result into Undecided: a hit stays the same hit, a miss stays a miss (never
     // a hit), and nothing undecided at the full budget becomes decided
     let n_miss = hits.iter().filter(|m| **m == MarchResult::Miss).count();
@@ -278,7 +281,7 @@ fn a_ray_over_the_work_budget_ends_undecided_and_is_counted() {
     }
     let undecided = cut.iter().filter(|m| **m == MarchResult::Undecided).count() as u64;
     assert_eq!(
-        undecided, st.over_budget,
+        undecided, stopped,
         "undecided rays and the counted ones differ"
     );
 }
@@ -298,6 +301,8 @@ fn sweep_budgets(f: &SheetField, o: Vec3, d: Vec3) -> Option<MarchResult> {
     );
     let w = g.last_march_stats().max_work;
     assert!(w > 64, "the ray did little work: {w}");
+    // one slice a ray: a ray over the budget is not continued, so each budget stops the ray where it runs out
+    g.set_max_march_slices(1);
     // every budget in the last `dense` ticks, a stride below
     let dense = 4_096.min(w - 1);
     let budgets: Vec<u32> = (1..w - dense).step_by(97).chain(w - dense..w).collect();
@@ -311,8 +316,9 @@ fn sweep_budgets(f: &SheetField, o: Vec3, d: Vec3) -> Option<MarchResult> {
             "budget {b} of {w}: a ray over the budget returned {:?}",
             r[0]
         );
+        let st = g.last_march_stats();
         assert_eq!(
-            g.last_march_stats().over_budget,
+            st.over_budget + st.over_slices,
             1,
             "budget {b}: the ray was not counted"
         );
@@ -329,7 +335,8 @@ fn sweep_budgets(f: &SheetField, o: Vec3, d: Vec3) -> Option<MarchResult> {
         again, full,
         "at its own work the ray no longer returns the same hit"
     );
-    assert_eq!(g.last_march_stats().over_budget, 0);
+    let st = g.last_march_stats();
+    assert_eq!(st.over_budget + st.over_slices, 0);
     Some(full[0])
 }
 
