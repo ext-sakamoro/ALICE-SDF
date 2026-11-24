@@ -197,6 +197,16 @@ fn the_adapter_speed_table_parses_and_names_its_command() {
     assert!(parse_adapter_speeds("# header only\n\n").is_err());
     assert!(parse_adapter_speeds("0x10de\t0x20b0\tVulkan\tX\t\t-1\t2026-11-24\tc").is_err());
     assert!(parse_adapter_speeds("0x10de\t0x20b0\tVulkan\tX").is_err());
+    // a malformed row is refused with a typed error naming its line, never skipped (a table named by
+    // ALICE_SDF_ADAPTER_SPEEDS goes through this parser)
+    match parse_adapter_speeds(
+        "# a comment\n0x10de\t0x20b0\tVulkan\tX\tdrv 1\t320.5\t2026-11-24\tc\n0x10de\t0x20b0\tVulkan\tY",
+    ) {
+        Err(alice_sdf::compiled::GpuError::InvalidFormat(m)) => {
+            assert!(m.contains("line 3"), "the error does not name the line: {m}");
+        }
+        other => panic!("a malformed row was not refused: {other:?}"),
+    }
     let one =
         parse_adapter_speeds("0x10de\t0x20b0\tVulkan\tX\tdrv 1\t320.5\t2026-11-24\tc").unwrap();
     assert_eq!(
