@@ -766,7 +766,13 @@ const EMITTERS: [Emitter; 17] = [
     (
         "src/sheet_field/gpu.rs",
         &[],
-        &[("march_shader", "WGSL: G3 on WGSL is the MSL / Metal path")],
+        &[
+            ("march_shader", "WGSL: G3 on WGSL is the MSL / Metal path"),
+            (
+                "march_shader_margin",
+                "WGSL: G3 on WGSL is the MSL / Metal path",
+            ),
+        ],
     ),
     (
         "src/volume/gpu_bake.rs",
