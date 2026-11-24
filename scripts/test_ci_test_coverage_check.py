@@ -42,8 +42,11 @@ GATED_GPU = '#![cfg(feature = "gpu")]\n#[test]\nfn a() {}\n'
 GATED_ALL = '#![cfg(all(feature = "glsl", feature = "gpu"))]\n#[test]\nfn a() {}\n'
 
 
-def workflow(steps: str, on: str = 'on:\n  push:\n    branches: [main]\n', extra_job: str = '') -> str:
-    return on + '\njobs:\n  test:\n    runs-on: ubuntu-latest\n' + extra_job + '    steps:\n' + textwrap.indent(
+def workflow(steps: str, on: str = 'on:\n  push:\n    branches: [main]\n', extra_job: str = '',
+             require_gpu: bool = True) -> str:
+    # the job requires its device by default (the GPU rule is tested on its own below)
+    env = '    env:\n      ALICE_SDF_REQUIRE_GPU: "1"\n' if require_gpu else ''
+    return on + '\njobs:\n  test:\n    runs-on: ubuntu-latest\n' + env + extra_job + '    steps:\n' + textwrap.indent(
         textwrap.dedent(steps), ' ' * 6)
 
 
@@ -136,6 +139,51 @@ class CoverageTest(unittest.TestCase):
         v, _ = self.run_case({'g': GATED_GPU},
                              workflow('- run: cargo test --no-run --features gpu\n- run: cargo test --features gpu --test g\n'))
         self.assertEqual(v, [])
+
+    # ---- a gpu file must run once where its device must be present
+
+    def test_a_gpu_file_without_a_required_run_is_a_finding(self):
+        v, _ = self.run_case({'g': GATED_GPU},
+                             workflow('- run: cargo test --features gpu --test g\n', require_gpu=False))
+        self.assertEqual(self.kinds(v), ['gpu_unrequired'])
+        self.assertIn('tests/g.rs', v[0])
+
+    def test_a_gpu_arm_without_a_required_run_is_a_finding(self):
+        body = '#[cfg(feature = "gpu")]\n#[test]\nfn a() {}\n'
+        v, _ = self.run_case({'h': body}, workflow('- run: cargo test --features gpu --test h\n', require_gpu=False))
+        self.assertEqual(self.kinds(v), ['gpu_unrequired'])
+
+    def test_the_device_requirement_is_read_from_job_step_and_command(self):
+        for steps in ('- run: ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test g\n',
+                      '- env:\n    ALICE_SDF_REQUIRE_GPU: "1"\n  run: cargo test --features gpu --test g\n',
+                      '- env:\n    ALICE_SDF_REQUIRE_METAL: "1"\n  run: cargo test --features gpu --test g\n'):
+            with self.subTest(steps=steps):
+                v, _ = self.run_case({'g': GATED_GPU}, workflow(steps, require_gpu=False))
+                self.assertEqual(v, [])
+        v, _ = self.run_case({'g': GATED_GPU},
+                             workflow('- run: ALICE_SDF_REQUIRE_GPU=0 cargo test --features gpu --test g\n',
+                                      require_gpu=False))
+        self.assertEqual(self.kinds(v), ['gpu_unrequired'])
+
+    def test_one_required_run_covers_a_file_also_run_where_it_may_skip(self):
+        wf = workflow('- run: cargo test --features gpu --test g\n'
+                      '- run: ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test g\n', require_gpu=False)
+        v, _ = self.run_case({'g': GATED_GPU}, wf)
+        self.assertEqual(v, [])
+
+    def test_a_no_run_build_is_not_a_required_run(self):
+        wf = workflow('- run: cargo test --features gpu --test g\n'
+                      '- run: ALICE_SDF_REQUIRE_GPU=1 cargo test --no-run --features gpu --test g\n', require_gpu=False)
+        v, _ = self.run_case({'g': GATED_GPU}, wf)
+        self.assertEqual(self.kinds(v), ['gpu_unrequired'])
+
+    def test_gpu_files_with_no_gpu_run_at_all_fail(self):
+        # the gpu arm's feature is not a cargo feature of the package: no step can enable it, the file is reported
+        # as unrun; a cfg the checker cannot satisfy would otherwise leave 0 gpu runs without a finding
+        body = '#[cfg(feature = "gpu")]\n#[test]\nfn a() {}\n'
+        v, stats = self.run_case({'h': body}, workflow('- run: cargo test --test h\n'))
+        self.assertEqual(stats['gpu_runs'], 0)
+        self.assertTrue(v, "0 gpu runs passed without a finding")
 
     def test_no_target_flag_runs_every_test_file(self):
         v, _ = self.run_case({'g': GATED_GPU}, workflow('- run: cargo test --features gpu\n'))

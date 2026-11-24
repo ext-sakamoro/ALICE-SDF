@@ -89,6 +89,23 @@ def eval_cfg(tree, features: set[str]):
     return None if None in vals else False
 
 
+def mentions_gpu(tree) -> bool:
+    """Whether a cfg tree asks for the `gpu` feature (a test or arm that needs a device); `not(feature = "gpu")` is
+    the arm for builds without it and does not count."""
+    if tree[0] == 'feature':
+        return tree[1] == 'gpu'
+    if tree[0] == 'not':
+        return False
+    if tree[0] in ('all', 'any'):
+        return any(mentions_gpu(k) for k in tree[1])
+    return False
+
+
+REQUIRE_GPU = 'ALICE_SDF_REQUIRE_GPU'
+# the variables that make a test fail (not skip) without its device: any adapter, or the Metal one
+REQUIRE_VARS = (REQUIRE_GPU, 'ALICE_SDF_REQUIRE_METAL')
+
+
 def mentions_feature(tree) -> bool:
     if tree[0] == 'feature':
         return True
@@ -181,10 +198,12 @@ class Invocation:
     doc: bool = False
     other_package: bool = False
     no_run: bool = False           # --no-run: compiles the tests, runs none
+    require_gpu: bool = False      # a REQUIRE_VARS variable = 1 in the step's effective env (job, step or command)
 
 
-def parse_invocation(where: str, args: list[str], package: Package) -> Invocation:
+def parse_invocation(where: str, args: list[str], package: Package, require_gpu: bool = False) -> Invocation:
     inv = Invocation(where, args)
+    inv.require_gpu = require_gpu
     it = iter(args)
     for a in it:
         if a == '--':
@@ -269,6 +288,20 @@ def _scalar(lines: list[str], i: int, key_indent: int, value: str) -> tuple[str,
     return value, i + 1
 
 
+def _env_of(lines: list[str], key_indent: int) -> dict[str, str]:
+    """The `env:` mapping written at `key_indent` in `lines` (a job's or a step's own keys)."""
+    for i, ln in enumerate(lines):
+        if _indent(ln) == key_indent and re.match(r'^\s*env:\s*$', ln):
+            body, _ = _block(lines, i + 1, key_indent)
+            out = {}
+            for b in body:
+                m = re.match(r'^\s*([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$', b)
+                if m:
+                    out[m.group(1)] = m.group(2).strip().strip('"\'')
+            return out
+    return {}
+
+
 def _working_dir_of(lines: list[str]) -> str | None:
     for ln in lines:
         m = re.match(r'^\s*working-directory:\s*(.*)$', ln)
@@ -331,6 +364,8 @@ def scan_workflow(path: Path, package: Package) -> list[Invocation]:
         job_lines, k = _block(jobs_body, j + 1, job_indent)
         job_start = offset + j + 1
         job_wd = top_wd
+        job_key = min((_indent(l) for l in job_lines if l.strip()), default=job_indent + 2)
+        job_env = _env_of(job_lines, job_key)
         steps_at = None
         for n, jl in enumerate(job_lines):
             if re.match(r'^\s*defaults:\s*$', jl):
@@ -352,7 +387,9 @@ def scan_workflow(path: Path, package: Package) -> list[Invocation]:
                     step = [first] + body
                     step_line = job_start + steps_at + 1 + s
                     wd = _working_dir_of(step) or job_wd
-                    _collect_runs(step, item_indent + 2, wd, f'{path.name}:{step_line}', package, invs)
+                    env = {**job_env, **_env_of(step, item_indent + 2)}
+                    _collect_runs(step, item_indent + 2, wd, f'{path.name}:{step_line}', package, invs,
+                                  any(env.get(v) == '1' for v in REQUIRE_VARS))
                     s = s2
                 else:
                     s += 1
@@ -360,7 +397,8 @@ def scan_workflow(path: Path, package: Package) -> list[Invocation]:
     return invs
 
 
-def _collect_runs(step: list[str], key_indent: int, wd, where: str, package: Package, invs: list) -> None:
+def _collect_runs(step: list[str], key_indent: int, wd, where: str, package: Package, invs: list,
+                  require_gpu: bool = False) -> None:
     i = 0
     while i < len(step):
         ln = step[i]
@@ -378,7 +416,10 @@ def _collect_runs(step: list[str], key_indent: int, wd, where: str, package: Pac
                 toks = cmd.split()
             for t in range(len(toks) - 1):
                 if toks[t] == 'cargo' and toks[t + 1] == 'test':
-                    invs.append(parse_invocation(where, toks[t + 2:], package))
+                    # a VAR=value prefix on the command sets the env for this command only
+                    prefix = {a.split('=', 1)[0]: a.split('=', 1)[1] for a in toks[:t] if re.match(r'^[A-Za-z_]\w*=', a)}
+                    req = require_gpu or any(prefix.get(v) == '1' for v in REQUIRE_VARS)
+                    invs.append(parse_invocation(where, toks[t + 2:], package, req))
                     break
 
 
@@ -403,10 +444,22 @@ def check(root: Path) -> tuple[list[str], dict]:
     if violations:
         return violations, stats
 
+    gpu_runs = gpu_files = 0
     for tf in files:
         rel = tf.path.relative_to(root).as_posix()
         stem = tf.path.stem
         runners = [(inv, enabled_features(inv, package)) for inv in invs if runs_file(inv, stem)]
+        # a file with gpu tests (or gpu arms) must run at least once with the gpu feature where its device must be
+        # present: a test that skips without an adapter reports ok, so only a run with a REQUIRE_VARS variable set
+        # turns a missing device into a failure (skip-tolerant runs on device-less runners do not count)
+        if any(mentions_gpu(t) for _, _, t in tf.file_cfgs + tf.item_cfgs):
+            gpu_files += 1
+            runs = [inv for inv, feats in runners if 'gpu' in feats and not inv.no_run]
+            gpu_runs += len(runs)
+            if runs and not any(inv.require_gpu for inv in runs):
+                violations.append(
+                    f'gpu_unrequired: {rel}: every run with the gpu feature ({", ".join(i.where for i in runs)}) '
+                    f'lacks {REQUIRE_GPU}=1 (or ALICE_SDF_REQUIRE_METAL=1): a test that skips without a device would pass')
 
         def satisfied(feats, extra=None):
             trees = [t for _, _, t in tf.file_cfgs] + ([extra] if extra else [])
@@ -423,6 +476,11 @@ def check(root: Path) -> tuple[list[str], dict]:
                 violations.append(
                     f'unrun_item: {rel}:{line}: cfg({expr}) を満たす feature で {stem} を走らせる '
                     f'`cargo test` が CI に無い (この arm は CI で compile されない)')
+    stats['gpu_runs'] = gpu_runs
+    # gpu files that no step runs with the gpu feature are already unrun findings; with none of those, 0 gpu runs
+    # means the check itself read nothing
+    if gpu_files and gpu_runs == 0 and not any(v.startswith('unrun') for v in violations):
+        violations.append('empty_scan: gpu test files exist and no CI step runs one with the gpu feature (the device check read nothing)')
     return violations, stats
 
 
