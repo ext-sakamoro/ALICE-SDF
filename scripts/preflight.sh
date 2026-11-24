@@ -631,6 +631,8 @@ python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_graze_bud
 grep -E '^compared [1-9][0-9]* rays of 32,' "${TMPDIR:-/tmp}/sdf-test_sheet_field_graze_budget.log"
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_resume -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_resume.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_resume.log" --min 3 --what test_sheet_field_resume
+cargo test --features gpu --test test_sheet_field_speed_source -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_speed_source.log"
+python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_speed_source.log" --min 1 --what test_sheet_field_speed_source
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_kink -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_kink.log"
 python3 scripts/libtest_count.py "${TMPDIR:-/tmp}/sdf-test_sheet_field_kink.log" --min 8 --what test_sheet_field_kink
 ALICE_SDF_REQUIRE_GPU=1 cargo test --features gpu --test test_sheet_field_live_bound -- --nocapture 2>&1 | tee "${TMPDIR:-/tmp}/sdf-test_sheet_field_live_bound.log"
