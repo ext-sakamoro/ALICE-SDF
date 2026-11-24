@@ -73,7 +73,8 @@ gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck", "dep:ash"]
 # GPU adapter only inside a GPU slot of the machine (ALICE_GPU_SLOT), and ALICE_SDF_TEST_FALLBACK_ADAPTER=1 for
 # wgpu's software adapter (src/gpu_context.rs, slot_guard)
 gpu-slot-guard = []
-# this crate's own tests only (its dev-dependency on itself turns it on): the sheet field's test hooks (a field with
+# test-only, not a supported API: this crate's own tests only (its dev-dependency on itself turns it on): the sheet
+# field's test hooks (a field with
 # a stated device speed, a raised work budget, a slice of a fixed step count, a lower slice limit) and the kink
 # point evaluator
 test-hooks = []

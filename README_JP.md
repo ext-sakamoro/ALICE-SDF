@@ -195,7 +195,7 @@ feature 付きで実行する CI ステップが無いと CI を失敗させる 
 | `gpu` | | wgpu による GPU 評価と WGSL 出力 |
 | `gpu-mesh` | | GPU 上の marching cubes `gpu` を含む |
 | `gpu-slot-guard` | | この crate 自身の試験だけ (自分自身への dev-dependency で有効になる): 実 GPU の adapter は `ALICE_GPU_SLOT` がある時だけ、`ALICE_SDF_TEST_FALLBACK_ADAPTER=1` は software の adapter を求める application 向けではない |
-| `test-hooks` | | この crate 自身の試験だけ (自分自身への dev-dependency で有効になる): sheet field の試験用の口 (装置の速さを指定した場、引き上げた仕事の数、決まった歩数の slice、低い slice の上限) と kink の点の評価 利用側は有効にしない |
+| `test-hooks` | | 試験専用で、対応する API ではない: この crate 自身の試験だけ (自分自身への dev-dependency で有効になる): sheet field の試験用の口 (装置の速さを指定した場、引き上げた仕事の数、決まった歩数の slice、低い slice の上限) と kink の点の評価 利用側は有効にしない |
 | `volume` | | 場を 3D テクスチャに焼き込む `gpu` を含む |
 | `glsl` | | GLSL 出力 (Unity / OpenGL / Vulkan / Shadertoy) |
 | `hlsl` | | HLSL 出力 (Unreal Engine / DirectX) |

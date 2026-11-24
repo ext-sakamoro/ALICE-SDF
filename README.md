@@ -205,7 +205,7 @@ volume and inertia) and keeps them as a workflow artifact.
 | `gpu` | | GPU evaluation and WGSL output through wgpu. |
 | `gpu-mesh` | | Marching cubes on the GPU. Implies `gpu`. |
 | `gpu-slot-guard` | | For this crate's own tests only (its dev-dependency on itself turns it on): a real GPU adapter only when `ALICE_GPU_SLOT` is set, and `ALICE_SDF_TEST_FALLBACK_ADAPTER=1` requires a software adapter. Not for applications. |
-| `test-hooks` | | For this crate's own tests only (its dev-dependency on itself turns it on): the sheet field's test hooks (a field with a stated device speed, a raised work budget, a slice of a fixed step count, a lower slice limit) and the kink point evaluator. A consumer never turns it on. |
+| `test-hooks` | | Test-only, not a supported API: for this crate's own tests only (its dev-dependency on itself turns it on): the sheet field's test hooks (a field with a stated device speed, a raised work budget, a slice of a fixed step count, a lower slice limit) and the kink point evaluator. A consumer never turns it on. |
 | `volume` | | Bake a field into a 3D texture. Implies `gpu`. |
 | `glsl` | | GLSL output (Unity, OpenGL, Vulkan, Shadertoy). |
 | `hlsl` | | HLSL output (Unreal Engine, DirectX). |
