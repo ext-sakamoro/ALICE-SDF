@@ -4,6 +4,8 @@
 //! space near the surface and reports the narrowest width wall to wall, the sharp crevices where two
 //! walls meet (which have no width), samples skipped on edges, and zero-thickness sheets (a defect
 //! of the field, never a width). `local_gap` measures the width from one surface point.
+//! `prove_gaps_in_layers` with `verdict_in_layers` reads the same slot for a part printed in layers:
+//! narrow air open in its own layer is a neck between separate walls, not a hole.
 //!
 //! # Running
 //! ```bash
@@ -12,9 +14,9 @@
 
 use alice_sdf::prelude::*;
 use alice_sdf::validity::{
-    local_gap, measure_gaps, prove_gaps, Crevice, GapError, GapFailure, GapReport, GapUndetermined,
-    GapVerdict, GAP_PROOF_WORK, GAP_TOLERANCE, MAX_CREVICES, MAX_GAP_GRID_POINTS,
-    MAX_GAP_WITNESSES,
+    local_gap, measure_gaps, prove_gaps, prove_gaps_in_layers, Crevice, GapError, GapFailure,
+    GapProof, GapReport, GapUndetermined, GapVerdict, GAP_PROOF_WORK, GAP_TOLERANCE, MAX_CREVICES,
+    MAX_GAP_GRID_POINTS, MAX_GAP_WITNESSES,
 };
 use glam::Vec3;
 
@@ -55,6 +57,35 @@ fn describe(name: &str, r: &GapReport) {
     );
 }
 
+fn describe_proof(name: &str, proof: &GapProof) {
+    let kept = if proof.truncated {
+        format!(" (first {MAX_GAP_WITNESSES} kept)")
+    } else {
+        String::new()
+    };
+    println!(
+        "{name}: {} witnesses{kept}, {} undecided, {} open boxes, {} boxes",
+        proof.witnesses.len(),
+        proof.undecided,
+        proof.open_boxes,
+        proof.boxes
+    );
+}
+
+fn print_verdict(name: &str, v: GapVerdict) {
+    match v {
+        GapVerdict::Pass(c) => println!("{name}: pass from {}", c.proven_from),
+        GapVerdict::Fail(GapFailure::ProvenGap { width, at }) => {
+            println!("{name}: fail, a gap of at most {width:.3} at {at}");
+        }
+        GapVerdict::Fail(f) => println!("{name}: fail, {f:?}"),
+        GapVerdict::Undetermined(GapUndetermined::ProofIncomplete { .. }) => {
+            println!("{name}: undetermined, the proof did not finish");
+        }
+        GapVerdict::Undetermined(u) => println!("{name}: undetermined, {u:?}"),
+    }
+}
+
 fn main() {
     // floor (top at y = 0), a wall whose inner face is x = 10, a post of radius 3 whose surface is 1.5 from it
     let floor = SdfNode::box3d(40.0, 2.0, 20.0).translate(0.0, -1.0, 0.0);
@@ -82,30 +113,27 @@ fn main() {
         prove_gaps(&part, LIMIT, slo, shi, 8, GAP_PROOF_WORK),
     ) {
         (Ok(r), Ok(proof)) => {
-            let kept = if proof.truncated {
-                format!(" (first {MAX_GAP_WITNESSES} kept)")
-            } else {
-                String::new()
-            };
-            println!(
-                "slot proof: {} witnesses{kept}, {} undecided, {} boxes",
-                proof.witnesses.len(),
-                proof.undecided,
-                proof.boxes
-            );
-            match r.verdict(LIMIT, &proof) {
-                GapVerdict::Pass(c) => println!("verdict: pass from {}", c.proven_from),
-                GapVerdict::Fail(GapFailure::ProvenGap { width, at }) => {
-                    println!("verdict: fail, a gap of at most {width:.3} at {at}");
-                }
-                GapVerdict::Fail(f) => println!("verdict: fail, {f:?}"),
-                GapVerdict::Undetermined(GapUndetermined::ProofIncomplete { .. }) => {
-                    println!("verdict: undetermined, the proof did not finish");
-                }
-                GapVerdict::Undetermined(u) => println!("verdict: undetermined, {u:?}"),
-            }
+            describe_proof("slot proof", &proof);
+            print_verdict("verdict", r.verdict(LIMIT, &proof));
         }
         (r, p) => println!("no verdict: {:?} / {:?}", r.err(), p.err()),
+    }
+
+    // printed in layers stacked along y: the slot is open at the top in every layer, so it is a neck
+    // between separate walls (the nozzle never bridges it), not a hole
+    let up = Vec3::Y;
+    match (
+        measure_gaps(&part, slo, shi, cell),
+        prove_gaps_in_layers(&part, LIMIT, slo, shi, 8, GAP_PROOF_WORK, up),
+    ) {
+        (Ok(r), Ok(proof)) => {
+            describe_proof("slot proof in layers along y", &proof);
+            print_verdict(
+                "verdict in layers",
+                r.verdict_in_layers(&part, LIMIT, &proof, up),
+            );
+        }
+        (r, p) => println!("no layered verdict: {:?} / {:?}", r.err(), p.err()),
     }
 
     // from one point on the post's surface, straight at the wall
