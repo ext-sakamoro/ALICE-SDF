@@ -684,6 +684,43 @@ fn banded_fold(phi: f64, kink_uv: bool, eps_steps: f32, cap: f32) -> Result<Shee
         },
     )
     .unwrap();
+    // the lower-bound contract: at every stored node |stored s| <= |exact s| (to half a quantization step), so the
+    // truncation can only shorten the march's steps, never carry it over the surface
+    {
+        use alice_sdf::sheet_field::{BRICK, NODES};
+        let ch = &lv.channels[0];
+        let mut nodes = 0usize;
+        for bx in 0..lv.nb[0] as usize {
+            for by in 0..lv.nb[1] as usize {
+                for bz in 0..lv.nb[2] as usize {
+                    let k = lv.index[(bx * lv.nb[1] as usize + by) * lv.nb[2] as usize + bz];
+                    let Ok(k) = usize::try_from(k) else { continue };
+                    let Ok(r) = usize::try_from(ch.rows[k]) else {
+                        continue;
+                    };
+                    for n in 0..NODES * NODES * NODES {
+                        let (x, y, z) = (n / (NODES * NODES), n / NODES % NODES, n % NODES);
+                        let q = lv.lo
+                            + Vec3::new(
+                                (bx * BRICK + x) as f32,
+                                (by * BRICK + y) as f32,
+                                (bz * BRICK + z) as f32,
+                            ) * lv.h;
+                        let (exact, _, _) = ks.eval_all(q.as_dvec3(), &tris, &segs).expect("faces");
+                        let stored = f32::from(ch.q[r * NODES * NODES * NODES + n]) * ch.scale[r]
+                            + ch.offset[r];
+                        assert!(
+                            f64::from(stored.abs())
+                                <= exact.abs() + f64::from(ch.scale[r].abs()) * 0.5 + 1e-6,
+                            "node {q}: stored s {stored} over the exact distance {exact}"
+                        );
+                        nodes += 1;
+                    }
+                }
+            }
+        }
+        assert!(nodes > 0, "no stored node was checked");
+    }
     let mut sh = vec![sheet(vec![band(&lv, eps_steps).unwrap()]).unwrap()];
     let (rec, _) = kink_sheet(&geom, &sh[0], 0.01);
     let mut bytes = Vec::new();
