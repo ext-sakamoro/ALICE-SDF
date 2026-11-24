@@ -53,6 +53,7 @@ pub mod kink_build;
 pub mod nearest;
 pub mod stream;
 
+use crate::compiled::real::LawMinMax;
 use glam::Vec3;
 
 use crate::mesh::bvh::BvhNode;
@@ -134,7 +135,7 @@ pub const MASKED_FLOOR_PER_H: f32 = 0.5;
 /// `min` in f32.
 #[must_use]
 pub fn masked_floor(h: f32) -> f32 {
-    MASKED_FLOOR.min(MASKED_FLOOR_PER_H * h)
+    MASKED_FLOOR.law_min(MASKED_FLOOR_PER_H * h)
 }
 
 /// One step of a profiled march ([`SheetField::march_profile`]).
@@ -288,7 +289,7 @@ impl Sample {
     #[must_use]
     pub fn reach(&self) -> f32 {
         if self.inside {
-            self.s.abs().max(self.db - 0.5 * self.db_step)
+            self.s.abs().law_max(self.db - 0.5 * self.db_step)
         } else {
             self.f
         }
@@ -350,7 +351,7 @@ pub enum MarchResult {
 }
 
 fn box_distance(p: Vec3, lo: Vec3, hi: Vec3) -> f32 {
-    (lo - p).max(p - hi).max(Vec3::ZERO).length()
+    (lo - p).law_max(p - hi).law_max(Vec3::ZERO).length()
 }
 
 /// The one lower bound on the distance to a sheet for points with no active brick.
@@ -364,7 +365,7 @@ pub fn outside_lower_bound(p: Vec3, lo: Vec3, hi: Vec3, hc: f32) -> f32 {
     if !p.is_finite() {
         return f32::INFINITY;
     }
-    box_distance(p, lo, hi).max(3.0 * hc)
+    box_distance(p, lo, hi).law_max(3.0 * hc)
 }
 
 /// The node counts per brick axis an attribute channel may use besides [`NODES`]: 2h, 4h and 8h grids.
@@ -415,7 +416,7 @@ impl Level {
         let mut t = [0.0f32; 3];
         for a in 0..3 {
             let wc = w[a] / stride;
-            c[a] = (wc.floor().max(0.0) as usize).min(n - 2);
+            c[a] = (wc.floor().law_max(0.0) as usize).min(n - 2);
             t[a] = wc - c[a] as f32;
         }
         let mut acc = 0.0f32;
@@ -565,11 +566,11 @@ impl Sheet {
                                     .unwrap_or(0.0);
                                 acc += ww * v;
                                 if ci == 0 {
-                                    out.umin = out.umin.min(v.abs());
+                                    out.umin = out.umin.law_min(v.abs());
                                     let (ex, ey, ez) =
                                         (t[0] - dx as f32, t[1] - dy as f32, t[2] - dz as f32);
                                     let dist = lv.h * (ex * ex + ey * ey + ez * ez).sqrt();
-                                    out.ucorner = out.ucorner.max(v.abs() - dist);
+                                    out.ucorner = out.ucorner.law_max(v.abs() - dist);
                                 }
                             }
                         }
@@ -631,11 +632,11 @@ impl Sheet {
         }
         let (f, g, masked) = if rule == ValidRule::CellV1 && c.umin > HALF_DIAG * c.h + c.q0 {
             let v = (c.umin - c.q0 - HALF_DIAG * c.h)
-                .max(c.ucorner - c.q0)
-                .max(masked_floor(c.h));
+                .law_max(c.ucorner - c.q0)
+                .law_max(masked_floor(c.h));
             (v, v, true)
         } else {
-            let f = (s * s + db.max(0.0) * db.max(0.0)).sqrt();
+            let f = (s * s + db.law_max(0.0) * db.law_max(0.0)).sqrt();
             (f, if s < 0.0 { -f } else { f }, false)
         };
         // an attribute read from a corner outside its band is NaN: that attribute is None (as on the GPU), unless the
@@ -659,7 +660,7 @@ impl Sheet {
             s,
             db,
             db_step: c.q1,
-            lip: SQRT3 * (1.0 + 2.0 * c.q0.max(c.q1) / c.h),
+            lip: SQRT3 * (1.0 + 2.0 * c.q0.law_max(c.q1) / c.h),
         }
     }
 }
@@ -877,7 +878,7 @@ impl SheetField {
         let Some(sh) = self.sheets.get(k) else {
             return false;
         };
-        let (a, b) = (t.min(t_ref), t.max(t_ref));
+        let (a, b) = (t.law_min(t_ref), t.law_max(t_ref));
         let n = ((b - a) / (REFERENCE_T_TOL / 10.0)).ceil() as usize;
         (0..=n).all(|i| {
             let p = origin + dir * (a + (b - a) * i as f32 / n as f32);
@@ -940,7 +941,7 @@ impl SheetField {
         let mut i = 1u64;
         let mut tprev = 0.0f64;
         loop {
-            let t = (i as f64 * f64::from(h)).min(f64::from(tmax));
+            let t = (i as f64 * f64::from(h)).law_min(f64::from(tmax));
             let p = origin + dir * t as f32;
             let mut thit = f32::INFINITY;
             let mut khit = 0usize;
@@ -1147,7 +1148,7 @@ impl SheetField {
                 });
                 r.push(StepRecord {
                     t,
-                    step: (dd - margin).max(MIN_STEP),
+                    step: (dd - margin).law_max(MIN_STEP),
                     dd,
                     n_live: n_live as u32,
                     dd_sheet: dd_k,
@@ -1157,7 +1158,7 @@ impl SheetField {
             }
             let dd_step = dd - margin;
             floor_step = dd_step < MIN_STEP;
-            t += dd_step.max(MIN_STEP);
+            t += dd_step.law_max(MIN_STEP);
             if t >= tmax {
                 return MarchResult::Miss;
             }

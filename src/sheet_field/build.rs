@@ -1,5 +1,6 @@
 //! Building sheets from channel functions (analytic shapes in tests and examples; exporters write the same layout).
 
+use crate::compiled::real::{law_max_f32, law_min_f32, LawMinMax};
 use glam::Vec3;
 
 use super::{
@@ -35,13 +36,13 @@ pub fn quantize(values: &[Vec<f32>], drop_nonpositive: bool) -> Result<Channel, 
                 "brick {k}: node value {x} is not finite"
             )));
         }
-        let hi = v.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let hi = v.iter().copied().fold(f32::NEG_INFINITY, law_max_f32);
         if drop_nonpositive && hi <= 0.0 {
             ch.rows.push(-1);
             continue;
         }
-        let lo = v.iter().copied().fold(f32::INFINITY, f32::min);
-        let sc = (hi - lo).max(1e-6) / Q_MAX;
+        let lo = v.iter().copied().fold(f32::INFINITY, law_min_f32);
+        let sc = (hi - lo).law_max(1e-6) / Q_MAX;
         ch.rows.push(ch.scale.len() as i32);
         ch.scale.push(sc);
         ch.offset.push(lo);
@@ -208,8 +209,8 @@ pub fn band(lv: &Level, eps_steps: f32) -> Result<Level, SheetFieldError> {
                             + cz
                             + (d & 1);
                         let v = val(i);
-                        lo = lo.min(v);
-                        hi = hi.max(v);
+                        lo = lo.law_min(v);
+                        hi = hi.law_max(v);
                     }
                     if lo <= eps && hi >= -eps {
                         for d in 0..8 {
@@ -391,9 +392,9 @@ pub fn sheet(levels: Vec<Level>) -> Result<Sheet, SheetFieldError> {
             }
         }
         let n = Vec3::new(lv.nb[0] as f32, lv.nb[1] as f32, lv.nb[2] as f32);
-        lo = lo.min(lv.lo);
-        hi = hi.max(lv.lo + n * (BRICK as f32 * lv.h));
-        hc = hc.max(lv.h);
+        lo = lo.law_min(lv.lo);
+        hi = hi.law_max(lv.lo + n * (BRICK as f32 * lv.h));
+        hc = hc.law_max(lv.h);
     }
     Ok(Sheet {
         levels,

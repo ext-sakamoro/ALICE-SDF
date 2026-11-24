@@ -23,6 +23,7 @@
 //! ties. Work per query depends on the faces near the point, not on the mesh size.
 
 use super::SheetFieldError;
+use crate::compiled::real::LawMinMax;
 
 /// Meshes with fewer faces use [`Formula::PlaneSeg`], larger ones [`Formula::Ericson`].
 pub const BRUTE_FACES: usize = 400;
@@ -120,7 +121,7 @@ fn plane_seg(p: V3, a: V3, b: V3, c: V3) -> f64 {
     if u >= 0.0 && v >= 0.0 && u + v <= 1.0 {
         dot(ap, n).abs() / maxf(nn, 1e-30).sqrt()
     } else {
-        seg(p, a, b).min(seg(p, b, c)).min(seg(p, c, a))
+        seg(p, a, b).law_min(seg(p, b, c)).law_min(seg(p, c, a))
     }
 }
 
@@ -207,8 +208,8 @@ fn box_of(lo: &[V3], hi: &[V3], ids: &[u32]) -> (V3, V3) {
     let mut h = [f64::NEG_INFINITY; 3];
     for &i in ids {
         for k in 0..3 {
-            l[k] = l[k].min(lo[i as usize][k]);
-            h[k] = h[k].max(hi[i as usize][k]);
+            l[k] = l[k].law_min(lo[i as usize][k]);
+            h[k] = h[k].law_max(hi[i as usize][k]);
         }
     }
     (l, h)
@@ -223,14 +224,14 @@ impl Bvh {
         for t in f {
             let (a, b, c) = (v[t[0] as usize], v[t[1] as usize], v[t[2] as usize]);
             let l = [
-                a[0].min(b[0]).min(c[0]),
-                a[1].min(b[1]).min(c[1]),
-                a[2].min(b[2]).min(c[2]),
+                a[0].law_min(b[0]).law_min(c[0]),
+                a[1].law_min(b[1]).law_min(c[1]),
+                a[2].law_min(b[2]).law_min(c[2]),
             ];
             let h = [
-                a[0].max(b[0]).max(c[0]),
-                a[1].max(b[1]).max(c[1]),
-                a[2].max(b[2]).max(c[2]),
+                a[0].law_max(b[0]).law_max(c[0]),
+                a[1].law_max(b[1]).law_max(c[1]),
+                a[2].law_max(b[2]).law_max(c[2]),
             ];
             cen.push([
                 f64::midpoint(l[0], h[0]),
@@ -360,7 +361,7 @@ pub fn nearest_faces_stats(
     let mut evals = 0u64;
     let mut stack: Vec<(f64, u32)> = Vec::with_capacity(64);
     for &p in q {
-        let scale = 1.0 + p[0].abs().max(p[1].abs()).max(p[2].abs());
+        let scale = 1.0 + p[0].abs().law_max(p[1].abs()).law_max(p[2].abs());
         let (mut bd, mut bf) = (f64::INFINITY, u32::MAX);
         for &fi in &always {
             let t = f[fi as usize];

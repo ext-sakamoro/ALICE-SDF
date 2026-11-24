@@ -26,6 +26,7 @@
 //! `c = x*64 + y*8 + z`), `u32` first (its first cell record); `u32` cell records, per one `u32` off, `u16` triangles,
 //! `u16` segments; `u32` refs, `u32` ref\[refs\] (per cell its triangles, then its segments).
 
+use crate::compiled::real::LawMinMax;
 use std::io::{self, Read};
 use std::sync::Arc;
 
@@ -418,13 +419,13 @@ impl KinkSheet {
         let r = p - q;
         if let Some(n) = self.boundary_normal(f, feat) {
             let sn = r.dot(n);
-            return (r.length_squared() - sn * sn).max(0.0).sqrt();
+            return (r.length_squared() - sn * sn).law_max(0.0).sqrt();
         }
         let dr = segs.iter().fold(NO_RIM, |m, &s| {
             let [a, b] = self.segs[s as usize];
-            m.min(seg_dist(q, self.verts[a as usize], self.verts[b as usize]))
+            m.law_min(seg_dist(q, self.verts[a as usize], self.verts[b as usize]))
         });
-        -(dr.min(self.slab - r.length())).max(0.0)
+        -(dr.law_min(self.slab - r.length())).law_max(0.0)
     }
 }
 
@@ -447,7 +448,7 @@ impl KinkSheet {
         for e in geom.rim {
             for &v in e {
                 let n = vn[v as usize];
-                rim_vn[v as usize] = Some(n / n.length().max(1e-12));
+                rim_vn[v as usize] = Some(n / n.length().law_max(1e-12));
             }
         }
         Self {
@@ -783,7 +784,7 @@ impl KinkFile {
                 if v2 {
                     n = rd.finite_v3("vertex normal")?;
                     if rd.u32()? & 1 == 1 {
-                        rim = Some(n / n.length().max(1e-12));
+                        rim = Some(n / n.length().law_max(1e-12));
                     }
                 }
                 vn.push(n);
@@ -843,7 +844,7 @@ impl KinkFile {
                         return Err(bad(format!("rim vertex {v} (vertices {nv})")));
                     }
                     vn[v] = n;
-                    rim_vn[v] = Some(n / n.length().max(1e-12));
+                    rim_vn[v] = Some(n / n.length().law_max(1e-12));
                 }
             }
             let nseg = rd.count("segments", COUNT_CAP)?;
