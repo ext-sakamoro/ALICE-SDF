@@ -369,6 +369,7 @@ ALICE-Law の `scripts/gen-law-readme-block.py` が ALICE-Law `d5c4a97fd034` と
 | `svo` | 未申告 |  |
 | `svo-gpu` | 未申告 |  |
 | `terrain` | 未申告 |  |
+| `test-hooks` | 未申告 |  |
 | `texture-fit` | 未申告 |  |
 | `unity` | 未申告 |  |
 | `unreal` | 未申告 |  |

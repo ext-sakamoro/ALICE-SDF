@@ -25,8 +25,8 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 830 items (0 Linux-only): 94 handshake, 736 local, 0 pending. Groups (count, decision):
-#      2  local: creates a device on this machine; takes a label and reads no stored form
+# 843 items (0 Linux-only): 99 handshake, 744 local, 0 pending. Groups (count, decision):
+#      3  local: creates a device on this machine; takes a label and reads no stored form
 #      3  local: the GPU work guard; decides adapters or walks a parsed module, and parses no text
 #      1  handshake: shader_text_over_the_size_maximum_is_refused_before_parsing
 #      2  handshake: an_unbounded_module_is_refused_with_the_stable_prefix
@@ -130,9 +130,10 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 #      1  local: authored grid maps the reader validates and recomputes the Lipschitz bound from; no stored value is one this crate computed under its arithmetic
 
 [boundary]
-# 2 local: creates a device on this machine; takes a label and reads no stored form
+# 3 local: creates a device on this machine; takes a label and reads no stored form
 "fn::GpuContext::request" = "local: creates a device on this machine; takes a label and reads no stored form"
 "fn::GpuContext::request_async" = "local: creates a device on this machine; takes a label and reads no stored form"
+"fn::GpuContext::request_with_adapter_storage_limits" = "local: creates a device on this machine; takes a label and reads no stored form"
 
 # 3 local: the GPU work guard; decides adapters or walks a parsed module, and parses no text
 "fn::gpu_context::slot_guard::admit" = "local: the GPU work guard; decides adapters or walks a parsed module, and parses no text"
@@ -186,6 +187,15 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # 1 handshake
 "fn::Stored::judge" = "handshake: a_file_written_under_another_det_math_is_refused_naming_both_and_the_form"
+
+# 4 handshake
+"fn::AshfIndex::scan" = "handshake: sheet_field_writers_store_the_identifier"
+"fn::AshfIndex::read_sheets" = "handshake: sheet_field_writers_store_the_identifier"
+"fn::sheet_field::stream::march_streamed" = "handshake: sheet_field_writers_store_the_identifier"
+"fn::sheet_field::stream::march_streamed_kink" = "handshake: sheet_field_writers_store_the_identifier"
+
+# 1 handshake
+"fn::KinkFile::read" = "handshake: a_sidecar_carries_the_semantics_identifier_and_another_is_refused"
 
 # 1 handshake
 "fn::provenance::check_producer" = "handshake: stamped_writers_keep_both_identifiers_in_their_slots"
@@ -1143,6 +1153,21 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 # 1 local
 "impl::Deserialize for GridWarpData" = "local: authored grid maps the reader validates and recomputes the Lipschitz bound from; no stored value is one this crate computed under its arithmetic"
 "impl::Deserialize for BellPullData" = "local: the plain authored pulls and width, validated when converted into BellPull; no stored value is one this crate computed under its arithmetic"
+
+# 2 local: emits this crate's own kernel text and its stated bounds
+"fn::sheet_field::gpu::march_shader" = "local: emits this crate's own kernel text and its stated bounds"
+"fn::sheet_field::gpu::march_shader_margin" = "local: emits this crate's own kernel text and its stated bounds"
+
+# 3 local: this crate's own device speed table; no Law value crosses it
+"fn::sheet_field::gpu::parse_adapter_speeds" = "local: this crate's own device speed table; no Law value crosses it"
+"fn::AdapterSpeed::tsv" = "local: this crate's own device speed table; no Law value crosses it"
+"fn::sheet_field::gpu::measure_adapter_speed" = "local: this crate's own device speed table; no Law value crosses it"
+
+# 1 local: maps this crate's own rule name; refuses anything else
+"fn::ValidRule::from_name" = "local: maps this crate's own rule name; refuses anything else"
+
+# 1 local: geometry query on caller arrays; reads no stored form
+"binding::pyo3::sheet_nearest_faces" = "local: geometry query on caller arrays; reads no stored form"
 [parser_exempt]
 "binding::pyo3::gpu_bake_volume" = "compiles the WGSL this crate transpiles from the given node of this process (volume::gpu_bake_volume)"
 "binding::pyo3::gpu_marching_cubes" = "compiles the WGSL this crate transpiles from the given node of this process (mesh::gpu_marching_cubes)"
