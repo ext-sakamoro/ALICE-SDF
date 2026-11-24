@@ -1,5 +1,6 @@
 # Measured sheet field march speeds of software adapters, one row per adapter (see sheet_field::gpu::adapter_speeds).
 # A machine with a hardware GPU keeps its rows in its own file of this format and names it with the variable
 # ALICE_SDF_ADAPTER_SPEEDS. A field is uploaded only to an adapter with a row; a row is printed by the command in
-# its last column, run on that machine on an idle device. Columns (tab-separated):
+# its last column, run on that machine on an idle device. ns_per_tick is the slowest of 3 measurements, each the
+# fastest of 5 runs (the slow side is the safe direction for the refusal). Columns (tab-separated):
 # vendor	device	backend	name	driver_info	ns_per_tick	measured	command

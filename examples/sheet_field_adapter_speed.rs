@@ -20,8 +20,28 @@ fn main() {
         eprintln!("usage: sheet_field_adapter_speed YYYY-MM-DD (the date the row is measured)");
         std::process::exit(2);
     };
-    match alice_sdf::sheet_field::gpu::measure_adapter_speed(&date) {
+    // the row's speed is the slowest of 3 measurements, each the fastest of 5 runs: the slow side is the safe
+    // direction for the refusal
+    let mut rows = Vec::new();
+    for _ in 0..3 {
+        match alice_sdf::sheet_field::gpu::measure_adapter_speed(&date) {
+            Ok(r) => {
+                eprintln!(
+                    "adapter speed: one measurement {:.2} ns per tick",
+                    r.ns_per_tick
+                );
+                rows.push(r);
+            }
+            Err(e) => {
+                eprintln!("adapter speed: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+    rows.sort_by(|a, b| a.ns_per_tick.total_cmp(&b.ns_per_tick));
+    match rows.pop().ok_or("no measurement") {
         Ok(row) => {
+            eprintln!("adapter speed: the row takes the slowest of the 3 measurements (each the fastest of 5 runs)");
             let full =
                 row.ns_per_tick * f64::from(alice_sdf::sheet_field::gpu::MARCH_WORK_BUDGET) * 1e-9;
             eprintln!(
