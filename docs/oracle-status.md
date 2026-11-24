@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1539 |
+| 🟢 Not ignored | 1563 |
 | 🔴 Red by design | 6 |
 | ⏱ Gated (runtime / diagnostic / manual) | 10 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1555** |
+| **Total** | **1579** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -54,7 +54,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `write_bincode1_fixtures` (test_bincode1_fixtures.rs) — writes tests/fixtures/bincode1; run only to capture
 
-## 🟢 Not ignored (1539)
+## 🟢 Not ignored (1563)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -100,6 +100,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_polygon_2d_general_oracle.rs` | 11 |
 | `test_rendering_pipeline.rs` | 11 |
 | `test_repeat_finite_copies.rs` | 11 |
+| `test_sheet_field_dispatch.rs` | 11 |
 | `test_tight_aabb_levelset_oracle.rs` | 11 |
 | `test_domain_modifier_oracle.rs` | 10 |
 | `test_metric_field_oracle.rs` | 10 |
@@ -112,6 +113,8 @@ Per-file counts (the test names are in `tests/`):
 | `test_new_transforms.rs` | 9 |
 | `test_physics_bridge_determinism.rs` | 9 |
 | `test_relaxed_tracing.rs` | 9 |
+| `test_sheet_field_oracle.rs` | 9 |
+| `test_sheet_field_stream.rs` | 9 |
 | `test_validity_mesh_thickness.rs` | 9 |
 | `meshopt_reference_vectors.rs` | 8 |
 | `test_batch_operations.rs` | 8 |
@@ -127,7 +130,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_npr_analytic.rs` | 8 |
 | `test_point_transform_oracle.rs` | 8 |
 | `test_shader_data_bounds.rs` | 8 |
-| `test_sheet_field_stream.rs` | 8 |
+| `test_sheet_field_kink.rs` | 8 |
 | `test_tight_aabb_elongate_oracle.rs` | 8 |
 | `test_validity_distance_bound.rs` | 8 |
 | `test_volume_api_oracle.rs` | 8 |
@@ -145,7 +148,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_sdf2d_oracle.rs` | 7 |
 | `test_shader_no_fused_multiply_add.rs` | 7 |
 | `test_shader_precise_temporaries.rs` | 7 |
-| `test_sheet_field_oracle.rs` | 7 |
 | `test_sim_bridge_oracle.rs` | 7 |
 | `test_smooth_stack_load.rs` | 7 |
 | `test_terrain_api_oracle.rs` | 7 |
@@ -167,8 +169,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_mesh_sign_topology.rs` | 6 |
 | `test_round_tie_parity.rs` | 6 |
 | `test_section_simplicity.rs` | 6 |
-| `test_sheet_field_dispatch.rs` | 6 |
-| `test_sheet_field_kink.rs` | 6 |
 | `test_stairs_contract.rs` | 6 |
 | `test_trace_hit_scale.rs` | 6 |
 | `test_asp_bridge_oracle.rs` | 5 |
@@ -179,8 +179,11 @@ Per-file counts (the test names are in `tests/`):
 | `test_meshopt_filter_oracle.rs` | 5 |
 | `test_npr_primitives_oracle.rs` | 5 |
 | `test_projective_unfused_oracle.rs` | 5 |
+| `test_sheet_field_band.rs` | 5 |
 | `test_sheet_field_coarse_attr.rs` | 5 |
+| `test_sheet_field_kink_reader.rs` | 5 |
 | `test_sheet_field_nearest.rs` | 5 |
+| `test_sheet_field_work_budget.rs` | 5 |
 | `test_step_export_oracle.rs` | 5 |
 | `test_unordered_no_iteration.rs` | 5 |
 | `transpile_deep_nest.rs` | 5 |
@@ -204,7 +207,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_new_modifiers.rs` | 4 |
 | `test_sdf_eval_cache_oracle.rs` | 4 |
 | `test_section_stack_shader_oracle.rs` | 4 |
-| `test_sheet_field_band.rs` | 4 |
+| `test_sheet_field_decided.rs` | 4 |
 | `test_sheet_field_gpu_parity.rs` | 4 |
 | `test_sheet_field_rim.rs` | 4 |
 | `test_smooth_stack_shader.rs` | 4 |
@@ -213,6 +216,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_svo_query_oracle.rs` | 4 |
 | `npr_bytecode_wgsl_validate.rs` | 3 |
 | `test_bake_stored_forms.rs` | 3 |
+| `test_bvh_box_build.rs` | 3 |
 | `test_compile_stack_budget.rs` | 3 |
 | `test_csg_multi_oracle.rs` | 3 |
 | `test_det_near_zero_probe.rs` | 3 |
@@ -235,13 +239,11 @@ Per-file counts (the test names are in `tests/`):
 | `test_shader_minimal_trees.rs` | 3 |
 | `test_sheet_field_attr_normal.rs` | 3 |
 | `test_sheet_field_bvh_oracle.rs` | 3 |
-| `test_sheet_field_decided.rs` | 3 |
 | `test_sheet_field_live_bound.rs` | 3 |
 | `test_validity_small_features.rs` | 3 |
 | `float_environment.rs` | 2 |
 | `noise_shader_validate.rs` | 2 |
 | `test_aabb_unified_oracle.rs` | 2 |
-| `test_bvh_box_build.rs` | 2 |
 | `test_det_math_clamp_generation.rs` | 2 |
 | `test_det_near_zero_parity.rs` | 2 |
 | `test_eval_stack_budget.rs` | 2 |
@@ -277,6 +279,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_loft_lift_bits.rs` | 1 |
 | `test_loft_shader_cpu_agreement.rs` | 1 |
 | `test_metadata_order.rs` | 1 |
+| `test_sheet_field_dispatch_abandon.rs` | 1 |
 | `test_sheet_field_gpu_readback.rs` | 1 |
 | `test_sheet_field_graze.rs` | 1 |
 | `test_sheet_field_masked_floor.rs` | 1 |
