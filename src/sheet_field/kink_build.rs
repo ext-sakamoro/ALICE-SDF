@@ -21,6 +21,7 @@
 //! cells also the rim segments whose sphere reaches within `R1 + min(rho + R1, H)`. Every triangle and rim segment the
 //! exact value of any point of the cell can use is among them.
 
+use crate::compiled::real::{law_max_f64, law_min_f64, LawMinMax};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
 
@@ -144,7 +145,10 @@ fn seg_dist(q: DVec3, a: DVec3, b: DVec3) -> f64 {
 fn tri_box(v: [DVec3; 3], c: DVec3, e: f64) -> bool {
     let [a, b, d] = v.map(|x| x - c);
     for k in 0..3 {
-        let (lo, hi) = (a[k].min(b[k]).min(d[k]), a[k].max(b[k]).max(d[k]));
+        let (lo, hi) = (
+            a[k].law_min(b[k]).law_min(d[k]),
+            a[k].law_max(b[k]).law_max(d[k]),
+        );
         if lo > e || hi < -e {
             return false;
         }
@@ -163,7 +167,7 @@ fn tri_box(v: [DVec3; 3], c: DVec3, e: f64) -> bool {
             }
             let (pa, pb, pd) = (a.dot(ax), b.dot(ax), d.dot(ax));
             let r = e * ax.abs().element_sum();
-            if pa.min(pb).min(pd) > r + 1e-12 || pa.max(pb).max(pd) < -r - 1e-12 {
+            if pa.law_min(pb).law_min(pd) > r + 1e-12 || pa.law_max(pb).law_max(pd) < -r - 1e-12 {
                 return false;
             }
         }
@@ -236,7 +240,7 @@ fn mark_x1(
     let hmin = levels
         .iter()
         .map(|l| f64::from(l.h))
-        .fold(f64::INFINITY, f64::min);
+        .fold(f64::INFINITY, law_min_f64);
     for e in edges {
         let (pa, pb) = (vs[e[0] as usize], vs[e[1] as usize]);
         let n = (((pb - pa).length() / (hmin / 8.0)).ceil() as usize + 1).max(2);
@@ -344,8 +348,8 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
         let mut pairs: BTreeMap<[i64; 3], Vec<usize>> = BTreeMap::new();
         for (f, t) in fs.iter().enumerate() {
             let v = t.map(|i| vs[i as usize]);
-            let mn = ((v[0].min(v[1]).min(v[2]) - lo) / h).floor();
-            let mx = ((v[0].max(v[1]).max(v[2]) - lo) / h).floor();
+            let mn = ((v[0].law_min(v[1]).law_min(v[2]) - lo) / h).floor();
+            let mx = ((v[0].law_max(v[1]).law_max(v[2]) - lo) / h).floor();
             for x in mn.x as i64..=mx.x as i64 {
                 for y in mn.y as i64..=mx.y as i64 {
                     for z in mn.z as i64..=mx.z as i64 {
@@ -403,8 +407,8 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
                         (at(u, w, 1) - at(u, w, 0)) / h,
                     ];
                     for k3 in 0..3 {
-                        glo[k3] = glo[k3].min(d[k3]);
-                        ghi[k3] = ghi[k3].max(d[k3]);
+                        glo[k3] = glo[k3].law_min(d[k3]);
+                        ghi[k3] = ghi[k3].law_max(d[k3]);
                     }
                 }
             }
@@ -417,9 +421,9 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
                     .iter()
                     .zip(&nodes)
                     .map(|(sv, nd)| (sv - n.dot(*nd - a)).abs())
-                    .fold(0.0, f64::max);
+                    .fold(0.0, law_max_f64);
                 let gf: f64 = (0..3)
-                    .map(|k3| (n[k3] * glo[k3]).min(n[k3] * ghi[k3]))
+                    .map(|k3| (n[k3] * glo[k3]).law_min(n[k3] * ghi[k3]))
                     .sum();
                 if gf <= 0.0 {
                     flag = true;
@@ -457,7 +461,7 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
         .map(|(t, c)| {
             t.iter()
                 .map(|&i| (vs[i as usize] - *c).length())
-                .fold(0.0, f64::max)
+                .fold(0.0, law_max_f64)
         })
         .collect();
     let segs: Vec<[u32; 2]> = geom.rim.to_vec();
@@ -492,7 +496,7 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
                     .map(|t| {
                         closest_dist(c, vs[t[0] as usize], vs[t[1] as usize], vs[t[2] as usize])
                     })
-                    .fold(f64::INFINITY, f64::min);
+                    .fold(f64::INFINITY, law_min_f64);
                 let r1 = dc + dd;
                 let tl: Vec<u32> = (0..nf)
                     .filter(|&j| (tc[j] - c).length() <= r1 + tr[j])
@@ -502,8 +506,8 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
                     let rho = segs
                         .iter()
                         .map(|e| seg_dist(c, vs[e[0] as usize], vs[e[1] as usize]))
-                        .fold(f64::INFINITY, f64::min);
-                    let r2 = r1 + (rho + r1).min(geom.slab);
+                        .fold(f64::INFINITY, law_min_f64);
+                    let r2 = r1 + (rho + r1).law_min(geom.slab);
                     segs.iter()
                         .enumerate()
                         .filter(|(_, e)| {
@@ -532,7 +536,10 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
         }
         rec.levels.push(lvl);
     }
-    let org = vs.iter().fold(DVec3::INFINITY, |a, v| a.min(*v)).floor();
+    let org = vs
+        .iter()
+        .fold(DVec3::INFINITY, |a, v| a.law_min(*v))
+        .floor();
     rec.origin = org;
     rec.verts = vs.iter().map(|v| (*v - org).as_vec3().to_array()).collect();
     rec.vn = vn.iter().map(|v| v.as_vec3().to_array()).collect();

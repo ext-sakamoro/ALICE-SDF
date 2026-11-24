@@ -348,6 +348,26 @@ law_min_max_vec!(Vec3, x, y, z);
 law_min_max_vec!(Vec3A, x, y, z);
 law_min_max_vec!(Vec4, x, y, z, w);
 
+/// [`LawMinMax`] for `DVec3`: lane by lane under [`law_max_f64`] / [`law_min_f64`].
+impl LawMinMax for glam::DVec3 {
+    #[inline(always)]
+    fn law_max(self, other: Self) -> Self {
+        Self::new(
+            law_max_f64(self.x, other.x),
+            law_max_f64(self.y, other.y),
+            law_max_f64(self.z, other.z),
+        )
+    }
+    #[inline(always)]
+    fn law_min(self, other: Self) -> Self {
+        Self::new(
+            law_min_f64(self.x, other.x),
+            law_min_f64(self.y, other.y),
+            law_min_f64(self.z, other.z),
+        )
+    }
+}
+
 impl Real for f32 {
     type Mask = bool;
     const LANES: usize = 1;
