@@ -291,8 +291,9 @@ pub const MIN_DISPATCH: usize = 1_024;
 /// takes about 3,000 ticks per mm, so a graze over about 700 mm ends undecided.
 pub const MARCH_WORK_BUDGET: u32 = 1 << 21;
 
-/// The half length (mm) of the flat sheet the device-speed probe grazes ([`measure_ns_per_tick`]): about 30,000 ticks.
-pub const SPEED_PROBE_HALF_MM: f32 = 5.0;
+/// The half lengths (mm) of the flat sheets the device-speed probe grazes ([`measure_ns_per_tick`]): about 30,000
+/// and 240,000 ticks.
+pub const SPEED_PROBE_HALF_MM: [f32; 2] = [5.0, 40.0];
 
 /// Whether a device whose march costs `ns_per_tick` runs one ray at the full [`MARCH_WORK_BUDGET`] within a third of
 /// `wait` (the read's wait bound for one dispatch, [`DISPATCH_WAIT`]).
@@ -348,29 +349,43 @@ fn speed_probe_field(half: f32) -> Result<SheetField, GpuError> {
 
 /// The device's march time per work tick.
 ///
-/// One ray alone in its dispatch grazes the probe sheet ([`SPEED_PROBE_HALF_MM`]) for its full length; the least of 3
-/// timed runs (after one untimed) over the ray's work.
-///
-/// The dispatch's fixed cost is counted in, so the figure errs on the slow side.
+/// One ray alone in its dispatch grazes a probe sheet for its full length, at two lengths ([`SPEED_PROBE_HALF_MM`]);
+/// each time is the least of 3 timed runs (after one untimed). The figure is the slope between the two (time over
+/// work), so the dispatch's fixed cost (a few ms, which a short ray would count as per-tick time) is left out.
 ///
 /// # Errors
 ///
-/// The upload's or the march's error.
+/// The upload's or the march's error; [`GpuError::InvalidFormat`] when the longer graze did not take more work.
 pub fn measure_ns_per_tick() -> Result<f64, GpuError> {
-    let half = SPEED_PROBE_HALF_MM;
-    let g = GpuSheetField::build(&speed_probe_field(half)?, &|src| src)?;
-    let o = [Vec3::new(-half - 1.0, 0.003, 0.02)];
-    let tmax = 2.0 * half + 2.0;
-    g.march_batch_decided(&o, Vec3::X, tmax)?;
-    let mut best = f64::INFINITY;
-    let mut work = 0u32;
-    for _ in 0..3 {
+    let mut pts = [(0u32, 0.0f64); 2];
+    for (pt, half) in pts.iter_mut().zip(SPEED_PROBE_HALF_MM) {
+        let g = GpuSheetField::build(&speed_probe_field(half)?, &|src| src)?;
+        let o = [Vec3::new(-half - 1.0, 0.003, 0.02)];
+        let tmax = 2.0 * half + 2.0;
         g.march_batch_decided(&o, Vec3::X, tmax)?;
-        let st = g.last_march_stats();
-        work = st.max_work;
-        best = best.min(st.dispatches.iter().map(|d| d.1).sum::<f64>());
+        let mut best = f64::INFINITY;
+        let mut work = 0u32;
+        for _ in 0..3 {
+            g.march_batch_decided(&o, Vec3::X, tmax)?;
+            let st = g.last_march_stats();
+            work = st.max_work;
+            best = best.min(st.dispatches.iter().map(|d| d.1).sum::<f64>());
+        }
+        *pt = (work, best);
     }
-    Ok(best * 1e9 / f64::from(work.max(1)))
+    let [(w0, t0), (w1, t1)] = pts;
+    if w1 <= w0 {
+        return Err(GpuError::InvalidFormat(format!(
+            "sheet field march: the speed probe's longer graze took {w1} ticks, not more than the shorter's {w0}"
+        )));
+    }
+    // a slope at or under 0 (timer noise on a very fast device) is the shorter ray's whole time per tick instead
+    let slope = (t1 - t0) * 1e9 / f64::from(w1 - w0);
+    Ok(if slope > 0.0 {
+        slope
+    } else {
+        t0 * 1e9 / f64::from(w0.max(1))
+    })
 }
 
 /// Rounds of re-issue after a march dispatch leaves results unwritten (each round halves the dispatch size); a ray
