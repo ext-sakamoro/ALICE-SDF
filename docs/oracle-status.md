@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1470 |
+| 🟢 Not ignored | 1472 |
 | 🔴 Red by design | 7 |
 | ⏱ Gated (runtime / diagnostic / manual) | 10 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1487** |
+| **Total** | **1489** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -55,7 +55,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `write_bincode1_fixtures` (test_bincode1_fixtures.rs) — writes tests/fixtures/bincode1; run only to capture
 
-## 🟢 Not ignored (1470)
+## 🟢 Not ignored (1472)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -86,11 +86,11 @@ Per-file counts (the test names are in `tests/`):
 | `test_compiled_evaluation.rs` | 14 |
 | `test_degenerate_input_oracle.rs` | 14 |
 | `test_gpu_law_parity.rs` | 14 |
+| `test_validity_air_proof.rs` | 14 |
 | `test_io_format_oracle.rs` | 13 |
 | `test_texture_fit_oracle.rs` | 13 |
 | `test_union_bound_oracle.rs` | 13 |
 | `test_smooth_blend_oracle.rs` | 12 |
-| `test_validity_air_proof.rs` | 12 |
 | `test_validity_oracle.rs` | 12 |
 | `mesh_bvh_closest_triangle.rs` | 11 |
 | `test_binding_oracle.rs` | 11 |

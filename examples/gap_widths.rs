@@ -75,8 +75,12 @@ fn describe_proof(name: &str, proof: &GapProof) {
 fn print_verdict(name: &str, v: GapVerdict) {
     match v {
         GapVerdict::Pass(c) => println!("{name}: pass from {}", c.proven_from),
-        GapVerdict::Fail(GapFailure::ProvenGap { width, at }) => {
-            println!("{name}: fail, a gap of at most {width:.3} at {at}");
+        GapVerdict::Fail(GapFailure::ProvenGap {
+            width,
+            at,
+            resolution,
+        }) => {
+            println!("{name}: fail, a gap of at most {width:.3} at {at} (read in a box of {resolution:.3})");
         }
         GapVerdict::Fail(f) => println!("{name}: fail, {f:?}"),
         GapVerdict::Undetermined(GapUndetermined::ProofIncomplete { .. }) => {

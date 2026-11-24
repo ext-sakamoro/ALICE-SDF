@@ -73,6 +73,70 @@ fn two_pins_one_apart_hold_no_gap_below_point_nine() {
     }
 }
 
+// oracle (no false failure, convex walls): two pins whose walls are exactly 1 apart hold no gap below
+// 1 + 0.4·GAP_TOLERANCE. The tangent ball is never shorter than the pair's offset along the walls'
+// facing direction, which is short of the walls' distance by at most half the tolerance, so no pair
+// reads below that limit by the tolerance. A reading shorter than the walls' distance by more than 0.6
+// of the tolerance turns this red.
+#[test]
+fn two_pins_one_apart_hold_no_gap_just_over_their_distance() {
+    let s = pins(1.6);
+    let limit = 1.0 + 0.4 * GAP_TOLERANCE;
+    let mut compared = 0;
+    for off in OFFSETS {
+        let lo = Vec3::new(-3.0 + off, 0.5 + off, -2.0 + off);
+        let p = prove_gaps(
+            &s,
+            limit,
+            lo,
+            Vec3::new(3.0, 5.0, 2.0),
+            DEPTH,
+            GAP_PROOF_WORK,
+        )
+        .expect("proof");
+        assert!(
+            p.witnesses.is_empty(),
+            "off {off}: gap below {limit} claimed at {:?}",
+            p.witnesses
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, OFFSETS.len());
+}
+
+// oracle (closed form): two pins of radius R = 0.3 whose walls are D = 1 apart leave a bottleneck of 1,
+// and every region of witnesses reads it from above within its own resolution h. A pair seen from air
+// points y ≤ h off the bottleneck reads the ball touching both pins with its centre z ≤ y·c/R off it
+// (c = D/2 + R = 0.8), which is 2(√(c² + z²) − c) ≤ z²/c wider than D: at most h²·c/R² (see
+// `GapRegion::width`), plus half the tolerance. A region keeping its first reading instead of its
+// narrowest reads a pair about 30° round each pin, 2·(0.8/cos 30° − 0.3) = 1.248, and turns this red.
+#[test]
+fn two_pins_one_apart_read_their_bottleneck_within_each_region_resolution() {
+    let (d, r) = (1.0_f32, 0.3_f32);
+    let c = 0.5 * d + r;
+    let s = pins(1.6);
+    let mut compared = 0;
+    for off in OFFSETS {
+        let lo = Vec3::new(-3.0 + off, 0.5 + off, -2.0 + off);
+        let p = prove_gaps(&s, 2.0, lo, Vec3::new(3.0, 5.0, 2.0), DEPTH, GAP_PROOF_WORK)
+            .expect("proof");
+        assert!(!p.witnesses.is_empty(), "off {off}: no gap proven");
+        for w in &p.witnesses {
+            let width = w.width.expect("a witness carries its width");
+            let h = w.resolution;
+            let over = h * h * c / (r * r);
+            assert!(
+                width >= d - 0.5 * GAP_TOLERANCE && width <= d + over + 0.5 * GAP_TOLERANCE,
+                "off {off}: region at {} reads {width} at resolution {h} (bound {})",
+                w.at,
+                d + over + 0.5 * GAP_TOLERANCE
+            );
+            compared += 1;
+        }
+    }
+    assert!(compared >= OFFSETS.len(), "{compared} regions compared");
+}
+
 #[test]
 fn a_box_standing_on_a_floor_has_no_gap() {
     let floor = SdfNode::box3d(20.0, 2.0, 20.0).translate(0.0, -1.0, 0.0);
@@ -310,7 +374,7 @@ fn air_narrower_than_the_limit_is_a_gap_of_at_least_its_width() {
 /// off it (0.03) and halfway up the plate (0.7).
 const AXIS_OFFSETS: [f32; 3] = [0.0, 0.03, 0.7];
 
-/// The largest spread a deciding pair may have at `limit` (`√(GAP_TOLERANCE·L)`) and the chord's
+/// The largest spread a deciding pair may have at `limit` (`√(GAP_TOLERANCE·L)`) and the
 /// over-read it allows across walls `d` apart, `s²/(2d)`.
 fn spread_over_read(limit: f32, d: f32) -> f32 {
     GAP_TOLERANCE * limit / (2.0 * d)
