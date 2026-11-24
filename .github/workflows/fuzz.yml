@@ -1,7 +1,7 @@
 name: Fuzz
 
 # 目的:
-# - SDF eval / asdf decode / bincode roundtrip / eval parity (tree vs compiled vs SIMD) の 4 target を time-boxed fuzz
+# - SDF eval / asdf decode / bincode roundtrip / eval parity (tree vs compiled vs SIMD) / ASKC read の 5 target を time-boxed fuzz
 # - PR / push 毎に短時間 (30-60s/target) 実行、long-run は別途 batch fuzzing infra 想定
 #
 # 注意点:
@@ -89,6 +89,7 @@ jobs:
           - fuzz_asdf_decode
           - fuzz_bincode_roundtrip
           - fuzz_eval_parity
+          - fuzz_askc_read
     steps:
       - uses: actions/checkout@v5
 
