@@ -2922,24 +2922,39 @@ mod shader_validate {
     /// status block is caught.
     #[test]
     fn nothing_that_can_tick_runs_after_the_status_is_decided() {
-        let src = super::march_shader(super::MAX_LIVE_SHEETS);
         let march_marker = "if (work > U.work_budget) { OUT[4u * i] = vec4<f32>(0.0, 4.0";
-        let (late, n) =
-            ticks_after_status(&src, "march_main", march_marker).expect("march status block");
+        // every program the upload can compile: each max_live it can pick and both step margins (the GPU runs the
+        // cell walk only: any other root mode is refused at upload, so there is no second program to read)
+        let mut variants = 0;
+        let mut ml = super::MAX_LIVE_SHEETS;
+        while ml <= super::MAX_LIVE_CAP {
+            for margin in [0.0, crate::sheet_field::kink::KINK_STEP_MARGIN] {
+                let v = super::march_shader_margin(ml, margin);
+                let (late, n) = ticks_after_status(&v, "march_main", march_marker)
+                    .unwrap_or_else(|| panic!("{ml}/{margin}: no march status block"));
+                assert!(
+                    n >= 6,
+                    "{ml}/{margin}: only {n} ticking functions: the scan read nothing"
+                );
+                assert!(
+                    late.is_empty(),
+                    "{ml}/{margin}: march_main ticks after its status: {late:?}"
+                );
+                let (late, _) = ticks_after_status(&v, "eval_main", "OUT[i] =")
+                    .unwrap_or_else(|| panic!("{ml}/{margin}: no eval status write"));
+                assert!(
+                    late.is_empty(),
+                    "{ml}/{margin}: eval_main ticks after its status: {late:?}"
+                );
+                variants += 1;
+            }
+            ml *= 2;
+        }
         assert!(
-            n >= 6,
-            "only {n} ticking functions found: the scan read nothing"
+            variants >= 10,
+            "{variants} program variants read (5 max_live x 2 margins)"
         );
-        assert!(
-            late.is_empty(),
-            "march_main ticks after its status: {late:?}"
-        );
-        let (late, _) =
-            ticks_after_status(&src, "eval_main", "OUT[i] =").expect("eval status write");
-        assert!(
-            late.is_empty(),
-            "eval_main ticks after its status: {late:?}"
-        );
+        let src = super::march_shader(super::MAX_LIVE_SHEETS);
         let moved = src.replacen(
             "    OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), miss);",
             "    let late_ = sample_sheet(0u, vec3<f32>(0.0), 2u);\n    OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), miss);",
