@@ -226,7 +226,9 @@ struct Uniforms {
     work_budget: u32,
     /// The most visits of one BVH walk (3 a node), at most [`MAX_BVH_VISITS`].
     bn_visits: u32,
-    _pad: [u32; 3],
+    /// Test only (0 in production): a march dispatch stops each ray at the boundary after this many steps.
+    slice_steps: u32,
+    _pad: [u32; 2],
 }
 
 /// Where each table starts in the merged `u32` buffer.
@@ -286,7 +288,10 @@ pub const MIN_DISPATCH: usize = 1_024;
 /// One tick per loop iteration of the march kernel, calls expanded: a step, a sheet sample, a corner read, a BVH
 /// visit and a bisection step each tick once.
 ///
-/// A ray over this ends as [`MarchResult::Undecided`], never as a hit. The status is decided after the ray's last
+/// The work one ray may do in one march dispatch (its slice). A ray over it after completing at least one step of
+/// the dispatch stops at its last completed step boundary and is continued in a later dispatch (see
+/// [`MAX_MARCH_SLICES`]); a ray over it with no step completed ends as [`MarchResult::Undecided`], never as a hit
+/// (no dispatch could decide it). The status is decided after the ray's last
 /// tick, which includes the hit's normal and attribute samples: a ray returns a hit only when that attribute phase
 /// also completed within the budget, so a hit never carries a normal or attribute from samples cut short. The value
 /// is the same on every device, so a ray's result never depends on the device's speed; a device too slow to run one
@@ -309,6 +314,16 @@ pub const MARCH_WORK_BUDGET: u32 = 1 << 21;
 /// a ray grazing the 100-sheet stack of the dispatch tests), so such a ray can be run to its decision and its work
 /// counted.
 pub const MARCH_WORK_BUDGET_CAP: u32 = 1 << 24;
+
+/// The most dispatches one ray of a [`GpuSheetField::march_batch`] call is marched in.
+///
+/// A ray that runs out of its slice ([`MARCH_WORK_BUDGET`] work in one dispatch) after completing at least one step
+/// stops at its last completed step boundary and is continued from there in a later dispatch; a ray still unfinished
+/// after this many dispatches ends as [`MarchResult::Undecided`]. This is the time bound of one ray: at most this many
+/// dispatches, each within the wait bound ([`DISPATCH_WAIT`]). 16 is about 3.7 times the most slices measured for a
+/// ray the one-shot budget leaves undecided (9,045,629 work, 4.3 slices of [`MARCH_WORK_BUDGET`] plus the partial
+/// steps each slice redoes).
+pub const MAX_MARCH_SLICES: u32 = 16;
 
 /// The half lengths (mm) of the flat sheets the device-speed measurement grazes ([`measure_ns_per_tick`]): about
 /// 30,000 and 240,000 ticks.
@@ -632,6 +647,19 @@ pub struct MarchStats {
     /// The re-issue round of each dispatch, in the order of `dispatches`: 0 for a first issue, k for the k-th round of
     /// re-issue after a cut (those follow the halving of the cut size, not the size rule of [`next_dispatch`]).
     pub dispatch_round: Vec<u32>,
+    /// Whether each dispatch, in the order of `dispatches`, continued rays stopped at the end of their slice.
+    pub dispatch_resume: Vec<bool>,
+    /// Ray slices continued in a later dispatch (a ray counts once per continuation).
+    pub resumed_rays: u64,
+    /// Per ray of the batch: the dispatches that marched it (1 for a ray decided in its first slice).
+    pub ray_slices: Vec<u32>,
+    /// Per ray of the batch: its march work, summed over its slices up to each slice's last completed step plus its
+    /// last slice's whole work (equal to the work of the same ray marched in one dispatch).
+    pub ray_work: Vec<u64>,
+    /// Per ray of the batch: the work of the partial steps its slices stopped in (redone in the next slice).
+    pub ray_discarded: Vec<u64>,
+    /// Rays still unfinished after [`MAX_MARCH_SLICES`] dispatches (returned as undecided).
+    pub over_slices: u64,
     /// Dispatches that left some of their rays unwritten (each such ray was issued again in a smaller dispatch).
     pub cut_dispatches: u64,
     /// Rays issued again because a dispatch left them unwritten (a ray counts once per re-issue).
@@ -659,6 +687,9 @@ struct DispatchControl {
     work_budget: u32,
     ns_per_tick: f64,
     spread_block: usize,
+    /// test only (0 in production): see [`GpuSheetField::set_slice_steps`]
+    slice_steps: u32,
+    max_slices: u32,
     stats: MarchStats,
     /// test only: the next `cut.1` march dispatches use `cut.0` workgroups whatever their size (a dispatch the
     /// device cut short, made on purpose)
@@ -1105,6 +1136,8 @@ impl GpuSheetField {
                 target: DISPATCH_TARGET,
                 wait: DISPATCH_WAIT,
                 work_budget: MARCH_WORK_BUDGET,
+                slice_steps: 0,
+                max_slices: MAX_MARCH_SLICES,
                 ns_per_tick: f64::NAN,
                 spread_block: SPREAD_BLOCK,
                 stats: MarchStats::default(),
@@ -1138,7 +1171,8 @@ impl GpuSheetField {
                 .lock()
                 .map_or(MARCH_WORK_BUDGET, |c| c.work_budget),
             bn_visits: 3 * (b.bn_len / 8) + 1,
-            _pad: [0; 3],
+            slice_steps: self.control.lock().map_or(0, |c| c.slice_steps),
+            _pad: [0; 2],
         }
     }
 
@@ -1167,7 +1201,7 @@ impl GpuSheetField {
             return Err(GpuError::BufferMapping(format!(
                 "the sheet field dispatch left {} of {} results unwritten (first {first}): its output is not read",
                 unwritten.len(),
-                input.len()
+                u.count
             )));
         }
         Ok(out)
@@ -1191,7 +1225,9 @@ impl GpuSheetField {
         }
         let device = self.context().device();
         let queue = self.context().queue();
-        let n = input.len().max(1);
+        // the results read: one per item (`u.count`; the march passes two input vec4s a ray, the evaluation one a point)
+        let items = u.count as usize;
+        let n = items.max(1);
         // a dispatch over the device's workgroups per dimension is invalid: the submit is dropped and the output
         // would be read unwritten, so it is refused here
         let limit = device.limits().max_compute_workgroups_per_dimension;
@@ -1285,7 +1321,7 @@ impl GpuSheetField {
             if self.context().is_abandoned() {
                 let limit_ms = self.control.lock().map_or(0, |c| c.wait.as_millis() as u64);
                 return Err(GpuError::DispatchDidNotFinish {
-                    rays: input.len(),
+                    rays: items,
                     limit_ms,
                 });
             }
@@ -1295,7 +1331,7 @@ impl GpuSheetField {
             let mapped = slice.get_mapped_range();
             let data: &[[f32; 4]] = bytemuck::cast_slice(&mapped);
             let found = data[n * out_vec4s][0].to_bits();
-            (data[..input.len() * out_vec4s].to_vec(), found)
+            (data[..items * out_vec4s].to_vec(), found)
         };
         staging.unmap();
         if found != nonce {
@@ -1304,7 +1340,7 @@ impl GpuSheetField {
             )));
         }
         // the first vec4 of each result is written by every path of both kernels (eval and march, overflow included)
-        let unwritten: Vec<usize> = (0..input.len())
+        let unwritten: Vec<usize> = (0..items)
             .filter(|&k| {
                 out[k * out_vec4s]
                     .iter()
@@ -1337,6 +1373,25 @@ impl GpuSheetField {
             c.wait = wait;
         }
         self.context().set_wait_limit(wait);
+    }
+
+    // ALLOW-UNWIRED: a test hook: the resume oracles stop every ray after a fixed number of steps per dispatch
+    /// Test only: every march dispatch stops each ray at the step boundary after `steps` steps (0 = no such stop, the
+    /// production setting), so a ray is continued after every `steps` steps.
+    #[doc(hidden)]
+    pub fn set_slice_steps(&self, steps: u32) {
+        if let Ok(mut c) = self.control.lock() {
+            c.slice_steps = steps;
+        }
+    }
+
+    // ALLOW-UNWIRED: a test hook: the slice limit oracle lowers the limit to see a ray end undecided at it
+    /// Test only: another limit on the dispatches one ray is marched in (see [`MAX_MARCH_SLICES`]; at least 1).
+    #[doc(hidden)]
+    pub fn set_max_march_slices(&self, slices: u32) {
+        if let Ok(mut c) = self.control.lock() {
+            c.max_slices = slices.max(1);
+        }
     }
 
     /// Another block size of the march order (see [`SPREAD_BLOCK`]; 0 = contiguous).
@@ -1445,9 +1500,12 @@ impl GpuSheetField {
     /// March rays from `origins` along the unit `dir` up to `tmax` with at most `steps` steps.
     ///
     /// The rays go to the GPU in dispatches whose size follows the measured time of the previous one (see
-    /// [`DISPATCH_TARGET`] and [`next_dispatch`]); the results do not depend on the sizes. A dispatch that does
-    /// not return within the wait bound is a [`GpuError::DispatchDidNotFinish`]. The sizes, times and per-ray
-    /// work are in [`Self::last_march_stats`].
+    /// [`DISPATCH_TARGET`] and [`next_dispatch`]); the results do not depend on the sizes. A ray that runs out of its
+    /// slice ([`MARCH_WORK_BUDGET`]) after completing a step is continued in a later dispatch from its last completed
+    /// step, with the result of a march in one dispatch: one call may issue several dispatches for the same rays,
+    /// so its wall time is up to [`MAX_MARCH_SLICES`] times the dispatch wait bound, not one wait. A dispatch that
+    /// does not return within the wait bound is a [`GpuError::DispatchDidNotFinish`]. The sizes, times, slices and
+    /// per-ray work are in [`Self::last_march_stats`].
     pub fn march_batch(
         &self,
         origins: &[Vec3],
@@ -1463,16 +1521,23 @@ impl GpuSheetField {
         if origins.is_empty() {
             return Ok(Vec::new());
         }
-        let (target, budget) = self
+        let (target, budget, max_slices) = self
             .control
             .lock()
-            .map(|c| (c.target, c.work_budget))
+            .map(|c| (c.target, c.work_budget, c.max_slices))
             .map_err(|_| GpuError::InvalidFormat("sheet field dispatch control poisoned".into()))?;
-        let mut stats = MarchStats::default();
         let n = origins.len();
+        let mut stats = MarchStats {
+            ray_slices: vec![0; n],
+            ray_work: vec![0; n],
+            ray_discarded: vec![0; n],
+            ..MarchStats::default()
+        };
         let block = self.control.lock().map_or(SPREAD_BLOCK, |c| c.spread_block);
         let order = spread_blocks(n, block);
         let mut res = vec![MarchResult::Miss; n];
+        // each ray's state at its last completed step boundary (all zero for a fresh ray)
+        let mut state = vec![RayState::default(); n];
         let mut at = 0;
         while at < n {
             let limits = self.context().device().limits();
@@ -1493,6 +1558,7 @@ impl GpuSheetField {
             let mut round = 0u32;
             loop {
                 let mut left = Vec::new();
+                let mut cont = Vec::new();
                 for piece in pending.chunks(piece_size) {
                     let part: Vec<Vec3> = piece.iter().map(|&i| origins[i]).collect();
                     #[allow(
@@ -1502,9 +1568,15 @@ impl GpuSheetField {
                     let t0 = std::time::Instant::now();
                     stats.dispatch_work.push(0);
                     stats.dispatch_round.push(round);
-                    let unwritten = self.march_dispatch(
-                        &part, piece, dir, tmax, steps, budget, &mut res, &mut stats,
+                    stats
+                        .dispatch_resume
+                        .push(piece.iter().any(|&i| state[i].step > 0));
+                    let (unwritten, continued) = self.march_dispatch(
+                        &part, piece, dir, tmax, steps, budget, max_slices, &mut res, &mut state,
+                        &mut stats,
                     )?;
+                    stats.resumed_rays += continued.len() as u64;
+                    cont.extend(continued);
                     #[allow(
                         clippy::disallowed_methods,
                         reason = "dispatch sizes follow the measured time of the last dispatch; the results do not depend on it (each ray is marched whole in one dispatch)"
@@ -1533,7 +1605,13 @@ impl GpuSheetField {
                     }
                 }
                 if left.is_empty() {
-                    break;
+                    if cont.is_empty() {
+                        break;
+                    }
+                    // rays stopped at the end of their slice continue from their last completed step boundary; every
+                    // continued slice completed at least one step, and MAX_MARCH_SLICES bounds the rounds
+                    pending = cont;
+                    continue;
                 }
                 round += 1;
                 if round > MAX_REISSUE_ROUNDS {
@@ -1549,6 +1627,7 @@ impl GpuSheetField {
                 // the rays left unwritten go again, in dispatches half the size of the cut ones (never below one
                 // workgroup)
                 piece_size = (piece_size / 2).max(WG as usize);
+                left.extend(cont);
                 pending = left;
             }
             at += size;
@@ -1568,10 +1647,19 @@ impl GpuSheetField {
         tmax: f32,
         steps: u32,
         budget: u32,
+        max_slices: u32,
         res: &mut [MarchResult],
+        state: &mut [RayState],
         stats: &mut MarchStats,
-    ) -> Result<Vec<usize>, GpuError> {
-        let input: Vec<[f32; 4]> = origins.iter().map(|p| [p.x, p.y, p.z, 0.0]).collect();
+    ) -> Result<(Vec<usize>, Vec<usize>), GpuError> {
+        // two vec4s a ray: its origin and the step it starts at, then t, tprev and the floor flag of that step (exact
+        // floats; a fresh ray's are all zero)
+        let mut input: Vec<[f32; 4]> = Vec::with_capacity(2 * origins.len());
+        for (p, &i) in origins.iter().zip(index) {
+            let s = state[i];
+            input.push([p.x, p.y, p.z, s.step as f32]);
+            input.push([s.t, s.tprev, if s.floor { 1.0 } else { 0.0 }, 0.0]);
+        }
         #[cfg(test)]
         let groups = self.control.lock().ok().and_then(|mut c| {
             (c.cut.1 > 0).then(|| {
@@ -1591,6 +1679,7 @@ impl GpuSheetField {
         let (rows, rest) = out.as_chunks::<4>();
         debug_assert!(rest.is_empty(), "4 output words a ray");
         let mut unwritten = Vec::new();
+        let mut continued = Vec::new();
         for (j, r) in rows.iter().enumerate() {
             let i = index[j];
             // a ray's result is 4 stores (the overflow path only the first, and it is refused below): a ray with
@@ -1603,7 +1692,34 @@ impl GpuSheetField {
                 continue;
             }
             let kind = r[0][1] as i32;
+            stats.ray_slices[i] += 1;
+            if kind == 7 {
+                // stopped at the end of its slice after completing a step: the work to that boundary is the ray's,
+                // the partial step after it is redone from the boundary in a later dispatch
+                // the kernel's counter includes a continued ray's recompute of its previous list (`base`), which is
+                // not march work
+                let (spent, base, kept) = (r[1][1].to_bits(), r[1][2].to_bits(), r[1][3].to_bits());
+                *stats.dispatch_work.last_mut().expect("a dispatch slot") += u64::from(spent);
+                stats.ray_work[i] += u64::from(kept.saturating_sub(base));
+                stats.ray_discarded[i] += u64::from(spent.saturating_sub(kept));
+                if stats.ray_slices[i] >= max_slices {
+                    stats.over_slices += 1;
+                    res[i] = MarchResult::Undecided;
+                    continue;
+                }
+                state[i] = RayState {
+                    t: r[0][0],
+                    tprev: r[0][2],
+                    step: r[0][3] as u32,
+                    floor: r[1][0] != 0.0,
+                };
+                continued.push(i);
+                continue;
+            }
             let work = r[1][3].to_bits();
+            // the base of a continued ray (its recompute) is in the third vec4's last word on every full path
+            let base = if early { 0 } else { r[2][3].to_bits() };
+            stats.ray_work[i] += u64::from(work.saturating_sub(base));
             *stats.dispatch_work.last_mut().expect("a dispatch slot") += u64::from(work);
             if work > stats.max_work || stats.max_work_ray.is_none() {
                 stats.max_work = work;
@@ -1646,8 +1762,18 @@ impl GpuSheetField {
                 }
             };
         }
-        Ok(unwritten)
+        Ok((unwritten, continued))
     }
+}
+
+/// A ray's march state at its last completed step boundary, passed to the dispatch that continues it: all zero for
+/// a fresh ray. The previous live list is a function of `tprev` alone and is recomputed by the kernel.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct RayState {
+    t: f32,
+    tprev: f32,
+    step: u32,
+    floor: bool,
 }
 
 const SHADER: &str = r"
@@ -1657,7 +1783,7 @@ struct LevelInfo { lo: vec3<f32>, h: f32, nb: vec3<u32>, index_off: u32, nch: u3
                    nodes: array<vec4<u32>, 2>, st_off: array<vec4<u32>, 2> };
 struct Uniforms { n_sheets: u32, rule: u32, count: u32, steps: u32, dir: vec3<f32>, tmax: f32,
                   index_base: u32, rows_base: u32, bn_base: u32, bl_base: u32, bp_base: u32, bn_len: u32, band_base: u32, work_budget: u32,
-                  bn_visits: u32, u_p0: u32, u_p1: u32, u_p2: u32 };
+                  bn_visits: u32, slice_steps: u32, u_p1: u32, u_p2: u32 };
 @group(0) @binding(0) var<uniform> U: Uniforms;
 @group(0) @binding(1) var<storage, read> SHEETS: array<SheetInfo>;
 @group(0) @binding(2) var<storage, read> LEVELS: array<LevelInfo>;
@@ -2423,8 +2549,19 @@ fn eval_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x;
     if (i >= U.count) { return; }
-    let o = INPUT[i].xyz;
+    // a ray is two vec4s: its origin and the step it starts at, then t, tprev and the floor flag of that step (all
+    // zero for a fresh ray). A ray stopped at the end of its slice in one dispatch continues here from the last step
+    // boundary it completed; the previous live list is a function of tprev alone and is recomputed at o + d * tprev
+    // by the same arithmetic the march used there, so the step sequence is the one-shot march's
+    let sa = INPUT[2u * i];
+    let sb = INPUT[2u * i + 1u];
+    let o = sa.xyz;
+    let step0 = u32(sa.w);
     let d = U.dir;
+    var t = sb.x;
+    var tprev = sb.y;
+    var pp = o;
+    if (step0 > 0u) { pp = o + d * tprev; }
     var prev_k: array<u32, __MAX_LIVE__>;
     var prev_g: array<f32, __MAX_LIVE__>;
     var prev_s: array<f32, __MAX_LIVE__>;
@@ -2433,24 +2570,34 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var overflow = false;
     var unsorted = false;
     var lv: array<u32, __MAX_LIVE__>;
-    let n0 = live_sheets(o, &lv);
+    let n0 = live_sheets(pp, &lv);
     if (n0 > MAX_LIVE) { overflow = true; }
     else {
         for (var j = 0u; j < MAX_LIVE; j = j + 1u) { if (!tick()) { break; }
             if (j >= n0) { break; }
             if (j > 0u && lv[j] <= lv[j - 1u]) { unsorted = true; }
-            let c0 = sample_sheet(lv[j], o, 2u);
+            let c0 = sample_sheet(lv[j], pp, 2u);
             prev_k[j] = lv[j]; prev_g[j] = c0.g; prev_s[j] = reach(c0); prev_l[j] = c0.lip;
         }
         n_prev = n0;
     }
-    var t = 0.0;
-    var tprev = 0.0;
+    // a continued ray's recompute of the previous list is not march work (the one-shot march did it once, as that
+    // step's current list): its ticks are reported as the base the host subtracts (only tick() stores the counter).
+    // A recompute over the slice leaves the work over it, so the ray makes no progress and is refused below
+    var wbase = 0u;
+    if (step0 > 0u) { wbase = work; }
     var kind = 2;
     var own = 0u;
     var walk_out = false;
-    var floor_step = false;
-    for (var step = 0u; step < U.steps; step = step + 1u) { if (!tick()) { break; }
+    var floor_step = sb.z != 0.0;
+    // the last completed step boundary of this dispatch (the state a continued ray starts from) and the work to it
+    var bt = t;
+    var btprev = tprev;
+    var bstep = step0;
+    var bfloor = floor_step;
+    var bwork = work;
+    var slice_end = false;
+    for (var step = step0; step < U.steps; step = step + 1u) { if (!tick()) { break; }
         if (overflow) { break; }
         let p = o + d * t;
         let dd = eval_union(p).f;
@@ -2518,6 +2665,13 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         floor_step = dd_step < __MIN_STEP__;
         t = t + max(dd_step, __MIN_STEP__);
         if (t >= U.tmax) { kind = 0; break; }
+        // a step that ran out of its slice partway (any tick of it refused) is not complete: its crossing check or its
+        // list copy may be cut short, so it is no boundary; the boundary stays at the step before and the step is redone
+        if (work <= U.work_budget) {
+            bt = t; btprev = tprev; bstep = step + 1u; bfloor = floor_step; bwork = work;
+            // test only (0 in production): stop after this many steps of the dispatch, at the boundary
+            if (U.slice_steps != 0u && bstep - step0 >= U.slice_steps) { slice_end = true; break; }
+        }
     }
     var nrm = vec3<f32>(0.0, 0.0, 1.0);
     var uv = vec3<f32>(0.0);
@@ -2541,13 +2695,23 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // STATUS: decided after the last tick of the invocation (the hit's normal and attributes tick too). Over the budget
     // every loop left early, so nothing this invocation computed is trusted: a ray returns Hit only when the attribute
     // phase also completed within the budget, otherwise it is undecided. No call that can tick may follow this block.
-    if (work > U.work_budget) { OUT[4u * i] = vec4<f32>(0.0, 4.0, 0.0, 0.0); OUT[4u * i + 1u] = vec4<f32>(0.0, 0.0, 0.0, bitcast<f32>(work)); OUT[4u * i + 2u] = vec4<f32>(0.0); OUT[4u * i + 3u] = vec4<f32>(0.0); return; }
+    // Out of the slice after at least one completed step: the ray continues in a later dispatch from that boundary
+    // (kind 7; the partial step is redone there). Out of it with no step completed: no dispatch can decide it (kind 4).
+    if (work > U.work_budget || slice_end) {
+        if (bstep > step0) {
+            OUT[4u * i] = vec4<f32>(bt, 7.0, btprev, f32(bstep));
+            OUT[4u * i + 1u] = vec4<f32>(select(0.0, 1.0, bfloor), bitcast<f32>(work), bitcast<f32>(wbase), bitcast<f32>(bwork));
+            OUT[4u * i + 2u] = vec4<f32>(0.0); OUT[4u * i + 3u] = vec4<f32>(0.0);
+            return;
+        }
+        OUT[4u * i] = vec4<f32>(0.0, 4.0, 0.0, 0.0); OUT[4u * i + 1u] = vec4<f32>(0.0, 0.0, 0.0, bitcast<f32>(work)); OUT[4u * i + 2u] = vec4<f32>(0.0, 0.0, 0.0, bitcast<f32>(wbase)); OUT[4u * i + 3u] = vec4<f32>(0.0); return;
+    }
     if (walk_unfinished) { OUT[4u * i] = vec4<f32>(0.0, 6.0, 0.0, 0.0); return; }
     if (overflow) { OUT[4u * i] = vec4<f32>(0.0, 3.0, 0.0, 0.0); return; }
     if (unsorted) { OUT[4u * i] = vec4<f32>(0.0, 5.0, 0.0, 0.0); return; }
     OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), miss);
     OUT[4u * i + 1u] = vec4<f32>(nrm, bitcast<f32>(work));
-    OUT[4u * i + 2u] = vec4<f32>(uv, 0.0);
+    OUT[4u * i + 2u] = vec4<f32>(uv.xy, uv.z, bitcast<f32>(wbase));
     OUT[4u * i + 3u] = an;
 }
 ";
@@ -2810,7 +2974,10 @@ mod tests {
             }
         };
         let n = 3 * WG as usize;
-        let input = vec![[0.3f32, 0.2, 0.5, 0.0]; n];
+        // two vec4s a ray: the origin and its start step, then t, tprev and the floor flag (a fresh ray)
+        let input: Vec<[f32; 4]> = (0..n)
+            .flat_map(|_| [[0.3f32, 0.2, 0.5, 0.0], [0.0; 4]])
+            .collect();
         let u = g.uniforms(n as u32, 64, -Vec3::Z, 2.0);
         let full = g.run_groups(&g.march_pipeline, &input, 4, u, None).unwrap();
         assert_eq!(full.len(), 4 * n);
@@ -2987,7 +3154,7 @@ mod shader_validate {
     /// status block is caught.
     #[test]
     fn nothing_that_can_tick_runs_after_the_status_is_decided() {
-        let march_marker = "if (work > U.work_budget) { OUT[4u * i] = vec4<f32>(0.0, 4.0";
+        let march_marker = "if (work > U.work_budget || slice_end) {";
         // every program the upload can compile: each max_live it can pick and both step margins (the GPU runs the
         // cell walk only: any other root mode is refused at upload, so there is no second program to read)
         let mut variants = 0;
