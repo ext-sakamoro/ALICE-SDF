@@ -70,6 +70,10 @@ gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck", "dep:ash"]
 # GPU adapter only inside a GPU slot of the machine (ALICE_GPU_SLOT), and ALICE_SDF_TEST_FALLBACK_ADAPTER=1 for
 # wgpu's software adapter (src/gpu_context.rs, slot_guard)
 gpu-slot-guard = []
+# this crate's own tests only (its dev-dependency on itself turns it on): the sheet field's test hooks (a field with
+# a stated device speed, a raised work budget, a slice of a fixed step count, a lower slice limit) and the kink
+# point evaluator
+test-hooks = []
 volume = ["gpu"]  # 3D volume texture baking
 gpu-mesh = ["gpu"]  # GPU Marching Cubes mesh generation
 svo = []  # Sparse Voxel Octree
@@ -214,7 +218,7 @@ vdb-rs = { version = "0.6", optional = true }
 # copy and this one), so the unmangled exports are not in the unit-test build: `#[cfg_attr(not(test), no_mangle)]`
 # and `#[cfg_attr(not(test), gdextension)]` / `#[cfg_attr(not(test), pymodule)]`; tests/test_unmangled_exports.rs
 # fails on a new export without it.
-alice-sdf = { path = ".", default-features = false, features = ["gpu-slot-guard"] }
+alice-sdf = { path = ".", default-features = false, features = ["gpu-slot-guard", "test-hooks"] }
 naga = { version = "24", default-features = false, features = ["wgsl-in", "glsl-in", "spv-out"] }
 # tests/test_provenance.rs: an independent binary STL parser reads files carrying the identifier
 stl_io = "0.11"

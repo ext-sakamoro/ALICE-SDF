@@ -468,7 +468,7 @@ pub fn require_bounded(
 /// # Errors
 ///
 /// As [`require_bounded`]; also a ceiling without a reason.
-pub fn require_bounded_under(
+pub(crate) fn require_bounded_under(
     label: &str,
     source: &wgpu::ShaderSource<'_>,
     maxima: &HostMaxima,
@@ -622,7 +622,11 @@ fn is_increment(f: &Function, var: Handle<naga::LocalVariable>, value: Handle<Ex
 
 /// Check that every loop of `module` is counted by `counter` and bound the iterations of one invocation.
 #[must_use]
-pub fn check_counted(module: &Module, maxima: &HostMaxima, counter: WorkCounter) -> CountedReport {
+pub(crate) fn check_counted(
+    module: &Module,
+    maxima: &HostMaxima,
+    counter: WorkCounter,
+) -> CountedReport {
     let mut r = CountedReport::default();
     let Some(budget) = maxima.get(counter.budget).copied() else {
         r.problems.push(format!(
