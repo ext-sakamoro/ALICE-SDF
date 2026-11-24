@@ -1,7 +1,8 @@
 //! Attribute channels stored as a band: per brick, only the nodes that are corners of a cell the surface may
 //! cross (the 8 corner `s` values straddle 0 within `eps_steps` quantization steps) keep their `u`, `v` and
 //! author-normal bytes; `s` and `d_b` stay whole. A hit interpolates attributes inside the cell it lies in, so a
-//! band that holds those cells returns the same attributes, and a read outside the band is refused, not shaded.
+//! band that holds those cells returns the same attributes, and a read outside the band gives no attribute (None),
+//! counted on the GPU, never a shaded value.
 //!
 //! Oracles (none is the sampler's own output):
 //! - at every hit the band gives the attributes of the full field, bit for bit, on the CPU and the GPU (the same
@@ -9,7 +10,8 @@
 //! - the band stores fewer attribute bytes than the full field, and the geometry is the full field's;
 //! - ASHF: a banded field is written as the band version and read back with the same bytes, masks and row starts; a field
 //!   without a band is still the plain version (or the coarse version with a coarse channel), byte for byte;
-//! - an empty band (every cell excluded) makes the GPU march refuse the hits and the CPU return NaN attributes;
+//! - an empty band (every cell excluded): the hit's UV is None on the CPU and the GPU, the GPU counts the ray as a
+//!   band miss, and the batch goes on;
 //! - refusals: a band of a level without attributes or of a level already banded, a mask or byte count that
 //!   does not match, and the band kind in a coarse-version file.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::cast_precision_loss)]
@@ -154,22 +156,18 @@ fn at_every_hit_the_band_gives_the_full_fields_attributes_bit_for_bit() {
 }
 
 #[test]
-fn an_empty_band_is_refused_on_the_gpu_and_nan_on_the_cpu() {
+fn an_empty_band_gives_no_uv_on_both_sides_and_is_counted_on_the_gpu() {
     let full = patch();
     let empty = banded(&full, -1.0e9);
     let lv = &empty.sheets[0].levels[0];
     assert!(lv.band.iter().all(|&w| w == 0), "the empty band kept nodes");
     assert!(lv.channels[2].q.is_empty());
-    let o = origins()[100];
-    match empty.march_decided(o, -Vec3::Z, 1.0).unwrap() {
-        MarchResult::Hit(h) => {
-            let uv = h.uv.unwrap();
-            assert!(
-                uv[0].is_nan() && uv[1].is_nan(),
-                "{o}: uv {uv:?} read outside the band"
-            );
+    let os: Vec<Vec3> = origins().into_iter().step_by(53).collect();
+    for o in &os {
+        match empty.march_decided(*o, -Vec3::Z, 1.0).unwrap() {
+            MarchResult::Hit(h) => assert_eq!(h.uv, None, "{o}: uv read outside the band"),
+            m => panic!("{o}: {m:?}"),
         }
-        m => panic!("{o}: {m:?}"),
     }
     #[cfg(feature = "gpu")]
     {
@@ -185,10 +183,20 @@ fn an_empty_band_is_refused_on_the_gpu_and_nan_on_the_cpu() {
                 return;
             }
         };
-        let err = g
-            .march_batch_decided(&[o], -Vec3::Z, 1.0)
-            .expect_err("a hit outside the band was shaded");
-        assert!(err.to_string().contains("outside its band"), "{err}");
+        let r = g
+            .march_batch_decided(&os, -Vec3::Z, 1.0)
+            .expect("a band miss fails only that ray's attribute, not the batch");
+        for (o, m) in os.iter().zip(&r) {
+            match m {
+                MarchResult::Hit(h) => assert_eq!(h.uv, None, "{o}: gpu uv read outside the band"),
+                m => panic!("{o}: gpu {m:?}"),
+            }
+        }
+        assert_eq!(g.last_march_stats().band_misses, os.len() as u64);
+        // the full band reads every attribute: no miss
+        let gb = GpuSheetField::new(&banded(&full, 2.0)).unwrap();
+        gb.march_batch_decided(&os, -Vec3::Z, 1.0).unwrap();
+        assert_eq!(gb.last_march_stats().band_misses, 0);
     }
 }
 
