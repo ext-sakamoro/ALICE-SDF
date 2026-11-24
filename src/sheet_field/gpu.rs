@@ -283,7 +283,8 @@ pub const MIN_DISPATCH: usize = 1_024;
 ///
 /// A ray over this ends as [`MarchResult::Undecided`], never as a hit. The value is the same on every device, so a
 /// ray's result never depends on the device's speed; a device too slow to run one ray at this budget within the wait
-/// bound is refused when a field is uploaded ([`check_device_speed`]).
+/// bound is refused when a field is uploaded ([`check_device_speed`], with the adapter's measured speed from
+/// [`adapter_speeds`]).
 ///
 /// Derived from the worst ray measured on real fields (the per-ray work in [`GpuSheetField::last_march_stats`]): the
 /// census over the scanned fields gave at most 670,569 ticks (a head scan, face front view), and 152,473 on a rock scan
@@ -291,8 +292,8 @@ pub const MIN_DISPATCH: usize = 1_024;
 /// takes about 3,000 ticks per mm, so a graze over about 700 mm ends undecided.
 pub const MARCH_WORK_BUDGET: u32 = 1 << 21;
 
-/// The half lengths (mm) of the flat sheets the device-speed probe grazes ([`measure_ns_per_tick`]): about 30,000
-/// and 240,000 ticks.
+/// The half lengths (mm) of the flat sheets the device-speed measurement grazes ([`measure_ns_per_tick`]): about
+/// 30,000 and 240,000 ticks.
 pub const SPEED_PROBE_HALF_MM: [f32; 2] = [5.0, 40.0];
 
 /// Whether a device whose march costs `ns_per_tick` runs one ray at the full [`MARCH_WORK_BUDGET`] within a third of
@@ -347,25 +348,222 @@ fn speed_probe_field(half: f32) -> Result<SheetField, GpuError> {
     Ok(SheetField::new(vec![sh], ValidRule::CellV1))
 }
 
-/// The device's march time per work tick.
+/// The command that measures this machine's adapter and prints its row of [`adapter_speeds`].
+pub const ADAPTER_SPEED_COMMAND: &str =
+    "cargo run --release --features gpu --example sheet_field_adapter_speed -- $(date -u +%F)";
+
+/// The environment variable naming a further speed table file (the same format as the crate's), read at upload.
 ///
-/// One ray alone in its dispatch grazes a probe sheet for its full length, at two lengths ([`SPEED_PROBE_HALF_MM`]);
-/// each time is the least of 3 timed runs (after one untimed). The figure is the slope between the two (time over
-/// work), so the dispatch's fixed cost (a few ms, which a short ray would count as per-tick time) is left out.
+/// The crate's table holds rows for software adapters only; a machine with a hardware GPU keeps its rows in its
+/// own file and names it here. With the variable unset only the crate's table is read.
+pub const ADAPTER_SPEEDS_VAR: &str = "ALICE_SDF_ADAPTER_SPEEDS";
+
+/// The measured march speeds of the software adapters (`src/sheet_field/adapter_speeds.tsv`).
+const ADAPTER_SPEEDS_TSV: &str = include_str!("adapter_speeds.tsv");
+
+/// One adapter's measured march speed: its identity as wgpu reports it, the speed, when and how it was measured.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AdapterSpeed {
+    /// PCI vendor id (or the backend's equivalent).
+    pub vendor: u32,
+    /// PCI device id (or the backend's equivalent).
+    pub device: u32,
+    /// The backend (`Vulkan`, `Metal`, `Dx12`, `Gl`).
+    pub backend: String,
+    /// The adapter's name.
+    pub name: String,
+    /// The driver's description, its version where the backend gives one (empty where it gives none).
+    pub driver_info: String,
+    /// March time per work tick (see [`measure_ns_per_tick`]).
+    pub ns_per_tick: f64,
+    /// The date it was measured (`YYYY-MM-DD`).
+    pub measured: String,
+    /// The command that measured it ([`ADAPTER_SPEED_COMMAND`]).
+    pub command: String,
+}
+
+impl AdapterSpeed {
+    /// The row as a line of `adapter_speeds.tsv`.
+    #[must_use]
+    pub fn tsv(&self) -> String {
+        format!(
+            "{:#06x}\t{:#06x}\t{}\t{}\t{}\t{:.2}\t{}\t{}",
+            self.vendor,
+            self.device,
+            self.backend,
+            self.name,
+            self.driver_info,
+            self.ns_per_tick,
+            self.measured,
+            self.command
+        )
+    }
+
+    fn matches(&self, info: &wgpu::AdapterInfo) -> bool {
+        self.vendor == info.vendor
+            && self.device == info.device
+            && self.backend == format!("{:?}", info.backend)
+            && self.name == info.name
+            && self.driver_info == info.driver_info
+    }
+}
+
+/// The rows of a speed table: tab-separated `vendor device backend name driver_info ns_per_tick measured command`,
+/// `#` lines and blank lines skipped; ids in hex (`0x10de`) or decimal.
+///
+/// # Errors
+///
+/// [`GpuError::InvalidFormat`] for a malformed row, a speed that is not finite and positive, or a table with no row
+/// (an empty table would refuse every adapter).
+pub fn parse_adapter_speeds(text: &str) -> Result<Vec<AdapterSpeed>, GpuError> {
+    let bad = |n: usize, why: &str| {
+        GpuError::InvalidFormat(format!("adapter speed table line {n}: {why}"))
+    };
+    let id = |n: usize, f: &str| {
+        let v = match f.strip_prefix("0x") {
+            Some(h) => u32::from_str_radix(h, 16),
+            None => f.parse(),
+        };
+        v.map_err(|_| bad(n, &format!("id {f:?} is not a number")))
+    };
+    let mut rows = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let n = i + 1;
+        if line.trim().is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let f: Vec<&str> = line.split('\t').collect();
+        let [vendor, device, backend, name, driver_info, ns, measured, command] = f[..] else {
+            return Err(bad(n, &format!("{} fields, not 8", f.len())));
+        };
+        let ns_per_tick: f64 = ns
+            .parse()
+            .map_err(|_| bad(n, &format!("speed {ns:?} is not a number")))?;
+        if !(ns_per_tick.is_finite() && ns_per_tick > 0.0) {
+            return Err(bad(
+                n,
+                &format!("speed {ns_per_tick} is not a measured time"),
+            ));
+        }
+        rows.push(AdapterSpeed {
+            vendor: id(n, vendor)?,
+            device: id(n, device)?,
+            backend: backend.to_string(),
+            name: name.to_string(),
+            driver_info: driver_info.to_string(),
+            ns_per_tick,
+            measured: measured.to_string(),
+            command: command.to_string(),
+        });
+    }
+    if rows.is_empty() {
+        return Err(GpuError::InvalidFormat(
+            "adapter speed table: no row".into(),
+        ));
+    }
+    Ok(rows)
+}
+
+/// Whether a table text holds any row (a line that is neither blank nor a `#` comment).
+fn has_rows(text: &str) -> bool {
+    text.lines()
+        .any(|l| !(l.trim().is_empty() || l.starts_with('#')))
+}
+
+/// The speed tables read at upload: the crate's (`src/sheet_field/adapter_speeds.tsv`, software adapters), then
+/// the file [`ADAPTER_SPEEDS_VAR`] names, when it is set.
+///
+/// # Errors
+///
+/// As [`parse_adapter_speeds`] for either table that has rows; the named file unreadable, or with no row.
+pub fn adapter_speeds() -> Result<Vec<AdapterSpeed>, GpuError> {
+    let mut rows = if has_rows(ADAPTER_SPEEDS_TSV) {
+        parse_adapter_speeds(ADAPTER_SPEEDS_TSV)?
+    } else {
+        Vec::new()
+    };
+    if let Some(path) = std::env::var_os(ADAPTER_SPEEDS_VAR) {
+        let text = std::fs::read_to_string(&path).map_err(|e| {
+            GpuError::InvalidFormat(format!(
+                "{ADAPTER_SPEEDS_VAR} {}: {e}",
+                path.to_string_lossy()
+            ))
+        })?;
+        rows.extend(parse_adapter_speeds(&text).map_err(|e| {
+            GpuError::InvalidFormat(format!(
+                "{ADAPTER_SPEEDS_VAR} {}: {e}",
+                path.to_string_lossy()
+            ))
+        })?);
+    }
+    Ok(rows)
+}
+
+/// The measured march speed of `info`'s adapter in `rows`.
+///
+/// The row whose identity (vendor, device, backend, name and driver) is exactly the adapter's. Never measured at
+/// run time, so whether an adapter is admitted does not depend on what else the device is doing.
+///
+/// # Errors
+///
+/// [`GpuError::AdapterSpeedUnknown`] when no row is the adapter's, naming [`ADAPTER_SPEED_COMMAND`].
+pub fn table_ns_per_tick(rows: &[AdapterSpeed], info: &wgpu::AdapterInfo) -> Result<f64, GpuError> {
+    rows.iter()
+        .find(|r| r.matches(info))
+        .map(|r| r.ns_per_tick)
+        .ok_or_else(|| GpuError::AdapterSpeedUnknown {
+            adapter: format!(
+                "{:#06x} {:#06x} {:?} {:?} {:?}",
+                info.vendor, info.device, info.backend, info.name, info.driver_info
+            ),
+            command: ADAPTER_SPEED_COMMAND.to_string(),
+            var: ADAPTER_SPEEDS_VAR.to_string(),
+        })
+}
+
+/// This machine's adapter measured: its row of the speed table, dated `measured` (`YYYY-MM-DD`, given by the
+/// caller: the library reads no clock).
+///
+/// # Errors
+///
+/// As [`measure_ns_per_tick`].
+pub fn measure_adapter_speed(measured: &str) -> Result<AdapterSpeed, GpuError> {
+    let (ns_per_tick, info) = measure_ns_per_tick()?;
+    Ok(AdapterSpeed {
+        vendor: info.vendor,
+        device: info.device,
+        backend: format!("{:?}", info.backend),
+        name: info.name,
+        driver_info: info.driver_info,
+        ns_per_tick,
+        measured: measured.to_string(),
+        command: ADAPTER_SPEED_COMMAND.to_string(),
+    })
+}
+
+/// The device's march time per work tick, and the adapter it was measured on.
+///
+/// Run on an idle device: it is the measurement for the speed table ([`ADAPTER_SPEED_COMMAND`]), never taken at
+/// upload. One ray alone in its dispatch grazes a probe sheet for its full length, at two lengths
+/// ([`SPEED_PROBE_HALF_MM`]); each time is the least of 5 timed runs (after one untimed). The figure is the slope
+/// over the 5 mm and 40 mm half-lengths (time over work), so the dispatch's fixed cost (a few ms, which a short ray
+/// would count as per-tick time) is left out.
 ///
 /// # Errors
 ///
 /// The upload's or the march's error; [`GpuError::InvalidFormat`] when the longer graze did not take more work.
-pub fn measure_ns_per_tick() -> Result<f64, GpuError> {
+pub fn measure_ns_per_tick() -> Result<(f64, wgpu::AdapterInfo), GpuError> {
+    let mut info = None;
     let mut pts = [(0u32, 0.0f64); 2];
     for (pt, half) in pts.iter_mut().zip(SPEED_PROBE_HALF_MM) {
         let g = GpuSheetField::build(&speed_probe_field(half)?, &|src| src)?;
+        info = Some(g.context().adapter_info().clone());
         let o = [Vec3::new(-half - 1.0, 0.003, 0.02)];
         let tmax = 2.0 * half + 2.0;
         g.march_batch_decided(&o, Vec3::X, tmax)?;
         let mut best = f64::INFINITY;
         let mut work = 0u32;
-        for _ in 0..3 {
+        for _ in 0..5 {
             g.march_batch_decided(&o, Vec3::X, tmax)?;
             let st = g.last_march_stats();
             work = st.max_work;
@@ -381,11 +579,12 @@ pub fn measure_ns_per_tick() -> Result<f64, GpuError> {
     }
     // a slope at or under 0 (timer noise on a very fast device) is the shorter ray's whole time per tick instead
     let slope = (t1 - t0) * 1e9 / f64::from(w1 - w0);
-    Ok(if slope > 0.0 {
+    let ns = if slope > 0.0 {
         slope
     } else {
         t0 * 1e9 / f64::from(w0.max(1))
-    })
+    };
+    Ok((ns, info.expect("two probe uploads")))
 }
 
 /// Rounds of re-issue after a march dispatch leaves results unwritten (each round halves the dispatch size); a ray
@@ -593,12 +792,18 @@ impl GpuSheetField {
                 "the GPU sheet march runs the cell walk only, not {mode:?}"
             )));
         }
-        Self::new_with_ns_per_tick(field, measure_ns_per_tick()?)
+        let g = Self::build(field, &|src| src)?;
+        let ns = table_ns_per_tick(&adapter_speeds()?, g.context().adapter_info())?;
+        check_device_speed(ns, DISPATCH_WAIT)?;
+        if let Ok(mut c) = g.control.lock() {
+            c.ns_per_tick = ns;
+        }
+        Ok(g)
     }
 
-    /// [`Self::new`] on a device whose march time per work tick is `ns_per_tick` (measured by
-    /// [`measure_ns_per_tick`], or given by a test to stand for a slower or faster device): refused by
-    /// [`check_device_speed`] against [`DISPATCH_WAIT`]. The work budget is [`MARCH_WORK_BUDGET`] whatever the speed.
+    /// [`Self::new`] on a device whose march time per work tick is `ns_per_tick` in place of the speed table's (a
+    /// test gives it to stand for a slower or faster device): refused by [`check_device_speed`] against
+    /// [`DISPATCH_WAIT`]. The work budget is [`MARCH_WORK_BUDGET`] whatever the speed.
     #[doc(hidden)]
     pub fn new_with_ns_per_tick(field: &SheetField, ns_per_tick: f64) -> Result<Self, GpuError> {
         check_device_speed(ns_per_tick, DISPATCH_WAIT)?;

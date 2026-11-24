@@ -148,14 +148,112 @@ fn the_budget_and_the_results_do_not_follow_the_device_speed() {
     );
 }
 
-/// The device-speed probe: prints this device's march time per tick and the full budget's time (the CI's software
-/// adapter step reads these to see whether that adapter fits the wait bound). The upload measures the same way.
+/// The speed table the upload refuses by: parsed from the crate's file, at least one row, every row made by the
+/// measure command (whose example exists); an empty or malformed table is refused, not read as "no adapter".
+#[test]
+fn the_adapter_speed_table_parses_and_names_its_command() {
+    use alice_sdf::sheet_field::gpu::{
+        adapter_speeds, parse_adapter_speeds, ADAPTER_SPEED_COMMAND,
+    };
+    let rows = adapter_speeds().expect("the tables parse");
+    assert!(
+        !rows.is_empty(),
+        "no row in the crate's table or the one {} names",
+        alice_sdf::sheet_field::gpu::ADAPTER_SPEEDS_VAR
+    );
+    for r in &rows {
+        assert_eq!(r.command, ADAPTER_SPEED_COMMAND, "{r:?}");
+        assert!(r.ns_per_tick.is_finite() && r.ns_per_tick > 0.0, "{r:?}");
+        assert_eq!(r.measured.len(), 10, "{r:?}");
+    }
+    let example = ADAPTER_SPEED_COMMAND
+        .split_whitespace()
+        .skip_while(|w| *w != "--example")
+        .nth(1)
+        .expect("the command names an example");
+    assert!(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("examples/{example}.rs"))
+            .is_file(),
+        "{example}"
+    );
+    assert!(parse_adapter_speeds("").is_err());
+    assert!(parse_adapter_speeds("# header only\n\n").is_err());
+    assert!(parse_adapter_speeds("0x10de\t0x20b0\tVulkan\tX\t\t-1\t2026-11-24\tc").is_err());
+    assert!(parse_adapter_speeds("0x10de\t0x20b0\tVulkan\tX").is_err());
+    let one =
+        parse_adapter_speeds("0x10de\t0x20b0\tVulkan\tX\tdrv 1\t320.5\t2026-11-24\tc").unwrap();
+    assert_eq!(
+        (one[0].vendor, one[0].device, one[0].ns_per_tick),
+        (0x10de, 0x20b0, 320.5)
+    );
+    // a row prints back as the line it was read from
+    assert_eq!(
+        parse_adapter_speeds(&one[0].tsv()).unwrap(),
+        one,
+        "{}",
+        one[0].tsv()
+    );
+}
+
+fn info(vendor: u32, device: u32, name: &str, driver_info: &str) -> wgpu::AdapterInfo {
+    wgpu::AdapterInfo {
+        name: name.to_string(),
+        vendor,
+        device,
+        device_type: wgpu::DeviceType::DiscreteGpu,
+        driver: String::new(),
+        driver_info: driver_info.to_string(),
+        backend: wgpu::Backend::Vulkan,
+    }
+}
+
+/// The lookup is the exact adapter's row; any other adapter (another device, driver or name) is refused with the
+/// command that measures it.
+#[test]
+fn the_speed_lookup_is_exact_and_an_unknown_adapter_is_refused() {
+    use alice_sdf::sheet_field::gpu::{
+        parse_adapter_speeds, table_ns_per_tick, ADAPTER_SPEED_COMMAND,
+    };
+    let rows = parse_adapter_speeds(
+        "0x10de\t0x20b0\tVulkan\tGPU A\tdrv 1\t320\t2026-11-24\tc\n0x10de\t0x20b0\tVulkan\tGPU A\tdrv 2\t900\t2026-11-24\tc",
+    )
+    .unwrap();
+    assert_eq!(
+        table_ns_per_tick(&rows, &info(0x10de, 0x20b0, "GPU A", "drv 1")).unwrap(),
+        320.0
+    );
+    assert_eq!(
+        table_ns_per_tick(&rows, &info(0x10de, 0x20b0, "GPU A", "drv 2")).unwrap(),
+        900.0
+    );
+    for other in [
+        info(0x10de, 0x20b1, "GPU A", "drv 1"),
+        info(0x1002, 0x20b0, "GPU A", "drv 1"),
+        info(0x10de, 0x20b0, "GPU B", "drv 1"),
+        info(0x10de, 0x20b0, "GPU A", "drv 3"),
+    ] {
+        match table_ns_per_tick(&rows, &other) {
+            Err(GpuError::AdapterSpeedUnknown { command, var, .. }) => {
+                assert_eq!(command, ADAPTER_SPEED_COMMAND);
+                assert_eq!(var, alice_sdf::sheet_field::gpu::ADAPTER_SPEEDS_VAR);
+            }
+            r => panic!("{other:?}: {r:?}"),
+        }
+    }
+    let mut metal = info(0x10de, 0x20b0, "GPU A", "drv 1");
+    metal.backend = wgpu::Backend::Metal;
+    assert!(table_ns_per_tick(&rows, &metal).is_err());
+}
+
+/// This machine's adapter: measured and printed as a table row (the CI's GPU steps read it), and it must have a row
+/// in the crate's table, or no field can be uploaded here.
 #[cfg(feature = "gpu")]
 #[test]
-fn the_device_speed_probe_reports_ns_per_tick() {
-    use alice_sdf::sheet_field::gpu::{measure_ns_per_tick, GpuSheetField};
-    let ns = match measure_ns_per_tick() {
-        Ok(ns) => ns,
+fn this_adapter_is_measured_and_has_a_row() {
+    use alice_sdf::sheet_field::gpu::{adapter_speeds, measure_adapter_speed, table_ns_per_tick};
+    let row = match measure_adapter_speed("0000-00-00") {
+        Ok(r) => r,
         Err(e) => {
             assert!(
                 std::env::var("ALICE_SDF_REQUIRE_GPU").is_err(),
@@ -166,13 +264,27 @@ fn the_device_speed_probe_reports_ns_per_tick() {
         }
     };
     eprintln!(
-        "device speed: {ns:.2} ns per tick, full budget {:.3} s, limit {:.3} s",
-        ns * f64::from(MARCH_WORK_BUDGET) * 1e-9,
+        "adapter speed row (date to fill): {}\nfull budget {:.3} s, limit {:.3} s",
+        row.tsv(),
+        row.ns_per_tick * f64::from(MARCH_WORK_BUDGET) * 1e-9,
         DISPATCH_WAIT.as_secs_f64() / 3.0
     );
-    assert!(ns.is_finite() && ns > 0.0, "{ns}");
-    match GpuSheetField::new(&flat()) {
-        Ok(g) => assert!(g.ns_per_tick().is_finite() && g.ns_per_tick() > 0.0),
-        Err(e) => panic!("upload on this device: {e}"),
+    let info = wgpu::AdapterInfo {
+        name: row.name.clone(),
+        vendor: row.vendor,
+        device: row.device,
+        device_type: wgpu::DeviceType::Other,
+        driver: String::new(),
+        driver_info: row.driver_info.clone(),
+        backend: match row.backend.as_str() {
+            "Vulkan" => wgpu::Backend::Vulkan,
+            "Metal" => wgpu::Backend::Metal,
+            "Dx12" => wgpu::Backend::Dx12,
+            "Gl" => wgpu::Backend::Gl,
+            _ => wgpu::Backend::Empty,
+        },
+    };
+    if let Err(e) = table_ns_per_tick(&adapter_speeds().unwrap(), &info) {
+        panic!("{e}");
     }
 }

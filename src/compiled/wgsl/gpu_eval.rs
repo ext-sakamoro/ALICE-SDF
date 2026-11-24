@@ -181,6 +181,18 @@ pub enum GpuError {
         /// The limit (a third of the dispatch wait bound)
         limit_ms: u64,
     },
+    /// The adapter has no measured sheet field march speed in the crate's table (see
+    /// [`crate::sheet_field::gpu::adapter_speeds`]): without it the march's wait bound cannot be shown to hold, so
+    /// no field is uploaded to it
+    #[error("no measured march speed for adapter {adapter}: run `{command}` on it (idle) and add the row it prints to the file the variable {var} names (or, for a software adapter, to src/sheet_field/adapter_speeds.tsv)")]
+    AdapterSpeedUnknown {
+        /// The adapter's identity (vendor, device, backend, name, driver)
+        adapter: String,
+        /// The command that measures it
+        command: String,
+        /// The variable naming the machine's own speed table
+        var: String,
+    },
     /// Failed to create GPU adapter
     #[error("Failed to create GPU adapter")]
     NoAdapter,
