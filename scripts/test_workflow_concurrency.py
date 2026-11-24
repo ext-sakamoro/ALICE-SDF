@@ -204,5 +204,108 @@ class Concurrency(unittest.TestCase):
         self.assertEqual(wc.main([]), 0)
 
 
+
+# a run of one event never shares a concurrency group with a run of another event when either may
+# cancel: a manual run (workflow_dispatch) must not cancel the push run of the same commit
+DISPATCH = "  workflow_dispatch:\n"
+SCHEDULE = "  schedule:\n    - cron: '0 0 * * 1'\n"
+KEYED = ("x-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || ("
+         + PER_SHA + " || github.ref) }}")
+KEYED_GOOD = GOOD.replace(GROUP, KEYED)
+
+
+def events_of(text: str) -> dict:
+    """the group and cancel value of each event, for the assertions below"""
+    data = wc.cp.load_yaml(text)
+    return {e.name: wc.resolve(data["concurrency"], data, e) for e in wc.EVENTS}
+
+
+class EventGroups(unittest.TestCase):
+    def test_a_dispatch_that_shares_the_push_group_on_a_branch_fails(self):
+        self.assertEqual(run("name: x\non:\n  push:\n" + DISPATCH + GOOD + JOBS), 1)
+
+    def test_an_event_keyed_group_passes(self):
+        self.assertEqual(run("name: x\non:\n  push:\n" + DISPATCH + SCHEDULE + KEYED_GOOD + JOBS), 0)
+
+    def test_the_keyed_group_still_meets_the_per_commit_rule_on_main(self):
+        r = events_of("name: x\non:\n  push:\n" + DISPATCH + KEYED_GOOD + JOBS)
+        self.assertNotEqual(r["push ci"][0], r["workflow_dispatch ci"][0])
+        self.assertNotEqual(r["push main"][0], r["workflow_dispatch main"][0])
+        self.assertEqual(r["push ci"][1], True)
+        self.assertEqual(r["push main"][1], False)
+        self.assertTrue(r["push main"][0].endswith(wc.SHA_MAIN))
+
+    def test_dropping_the_event_key_is_red(self):
+        # the mutant of the keyed group: the same text without the event branch
+        mutant = KEYED_GOOD.replace("github.event_name == 'workflow_dispatch' && format('dispatch-{0}', "
+                                    "github.run_id) || ", "")
+        self.assertEqual(run("name: x\non:\n  push:\n" + DISPATCH + mutant + JOBS), 1)
+
+    def test_a_dispatch_and_schedule_workflow_without_push_is_checked_too(self):
+        conc = "concurrency:\n  group: w-${{ github.ref }}\n  cancel-in-progress: true\n"
+        self.assertEqual(run("name: x\non:\n" + DISPATCH + SCHEDULE + conc + JOBS), 1)
+
+    def test_a_shared_group_that_never_cancels_passes(self):
+        conc = "concurrency:\n  group: w-${{ github.ref }}\n  cancel-in-progress: false\n"
+        self.assertEqual(run("name: x\non:\n" + DISPATCH + SCHEDULE + conc + JOBS), 0)
+
+    def test_a_ci_push_that_can_cancel_a_main_run_through_a_shared_group_fails(self):
+        conc = "concurrency:\n  group: w-${{ github.workflow }}\n  cancel-in-progress: true\n"
+        self.assertEqual(run("name: x\non:\n" + DISPATCH + SCHEDULE + conc + JOBS), 1)
+        # a manual run on a branch and one on main, same group, may cancel: the same rule
+        conc = "concurrency:\n  group: w-${{ github.event_name }}\n  cancel-in-progress: true\n"
+        self.assertEqual(run("name: x\non:\n" + DISPATCH + SCHEDULE + conc + JOBS), 1)
+
+    def test_a_push_only_workflow_has_no_pair_to_compare(self):
+        self.assertEqual(run("name: x\non:\n  push:\n" + GOOD + JOBS), 0)
+
+    def test_a_push_guarded_group_and_cancel_pass(self):
+        # the shape one repository already uses: only a push may cancel, a manual run has its run id
+        conc = ("concurrency:\n  group: x-${{ github.event_name == 'push' && (" + PER_SHA
+                + " || github.ref) || github.run_id }}\n  cancel-in-progress: ${{ github.event_name == 'push' "
+                "&& github.ref != 'refs/heads/main' }}\n")
+        self.assertEqual(run("name: x\non:\n  push:\n" + DISPATCH + conc + JOBS), 0)
+
+    def test_a_group_naming_an_unknown_context_fails(self):
+        conc = GOOD.replace(GROUP, "x-${{ github.actor }}")
+        self.assertEqual(run("name: x\non:\n  push:\n" + DISPATCH + conc + JOBS), 1)
+
+    def test_an_input_keyed_group_is_read_as_the_manual_run_s_value(self):
+        conc = "concurrency:\n  group: verify-${{ inputs.sha }}\n  cancel-in-progress: false\n"
+        text = "name: x\non:\n" + DISPATCH + SCHEDULE + conc + JOBS
+        self.assertEqual(run(text), 0)
+        r = events_of(text)
+        # inputs.* is the manual run's value, empty for a schedule run
+        self.assertEqual(r["schedule main"][0], "verify-")
+        self.assertNotEqual(r["workflow_dispatch main"][0], "verify-")
+
+
+class Expressions(unittest.TestCase):
+    CTX = {"github.ref": "refs/heads/ci/x", "github.sha": "s", "github.event_name": "push"}
+
+    def ev(self, expr):
+        return wc.evaluate(expr, self.CTX)
+
+    def test_and_or_return_an_operand(self):
+        self.assertEqual(self.ev("github.ref == 'refs/heads/main' && github.sha || github.ref"), "refs/heads/ci/x")
+        self.assertEqual(self.ev("github.ref != 'refs/heads/main' && 'a' || 'b'"), "a")
+
+    def test_comparison_ignores_case_and_not_negates(self):
+        self.assertIs(self.ev("github.event_name == 'PUSH'"), True)
+        self.assertIs(self.ev("!(github.event_name == 'push')"), False)
+
+    def test_format_fills_its_slots(self):
+        self.assertEqual(self.ev("format('d-{0}-{1}', github.sha, 'z')"), "d-s-z")
+
+    def test_a_malformed_expression_is_an_error(self):
+        for bad in ("github.ref ==", "(github.ref", "format('{0}'", "github.ref & github.sha", "'open"):
+            with self.subTest(bad=bad), self.assertRaises(wc.EvalError):
+                self.ev(bad)
+
+    def test_text_outside_the_markers_is_kept(self):
+        self.assertEqual(wc.interpolate("a-${{ github.sha }}-b", self.CTX), "a-s-b")
+        # two markers: the whole-value form does not stretch one marker over the text between them
+        self.assertEqual(wc.interpolate("${{ github.sha }}-${{ github.event_name }}", self.CTX), "s-push")
+
 if __name__ == "__main__":
     unittest.main()

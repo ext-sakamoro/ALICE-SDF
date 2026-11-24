@@ -22,6 +22,15 @@ superseded). It must say so in a comment line starting with SELF_HOSTED_REASON a
 giving the reason, its group must still name `github.ref`, and it may never cancel
 an in-progress run on main (the cancel rule applies to it unchanged).
 
+A run of one event never shares a group with a run of another event while either may cancel:
+the group and cancel-in-progress are evaluated (GitHub's expression rules: `&&` / `||` return an
+operand, `==` ignores case, `format`) for a push to a ci/** branch, a push to main, a manual run
+(workflow_dispatch) on each, and a schedule run on main, all on the same commit, for the events the
+workflow has (push counts only when it reaches a branch). Without this a manual run of a workflow
+cancels the push run of the same commit (one group per ref off main), and the push run's result is
+lost. A context the evaluator does not know is a finding (it does not guess); `inputs.*` is empty
+outside a manual run. Fails when no workflow was read.
+
 Workflows are read with the strict reader of scripts/changed_paths.py (block and flow style,
 comments anywhere); a file outside its YAML subset is a finding, and without that script the
 check fails (it does not fall back to reading lines).
@@ -71,6 +80,176 @@ DECISION_SCRIPTS = (
         r'\s+--ref\s+"\$REF"\s+--specific\s+"\$SPECIFIC"\s*'
     ),
 )
+
+
+# the events whose runs are compared, on one commit; a manual run has its own run id
+SHA_CI, SHA_MAIN = "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1", "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
+
+
+class Event:
+    def __init__(self, name: str, trigger: str, ref: str, sha: str, run_id: str):
+        self.name, self.trigger, self.ref, self.sha, self.run_id = name, trigger, ref, sha, run_id
+
+
+EVENTS = (
+    Event("push ci", "push", "refs/heads/ci/x", SHA_CI, "101"),
+    Event("push main", "push", "refs/heads/main", SHA_MAIN, "102"),
+    Event("workflow_dispatch ci", "workflow_dispatch", "refs/heads/ci/x", SHA_CI, "103"),
+    Event("workflow_dispatch main", "workflow_dispatch", "refs/heads/main", SHA_MAIN, "104"),
+    Event("schedule main", "schedule", "refs/heads/main", SHA_MAIN, "105"),
+)
+
+
+class EvalError(ValueError):
+    pass
+
+
+TOKEN = re.compile(r"\s*(?:(?P<str>'(?:[^']|'')*')|(?P<num>\d+)|(?P<op>==|!=|&&|\|\||[!(),])"
+                   r"|(?P<name>[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*))")
+
+
+def tokens(expr: str) -> list[tuple[str, str]]:
+    out, i = [], 0
+    while i < len(expr):
+        if expr[i:].strip() == "":
+            break
+        m = TOKEN.match(expr, i)
+        if not m:
+            raise EvalError(f"cannot read {expr[i:]!r}")
+        kind = m.lastgroup
+        out.append((kind, m.group(kind)))
+        i = m.end()
+    return out
+
+
+def truthy(v) -> bool:
+    return v not in ("", 0, False, None)
+
+
+def evaluate(expr: str, ctx: dict):
+    """an expression of GitHub's language over the named contexts: ||, &&, ==, !=, !, (), 'text',
+    numbers, format(); a name outside ctx is an error"""
+    toks, pos = tokens(expr), [0]
+
+    def peek():
+        return toks[pos[0]] if pos[0] < len(toks) else (None, None)
+
+    def take(value=None):
+        kind, v = peek()
+        if kind is None or (value is not None and v != value):
+            raise EvalError(f"expected {value or 'a value'} in {expr!r}")
+        pos[0] += 1
+        return kind, v
+
+    def primary():
+        kind, v = take()
+        if kind == "str":
+            return v[1:-1].replace("''", "'")
+        if kind == "num":
+            return int(v)
+        if kind == "op" and v == "(":
+            r = disj()
+            take(")")
+            return r
+        if kind == "op" and v == "!":
+            return not truthy(primary())
+        if kind == "name" and v == "format":
+            take("(")
+            args = [disj()]
+            while peek() == ("op", ","):
+                take(",")
+                args.append(disj())
+            take(")")
+            fmt = args[0]
+            if not isinstance(fmt, str):
+                raise EvalError("format needs a text")
+            return re.sub(r"\{(\d+)\}", lambda m: str(args[1 + int(m.group(1))]), fmt)
+        if kind == "name":
+            if v in ctx:
+                return ctx[v]
+            if v.startswith("inputs.") and "inputs" in ctx:
+                return ctx["inputs"]
+            raise EvalError(f"unknown context {v}")
+        raise EvalError(f"unexpected {v!r} in {expr!r}")
+
+    def comparison():
+        left = primary()
+        kind, v = peek()
+        if kind == "op" and v in ("==", "!="):
+            take()
+            right = primary()
+            same = (left.casefold() == right.casefold()) if isinstance(left, str) and isinstance(right, str) \
+                else left == right
+            return same if v == "==" else not same
+        return left
+
+    def conj():
+        left = comparison()
+        while peek() == ("op", "&&"):
+            take()
+            right = comparison()
+            left = right if truthy(left) else left
+        return left
+
+    def disj():
+        left = conj()
+        while peek() == ("op", "||"):
+            take()
+            right = conj()
+            left = left if truthy(left) else right
+        return left
+
+    result = disj()
+    if pos[0] != len(toks):
+        raise EvalError(f"left over {toks[pos[0]][1]!r} in {expr!r}")
+    return result
+
+
+MARKER = re.compile(r"\$\{\{((?:(?!\}\}).)*)\}\}", re.S)
+
+
+def interpolate(text: str, ctx: dict):
+    """the value of a YAML scalar with ${{ }} markers: the whole value when it is one marker"""
+    whole = MARKER.fullmatch(text.strip())
+    if whole:
+        return evaluate(whole.group(1), ctx)
+    if "${{" in MARKER.sub("", text):
+        raise EvalError(f"an unclosed marker in {text!r}")
+    return MARKER.sub(lambda m: str(evaluate(m.group(1), ctx)), text)
+
+
+def resolve(conc: dict, data, event: Event) -> tuple[str, bool]:
+    """(group, may cancel) of a run of the event"""
+    ctx = {"github.workflow": str(data.get("name") or "w"), "github.ref": event.ref, "github.sha": event.sha,
+           "github.event_name": event.trigger, "github.run_id": event.run_id,
+           "github.ref_name": event.ref.removeprefix("refs/heads/"),
+           "inputs": "manual-input" if event.trigger == "workflow_dispatch" else ""}
+    group = str(interpolate(str(conc.get("group")), ctx))
+    cancel = conc.get("cancel-in-progress", False)
+    may_cancel = truthy(interpolate(cancel, ctx)) if isinstance(cancel, str) else bool(cancel)
+    return group, may_cancel
+
+
+def shared_groups(name: str, data, conc: dict) -> list[str]:
+    """findings: pairs of runs of different events that share a group while either may cancel"""
+    trig = cp.triggers(data)
+    have = {e for e in ("workflow_dispatch", "schedule") if e in trig}
+    if push_to_branches(data):
+        have.add("push")
+    events = [e for e in EVENTS if e.trigger in have]
+    if len(events) < 2:
+        return []
+    try:
+        resolved = [(e, *resolve(conc, data, e)) for e in events]
+    except EvalError as err:
+        return [f"{name}: the concurrency group cannot be evaluated ({err})"]
+    out = []
+    for i, (a, ga, ca) in enumerate(resolved):
+        for b, gb, cb in resolved[i + 1:]:
+            if ga == gb and (ca or cb):
+                out.append(f"{name}: a {a.name} run and a {b.name} run share the group {ga!r} and one may cancel "
+                           "the other (key the group by the event, e.g. a manual run's own run id)")
+    return out
 
 
 def run_steps(job: dict) -> list[str]:
@@ -156,15 +335,18 @@ def main(argv: list[str]) -> int:
         text = f.read_text(encoding="utf-8")
         try:
             data = cp.load_yaml(text)
-            if not push_to_branches(data):
-                continue
+            branch_push = push_to_branches(data)
         except cp.FormError as e:
             missing.append(f"{f.name}: {e} (read with the strict reader of scripts/changed_paths.py)")
             continue
-        checked += 1
-        conc = data.get("concurrency")
+        conc = data.get("concurrency") if isinstance(data, dict) else None
         if isinstance(conc, str):
             conc = {"group": conc}
+        if isinstance(conc, dict) and "group" in conc:
+            missing.extend(shared_groups(f.name, data, conc))
+        if not branch_push:
+            continue
+        checked += 1
         if not isinstance(conc, dict) or "group" not in conc:
             missing.append(f"{f.name}: runs on a push to a branch but has no top-level concurrency group")
             continue
