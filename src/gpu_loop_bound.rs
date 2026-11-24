@@ -647,7 +647,7 @@ pub fn check_counted(module: &Module, maxima: &HostMaxima, counter: WorkCounter)
         report: LoopReport::default(),
         fn_bound: BTreeMap::new(),
     };
-    let Some((g, _step)) = tick_counter(&cx, tf, counter.budget) else {
+    let Some((g, step)) = tick_counter(&cx, tf, counter.budget) else {
         r.problems.push(format!(
             "the tick function `{}` is not `G = G + <literal > 0>; return G <= {}` on a private global G",
             counter.tick, counter.budget
@@ -714,6 +714,14 @@ pub fn check_counted(module: &Module, maxima: &HostMaxima, counter: WorkCounter)
     }
     r.instances = instances;
     r.unit = unit;
+    // the count stays within the budget until a tick fails; after that each loop instance ticks at most once more
+    // (its first tick fails and it breaks), plus the failing tick itself: the counter must hold that without wrapping
+    let top = u128::from(budget) + u128::from(step) * (u128::from(instances) + 1);
+    if top > u128::from(u32::MAX) {
+        r.problems.push(format!(
+            "the work counter can reach {top} (budget {budget} + {step} x (instances {instances} + 1)), over u32: it would wrap and the tick would pass again"
+        ));
+    }
     r.bound = budget
         .saturating_add(instances)
         .saturating_add(1)
@@ -1307,6 +1315,28 @@ mod tests {
     }
 
     /// The counter's rules on its own declaration: no initializer, and a plain u32.
+    /// A budget the counter cannot pass without wrapping is refused: past the budget every loop instance ticks once
+    /// more, so a u32 counter must hold `budget + step x (instances + 1)`. The largest budget that fits passes.
+    #[test]
+    fn a_budget_the_u32_counter_would_wrap_past_is_refused() {
+        // 2 instances, step 1: the counter reaches budget + 3
+        let fits = u64::from(u32::MAX) - 3;
+        let (r, _) = counted_with(COUNTED_DECLS, "", TICK, COUNTED, fits);
+        assert!(r.problems.is_empty(), "{r:?}");
+        let (r, ok) = counted_with(COUNTED_DECLS, "", TICK, COUNTED, fits + 1);
+        assert!(r.problems.iter().any(|p| p.contains("over u32")), "{r:?}");
+        assert!(ok.is_err());
+        // a larger step moves the edge by the step per instance
+        let (r, _) = counted_with(
+            COUNTED_DECLS,
+            "",
+            "work = work + 4u; return work <= u.work_budget;",
+            COUNTED,
+            fits,
+        );
+        assert!(r.problems.iter().any(|p| p.contains("over u32")), "{r:?}");
+    }
+
     #[test]
     fn a_counter_with_an_initializer_or_another_type_is_refused() {
         let init = "struct U { steps: u32, work_budget: u32 }\n@group(0) @binding(0) var<uniform> u: U;\nvar<private> work: u32 = 0u;";
