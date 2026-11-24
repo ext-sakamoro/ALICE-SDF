@@ -62,6 +62,7 @@
 //! | `svo-gpu` | | Sparse voxel octree with GPU support. Implies `svo` and `gpu`. |
 //! | `destruction` | | Voxel destruction. |
 //! | `terrain` | | Heightmap terrain with erosion and caves. |
+//! | `test-hooks` | | For this crate's own tests only (its dev-dependency on itself turns it on): the sheet field's test entry points (a stated device speed, a raised work budget, a fixed step count per slice, a lower slice limit) and the kink point evaluator. Not a supported API. |
 //! | `gi` | | Cone-traced global illumination. Implies `svo`. |
 //! | `aaa` | | `volume`, `gpu-mesh`, `svo-gpu`, `destruction`, `terrain` and `gi`. |
 //! | `ffi` | | C ABI for C, C++, C#, Unity and Unreal Engine. |

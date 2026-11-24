@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1568 |
+| 🟢 Not ignored | 1570 |
 | 🔴 Red by design | 6 |
 | ⏱ Gated (runtime / diagnostic / manual) | 10 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1584** |
+| **Total** | **1586** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -54,7 +54,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `write_bincode1_fixtures` (test_bincode1_fixtures.rs) — writes tests/fixtures/bincode1; run only to capture
 
-## 🟢 Not ignored (1568)
+## 🟢 Not ignored (1570)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -209,6 +209,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_section_stack_shader_oracle.rs` | 4 |
 | `test_sheet_field_decided.rs` | 4 |
 | `test_sheet_field_gpu_parity.rs` | 4 |
+| `test_sheet_field_resume.rs` | 4 |
 | `test_sheet_field_rim.rs` | 4 |
 | `test_smooth_stack_shader.rs` | 4 |
 | `test_soa_oracle.rs` | 4 |
@@ -240,7 +241,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_sheet_field_attr_normal.rs` | 3 |
 | `test_sheet_field_bvh_oracle.rs` | 3 |
 | `test_sheet_field_live_bound.rs` | 3 |
-| `test_sheet_field_resume.rs` | 3 |
 | `test_validity_small_features.rs` | 3 |
 | `float_environment.rs` | 2 |
 | `noise_shader_validate.rs` | 2 |
@@ -286,6 +286,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_sheet_field_graze.rs` | 1 |
 | `test_sheet_field_masked_floor.rs` | 1 |
 | `test_sheet_field_shallow_approach.rs` | 1 |
+| `test_sheet_field_speed_source.rs` | 1 |
 | `test_texture_shader_gpu_parity.rs` | 1 |
 
 ---
