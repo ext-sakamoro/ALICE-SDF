@@ -52,13 +52,16 @@ pub const MARCH_KERNEL: &str = "sheet field march";
 /// The stated maxima of the host values the march's loops are bounded by.
 ///
 /// Each is checked on the host before a dispatch: `steps` by [`GpuSheetField::march_batch`], the budget by
-/// [`GpuSheetField::set_work_budget`], the visits by the upload's sheet count.
+/// [`GpuSheetField::set_work_budget`] (at most [`MARCH_WORK_BUDGET_CAP`]), the visits by the upload's sheet count.
 #[must_use]
 pub fn march_maxima() -> crate::gpu_loop_bound::HostMaxima {
     crate::gpu_loop_bound::HostMaxima::from([
         ("U.steps".to_string(), u64::from(MAX_MARCH_STEPS)),
         ("U.bn_visits".to_string(), u64::from(MAX_BVH_VISITS)),
-        ("U.work_budget".to_string(), u64::from(MARCH_WORK_BUDGET)),
+        (
+            "U.work_budget".to_string(),
+            u64::from(MARCH_WORK_BUDGET_CAP),
+        ),
     ])
 }
 
@@ -69,13 +72,15 @@ pub const MARCH_UNIT_LOOPS: u64 = 16;
 /// stated here, checked against the shader by the counted-loop check.
 pub const MARCH_LOOP_INSTANCES: u64 = 512;
 
-/// The march kernel's ceiling: every loop iteration ticks the work counter, so one invocation runs at most
-/// `(MARCH_WORK_BUDGET + MARCH_LOOP_INSTANCES + 1) x (MARCH_UNIT_LOOPS + 1)` loop iterations.
+/// The march kernel's ceiling: every loop iteration ticks the work counter.
+///
+/// One invocation runs at most `(MARCH_WORK_BUDGET_CAP + MARCH_LOOP_INSTANCES + 1) x (MARCH_UNIT_LOOPS + 1)` loop
+/// iterations (the cap is the largest budget the host ever sets, [`MARCH_WORK_BUDGET_CAP`]).
 #[must_use]
 pub const fn march_ceiling() -> crate::gpu_loop_bound::KernelCeiling {
     crate::gpu_loop_bound::KernelCeiling {
-        max_trip_product: (MARCH_WORK_BUDGET as u64 + MARCH_LOOP_INSTANCES + 1) * (MARCH_UNIT_LOOPS + 1),
-        reason: "the sheet march: every loop iteration ticks the per-ray work counter, bounded by MARCH_WORK_BUDGET",
+        max_trip_product: (MARCH_WORK_BUDGET_CAP as u64 + MARCH_LOOP_INSTANCES + 1) * (MARCH_UNIT_LOOPS + 1),
+        reason: "the sheet march: every loop iteration ticks the per-ray work counter, bounded by the host's budget, at most MARCH_WORK_BUDGET_CAP",
         counter: crate::gpu_loop_bound::WorkCounter {
             tick: "tick",
             budget: "U.work_budget",
@@ -294,6 +299,17 @@ pub const MIN_DISPATCH: usize = 1_024;
 /// takes about 3,000 ticks per mm, so a graze over about 700 mm ends undecided.
 pub const MARCH_WORK_BUDGET: u32 = 1 << 21;
 
+/// The largest per-ray work budget the host ever sets.
+///
+/// [`GpuSheetField::set_work_budget`] keeps a field at or under [`MARCH_WORK_BUDGET`]; only a test hook goes above
+/// it. This is the bound the march kernel's loop ceiling ([`march_ceiling`]) and the bounded-loop check's maxima
+/// ([`march_maxima`]) are stated for.
+///
+/// 2^24 = 16,777,216 is 1.85 times the most work measured on a ray the default budget leaves undecided (9,045,629,
+/// a ray grazing the 100-sheet stack of the dispatch tests), so such a ray can be run to its decision and its work
+/// counted.
+pub const MARCH_WORK_BUDGET_CAP: u32 = 1 << 24;
+
 /// The half lengths (mm) of the flat sheets the device-speed measurement grazes ([`measure_ns_per_tick`]): about
 /// 30,000 and 240,000 ticks.
 pub const SPEED_PROBE_HALF_MM: [f32; 2] = [5.0, 40.0];
@@ -309,17 +325,26 @@ pub const SPEED_PROBE_HALF_MM: [f32; 2] = [5.0, 40.0];
 /// [`GpuError::DeviceTooSlow`] naming both times; [`GpuError::InvalidFormat`] for a speed that is not a finite
 /// positive number (not measured).
 pub fn check_device_speed(ns_per_tick: f64, wait: std::time::Duration) -> Result<(), GpuError> {
+    check_device_speed_at(ns_per_tick, wait, MARCH_WORK_BUDGET)
+}
+
+/// [`check_device_speed`] for a ray at `budget` ticks.
+fn check_device_speed_at(
+    ns_per_tick: f64,
+    wait: std::time::Duration,
+    budget: u32,
+) -> Result<(), GpuError> {
     if !(ns_per_tick.is_finite() && ns_per_tick > 0.0) {
         return Err(GpuError::InvalidFormat(format!(
             "sheet field march: device speed {ns_per_tick} ns per tick is not a measured time"
         )));
     }
-    let full = ns_per_tick * f64::from(MARCH_WORK_BUDGET) * 1e-9;
+    let full = ns_per_tick * f64::from(budget) * 1e-9;
     let limit = wait.as_secs_f64() / 3.0;
     if full > limit {
         return Err(GpuError::DeviceTooSlow {
             ns_per_tick,
-            budget: MARCH_WORK_BUDGET,
+            budget,
             budget_ms: (full * 1e3).ceil() as u64,
             limit_ms: (limit * 1e3).floor() as u64,
         });
@@ -1333,6 +1358,36 @@ impl GpuSheetField {
                 "sheet field march: work budget {budget} over MARCH_WORK_BUDGET {MARCH_WORK_BUDGET}"
             )));
         }
+        if let Ok(mut c) = self.control.lock() {
+            c.work_budget = budget;
+        }
+        Ok(())
+    }
+
+    // ALLOW-UNWIRED: a test hook: the grazing oracle runs rays the default budget leaves undecided to their decision
+    /// [`Self::set_work_budget`] up to [`MARCH_WORK_BUDGET_CAP`], for a test that counts the work of rays the default
+    /// budget leaves undecided. The device must still run one ray at `budget` within a third of the field's wait bound
+    /// (raise it first with [`Self::set_dispatch_wait`]): the same rule as [`check_device_speed`], at this budget.
+    ///
+    /// # Errors
+    ///
+    /// [`GpuError::InvalidFormat`] for a budget over [`MARCH_WORK_BUDGET_CAP`] or a field whose device speed was not
+    /// measured; [`GpuError::DeviceTooSlow`] when one ray at `budget` does not fit the wait bound.
+    #[doc(hidden)]
+    pub fn set_work_budget_up_to_cap(&self, budget: u32) -> Result<(), GpuError> {
+        if budget > MARCH_WORK_BUDGET_CAP {
+            return Err(GpuError::InvalidFormat(format!(
+                "sheet field march: work budget {budget} over MARCH_WORK_BUDGET_CAP {MARCH_WORK_BUDGET_CAP}"
+            )));
+        }
+        let (ns, wait) = self
+            .control
+            .lock()
+            .map(|c| (c.ns_per_tick, c.wait))
+            .map_err(|_| {
+                GpuError::InvalidFormat("sheet field march: control lock poisoned".into())
+            })?;
+        check_device_speed_at(ns, wait, budget)?;
         if let Ok(mut c) = self.control.lock() {
             c.work_budget = budget;
         }
@@ -2798,11 +2853,13 @@ mod shader_validate {
     }
 
     /// Every loop of every compiled march (each list size, with and without the kink margin) has its own bound and
-    /// ticks the work counter, and the counted bound is under the stated ceiling, which is over the budget.
+    /// ticks the work counter, and the counted bound is under the stated ceiling, which is over the budget cap (the
+    /// largest budget the host sets, above the default budget).
     #[test]
     fn the_march_counts_every_loop_under_its_stated_ceiling() {
         let c = super::march_ceiling();
-        assert!(u64::from(super::MARCH_WORK_BUDGET) <= c.max_trip_product);
+        assert!(u64::from(super::MARCH_WORK_BUDGET) <= u64::from(super::MARCH_WORK_BUDGET_CAP));
+        assert!(u64::from(super::MARCH_WORK_BUDGET_CAP) <= c.max_trip_product);
         let mut compared = 0;
         let mut ml = super::MAX_LIVE_SHEETS;
         while ml <= super::MAX_LIVE_CAP {
@@ -2812,7 +2869,7 @@ mod shader_validate {
                 assert!(loops.unbounded.is_empty(), "{ml}: {:?}", loops.unbounded);
                 let r = crate::gpu_loop_bound::check_counted(&m, &super::march_maxima(), c.counter);
                 assert!(r.problems.is_empty(), "{ml}: {:?}", r.problems);
-                assert_eq!(r.budget, u64::from(super::MARCH_WORK_BUDGET));
+                assert_eq!(r.budget, u64::from(super::MARCH_WORK_BUDGET_CAP));
                 assert!(r.instances <= super::MARCH_LOOP_INSTANCES, "{ml}: {r:?}");
                 assert!(r.unit <= super::MARCH_UNIT_LOOPS, "{ml}: {r:?}");
                 assert!(r.bound <= c.max_trip_product, "{ml}: {r:?}");
