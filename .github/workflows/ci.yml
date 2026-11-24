@@ -1479,6 +1479,11 @@ jobs:
       # ALICE_SDF_REQUIRE_GPU=1 turns a missing or refused adapter into a failure instead. The tests' GPU slot guard
       # admits lavapipe (a software adapter) without ALICE_GPU_SLOT. A `cargo test --no-run` build runs none of
       # them, so it does not count
+      # TEMPORARY until this adapter's row is in src/sheet_field/adapter_speeds.tsv: measure lavapipe and print the row
+      # (after that the steps only look the adapter up and never measure)
+      - name: Sheet field march speed of this adapter (row for the speed table)
+        shell: bash
+        run: cargo run --release --features gpu --example sheet_field_adapter_speed -- "$(date -u +%F)"
       - name: Sheet field GPU tests
         shell: bash
         run: |
@@ -1505,6 +1510,8 @@ jobs:
           python3 scripts/libtest_count.py test_sheet_field_stream.log --min 9 --what test_sheet_field_stream
           cargo test --features gpu --test test_stairs_contract -- --nocapture 2>&1 | tee test_stairs_contract.log
           python3 scripts/libtest_count.py test_stairs_contract.log --min 6 --what test_stairs_contract
+          cargo test --features gpu --test test_sheet_field_work_budget -- --nocapture 2>&1 | tee test_sheet_field_work_budget.log
+          python3 scripts/libtest_count.py test_sheet_field_work_budget.log --min 3 --what test_sheet_field_work_budget
 
       # Files with gpu tests that no other step runs with a device that must be present (on the matrix legs without
       # a GPU they skip): here on lavapipe with ALICE_SDF_REQUIRE_GPU=1, each with its own count
