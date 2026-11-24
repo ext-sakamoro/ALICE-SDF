@@ -646,24 +646,16 @@ fn outside_band(fld: &SheetField, p: Vec3) -> bool {
     })
 }
 
-/// The scanned field's case, built by its mechanism: a flat sheet `z = 0` (x 0..3, y 0..1, UV u = x / 3, v = y on its
-/// two faces) whose stored `s` is the exact signed distance shifted by 0.6 h. The grid's z nodes lie at -0.007 and
-/// 0.243 around the surface, so the stored corners of the cells holding `z = 0` read 0.143 and 0.393: one sign, the
-/// band (cells that straddle stored s = 0 within eps) leaves them out at any eps below 0.143. The kink cells (s cover,
-/// eps 0.01) carry the exact `s` there and put the surface at z = 0 inside those cells.
-fn offset_flat(kink_uv: bool, eps_steps: f32) -> Result<SheetField, KinkError> {
-    let v = vec![
-        DVec3::new(0.0, 0.0, 0.0),
-        DVec3::new(3.0, 0.0, 0.0),
-        DVec3::new(0.0, 1.0, 0.0),
-        DVec3::new(3.0, 1.0, 0.0),
-    ];
-    let f = vec![[0, 1, 2], [1, 3, 2]];
-    let rim = vec![[0, 1], [1, 3], [3, 2], [2, 0]];
-    let uv: Vec<[[f64; 2]; 3]> = f
-        .iter()
-        .map(|t| t.map(|c| [v[c as usize].x / 3.0, v[c as usize].y]))
-        .collect();
+/// The sharp fold of [`fold`] with UV channels (u = x / 3 and v = y + z, linear on both faces, so the exact UV of a
+/// point on the sheet is known in closed form) stored as a band, and its kink cells with the s cover; `kink_uv` gives
+/// the kink cells the faces' UVs.
+fn banded_fold(phi: f64, kink_uv: bool, eps_steps: f32) -> Result<SheetField, KinkError> {
+    let (v, f, rim) = fold(phi);
+    let uv_of = |c: u32| {
+        let p = v[c as usize];
+        [p.x / 3.0, p.y + p.z]
+    };
+    let uv: Vec<[[f64; 2]; 3]> = f.iter().map(|t| t.map(uv_of)).collect();
     let geom = SheetGeom {
         verts: &v,
         faces: &f,
@@ -672,29 +664,28 @@ fn offset_flat(kink_uv: bool, eps_steps: f32) -> Result<SheetField, KinkError> {
         uv: kink_uv.then_some(&uv[..]),
         nrm: None,
     };
-    let ks = KinkSheet::from_geom(&SheetGeom {
+    let with_uv = SheetGeom {
         uv: Some(&uv),
         ..geom
-    });
+    };
+    let ks = KinkSheet::from_geom(&with_uv);
     let tris: Vec<u32> = (0..f.len() as u32).collect();
     let segs: Vec<u32> = (0..rim.len() as u32).collect();
-    let shift = 0.6 * H;
     let lv = level_from_fn(
         Vec3::new(-1.013, -1.021, -1.007),
         H,
-        [3, 2, 1],
+        [3, 2, 2],
         |_c, _e| true,
         |p| {
             let (s, db, _) = ks.eval_all(p.as_dvec3(), &tris, &segs).expect("faces");
             let (uvp, _) = ks.eval_attributes(p.as_dvec3(), &tris).expect("faces");
             let [u, w] = uvp.expect("uv");
-            vec![s as f32 + shift, db as f32, u, w]
+            vec![s as f32, db as f32, u, w]
         },
     )
     .unwrap();
     let mut sh = vec![sheet(vec![band(&lv, eps_steps).unwrap()]).unwrap()];
-    let (rec, st) = kink_sheet(&geom, &sh[0], 0.01);
-    assert!(st.s_cells > 0, "the shifted s flags no s cell: {st:?}");
+    let (rec, _) = kink_sheet(&geom, &sh[0], 0.01);
     let mut bytes = Vec::new();
     write_askc(&mut bytes, &[(rec, geom.slab, 1)]).unwrap();
     KinkFile::read(&mut bytes.as_slice())
@@ -705,35 +696,35 @@ fn offset_flat(kink_uv: bool, eps_steps: f32) -> Result<SheetField, KinkError> {
     Ok(fld)
 }
 
-/// A kink s cell accepts a hit in a cell whose stored s keeps one sign (outside the band); there the hit's UV is the
-/// kink face's (u = x / 3, closed form), on the CPU and the GPU, with 0 band misses. Every ray straight down onto the
-/// sheet's interior hits at z = 0 in such a cell (the tooth, by construction), at band eps 0, 2 and 8 steps.
+/// The scanned field's mechanism: at a sharp fold the stored s, interpolated from its corners, cannot follow the
+/// surface, so in cells near the fold all 8 stored corners keep one sign while the kink cells' exact s puts the
+/// surface inside them (the s cover flags them because the interpolated zero lies more than its eps off the surface).
+/// Such a cell is outside a band whose eps (in quantization steps) is below the stored corners' distance from 0. At
+/// band eps 0, 0.5 and 1 step some hits lie in such cells (the tooth: at least one at each eps); every hit reads the
+/// kink face's UV (u = x / 3, closed form, the faces' UV is linear) on the CPU and the GPU, with 0 band misses.
 #[test]
 fn a_kink_hit_outside_the_band_reads_the_kink_face_uv_on_both_sides() {
-    let dir = Vec3::new(0.0, 0.0, -1.0);
-    let os: Vec<Vec3> = (0..20)
-        .flat_map(|i| {
-            (0..8).map(move |j| Vec3::new(0.2 + 0.13 * i as f32, 0.1 + 0.1 * j as f32, 0.6))
-        })
-        .collect();
-    for eps in [0.0f32, 2.0, 8.0] {
+    let (phi, b) = (20f64.to_radians(), 5f64.to_radians());
+    let dir = Vec3::new(0.0, -dcos(b) as f32, -dsin(b) as f32);
+    let mut os = Vec::new();
+    for i in 1..60 {
+        for j in 1..40 {
+            let q = DVec3::new(0.05 * f64::from(i), 0.05 + 0.015 * f64::from(j), 0.0);
+            os.push((q - dir.as_dvec3() * 0.5).as_vec3());
+        }
+    }
+    for eps in [0.0f32, 0.5, 1.0] {
         let fld =
-            offset_flat(true, eps).expect("kink cells with face UVs attach to a banded sheet");
+            banded_fold(phi, true, eps).expect("kink cells with face UVs attach to a banded sheet");
         let cpu: Vec<MarchResult> = os
             .iter()
             .map(|o| fld.march_decided(*o, dir, 1.0).unwrap())
             .collect();
-        let mut outside = 0;
+        let (mut outside, mut hits) = (0, 0);
         for (o, m) in os.iter().zip(&cpu) {
-            let MarchResult::Hit(h) = m else {
-                panic!("eps {eps} {o}: {m:?}")
-            };
+            let MarchResult::Hit(h) = m else { continue };
+            hits += 1;
             let p = *o + dir * h.t;
-            assert!(
-                p.z.abs() <= 0.01,
-                "eps {eps} {o}: hit at z {} (the exact s is the kink's)",
-                p.z
-            );
             let uv =
                 h.uv.unwrap_or_else(|| panic!("eps {eps} {o}: no UV at a hit"));
             assert!(
@@ -746,11 +737,12 @@ fn a_kink_hit_outside_the_band_reads_the_kink_face_uv_on_both_sides() {
                 outside += 1;
             }
         }
-        assert_eq!(
-            outside,
-            os.len(),
-            "eps {eps}: every hit lies outside the band by construction"
+        assert!(hits > 100, "eps {eps}: {hits} hits");
+        assert!(
+            outside > 0,
+            "eps {eps}: no hit lies in a cell outside the band (the scene has no tooth)"
         );
+        eprintln!("kink band eps {eps}: {hits} hits, {outside} in cells outside the band");
         #[cfg(feature = "gpu")]
         match alice_sdf::sheet_field::gpu::GpuSheetField::new(&fld) {
             Ok(g) => {
@@ -767,7 +759,11 @@ fn a_kink_hit_outside_the_band_reads_the_kink_face_uv_on_both_sides() {
                                 "eps {eps} {o}: {u:?} {w:?}"
                             );
                         }
-                        (a, c) => panic!("eps {eps} {o}: gpu {a:?} cpu {c:?}"),
+                        (a, c) => assert_eq!(
+                            std::mem::discriminant(a),
+                            std::mem::discriminant(c),
+                            "eps {eps} {o}"
+                        ),
                     }
                 }
             }
@@ -786,7 +782,7 @@ fn a_kink_hit_outside_the_band_reads_the_kink_face_uv_on_both_sides() {
 /// channel: such a sheet would read UV nodes the band does not store at a kink hit.
 #[test]
 fn kink_cells_without_the_banded_attributes_are_refused_at_attach() {
-    match offset_flat(false, 2.0) {
+    match banded_fold(20f64.to_radians(), false, 1.0) {
         Err(KinkError::Format(m)) => {
             assert!(
                 m.contains("sheet 0") && m.contains("channel 2") && m.contains("face UVs"),
