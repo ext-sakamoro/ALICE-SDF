@@ -283,49 +283,99 @@ fn a_ray_over_the_work_budget_ends_undecided_and_is_counted() {
     );
 }
 
-/// A ray stopped by the budget at any tick, also inside the cell walk of its last floor step (the walk's corner fill
-/// and face bisection break on a failed tick and may still return a root), ends undecided, never a hit: the kernel
-/// reads the status from the work counter after the march (work over the budget overrides any root found after the
-/// first failed tick), and the counter only grows. Oracle: the same ray at the full budget (its hit and its work `W`);
-/// every budget from `W - 4096` to `W - 1` is swept one by one (the walk is the last phase before the hit, so its
-/// ticks are among the last of `W`), and a stride below that. At `W` the same hit returns.
-#[test]
-fn a_ray_stopped_anywhere_by_the_budget_is_undecided_never_a_hit() {
-    let f = deep();
-    let Some(g) = gpu(&f) else { return };
-    let o = [Vec3::new(0.31, 0.27, 2.0)];
-    let full = g.march_batch_decided(&o, -Vec3::Z, 10.0).unwrap();
+/// One hitting ray swept over every budget below its work: each budget from `W - min(4096, W - 1)` to `W - 1` (the cell walk of
+/// the last floor step and the hit's normal and attribute samples are the final ticks of `W`) and a stride of 97 below
+/// that ends undecided and counted over the budget; at `W` the same hit returns. `W` is the ray's work at the full
+/// budget. The full-budget hit is returned for the caller's own checks.
+fn sweep_budgets(f: &SheetField, o: Vec3, d: Vec3) -> Option<MarchResult> {
+    let g = gpu(f)?;
+    let o = [o];
+    let full = g.march_batch_decided(&o, d, 10.0).unwrap();
     assert!(
         matches!(full[0], MarchResult::Hit(_)),
         "the ray does not hit: {:?}",
         full[0]
     );
     let w = g.last_march_stats().max_work;
-    assert!(w > 4_096, "the ray did little work: {w}");
-    let budgets: Vec<u32> = (1..w - 4_096).step_by(97).chain(w - 4_096..w).collect();
+    assert!(w > 64, "the ray did little work: {w}");
+    // every budget in the last `dense` ticks, a stride below
+    let dense = 4_096.min(w - 1);
+    let budgets: Vec<u32> = (1..w - dense).step_by(97).chain(w - dense..w).collect();
     let mut compared = 0u32;
     for &b in &budgets {
         g.set_work_budget(b).expect("a budget under the maximum");
-        let r = g.march_batch_decided(&o, -Vec3::Z, 10.0).unwrap();
-        let st = g.last_march_stats();
+        let r = g.march_batch_decided(&o, d, 10.0).unwrap();
         assert_eq!(
             r[0],
             MarchResult::Undecided,
             "budget {b} of {w}: a ray over the budget returned {:?}",
             r[0]
         );
-        assert_eq!(st.over_budget, 1, "budget {b}: the ray was not counted");
+        assert_eq!(
+            g.last_march_stats().over_budget,
+            1,
+            "budget {b}: the ray was not counted"
+        );
         compared += 1;
     }
     assert_eq!(compared as usize, budgets.len());
-    assert!(compared > 4_096, "{compared} budgets");
+    assert!(
+        compared >= dense,
+        "{compared} budgets for a dense window of {dense}"
+    );
     g.set_work_budget(w).expect("the full work");
-    let again = g.march_batch_decided(&o, -Vec3::Z, 10.0).unwrap();
+    let again = g.march_batch_decided(&o, d, 10.0).unwrap();
     assert_eq!(
         again, full,
         "at its own work the ray no longer returns the same hit"
     );
     assert_eq!(g.last_march_stats().over_budget, 0);
+    Some(full[0])
+}
+
+/// A ray stopped by the budget at any tick, also inside the cell walk of its last floor step or inside the hit's
+/// normal and attribute samples, ends undecided, never a hit: the kernel decides the status after the last tick, and
+/// the counter only grows. On the flat stack (see [`sweep_budgets`]).
+#[test]
+fn a_ray_stopped_anywhere_by_the_budget_is_undecided_never_a_hit() {
+    let _ = sweep_budgets(&deep(), Vec3::new(0.31, 0.27, 2.0), -Vec3::Z);
+}
+
+/// The same sweep on a curved sheet (a sphere cap of radius 3 about (0, 0, -2)), hit off its axis so the normal is
+/// tilted: a hit whose normal samples were cut short would come back with a wrong normal, which the flat stack's
+/// constant normal could hide. Oracle for the full-budget normal: the sphere's radial direction at the hit point.
+#[test]
+fn a_ray_stopped_anywhere_by_the_budget_on_a_curved_sheet_is_undecided_never_a_hit() {
+    let c = Vec3::new(0.0, 0.0, -2.0);
+    let lv = level_from_fn(
+        Vec3::new(-8.0 + 0.013, -8.0 + 0.021, -0.5 + 0.007),
+        0.25,
+        [8, 8, 1],
+        |_c, _e| true,
+        |p| {
+            let (dx, dy) = (p.x.abs() - 3.0, p.y.abs() - 3.0);
+            vec![
+                (p - c).length() - 3.0,
+                Vec3::new(dx.max(0.0), dy.max(0.0), 0.0).length() + dx.max(dy).min(0.0),
+            ]
+        },
+    )
+    .unwrap();
+    let f = SheetField::new(vec![sheet(vec![lv]).unwrap()], ValidRule::CellV1);
+    let o = Vec3::new(1.2, 0.4, 2.0);
+    let Some(MarchResult::Hit(h)) = sweep_budgets(&f, o, -Vec3::Z) else {
+        return;
+    };
+    let radial = (o - Vec3::Z * h.t - c).normalize();
+    assert!(
+        radial.x > 0.3,
+        "the hit is on the axis, the normal is not tilted: {radial}"
+    );
+    assert!(
+        h.normal.dot(radial) > 0.999,
+        "full-budget normal {} vs the sphere's {radial}",
+        h.normal
+    );
 }
 
 /// A point, origin or direction that is not finite follows one rule on both sides: it is in no brick and in no bound,
