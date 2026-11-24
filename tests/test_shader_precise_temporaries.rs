@@ -762,7 +762,12 @@ type Emitter = (
     &'static [&'static str],
     &'static [(&'static str, &'static str)],
 );
-const EMITTERS: [Emitter; 16] = [
+const EMITTERS: [Emitter; 17] = [
+    (
+        "src/sheet_field/gpu.rs",
+        &[],
+        &[("march_shader", "WGSL: G3 on WGSL is the MSL / Metal path")],
+    ),
     (
         "src/volume/gpu_bake.rs",
         &[],
