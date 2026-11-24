@@ -337,8 +337,10 @@ struct DispatchControl {
 /// Bytes of a ray's march result in the output binding (4 `vec4<f32>`).
 pub const MARCH_OUT_BYTES_PER_RAY: u64 = 64;
 
-/// The most rays one march dispatch may hold on a device: the workgroups one dispatch dimension allows times the
-/// workgroup size, and the rays whose results fit one storage binding (`binding_limit`, the smaller of the device's
+/// The most rays one march dispatch may hold on a device.
+///
+/// The workgroups one dispatch dimension allows times the workgroup size, and the rays whose results fit one storage
+/// binding (`binding_limit`, the smaller of the device's
 /// largest storage binding and largest buffer, over [`MARCH_OUT_BYTES_PER_RAY`]). Never below one workgroup.
 #[must_use]
 pub fn dispatch_cap(max_workgroups_per_dim: u32, binding_limit: u64) -> usize {
