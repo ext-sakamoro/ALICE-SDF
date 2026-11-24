@@ -680,10 +680,10 @@ pub struct MarchStats {
     /// The re-issue round of each dispatch, in the order of `dispatches`: 0 for a first issue, k for the k-th round of
     /// re-issue after a cut (those follow the halving of the cut size, not the size rule of [`next_dispatch`]).
     pub dispatch_round: Vec<u32>,
-    /// Whether each dispatch, in the order of `dispatches`, continued rays stopped at the end of their slice.
     /// Where the speed this field's device was admitted with came from (the crate's table, or the file
     /// [`ADAPTER_SPEEDS_VAR`] named, so an override is visible).
     pub speed_source: SpeedSource,
+    /// Whether each dispatch, in the order of `dispatches`, continued rays stopped at the end of their slice.
     pub dispatch_resume: Vec<bool>,
     /// Ray slices continued in a later dispatch (a ray counts once per continuation).
     pub resumed_rays: u64,

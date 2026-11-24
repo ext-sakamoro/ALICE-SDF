@@ -958,25 +958,9 @@ impl KinkFile {
         self.sheets.len()
     }
 
-    /// Whether the file describes no sheet.
-    #[must_use]
-    pub(crate) const fn is_empty(&self) -> bool {
-        self.sheets.is_empty()
-    }
-
-    /// The most triangles and the most segments one kink cell of the file refers to.
-    #[must_use]
-    pub(crate) fn max_cell_refs(&self) -> (u32, u32) {
-        self.sheets
-            .iter()
-            .flatten()
-            .map(|k| k.max_cell_refs())
-            .fold((0, 0), |(t, s), (a, b)| (t.max(a), s.max(b)))
-    }
-
     /// Attach the kink cells of file sheets `first..first + sheets.len()` to `sheets`. Refused when the file has fewer
     /// sheets, a sheet's kink levels or bricks do not exist in the sheet, or a sheet stores an attribute as a band
-    /// that its kink cells do not carry ([`KinkSheet::covers_band`]).
+    /// that its kink cells do not carry (the kink sheet's band coverage check).
     pub fn attach(&self, sheets: &mut [super::Sheet], first: usize) -> Result<(), KinkError> {
         if first + sheets.len() > self.sheets.len() {
             return Err(KinkError::Format(format!(
