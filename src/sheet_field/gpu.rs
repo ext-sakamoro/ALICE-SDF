@@ -281,10 +281,12 @@ pub const MIN_DISPATCH: usize = 1_024;
 /// One tick per loop iteration of the march kernel, calls expanded: a step, a sheet sample, a corner read, a BVH
 /// visit and a bisection step each tick once.
 ///
-/// A ray over this ends as [`MarchResult::Undecided`], never as a hit. The value is the same on every device, so a
-/// ray's result never depends on the device's speed; a device too slow to run one ray at this budget within the wait
-/// bound is refused when a field is uploaded ([`check_device_speed`], with the adapter's measured speed from
-/// [`adapter_speeds`]).
+/// A ray over this ends as [`MarchResult::Undecided`], never as a hit. The status is decided after the ray's last
+/// tick, which includes the hit's normal and attribute samples: a ray returns a hit only when that attribute phase
+/// also completed within the budget, so a hit never carries a normal or attribute from samples cut short. The value
+/// is the same on every device, so a ray's result never depends on the device's speed; a device too slow to run one
+/// ray at this budget within the wait bound is refused when a field is uploaded ([`check_device_speed`], with the
+/// adapter's measured speed from [`adapter_speeds`]).
 ///
 /// Derived from the worst ray measured on real fields (the per-ray work in [`GpuSheetField::last_march_stats`]): the
 /// census over the scanned fields gave at most 670,569 ticks (a head scan, face front view), and 152,473 on a rock scan
@@ -2462,11 +2464,6 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         t = t + max(dd_step, __MIN_STEP__);
         if (t >= U.tmax) { kind = 0; break; }
     }
-    // over the budget, every loop left early: nothing else this invocation computed is trusted
-    if (work > U.work_budget) { OUT[4u * i] = vec4<f32>(0.0, 4.0, 0.0, 0.0); OUT[4u * i + 1u] = vec4<f32>(0.0, 0.0, 0.0, bitcast<f32>(work)); OUT[4u * i + 2u] = vec4<f32>(0.0); OUT[4u * i + 3u] = vec4<f32>(0.0); return; }
-    if (walk_unfinished) { OUT[4u * i] = vec4<f32>(0.0, 6.0, 0.0, 0.0); return; }
-    if (overflow) { OUT[4u * i] = vec4<f32>(0.0, 3.0, 0.0, 0.0); return; }
-    if (unsorted) { OUT[4u * i] = vec4<f32>(0.0, 5.0, 0.0, 0.0); return; }
     var nrm = vec3<f32>(0.0, 0.0, 1.0);
     var uv = vec3<f32>(0.0);
     var an = vec4<f32>(0.0);
@@ -2486,6 +2483,13 @@ fn march_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (s.has_uv && s.inside && (s.band_miss & 0xCu) == 0u) { uv = vec3<f32>(s.uv, 1.0); }
         if (s.has_an && s.inside && (s.band_miss & 0x70u) == 0u && length(s.an) > 1e-12) { an = vec4<f32>(normalize(s.an), 1.0); }
     }
+    // STATUS: decided after the last tick of the invocation (the hit's normal and attributes tick too). Over the budget
+    // every loop left early, so nothing this invocation computed is trusted: a ray returns Hit only when the attribute
+    // phase also completed within the budget, otherwise it is undecided. No call that can tick may follow this block.
+    if (work > U.work_budget) { OUT[4u * i] = vec4<f32>(0.0, 4.0, 0.0, 0.0); OUT[4u * i + 1u] = vec4<f32>(0.0, 0.0, 0.0, bitcast<f32>(work)); OUT[4u * i + 2u] = vec4<f32>(0.0); OUT[4u * i + 3u] = vec4<f32>(0.0); return; }
+    if (walk_unfinished) { OUT[4u * i] = vec4<f32>(0.0, 6.0, 0.0, 0.0); return; }
+    if (overflow) { OUT[4u * i] = vec4<f32>(0.0, 3.0, 0.0, 0.0); return; }
+    if (unsorted) { OUT[4u * i] = vec4<f32>(0.0, 5.0, 0.0, 0.0); return; }
     OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), miss);
     OUT[4u * i + 1u] = vec4<f32>(nrm, bitcast<f32>(work));
     OUT[4u * i + 2u] = vec4<f32>(uv, 0.0);
@@ -2845,6 +2849,131 @@ mod shader_validate {
         assert!(
             e.as_deref().is_some_and(|e| e.contains("MAX_SHEET_LEVELS")),
             "{e:?}"
+        );
+    }
+
+    /// The WGSL functions whose body can tick (call `tick()` or a function that can), by a fixpoint over the source.
+    fn ticking_functions(src: &str) -> std::collections::BTreeSet<String> {
+        let mut bodies: Vec<(String, &str)> = Vec::new();
+        for (at, _) in src.match_indices("\nfn ") {
+            let rest = &src[at + 4..];
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            let Some(open) = rest.find('{') else { continue };
+            let mut depth = 0usize;
+            let mut end = open;
+            for (i, c) in rest[open..].char_indices() {
+                match c {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = open + i;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            bodies.push((name, &rest[open..=end]));
+        }
+        let calls = |body: &str, f: &str| {
+            body.match_indices(&format!("{f}(")).any(|(i, _)| {
+                body[..i]
+                    .chars()
+                    .last()
+                    .is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
+            })
+        };
+        let mut ticking: std::collections::BTreeSet<String> = ["tick".to_string()].into();
+        loop {
+            let before = ticking.len();
+            for (name, body) in &bodies {
+                if name != "tick" && ticking.iter().any(|f| calls(body, f)) {
+                    ticking.insert(name.clone());
+                }
+            }
+            if ticking.len() == before {
+                return ticking;
+            }
+        }
+    }
+
+    /// The ticking calls in entry point `entry` after the first `marker` (the status block), with the count of ticking
+    /// functions seen; `None` when the entry point or the marker is missing.
+    fn ticks_after_status(src: &str, entry: &str, marker: &str) -> Option<(Vec<String>, usize)> {
+        let ticking = ticking_functions(src);
+        let start = src.find(&format!("fn {entry}("))?;
+        let body = &src[start..];
+        let body = &body[..body.find("\n}\n").map_or(body.len(), |e| e + 2)];
+        let after = &body[body.find(marker)?..];
+        let late = ticking
+            .iter()
+            .filter(|f| {
+                after.match_indices(&format!("{f}(")).any(|(i, _)| {
+                    after[..i]
+                        .chars()
+                        .last()
+                        .is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
+                })
+            })
+            .cloned()
+            .collect();
+        Some((late, ticking.len()))
+    }
+
+    /// The march's and the evaluation's status is decided after their last tick: no function that can tick is called
+    /// after the status block (a hit's normal and attributes tick, so a budget that ends there must refuse the ray,
+    /// not return a half-computed hit). The check's tooth: the same source with an attribute sample moved after the
+    /// status block is caught.
+    #[test]
+    fn nothing_that_can_tick_runs_after_the_status_is_decided() {
+        let march_marker = "if (work > U.work_budget) { OUT[4u * i] = vec4<f32>(0.0, 4.0";
+        // every program the upload can compile: each max_live it can pick and both step margins (the GPU runs the
+        // cell walk only: any other root mode is refused at upload, so there is no second program to read)
+        let mut variants = 0;
+        let mut ml = super::MAX_LIVE_SHEETS;
+        while ml <= super::MAX_LIVE_CAP {
+            for margin in [0.0, crate::sheet_field::kink::KINK_STEP_MARGIN] {
+                let v = super::march_shader_margin(ml, margin);
+                let (late, n) = ticks_after_status(&v, "march_main", march_marker)
+                    .unwrap_or_else(|| panic!("{ml}/{margin}: no march status block"));
+                assert!(
+                    n >= 6,
+                    "{ml}/{margin}: only {n} ticking functions: the scan read nothing"
+                );
+                assert!(
+                    late.is_empty(),
+                    "{ml}/{margin}: march_main ticks after its status: {late:?}"
+                );
+                let (late, _) = ticks_after_status(&v, "eval_main", "OUT[i] =")
+                    .unwrap_or_else(|| panic!("{ml}/{margin}: no eval status write"));
+                assert!(
+                    late.is_empty(),
+                    "{ml}/{margin}: eval_main ticks after its status: {late:?}"
+                );
+                variants += 1;
+            }
+            ml *= 2;
+        }
+        assert!(
+            variants >= 10,
+            "{variants} program variants read (5 max_live x 2 margins)"
+        );
+        let src = super::march_shader(super::MAX_LIVE_SHEETS);
+        let moved = src.replacen(
+            "    OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), miss);",
+            "    let late_ = sample_sheet(0u, vec3<f32>(0.0), 2u);\n    OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), miss);",
+            1,
+        );
+        let (late, _) =
+            ticks_after_status(&moved, "march_main", march_marker).expect("march status block");
+        assert_eq!(
+            late,
+            vec!["sample_sheet".to_string()],
+            "the tooth: a sample after the status is not caught"
         );
     }
 
