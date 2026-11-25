@@ -90,6 +90,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 
 ### Changed
 - 各 crate の `Cargo.toml` に `[package.metadata.alice] surfaces` (使える出口) を宣言し、README / README_JP の「バインディング」に同じ一覧の表を置いた 本体は rust / c / browser / wasi / python / unity / unreal (unity と unreal は c の出口を通す)、例とバインディングの crate は rust (wasm-demo は browser も)、試験・fuzz・server の crate は出口なし
+- `gpu_context::refusal::ADAPTER_REFUSED` はこの crate 自身の試験の GPU の受け付け (`gpu-slot-guard` feature) だけが作る拒否の接頭辞なので、その feature がある時だけ存在する (ALICE の全 repository と製品 repository の main にこの名前と文面の利用は無い)
 - `prove_gaps` の幅は 2 つの壁に接する球の直径だけで読む (これまでは弦との大きい方) 球は壁の点の差の向き合う向きの成分より短くならないので短く読まず、弦が足していたのは広がりの上限が抑える読み過ぎだけだった 凸の 2 本の柱の間などで幅が狭く出る
 - `prove_gaps` の 1 つの領域の幅は、その領域にまとめた証拠のうち最も狭い読み (これまでは探索で最初に見つかった読み) 領域の中心と壁の向きは最初の箱のまま (合否の溝と開いた空気の判定が中心を読む)
 - `sheet_field` GPU march: 仕事の数 `MARCH_WORK_BUDGET` は 1 回の dispatch で 1 本の ray が使える分 (slice) になった slice を使い切った ray は、その dispatch で 1 歩以上進んでいれば最後に終えた歩の境目で止まり、次の dispatch でそこから続ける (途中の歩はやり直す) 結果は 1 回の dispatch で march した時とビット単位で同じ 挙動の変更: `march_batch` は同じ ray に何度か dispatch を出すことがあり、1 回の呼び出しの時間は最大で `MAX_MARCH_SLICES` (16) 回分の dispatch の待ち時間になる 16 回で終わらない ray と、1 歩も進めない ray は未決 `MarchStats` に ray ごとの slice の数・仕事の和・やり直した仕事を足した これで 100 枚の面を浅い角度で通る ray も既定の設定で CPU と同じ判定になる

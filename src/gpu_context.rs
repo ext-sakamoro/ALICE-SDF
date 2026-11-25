@@ -111,7 +111,8 @@ pub mod refusal {
     /// without a stated bound
     pub const UNBOUNDED_SHADER_LOOP: &str = "unbounded shader loop: ";
     /// [`GpuError::DeviceCreation`](crate::compiled::GpuError::DeviceCreation): the GPU slot guard refused the
-    /// adapter (this crate's own tests only)
+    /// adapter (this crate's own tests only, so the prefix exists only with the `gpu-slot-guard` feature)
+    #[cfg(feature = "gpu-slot-guard")]
     pub const ADAPTER_REFUSED: &str = "gpu adapter refused: ";
 }
 
@@ -152,7 +153,8 @@ fn on_device_lost(
 ///
 /// # Errors
 ///
-/// [`GpuError::DeviceCreation`] ([`refusal::DEVICE_ABANDONED`] / [`refusal::ADAPTER_REFUSED`]), or
+/// [`GpuError::DeviceCreation`] ([`refusal::DEVICE_ABANDONED`], or `refusal::ADAPTER_REFUSED` with the
+/// `gpu-slot-guard` feature), or
 /// [`GpuError::NoAdapter`] when there is none.
 #[cfg(all(target_os = "macos", feature = "msl"))]
 pub fn metal_system_device() -> Result<metal::Device, GpuError> {
@@ -241,7 +243,7 @@ pub mod slot_guard {
     ///
     /// # Errors
     ///
-    /// [`GpuError::DeviceCreation`] ([`super::refusal::ADAPTER_REFUSED`]).
+    /// [`GpuError::DeviceCreation`] (`refusal::ADAPTER_REFUSED`, with the `gpu-slot-guard` feature).
     // Not `const` for the same reason as `fallback_requested`
     #[cfg_attr(
         not(feature = "gpu-slot-guard"),
