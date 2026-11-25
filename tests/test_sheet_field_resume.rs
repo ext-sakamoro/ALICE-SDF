@@ -351,3 +351,59 @@ fn a_dispatch_in_which_a_ray_completes_no_step_returns_it_undecided_not_continue
     assert_eq!(st.resumed_rays, 0);
     assert_eq!(st.over_budget, 1);
 }
+
+#[test]
+fn a_ray_that_decides_on_its_last_allowed_step_decides_the_same_when_continued_after_every_step() {
+    // the step count a continued slice starts from is the one the boundary snapshot recorded: a resume that
+    // started one step later would run out of steps one step early, so a ray that needs every allowed step would
+    // end undecided instead of with the one-shot result
+    let f = deep();
+    let (Some(one), Some(sliced)) = (gpu(&f), gpu(&f)) else {
+        return;
+    };
+    one.set_dispatch_wait(Duration::from_secs(30));
+    sliced.set_dispatch_wait(Duration::from_secs(30));
+    one.set_work_budget_up_to_cap(MARCH_WORK_BUDGET_CAP)
+        .unwrap();
+    sliced.set_slice_steps(1);
+    sliced.set_max_march_slices(u32::MAX);
+    let (o, d) = (Vec3::new(0.3, 0.2, 0.5), -Vec3::Z);
+    let decided = |steps: u32| {
+        let r = one.march_batch(&[o], d, 10.0, steps).unwrap();
+        (!matches!(r[0], MarchResult::Undecided), r[0])
+    };
+    // the fewest steps that decide the ray in one shot: decided at hi, undecided at lo
+    let (mut lo, mut hi) = (0u32, decided_steps(10.0).unwrap());
+    assert!(
+        decided(hi).0,
+        "the ray does not decide at the default step count"
+    );
+    while hi - lo > 1 {
+        let mid = lo + (hi - lo) / 2;
+        if decided(mid).0 {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    assert!(
+        hi >= 2,
+        "the ray decides in {hi} step: a resume needs at least two"
+    );
+    let (_, want) = decided(hi);
+    let got = sliced.march_batch(&[o], d, 10.0, hi).unwrap();
+    let st = sliced.last_march_stats();
+    assert!(
+        st.resumed_rays >= 1,
+        "the ray was not continued ({} resumes)",
+        st.resumed_rays
+    );
+    assert_eq!(
+        bits(&got[0]),
+        bits(&want),
+        "decided in {hi} steps in one shot, not when continued after every step"
+    );
+    // and one step fewer is undecided both ways
+    let short = sliced.march_batch(&[o], d, 10.0, hi - 1).unwrap();
+    assert_eq!(short[0], MarchResult::Undecided);
+}
