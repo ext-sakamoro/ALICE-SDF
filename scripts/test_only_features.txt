@@ -1,5 +1,7 @@
 # Features of this crate that only its own tests turn on (through the dev-dependency on itself): the SCIP index
-# (scripts/scip_index.sh) leaves them off, so code behind them is not read as production code that nothing reaches.
+# (scripts/scip_index.sh) leaves them off, and scripts/scip_reach.py reads code under #[cfg(feature = "<name>")]
+# like #[cfg(test)] code (the dev-dependency turns them on in the index anyway), so code behind them is not read
+# as production code that nothing reaches.
 # scripts/test_only_features.py refuses a name here that is in `default`, that another feature of this crate
 # enables, or that another manifest of this repository enables by default; an empty list fails as well.
 gpu-slot-guard

@@ -58,7 +58,56 @@ from bisect import bisect_right
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from wiring_guard import USE_RE, remove_cfg_test, strip_rust  # noqa: E402
+from wiring_guard import USE_RE, blank_span, cfg_test_end, remove_cfg_test, strip_rust  # noqa: E402
+import test_only_features  # noqa: E402
+
+# The crate's test-only features (scripts/test_only_features.txt, held by scripts/test_only_features.py): code under
+# `#[cfg(feature = "<one of them>")]` is read like `#[cfg(test)]` code, neither a definition nor a reference. The
+# index is built with the crate's dev-dependency on itself, which turns these features on, so the index alone
+# cannot leave that code out. Set by analyze() from the root it reads.
+TEST_ONLY: tuple[str, ...] = ()
+
+
+def read_test_only(root: Path) -> tuple[str, ...]:
+    """the listed test-only features of the crate at `root` (none when the list file is absent)"""
+    path = Path(root) / test_only_features.LIST
+    return tuple(test_only_features.listed(str(root))) if path.exists() else ()
+
+
+def remove_cfg_test_only(raw: str, code: str, names: tuple[str, ...]) -> str:
+    """`code` (comments and strings blanked, the same length as `raw`) with every item under
+    `#[cfg(feature = "<name>")]` for a listed name blanked, as remove_cfg_test does for `#[cfg(test)]`.
+    The attribute is found in `raw`, where the feature string is intact."""
+    if not names:
+        return code
+    feat = r'feature\s*=\s*"(?:' + "|".join(re.escape(n) for n in names) + r')"'
+    # `cfg(feature = "x")`, or `cfg(any(test, feature = "x"))` (test code or a listed feature, both test-only)
+    attr = re.compile(r'#\s*\[\s*cfg\s*\(\s*(?:' + feat + r'|any\s*\(\s*test\s*,\s*' + feat + r'\s*\))\s*\)\s*\]')
+    for m in reversed(list(attr.finditer(raw))):
+        if code[m.start()].isspace():
+            continue  # in a comment
+        n = len(code)
+        j, end = cfg_test_end(code, m.end())
+        if j >= n:
+            code = blank_span(code, m.start(), n)
+            continue
+        if end in ";,":
+            code = blank_span(code, m.start(), j + 1)
+            continue
+        if end in "})":
+            code = blank_span(code, m.start(), j)
+            continue
+        depth, k = 0, j
+        while k < n:
+            if code[k] == "{":
+                depth += 1
+            elif code[k] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            k += 1
+        code = blank_span(code, m.start(), min(k + 1, n))
+    return code
 
 ROOT_DIRS = ("examples/", "benches/", "fuzz/")
 # A binding is a file or a directory (a trailing `/`); every file under it is a root.
@@ -312,7 +361,7 @@ def _keep_mask(text: str) -> tuple[list[str], list[str]]:
     impl headers blanked. An `impl Foo {` header is not a use of `Foo`: it sits at
     module level, so counting it would make every type with an impl block reached
     (the same blind spot as the name-based guard's limit 3)."""
-    code = remove_cfg_test(strip_rust(text))
+    code = remove_cfg_test(remove_cfg_test_only(text, strip_rust(text), TEST_ONLY))
     blank = lambda m: re.sub(r"[^\n]", " ", m.group(0))  # noqa: E731
     code = USE_RE.sub(blank, code)
     code = IMPL_HEADER_RE.sub(lambda m: blank(m)[:-1] + "{", code)
@@ -453,6 +502,8 @@ def analyze(root: Path, scip_paths: list[Path], keep_graph: bool = False) -> Ana
     `a.roots_by_binding` per binding file, `a.roots_example`, `a.roots_core`) so callers can ask what a different set of
     roots reaches (scripts/integration_levels.py). The default leaves the result
     exactly as before: levels, counts and baseline keys do not depend on the flag."""
+    global TEST_ONLY
+    TEST_ONLY = read_test_only(root)
     root = Path(root)
     a = Analysis()
     edges: dict[object, set[str]] = {}
@@ -931,6 +982,13 @@ def main(argv: list[str] | None = None) -> int:
     if missing:
         print(f"error: SCIP index missing: {missing} (run scripts/scip_index.sh)", file=sys.stderr)
         return 1
+    if (root / test_only_features.LIST).exists():
+        # the list hides code from this check, so it must hold test-only features only (and not be empty)
+        problems, _notes, compared = test_only_features.check(str(root))
+        if problems or compared == 0:
+            for prob in problems or ["no test-only feature compared"]:
+                print(f"error: test-only features: {prob}")
+            return 1
     a = analyze(root, paths)
     errors = []
     if not a.items:
