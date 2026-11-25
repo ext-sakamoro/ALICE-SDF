@@ -181,6 +181,9 @@ jobs:
               - 'scripts/scip_index.sh'
               - 'scripts/scip_reach.py'
               - 'scripts/test_scip_reach.py'
+              - 'scripts/test_only_features.txt'
+              - 'scripts/test_only_features.py'
+              - 'scripts/test_test_only_features.py'
               - 'scripts/api_boundary.toml'
               - 'scripts/api_boundary_parsers.py'
               - 'scripts/test_api_boundary_parsers.py'
@@ -872,6 +875,8 @@ jobs:
         run: |
           python3 scripts/test_scip_reach.py
           python3 scripts/test_scip_scope.py
+          python3 scripts/test_test_only_features.py
+          python3 scripts/test_only_features.py
       - name: Build SCIP indexes
         run: scripts/scip_index.sh
       - name: No new L0 item, no stale baseline entry
