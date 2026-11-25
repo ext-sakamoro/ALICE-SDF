@@ -28,6 +28,5 @@ fuzz_target!(|bytes: &[u8]| {
     framed.extend_from_slice(bytes);
     if let Ok(kf) = KinkFile::read(&mut framed.as_slice()) {
         let _ = kf.attach(&mut [], 0);
-        let _ = kf.len();
     }
 });
