@@ -828,6 +828,7 @@ const OTHER: &[(&str, &str, &str)] = &[
     ),
     ("src/compiled/transpiler_common.rs", "globals", FRAGMENT),
     ("src/compiled/wgsl/leaf_loops.rs", "code", FRAGMENT),
+    ("src/sheet_field/gpu.rs", "tsv", NOT_SHADER),
     ("src/compiled/wgsl/leaf_loops.rs", "unbounded", FRAGMENT),
     (
         "src/compiled/transpiler_common.rs",

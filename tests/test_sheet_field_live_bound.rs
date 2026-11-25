@@ -15,7 +15,7 @@
 
 use alice_sdf::sheet_field::build::{level_from_fn, sheet};
 use alice_sdf::sheet_field::gpu::{
-    live_bound, march_shader, max_live_for, GpuSheetField, MAX_LIVE_CAP, MAX_LIVE_SHEETS,
+    live_bound, max_live_for, GpuSheetField, MAX_LIVE_CAP, MAX_LIVE_SHEETS,
 };
 use alice_sdf::sheet_field::{MarchResult, Sheet, SheetField, ValidRule};
 use glam::Vec3;
@@ -136,10 +136,8 @@ fn a_field_with_bound_at_most_64_compiles_the_program_of_the_fixed_list() {
         b <= MAX_LIVE_SHEETS,
         "the shallow field is not shallow: {b}"
     );
-    assert_eq!(
-        march_shader(max_live_for(b).unwrap()),
-        march_shader(MAX_LIVE_SHEETS)
-    );
+    // the march program is a function of the live-list length alone, so the same length is the same program
+    assert_eq!(max_live_for(b).unwrap(), MAX_LIVE_SHEETS);
     match GpuSheetField::new(&f) {
         Ok(g) => assert_eq!(g.max_live(), MAX_LIVE_SHEETS),
         Err(e) => {

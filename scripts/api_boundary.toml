@@ -25,7 +25,7 @@ parsers = [
 parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 
 # [boundary] is grouped by decision reason; each group starts with a comment "<count> <decision>".
-# 843 items (0 Linux-only): 99 handshake, 744 local, 0 pending. Groups (count, decision):
+# 841 items (0 Linux-only): 99 handshake, 742 local, 0 pending. Groups (count, decision):
 #      3  local: creates a device on this machine; takes a label and reads no stored form
 #      3  local: the GPU work guard; decides adapters or walks a parsed module, and parses no text
 #      1  handshake: shader_text_over_the_size_maximum_is_refused_before_parsing
@@ -1153,10 +1153,6 @@ parser_crates = ["naga", "wgpu", "image", "alice-codec", "libasp", "vdb-rs"]
 # 1 local
 "impl::Deserialize for GridWarpData" = "local: authored grid maps the reader validates and recomputes the Lipschitz bound from; no stored value is one this crate computed under its arithmetic"
 "impl::Deserialize for BellPullData" = "local: the plain authored pulls and width, validated when converted into BellPull; no stored value is one this crate computed under its arithmetic"
-
-# 2 local: emits this crate's own kernel text and its stated bounds
-"fn::sheet_field::gpu::march_shader" = "local: emits this crate's own kernel text and its stated bounds"
-"fn::sheet_field::gpu::march_shader_margin" = "local: emits this crate's own kernel text and its stated bounds"
 
 # 3 local: this crate's own device speed table; no Law value crosses it
 "fn::sheet_field::gpu::parse_adapter_speeds" = "local: this crate's own device speed table; no Law value crosses it"
