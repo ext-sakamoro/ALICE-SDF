@@ -245,6 +245,20 @@ volume and inertia) and keeps them as a workflow artifact.
 | iOS / Android | [`mobile/`](mobile/README.md) | XCFramework and Kotlin bindings over the C ABI |
 | Bevy, Blender, Houdini, Maya, Nuke, Cinema 4D, OpenXR, visionOS | [`bindings/`](bindings/README.md), [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) | reference integrations |
 
+The surfaces the crates declare (`[package.metadata.alice] surfaces` in each `Cargo.toml`):
+
+<!-- surfaces -->
+| Surface | Crate | Built in CI |
+|---------|-------|-------------|
+| rust | `alice-sdf` and the binding / example crates | every job |
+| c | `alice-sdf` (`cdylib`, `--features ffi`, `include/alice_sdf.h`) | yes |
+| browser | `alice-sdf` (`--features wasm`), `examples/wasm-demo` | yes |
+| wasi | `alice-sdf` (`wasm32-wasip1`) | yes |
+| python | `alice-sdf` (`--features python`) | yes |
+| unity | `alice-sdf` through the c surface (`bindings/AliceSdf.cs`) | the c surface |
+| unreal | `alice-sdf` through the c surface (`unreal-plugin/`) | the c surface |
+<!-- /surfaces -->
+
 CI checks the C ABI against its consumers: `scripts/abi_decl_check.py` and
 `scripts/unreal-abi-check.sh` compare every exported function with the C
 header, the C# bindings and the Unreal Engine plugin.

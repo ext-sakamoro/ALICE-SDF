@@ -11,6 +11,9 @@ keywords    = ["bevy", "sdf", "signed-distance-function", "plugin", "rendering"]
 categories  = ["game-engines", "graphics"]
 rust-version = "1.83"
 
+[package.metadata.alice]
+surfaces = ["rust"]
+
 [dependencies]
 alice-sdf = { path = "../../..", default-features = false }
 bevy      = { version = "0.18", default-features = false, features = ["bevy_asset", "bevy_pbr", "bevy_render"] }

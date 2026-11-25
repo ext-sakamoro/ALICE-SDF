@@ -8,6 +8,9 @@ license     = "LicenseRef-Proprietary"
 repository  = "https://github.com/ext-sakamoro/ALICE-SDF"
 publish     = false
 
+[package.metadata.alice]
+surfaces = []
+
 [dependencies]
 alice-sdf = { path = "..", default-features = false, features = ["openvdb"] }
 axum      = { version = "0.7", features = ["macros"] }

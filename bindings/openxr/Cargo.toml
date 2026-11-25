@@ -11,6 +11,9 @@ keywords    = ["alice-sdf", "openxr", "vr", "ar", "raymarching"]
 categories  = ["graphics", "game-development"]
 rust-version = "1.75"
 
+[package.metadata.alice]
+surfaces = ["rust"]
+
 [dependencies]
 alice-sdf = { path = "../..", default-features = false }
 openxr    = "0.19"

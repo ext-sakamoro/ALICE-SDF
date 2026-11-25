@@ -45,6 +45,9 @@ include = [
     "/Cargo.toml",
 ]
 
+[package.metadata.alice]
+surfaces = ["rust", "c", "browser", "wasi", "python", "unity", "unreal"]
+
 [lib]
 name = "alice_sdf"
 crate-type = ["cdylib", "rlib"]

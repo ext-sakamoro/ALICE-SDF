@@ -8,6 +8,9 @@ license     = "LicenseRef-Proprietary"
 repository  = "https://github.com/ext-sakamoro/ALICE-SDF"
 publish     = false
 
+[package.metadata.alice]
+surfaces = ["rust"]
+
 [lib]
 name       = "alice_sdf_mobile"
 crate-type = ["lib", "staticlib", "cdylib"]

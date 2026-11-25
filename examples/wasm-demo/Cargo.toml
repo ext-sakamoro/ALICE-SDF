@@ -7,6 +7,9 @@ authors = ["Moroya Sakamoto"]
 description = "ALICE-SDF WebAssembly Demo"
 license = "LicenseRef-Proprietary"
 
+[package.metadata.alice]
+surfaces = ["rust", "browser"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

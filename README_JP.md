@@ -235,6 +235,20 @@ feature 付きで実行する CI ステップが無いと CI を失敗させる 
 | iOS / Android | [`mobile/`](mobile/README.md) | C ABI 上の XCFramework と Kotlin バインディング |
 | Bevy / Blender / Houdini / Maya / Nuke / Cinema 4D / OpenXR / visionOS | [`bindings/`](bindings/README.md)、[`docs/INTEGRATIONS_JP.md`](docs/INTEGRATIONS_JP.md) | 参照実装 |
 
+crate が宣言する出口 (各 `Cargo.toml` の `[package.metadata.alice] surfaces`):
+
+<!-- surfaces -->
+| 出口 | crate | CI の build |
+|------|-------|-------------|
+| rust | `alice-sdf` とバインディング・例の crate | 全 job |
+| c | `alice-sdf` (`cdylib`、`--features ffi`、`include/alice_sdf.h`) | あり |
+| browser | `alice-sdf` (`--features wasm`)、`examples/wasm-demo` | あり |
+| wasi | `alice-sdf` (`wasm32-wasip1`) | あり |
+| python | `alice-sdf` (`--features python`) | あり |
+| unity | c の出口を通した `alice-sdf` (`bindings/AliceSdf.cs`) | c の出口 |
+| unreal | c の出口を通した `alice-sdf` (`unreal-plugin/`) | c の出口 |
+<!-- /surfaces -->
+
 CI は C ABI をその利用側と突き合わせる: `scripts/abi_decl_check.py` と
 `scripts/unreal-abi-check.sh` が、公開している全関数を C ヘッダー、C# バインディング、
 Unreal Engine プラグインと比較する
