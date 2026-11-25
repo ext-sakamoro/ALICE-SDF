@@ -1441,6 +1441,33 @@ jobs:
           VK_ICD_FILENAMES="$icd" vulkaninfo --summary | tee /tmp/vulkaninfo.txt | head -60
           grep -qi llvmpipe /tmp/vulkaninfo.txt
 
+      # The sheet field uploads a field only to an adapter with a measured speed row; the committed table
+      # (src/sheet_field/adapter_speeds.tsv) holds real adapters only, and lavapipe's driver string moves with the
+      # runner image. So this job measures its own adapter first, logs the row and hands it to every later step
+      # through ALICE_SDF_ADAPTER_SPEEDS; a measurement that printed no well-formed row (8 tab-separated columns,
+      # a positive ns_per_tick) fails here instead of as "no measured march speed" in a later test
+      - name: Sheet field march speed of this adapter (measured first, passed to the later steps)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --release --features gpu --example sheet_field_adapter_speed -- "$(date -u +%F)" > speed_row.out
+          row=$(python3 - <<'PY'
+          import sys
+          rows = [l.rstrip("\n") for l in open("speed_row.out", encoding="utf-8") if l.startswith("0x")]
+          if not rows:
+              sys.exit("measured nothing: the example printed no row")
+          cols = rows[-1].split("\t")
+          if len(cols) != 8:
+              sys.exit(f"measured nothing usable: {len(cols)} columns in {rows[-1]!r}")
+          if not float(cols[5]) > 0.0:
+              sys.exit(f"measured nothing usable: ns_per_tick {cols[5]!r}")
+          print(rows[-1])
+          PY
+          )
+          echo "measured row: $row"
+          { echo "# lavapipe on this runner, measured in this job"; echo "$row"; } > "$RUNNER_TEMP/adapter_speeds.tsv"
+          echo "ALICE_SDF_ADAPTER_SPEEDS=$RUNNER_TEMP/adapter_speeds.tsv" >> "$GITHUB_ENV"
+
       - name: GPU ↔ CPU law parity, shader validation, GPU marching cubes
         run: >
           cargo test --features "gpu,glsl,gpu-mesh,texture-fit"
@@ -1488,11 +1515,6 @@ jobs:
       # ALICE_SDF_REQUIRE_GPU=1 turns a missing or refused adapter into a failure instead. The tests' GPU slot guard
       # admits lavapipe (a software adapter) without ALICE_GPU_SLOT. A `cargo test --no-run` build runs none of
       # them, so it does not count
-      # TEMPORARY until this adapter's row is in src/sheet_field/adapter_speeds.tsv: measure lavapipe and print the row
-      # (after that the steps only look the adapter up and never measure)
-      - name: Sheet field march speed of this adapter (row for the speed table)
-        shell: bash
-        run: cargo run --release --features gpu --example sheet_field_adapter_speed -- "$(date -u +%F)"
       - name: Sheet field GPU tests
         shell: bash
         run: |
