@@ -321,8 +321,14 @@ pub const MARCH_WORK_BUDGET_CAP: u32 = 1 << 24;
 pub const MAX_MARCH_SLICES: u32 = 16;
 
 /// The half lengths (mm) of the flat sheets the device-speed measurement grazes ([`measure_ns_per_tick`]): about
-/// 30,000 and 240,000 ticks.
-pub const SPEED_PROBE_HALF_MM: [f32; 2] = [5.0, 40.0];
+/// 30,000 ticks for the first, doubling to about 240,000 for the last. The first is always measured; the second
+/// point is the first longer one whose graze takes at least [`SPEED_PROBE_MIN_SECS`], or the last, so a slow device
+/// is measured on a short graze that finishes within the dispatch wait and a fast one on the longest.
+pub const SPEED_PROBE_HALF_MM: [f32; 4] = [5.0, 10.0, 20.0, 40.0];
+
+/// The time (s) a longer speed-probe graze must take before the measurement stops lengthening it
+/// ([`SPEED_PROBE_HALF_MM`]): long enough that the dispatch's fixed cost is small beside it.
+pub const SPEED_PROBE_MIN_SECS: f64 = 0.2;
 
 /// Whether a device whose march costs `ns_per_tick` runs one ray at the full [`MARCH_WORK_BUDGET`] within a third of
 /// `wait` (the read's wait bound for one dispatch, [`DISPATCH_WAIT`]).
@@ -608,18 +614,20 @@ pub fn measure_adapter_speed(measured: &str) -> Result<AdapterSpeed, GpuError> {
 /// The device's march time per work tick, and the adapter it was measured on.
 ///
 /// Run on an idle device: it is the measurement for the speed table ([`ADAPTER_SPEED_COMMAND`]), never taken at
-/// upload. One ray alone in its dispatch grazes a probe sheet for its full length, at two lengths
-/// ([`SPEED_PROBE_HALF_MM`]); each time is the least of 5 timed runs (after one untimed). The figure is the slope
-/// over the 5 mm and 40 mm half-lengths (time over work), so the dispatch's fixed cost (a few ms, which a short ray
-/// would count as per-tick time) is left out.
+/// upload. One ray alone in its dispatch grazes a probe sheet for its full length, at the first length of
+/// [`SPEED_PROBE_HALF_MM`] and at the first longer one that takes at least [`SPEED_PROBE_MIN_SECS`] (or the last);
+/// each time is the least of 5 timed runs (after one untimed). The figure is the slope between the two (time over
+/// work), so the dispatch's fixed cost (a few ms, which a short ray would count as per-tick time) is left out. A
+/// device too slow for the work budget is measured on a short graze and then refused at admission
+/// ([`check_device_speed`]), not left unmeasured.
 ///
 /// # Errors
 ///
 /// The upload's or the march's error; [`GpuError::InvalidFormat`] when the longer graze did not take more work.
 pub fn measure_ns_per_tick() -> Result<(f64, wgpu::AdapterInfo), GpuError> {
     let mut info = None;
-    let mut pts = [(0u32, 0.0f64); 2];
-    for (pt, half) in pts.iter_mut().zip(SPEED_PROBE_HALF_MM) {
+    // (work, least time) of one ray grazing the probe of half length `half` alone in its dispatch
+    let mut graze = |half: f32| -> Result<(u32, f64), GpuError> {
         let g = GpuSheetField::build(&speed_probe_field(half)?, &|src| src)?;
         info = Some(g.context().adapter_info().clone());
         let o = [Vec3::new(-half - 1.0, 0.003, 0.02)];
@@ -633,8 +641,17 @@ pub fn measure_ns_per_tick() -> Result<(f64, wgpu::AdapterInfo), GpuError> {
             work = st.max_work;
             best = best.law_min(st.dispatches.iter().map(|d| d.1).sum::<f64>());
         }
-        *pt = (work, best);
+        Ok((work, best))
+    };
+    let first = graze(SPEED_PROBE_HALF_MM[0])?;
+    let mut second = first;
+    for &half in &SPEED_PROBE_HALF_MM[1..] {
+        second = graze(half)?;
+        if second.1 >= SPEED_PROBE_MIN_SECS {
+            break;
+        }
     }
+    let pts = [first, second];
     let [(w0, t0), (w1, t1)] = pts;
     if w1 <= w0 {
         return Err(GpuError::InvalidFormat(format!(
