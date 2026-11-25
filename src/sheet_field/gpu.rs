@@ -125,18 +125,12 @@ pub fn max_live_for(bound: u32) -> Result<u32, GpuError> {
     Ok(bound.max(MAX_LIVE_SHEETS).next_power_of_two())
 }
 
-/// The march program's text for a list of `max_live` live sheets.
-#[must_use]
-pub fn march_shader(max_live: u32) -> String {
-    march_shader_margin(max_live, 0.0)
-}
-
-/// [`march_shader`] with a step margin.
+/// The march program's text for a list of `max_live` live sheets, with a step margin.
 ///
 /// Every step is taken from the union value less `margin` ([`super::kink::KINK_STEP_MARGIN`] for a field with kink
 /// cells, 0 otherwise; the CPU `SheetField::step_margin`).
 #[must_use]
-pub fn march_shader_margin(max_live: u32, margin: f32) -> String {
+pub(crate) fn march_shader_margin(max_live: u32, margin: f32) -> String {
     SHADER
         .replace("__STEP_MARGIN__", &format!("{margin:?}"))
         .replace("__MAX_LIVE__", &max_live.to_string())
@@ -3048,7 +3042,7 @@ mod shader_validate {
     /// The march program parses and validates on the CPU (naga), before any device runs it.
     #[test]
     fn the_march_program_validates_without_a_device() {
-        let src = super::march_shader(super::MAX_LIVE_SHEETS);
+        let src = super::march_shader_margin(super::MAX_LIVE_SHEETS, 0.0);
         let module = wgpu::naga::front::wgsl::parse_str(&src)
             .unwrap_or_else(|e| panic!("{}", e.emit_to_string(&src)));
         wgpu::naga::valid::Validator::new(
@@ -3231,7 +3225,7 @@ mod shader_validate {
             variants >= 10,
             "{variants} program variants read (5 max_live x 2 margins)"
         );
-        let src = super::march_shader(super::MAX_LIVE_SHEETS);
+        let src = super::march_shader_margin(super::MAX_LIVE_SHEETS, 0.0);
         let moved = src.replacen(
             "    OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), miss);",
             "    let late_ = sample_sheet(0u, vec3<f32>(0.0), 2u);\n    OUT[4u * i] = vec4<f32>(t, f32(kind), f32(own), miss);",
@@ -3249,7 +3243,7 @@ mod shader_validate {
     /// The check's teeth on the real kernel: dropping any one loop's tick is refused.
     #[test]
     fn a_march_loop_without_its_tick_is_refused() {
-        let src = super::march_shader(super::MAX_LIVE_SHEETS);
+        let src = super::march_shader_margin(super::MAX_LIVE_SHEETS, 0.0);
         let tick = " if (!tick()) { break; }";
         let sites: Vec<usize> = src.match_indices(tick).map(|(i, _)| i).collect();
         let loops =

@@ -766,17 +766,10 @@ const EMITTERS: [Emitter; 17] = [
     (
         "src/sheet_field/gpu.rs",
         &[],
-        &[
-            (
-                "tsv",
-                "a row of the device speed table (tab-separated text), not shader text",
-            ),
-            ("march_shader", "WGSL: G3 on WGSL is the MSL / Metal path"),
-            (
-                "march_shader_margin",
-                "WGSL: G3 on WGSL is the MSL / Metal path",
-            ),
-        ],
+        &[(
+            "tsv",
+            "a row of the device speed table (tab-separated text), not shader text",
+        )],
     ),
     (
         "src/volume/gpu_bake.rs",
