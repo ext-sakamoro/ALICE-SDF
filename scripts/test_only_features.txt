@@ -1,0 +1,6 @@
+# Features of this crate that only its own tests turn on (through the dev-dependency on itself): the SCIP index
+# (scripts/scip_index.sh) leaves them off, so code behind them is not read as production code that nothing reaches.
+# scripts/test_only_features.py refuses a name here that is in `default`, that another feature of this crate
+# enables, or that another manifest of this repository enables by default; an empty list fails as well.
+gpu-slot-guard
+test-hooks

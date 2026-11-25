@@ -35,7 +35,16 @@ mkdir -p "$out"
 native=$(python3 - <<'EOF'
 import json, tomllib
 features = tomllib.load(open("Cargo.toml", "rb"))["features"]
-names = sorted(n for n in features if n not in ("default", "wasm"))
+# this crate's test-only features stay off (scripts/test_only_features.txt, held by scripts/test_only_features.py):
+# code behind them is reached by the tests only and is not production code
+test_only = {l.strip() for l in open("scripts/test_only_features.txt", encoding="utf-8")
+             if l.strip() and not l.strip().startswith("#")}
+if not test_only:
+    raise SystemExit("scripts/test_only_features.txt lists no feature")
+missing = test_only - set(features)
+if missing:
+    raise SystemExit(f"scripts/test_only_features.txt names no feature of the crate: {sorted(missing)}")
+names = sorted(n for n in features if n not in ("default", "wasm") and n not in test_only)
 print(json.dumps({"cargo": {"features": names, "target": "x86_64-unknown-linux-gnu"}}))
 EOF
 )

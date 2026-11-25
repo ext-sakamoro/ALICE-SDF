@@ -43,6 +43,8 @@ cd "$(dirname "$0")/.."
 scip_reach_step() {
   python3 scripts/test_scip_reach.py
   python3 scripts/test_scip_scope.py
+  python3 scripts/test_test_only_features.py
+  python3 scripts/test_only_features.py
   if ! command -v rust-analyzer >/dev/null 2>&1; then
     if [[ "$1" -eq 1 ]]; then
       echo "rust-analyzer が無い (rustup component add rust-analyzer): src/ を変えた変更では scip reach を飛ばせない" >&2
