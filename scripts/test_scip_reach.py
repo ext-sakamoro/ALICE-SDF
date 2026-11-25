@@ -216,6 +216,28 @@ class Levels(unittest.TestCase):
         src = Doc("src/m.rs", text).define("m/target().", 0, "target").ref("m/target().", 3, "target")
         self.assertEqual(levels([src])["src/m.rs::target"], "L0")
 
+    def test_items_under_a_listed_test_only_feature_are_test_code(self):
+        # a hook compiled only with a listed test-only feature is neither an item nor a reference; the same item
+        # under a feature that is not listed is an item and, with no caller, L0
+        text = ("pub fn used() {}\n"
+                "#[cfg(feature = \"hooks\")]\n"
+                "pub fn hook() { used(); }\n"
+                "#[cfg(feature = \"other\")]\n"
+                "pub fn other_hook() {}")
+        doc = (Doc("src/lib.rs", text).define("used().", 0, "used").define("hook().", 2, "hook")
+               .ref("used().", 2, "used").define("other_hook().", 4, "other_hook"))
+        d = build([doc])
+        (d / "scripts").mkdir(exist_ok=True)
+        (d / "scripts" / "test_only_features.txt").write_text("# test-only\nhooks\n", encoding="utf-8")
+        lv = sr.analyze(d, all_indexes(d)).level
+        self.assertNotIn("src/lib.rs::hook", lv)
+        self.assertEqual(lv["src/lib.rs::other_hook"], "L0")
+        self.assertEqual(lv["src/lib.rs::used"], "L0")  # the hook's call is test code, so it reaches nothing
+        # without the list the hook is an ordinary pub item, unreached
+        d2 = build([doc])
+        lv2 = sr.analyze(d2, all_indexes(d2)).level
+        self.assertEqual(lv2["src/lib.rs::hook"], "L0")
+
     def test_reference_inside_comment_is_ignored(self):
         text = "pub fn target() {}\n// see target() for details"
         src = Doc("src/m.rs", text).define("m/target().", 0, "target").ref("m/target().", 1, "target")
@@ -596,6 +618,20 @@ class Main(unittest.TestCase):
 
     def test_all_three_conditions_met_passes(self):
         self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.EX(), self.FFI(), *self.OTHER()]))]), 0)
+
+    def test_a_test_only_list_that_could_hide_production_code_fails(self):
+        # the list hides code from the reach check, so main runs the same guard as scripts/test_only_features.py
+        manifest = ('[package]\nname = "crate"\nversion = "0.0.0"\n\n[features]\ndefault = ["hooks"]\nhooks = []\n\n'
+                    '[dev-dependencies]\ncrate = { path = ".", features = ["hooks"] }\n')
+        for listed, want in (("hooks\n", 1), ("# none\n", 1)):
+            d = build([lib_doc(), self.EX(), self.FFI(), *self.OTHER()])
+            (d / "Cargo.toml").write_text(manifest if listed.strip() != "# none" else manifest.replace('default = ["hooks"]\n', ""),
+                                          encoding="utf-8")
+            (d / "scripts").mkdir(exist_ok=True)
+            (d / "scripts" / "test_only_features.txt").write_text(listed, encoding="utf-8")
+            subprocess.run(["git", "init", "-q", str(d)], check=True)
+            subprocess.run(["git", "-C", str(d), "add", "Cargo.toml"], check=True)
+            self.assertEqual(sr.main(["--root", str(d)]), want, listed)
 
     def test_no_example_references_fails(self):
         self.assertEqual(sr.main(["--root", str(build([lib_doc(), self.FFI(), *self.OTHER()]))]), 1)
