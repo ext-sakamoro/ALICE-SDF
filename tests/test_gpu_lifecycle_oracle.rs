@@ -67,15 +67,29 @@ fn ceiling_calls(file: &str, text: &str) -> Vec<(String, String)> {
 
 /// The calls of [`ceiling_calls`] that [`CEILING_KERNELS`] does not list (a file is compared with `/` separators, so a
 /// Windows path names the same file).
+/// Whether a call at file `f` (either path separator) with label `l` is the listed kernel `lf` / `ll`.
+fn is_listed(f: &str, l: &str, lf: &str, ll: &str) -> bool {
+    f.replace('\\', "/").ends_with(lf) && l == ll
+}
+
 fn unlisted(calls: &[(String, String)]) -> Vec<(String, String)> {
     calls
         .iter()
         .filter(|(f, l)| {
             !CEILING_KERNELS
                 .iter()
-                .any(|(lf, ll)| f.replace('\\', "/").ends_with(lf) && l == ll)
+                .any(|(lf, ll)| is_listed(f, l, lf, ll))
         })
         .cloned()
+        .collect()
+}
+
+/// The listed kernels no call matches (a stale list entry).
+fn listed_without_call(calls: &[(String, String)]) -> Vec<(&'static str, &'static str)> {
+    CEILING_KERNELS
+        .iter()
+        .filter(|(lf, ll)| !calls.iter().any(|(f, l)| is_listed(f, l, lf, ll)))
+        .copied()
         .collect()
 }
 
@@ -90,11 +104,17 @@ fn a_listed_kernel_matches_on_either_path_separator() {
             unlisted(&[(f.to_string(), label.clone())]).is_empty(),
             "{f} not matched"
         );
+        assert!(
+            listed_without_call(&[(f.to_string(), label.clone())]).is_empty(),
+            "{f} does not satisfy the list entry"
+        );
     }
+    let other = [("D:\\a\\src\\other.rs".to_string(), label)];
+    assert_eq!(unlisted(&other).len(), 1, "another file must stay unlisted");
     assert_eq!(
-        unlisted(&[("D:\\a\\src\\other.rs".to_string(), label)]).len(),
-        1,
-        "another file must stay unlisted"
+        listed_without_call(&other).len(),
+        CEILING_KERNELS.len(),
+        "a call in another file must not satisfy the list entry"
     );
 }
 
@@ -131,12 +151,11 @@ fn only_listed_kernels_take_a_trip_ceiling() {
         bad.is_empty(),
         "kernels with a trip ceiling not listed in CEILING_KERNELS: {bad:?}"
     );
-    for (lf, ll) in CEILING_KERNELS {
-        assert!(
-            calls.iter().any(|(f, l)| f.ends_with(lf) && l == ll),
-            "CEILING_KERNELS lists {lf} {ll}, which makes no such call"
-        );
-    }
+    let stale = listed_without_call(&calls);
+    assert!(
+        stale.is_empty(),
+        "CEILING_KERNELS lists kernels that make no such call: {stale:?}"
+    );
 }
 
 /// The census's teeth: an unlisted kernel (another file, or another label in the listed file) is reported.
