@@ -110,8 +110,9 @@ pub mod refusal {
     /// [`GpuError::ShaderCompilation`](crate::compiled::GpuError::ShaderCompilation): a shader module has a loop
     /// without a stated bound
     pub const UNBOUNDED_SHADER_LOOP: &str = "unbounded shader loop: ";
-    /// [`GpuError::DeviceCreation`](crate::compiled::GpuError::DeviceCreation): the GPU slot guard refused the
-    /// adapter (this crate's own tests only, so the prefix exists only with the `gpu-slot-guard` feature)
+    /// [`GpuError::DeviceCreation`](crate::compiled::GpuError::DeviceCreation): the GPU slot guard refused the adapter.
+    ///
+    /// This crate's own tests only, so the prefix exists only with the `gpu-slot-guard` feature.
     #[cfg(feature = "gpu-slot-guard")]
     pub const ADAPTER_REFUSED: &str = "gpu adapter refused: ";
 }

@@ -170,10 +170,13 @@ pub enum GpuError {
     /// The device marches too slowly to run one ray at the sheet field march's fixed work budget within its wait
     /// bound (see [`crate::sheet_field::gpu::check_device_speed`]): the budget is not lowered for it, so results stay
     /// the same on every device that runs them
-    #[error("device too slow for this budget: {ns_per_tick:.1} ns per tick x {budget} ticks = {budget_ms} ms, over the limit of {limit_ms} ms")]
+    #[error("device too slow for this budget: {}{ns_per_tick:.1} ns per tick x {budget} ticks = {budget_ms} ms, over the limit of {limit_ms} ms", if *.lower_bound { "at least " } else { "" })]
     DeviceTooSlow {
-        /// The device's measured march time per work tick
+        /// The device's measured march time per work tick (a lower bound when `lower_bound`)
         ns_per_tick: f64,
+        /// Whether `ns_per_tick` is a lower bound: the shortest speed probe did not finish within the dispatch wait,
+        /// so the device was too slow to measure (see [`crate::sheet_field::gpu::AdapterSpeed::lower_bound`])
+        lower_bound: bool,
         /// The fixed per-ray work budget
         budget: u32,
         /// One ray at the full budget on this device

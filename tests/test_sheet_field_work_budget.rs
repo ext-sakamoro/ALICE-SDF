@@ -52,10 +52,12 @@ fn a_device_too_slow_for_the_budget_is_refused_with_both_times() {
     match check_device_speed(edge * 1.001, DISPATCH_WAIT) {
         Err(GpuError::DeviceTooSlow {
             ns_per_tick,
+            lower_bound,
             budget,
             budget_ms,
             limit_ms,
         }) => {
+            assert!(!lower_bound, "a measured speed is not a lower bound");
             assert_eq!(budget, MARCH_WORK_BUDGET);
             assert!((ns_per_tick - edge * 1.001).abs() < 1e-9);
             // a third of the 4 s wait bound, and the full budget's time just over it

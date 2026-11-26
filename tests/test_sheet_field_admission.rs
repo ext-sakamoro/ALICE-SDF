@@ -31,13 +31,20 @@ fn a_device_too_slow_for_the_work_budget_is_refused_at_upload_with_its_measured_
     match GpuSheetField::new(&plane()) {
         Err(GpuError::DeviceTooSlow {
             ns_per_tick,
+            lower_bound,
             budget,
             budget_ms,
             limit_ms,
         }) => {
+            // a lower bound: the device was too slow for the shortest speed probe to finish within the wait
+            let kind = if lower_bound {
+                " (a lower bound: too slow to measure within the wait)"
+            } else {
+                ""
+            };
             println!(
-                "admission refused: {ns_per_tick:.2} ns per tick, budget {budget} ticks = {budget_ms} ms over the \
-                 limit {limit_ms} ms"
+                "admission refused: {ns_per_tick:.2} ns per tick{kind}, budget {budget} ticks = {budget_ms} ms over \
+                 the limit {limit_ms} ms"
             );
             assert!(ns_per_tick > 0.0 && budget > 0 && budget_ms > limit_ms);
         }

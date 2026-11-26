@@ -9,6 +9,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ## [Unreleased]
 
 ### Added
+- `sheet_field::gpu::check_admission` (admission by a speed-table row) と `speed_lower_bound`: 速度の測定で最初の probe が dispatch の待ち時間内に終わらない device は、測定の失敗にせず下限の行 (`AdapterSpeed::lower_bound`、表では速度を `>=x` と書く) を書き、受け入れはその行を `DeviceTooSlow` (`lower_bound` 付き) で拒否する 下限は 1 本の ray が 1 slice に使う tick の上限 `MARCH_WORK_BUDGET` と待ち時間の半分から出し (固定費を待ち時間の半分まで見込む)、full budget は待ち時間の半分以上になって受け入れの上限 (3 分の 1) を超える
 - CI: sheet field の GPU suite は GPU の受領で持つ `scripts/gpu-receipt-suites.txt` に suite (最小の通過数つき) と path を並べ、取り込みがその path を変える時は取り込む tree の受領が要る 受領は GPU 機で `scripts/gpu_receipt_run.py` が書く (`receipts/<repo>-<tree>-<run id>/` に `run.log` と `result.json`、adapter はその機で例 `sheet_field_adapter_speed` が測った行) software adapter (lavapipe / llvmpipe、SwiftShader、Windows の basic render driver) では書かない path は sheet field とその試験・例、それらが使う device context・loop の上限の検査・GPU の error・min / max の法則・BVH・provenance・Aabb、`Cargo.toml` と `Cargo.lock`、規則とその runner 自身
 - `validity::prove_gaps_in_layers` / `GapReport::verdict_in_layers` / `narrow_air_is_open` / `narrow_air_beside_is_open`: 層ごとに造形する部品の隙間の判定 自分の層の中で開いている狭い空気は別々の壁の間の首で、穴ではないとして読む `examples/gap_widths.rs` が平の判定と並べて使う
 - `GapRegion::resolution` / `GapFailure::ProvenGap::resolution`: 幅を読んだ箱の最大の辺 幅はこの分解能の中での上からの読み (向き合う凸の壁で半径 `R`、中心が中央の面から `c` の時、超過は最大 `h²·c/R²` と許容差) 構造体の literal と `ProvenGap { width, at }` の pattern は欄を足す必要がある
@@ -90,6 +91,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 - `MeshBvh::closest_triangle(point) -> Option<(usize, Vec3, Vec3)>`: 最寄りの三角形の入力の index (`indices` の 3 個ずつの位置)・重心座標・点を返す 点は `closest_point` と同じ bits、同じ距離の三角形は index の小さい方、空の mesh と有限でない点は `None` 面積 0 の三角形は 3 辺の最寄り `BvhTriangle::closest_point_barycentric` も公開した (`BvhTriangle::closest_point` の bits は変わらない)
 
 ### Changed
+- **挙動の変更:** `GpuError::DeviceTooSlow` に `lower_bound` (速度が下限か) を足した (この variant を全 field で match していた呼び出し側は field の追加が要る)、`AdapterSpeed` に `lower_bound` を足した 速度の表の行は速度が `>=` で始まると下限として読む
 - 各 crate の `Cargo.toml` に `[package.metadata.alice] surfaces` (使える出口) を宣言し、README / README_JP の「バインディング」に同じ一覧の表を置いた 本体は rust / c / browser / wasi / python / unity / unreal (unity と unreal は c の出口を通す)、例とバインディングの crate は rust (wasm-demo は browser も)、試験・fuzz・server の crate は出口なし
 - `gpu_context::refusal::ADAPTER_REFUSED` はこの crate 自身の試験の GPU の受け付け (`gpu-slot-guard` feature) だけが作る拒否の接頭辞なので、その feature がある時だけ存在する (ALICE の全 repository と製品 repository の main にこの名前と文面の利用は無い)
 - `prove_gaps` の幅は 2 つの壁に接する球の直径だけで読む (これまでは弦との大きい方) 球は壁の点の差の向き合う向きの成分より短くならないので短く読まず、弦が足していたのは広がりの上限が抑える読み過ぎだけだった 凸の 2 本の柱の間などで幅が狭く出る

@@ -25,6 +25,16 @@ fn main() {
     let mut rows = Vec::new();
     for _ in 0..3 {
         match alice_sdf::sheet_field::gpu::measure_adapter_speed(&date) {
+            Ok(r) if r.lower_bound => {
+                // the shortest probe did not finish within the dispatch wait: the device is not used again in this
+                // process, and the bound row is the measurement (admission refuses it)
+                eprintln!(
+                    "adapter speed: too slow to measure within the dispatch wait: at least {:.2} ns per tick (a lower bound)",
+                    r.ns_per_tick
+                );
+                println!("{}", r.tsv());
+                return;
+            }
             Ok(r) => {
                 eprintln!(
                     "adapter speed: one measurement {:.2} ns per tick",

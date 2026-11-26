@@ -320,8 +320,9 @@ pub const MARCH_WORK_BUDGET_CAP: u32 = 1 << 24;
 /// steps each slice redoes).
 pub const MAX_MARCH_SLICES: u32 = 16;
 
-/// The half lengths (mm) of the flat sheets the device-speed measurement grazes ([`measure_ns_per_tick`]): about
-/// 30,000 ticks for the first, doubling to about 240,000 for the last. The first is always measured; the second
+/// The half lengths (mm) of the flat sheets the device-speed measurement grazes ([`measure_ns_per_tick`]).
+///
+/// About 30,000 ticks for the first, doubling to about 240,000 for the last. The first is always measured; the second
 /// point is the first longer one whose graze takes at least [`SPEED_PROBE_MIN_SECS`], or the last, so a slow device
 /// is measured on a short graze that finishes within the dispatch wait and a fast one on the longest.
 pub const SPEED_PROBE_HALF_MM: [f32; 4] = [5.0, 10.0, 20.0, 40.0];
@@ -344,6 +345,28 @@ pub fn check_device_speed(ns_per_tick: f64, wait: std::time::Duration) -> Result
     check_device_speed_at(ns_per_tick, wait, MARCH_WORK_BUDGET)
 }
 
+/// Admission by a speed-table row: [`check_device_speed`] on a measured row; a lower-bound row
+/// ([`AdapterSpeed::lower_bound`]) is always refused, as [`GpuError::DeviceTooSlow`] with `lower_bound` set: the device
+/// was too slow to measure within the wait, and a bound cannot show the march's wait bound holds.
+///
+/// # Errors
+///
+/// As [`check_device_speed`]; [`GpuError::DeviceTooSlow`] for every lower-bound row.
+pub fn check_admission(row: &AdapterSpeed, wait: std::time::Duration) -> Result<(), GpuError> {
+    if row.lower_bound {
+        let full = row.ns_per_tick * f64::from(MARCH_WORK_BUDGET) * 1e-9;
+        let limit = wait.as_secs_f64() / 3.0;
+        return Err(GpuError::DeviceTooSlow {
+            ns_per_tick: row.ns_per_tick,
+            lower_bound: true,
+            budget: MARCH_WORK_BUDGET,
+            budget_ms: (full * 1e3).ceil() as u64,
+            limit_ms: (limit * 1e3).floor() as u64,
+        });
+    }
+    check_device_speed(row.ns_per_tick, wait)
+}
+
 /// [`check_device_speed`] for a ray at `budget` ticks.
 fn check_device_speed_at(
     ns_per_tick: f64,
@@ -360,6 +383,7 @@ fn check_device_speed_at(
     if full > limit {
         return Err(GpuError::DeviceTooSlow {
             ns_per_tick,
+            lower_bound: false,
             budget,
             budget_ms: (full * 1e3).ceil() as u64,
             limit_ms: (limit * 1e3).floor() as u64,
@@ -435,6 +459,10 @@ pub struct AdapterSpeed {
     pub measured: String,
     /// The command that measured it ([`ADAPTER_SPEED_COMMAND`]).
     pub command: String,
+    /// Whether `ns_per_tick` is a lower bound, not a measured time: the shortest speed probe did not finish within
+    /// [`DISPATCH_WAIT`] ([`speed_lower_bound`]). Written in the table as `>=` before the speed; admission refuses
+    /// such a row ([`check_admission`]).
+    pub lower_bound: bool,
     /// Where the row came from (not part of the table's line: [`Self::tsv`] does not write it).
     pub source: SpeedSource,
 }
@@ -444,12 +472,13 @@ impl AdapterSpeed {
     #[must_use]
     pub fn tsv(&self) -> String {
         format!(
-            "{:#06x}\t{:#06x}\t{}\t{}\t{}\t{:.2}\t{}\t{}",
+            "{:#06x}\t{:#06x}\t{}\t{}\t{}\t{}{:.2}\t{}\t{}",
             self.vendor,
             self.device,
             self.backend,
             self.name,
             self.driver_info,
+            if self.lower_bound { ">=" } else { "" },
             self.ns_per_tick,
             self.measured,
             self.command
@@ -466,7 +495,8 @@ impl AdapterSpeed {
 }
 
 /// The rows of a speed table: tab-separated `vendor device backend name driver_info ns_per_tick measured command`,
-/// `#` lines and blank lines skipped; ids in hex (`0x10de`) or decimal.
+/// `#` lines and blank lines skipped; ids in hex (`0x10de`) or decimal; a speed written `>=x` is a lower bound
+/// ([`AdapterSpeed::lower_bound`]).
 ///
 /// # Errors
 ///
@@ -493,6 +523,10 @@ pub fn parse_adapter_speeds(text: &str) -> Result<Vec<AdapterSpeed>, GpuError> {
         let [vendor, device, backend, name, driver_info, ns, measured, command] = f[..] else {
             return Err(bad(n, &format!("{} fields, not 8", f.len())));
         };
+        let (lower_bound, ns) = match ns.strip_prefix(">=") {
+            Some(v) => (true, v),
+            None => (false, ns),
+        };
         let ns_per_tick: f64 = ns
             .parse()
             .map_err(|_| bad(n, &format!("speed {ns:?} is not a number")))?;
@@ -511,6 +545,7 @@ pub fn parse_adapter_speeds(text: &str) -> Result<Vec<AdapterSpeed>, GpuError> {
             ns_per_tick,
             measured: measured.to_string(),
             command: command.to_string(),
+            lower_bound,
             source: SpeedSource::CrateTable,
         });
     }
@@ -597,8 +632,20 @@ pub fn adapter_speed_row<'a>(
 ///
 /// As [`measure_ns_per_tick`].
 pub fn measure_adapter_speed(measured: &str) -> Result<AdapterSpeed, GpuError> {
-    let (ns_per_tick, info) = measure_ns_per_tick()?;
-    Ok(AdapterSpeed {
+    match measure_inner() {
+        Ok((ns, info)) => Ok(speed_row(ns, false, info, measured)),
+        Err((e, info, first)) => row_on_failure(e, info, first, measured),
+    }
+}
+
+/// A measured row of the speed table for `info`'s adapter.
+fn speed_row(
+    ns_per_tick: f64,
+    lower_bound: bool,
+    info: wgpu::AdapterInfo,
+    measured: &str,
+) -> AdapterSpeed {
+    AdapterSpeed {
         vendor: info.vendor,
         device: info.device,
         backend: format!("{:?}", info.backend),
@@ -607,8 +654,41 @@ pub fn measure_adapter_speed(measured: &str) -> Result<AdapterSpeed, GpuError> {
         ns_per_tick,
         measured: measured.to_string(),
         command: ADAPTER_SPEED_COMMAND.to_string(),
+        lower_bound,
         source: SpeedSource::Measured,
-    })
+    }
+}
+
+/// The outcome of a failed measurement: the lower-bound row when the first probe did not finish within the wait
+/// ([`speed_lower_bound`]) on an adapter that was reached, else the error.
+fn row_on_failure(
+    e: GpuError,
+    info: Option<wgpu::AdapterInfo>,
+    first: bool,
+    measured: &str,
+) -> Result<AdapterSpeed, GpuError> {
+    match (speed_lower_bound(&e, first, DISPATCH_WAIT), info) {
+        (Some(ns), Some(info)) => Ok(speed_row(ns, true, info, measured)),
+        _ => Err(e),
+    }
+}
+
+/// The march time per work tick a device is at least, when the shortest speed probe did not finish within `wait`
+/// (`err` is [`GpuError::DispatchDidNotFinish`] and `first` says it was the first probe); `None` otherwise.
+///
+/// One ray alone in its dispatch does at most [`MARCH_WORK_BUDGET`] ticks before its slice ends, and the dispatch
+/// ran longer than `wait`; at most half of `wait` is the dispatch's fixed cost (it is a few ms on every device
+/// measured, against a wait of seconds), so each tick took at least `wait / 2 / MARCH_WORK_BUDGET`. That bound puts
+/// the full budget at half the wait or more, over the admission limit of a third: such a device is refused with a
+/// stated reason instead of failing to be measured.
+#[must_use]
+pub fn speed_lower_bound(err: &GpuError, first: bool, wait: std::time::Duration) -> Option<f64> {
+    match err {
+        GpuError::DispatchDidNotFinish { .. } if first => {
+            Some(wait.as_secs_f64() * 1e9 / 2.0 / f64::from(MARCH_WORK_BUDGET))
+        }
+        _ => None,
+    }
 }
 
 /// The device's march time per work tick, and the adapter it was measured on.
@@ -625,11 +705,18 @@ pub fn measure_adapter_speed(measured: &str) -> Result<AdapterSpeed, GpuError> {
 ///
 /// The upload's or the march's error; [`GpuError::InvalidFormat`] when the longer graze did not take more work.
 pub fn measure_ns_per_tick() -> Result<(f64, wgpu::AdapterInfo), GpuError> {
-    let mut info = None;
+    measure_inner().map_err(|(e, _, _)| e)
+}
+
+/// [`measure_ns_per_tick`], with on failure the adapter (when a probe was uploaded) and whether the first probe failed.
+#[allow(clippy::type_complexity)]
+fn measure_inner() -> Result<(f64, wgpu::AdapterInfo), (GpuError, Option<wgpu::AdapterInfo>, bool)>
+{
+    let info: std::cell::RefCell<Option<wgpu::AdapterInfo>> = std::cell::RefCell::new(None);
     // (work, least time) of one ray grazing the probe of half length `half` alone in its dispatch
-    let mut graze = |half: f32| -> Result<(u32, f64), GpuError> {
+    let graze = |half: f32| -> Result<(u32, f64), GpuError> {
         let g = GpuSheetField::build(&speed_probe_field(half)?, &|src| src)?;
-        info = Some(g.context().adapter_info().clone());
+        *info.borrow_mut() = Some(g.context().adapter_info().clone());
         let o = [Vec3::new(-half - 1.0, 0.003, 0.02)];
         let tmax = 2.0 * half + 2.0;
         g.march_batch_decided(&o, Vec3::X, tmax)?;
@@ -643,10 +730,16 @@ pub fn measure_ns_per_tick() -> Result<(f64, wgpu::AdapterInfo), GpuError> {
         }
         Ok((work, best))
     };
-    let first = graze(SPEED_PROBE_HALF_MM[0])?;
+    let first = match graze(SPEED_PROBE_HALF_MM[0]) {
+        Ok(v) => v,
+        Err(e) => return Err((e, info.borrow().clone(), true)),
+    };
     let mut second = first;
     for &half in &SPEED_PROBE_HALF_MM[1..] {
-        second = graze(half)?;
+        second = match graze(half) {
+            Ok(v) => v,
+            Err(e) => return Err((e, info.borrow().clone(), false)),
+        };
         if second.1 >= SPEED_PROBE_MIN_SECS {
             break;
         }
@@ -654,9 +747,13 @@ pub fn measure_ns_per_tick() -> Result<(f64, wgpu::AdapterInfo), GpuError> {
     let pts = [first, second];
     let [(w0, t0), (w1, t1)] = pts;
     if w1 <= w0 {
-        return Err(GpuError::InvalidFormat(format!(
-            "sheet field march: the speed probe's longer graze took {w1} ticks, not more than the shorter's {w0}"
-        )));
+        return Err((
+            GpuError::InvalidFormat(format!(
+                "sheet field march: the speed probe's longer graze took {w1} ticks, not more than the shorter's {w0}"
+            )),
+            info.borrow().clone(),
+            false,
+        ));
     }
     // a slope at or under 0 (timer noise on a very fast device) is the shorter ray's whole time per tick instead
     let slope = (t1 - t0) * 1e9 / f64::from(w1 - w0);
@@ -665,7 +762,14 @@ pub fn measure_ns_per_tick() -> Result<(f64, wgpu::AdapterInfo), GpuError> {
     } else {
         t0 * 1e9 / f64::from(w0.max(1))
     };
-    Ok((ns, info.expect("two probe uploads")))
+    match info.into_inner() {
+        Some(i) => Ok((ns, i)),
+        None => Err((
+            GpuError::InvalidFormat("sheet field march: no speed probe was uploaded".into()),
+            None,
+            true,
+        )),
+    }
 }
 
 /// Rounds of re-issue after a march dispatch leaves results unwritten (each round halves the dispatch size); a ray
@@ -909,7 +1013,7 @@ impl GpuSheetField {
         let g = Self::build(field, &|src| src)?;
         let rows = adapter_speeds()?;
         let row = adapter_speed_row(&rows, g.context().adapter_info())?;
-        check_device_speed(row.ns_per_tick, DISPATCH_WAIT)?;
+        check_admission(row, DISPATCH_WAIT)?;
         if let Ok(mut c) = g.control.lock() {
             c.ns_per_tick = row.ns_per_tick;
             c.speed_source = row.source.clone();
@@ -3289,5 +3393,107 @@ mod shader_validate {
             );
             assert!(r.is_err(), "the loop at byte {at} without its tick passed");
         }
+    }
+}
+
+#[cfg(test)]
+mod speed_bound_tests {
+    //! A device too slow for the shortest speed probe: the measurement writes a lower-bound row, admission refuses it.
+    use super::*;
+
+    fn info() -> wgpu::AdapterInfo {
+        wgpu::AdapterInfo {
+            name: "llvmpipe (LLVM 17.0.6, 256 bits)".into(),
+            vendor: 0x10005,
+            device: 0,
+            device_type: wgpu::DeviceType::Cpu,
+            driver: "llvmpipe".into(),
+            driver_info: "Mesa 24.0.9".into(),
+            backend: wgpu::Backend::Vulkan,
+        }
+    }
+
+    fn abandoned() -> GpuError {
+        GpuError::DispatchDidNotFinish {
+            rays: 1,
+            limit_ms: 4000,
+        }
+    }
+
+    #[test]
+    fn an_abandoned_first_probe_gives_a_lower_bound_row_that_admission_refuses() {
+        let row = row_on_failure(abandoned(), Some(info()), true, "2026-11-26")
+            .expect("a bound row, not an error");
+        assert!(row.lower_bound, "the row must say it is a lower bound");
+        let want = DISPATCH_WAIT.as_secs_f64() * 1e9 / 2.0 / f64::from(MARCH_WORK_BUDGET);
+        assert!(
+            (row.ns_per_tick - want).abs() < 1e-9 * want,
+            "bound {} != wait / 2 / budget {want}",
+            row.ns_per_tick
+        );
+        // the table line says so, and reads back as a lower bound
+        let line = row.tsv();
+        assert!(line.contains("\t>="), "{line}");
+        let back = parse_adapter_speeds(&line).unwrap().remove(0);
+        assert!(back.lower_bound && (back.ns_per_tick - row.ns_per_tick).abs() < 0.01);
+        match check_admission(&back, DISPATCH_WAIT) {
+            Err(GpuError::DeviceTooSlow {
+                lower_bound: true,
+                budget_ms,
+                limit_ms,
+                ..
+            }) => assert!(budget_ms > limit_ms),
+            other => panic!("a lower-bound row must be refused as too slow (bound), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_lower_bound_row_is_refused_whatever_its_value() {
+        // even a bound that would fit the budget is no proof that the march's wait bound holds
+        let mut row = row_on_failure(abandoned(), Some(info()), true, "2026-11-26").unwrap();
+        row.ns_per_tick = 1e-3;
+        assert!(
+            check_device_speed(row.ns_per_tick, DISPATCH_WAIT).is_ok(),
+            "as a measured speed it would be admitted"
+        );
+        assert!(matches!(
+            check_admission(&row, DISPATCH_WAIT),
+            Err(GpuError::DeviceTooSlow {
+                lower_bound: true,
+                ..
+            })
+        ));
+        row.lower_bound = false;
+        assert!(
+            check_admission(&row, DISPATCH_WAIT).is_ok(),
+            "the same value measured is admitted"
+        );
+    }
+
+    #[test]
+    fn only_the_first_probe_abandoned_on_a_reached_adapter_gives_a_bound() {
+        assert!(
+            row_on_failure(abandoned(), Some(info()), false, "d").is_err(),
+            "a later probe's abandon is an error"
+        );
+        assert!(
+            row_on_failure(abandoned(), None, true, "d").is_err(),
+            "no adapter reached: no row"
+        );
+        let other = GpuError::InvalidFormat("x".into());
+        assert!(
+            row_on_failure(other, Some(info()), true, "d").is_err(),
+            "another error stays an error"
+        );
+        // the bound puts the full budget at half the wait, over the admission limit of a third
+        let b = speed_lower_bound(&abandoned(), true, DISPATCH_WAIT).unwrap();
+        assert!(b * f64::from(MARCH_WORK_BUDGET) * 1e-9 > DISPATCH_WAIT.as_secs_f64() / 3.0);
+    }
+
+    #[test]
+    fn a_measured_row_reads_back_measured() {
+        let line = speed_row(326.54, false, info(), "2026-11-26").tsv();
+        assert!(!line.contains(">="), "{line}");
+        assert!(!parse_adapter_speeds(&line).unwrap()[0].lower_bound);
     }
 }

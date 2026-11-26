@@ -1447,7 +1447,9 @@ jobs:
       # (src/sheet_field/adapter_speeds.tsv) holds real adapters only, and lavapipe's driver string moves with the
       # runner image. So this job measures its own adapter first, logs the row and hands it to every later step
       # through ALICE_SDF_ADAPTER_SPEEDS; a measurement that printed no well-formed row (8 tab-separated columns,
-      # a positive ns_per_tick) fails here instead of as "no measured march speed" in a later test
+      # a positive ns_per_tick) fails here instead of as "no measured march speed" in a later test. A speed written
+      # `>=x` is a lower bound: the shortest probe did not finish within the dispatch wait (too slow to measure),
+      # and the admission step below must then refuse the field with that bound
       - name: Sheet field march speed of this adapter (measured first, passed to the later steps)
         shell: bash
         run: |
@@ -1461,7 +1463,7 @@ jobs:
           cols = rows[-1].split("\t")
           if len(cols) != 8:
               sys.exit(f"measured nothing usable: {len(cols)} columns in {rows[-1]!r}")
-          if not float(cols[5]) > 0.0:
+          if not float(cols[5].removeprefix(">=")) > 0.0:
               sys.exit(f"measured nothing usable: ns_per_tick {cols[5]!r}")
           print(rows[-1])
           PY
