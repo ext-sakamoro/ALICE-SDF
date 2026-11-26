@@ -65,17 +65,37 @@ fn ceiling_calls(file: &str, text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-/// The calls of [`ceiling_calls`] that [`CEILING_KERNELS`] does not list.
+/// The calls of [`ceiling_calls`] that [`CEILING_KERNELS`] does not list (a file is compared with `/` separators, so a
+/// Windows path names the same file).
 fn unlisted(calls: &[(String, String)]) -> Vec<(String, String)> {
     calls
         .iter()
         .filter(|(f, l)| {
             !CEILING_KERNELS
                 .iter()
-                .any(|(lf, ll)| f.ends_with(lf) && l == ll)
+                .any(|(lf, ll)| f.replace('\\', "/").ends_with(lf) && l == ll)
         })
         .cloned()
         .collect()
+}
+
+#[test]
+fn a_listed_kernel_matches_on_either_path_separator() {
+    let label = CEILING_KERNELS[0].1.to_string();
+    for f in [
+        "/home/runner/work/ALICE-SDF/ALICE-SDF/src/sheet_field/gpu.rs",
+        "D:\\a\\ALICE-SDF\\ALICE-SDF\\src\\sheet_field\\gpu.rs",
+    ] {
+        assert!(
+            unlisted(&[(f.to_string(), label.clone())]).is_empty(),
+            "{f} not matched"
+        );
+    }
+    assert_eq!(
+        unlisted(&[("D:\\a\\src\\other.rs".to_string(), label)]).len(),
+        1,
+        "another file must stay unlisted"
+    );
 }
 
 #[test]
