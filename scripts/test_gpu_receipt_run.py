@@ -68,6 +68,39 @@ class Run(unittest.TestCase):
             self.assertIsNotNone(gr.software_adapter(row), row)
         self.assertIn("not a speed row", gr.software_adapter("no tabs here"))
 
+    def test_no_adapter_names_the_machine_type_and_the_probe_error(self):
+        err = "error: XDG_RUNTIME_DIR not set\nadapter speed: Failed to create GPU device: Parent device is lost\n"
+        msg = gr.no_adapter("NVIDIA A100-SXM4-80GB", 1, err)
+        self.assertTrue(msg.startswith("gpu-receipt: no hardware adapter on this machine (NVIDIA A100-SXM4-80GB)"))
+        self.assertIn("Parent device is lost", msg)
+        self.assertIn("rc 1", msg)
+
+    def test_the_probe_failure_reaches_the_no_adapter_refusal(self):
+        # adapter_row is the runner's first step: a probe with no row refuses there with the machine type (no suite runs)
+        class P:
+            returncode, stdout, stderr = 101, "", "adapter speed: Failed to create GPU device: Parent device is lost\n"
+        real = gr.subprocess.run
+        gr.subprocess.run = lambda cmd, **k: P() if cmd[0] == "cargo" else real(cmd, **k)
+        try:
+            with self.assertRaises(SystemExit) as e:
+                gr.adapter_row(HERE.parent, {})
+        finally:
+            gr.subprocess.run = real
+        self.assertIn("no hardware adapter on this machine (", str(e.exception))
+        self.assertIn("Parent device is lost", str(e.exception))
+
+    def test_machine_type_reads_nvidia_smi_and_falls_back(self):
+        class P:
+            def __init__(self, rc, out):
+                self.returncode, self.stdout = rc, out
+        self.assertEqual(gr.machine_type(lambda *a, **k: P(0, "NVIDIA A100-SXM4-80GB\n")), "NVIDIA A100-SXM4-80GB")
+        self.assertEqual(gr.machine_type(lambda *a, **k: P(0, "NVIDIA RTX A6000\nNVIDIA RTX A6000\n")), "NVIDIA RTX A6000")
+        self.assertIn("no nvidia-smi GPU", gr.machine_type(lambda *a, **k: P(9, "")))
+
+        def missing(*a, **k):
+            raise FileNotFoundError("nvidia-smi")
+        self.assertIn("no nvidia-smi GPU", gr.machine_type(missing))
+
     def test_the_rule_covers_the_device_code_and_itself(self):
         text = (HERE / "gpu-receipt-suites.txt").read_text(encoding="utf-8")
         paths = {ln.split()[1] for ln in text.splitlines() if ln.startswith("path ")}

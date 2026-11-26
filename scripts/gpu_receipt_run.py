@@ -94,6 +94,25 @@ def software_adapter(row: str) -> str | None:
     return f"adapter {cols[3]!r} is a software adapter ({hit})" if hit else None
 
 
+def machine_type(run=subprocess.run) -> str:
+    """the GPU machine type for the refusal message: the GPU name nvidia-smi reports, else the host's platform"""
+    import platform
+    try:
+        p = run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], capture_output=True, text=True, timeout=20)
+        names = [ln.strip() for ln in p.stdout.splitlines() if ln.strip()] if p.returncode == 0 else []
+    except (OSError, subprocess.SubprocessError):
+        names = []
+    return ", ".join(dict.fromkeys(names)) if names else f"{platform.system()} {platform.machine()}, no nvidia-smi GPU"
+
+
+def no_adapter(machine: str, rc: int, stderr: str) -> str:
+    """the refusal when the probe gets no adapter row: the first step, before any suite is built (11-27: an A100-SXM4
+    notebook cannot create a wgpu device, 'Parent device is lost', while the A100 PCIe and the A6000 can)"""
+    tail = " | ".join(ln for ln in stderr.strip().splitlines()[-3:] if ln.strip())
+    return (f"gpu-receipt: no hardware adapter on this machine ({machine}): the adapter probe created no GPU device "
+            f"(rc {rc}); take the receipt on a machine type that does: {tail}")
+
+
 def adapter_row(root: Path, env: dict) -> tuple[str, str]:
     """(the speed row the example measures on this machine's adapter, the command and its output for the log)"""
     import datetime
@@ -102,10 +121,10 @@ def adapter_row(root: Path, env: dict) -> tuple[str, str]:
     p = subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True)
     rows = [ln for ln in p.stdout.splitlines() if ln.startswith("0x")]
     if p.returncode != 0 or not rows:
-        raise SystemExit(f"gpu-receipt: the adapter speed example gave no row (rc {p.returncode}): {p.stderr[-400:]}")
+        raise SystemExit(no_adapter(machine_type(), p.returncode, p.stderr))
     why = software_adapter(rows[-1])
     if why:
-        raise SystemExit(f"gpu-receipt: no receipt on this adapter: {why}")
+        raise SystemExit(f"gpu-receipt: no receipt on this adapter ({machine_type()}): {why}")
     return rows[-1], f"$ {' '.join(cmd)}\n{p.stdout}{p.stderr}rc={p.returncode}\n"
 
 
