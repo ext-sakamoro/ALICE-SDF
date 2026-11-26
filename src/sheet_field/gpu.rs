@@ -320,7 +320,7 @@ pub const MARCH_WORK_BUDGET_CAP: u32 = 1 << 24;
 /// steps each slice redoes).
 pub const MAX_MARCH_SLICES: u32 = 16;
 
-/// The half lengths (mm) of the flat sheets the device-speed measurement grazes ([`measure_ns_per_tick`]).
+/// The half lengths (mm) of the flat sheets the device-speed measurement grazes ([`measure_adapter_speed`]).
 ///
 /// About 30,000 ticks for the first, doubling to about 240,000 for the last. The first is always measured; the second
 /// point is the first longer one whose graze takes at least [`SPEED_PROBE_MIN_SECS`], or the last, so a slow device
@@ -453,7 +453,7 @@ pub struct AdapterSpeed {
     pub name: String,
     /// The driver's description, its version where the backend gives one (empty where it gives none).
     pub driver_info: String,
-    /// March time per work tick (see [`measure_ns_per_tick`]).
+    /// March time per work tick (see [`measure_adapter_speed`]).
     pub ns_per_tick: f64,
     /// The date it was measured (`YYYY-MM-DD`).
     pub measured: String,
@@ -630,9 +630,10 @@ pub fn adapter_speed_row<'a>(
 ///
 /// # Errors
 ///
-/// As [`measure_ns_per_tick`].
+/// The upload's or the march's error (a first probe that did not finish within [`DISPATCH_WAIT`] gives the
+/// lower-bound row instead), or [`GpuError::InvalidFormat`] when the longer graze did not take more work.
 pub fn measure_adapter_speed(measured: &str) -> Result<AdapterSpeed, GpuError> {
-    match measure_inner() {
+    match measure_ns_per_tick() {
         Ok((ns, info)) => Ok(speed_row(ns, false, info, measured)),
         Err((e, info, first)) => row_on_failure(e, info, first, measured),
     }
@@ -691,7 +692,9 @@ pub fn speed_lower_bound(err: &GpuError, first: bool, wait: std::time::Duration)
     }
 }
 
-/// The device's march time per work tick, and the adapter it was measured on.
+/// The device's march time per work tick, and the adapter it was measured on (the core of
+/// [`measure_adapter_speed`]); on failure the error, the adapter when a probe was uploaded, and whether the first
+/// probe failed (a first probe that did not finish within the wait gives the lower-bound row, [`speed_lower_bound`]).
 ///
 /// Run on an idle device: it is the measurement for the speed table ([`ADAPTER_SPEED_COMMAND`]), never taken at
 /// upload. One ray alone in its dispatch grazes a probe sheet for its full length, at the first length of
@@ -701,17 +704,11 @@ pub fn speed_lower_bound(err: &GpuError, first: bool, wait: std::time::Duration)
 /// device too slow for the work budget is measured on a short graze and then refused at admission
 /// ([`check_device_speed`]), not left unmeasured.
 ///
-/// # Errors
-///
-/// The upload's or the march's error; [`GpuError::InvalidFormat`] when the longer graze did not take more work.
-pub fn measure_ns_per_tick() -> Result<(f64, wgpu::AdapterInfo), GpuError> {
-    measure_inner().map_err(|(e, _, _)| e)
-}
-
-/// [`measure_ns_per_tick`], with on failure the adapter (when a probe was uploaded) and whether the first probe failed.
+/// The error is the upload's or the march's, or [`GpuError::InvalidFormat`] when the longer graze did not take more
+/// work.
 #[allow(clippy::type_complexity)]
-fn measure_inner() -> Result<(f64, wgpu::AdapterInfo), (GpuError, Option<wgpu::AdapterInfo>, bool)>
-{
+fn measure_ns_per_tick(
+) -> Result<(f64, wgpu::AdapterInfo), (GpuError, Option<wgpu::AdapterInfo>, bool)> {
     let info: std::cell::RefCell<Option<wgpu::AdapterInfo>> = std::cell::RefCell::new(None);
     // (work, least time) of one ray grazing the probe of half length `half` alone in its dispatch
     let graze = |half: f32| -> Result<(u32, f64), GpuError> {
