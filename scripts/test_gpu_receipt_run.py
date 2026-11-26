@@ -54,6 +54,25 @@ class Run(unittest.TestCase):
             with self.assertRaises(FileExistsError):    # a run id is written once
                 gr.write_receipt(Path(d), "ALICE-SDF", "a" * 40, "r1", "nb1", "row", got, "x")
 
+    def test_a_software_adapter_gets_no_receipt(self):
+        real = "0x10de\t0x20b5\tVulkan\tNVIDIA A100 80GB PCIe\t580.196.07\t326.44\t2026-11-26\tcmd"
+        self.assertIsNone(gr.software_adapter(real))
+        self.assertIsNone(gr.software_adapter("0x106b\t0x0\tMetal\tApple M2 Pro\t0\t120.0"))
+        for row in ("0x10005\t0x0\tVulkan\tllvmpipe (LLVM 17.0.6, 256 bits)\t0.0.1\t9000.0",
+                    "0x10de\t0x0\tVulkan\tlavapipe\t1\t9000.0",        # by name, whatever the vendor
+                    "0x1ae0\t0xc0de\tVulkan\tSwiftShader Device (Subzero)\t5.0.0\t9000.0",
+                    "0x1414\t0x8c\tDx12\tMicrosoft Basic Render Driver\t10\t9000.0",
+                    "0x10005\t0x0\tVulkan\tMesa device\t0.0.1\t9000.0"):    # by vendor, whatever the name
+            self.assertIsNotNone(gr.software_adapter(row), row)
+        self.assertIn("not a speed row", gr.software_adapter("no tabs here"))
+
+    def test_the_rule_covers_the_device_code_and_itself(self):
+        text = (HERE / "gpu-receipt-suites.txt").read_text(encoding="utf-8")
+        paths = {ln.split()[1] for ln in text.splitlines() if ln.startswith("path ")}
+        for need in ("src/sheet_field/**", "src/gpu_context.rs", "Cargo.toml", "Cargo.lock",
+                     "scripts/gpu-receipt-suites.txt", "scripts/gpu_receipt_run.py"):
+            self.assertIn(need, paths)
+
     def test_the_repository_rule_parses(self):
         self.assertGreater(len(gr.suites(HERE.parent)), 0)
 

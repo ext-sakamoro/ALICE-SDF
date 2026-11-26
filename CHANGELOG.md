@@ -9,6 +9,7 @@ For releases prior to v1.5.0 (v0.1.0 – v1.3.0), see [CHANGELOG-history.md](CHA
 ## [Unreleased]
 
 ### Added
+- CI: sheet field の GPU suite は GPU の受領で持つ `scripts/gpu-receipt-suites.txt` に suite (最小の通過数つき) と path を並べ、取り込みがその path を変える時は取り込む tree の受領が要る 受領は GPU 機で `scripts/gpu_receipt_run.py` が書く (`receipts/<repo>-<tree>-<run id>/` に `run.log` と `result.json`、adapter はその機で例 `sheet_field_adapter_speed` が測った行) software adapter (lavapipe / llvmpipe、SwiftShader、Windows の basic render driver) では書かない path は sheet field とその試験・例、それらが使う device context・loop の上限の検査・GPU の error・min / max の法則・BVH・provenance・Aabb、`Cargo.toml` と `Cargo.lock`、規則とその runner 自身
 - `validity::prove_gaps_in_layers` / `GapReport::verdict_in_layers` / `narrow_air_is_open` / `narrow_air_beside_is_open`: 層ごとに造形する部品の隙間の判定 自分の層の中で開いている狭い空気は別々の壁の間の首で、穴ではないとして読む `examples/gap_widths.rs` が平の判定と並べて使う
 - `GapRegion::resolution` / `GapFailure::ProvenGap::resolution`: 幅を読んだ箱の最大の辺 幅はこの分解能の中での上からの読み (向き合う凸の壁で半径 `R`、中心が中央の面から `c` の時、超過は最大 `h²·c/R²` と許容差) 構造体の literal と `ProvenGap { width, at }` の pattern は欄を足す必要がある
 - `sheet_field::gpu::MARCH_WORK_BUDGET_CAP` (2^24): march kernel の loop の上限と有界 loop の検査が前提にする仕事の数の最大 既定の `MARCH_WORK_BUDGET` (2^21) は変えない 試験だけが使う `set_work_budget_up_to_cap` で上限まで上げられる (装置の速さの規則は同じ形で掛かる) 試験 `tests/test_sheet_field_graze_budget.rs`: 100 枚の面を浅い角度で通る 32 本の ray は既定の仕事の数では未決になる 上限では全部が CPU の march と同じ判定になり、GPU の仕事の数が記録した表と一致する (どの装置でも同じ数) 既定の数で CPU と同じ判定になることは未対応の不具合として ignore で固定した

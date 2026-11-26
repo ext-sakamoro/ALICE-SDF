@@ -1,11 +1,27 @@
 # The sheet field's GPU suites. No CI runner can admit the sheet field (lavapipe is too slow for the march's work
 # budget; the CI lavapipe job tests that refusal), so these run on a real GPU machine, which writes a GPU receipt
-# for the tree it ran (scripts/gpu_receipt.sh). The CI evidence receipt of a landing that touches a path below needs
-# that receipt for the landing tree with every suite at rc 0 and at least its min passing tests
-# (the landing tool's GPU receipt rule), and scripts/ci_test_coverage_check.py counts these suites as run there.
+# for the tree it ran (scripts/gpu_receipt_run.py, which measures the adapter itself and refuses a software one). The
+# CI evidence receipt of a landing that touches a path below needs that receipt for the landing tree with every suite
+# at rc 0 and at least its min passing tests (the landing tool's GPU receipt rule, which also applies the base's rule,
+# so deleting or weakening this file needs the receipt too), and scripts/ci_test_coverage_check.py counts these suites
+# as run there. The paths are the code the suites run: the sheet field, its tests and examples, the crate modules the
+# sheet field and its tests import (device context and slot guard, loop bound check, GPU error, the min / max law, the
+# BVH flattening, provenance, Aabb), the dependency versions (wgpu, naga) and this rule with its runner.
 path src/sheet_field/**
 path tests/test_sheet_field_*
 path examples/sheet_field_*
+path src/gpu_context.rs
+path src/gpu_loop_bound.rs
+path src/compiled/wgsl/gpu_eval.rs
+path src/compiled/real.rs
+path src/mesh/bvh.rs
+path src/mesh/gpu_bvh.rs
+path src/provenance.rs
+path src/types/containers.rs
+path Cargo.toml
+path Cargo.lock
+path scripts/gpu-receipt-suites.txt
+path scripts/gpu_receipt_run.py
 suite test_sheet_field_attr_normal 3
 suite test_sheet_field_band 5
 suite test_sheet_field_coarse_attr 5

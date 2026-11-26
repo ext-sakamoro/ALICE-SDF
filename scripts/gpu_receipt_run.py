@@ -6,8 +6,12 @@ One command on the GPU machine, in a checkout or an export of the tree to land:
     python3 scripts/gpu_receipt_run.py --tree <40-hex tree> --repo ALICE-SDF --run-id <id> --notebook <id> --out <dir>
 
 `--tree` is the tree the files are from (`git rev-parse <commit>^{tree}` where the export was made; the landing check
-compares it with the landing commit's tree). The adapter's speed row is the last row of the file named by
-ALICE_SDF_ADAPTER_SPEEDS (the measured row the field is admitted with). Every listed suite runs with
+compares it with the landing commit's tree). The adapter is measured here, on the adapter the suites get: the command
+first runs `cargo run --release --features gpu --example sheet_field_adapter_speed -- <UTC date>` and takes its row
+(vendor, device, backend, name, driver, ns per tick); a software adapter (lavapipe / llvmpipe, SwiftShader, the
+Windows basic render driver: by vendor id 0x10005 / 0x1ae0 / 0x1414 or by name) gets no receipt. The row is written to
+<out>/adapter-<run id>.tsv and passed to the suites as ALICE_SDF_ADAPTER_SPEEDS (the row the field is admitted with).
+Every listed suite runs with
 `cargo test --release --features asdf,gpu --test <suite>` and ALICE_SDF_REQUIRE_GPU=1 (and
 ALICE_SDF_VOLUME_READBACK=1), and its passed count is read from libtest's result lines. The receipt is the directory
 <out>/receipts/<repo>-<tree>-<run id>/ with run.log (every suite's command and output, in order) and result.json:
@@ -70,12 +74,35 @@ def judge(want: dict[str, int], got: dict[str, dict]) -> list[str]:
     return why
 
 
-def adapter_row() -> str:
-    f = os.environ.get("ALICE_SDF_ADAPTER_SPEEDS", "")
-    rows = [ln for ln in Path(f).read_text(encoding="utf-8").splitlines() if ln.startswith("0x")] if f else []
-    if not rows:
-        raise SystemExit("gpu-receipt: ALICE_SDF_ADAPTER_SPEEDS names no file with a measured row")
-    return rows[-1]
+SOFTWARE_VENDORS = {"0x10005", "0x1ae0", "0x1414"}   # Mesa (lavapipe / llvmpipe), Google SwiftShader, Microsoft WARP
+SOFTWARE_NAMES = ("llvmpipe", "lavapipe", "swiftshader", "basic render", "software")
+
+
+def software_adapter(row: str) -> str | None:
+    """why the speed row names a software adapter, or None (vendor id in column 1, name in column 4)"""
+    cols = row.split("\t")
+    if len(cols) < 6 or not cols[0].startswith("0x"):
+        return f"not a speed row: {row!r}"
+    if cols[0].lower() in SOFTWARE_VENDORS:
+        return f"vendor {cols[0]} is a software adapter"
+    name = cols[3].lower()
+    hit = next((w for w in SOFTWARE_NAMES if w in name), None)
+    return f"adapter {cols[3]!r} is a software adapter ({hit})" if hit else None
+
+
+def adapter_row(root: Path, env: dict) -> tuple[str, str]:
+    """(the speed row the example measures on this machine's adapter, the command and its output for the log)"""
+    import datetime
+    cmd = ["cargo", "run", "--release", "--features", "gpu", "--example", "sheet_field_adapter_speed", "--",
+           datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")]
+    p = subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True)
+    rows = [ln for ln in p.stdout.splitlines() if ln.startswith("0x")]
+    if p.returncode != 0 or not rows:
+        raise SystemExit(f"gpu-receipt: the adapter speed example gave no row (rc {p.returncode}): {p.stderr[-400:]}")
+    why = software_adapter(rows[-1])
+    if why:
+        raise SystemExit(f"gpu-receipt: no receipt on this adapter: {why}")
+    return rows[-1], f"$ {' '.join(cmd)}\n{p.stdout}{p.stderr}rc={p.returncode}\n"
 
 
 def main(argv: list[str]) -> int:
@@ -90,13 +117,19 @@ def main(argv: list[str]) -> int:
     if not re.fullmatch(r"[0-9a-f]{40}", a.tree):
         raise SystemExit(f"gpu-receipt: {a.tree!r} is not a tree id")
     root = Path(a.root)
-    want = suites(root)
-    row = adapter_row()
-    env = dict(os.environ, ALICE_SDF_REQUIRE_GPU="1", ALICE_SDF_VOLUME_READBACK="1")
     if not re.fullmatch(r"[A-Za-z0-9._-]+", a.run_id):
         raise SystemExit(f"gpu-receipt: run id {a.run_id!r} is not a plain name")
+    want = suites(root)
+    env = dict(os.environ, ALICE_SDF_REQUIRE_GPU="1", ALICE_SDF_VOLUME_READBACK="1")
+    row, speed_log = adapter_row(root, env)
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    speeds = out / f"adapter-{a.run_id}.tsv"
+    speeds.write_text(f"# measured by gpu_receipt_run.py for run {a.run_id}\n{row}\n", encoding="utf-8")
+    env["ALICE_SDF_ADAPTER_SPEEDS"] = str(speeds)
+    print(f"gpu-receipt: adapter {row.split(chr(9))[3]} ({row.split(chr(9))[0]})")
     got: dict[str, dict] = {}
-    log: list[str] = []
+    log: list[str] = [speed_log]
     for name in want:
         cmd = ["cargo", "test", "--release", "--features", "asdf,gpu", "--test", name]
         p = subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True)
