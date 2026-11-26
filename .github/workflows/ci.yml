@@ -690,6 +690,10 @@ jobs:
         run: python scripts/test_ci_test_coverage_check.py
       - name: GPU receipt writer oracle (the notebook command's own tests)
         run: python scripts/test_gpu_receipt_run.py
+      - name: GPU receipt reach oracle (the walk's own tests)
+        run: python scripts/test_gpu_receipt_reach.py
+      - name: GPU receipt reach (the rule covers every crate file its code reaches)
+        run: python scripts/gpu_receipt_reach.py
       - name: CI test coverage (feature 付き oracle を走らせる cargo test が CI にある)
         run: python scripts/ci_test_coverage_check.py
       - name: commit stop markers oracle (the guard's own tests)
