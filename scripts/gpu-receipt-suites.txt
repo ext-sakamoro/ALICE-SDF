@@ -1,0 +1,28 @@
+# The sheet field's GPU suites. No CI runner can admit the sheet field (lavapipe is too slow for the march's work
+# budget; the CI lavapipe job tests that refusal), so these run on a real GPU machine, which writes a GPU receipt
+# for the tree it ran (scripts/gpu_receipt.sh). The CI evidence receipt of a landing that touches a path below needs
+# that receipt for the landing tree with every suite at rc 0 and at least its min passing tests
+# (the landing tool's GPU receipt rule), and scripts/ci_test_coverage_check.py counts these suites as run there.
+path src/sheet_field/**
+path tests/test_sheet_field_*
+path examples/sheet_field_*
+suite test_sheet_field_attr_normal 3
+suite test_sheet_field_band 5
+suite test_sheet_field_coarse_attr 5
+suite test_sheet_field_decided 4
+suite test_sheet_field_dispatch 11
+suite test_sheet_field_dispatch_abandon 1
+suite test_sheet_field_gpu_parity 4
+suite test_sheet_field_gpu_readback 1
+suite test_sheet_field_graze 1
+suite test_sheet_field_graze_budget 2
+suite test_sheet_field_kink 8
+suite test_sheet_field_live_bound 3
+suite test_sheet_field_masked_bound 2
+suite test_sheet_field_masked_floor 1
+suite test_sheet_field_nearest 5
+suite test_sheet_field_resume 5
+suite test_sheet_field_rim 4
+suite test_sheet_field_speed_source 1
+suite test_sheet_field_stream 9
+suite test_sheet_field_work_budget 5

@@ -688,6 +688,8 @@ jobs:
         run: python scripts/test_gen_nearest_golden.py
       - name: CI test coverage oracle (検査器自身の試験)
         run: python scripts/test_ci_test_coverage_check.py
+      - name: GPU receipt writer oracle (the notebook command's own tests)
+        run: python scripts/test_gpu_receipt_run.py
       - name: CI test coverage (feature 付き oracle を走らせる cargo test が CI にある)
         run: python scripts/ci_test_coverage_check.py
       - name: commit stop markers oracle (the guard's own tests)

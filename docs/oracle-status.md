@@ -6,12 +6,12 @@ _Generated from `tests/*.rs` (no timestamp: the file changes only when its conte
 
 | Category | Count |
 |----------|-------|
-| 🟢 Not ignored | 1577 |
+| 🟢 Not ignored | 1579 |
 | 🔴 Red by design | 7 |
 | ⏱ Gated (runtime / diagnostic / manual) | 10 |
 | ⚪ Pending (bare `#[ignore]`) | 0 |
 | 🟠 Known defect in one arm (the test runs) | 2 |
-| **Total** | **1594** |
+| **Total** | **1596** |
 
 `Not ignored` means only that the test carries no `#[ignore]`: this report does not run it.
 CI's `cargo test` is what says whether it passes.
@@ -55,7 +55,7 @@ Run them with `python3 scripts/run_ignored.py` or `cargo test --release -- --ign
 - `this_crate_writes_what_the_alembic_library_writes_for_the_same_mesh` (test_alembic_oracle.rs) — needs the Alembic library programs of tests/oracle (the alembic-oracle CI job)
 - `write_bincode1_fixtures` (test_bincode1_fixtures.rs) — writes tests/fixtures/bincode1; run only to capture
 
-## 🟢 Not ignored (1577)
+## 🟢 Not ignored (1579)
 
 Per-file counts (the test names are in `tests/`):
 
@@ -184,6 +184,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_sheet_field_coarse_attr.rs` | 5 |
 | `test_sheet_field_kink_reader.rs` | 5 |
 | `test_sheet_field_nearest.rs` | 5 |
+| `test_sheet_field_resume.rs` | 5 |
 | `test_sheet_field_work_budget.rs` | 5 |
 | `test_step_export_oracle.rs` | 5 |
 | `test_unordered_no_iteration.rs` | 5 |
@@ -210,7 +211,6 @@ Per-file counts (the test names are in `tests/`):
 | `test_section_stack_shader_oracle.rs` | 4 |
 | `test_sheet_field_decided.rs` | 4 |
 | `test_sheet_field_gpu_parity.rs` | 4 |
-| `test_sheet_field_resume.rs` | 4 |
 | `test_sheet_field_rim.rs` | 4 |
 | `test_smooth_stack_shader.rs` | 4 |
 | `test_soa_oracle.rs` | 4 |
@@ -282,6 +282,7 @@ Per-file counts (the test names are in `tests/`):
 | `test_loft_lift_bits.rs` | 1 |
 | `test_loft_shader_cpu_agreement.rs` | 1 |
 | `test_metadata_order.rs` | 1 |
+| `test_sheet_field_admission.rs` | 1 |
 | `test_sheet_field_dispatch_abandon.rs` | 1 |
 | `test_sheet_field_gpu_readback.rs` | 1 |
 | `test_sheet_field_graze.rs` | 1 |
