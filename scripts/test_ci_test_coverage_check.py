@@ -185,6 +185,42 @@ class CoverageTest(unittest.TestCase):
         self.assertEqual(stats['gpu_runs'], 0)
         self.assertTrue(v, "0 gpu runs passed without a finding")
 
+    # ---- the GPU receipt rule: suites that run on a real GPU machine, held at landing
+
+    def receipt_case(self, tests, wf, rule):
+        r = Repo(tests, wf)
+        self.addCleanup(r.close)
+        (r.root / 'scripts').mkdir()
+        (r.root / 'scripts' / 'gpu-receipt-suites.txt').write_text(rule, encoding='utf-8')
+        return r.check()
+
+    def test_a_suite_in_the_gpu_receipt_rule_counts_as_run_with_its_device(self):
+        wf = workflow('- run: cargo test --tests\n')
+        v, _ = self.run_case({'g': GATED_GPU}, wf)
+        self.assertEqual(self.kinds(v), ['unrun'])          # not run by CI, no rule
+        v, stats = self.receipt_case({'g': GATED_GPU}, wf, 'path tests/**\nsuite g 1\n')
+        self.assertEqual(v, [])
+        self.assertEqual(stats['receipt_suites'], 1)
+        body = '#[cfg(feature = "gpu")]\n#[test]\nfn a() {}\n'   # an arm, too
+        v, _ = self.receipt_case({'h': body}, workflow('- run: cargo test --test h\n', require_gpu=False),
+                                 'path tests/**\nsuite h 1\n')
+        self.assertEqual(v, [])
+
+    def test_a_suite_not_in_the_rule_is_still_unrun(self):
+        v, _ = self.receipt_case({'g': GATED_GPU, 'k': GATED_GPU}, workflow('- run: cargo test --tests\n'),
+                                 'path tests/**\nsuite g 1\n')
+        self.assertEqual(self.kinds(v), ['unrun'])
+        self.assertIn('tests/k.rs', v[0])
+
+    def test_a_rule_the_receipt_cannot_apply_is_a_finding_and_counts_nothing(self):
+        for rule in ('suite g 1\n', 'path tests/**\n', '# none\n', 'path tests/**\nsuite g 0\n',
+                     'path tests/**\nsuite g x\n', 'path tests/**\nsuite g 1\nsuite g 2\n',
+                     'path tests/**\nsuite nope 1\n', 'path tests/**\nsuites g 1\n'):
+            with self.subTest(rule=rule):
+                v, _ = self.receipt_case({'g': GATED_GPU}, workflow('- run: cargo test --tests\n'), rule)
+                self.assertIn('gpu_receipt_rule', self.kinds(v))
+                self.assertIn('unrun', self.kinds(v))      # a broken rule covers nothing
+
     def test_no_target_flag_runs_every_test_file(self):
         v, _ = self.run_case({'g': GATED_GPU}, workflow('- run: cargo test --features gpu\n'))
         self.assertEqual(v, [])

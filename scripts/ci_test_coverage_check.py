@@ -426,6 +426,43 @@ def _collect_runs(step: list[str], key_indent: int, wd, where: str, package: Pac
 # ---------------------------------------------------------------- 突合
 
 
+GPU_RECEIPT_RULE = 'scripts/gpu-receipt-suites.txt'
+
+
+def gpu_receipt_suites(root: Path) -> tuple[dict[str, int], list[str]]:
+    """({suite: min}, problems) from the repository's GPU receipt rule (absent: no suites, no problems).
+
+    A suite listed there runs on a real GPU machine and is held at landing by the GPU receipt rule of the CI evidence
+    receipt (the landing tool's GPU receipt rule, which reads the same file): the landing of a change under the
+    file's paths needs a receipt for the landing tree with every listed suite at its min. A listed suite therefore
+    counts here as run with every feature of the crate and the device required. The file must be one that rule can
+    apply: at least one path line and one suite line, each min a positive integer; otherwise it is a finding."""
+    f = root / GPU_RECEIPT_RULE
+    if not f.is_file():
+        return {}, []
+    paths, suites, problems = 0, {}, []
+    for n, raw in enumerate(f.read_text(encoding='utf-8').splitlines(), 1):
+        line = raw.split('#', 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if parts[0] == 'path' and len(parts) == 2:
+            paths += 1
+        elif parts[0] == 'suite' and len(parts) == 3 and re.fullmatch(r'[1-9][0-9]*', parts[2]) and parts[1] not in suites:
+            suites[parts[1]] = int(parts[2])
+        else:
+            problems.append(f'gpu_receipt_rule: {GPU_RECEIPT_RULE}:{n}: not a `path <glob>` or `suite <name> <min>` line '
+                            f'with a positive min and a suite listed once: {raw.strip()!r}')
+    if not paths:
+        problems.append(f'gpu_receipt_rule: {GPU_RECEIPT_RULE}: no path line (the receipt rule would hold no change)')
+    if not suites:
+        problems.append(f'gpu_receipt_rule: {GPU_RECEIPT_RULE}: no suite line')
+    for name in suites:
+        if not (root / 'tests' / f'{name}.rs').is_file():
+            problems.append(f'gpu_receipt_rule: {GPU_RECEIPT_RULE}: suite {name} has no tests/{name}.rs')
+    return ({} if problems else suites), problems
+
+
 def check(root: Path) -> tuple[list[str], dict]:
     package = load_package(root / 'Cargo.toml')
     files = [scan_test_file(p) for p in sorted((root / 'tests').glob('*.rs'))]
@@ -443,12 +480,18 @@ def check(root: Path) -> tuple[list[str], dict]:
         violations.append('empty_scan: push / pull_request で走る `cargo test` が workflow に 0 件')
     if violations:
         return violations, stats
+    receipt_suites, rule_problems = gpu_receipt_suites(root)
+    violations += rule_problems
+    receipt = Invocation(where=f'the GPU receipt ({GPU_RECEIPT_RULE})', args=[], all_features=True, require_gpu=True)
+    stats['receipt_suites'] = len(receipt_suites)
 
     gpu_runs = gpu_files = 0
     for tf in files:
         rel = tf.path.relative_to(root).as_posix()
         stem = tf.path.stem
         runners = [(inv, enabled_features(inv, package)) for inv in invs if runs_file(inv, stem)]
+        if stem in receipt_suites:
+            runners.append((receipt, enabled_features(receipt, package)))
         # a file with gpu tests (or gpu arms) must run at least once with the gpu feature where its device must be
         # present: a test that skips without an adapter reports ok, so only a run with a REQUIRE_VARS variable set
         # turns a missing device into a failure (skip-tolerant runs on device-less runners do not count)
