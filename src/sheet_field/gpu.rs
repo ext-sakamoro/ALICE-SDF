@@ -2303,6 +2303,10 @@ struct SCell { found: bool, masked: bool, lo: vec3<f32>, h: f32, c: array<f32, 8
 fn s_cell(k: u32, p: vec3<f32>) -> SCell {
     let sh = SHEETS[k];
     var out: SCell;
+    // the corners are written into a local array and copied into the result once: FXC (the DX12 path without DXC)
+    // cannot address an array inside a struct by a loop index, forces the loop to unroll, and a loop that leaves on
+    // tick() cannot be unrolled (error X3511)
+    var cc: array<f32, 8>;
     out.found = false;
     for (var li = 0u; li < MAX_LEVELS; li = li + 1u) { if (!tick()) { break; }
         if (li >= sh.level_count) { break; }
@@ -2327,13 +2331,14 @@ fn s_cell(k: u32, p: vec3<f32>) -> SCell {
             for (var i = 0u; i < 8u; i = i + 1u) { if (!tick()) { break; }
                 let node = ((c.x + ((i >> 2u) & 1u)) * NODES + (c.y + ((i >> 1u) & 1u))) * NODES + (c.z + (i & 1u));
                 let v = qbyte(lv.q_off[0][0] + u32(row) * BRICK_NODES + node) * sc + off;
-                out.c[i] = v;
+                cc[i] = v;
                 umin = min(umin, abs(v));
             }
         } else {
-            for (var i = 0u; i < 8u; i = i + 1u) { if (!tick()) { break; } out.c[i] = 0.0; }
+            for (var i = 0u; i < 8u; i = i + 1u) { if (!tick()) { break; } cc[i] = 0.0; }
             umin = 0.0;
         }
+        out.c = cc;
         out.found = true;
         out.masked = U.rule == 1u && umin > HALF_DIAG * lv.h + q0;
         out.h = lv.h;
@@ -2544,6 +2549,9 @@ fn eval_union(p: vec3<f32>) -> Union {
 // the sheets whose box holds p, ascending, into L (count returned; MAX_LIVE + 1 means overflow)
 fn live_sheets(p: vec3<f32>, L: ptr<function, array<u32, __MAX_LIVE__>>) -> u32 {
     var n = 0u;
+    // a local list, copied through the pointer once at the end (FXC cannot address an array behind an inout
+    // parameter by a loop index: see s_cell)
+    var LL: array<u32, __MAX_LIVE__>;
     if (U.bn_len < 8u || U.n_sheets == 0u) { return 0u; }
     if (!(all(p >= nlo(0u)) && all(p <= nhi(0u)))) { return 0u; }
     var at = 0u;
@@ -2561,7 +2569,7 @@ fn live_sheets(p: vec3<f32>, L: ptr<function, array<u32, __MAX_LIVE__>>) -> u32 
                 let k = IX[U.bl_base + j];
                 if (in_box(k, p)) {
                     if (n == MAX_LIVE) { return MAX_LIVE + 1u; }
-                    (*L)[n] = k; n = n + 1u;
+                    LL[n] = k; n = n + 1u;
                 }
             }
         } else {
@@ -2581,15 +2589,16 @@ fn live_sheets(p: vec3<f32>, L: ptr<function, array<u32, __MAX_LIVE__>>) -> u32 
     if (!done) { walk_unfinished = true; return 0u; }
     for (var i = 1u; i < MAX_LIVE; i = i + 1u) { if (!tick()) { break; }
         if (i >= n) { break; }
-        let x = (*L)[i];
+        let x = LL[i];
         var j = i;
         for (var shift = 0u; shift < MAX_LIVE; shift = shift + 1u) { if (!tick()) { break; }
-            if (j == 0u || (*L)[j - 1u] <= x) { break; }
-            (*L)[j] = (*L)[j - 1u];
+            if (j == 0u || LL[j - 1u] <= x) { break; }
+            LL[j] = LL[j - 1u];
             j = j - 1u;
         }
-        (*L)[j] = x;
+        LL[j] = x;
     }
+    *L = LL;
     return n;
 }
 
@@ -2989,10 +2998,10 @@ mod tests {
             good.iter().any(|m| matches!(m, MarchResult::Hit(_))),
             "no hits: the scene is wrong"
         );
-        let sort = "if (j == 0u || (*L)[j - 1u] <= x) { break; }";
+        let sort = "if (j == 0u || LL[j - 1u] <= x) { break; }";
         let bad = GpuSheetField::build(&f, &|src: String| {
             assert_eq!(src.matches(sort).count(), 1, "the sort line moved");
-            src.replace(sort, "if (j == 0u || (*L)[j - 1u] >= x) { break; }")
+            src.replace(sort, "if (j == 0u || LL[j - 1u] >= x) { break; }")
         })
         .unwrap();
         match bad.march_batch_decided(&os, -Vec3::Z, 10.0) {
