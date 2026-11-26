@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Tests for scripts/gpu_receipt_run.py: the rule it reads, the counts it reads from libtest and its verdict."""
-import importlib.util
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-spec = importlib.util.spec_from_file_location("gpu_receipt_run", HERE / "gpu_receipt_run.py")
-gr = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(gr)
+sys.path.insert(0, str(HERE))
+import gpu_receipt_run as gr  # noqa: E402
 
 
 class Run(unittest.TestCase):
@@ -17,6 +16,9 @@ class Run(unittest.TestCase):
         self.assertEqual(gr.passed(log), 5)
         self.assertEqual(gr.passed("test result: FAILED. 3 passed; 2 failed;\n"), 3)
         self.assertEqual(gr.passed("error: could not compile\n"), 0)
+        # coloured libtest output (CARGO_TERM_COLOR=always): `ok` / `FAILED` wrapped in escape codes
+        self.assertEqual(gr.passed("test result: \x1b[32mok\x1b[0m. 5 passed; 0 failed; 0 ignored\n"), 5)
+        self.assertEqual(gr.passed("test result: \x1b[31mFAILED\x1b[0m. 3 passed; 2 failed;\n"), 3)
 
     def test_every_suite_at_its_min_and_rc_0_is_a_receipt(self):
         want = {"a": 2, "b": 1}

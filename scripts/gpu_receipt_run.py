@@ -33,7 +33,11 @@ import sys
 from pathlib import Path
 
 RULE = "scripts/gpu-receipt-suites.txt"
+# libtest's result line; with colour on (CARGO_TERM_COLOR / --color always) `ok` / `FAILED` are wrapped in escape codes, which are
+# removed before matching (scripts/cargo_output_parser_check.py)
+CARGO_OUTPUT_PARSER = True
 RESULT = re.compile(r"^test result: (?:ok|FAILED)\. (\d+) passed;", re.M)
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def suites(root: Path) -> dict[str, int]:
@@ -57,7 +61,7 @@ def suites(root: Path) -> dict[str, int]:
 
 def passed(log: str) -> int:
     """the passed count of the test binary's result line (one binary per --test)"""
-    return sum(int(m) for m in RESULT.findall(log))
+    return sum(int(m) for m in RESULT.findall(ANSI.sub("", log)))
 
 
 def judge(want: dict[str, int], got: dict[str, dict]) -> list[str]:
