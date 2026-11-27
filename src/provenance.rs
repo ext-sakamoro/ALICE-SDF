@@ -798,9 +798,8 @@ fn sheet_slot(bytes: &[u8]) -> Result<(StoredForm, Found), ProvenanceError> {
     }
     let id: [u8; 32] = bytes
         .get(8..40)
-        .ok_or_else(|| ProvenanceError::Unreadable(format!("{format}: truncated header")))?
-        .try_into()
-        .unwrap();
+        .and_then(|v| v.try_into().ok())
+        .ok_or_else(|| ProvenanceError::Unreadable(format!("{format}: truncated header")))?;
     Ok((form, Found::slot(id)))
 }
 

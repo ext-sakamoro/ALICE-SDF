@@ -1732,7 +1732,6 @@ impl GpuSheetField {
                         reason = "dispatch sizes follow the measured time of the last dispatch; the results do not depend on it (each ray is marched whole in one dispatch)"
                     )]
                     let t0 = std::time::Instant::now();
-                    stats.dispatch_work.push(0);
                     stats.dispatch_round.push(round);
                     stats
                         .dispatch_resume
@@ -1846,6 +1845,9 @@ impl GpuSheetField {
         debug_assert!(rest.is_empty(), "4 output words a ray");
         let mut unwritten = Vec::new();
         let mut continued = Vec::new();
+        // this dispatch's march work, pushed as its `dispatch_work` row when the dispatch's results are all read (one row
+        // a dispatch, in step with `dispatch_round` / `dispatch_resume`)
+        let mut work_here = 0u64;
         for (j, r) in rows.iter().enumerate() {
             let i = index[j];
             // a ray's result is 4 stores (the overflow path only the first, and it is refused below): a ray with
@@ -1865,7 +1867,7 @@ impl GpuSheetField {
                 // the kernel's counter includes a continued ray's recompute of its previous list (`base`), which is
                 // not march work
                 let (spent, base, kept) = (r[1][1].to_bits(), r[1][2].to_bits(), r[1][3].to_bits());
-                *stats.dispatch_work.last_mut().expect("a dispatch slot") += u64::from(spent);
+                work_here += u64::from(spent);
                 stats.ray_work[i] += u64::from(kept.saturating_sub(base));
                 stats.ray_discarded[i] += u64::from(spent.saturating_sub(kept));
                 if stats.ray_slices[i] >= max_slices {
@@ -1886,7 +1888,7 @@ impl GpuSheetField {
             // the base of a continued ray (its recompute) is in the third vec4's last word on every full path
             let base = if early { 0 } else { r[2][3].to_bits() };
             stats.ray_work[i] += u64::from(work.saturating_sub(base));
-            *stats.dispatch_work.last_mut().expect("a dispatch slot") += u64::from(work);
+            work_here += u64::from(work);
             if work > stats.max_work || stats.max_work_ray.is_none() {
                 stats.max_work = work;
                 stats.max_work_ray = Some(i);
@@ -1928,6 +1930,7 @@ impl GpuSheetField {
                 }
             };
         }
+        stats.dispatch_work.push(work_here);
         Ok((unwritten, continued))
     }
 }

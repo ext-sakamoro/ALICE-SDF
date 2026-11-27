@@ -4203,3 +4203,35 @@ fn sheet_field_writers_store_the_identifier() {
     }
     assert_eq!(compared, SHEET_WRITERS.len());
 }
+
+/// A sheet field file (ASHF, ASKC) cut inside the 32-byte identifier after its version word is refused as unreadable
+/// (`truncated header`), at every cut, and never panics; the whole header reads
+#[test]
+fn sheet_field_identifier_cut_short_is_unreadable() {
+    use alice_sdf::sheet_field::kink_build::write_askc;
+    use alice_sdf::sheet_field::stream::write_ashf;
+    use alice_sdf::sheet_field::{SheetField, ValidRule};
+    let mut ashf = Vec::new();
+    write_ashf(&mut ashf, &SheetField::new(Vec::new(), ValidRule::CellV1)).unwrap();
+    let mut askc = Vec::new();
+    write_askc(&mut askc, &[(None, 0.01, 0)]).unwrap();
+    let mut compared = 0;
+    for (name, bytes) in [("ASHF", &ashf), ("ASKC", &askc)] {
+        assert!(
+            provenance::from_bytes(bytes).is_ok(),
+            "{name}: the whole file"
+        );
+        for cut in 8..40 {
+            let r = std::panic::catch_unwind(|| provenance::from_bytes(&bytes[..cut]));
+            match r {
+                Ok(Err(ProvenanceError::Unreadable(why))) => {
+                    assert!(why.contains("truncated header"), "{name} cut {cut}: {why}");
+                }
+                Ok(other) => panic!("{name} cut {cut}: not refused as unreadable: {other:?}"),
+                Err(_) => panic!("{name} cut {cut}: panicked"),
+            }
+            compared += 1;
+        }
+    }
+    assert_eq!(compared, 64);
+}

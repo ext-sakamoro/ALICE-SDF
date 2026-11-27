@@ -225,9 +225,9 @@ const fn floor_div(a: i64, b: i64) -> i64 {
 }
 
 /// Mark every cell of the answering level that `edges` cross (each walked at `h_min / 8`, with its ends), and its 26
-/// neighbours on that level, with `flag`.
+/// neighbours on that level, with `flag` (each cell keeps the index of its active brick, found when it is marked).
 fn mark_x1(
-    cells: &mut BTreeMap<(usize, [i64; 3]), u32>,
+    cells: &mut KinkCells,
     vs: &[DVec3],
     levels: &[super::Level],
     edges: &[[u32; 2]],
@@ -264,8 +264,8 @@ fn mark_x1(
                     for dy in -1..=1 {
                         for dz in -1..=1 {
                             let gg = [g[0] + dx, g[1] + dy, g[2] + dz];
-                            if brick_at(lv, gg.map(|x| floor_div(x, b))).is_some() {
-                                *cells.entry((li, gg)).or_insert(0) |= flag;
+                            if let Some(k) = brick_at(lv, gg.map(|x| floor_div(x, b))) {
+                                cells.entry((li, gg)).or_insert((k, 0)).1 |= flag;
                             }
                         }
                     }
@@ -274,6 +274,10 @@ fn mark_x1(
         }
     }
 }
+
+/// (level, cell) -> (the index of the cell's active brick on that level, the cell's flags): a cell enters only when its
+/// brick is active, and its brick index is taken then, so every later reader has it without looking it up again.
+type KinkCells = BTreeMap<(usize, [i64; 3]), (usize, u32)>;
 
 /// Edge (sorted vertex pair) -> its faces, each with the corners of the edge's two vertices.
 type EdgeFaces = BTreeMap<(u32, u32), Vec<(usize, usize, usize)>>;
@@ -337,7 +341,7 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
     let levels = &sheet.levels;
     let b = BRICK as i64;
     // d_b cells: X+1 around the rim
-    let mut cells: BTreeMap<(usize, [i64; 3]), u32> = BTreeMap::new();
+    let mut cells: KinkCells = BTreeMap::new();
     mark_x1(&mut cells, vs, levels, geom.rim, CELL_DB);
     // attribute cells: X+1 around the seams (interior edges whose two faces disagree on a shared corner's UV or author
     // normal): there the interpolated attribute blends the two sides, so the march takes the exact closest point's
@@ -345,7 +349,8 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
     // s cells: the raster of every triangle, flagged by the position bound
     for (li, lv) in levels.iter().enumerate() {
         let (h, lo) = (f64::from(lv.h), lv.lo.as_dvec3());
-        let mut pairs: BTreeMap<[i64; 3], Vec<usize>> = BTreeMap::new();
+        // cell -> (its active brick, the faces whose triangle meets it)
+        let mut pairs: BTreeMap<[i64; 3], (usize, Vec<usize>)> = BTreeMap::new();
         for (f, t) in fs.iter().enumerate() {
             let v = t.map(|i| vs[i as usize]);
             let mn = ((v[0].law_min(v[1]).law_min(v[2]) - lo) / h).floor();
@@ -354,12 +359,12 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
                 for y in mn.y as i64..=mx.y as i64 {
                     for z in mn.z as i64..=mx.z as i64 {
                         let g = [x, y, z];
-                        if brick_at(lv, g.map(|q| floor_div(q, b))).is_none() {
+                        let Some(k) = brick_at(lv, g.map(|q| floor_div(q, b))) else {
                             continue;
-                        }
+                        };
                         let c = lo + (DVec3::new(x as f64, y as f64, z as f64) + 0.5) * h;
                         if tri_box(v, c, h / 2.0) {
-                            pairs.entry(g).or_default().push(f);
+                            pairs.entry(g).or_insert_with(|| (k, Vec::new())).1.push(f);
                         }
                     }
                 }
@@ -367,12 +372,11 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
         }
         st.surface += pairs.len();
         let ch = &lv.channels[0];
-        for (g, flist) in &pairs {
-            let k = brick_at(lv, g.map(|q| floor_div(q, b))).expect("active");
+        for (g, &(k, ref flist)) in &pairs {
             let row = ch.rows[k];
             if row < 0 {
                 // a surface cell whose brick stores no s: no certified bound, flag it
-                *cells.entry((li, *g)).or_insert(0) |= CELL_S;
+                cells.entry((li, *g)).or_insert((k, 0)).1 |= CELL_S;
                 st.s_slope_le0 += 1;
                 continue;
             }
@@ -433,7 +437,7 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
                 }
             }
             if flag {
-                *cells.entry((li, *g)).or_insert(0) |= CELL_S;
+                cells.entry((li, *g)).or_insert((k, 0)).1 |= CELL_S;
                 if slope {
                     st.s_slope_le0 += 1;
                 }
@@ -444,11 +448,10 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
         return (None, st);
     }
     // order: level, active brick, cell
-    let mut cl: Vec<((usize, [i64; 3]), u32)> = cells.into_iter().collect();
-    cl.sort_by_key(|((li, g), _)| {
-        let k = brick_at(&levels[*li], g.map(|q| floor_div(q, b))).expect("active");
+    let mut cl: Vec<((usize, [i64; 3]), (usize, u32))> = cells.into_iter().collect();
+    cl.sort_by_key(|&((li, g), (k, _))| {
         let cc = g.map(|q| q - floor_div(q, b) * b);
-        (*li, k, cc)
+        (li, k, cc)
     });
     // references
     let tc: Vec<DVec3> = fs
@@ -472,10 +475,9 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
     let mut refs = Vec::new();
     let mut recs = Vec::new();
     let mut lvrec: Vec<BTreeMap<usize, Vec<(usize, usize)>>> = vec![BTreeMap::new(); levels.len()];
-    for (i, ((li, g), _)) in cl.iter().enumerate() {
-        let k = brick_at(&levels[*li], g.map(|q| floor_div(q, b))).expect("active");
+    for (i, &((li, g), (k, _))) in cl.iter().enumerate() {
         let cc = g.map(|q| q - floor_div(q, b) * b);
-        lvrec[*li]
+        lvrec[li]
             .entry(k)
             .or_default()
             .push(((cc[0] * 64 + cc[1] * 8 + cc[2]) as usize, i));
@@ -485,7 +487,7 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
         for (k, list) in bricks {
             first_of.insert((li, *k), recs.len() as u32);
             for &(_, i) in list {
-                let ((li2, g), flags) = cl[i];
+                let ((li2, g), (_, flags)) = cl[i];
                 let lv = &levels[li2];
                 let h = f64::from(lv.h);
                 let c = lv.lo.as_dvec3()
