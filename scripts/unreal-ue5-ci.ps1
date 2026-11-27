@@ -393,6 +393,37 @@ $Uproject = Join-Path $Host_ "AliceSdfHost.uproject"
         @{ Name = "WebBrowserWidget"; Enabled = $false }
     )
 } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 $Uproject
+# UE 5.7's editor Home Screen (MainFrame) probes https://www.google.com/generate_204 at frame 0
+# and, when that answers, opens its web panel through CEF; the CEF RHI helper then asserts on
+# BUseSupportedRHIRenderer() under D3D12 in the middle of a test (exit 3 before TEST COMPLETE,
+# in some runs only: the ones where the probe went through). The tests need neither the Home
+# Screen nor a browser: the console variable turns the Home Screen off and -nocef (read by the
+# engine's WebBrowser module) keeps CEF from initialising, and Assert-NoBrowser below fails the
+# job if either still shows up in the log.
+$HostConfig = Join-Path $Host_ "Config"
+New-Item -ItemType Directory -Force $HostConfig | Out-Null
+@(
+    "[ConsoleVariables]",
+    "HomeScreen.EnableHomeScreen=0"
+) | Set-Content -Encoding utf8 (Join-Path $HostConfig "DefaultEngine.ini")
+
+# A log line from CEF or the Home Screen's network probe fails the job. An empty or missing log
+# fails as well (a gate that read nothing would pass). With -RequireComplete the automation
+# run's own end line must be there too, so a crash before it cannot read as a pass.
+function Assert-NoBrowser([string] $Path, [switch] $RequireComplete) {
+    if (-not (Test-Path $Path)) { Fail "no editor log at $Path" }
+    $Lines = @(Get-Content $Path)
+    if ($Lines.Count -eq 0) { Fail "the editor log $Path is empty" }
+    $Browser = @($Lines | Select-String -Pattern "Loaded CEF3|\]LogCEF|^LogCEF|generate_204")
+    if ($Browser.Count -gt 0) {
+        $Browser | Select-Object -First 5 | ForEach-Object { Write-Host "    $($_.Line)" }
+        Fail "$($Browser.Count) CEF / Home Screen line(s) in $Path (the automation run must not start a browser or go online)"
+    }
+    if ($RequireComplete -and -not ($Lines | Select-String -SimpleMatch "TEST COMPLETE. EXIT CODE: 0")) {
+        Fail "the editor log $Path has no 'TEST COMPLETE. EXIT CODE: 0' line"
+    }
+    Write-Host "editor log checked: $($Lines.Count) lines, 0 CEF / Home Screen lines"
+}
 
 $EditorLog = Join-Path $Logs "editor.log"
 # DDC: an installed (Launcher) engine's writable local cache is ZenLocal, and
@@ -413,13 +444,14 @@ $EditorCmd = Join-Path $EngineRoot "Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
 # -unattended: no dialogs; -NoCrashReporter: a fatal (e.g. a .usf that does
 # not compile) exits non-zero instead of waiting on the crash window.
 & $EditorCmd $Uproject `
-    -ddc=NoZenLocalFallback `
+    -ddc=NoZenLocalFallback -nocef `
     -ExecCmds="Automation RunTests AliceSDF.Unreal;Quit" `
     -ReportExportPath="$Report" -abslog="$EditorLog" `
     -unattended -nop4 -nosplash -NoSound -NoCrashReporter -stdout -FullStdOutLogOutput 2>&1 |
     Select-String -Pattern "LogAutomation|AliceSDF|Shader.*(error|failed)|Fatal|Error:" | ForEach-Object { $_.Line }
 $EditorExit = $LASTEXITCODE
 if ($EditorExit -ne 0) { Fail "UnrealEditor-Cmd exited $EditorExit (see $EditorLog)" }
+Assert-NoBrowser $EditorLog -RequireComplete
 
 # ── 6. the report ──────────────────────────────────────────────────────────
 Step "automation report"
@@ -454,11 +486,12 @@ $MaterialScript = Join-Path $Host_ "Plugins\AliceSDF\Content\Python\create_alice
 if (-not (Test-Path $MaterialScript)) { Fail "the packaged plugin has no $MaterialScript" }
 $MaterialLog = Join-Path $Logs "material.log"
 & $EditorCmd $Uproject `
-    -ddc=NoZenLocalFallback -run=pythonscript -script="$MaterialScript" `
+    -ddc=NoZenLocalFallback -nocef -run=pythonscript -script="$MaterialScript" `
     -abslog="$MaterialLog" `
     -unattended -nop4 -nosplash -NoSound -NoCrashReporter -stdout |
     Select-String -Pattern "ALICE-SDF:|LogPython|Material|error|Error:" | ForEach-Object { $_.Line }
 if ($LASTEXITCODE -ne 0) { Fail "the sample material script exited $LASTEXITCODE (see $MaterialLog)" }
+Assert-NoBrowser $MaterialLog
 $MaterialAsset = Join-Path $Host_ "Content\AliceSDF\M_AliceSDF_Sample.uasset"
 if (-not (Test-Path $MaterialAsset)) { Fail "no M_AliceSDF_Sample.uasset was written (see $MaterialLog)" }
 $ShaderErrors = Select-String -Path $MaterialLog -Pattern "Failed to compile Material|Shader compile error|error X[0-9]+" -ErrorAction SilentlyContinue
