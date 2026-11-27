@@ -4222,13 +4222,15 @@ fn sheet_field_identifier_cut_short_is_unreadable() {
             "{name}: the whole file"
         );
         for cut in 8..40 {
-            let r = std::panic::catch_unwind(|| provenance::from_bytes(&bytes[..cut]));
-            match r {
-                Ok(Err(ProvenanceError::Unreadable(why))) => {
+            let Ok(read) = std::panic::catch_unwind(|| provenance::from_bytes(&bytes[..cut]))
+            else {
+                panic!("{name} cut {cut}: panicked");
+            };
+            match read {
+                Err(ProvenanceError::Unreadable(why)) => {
                     assert!(why.contains("truncated header"), "{name} cut {cut}: {why}");
                 }
-                Ok(other) => panic!("{name} cut {cut}: not refused as unreadable: {other:?}"),
-                Err(_) => panic!("{name} cut {cut}: panicked"),
+                other => panic!("{name} cut {cut}: not refused as unreadable: {other:?}"),
             }
             compared += 1;
         }

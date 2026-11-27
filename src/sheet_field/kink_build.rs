@@ -279,6 +279,9 @@ fn mark_x1(
 /// brick is active, and its brick index is taken then, so every later reader has it without looking it up again.
 type KinkCells = BTreeMap<(usize, [i64; 3]), (usize, u32)>;
 
+/// One entry of [`KinkCells`] taken out of the map: ((level, cell), (brick index, flags)).
+type KinkCell = ((usize, [i64; 3]), (usize, u32));
+
 /// Edge (sorted vertex pair) -> its faces, each with the corners of the edge's two vertices.
 type EdgeFaces = BTreeMap<(u32, u32), Vec<(usize, usize, usize)>>;
 
@@ -448,7 +451,7 @@ pub fn kink_sheet(geom: &SheetGeom, sheet: &Sheet, eps: f64) -> (Option<KinkReco
         return (None, st);
     }
     // order: level, active brick, cell
-    let mut cl: Vec<((usize, [i64; 3]), (usize, u32))> = cells.into_iter().collect();
+    let mut cl: Vec<KinkCell> = cells.into_iter().collect();
     cl.sort_by_key(|&((li, g), (k, _))| {
         let cc = g.map(|q| q - floor_div(q, b) * b);
         (li, k, cc)
