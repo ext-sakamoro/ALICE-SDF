@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Tests of scripts/unreal_engines.py: which engines one Unreal workflow run builds.
 
-The rule (from the module doc): main and schedule build every engine; a ci/ push builds every
-engine when the change is engine-specific and the newest otherwise; bad roots build nothing and
-fail. Every expectation below is written from that rule, not from the script's output.
+The rule (from the module doc): every run builds every engine, so a ci/ push builds exactly
+what main will build, engine-specific or not; bad roots build nothing and fail. Every expectation below is written from that rule, not from the script's output.
 """
 from __future__ import annotations
 
@@ -64,25 +63,23 @@ class Selection(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(engines(out), ROOTS)
 
-    def test_any_other_ci_change_builds_the_newest_engine_only(self):
-        code, _, _, out = run(*args("push", CI, "false"))
+    def test_a_ci_change_that_is_not_engine_specific_builds_every_engine(self):
+        # f1c77112: a src/ change ran the Unreal job on ci/ with UE 5.8 only; UE 5.7 first ran
+        # on main. A ci/ run builds the same engines as main, in the roots' order
+        code, stdout, _, out = run(*args("push", CI, "false"))
         self.assertEqual(code, 0)
-        self.assertEqual(engines(out), ["E:\\UE_5.8"])
+        self.assertEqual(engines(out), ROOTS)
+        self.assertIn("not engine-specific", stdout)
 
-    def test_newest_is_by_version_not_by_position(self):
-        # the newest is neither the first nor the last entry
-        roots = ["E:\\UE_5.7", "D:\\UE_5.10", "E:\\UE_5.8"]
-        code, _, _, out = run(*args("push", CI, "false", roots))
-        self.assertEqual(code, 0)
-        self.assertEqual(engines(out), ["D:\\UE_5.10"])
-        code, _, _, out = run(*args("push", CI, "false", ["E:\\UE_5.8", "E:\\UE_5.7"]))
-        self.assertEqual(code, 0)
-        self.assertEqual(engines(out), ["E:\\UE_5.8"])
-
-    def test_a_root_without_a_version_is_older_than_one_with(self):
-        self.assertEqual(ue.newest(["E:\\Engine", "E:\\UE_5.7"]), "E:\\UE_5.7")
-        self.assertEqual(ue.newest(["E:\\UE_5.7", "E:\\Engine"]), "E:\\UE_5.7")
-        self.assertEqual(ue.newest(["E:\\A", "E:\\B"]), "E:\\B")
+    def test_ci_builds_what_main_builds_for_any_roots(self):
+        for roots in [["E:\\UE_5.7", "D:\\UE_5.10", "E:\\UE_5.8"], ["E:\\UE_5.8", "E:\\UE_5.7"],
+                      ["E:\\Engine", "E:\\UE_5.7"]]:
+            for spec in ("false", "true"):
+                with self.subTest(roots=roots, spec=spec):
+                    _, _, _, ci = run(*args("push", CI, spec, roots))
+                    _, _, _, main = run(*args("push", MAIN, spec, roots))
+                    self.assertEqual(engines(ci), roots)
+                    self.assertEqual(engines(ci), engines(main))
 
     def test_one_root_is_built_in_every_case(self):
         for event, ref, spec in [("push", CI, "false"), ("push", CI, "true"),
@@ -94,7 +91,7 @@ class Selection(unittest.TestCase):
     def test_without_github_output_the_line_goes_to_stdout(self):
         code, stdout, _, _ = run(*args("push", CI, "false"), output=False)
         self.assertEqual(code, 0)
-        self.assertEqual(engines(stdout), ["E:\\UE_5.8"])
+        self.assertEqual(engines(stdout), ROOTS)
 
 
 class Refusals(unittest.TestCase):
