@@ -4,21 +4,19 @@
 usage: unreal_engines.py --roots JSON --event NAME --ref REF --specific BOOL
 
 The workflow's one self-hosted Windows runner builds the plugin against every engine in
-UE5_ENGINE_ROOTS in series (about 50 minutes each). Building every engine for every ci/ push
-held the landing queue for hours, so:
+UE5_ENGINE_ROOTS in series (about 50 minutes each). Every run builds every engine:
 
   push to main (post-land), schedule (weekly)   every engine
-  push to ci/**, the change is engine-specific  every engine
-  push to ci/**, otherwise                      the newest engine only
+  push to ci/**                                 every engine
 
-"Engine-specific" is the `run` output of scripts/changed_paths.py decide over
-.github/unreal-engines-both.txt (the plugin, the C header, the HLSL emitters, the Unreal
-corpus example and this workflow); a failed decision there is run=true (fail-closed), so
-every engine. A change that is not engine-specific but still breaks only an older engine is
-caught by the post-land run on main and by the weekly run, which build every engine.
+A ci/ run builds exactly what main will build. When a ci/ push built only the newest engine,
+an older engine first ran on main and could go red there with no run before landing to show
+it (ALICE-SDF f1c77112: UE 5.7 never ran on ci/). The workflow runs at all only when its
+path filter matches, so the full cost is paid only for a change that can affect the plugin.
 
-The newest engine is the root with the highest `major.minor` in its name (5.8 over 5.7); a
-root without one counts as older than any that has one, and ties keep the later entry.
+`--specific` (the `run` output of scripts/changed_paths.py decide over
+.github/unreal-engines-both.txt) is still read and must be true or false; it is only logged
+(whether the change touches a path the engine version compiles), it does not narrow the set.
 
 Output: `engines` (a JSON list, a subset of the roots in their order) in $GITHUB_OUTPUT, or
 on stdout without it. The log names engine versions only, never an install path (the job log
@@ -34,7 +32,6 @@ import re
 import sys
 
 EVERY = "every"
-NEWEST = "newest"
 
 
 def parse_roots(text: str) -> list[str]:
@@ -60,16 +57,6 @@ def label(root: str) -> str:
     return f"UE {v[0]}.{v[1]}" if v else "engine (no version in its name)"
 
 
-def newest(roots: list[str]) -> str:
-    best, best_key = roots[0], (0, (0, 0))
-    for r in roots:
-        v = version(r)
-        key = (1, v) if v else (0, (0, 0))
-        if key >= best_key:
-            best, best_key = r, key
-    return best
-
-
 def truthy(v: str) -> bool:
     if v not in ("true", "false"):
         raise ValueError(f"--specific must be true or false, got {v!r}")
@@ -77,23 +64,20 @@ def truthy(v: str) -> bool:
 
 
 def choose(event: str, ref: str, specific: bool) -> tuple[str, str]:
-    """(EVERY or NEWEST, the reason)"""
+    """(EVERY, the reason): a ci/ push builds the same engines main will build"""
+    tag = "engine-specific" if specific else "not engine-specific"
     if event == "schedule":
         return EVERY, "scheduled run"
     if event != "push":
         raise ValueError(f"unexpected event {event!r} (the workflow runs on push and schedule)")
     if ref == "refs/heads/main":
-        return EVERY, "post-land run on main"
-    if specific:
-        return EVERY, "the change touches an engine-specific path"
-    return NEWEST, "the change is not engine-specific (every engine runs after landing and weekly)"
+        return EVERY, f"post-land run on main, {tag}"
+    return EVERY, f"push to {ref.removeprefix('refs/heads/')}: the same engines as main, {tag}"
 
 
 def select(roots: list[str], event: str, ref: str, specific: bool) -> tuple[list[str], str]:
-    which, why = choose(event, ref, specific)
-    if which == EVERY:
-        return list(roots), why
-    return [newest(roots)], why
+    _, why = choose(event, ref, specific)
+    return list(roots), why
 
 
 def main(argv: list[str]) -> int:

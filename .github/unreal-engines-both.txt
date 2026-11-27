@@ -1,6 +1,6 @@
-# the changes that build EVERY engine of UE5_ENGINE_ROOTS on a ci/ push (scripts/unreal_engines.py);
-# any other ci/ change builds the newest engine only, and every engine builds after landing on main
-# and weekly. Read by scripts/changed_paths.py decide (same pattern syntax as .github/paths/).
+# the engine-specific changes (scripts/unreal_engines.py logs whether a change is one; every run
+# builds every engine of UE5_ENGINE_ROOTS, on ci/ as on main). Read by scripts/changed_paths.py
+# decide (same pattern syntax as .github/paths/) and by scripts/hlsl_emitters.py.
 # Listed: what the engine version itself compiles or links against — the plugin's C++ and
 # shaders, the C header it includes, the HLSL emitters whose text the engine's shader compiler
 # compiles, the example that generates the plugin's corpus shaders, and this workflow and its

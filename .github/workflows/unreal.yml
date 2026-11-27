@@ -26,8 +26,8 @@ on:
     # ci/**: the owner's ci/ commits run here before they land (user decision); the
     # changes job and its policy step decide, the job's own `if:` repeats the guard
     branches: [main, 'ci/**']
-  # weekly: every engine of UE5_ENGINE_ROOTS against main, whatever changed (a ci/ push that is
-  # not engine-specific builds the newest engine only; scripts/unreal_engines.py)
+  # weekly: every engine of UE5_ENGINE_ROOTS against main, whatever changed (a ci/ push builds
+  # the same engines as main; scripts/unreal_engines.py)
   schedule:
     - cron: '17 19 * * 6'
   # 今日のように engine を入れ直した後で「commit を作らずに検証だけしたい」場合の入口
@@ -88,9 +88,9 @@ jobs:
           if [ "$DECIDED" = true ] && [ "$ALLOWED" = true ]; then run=true; else run=false; fi
           echo "decided=$DECIDED allowed=$ALLOWED run=$run"
           echo "run=$run" >> "$GITHUB_OUTPUT"
-      # one runner builds the engines in series (about 50 minutes each): a ci/ push builds every
-      # engine only when the change is engine-specific (.github/unreal-engines-both.txt, a failed
-      # decision runs every engine), otherwise the newest; main and the weekly run build every engine
+      # one runner builds the engines in series (about 50 minutes each); every run builds every
+      # engine, so a ci/ run builds what main will build (an engine that runs on main only was
+      # never checked before landing); the engine-specific decision below is only logged
       - name: engine-specific change
         id: specific
         env:
