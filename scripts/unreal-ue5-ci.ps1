@@ -399,7 +399,11 @@ $Uproject = Join-Path $Host_ "AliceSdfHost.uproject"
 # in some runs only: the ones where the probe went through). The tests need neither the Home
 # Screen nor a browser: the console variable turns the Home Screen off and -nocef (read by the
 # engine's WebBrowser module) keeps CEF from initialising, and Assert-NoBrowser below fails the
-# job if either still shows up in the log.
+# job if either still shows up in the log. The console variable is registered after the config is
+# read (the log says "deferred"), so that line does not show the Home Screen is off; instead the
+# editor runs with LogHttp at Verbose, which logs every request's URL when it starts (a probe that
+# answers at once leaves no line at the default level), and no generate_204 line then means no
+# probe was made.
 $HostConfig = Join-Path $Host_ "Config"
 New-Item -ItemType Directory -Force $HostConfig | Out-Null
 @(
@@ -444,7 +448,7 @@ $EditorCmd = Join-Path $EngineRoot "Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
 # -unattended: no dialogs; -NoCrashReporter: a fatal (e.g. a .usf that does
 # not compile) exits non-zero instead of waiting on the crash window.
 & $EditorCmd $Uproject `
-    -ddc=NoZenLocalFallback -nocef `
+    -ddc=NoZenLocalFallback -nocef -LogCmds="LogHttp Verbose" `
     -ExecCmds="Automation RunTests AliceSDF.Unreal;Quit" `
     -ReportExportPath="$Report" -abslog="$EditorLog" `
     -unattended -nop4 -nosplash -NoSound -NoCrashReporter -stdout -FullStdOutLogOutput 2>&1 |
@@ -486,7 +490,7 @@ $MaterialScript = Join-Path $Host_ "Plugins\AliceSDF\Content\Python\create_alice
 if (-not (Test-Path $MaterialScript)) { Fail "the packaged plugin has no $MaterialScript" }
 $MaterialLog = Join-Path $Logs "material.log"
 & $EditorCmd $Uproject `
-    -ddc=NoZenLocalFallback -nocef -run=pythonscript -script="$MaterialScript" `
+    -ddc=NoZenLocalFallback -nocef -LogCmds="LogHttp Verbose" -run=pythonscript -script="$MaterialScript" `
     -abslog="$MaterialLog" `
     -unattended -nop4 -nosplash -NoSound -NoCrashReporter -stdout |
     Select-String -Pattern "ALICE-SDF:|LogPython|Material|error|Error:" | ForEach-Object { $_.Line }
