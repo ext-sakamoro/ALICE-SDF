@@ -31,6 +31,8 @@ PIN = ROOT / ".github/shared-files-pin"
 # the copies these tests rewrite themselves: never the probe of a flipped byte
 SELF = ("scripts/shared_files.sh", "scripts/test_shared_files.py")
 LAW_URL = "https://github.com/ext-sakamoro/ALICE-Law"
+# the table paths under it are shared workflows: a private holder does not hold them
+HOSTED_TRIGGER = ".github/workflows/"
 # waits between the fetch attempts of the pinned revision (seconds): 4 attempts in all
 FETCH_BACKOFF = (2, 4, 8)
 
@@ -160,8 +162,11 @@ class SharedFiles(unittest.TestCase):
         archive = subprocess.run(["git", "-C", str(ROOT), "-c", "core.autocrlf=false", "-c", "core.eol=lf",
                                   "archive", "HEAD"], check=True, capture_output=True)
         subprocess.run(["tar", "-x", "-C", str(self.tree)], input=archive.stdout, check=True)
+        # the committed bytes, as the rest of the tree: a working copy checked out with CRLF (Windows without an
+        # eol attribute) would be a finding of its own
         for rel in ("scripts/shared_files.sh", ".github/shared-files-pin"):
-            shutil.copy(ROOT / rel, self.tree / rel)
+            shown = subprocess.run(["git", "-C", str(ROOT), "show", f"HEAD:{rel}"], check=True, capture_output=True)
+            (self.tree / rel).write_bytes(shown.stdout)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -226,9 +231,12 @@ class SharedFiles(unittest.TestCase):
     def private_tree(self) -> Path:
         """A private holder's tree: every table path the committed tree holds (shared copies and
         per-repository data alike, as a private repository carries them), at the committed bytes,
-        and nothing else."""
+        and nothing else. Shared workflows are left out: they trigger a hosted run, which a private
+        repository does not hold (the private mode makes holding one a finding)."""
         tree = Path(self.tmp.name) / "private"
         for rel in self.present(self.tree):
+            if rel.startswith(HOSTED_TRIGGER):
+                continue
             (tree / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(self.tree / rel, tree / rel)
         return tree
@@ -240,6 +248,19 @@ class SharedFiles(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("private copy, the row's bytes", out)
         self.assertRegex(out, r"copies [1-9][0-9]*, pending [0-9]+, 0 finding")
+
+    def test_a_shared_workflow_in_a_private_tree_is_a_finding(self):
+        # a shared workflow row's path (the bytes do not matter: holding one is the finding)
+        self.write_pin(self.unlisted_name(), "private")
+        tree = self.private_tree()
+        rel = next(p for p, repos in self.rows if repos and p.startswith(HOSTED_TRIGGER))
+        (tree / rel).parent.mkdir(parents=True, exist_ok=True)
+        src = self.tree / rel
+        (tree / rel).write_bytes(src.read_bytes() if src.is_file() else b"on: push\n")
+        code, out = self.run_script(str(tree))
+        self.assertEqual(code, 1, out)
+        self.assertIn(f"{rel}: a shared workflow is not held by a private repository", out)
+        self.assertIn(", 1 finding(s)", out)
 
     def test_a_flipped_byte_fails_in_the_private_mode_too(self):
         self.write_pin(self.unlisted_name(), "private")
