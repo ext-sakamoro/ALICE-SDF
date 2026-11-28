@@ -296,14 +296,18 @@ pub fn build_svo(
     let compiled = crate::compiled::CompiledSdf::compile(node_ref);
     let svo = py.detach(|| SparseVoxelOctree::build_compiled(&compiled, &config));
 
-    Ok(PySvo { inner: svo })
+    Ok(PySvo {
+        inner: Box::new(svo),
+    })
 }
 
 /// Python-visible SVO wrapper
 #[cfg(feature = "svo")]
 #[pyclass(name = "SparseVoxelOctree")]
 pub struct PySvo {
-    pub(crate) inner: crate::svo::SparseVoxelOctree,
+    // boxed: SparseVoxelOctree is 32-byte aligned (`#[repr(C, align(32))]`), more than the 16-byte alignment
+    // CPython gives the pyclass contents; the box keeps the pyclass at pointer alignment
+    pub(crate) inner: Box<crate::svo::SparseVoxelOctree>,
 }
 
 #[cfg(feature = "svo")]
@@ -316,22 +320,22 @@ impl PySvo {
     }
 
     /// Get node count
-    const fn node_count(&self) -> usize {
+    fn node_count(&self) -> usize {
         self.inner.node_count()
     }
 
     /// Get leaf count
-    const fn leaf_count(&self) -> u32 {
+    fn leaf_count(&self) -> u32 {
         self.inner.leaf_count
     }
 
     /// Get memory usage in bytes
-    const fn memory_bytes(&self) -> usize {
+    fn memory_bytes(&self) -> usize {
         self.inner.memory_bytes()
     }
 
     /// Get max depth
-    const fn max_depth(&self) -> u32 {
+    fn max_depth(&self) -> u32 {
         self.inner.max_depth
     }
 

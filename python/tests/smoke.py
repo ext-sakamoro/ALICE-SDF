@@ -128,6 +128,17 @@ def main() -> None:
         else:
             raise AssertionError("load_abm read a version 1 file without an identifier")
 
+    # ── SVO pyclass (feature svo): built and queried from Python, so a misaligned pyclass aborts here in
+    # the debug build; the octree subdivides only near the surface, so near the unit sphere its distances
+    # are |p| - 1 to within a leaf (deep inside it answers from a coarse cell) ──────────────────────────
+    if hasattr(sdf, "build_svo"):
+        svo = sdf.build_svo(sdf.SdfNode.sphere(1.0), (-2.0, -2.0, -2.0), (2.0, 2.0, 2.0), max_depth=6)
+        check(svo.node_count() > 0 and svo.leaf_count() > 0, "svo built")
+        leaf = 4.0 / (1 << 6)
+        for x in (0.9, 1.0, 1.1, -1.0):
+            got = svo.query_point(x, 0.0, 0.0)
+            check(abs(got - (abs(x) - 1.0)) <= 2 * leaf, f"svo query at x={x}: {got}")
+
     print(f"alice_sdf {v}: python smoke OK (mesh {verts.shape[0]} verts, volume {vol:.4f})")
 
 

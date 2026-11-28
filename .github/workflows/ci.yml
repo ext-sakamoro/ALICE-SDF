@@ -1913,17 +1913,18 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
+      # the runner image's own python3 (no setup-python pin): when the image moves to a Python newer than pyo3
+      # supports, this job goes red first. `maturin develop` builds the debug profile, so pyo3's alignment check
+      # aborts on a pyclass aligned above CPython's 16 bytes (src/python/mod.rs also asserts it at compile time)
       - name: Build and install the binding into a venv
         run: |
-          python -m venv .venv
+          python3 --version
+          python3 -m venv .venv
           . .venv/bin/activate
           pip install --quiet maturin numpy
-          # openvdb: bake_to_vdb, which vdb_roundtrip.py requires (it fails, not skips, without it)
-          maturin develop --features python,openvdb
+          # openvdb: bake_to_vdb, which vdb_roundtrip.py requires (it fails, not skips, without it); svo, terrain and
+          # destruction add the pyclasses they gate, so their alignment asserts (src/python/mod.rs) are compiled here
+          maturin develop --features python,openvdb,svo,terrain,destruction
 
       - name: Run the analytic smoke test
         run: |

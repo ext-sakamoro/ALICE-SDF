@@ -25,6 +25,19 @@ pub use node::PySdfNode;
 
 use pyo3::prelude::*;
 
+// CPython allocates every object (and the pyclass contents inside it) on a 16-byte boundary; a pyclass
+// whose contents need a larger alignment is undefined behaviour (debug builds abort with a misaligned
+// pointer dereference, release builds run silently on a misaligned address). Hold such data in a Box.
+const _: () = assert!(core::mem::align_of::<node::PySdfNode>() <= 16);
+const _: () = assert!(core::mem::align_of::<compiled::PyCompiledSdf>() <= 16);
+#[cfg(feature = "svo")]
+const _: () = assert!(core::mem::align_of::<functions::PySvo>() <= 16);
+#[cfg(feature = "terrain")]
+const _: () = assert!(core::mem::align_of::<functions::PyHeightmap>() <= 16);
+const _: () = assert!(core::mem::align_of::<functions::PyMeshCache>() <= 16);
+#[cfg(feature = "destruction")]
+const _: () = assert!(core::mem::align_of::<functions::PyVoxelGrid>() <= 16);
+
 /// Python module
 // The macro is not applied in this crate's unit-test build: it emits the unmangled module init symbol, and that
 // build also links the crate's own copy through the dev-dependency (Cargo.toml), which carries it. The function
