@@ -410,6 +410,13 @@ New-Item -ItemType Directory -Force $HostConfig | Out-Null
     "[ConsoleVariables]",
     "HomeScreen.EnableHomeScreen=0"
 ) | Set-Content -Encoding utf8 (Join-Path $HostConfig "DefaultEngine.ini")
+# The editor also posts usage analytics (datarouter) during the run; the tests send nothing out, so the
+# host turns usage data off (the engine's BaseEditorSettings.ini has it on) and Assert-NoBrowser fails on
+# any outbound request the request log shows.
+@(
+    "[/Script/UnrealEd.AnalyticsPrivacySettings]",
+    "bSendUsageData=False"
+) | Set-Content -Encoding utf8 (Join-Path $HostConfig "DefaultEditorSettings.ini")
 
 # A log line from CEF or the Home Screen's network probe fails the job. An empty or missing log
 # fails as well (a gate that read nothing would pass). With -RequireComplete the automation
@@ -427,10 +434,16 @@ function Assert-NoBrowser([string] $Path, [switch] $RequireComplete) {
     if (-not ($Lines | Select-String -SimpleMatch "Log category LogHttp verbosity has been raised to Verbose")) {
         Fail "the editor log $Path does not show LogHttp at Verbose (-LogCmds did not apply)"
     }
+    # no outbound request at all (allow list: none)
+    $Outbound = @($Lines | Select-String -Pattern "LogHttp.*URL=.?https?://")
+    if ($Outbound.Count -gt 0) {
+        $Outbound | Select-Object -First 3 | ForEach-Object { Write-Host "    $($_.Line)" }
+        Fail "$($Outbound.Count) outbound HTTP request line(s) in $Path (the automation run must not go online)"
+    }
     if ($RequireComplete -and -not ($Lines | Select-String -SimpleMatch "TEST COMPLETE. EXIT CODE: 0")) {
         Fail "the editor log $Path has no 'TEST COMPLETE. EXIT CODE: 0' line"
     }
-    Write-Host "editor log checked: $($Lines.Count) lines, LogHttp at Verbose, 0 CEF / Home Screen lines"
+    Write-Host "editor log checked: $($Lines.Count) lines, LogHttp at Verbose, 0 CEF / Home Screen lines, 0 outbound requests"
 }
 
 $EditorLog = Join-Path $Logs "editor.log"
