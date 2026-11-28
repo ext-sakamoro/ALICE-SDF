@@ -423,10 +423,14 @@ function Assert-NoBrowser([string] $Path, [switch] $RequireComplete) {
         $Browser | Select-Object -First 5 | ForEach-Object { Write-Host "    $($_.Line)" }
         Fail "$($Browser.Count) CEF / Home Screen line(s) in $Path (the automation run must not start a browser or go online)"
     }
+    # without this line a 0 above could mean the request log was off, not that no probe was made
+    if (-not ($Lines | Select-String -SimpleMatch "Log category LogHttp verbosity has been raised to Verbose")) {
+        Fail "the editor log $Path does not show LogHttp at Verbose (-LogCmds did not apply)"
+    }
     if ($RequireComplete -and -not ($Lines | Select-String -SimpleMatch "TEST COMPLETE. EXIT CODE: 0")) {
         Fail "the editor log $Path has no 'TEST COMPLETE. EXIT CODE: 0' line"
     }
-    Write-Host "editor log checked: $($Lines.Count) lines, 0 CEF / Home Screen lines"
+    Write-Host "editor log checked: $($Lines.Count) lines, LogHttp at Verbose, 0 CEF / Home Screen lines"
 }
 
 $EditorLog = Join-Path $Logs "editor.log"
