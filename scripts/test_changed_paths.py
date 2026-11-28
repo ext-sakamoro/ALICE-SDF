@@ -156,12 +156,46 @@ class PushCases(unittest.TestCase):
         c2 = self.r.commit({"alice-lol/src/new.rs": "n\n"})
         d = cp.decide(args(self.r, before=c1, after=c2))
         self.assertTrue(d.run, d.reason)
-        self.assertEqual(d.files, ["alice-lol/src/new.rs"])
+        self.assertEqual(d.files, ["alice-lol/src/lib.rs", "alice-lol/src/new.rs"])
         c3 = self.r.commit({"README.md": "only docs\n"})
         d = cp.decide(args(self.r, before=c2, after=c3))
+        # the branch as a whole still changes alice-lol/src: main will run the lane
+        self.assertTrue(d.run, d.reason)
+        self.assertEqual(d.files, ["README.md", "alice-lol/src/lib.rs", "alice-lol/src/new.rs"])
+        self.assertIn("merge-base(origin/main)..after", d.reason)
+
+    def test_second_ci_push_touching_nothing_filtered_still_runs(self):
+        # 1st push to ci/x carries the src change and runs; the 2nd push only touches docs.
+        # main will see both commits, so the 2nd push must still run the lane (before..after
+        # would skip it on ci/ and the lane would fire first on main)
+        c1 = self.branch_commit({"alice-lol/src/lib.rs": "b\n"}, name="ci/x")
+        d = cp.decide(args(self.r, created="true", before=ZERO, after=c1))
+        self.assertTrue(d.run, d.reason)
+        c2 = self.r.commit({"docs/a.md": "1\n"})
+        d = cp.decide(args(self.r, before=c1, after=c2))
+        self.assertTrue(d.run, d.reason)
+        self.assertEqual(d.matched, ["alice-lol/src/lib.rs"])
+        self.assertEqual(d.diff, f"push (branch not in origin/main): merge-base(origin/main)..after = {self.m0}..{c2}")
+
+    def test_second_ci_push_after_main_moved_compares_with_the_merge_base(self):
+        # main moved on (a src commit) after the branch forked; the branch only changes docs:
+        # the range is merge-base..after, so main's own src commit is not counted
+        c1 = self.branch_commit({"docs/a.md": "1\n"}, name="ci/x")
+        self.r.checkout("main")
+        self.r.commit({"alice-lol/src/lib.rs": "main moved\n"})
+        self.r.publish_main()
+        self.r.checkout("ci/x")
+        c2 = self.r.commit({"docs/b.md": "2\n"})
+        d = cp.decide(args(self.r, before=c1, after=c2))
         self.assertFalse(d.run, d.reason)
-        self.assertEqual(d.files, ["README.md"])
-        self.assertIn("before..after", d.reason)
+        self.assertEqual(d.files, ["docs/a.md", "docs/b.md"])
+
+    def test_branch_whose_whole_change_misses_the_patterns_skips(self):
+        c1 = self.branch_commit({"docs/a.md": "1\n"}, name="ci/x")
+        c2 = self.r.commit({"README.md": "2\n"})
+        d = cp.decide(args(self.r, before=c1, after=c2))
+        self.assertFalse(d.run, d.reason)
+        self.assertEqual(d.files, ["README.md", "docs/a.md"])
 
     def test_names_git_would_c_quote_still_match(self):
         # without -z git prints "alice-lol/src/a\tb.rs" with quotes and `**/src/**` misses
@@ -190,11 +224,20 @@ class PushCases(unittest.TestCase):
         self.assertTrue(d.run, d.reason)
         self.assertEqual(d.matched, ["src/x.rs"])
 
-    def test_follow_up_push_with_no_file_change_skips(self):
+    def test_follow_up_push_with_no_file_change_runs_on_a_branch(self):
+        # an empty commit on top of a src change: the branch as a whole still matches
         c1 = self.branch_commit({"alice-lol/src/lib.rs": "b\n"})
         self.r.run("commit", "-q", "--allow-empty", "-m", "empty")
         c2 = self.r.run("rev-parse", "HEAD")
         d = cp.decide(args(self.r, before=c1, after=c2))
+        self.assertTrue(d.run, d.reason)
+        self.assertEqual(d.matched, ["alice-lol/src/lib.rs"])
+
+    def test_push_to_main_with_no_file_change_skips(self):
+        self.r.checkout("main")
+        self.r.run("commit", "-q", "--allow-empty", "-m", "empty")
+        c1 = self.r.publish_main()
+        d = cp.decide(args(self.r, before=self.m0, after=c1))
         self.assertFalse(d.run, d.reason)
         self.assertEqual(d.files, [])
         self.assertIn("no file changed", d.reason)
@@ -226,13 +269,27 @@ class PushCases(unittest.TestCase):
         self.assertIn("fail-closed", d.reason)
 
     def test_push_to_main_uses_before_after(self):
+        # on main the pushed SHA is in origin/main (the checkout fetched it): before..after
         self.r.checkout("main")
-        c1 = self.r.commit({"README.md": "readme only\n"})
+        c1 = self.r.commit({"alice-lol/src/lib.rs": "c\n"})
+        self.r.publish_main()
         d = cp.decide(args(self.r, before=self.m0, after=c1))
-        self.assertFalse(d.run, d.reason)
-        c2 = self.r.commit({"alice-lol/src/lib.rs": "c\n"})
-        d = cp.decide(args(self.r, before=c1, after=c2))
         self.assertTrue(d.run, d.reason)
+        c2 = self.r.commit({"README.md": "readme only\n"})
+        self.r.publish_main()
+        d = cp.decide(args(self.r, before=c1, after=c2))
+        self.assertFalse(d.run, d.reason)
+        self.assertEqual(d.files, ["README.md"])
+        self.assertEqual(d.diff, f"push: before..after = {c1}..{c2}")
+
+    def test_follow_up_push_with_a_missing_main_ref_runs_fail_closed(self):
+        # is-ancestor exits 128 on an unknown ref: neither range can be chosen, so run
+        c1 = self.branch_commit({"README.md": "y\n"}, name="ci/x")
+        c2 = self.r.commit({"docs/a.md": "1\n"})
+        d = cp.decide(args(self.r, before=c1, after=c2, main_ref="origin/nope"))
+        self.assertTrue(d.run, d.reason)
+        self.assertIn("fail-closed", d.reason)
+        self.assertIn("--is-ancestor", d.reason)
 
     def test_unknown_before_runs_fail_closed(self):
         c1 = self.branch_commit({"README.md": "y\n"})

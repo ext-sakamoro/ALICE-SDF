@@ -24,7 +24,9 @@ decide   which files changed, and whether any matches the patterns
   The diff:
     schedule, workflow_dispatch          always run (no diff)
     push, created / forced / before=0…0  merge-base(main-ref, after)..after
-    push, otherwise                      before..after (the same as the old filter, also on main)
+    push, after in main-ref (main)       before..after (the same as the old filter)
+    push, otherwise (a later push to a   merge-base(main-ref, after)..after: the range main
+      branch main has not taken)           will see, not only this push's commits
     pull_request                         base...head
   Fail-closed (run=true, the reason is logged): a git failure, a missing merge-base, an
   unreachable `before`, an unknown event, an unsupported pattern, a non-empty diff of which
@@ -161,6 +163,19 @@ def git(repo: str, *args: str) -> str:
     return p.stdout.decode("utf-8", "surrogateescape")
 
 
+def is_ancestor(repo: str, commit: str, ref: str) -> bool:
+    """commit is reachable from ref (git merge-base --is-ancestor: exit 0 yes, 1 no, else error)"""
+    try:
+        p = subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", commit, ref],
+                           capture_output=True, check=False)
+    except OSError as e:
+        raise GitError(f"git merge-base --is-ancestor: {e}") from e
+    if p.returncode in (0, 1):
+        return p.returncode == 0
+    err = p.stderr.decode("utf-8", "replace").strip()[:300]
+    raise GitError(f"git merge-base --is-ancestor {commit} {ref}: exit {p.returncode}: {err}")
+
+
 def diff_names(repo: str, spec: str) -> list[str]:
     # -z: names are NUL-separated and never C-quoted (without it git quotes a name with a
     # tab, quote, backslash, newline or control character, and `src/**` misses `"src/a\tb"`)
@@ -211,8 +226,18 @@ def decide(a: argparse.Namespace) -> Decision:
                 label = f"push ({why}): merge-base({a.main_ref})..after = {spec}"
             else:
                 before = git(a.repo, "rev-parse", "--verify", f"{a.before}^{{commit}}").strip()
-                spec = f"{before}..{after}"
-                label = f"push: before..after = {spec}"
+                if is_ancestor(a.repo, after, a.main_ref):
+                    spec = f"{before}..{after}"
+                    label = f"push: before..after = {spec}"
+                else:
+                    # a later push to a branch main has not taken (ci/**, work/**): main will
+                    # see every commit of the branch, not only this push's, so decide on the
+                    # same range (before..after would skip a lane that main then runs)
+                    base = git(a.repo, "merge-base", a.main_ref, after).strip()
+                    if not base:
+                        return Decision(True, f"fail-closed: no merge-base of {a.main_ref} and {after}")
+                    spec = f"{base}..{after}"
+                    label = f"push (branch not in {a.main_ref}): merge-base({a.main_ref})..after = {spec}"
         elif ev == "pull_request":
             if is_zero(a.base) or is_zero(a.head):
                 return Decision(True, "fail-closed: pull_request without base / head SHA")
